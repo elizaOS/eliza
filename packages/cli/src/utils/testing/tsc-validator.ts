@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { execa } from 'execa';
+import { bunExec } from '../bun-exec.js';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 
@@ -29,10 +29,11 @@ export async function runTypeCheck(
       args.push('--strict');
     }
 
-    const { stdout, stderr } = await execa('tsc', args, {
+    // Use bun x to run the project's local TypeScript compiler
+    const result = await bunExec('bun', ['x', 'tsc', ...args], {
       cwd: projectPath,
-      reject: false,
     });
+    const { stdout, stderr } = result;
 
     const hasErrors = stderr.includes('error TS') || stdout.includes('error TS');
 
@@ -42,7 +43,7 @@ export async function runTypeCheck(
       warnings: stderr.includes('warning') ? [stderr] : [],
     };
   } catch (error: any) {
-    logger.error('TypeScript validation failed:', error);
+    logger.error({ error }, 'TypeScript validation failed:');
     return {
       success: false,
       errors: [`TypeScript validation error: ${error.message}`],

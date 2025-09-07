@@ -1,5 +1,4 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -92,6 +91,10 @@ describe('CLI version display integration tests', () => {
         const tempPackageJson = path.join(tempDir, 'package.json');
         await fs.promises.copyFile(cliPackageJson, tempPackageJson);
 
+<<<<<<< HEAD
+=======
+        const tempCliPath = path.join(tempDistPath, 'index.js');
+>>>>>>> develop
         const result = await runCLI(['--version'], {
           cwd: tempDir,
           cliPath: tempCliPath,
@@ -111,7 +114,11 @@ describe('CLI version display integration tests', () => {
 /**
  * Helper function to run the CLI and capture output
  */
+<<<<<<< HEAD
 function runCLI(
+=======
+async function runCLI(
+>>>>>>> develop
   args: string[],
   options: { cwd?: string; cliPath?: string } = {}
 ): Promise<{
@@ -119,6 +126,7 @@ function runCLI(
   stderr: string;
   code: number | null;
 }> {
+<<<<<<< HEAD
   return new Promise((resolve) => {
     const cliPath = options.cliPath || CLI_PATH;
     const proc = spawn('node', [cliPath, ...args], {
@@ -130,25 +138,50 @@ function runCLI(
         ELIZA_NO_AUTO_INSTALL: 'true',
       },
     });
+=======
+  const cliPath = options.cliPath || CLI_PATH;
+  const proc = Bun.spawn(['node', cliPath, ...args], {
+    cwd: options.cwd || process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      // Disable auto-install to avoid side effects
+      ELIZA_NO_AUTO_INSTALL: 'true',
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+>>>>>>> develop
 
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    proc.on('close', (code) => {
-      resolve({ stdout, stderr, code });
-    });
-
-    // Handle the case where the process doesn't exit on its own
+  // Set up timeout
+  const timeoutPromise = new Promise<never>((_, reject) => {
     setTimeout(() => {
       proc.kill();
+      reject(new Error('CLI command timed out after 5 seconds'));
     }, 5000);
   });
+<<<<<<< HEAD
+=======
+
+  try {
+    // Wait for process to exit and then read the streams
+    await Promise.race([proc.exited, timeoutPromise]);
+
+    const code = proc.exitCode;
+
+    // Read streams after process has exited
+    const stdout = proc.stdout ? await new Response(proc.stdout).text() : '';
+    const stderr = proc.stderr ? await new Response(proc.stderr).text() : '';
+
+    return { stdout, stderr, code };
+  } catch (error) {
+    // If we timed out, still try to get any output
+    if (error instanceof Error && error.message.includes('timed out')) {
+      const stdout = proc.stdout ? await new Response(proc.stdout).text() : '';
+      const stderr = proc.stderr ? await new Response(proc.stderr).text() : '';
+      return { stdout, stderr, code: null };
+    }
+    throw error;
+  }
+>>>>>>> develop
 }

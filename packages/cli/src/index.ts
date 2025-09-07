@@ -1,6 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 process.env.NODE_OPTIONS = '--no-deprecation';
 process.env.NODE_NO_WARNINGS = '1';
+process.env.QUIET_MODE = process.env.QUIET_MODE || 'true';
 
 import { agent } from '@/src/commands/agent';
 import { create } from '@/src/commands/create';
@@ -14,12 +15,65 @@ import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
 import { update } from '@/src/commands/update';
 import { displayBanner, getVersion, checkAndShowUpdateNotification } from '@/src/utils';
+import { tryDelegateToLocalCli } from '@/src/utils/local-cli-delegation';
 import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
+import { stopServer } from '@/src/commands/dev/utils/server-manager';
 
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+/**
+ * Shutdown state management to prevent race conditions
+ * Using an object to encapsulate state and provide atomic operations
+ */
+const shutdownState = {
+  isShuttingDown: false,
+
+  /**
+   * Atomically check and set the shutdown flag
+   * @returns true if shutdown was initiated, false if already in progress
+   */
+  tryInitiateShutdown(): boolean {
+    if (this.isShuttingDown) {
+      return false;
+    }
+    this.isShuttingDown = true;
+    return true;
+  },
+};
+
+/**
+ * Graceful shutdown handler for SIGINT and SIGTERM signals
+ * Ensures proper cleanup of server processes before exiting
+ * Prevents race conditions from multiple rapid signal events
+ */
+async function gracefulShutdown(signal: string) {
+  // Atomically check and set shutdown flag to prevent race conditions
+  if (!shutdownState.tryInitiateShutdown()) {
+    logger.debug(`Ignoring ${signal} - shutdown already in progress`);
+    return;
+  }
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+
+  try {
+    // Stop the dev server if it's running
+    const serverWasStopped = await stopServer();
+    if (serverWasStopped) {
+      logger.info('Server stopped successfully');
+    }
+  } catch (error) {
+    // Extract error message for better debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`Error stopping server: ${errorMessage}`);
+    logger.debug({ error }, 'Full error details:');
+  }
+
+  // Use appropriate exit codes for different signals
+  const exitCode = signal === 'SIGINT' ? 130 : signal === 'SIGTERM' ? 143 : 0;
+  process.exit(exitCode);
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 /**
  * Asynchronous function that serves as the main entry point for the application.
@@ -27,6 +81,15 @@ process.on('SIGTERM', () => process.exit(0));
  * @returns {Promise<void>}
  */
 async function main() {
+  // Try to delegate to local CLI if available - this must be first
+  // to ensure all commands use local installation when available
+  const delegated = await tryDelegateToLocalCli();
+  if (delegated) {
+    // If we delegated to local CLI, this process should exit
+    // The local CLI will handle the rest
+    return;
+  }
+
   // Check for --no-emoji flag early (before command parsing)
   if (process.argv.includes('--no-emoji')) {
     configureEmojis({ forceDisable: true });
@@ -85,6 +148,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error('An error occurred:', error);
+  logger.error({ error }, 'An error occurred:');
   process.exit(1);
 });

@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execa } from 'execa';
+import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
 
 // Helper function to check if running from node_modules
@@ -92,7 +92,7 @@ export async function getLatestCliVersion(currentVersion: string): Promise<strin
     }
 
     // Get the time data for all published versions to find the most recent
-    const { stdout } = await execa('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
     const timeData = JSON.parse(stdout);
 
     // Remove metadata entries like 'created' and 'modified'

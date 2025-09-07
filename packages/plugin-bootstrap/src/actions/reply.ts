@@ -7,6 +7,9 @@ import {
   type Memory,
   ModelType,
   type State,
+  type ActionResult,
+  logger,
+  parseKeyValueXml,
 } from '@elizaos/core';
 
 /**
@@ -20,20 +23,29 @@ import {
  * @type {string}
  */
 const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
+
 {{providers}}
+
 # Instructions: Write the next message for {{agentName}}.
 "thought" should be a short description of what the agent is thinking about and planning.
 "message" should be the next message for {{agentName}} which they will send to the conversation.
 
-Response format should be formatted in a valid JSON block like this:
-\`\`\`json
-{
-    "thought": "<string>",
-    "message": "<string>"
-}
-\`\`\`
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
 
-Your response should include the valid JSON block and nothing else.`;
+Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Go directly to the XML response format without any preamble or explanation.
+
+Respond using XML format like this:
+<response>
+    <thought>Your thought here</thought>
+    <message>Your message here</message>
+</response>
+
+IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
 
 /**
  * Represents an action that allows the agent to reply to the current conversation with a generated message.
@@ -63,31 +75,81 @@ export const replyAction = {
     _options: any,
     callback: HandlerCallback,
     responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
+    // Access previous action results from context if available
+    const context = _options?.context;
+    const previousResults = context?.previousResults || [];
+
+    if (previousResults.length > 0) {
+      logger.debug(`[REPLY] Found ${previousResults.length} previous action results`);
+    }
+
     // Check if any responses had providers associated with them
     const allProviders = responses?.flatMap((res) => res.content?.providers ?? []) ?? [];
 
     // Only generate response using LLM if no suitable response was found
-    state = await runtime.composeState(message, [...(allProviders ?? []), 'RECENT_MESSAGES']);
+    state = await runtime.composeState(message, [
+      ...(allProviders ?? []),
+      'RECENT_MESSAGES',
+      'ACTION_STATE',
+    ]);
 
     const prompt = composePromptFromState({
       state,
-      template: replyTemplate,
+      template: runtime.character.templates?.replyTemplate || replyTemplate,
     });
 
-    const response = await runtime.useModel(ModelType.OBJECT_LARGE, {
-      prompt,
-    });
+    try {
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
 
-    const responseContent = {
-      thought: response.thought,
-      text: (response.message as string) || '',
-      actions: ['REPLY'],
-    };
+      // Parse XML response
+      const parsedXml = parseKeyValueXml(response);
 
-    await callback(responseContent);
+      const responseContent = {
+        thought: parsedXml?.thought || '',
+        text: parsedXml?.message || '',
+        actions: ['REPLY'],
+      };
 
-    return true;
+      await callback(responseContent);
+
+      return {
+        text: `Generated reply: ${responseContent.text}`,
+        values: {
+          success: true,
+          responded: true,
+          lastReply: responseContent.text,
+          lastReplyTime: Date.now(),
+          thoughtProcess: parsedXml?.thought,
+        },
+        data: {
+          actionName: 'REPLY',
+          response: responseContent,
+          thought: parsedXml?.thought,
+          messageGenerated: true,
+        },
+        success: true,
+      };
+    } catch (error) {
+      logger.error(`[REPLY] Error generating response: ${error}`);
+
+      return {
+        text: 'Error generating reply',
+        values: {
+          success: false,
+          responded: false,
+          error: true,
+        },
+        data: {
+          actionName: 'REPLY',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
   },
   examples: [
     [

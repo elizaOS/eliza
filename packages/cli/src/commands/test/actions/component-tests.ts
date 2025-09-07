@@ -1,13 +1,12 @@
 import { buildProject, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger } from '@elizaos/core';
-import { spawn } from 'node:child_process';
+import { bunExecInherit } from '@/src/utils/bun-exec';
 import path from 'node:path';
 import { ComponentTestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 import { runTypeCheck } from '@/src/utils/testing/tsc-validator';
 // Bun test doesn't need separate config creation
-import { existsSync } from 'node:fs';
 
 /**
  * Run component tests using bun test
@@ -51,50 +50,43 @@ export async function runComponentTests(
 
   // Bun test uses built-in configuration
 
-  return new Promise((resolve) => {
-    // Build command arguments
-    const args = ['test', '--passWithNoTests'];
+  // Build command arguments
+  const args = ['test', '--passWithNoTests'];
 
-    // Add filter if specified
-    if (options.name) {
-      const baseName = processFilterName(options.name);
-      if (baseName) {
-        logger.info(`Using test filter: ${baseName}`);
-        args.push('-t', baseName);
-      }
+  // Add filter if specified
+  if (options.name) {
+    const baseName = processFilterName(options.name);
+    if (baseName) {
+      logger.info(`Using test filter: ${baseName}`);
+      args.push('-t', baseName);
     }
+  }
 
-    // Resolve path - use monorepo root if available, otherwise use cwd
-    const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
-    const baseDir = monorepoRoot ?? process.cwd();
-    const targetPath = testPath ? path.resolve(baseDir, testPath) : process.cwd();
+  // Resolve path - use monorepo root if available, otherwise use cwd
+  const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
+  const baseDir = monorepoRoot ?? process.cwd();
+  const targetPath = testPath ? path.resolve(baseDir, testPath) : process.cwd();
 
-    // Bun test doesn't use separate config files
+  // Bun test doesn't use separate config files
 
-    // Bun test automatically discovers test files
+  // Bun test automatically discovers test files
 
-    logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
+  logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
 
-    // Use spawn for real-time output streaming
-    const child = spawn('bun', args, {
-      stdio: 'inherit',
-      shell: false,
+  try {
+    // Use bunExecInherit for real-time output streaming
+    const result = await bunExecInherit('bun', args, {
       cwd: targetPath,
       env: {
-        ...process.env,
         FORCE_COLOR: '1', // Force color output
-        CI: 'false', // Ensure we're not in CI mode which might buffer
+        CI: '', // Override CI to empty string (some tools check existence, but most check truthiness)
       },
     });
 
-    child.on('close', (code) => {
-      logger.info('Component tests completed');
-      resolve({ failed: code !== 0 });
-    });
-
-    child.on('error', (error) => {
-      logger.error('Error running component tests:', error);
-      resolve({ failed: true });
-    });
-  });
+    logger.info('Component tests completed');
+    return { failed: !result.success };
+  } catch (error) {
+    logger.error({ error }, 'Error running component tests:');
+    return { failed: true };
+  }
 }

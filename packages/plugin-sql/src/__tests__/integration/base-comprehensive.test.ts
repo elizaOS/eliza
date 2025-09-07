@@ -159,7 +159,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: entityId,
           roomId: testRoomId,
           content: { text: 'Related memory' } as Content,
-          createdAt: Date.now(),
+          createdAt: new Date(),
           metadata: { type: 'test' },
         },
         'memories'
@@ -169,7 +169,7 @@ describe('Base Adapter Comprehensive Tests', () => {
       await adapter.deleteEntity(entityId);
 
       // Verify entity is deleted
-      const entities = await adapter.getEntityByIds([entityId]);
+      const entities = await adapter.getEntitiesByIds([entityId]);
       expect(entities).toHaveLength(0);
 
       // Verify related memory is also deleted
@@ -194,7 +194,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           text: 'Comprehensive test memory',
           metadata: { important: true },
         } as Content,
-        createdAt: Date.now(),
+        createdAt: new Date(),
         metadata: {
           type: 'test',
           category: 'comprehensive',
@@ -272,7 +272,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: testEntityId,
           roomId: roomId,
           content: { text: `Memory for room ${i}` } as Content,
-          createdAt: Date.now(),
+          createdAt: new Date(),
           metadata: { type: 'test', roomIndex: i },
         };
         memories.push(memory);
@@ -316,7 +316,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           relationshipType: 'friend',
           strength: 0.8,
         },
-        createdAt: Date.now(),
+        createdAt: new Date(),
       };
 
       // Create component
@@ -419,7 +419,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           roomId: testRoomId,
           content: { text: 'Memory with embedding' } as Content,
           embedding: Array.from(embedding),
-          createdAt: Date.now(),
+          createdAt: new Date(),
           metadata: { type: 'embedding' },
         },
         'memories'
@@ -479,7 +479,7 @@ describe('Base Adapter Comprehensive Tests', () => {
         },
       ]);
 
-      const entities = await adapter.getEntityByIds([entityId]);
+      const entities = await adapter.getEntitiesByIds([entityId]);
       expect(entities?.[0]?.metadata).toEqual({});
 
       // Memory with required entityId
@@ -491,7 +491,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: testEntityId, // Required field
           roomId: testRoomId,
           content: { text: 'Memory with entity' } as Content,
-          createdAt: Date.now(),
+          createdAt: new Date(),
         },
         'memories'
       );
@@ -539,7 +539,7 @@ describe('Base Adapter Comprehensive Tests', () => {
 
       // Verify all were created
       const entityIds = entities.map((e) => e.id!);
-      const retrievedEntities = await adapter.getEntityByIds(entityIds);
+      const retrievedEntities = await adapter.getEntitiesByIds(entityIds);
       expect(retrievedEntities).toHaveLength(batchSize);
 
       const roomIds = rooms.map((r) => r.id);

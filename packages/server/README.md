@@ -11,7 +11,7 @@ The server package provides the REST API and WebSocket server infrastructure for
 - Database integration with SQLite/PostgreSQL
 - Plugin system integration
 - Multi-agent runtime management
-- Built-in web UI serving
+- Built-in web UI serving (client bundled with server)
 
 This package is used internally by the ElizaOS CLI (`@elizaos/cli`) but can also be imported directly to create custom server implementations.
 
@@ -256,6 +256,40 @@ npm run build
 
 # Watch mode for development
 npm run dev
+```
+
+## Client Integration
+
+The server package includes the ElizaOS web client UI. During the build process:
+
+1. The client package (`@elizaos/client`) is built separately
+2. The server build script copies the client dist files to `server/dist/client`
+3. The server serves these files automatically when the web UI is enabled
+
+### Building with Client
+
+```bash
+# Build client first
+cd packages/client
+bun run build
+
+# Then build server (automatically includes client)
+cd ../server
+bun run build
+```
+
+The server looks for client files in these locations (in order):
+
+1. `dist/client` - Bundled client files (production)
+2. `../client/dist` - Direct client build (development)
+3. Via `@elizaos/client` package resolution
+
+### Disabling Web UI
+
+To run the server without the web UI:
+
+```bash
+DISABLE_WEB_UI=true npm start
 ```
 
 ## Examples

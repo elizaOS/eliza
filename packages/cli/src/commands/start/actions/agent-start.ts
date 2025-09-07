@@ -38,8 +38,6 @@ export async function startAgent(
   }
 
   const loadedPlugins = new Map<string, Plugin>();
-  // Type-cast to ensure compatibility with local types
-  loadedPlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin); // Always include sqlPlugin
 
   const pluginsToLoad = new Set<string>(character.plugins || []);
   for (const p of plugins) {
@@ -66,6 +64,22 @@ export async function startAgent(
         allAvailablePlugins.set(loaded.name, loaded);
       }
     }
+  }
+
+  // does this list contain a sql plugin
+  let haveSql = false;
+  for (const n of allAvailablePlugins.keys()) {
+    // we need a better way to detect adapters
+    if (n === sqlPlugin.name || n === 'mysql') {
+      haveSql = true;
+      break;
+    }
+  }
+
+  // ensure an adapter
+  if (!haveSql) {
+    // Type-cast to ensure compatibility with local types
+    allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
   }
 
   // Resolve dependencies and get final plugin list
@@ -101,7 +115,7 @@ export async function startAgent(
       logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
     }
   } catch (error) {
-    logger.error('Failed to run plugin migrations:', error);
+    logger.error({ error }, 'Failed to run plugin migrations:');
     throw error;
   }
 

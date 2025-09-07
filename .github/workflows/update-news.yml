@@ -32,14 +32,6 @@ jobs:
       - name: Run update script
         run: ./scripts/update-news.sh
 
-      - name: Build and Deploy Docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd packages/docs
-          bun install
-          bun run deploy
-
       - name: Run repomix
         run: |
           npx repomix -c scripts/repomix.config.json

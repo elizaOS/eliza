@@ -1,29 +1,80 @@
-import { execSync } from 'child_process';
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { existsSync } from 'fs';
 import { TEST_TIMEOUTS } from '../test-timeouts';
+import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
+import { parseCommand } from '../utils/bun-test-helpers';
+
+/**
+ * Helper function to execute shell commands using Bun.spawn
+ * This is used for system commands that don't go through bunExec
+ */
+async function execShellCommand(
+  command: string,
+  options: { encoding?: string; stdio?: string; timeout?: number } = {}
+): Promise<string> {
+  // For complex shell commands, we need to use shell
+  const shell = process.platform === 'win32' ? ['cmd', '/c'] : ['sh', '-c'];
+  const proc = Bun.spawn([...shell, command], {
+    stdout: options.stdio === 'ignore' ? 'ignore' : 'pipe',
+    stderr: options.stdio === 'ignore' ? 'ignore' : 'pipe',
+  });
+
+  let timeoutId: Timer | null = null;
+  if (options.timeout) {
+    timeoutId = setTimeout(() => {
+      proc.kill();
+    }, options.timeout);
+  }
+
+  try {
+    if (options.stdio === 'ignore') {
+      await proc.exited;
+      return '';
+    }
+
+    const [stdout, stderr] = await Promise.all([
+      proc.stdout ? new Response(proc.stdout).text() : Promise.resolve(''),
+      proc.stderr ? new Response(proc.stderr).text() : Promise.resolve(''),
+    ]);
+
+    await proc.exited;
+
+    if (proc.exitCode !== 0 && !options.stdio) {
+      const error = new Error(`Command failed: ${command}\nstderr: ${stderr}`) as Error & {
+        status: number | null;
+        stdout: string;
+        stderr: string;
+      };
+      error.status = proc.exitCode;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      throw error;
+    }
+
+    return stdout;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 export interface TestContext {
   testTmpDir: string;
-  elizaosCmd: string;
   originalCwd: string;
 }
 
 /**
- * Standard setup for CLI tests - creates temp directory and sets up CLI command
+ * Standard setup for CLI tests - creates temp directory
  */
 export async function setupTestEnvironment(): Promise<TestContext> {
   const originalCwd = process.cwd();
   const testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-'));
   process.chdir(testTmpDir);
 
-  const scriptDir = join(__dirname, '../..');
-  const scriptPath = join(scriptDir, 'dist/index.js');
-  const elizaosCmd = `bun run "${scriptPath}"`;
-
-  return { testTmpDir, elizaosCmd, originalCwd };
+  return { testTmpDir, originalCwd };
 }
 
 /**
@@ -67,110 +118,22 @@ export function safeChangeDirectory(targetDir: string): void {
 /**
  * Helper to create a basic ElizaOS project for testing
  */
-export async function createTestProject(elizaosCmd: string, projectName: string): Promise<void> {
+export async function createTestProject(projectName: string): Promise<void> {
   const platformOptions = getPlatformOptions({
     stdio: 'pipe',
     timeout: TEST_TIMEOUTS.PROJECT_CREATION,
   });
 
   try {
-    execSync(`${elizaosCmd} create ${projectName} --yes`, platformOptions);
+    const result = await bunExecSimple(`elizaos create ${projectName} --yes`);
     process.chdir(projectName);
   } catch (error: any) {
     console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
-      status: error.status,
-      signal: error.signal,
       platform: process.platform,
       stdout: error.stdout?.toString() || '',
       stderr: error.stderr?.toString() || '',
     });
     throw error;
-  }
-}
-
-/**
- * Helper to run CLI command and expect it to succeed
- */
-export function runCliCommand(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): string {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'], // Explicit stdio handling
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    return execSync(`${elizaosCmd} ${args}`, platformOptions);
-  } catch (error: any) {
-    // Enhanced error reporting for debugging
-    const errorDetails = {
-      command: `${elizaosCmd} ${args}`,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-      status: error.status,
-      signal: error.signal,
-      stdout: error.stdout?.toString() || '',
-      stderr: error.stderr?.toString() || '',
-      pid: error.pid,
-    };
-    console.error('[CLI Command Error]', errorDetails);
-    throw error;
-  }
-}
-
-/**
- * Helper to run CLI command silently (suppressing console output)
- */
-export function runCliCommandSilently(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): string {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    return execSync(`${elizaosCmd} ${args}`, platformOptions);
-  } catch (error: any) {
-    // Enhanced error reporting for debugging silent commands
-    console.error(`[Silent CLI Command Error] ${elizaosCmd} ${args}:`, {
-      status: error.status,
-      signal: error.signal,
-      platform: process.platform,
-      timeout: platformOptions.timeout,
-    });
-    throw error;
-  }
-}
-
-/**
- * Helper to run CLI command and expect it to fail
- */
-export function expectCliCommandToFail(
-  elizaosCmd: string,
-  args: string,
-  options: { timeout?: number } = {}
-): { status: number; output: string } {
-  const platformOptions = getPlatformOptions({
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: options.timeout || TEST_TIMEOUTS.STANDARD_COMMAND,
-  });
-
-  try {
-    const result = execSync(`${elizaosCmd} ${args}`, platformOptions);
-    throw new Error(`Command should have failed but succeeded with output: ${result}`);
-  } catch (e: any) {
-    return {
-      status: e.status || -1,
-      output: (e.stdout || '') + (e.stderr || ''),
-    };
   }
 }
 
@@ -295,7 +258,8 @@ export async function waitForServerReady(
 
   // First, check if anything is listening on the port using a simple connection test
   let connectionAttempts = 0;
-  const maxConnectionAttempts = 3;
+  // Base max attempts on actual polling intervals rather than arbitrary time division
+  const maxConnectionAttempts = Math.max(5, Math.floor(maxWaitTime / (pollInterval * 2)));
 
   while (Date.now() - startTime < maxWaitTime) {
     try {
@@ -398,7 +362,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
   try {
     if (process.platform === 'win32') {
       // Windows: More reliable process killing
-      const netstatResult = execSync(`netstat -ano | findstr :${port}`, {
+      const netstatResult = await execShellCommand(`netstat -ano | findstr :${port}`, {
         encoding: 'utf8',
         stdio: 'pipe',
       });
@@ -413,7 +377,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
 
       for (const pid of pids) {
         try {
-          execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+          await execShellCommand(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
         } catch (e) {
           // Ignore if process is already dead
         }
@@ -422,7 +386,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
       // macOS: More reliable process killing with better error handling
       try {
         // First try to find processes listening on the port with increased timeout
-        const lsofResult = execSync(`lsof -ti:${port}`, {
+        const lsofResult = await execShellCommand(`lsof -ti:${port}`, {
           encoding: 'utf8',
           stdio: 'pipe',
           timeout: 10000, // Increased timeout for CI
@@ -437,11 +401,11 @@ export async function killProcessOnPort(port: number): Promise<void> {
         for (const pid of pids) {
           try {
             // Check if process exists first
-            execSync(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
+            await execShellCommand(`ps -p ${pid}`, { stdio: 'ignore', timeout: 2000 });
 
             // Try SIGTERM first
             console.log(`[DEBUG] Sending SIGTERM to PID ${pid}`);
-            execSync(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
+            await execShellCommand(`kill -TERM ${pid}`, { stdio: 'ignore', timeout: 3000 });
 
             // Wait longer for graceful shutdown on macOS CI
             const waitTime = process.env.CI === 'true' ? 3000 : 1000;
@@ -449,9 +413,9 @@ export async function killProcessOnPort(port: number): Promise<void> {
 
             // Check if still running, then force kill
             try {
-              execSync(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
+              await execShellCommand(`kill -0 ${pid}`, { stdio: 'ignore', timeout: 2000 });
               console.log(`[DEBUG] Process ${pid} still running, sending SIGKILL`);
-              execSync(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
+              await execShellCommand(`kill -9 ${pid}`, { stdio: 'ignore', timeout: 3000 });
               await new Promise((resolve) => setTimeout(resolve, 500));
             } catch (e) {
               // Process already dead, good
@@ -468,7 +432,7 @@ export async function killProcessOnPort(port: number): Promise<void> {
       }
     } else {
       // Other Unix systems
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, {
+      await execShellCommand(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, {
         stdio: 'ignore',
         timeout: 5000,
       });
@@ -488,37 +452,27 @@ export async function killProcessOnPort(port: number): Promise<void> {
 }
 
 /**
- * Get the correct bun executable path for the platform
- */
-export function getBunExecutable(): string {
-  // Always use 'bun' - Bun handles platform differences internally
-  const bunCmd = 'bun';
-  console.log(`[DEBUG] Using bun executable: ${bunCmd}`);
-  return bunCmd;
-}
-
-/**
  * Cross-platform file operations utility
  */
 export const crossPlatform = {
-  removeDir: (path: string) => {
+  removeDir: async (path: string) => {
     try {
       if (process.platform === 'win32') {
-        execSync(`if exist "${path}" rmdir /s /q "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`if exist "${path}" rmdir /s /q "${path}"`, { stdio: 'ignore' });
       } else {
-        execSync(`rm -rf "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`rm -rf "${path}"`, { stdio: 'ignore' });
       }
     } catch (e) {
       // Ignore cleanup errors
     }
   },
 
-  removeFile: (path: string) => {
+  removeFile: async (path: string) => {
     try {
       if (process.platform === 'win32') {
-        execSync(`if exist "${path}" del /q "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`if exist "${path}" del /q "${path}"`, { stdio: 'ignore' });
       } else {
-        execSync(`rm -f "${path}"`, { stdio: 'ignore' });
+        await execShellCommand(`rm -f "${path}"`, { stdio: 'ignore' });
       }
     } catch (e) {
       // Ignore cleanup errors
@@ -534,6 +488,12 @@ export const crossPlatform = {
 export function getPlatformOptions(baseOptions: any = {}): any {
   const platformOptions = { ...baseOptions };
 
+  // Always ensure environment variables are passed
+  platformOptions.env = {
+    ...process.env,
+    ...baseOptions.env, // Preserve any custom env vars from baseOptions
+  };
+
   if (process.platform === 'win32') {
     // Only scale the timeout if one was explicitly provided
     if (platformOptions.timeout !== undefined) {
@@ -548,11 +508,9 @@ export function getPlatformOptions(baseOptions: any = {}): any {
       platformOptions.timeout = platformOptions.timeout * 1.25;
     }
     platformOptions.killSignal = 'SIGTERM' as NodeJS.Signals;
-    // Merge environment variables instead of overwriting
+    // Add macOS specific locale
     platformOptions.env = {
-      ...process.env,
-      ...baseOptions.env, // Preserve any custom env vars from baseOptions
-      PATH: `/usr/local/bin:/opt/homebrew/bin:${process.env.PATH}`,
+      ...platformOptions.env,
       LANG: 'en_US.UTF-8',
       LC_ALL: 'en_US.UTF-8',
     };
@@ -572,21 +530,22 @@ export class TestProcessManager {
    * Spawn a process with proper error handling and cleanup
    */
   spawn(command: string, args: string[], options: any = {}): any {
-    const { spawn } = require('child_process');
-
-    // Force stdio to 'ignore' to prevent hanging streams on Windows
+    // Force stdio to 'ignore' to prevent hanging streams on Windows, unless allowOutput is true
     const processOptions = {
-      ...options,
-      stdio: ['ignore', 'ignore', 'ignore'], // Ignore all stdio to prevent hanging
+      cwd: options.cwd || process.cwd(),
+      env: options.env || process.env,
+      stdout: options.allowOutput ? 'inherit' : 'ignore',
+      stderr: options.allowOutput ? 'inherit' : 'ignore',
+      stdin: 'ignore',
     };
 
-    const childProcess = spawn(command, args, processOptions);
+    const childProcess = Bun.spawn([command, ...args], processOptions);
 
     // Track the process for cleanup
     this.processes.add(childProcess);
 
     // Remove from tracking when process exits naturally
-    childProcess.on('exit', () => {
+    childProcess.exited.then(() => {
       this.processes.delete(childProcess);
     });
 
@@ -597,26 +556,13 @@ export class TestProcessManager {
    * Gracefully terminate a single process with platform-specific handling
    */
   async terminateProcess(process: any): Promise<void> {
-    if (!process || process.exitCode !== null || process.killed) {
+    if (!process || process.exitCode !== null) {
       return;
     }
 
     try {
-      // Create exit promise
-      const exitPromise = new Promise<void>((resolve) => {
-        if (process.exitCode !== null) {
-          resolve();
-          return;
-        }
-
-        const cleanup = () => {
-          process.removeAllListeners();
-          resolve();
-        };
-
-        process.once('exit', cleanup);
-        process.once('error', cleanup);
-      });
+      // For Bun processes, we have an exited promise
+      const exitPromise = process.exited;
 
       if (process.platform === 'win32') {
         // Windows: Try graceful termination first

@@ -35,11 +35,15 @@ describe('Prompts', () => {
       expect(messageHandlerTemplate).toContain('IMPORTANT ACTION ORDERING RULES');
       expect(messageHandlerTemplate).toContain('Actions are executed in the ORDER you list them');
 
+      // Ensure code block formatting rules are explicitly included
+      expect(messageHandlerTemplate).toContain('IMPORTANT CODE BLOCK FORMATTING RULES');
+      expect(messageHandlerTemplate).toContain('fenced code blocks');
+      expect(messageHandlerTemplate).toContain('single backticks');
+
       // Check for provider selection rules
       expect(messageHandlerTemplate).toContain('IMPORTANT PROVIDER SELECTION RULES');
       expect(messageHandlerTemplate).toContain('ATTACHMENTS');
       expect(messageHandlerTemplate).toContain('ENTITIES');
-      expect(messageHandlerTemplate).toContain('KNOWLEDGE');
     });
 
     it('postCreationTemplate should contain required placeholders and examples', () => {

@@ -9,6 +9,7 @@ import {
   type Memory,
   ModelType,
   type State,
+  type ActionResult,
 } from '@elizaos/core';
 
 /**
@@ -60,7 +61,7 @@ export const unmuteRoomAction: Action = {
     _options?: { [key: string]: unknown },
     _callback?: HandlerCallback,
     _responses?: Memory[]
-  ) => {
+  ): Promise<ActionResult> => {
     async function _shouldUnmute(state: State): Promise<boolean> {
       const shouldUnmutePrompt = composePromptFromState({
         state,
@@ -134,29 +135,113 @@ export const unmuteRoomAction: Action = {
       return false;
     }
 
-    if (state && (await _shouldUnmute(state))) {
-      await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
-    }
-
-    const room = await runtime.getRoom(message.roomId);
-
-    if (!room) {
-      logger.warn(`Room not found: ${message.roomId}`);
-      return false;
-    }
-
-    await runtime.createMemory(
-      {
-        entityId: message.entityId,
-        agentId: message.agentId,
-        roomId: message.roomId,
-        content: {
-          thought: `I unmuted the room ${room.name}`,
-          actions: ['UNMUTE_ROOM_START'],
+    if (!state) {
+      return {
+        text: 'State is required for unmute room action',
+        values: {
+          success: false,
+          error: 'STATE_REQUIRED',
         },
-      },
-      'messages'
-    );
+        data: {
+          actionName: 'UNMUTE_ROOM',
+          error: 'State is required',
+        },
+        success: false,
+        error: new Error('State is required for unmute room action'),
+      };
+    }
+
+    const shouldUnmute = await _shouldUnmute(state);
+
+    if (shouldUnmute) {
+      try {
+        await runtime.setParticipantUserState(message.roomId, runtime.agentId, null);
+
+        const room = await runtime.getRoom(message.roomId);
+
+        if (!room) {
+          logger.warn(`Room not found: ${message.roomId}`);
+          return {
+            text: `Room not found: ${message.roomId}`,
+            values: {
+              success: false,
+              error: 'ROOM_NOT_FOUND',
+              roomId: message.roomId,
+            },
+            data: {
+              actionName: 'UNMUTE_ROOM',
+              error: 'Room not found',
+              roomId: message.roomId,
+            },
+            success: false,
+          };
+        }
+
+        await runtime.createMemory(
+          {
+            entityId: message.entityId,
+            agentId: message.agentId,
+            roomId: message.roomId,
+            content: {
+              thought: `I unmuted the room ${room.name}`,
+              actions: ['UNMUTE_ROOM_START'],
+            },
+          },
+          'messages'
+        );
+
+        return {
+          text: `Room unmuted: ${room.name}`,
+          values: {
+            success: true,
+            roomUnmuted: true,
+            roomId: message.roomId,
+            roomName: room.name,
+            newState: null,
+          },
+          data: {
+            actionName: 'UNMUTE_ROOM',
+            roomId: message.roomId,
+            roomName: room.name,
+            unmuted: true,
+          },
+          success: true,
+        };
+      } catch (error) {
+        logger.error({ error }, 'Error unmuting room:');
+        return {
+          text: 'Failed to unmute room',
+          values: {
+            success: false,
+            error: 'UNMUTE_FAILED',
+          },
+          data: {
+            actionName: 'UNMUTE_ROOM',
+            error: error instanceof Error ? error.message : String(error),
+            roomId: message.roomId,
+          },
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+    } else {
+      return {
+        text: 'Decided not to unmute room',
+        values: {
+          success: true,
+          roomUnmuted: false,
+          roomId: message.roomId,
+          reason: 'CRITERIA_NOT_MET',
+        },
+        data: {
+          actionName: 'UNMUTE_ROOM',
+          roomId: message.roomId,
+          unmuted: false,
+          reason: 'Decision criteria not met',
+        },
+        success: true,
+      };
+    }
   },
   examples: [
     [

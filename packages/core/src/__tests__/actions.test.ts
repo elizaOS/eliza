@@ -166,15 +166,15 @@ describe('Actions', () => {
   describe('formatActions', () => {
     it('should format actions with descriptions', () => {
       const formatted = formatActions([mockActions[0]]);
-      expect(formatted).toBe('greet: Greet someone');
+      expect(formatted).toBe('- **greet**: Greet someone');
     });
 
     it('should include commas and newlines between multiple actions', () => {
       const formatted = formatActions([mockActions[0], mockActions[1]]);
-      const parts = formatted.split(',\n');
+      const parts = formatted.split('\n');
       expect(parts.length).toBe(2);
-      expect(parts[0]).toMatch(/^(greet|farewell): /);
-      expect(parts[1]).toMatch(/^(greet|farewell): /);
+      expect(parts[0]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
+      expect(parts[1]).toMatch(/^- \*\*(greet|farewell)\*\*: /);
     });
 
     it('should handle empty actions array', () => {

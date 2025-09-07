@@ -10,9 +10,8 @@ import {
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
   setupPgLite,
-  installPlugin,
 } from '@/src/utils';
-import { execa } from 'execa';
+import { installPluginWithSpinner } from '@/src/utils/spinner-utils';
 
 /**
  * Creates necessary project directories.
@@ -32,7 +31,32 @@ export async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'local': {
-        console.info('[√] Using Local AI - no additional configuration needed');
+        // Configure Ollama for local AI usage
+        if (isNonInteractive) {
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# Local AI Configuration (using Ollama)\n';
+          content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+          content += 'OLLAMA_MODEL=gemma3\n';
+          content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
+          content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+          content += '# Pull models with: ollama pull gemma3 && ollama pull nomic-embed-text\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+        } else {
+          // Interactive mode - prompt for Ollama configuration
+          await promptAndStoreOllamaConfig(envFilePath);
+          // Also set up embedding model
+          await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+        }
         break;
       }
 
@@ -54,7 +78,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://platform.openai.com/api-keys\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] OpenAI placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for OpenAI API key
           await promptAndStoreOpenAIKey(envFilePath);
@@ -80,7 +103,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://console.anthropic.com/\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Anthropic API placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for Anthropic API key
           await promptAndStoreAnthropicKey(envFilePath);
@@ -106,38 +128,9 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://openrouter.ai/keys\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] OpenRouter placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for OpenRouter API key
           await promptAndStoreOpenRouterKey(envFilePath);
-        }
-        break;
-      }
-
-      case 'ollama': {
-        if (isNonInteractive) {
-          // In non-interactive mode, just add placeholder
-          let content = '';
-          if (existsSync(envFilePath)) {
-            content = await fs.readFile(envFilePath, 'utf8');
-          }
-
-          if (content && !content.endsWith('\n')) {
-            content += '\n';
-          }
-
-          content += '\n# AI Model Configuration\n';
-          content += '# Ollama Configuration\n';
-          content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
-          content += 'OLLAMA_MODEL=llama2\n';
-          content += 'USE_OLLAMA_TEXT_MODELS=true\n';
-          content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
-
-          await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Ollama placeholder configuration added to .env file');
-        } else {
-          // Interactive mode - prompt for Ollama configuration
-          await promptAndStoreOllamaConfig(envFilePath);
         }
         break;
       }
@@ -160,7 +153,6 @@ export async function setupAIModelConfig(
           content += '# Get your API key from: https://aistudio.google.com/apikey\n';
 
           await fs.writeFile(envFilePath, content, 'utf8');
-          console.info('[√] Google Generative AI placeholder configuration added to .env file');
         } else {
           // Interactive mode - prompt for Google API key
           await promptAndStoreGoogleKey(envFilePath);
@@ -181,7 +173,7 @@ export async function setupAIModelConfig(
 /**
  * Checks if an environment variable has a real value (not a placeholder) in the content
  */
-function hasValidApiKey(content: string, keyName: string): boolean {
+export function hasValidApiKey(content: string, keyName: string): boolean {
   const regex = new RegExp(`^${keyName}=(.+)$`, 'm');
   const match = content.match(regex);
   if (!match) return false;
@@ -217,10 +209,39 @@ export async function setupEmbeddingModelConfig(
 
     switch (embeddingModel) {
       case 'local': {
-        content += '\n# Embedding Model Configuration (Fallback)\n';
-        content += '# Using local embeddings - no additional configuration needed\n';
-        await fs.writeFile(envFilePath, content, 'utf8');
-        console.info('[√] Using Local embeddings - no additional configuration needed');
+        // 'local' means Ollama for embeddings, so configure it properly
+        if (!hasValidApiKey(content, 'OLLAMA_API_ENDPOINT')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('OLLAMA_API_ENDPOINT=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# Ollama Embeddings Configuration\n';
+              content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
+              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
+              content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - prompt for Ollama embedding model configuration
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+          }
+        } else {
+          // Ollama endpoint exists, but we need to prompt for embedding model specifically
+          if (isNonInteractive) {
+            // In non-interactive mode, just add embedding model if not present
+            if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
+              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
+            }
+            if (!content.includes('USE_OLLAMA_EMBEDDINGS')) {
+              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - always prompt for embedding model selection
+            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
+          }
+        }
         break;
       }
 
@@ -236,54 +257,9 @@ export async function setupEmbeddingModelConfig(
               content += '# Get your API key from: https://platform.openai.com/api-keys\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] OpenAI embeddings placeholder configuration added to .env file');
           } else {
             // Interactive mode - prompt for OpenAI API key
-            console.info('\n[!] OpenAI API key is required for embeddings');
             await promptAndStoreOpenAIKey(envFilePath);
-          }
-        } else {
-          console.info('[√] OpenAI API key already configured - will use for embeddings');
-        }
-        break;
-      }
-
-      case 'ollama': {
-        // Check if Ollama config already exists with valid values
-        if (!hasValidApiKey(content, 'OLLAMA_API_ENDPOINT')) {
-          if (isNonInteractive) {
-            // In non-interactive mode, add/update placeholder
-            if (!content.includes('OLLAMA_API_ENDPOINT=')) {
-              content += '\n# Embedding Model Configuration (Fallback)\n';
-              content += '# Ollama Embeddings Configuration\n';
-              content += 'OLLAMA_API_ENDPOINT=http://localhost:11434\n';
-              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
-              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
-              content += '# Make sure Ollama is installed and running: https://ollama.ai/\n';
-            }
-            await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Ollama embeddings placeholder configuration added to .env file');
-          } else {
-            // Interactive mode - prompt for Ollama embedding model configuration
-            console.info('\n[!] Ollama embedding model configuration is required');
-            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
-          }
-        } else {
-          // Ollama endpoint exists, but we need to prompt for embedding model specifically
-          if (isNonInteractive) {
-            // In non-interactive mode, just add embedding model if not present
-            if (!content.includes('OLLAMA_EMBEDDING_MODEL')) {
-              content += 'OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n';
-            }
-            if (!content.includes('USE_OLLAMA_EMBEDDINGS')) {
-              content += 'USE_OLLAMA_EMBEDDINGS=true\n';
-            }
-            await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Ollama embedding model configuration added to .env file');
-          } else {
-            // Interactive mode - always prompt for embedding model selection
-            console.info('\n[!] Please select an Ollama embedding model');
-            await promptAndStoreOllamaEmbeddingConfig(envFilePath);
           }
         }
         break;
@@ -301,14 +277,10 @@ export async function setupEmbeddingModelConfig(
               content += '# Get your API key from: https://aistudio.google.com/apikey\n';
             }
             await fs.writeFile(envFilePath, content, 'utf8');
-            console.info('[√] Google embeddings placeholder configuration added to .env file');
           } else {
             // Interactive mode - prompt for Google API key
-            console.info('\n[!] Google Generative AI API key is required for embeddings');
             await promptAndStoreGoogleKey(envFilePath);
           }
-        } else {
-          console.info('[√] Google API key already configured - will use for embeddings');
         }
         break;
       }
@@ -332,8 +304,8 @@ function resolveModelToPlugin(modelName: string): string | null {
     claude: 'anthropic',
     anthropic: 'anthropic',
     openrouter: 'openrouter',
-    ollama: 'ollama',
-    google: 'google',
+    local: 'ollama', // 'local' maps to ollama plugin
+    google: 'google-genai',
   };
 
   return modelToPlugin[modelName] || null;
@@ -349,57 +321,13 @@ async function installModelPlugin(
 ): Promise<void> {
   const pluginName = resolveModelToPlugin(modelName);
   if (!pluginName) {
-    console.warn(`⚠️  Unknown model: ${modelName}, skipping plugin installation`);
     return;
   }
 
-  const purposeText = purpose ? ` ${purpose}` : '';
-
-  try {
-    console.info(`\n📦 Installing ${pluginName} plugin${purposeText}...`);
-    await installPlugin(pluginName, targetDir);
-    console.info(`✅ Installed plugin successfully!`);
-  } catch (error) {
-    console.warn(
-      `⚠️  Could not install plugin automatically: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
-    console.info(`💡 You can install it manually with: elizaos plugins add ${pluginName}`);
-  }
+  await installPluginWithSpinner(pluginName, targetDir, purpose);
 }
 
-/**
- * Installs dependencies for the specified target directory.
- *
- * note: cleanup on ctrl-c is handled by the calling function (creators.ts)
- * we use stdio: 'inherit' here so the user sees the install progress in real-time
- */
-export async function installDependencies(targetDir: string): Promise<void> {
-  // Skip dependency installation in CI/test environments to save memory and time
-  if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
-    console.info('Skipping dependency installation in CI/test environment...');
-    return;
-  }
-
-  console.info('Installing dependencies...');
-
-  // run bun install and let it inherit our stdio so user sees progress
-  const subprocess = await execa('bun', ['install'], {
-    cwd: targetDir,
-    stdio: 'inherit',
-    reject: false,
-  });
-
-  // Handle various signal termination scenarios:
-  // - exitCode can be null/undefined when process is killed by signal
-  // - exitCode >= 128 indicates signal termination (128 + signal number)
-  // - Common codes: 130 (SIGINT), 143 (SIGTERM), 137 (SIGKILL)
-  const exitCode = subprocess.exitCode;
-  const isSignalTermination = exitCode == null || exitCode >= 128;
-
-  if (exitCode !== 0 && !isSignalTermination) {
-    throw new Error(`Dependency installation failed with exit code ${exitCode}`);
-  }
-}
+// installDependencies is now imported from spinner-utils and handles this automatically
 
 /**
  * Sets up the project environment including database and AI model configuration.
@@ -416,24 +344,28 @@ export async function setupProjectEnvironment(
 
   // Set up database configuration
   const envFilePath = `${targetDir}/.env`;
-  if (database === 'postgres' && !isNonInteractive) {
-    await promptAndStorePostgresUrl(envFilePath);
+  if (database === 'postgres') {
+    // PostgreSQL configuration is handled before spinner tasks in interactive mode
+    // Skip configuration here when called from spinner tasks (isNonInteractive=true)
+    if (!isNonInteractive) {
+      await promptAndStorePostgresUrl(envFilePath);
+    }
   } else if (database === 'pglite') {
     await setupPgLite(undefined, `${targetDir}/.env`, targetDir);
   }
 
-  // Set up AI model configuration
-  await setupAIModelConfig(aiModel, envFilePath, isNonInteractive);
+  // Set up AI model configuration (skip if non-interactive, handled before spinner tasks)
+  if (!isNonInteractive) {
+    await setupAIModelConfig(aiModel, envFilePath, isNonInteractive);
 
-  // Set up embedding model configuration if needed
-  if (embeddingModel) {
-    await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+    // Set up embedding model configuration if needed
+    if (embeddingModel) {
+      await setupEmbeddingModelConfig(embeddingModel, envFilePath, isNonInteractive);
+    }
   }
 
-  // Install AI model plugin (skip for local AI)
-  if (aiModel !== 'local') {
-    await installModelPlugin(aiModel, targetDir);
-  }
+  // Install AI model plugin
+  await installModelPlugin(aiModel, targetDir, aiModel === 'local' ? 'for local AI' : '');
 
   // Install embedding model plugin if different from AI model
   if (embeddingModel && embeddingModel !== 'local') {
@@ -442,6 +374,11 @@ export async function setupProjectEnvironment(
     const embeddingPluginName = resolveModelToPlugin(embeddingModel);
 
     if (embeddingPluginName && embeddingPluginName !== aiPluginName) {
+      await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
+    }
+  } else if (embeddingModel === 'local') {
+    // If embedding model is 'local' (Ollama) and AI model isn't already 'local'
+    if (aiModel !== 'local') {
       await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
     }
   }

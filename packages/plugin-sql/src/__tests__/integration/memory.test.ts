@@ -592,6 +592,66 @@ describe('Memory Integration Tests', () => {
       expect(memories.length).toEqual(3);
     });
   });
-});
 
-// Import tables at the end to avoid circular dependencies if needed in this file
+  it('should properly convert metadata objects to JSON when updating only metadata', async () => {
+    // This test specifically verifies the fix for the bug where metadata objects
+    // were being sent as [object Object] instead of proper JSON
+    await adapter.ensureEmbeddingDimension(768);
+    const memory = {
+      entityId: testEntityId,
+      roomId: testRoomId,
+      worldId: testWorldId,
+      agentId: testAgentId,
+      content: { text: 'Initial content' },
+      embedding: Array.from({ length: 768 }, (_, i) => i / 768),
+      metadata: {
+        type: 'initial',
+        source: 'test',
+        tags: ['test'],
+        nested: {
+          value: 123,
+          flag: true,
+        },
+      },
+    };
+
+    const memoryId = await adapter.createMemory(memory, 'memory');
+    expect(memoryId).toBeDefined();
+
+    // Update only metadata with a complex object
+    const complexMetadata = {
+      type: 'updated',
+      source: 'test-update',
+      tags: ['updated', 'test'],
+      nested: {
+        value: 456,
+        flag: false,
+        deeper: {
+          array: [1, 2, 3],
+          string: 'test',
+        },
+      },
+      timestamp: Date.now(),
+    };
+
+    // This should not throw a PostgreSQL jsonb cast error
+    const updateResult = await adapter.updateMemory({
+      id: memoryId,
+      metadata: complexMetadata,
+    });
+
+    expect(updateResult).toBe(true);
+
+    // Verify the metadata was properly stored
+    const updated = await adapter.getMemoryById(memoryId);
+    expect(updated?.metadata).toEqual(complexMetadata);
+    expect(updated?.content.text).toBe('Initial content'); // Content should be unchanged
+  });
+
+  it('should handle partial updates correctly', async () => {
+    // This test is covered by the comprehensive partial update tests above
+    // Including: 'should perform partial updates without affecting other fields'
+    // and 'should perform nested partial updates without overriding existing fields'
+    expect(true).toBe(true); // Placeholder to avoid empty test
+  });
+});

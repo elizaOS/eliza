@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
-import { elizaLogger } from '@elizaos/core';
+import { logger } from '@elizaos/core';
 import { emoji } from '../../utils/emoji-handler';
 
 /**
@@ -11,48 +11,57 @@ export const phalaCliCommand = new Command('phala')
   .description('Official Phala Cloud CLI - Manage TEE deployments on Phala Cloud')
   .allowUnknownOption()
   .helpOption(false)
-  .action(async (_, command) => {
-    // Get all arguments after 'phala'
-    const args = command.args;
+  .allowExcessArguments(true)
+  // Best-effort Commander settings; still prefer rawArgs slicing below for full fidelity.
+  .passThroughOptions()
+  // Capture all arguments after 'phala' using variadic arguments
+  .argument('[args...]', 'All arguments to pass to Phala CLI')
+  .action(async (...commandArgs) => {
+    // Use rawArgs to preserve exact user-supplied flags; fallback to variadic args if unavailable.
+    const cmd = commandArgs[commandArgs.length - 1] as Command;
+    const raw = (cmd as any)?.parent?.rawArgs ?? (cmd as any)?.rawArgs ?? process.argv;
+    // Find 'phala' as a complete argument, not as a substring
+    const idx = raw.findIndex((arg: string) => arg === 'phala');
+    const args =
+      idx >= 0 ? raw.slice(idx + 1) : Array.isArray(commandArgs[0]) ? commandArgs[0] : [];
 
     try {
-      elizaLogger.info('Running Phala CLI command:', ['phala', ...args].join(' '));
+      logger.info({ args }, 'Running Phala CLI command');
 
       // Use npx with --yes flag to auto-install without prompting
+      // Security fix: Remove shell: true as args are already properly escaped as array
       const phalaProcess = spawn('npx', ['--yes', 'phala', ...args], {
         stdio: 'inherit',
-        shell: true,
       });
 
-      phalaProcess.on('error', (error) => {
-        elizaLogger.error('Failed to execute Phala CLI:', error);
+      phalaProcess.on('error', (err) => {
+        const error = err as NodeJS.ErrnoException;
+        logger.error({ error, args }, 'Failed to execute Phala CLI');
 
-        if (error.message.includes('ENOENT')) {
-          elizaLogger.error(
-            `\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`
-          );
-          elizaLogger.error('   Visit https://nodejs.org or use a version manager like nvm');
-          elizaLogger.error(
+        if (error.code === 'ENOENT') {
+          logger.error(`\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`);
+          logger.error('   Visit https://nodejs.org or use a version manager like nvm');
+          logger.error(
             '   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
           );
         } else {
-          elizaLogger.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
-          elizaLogger.error('   Try running directly: npx phala', args.join(' '));
+          logger.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
+          logger.error({ args }, '   Try running directly: npx phala [args]');
         }
         process.exit(1);
       });
 
       phalaProcess.on('exit', (code) => {
         if (code !== 0) {
-          elizaLogger.warn(`Phala CLI exited with code: ${code}`);
+          logger.warn({ code }, 'Phala CLI exited with non-zero code');
         }
         process.exit(code || 0);
       });
     } catch (error) {
-      elizaLogger.error('Error running Phala CLI:', error);
-      elizaLogger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
-      elizaLogger.error('   Try running Phala CLI directly with: npx phala', args.join(' '));
-      elizaLogger.error('   Or visit https://www.npmjs.com/package/phala for more information');
+      logger.error({ error, args }, 'Error running Phala CLI');
+      logger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
+      logger.error({ args }, '   Try running Phala CLI directly with: npx phala [args]');
+      logger.error('   Or visit https://www.npmjs.com/package/phala for more information');
       process.exit(1);
     }
   })

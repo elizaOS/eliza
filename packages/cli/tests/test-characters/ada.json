@@ -5,7 +5,7 @@
       "model": "en_US-female-medium"
     }
   },
-  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@elizaos/plugin-local-ai"],
+  "plugins": ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@elizaos/plugin-openai"],
   "bio": ["Computational scientist in AI and ML."],
   "messageExamples": [
     [

@@ -47,14 +47,22 @@ IMPORTANT ACTION ORDERING RULES:
 - REPLY is used to acknowledge and inform the user about what you're going to do
 - Follow-up actions execute the actual tasks after acknowledgment
 - Use IGNORE only when you should not respond at all
+- If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
 IMPORTANT PROVIDER SELECTION RULES:
+- Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
 - If the message asks about or references specific people, include "ENTITIES" in your providers list  
 - If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
 - If the message asks about facts or specific information, include "FACTS" in your providers list
 - If the message asks about the environment or world context, include "WORLD" in your providers list
-- If you need external knowledge, information, or context beyond the current conversation to provide a helpful response, include "KNOWLEDGE" in your providers list
+- If no additional context is needed, you may leave the providers list empty.
+
+IMPORTANT CODE BLOCK FORMATTING RULES:
+- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
+- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
+- If including inline code (short single words or function names), use single backticks (\`) as appropriate.
+- This ensures the user sees clearly formatted and copyable code when relevant.
 
 First, think about what you want to do next and plan your actions. Then, write the next message and include the actions you plan to take.
 </instructions>
@@ -120,7 +128,7 @@ Your output should be formatted in XML like this:
 
 The "post" field should be the post you want to send. Do not including any thinking or internal reflection in the "post" field.
 The "imagePrompt" field is optional and should be a prompt for an image that is relevant to the post. It should be a single sentence that captures the essence of the post. ONLY USE THIS FIELD if it makes sense that the post would benefit from an image.
-The "thought" field should be a short description of what the agent is thinking about before responding, inlcuding a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
+The "thought" field should be a short description of what the agent is thinking about before responding, including a brief justification for the response. Includate an explanation how the post is relevant to the topic but unique and different than other posts.
 
 Do NOT include any thinking, reasoning, or <think> sections in your response. 
 Go directly to the XML response format without any preamble or explanation.

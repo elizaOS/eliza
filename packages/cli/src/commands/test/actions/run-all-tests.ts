@@ -15,17 +15,25 @@ export async function runAllTests(
 ): Promise<void> {
   // Run component tests first
   const projectInfo = getProjectType(testPath);
+  let componentResult = { failed: false };
   if (!options.skipBuild) {
-    const componentResult = await runComponentTests(testPath, options, projectInfo);
-    if (componentResult.failed) {
-      logger.error('Component tests failed. Continuing to e2e tests...');
-    }
+    componentResult = await runComponentTests(testPath, options, projectInfo);
+  } else {
+    logger.info('Skipping component tests due to --skip-build option');
   }
 
   // Run e2e tests
   const e2eResult = await runE2eTests(testPath, options, projectInfo);
-  if (e2eResult.failed) {
-    logger.error('E2E tests failed.');
+
+  // Check results and exit appropriately
+  if (componentResult.failed || e2eResult.failed) {
+    if (componentResult.failed) {
+      logger.error('Component tests failed.');
+    }
+    if (e2eResult.failed) {
+      logger.error('E2E tests failed.');
+    }
+    logger.error('Test suite failed.');
     process.exit(1);
   }
 

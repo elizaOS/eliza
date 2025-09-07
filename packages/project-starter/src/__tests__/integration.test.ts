@@ -19,7 +19,7 @@ afterAll(() => {
 });
 
 // Skip in CI environments or when running automated tests without interaction
-const isCI = Boolean(process.env.CI) || process.env.NODE_ENV === 'test';
+const isCI = Boolean(process.env.CI);
 
 /**
  * Integration tests demonstrate how multiple components of the project work together.
@@ -202,7 +202,7 @@ describeScaffolding('Integration: Project Scaffolding', () => {
       expect(fs.existsSync(path.join(TEST_DIR, 'character.ts'))).toBe(true);
       expect(fs.existsSync(path.join(TEST_DIR, 'package.json'))).toBe(true);
     } catch (error) {
-      logger.error('Error in scaffolding test:', error);
+      logger.error({ error }, 'Error in scaffolding test:');
       throw error;
     }
   });

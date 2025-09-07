@@ -102,8 +102,8 @@ export default function EnvSettings() {
 
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Envs settings</h1>
-          <p className="text-muted-foreground mt-1">Envs settings</p>
+          <h1 className="text-3xl font-bold">Env settings</h1>
+          <p className="text-muted-foreground mt-1">Env settings</p>
         </div>
         <Button onClick={() => setIsApiKeyDialogOpen(true)} aria-label="Manage API Key">
           <Settings className="h-5 w-5" />

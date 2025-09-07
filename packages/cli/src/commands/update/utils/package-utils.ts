@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { execa } from 'execa';
+import { bunExecInherit } from '@/src/utils/bun-exec';
 import { logger } from '@elizaos/core';
 import { getPackageManager } from '@/src/utils';
 import { UpdateCheckResult, PackageUpdate } from '../types';
@@ -84,7 +84,7 @@ export async function installDependencies(cwd: string): Promise<void> {
   console.log('\nInstalling updated packages...');
   try {
     const packageManager = await getPackageManager();
-    await execa(packageManager, ['install'], { cwd, stdio: 'inherit' });
+    await bunExecInherit(packageManager, ['install'], { cwd });
     console.log('Dependencies installed successfully [✓]');
   } catch (error) {
     throw new Error(

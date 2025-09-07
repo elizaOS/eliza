@@ -1,5 +1,5 @@
 {
-  "version": "1.0.15",
+  "version": "1.4.2",
   "packages": ["packages/*"],
   "npmClient": "bun",
   "command": {

@@ -8,7 +8,7 @@ export interface PackageMetadata {
   type: string;
   platform: string;
   runtimeVersion: string;
-  repository: string;
+  repository?: string; // Optional - not included for npm-only publishing
   maintainers: string[];
   publishedAt: string;
   publishedBy: string;

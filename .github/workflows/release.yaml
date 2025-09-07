@@ -1,5 +1,13 @@
 name: Release
 
+# This workflow handles version bumping and publishing for new releases
+#
+# Rollback Strategy:
+# - If publishing fails after version update, the version files are NOT committed
+# - This prevents version drift between git and npm
+# - To retry: Fix the issue and re-run the workflow
+# - Version updates are only committed after successful npm publish
+
 on:
   release:
     types: [created]
@@ -18,6 +26,20 @@ jobs:
           ref: main # Assumes releases are created from main
           fetch-depth: 0
 
+      - name: Check initial git status
+        run: |
+          echo "Initial git status after checkout:"
+          git status --porcelain
+          echo ""
+          echo "Current version in lerna.json:"
+          cat lerna.json | grep '"version"' | cut -d'"' -f4
+          echo ""
+          echo "Current versions in key packages:"
+          for pkg in core server cli client; do
+            echo -n "  $pkg: "
+            cat packages/$pkg/package.json | grep '"version"' | head -1 | cut -d'"' -f4
+          done
+
       - uses: actions/setup-node@v4
         with:
           node-version: '23'
@@ -35,34 +57,149 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Reset any installation changes
+        run: |
+          # Show current git status for debugging
+          echo "Git status after install:"
+          git status --porcelain
+
+          # Check if bun.lock has meaningful changes (not just timestamp updates)
+          if git diff --name-only | grep -q "bun.lock"; then
+            echo "bun.lock has changes, checking if they're significant..."
+            # If the diff is only timestamp/metadata changes, reset it
+            if git diff bun.lock | grep -E "^[\+\-]" | grep -vE "(resolved|integrity|modified)" | wc -l | grep -q "^0$"; then
+              echo "Only metadata changes in bun.lock, resetting..."
+              git checkout -- bun.lock || true
+            else
+              echo "bun.lock has significant changes, preserving them"
+            fi
+          fi
+
+      - name: Commit any remaining changes from install
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if there are any changes to commit
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "Committing changes from install step..."
+            # Only add specific files that might be modified by install
+            git add package.json packages/*/package.json .npmrc 2>/dev/null || true
+
+            # If bun.lock has real changes (preserved from earlier step), add it
+            if git status --porcelain | grep -q "M bun.lock"; then
+              echo "Adding preserved bun.lock changes"
+              git add bun.lock
+            fi
+
+            # Commit only if there are staged changes
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: temporary commit for install changes" || true
+            fi
+          else
+            echo "No changes to commit"
+          fi
+
       - name: Check format
         run: bun run format:check
 
       - name: Run lint
         run: bun run lint
 
-      - name: Build packages
-        run: bun run build && bun run build:docs
-
-      - name: Publish Packages
-        id: publish
+      - name: Update Package Versions
+        id: version
         run: |
           # Get version from the release tag that triggered the workflow
           LATEST_TAG=${{ github.ref_name }}
           VERSION=${LATEST_TAG#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-          echo "Publishing version: $VERSION"
-          # Lerna will update versions in package.json files but not commit or tag
-          npx lerna publish $VERSION --exact --yes --dist-tag latest --no-private --force-publish --no-git-tag-version --no-push
+          echo "Updating all packages to version: $VERSION"
+          # Update versions in all package.json files WITHOUT publishing
+          # Using --no-git-tag-version to prevent automatic git operations
+          # Note: Any temporary commits from earlier steps will be preserved
+          npx lerna version $VERSION --exact --yes --no-git-tag-version --no-push --force-publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate version update
+        run: |
+          echo "Verifying version was updated correctly..."
+          LERNA_VERSION=$(cat lerna.json | grep '"version"' | cut -d'"' -f4)
+          if [ "$LERNA_VERSION" != "${{ env.VERSION }}" ]; then
+            echo "❌ Version mismatch in lerna.json: expected ${{ env.VERSION }}, got $LERNA_VERSION"
+            exit 1
+          fi
+
+          # Check a few package.json files to ensure they were updated
+          for pkg in core server cli client; do
+            PKG_VERSION=$(cat packages/$pkg/package.json | grep '"version"' | head -1 | cut -d'"' -f4)
+            if [ "$PKG_VERSION" != "${{ env.VERSION }}" ]; then
+              echo "❌ Version mismatch in packages/$pkg/package.json: expected ${{ env.VERSION }}, got $PKG_VERSION"
+              exit 1
+            fi
+          done
+
+          echo "✅ All versions updated correctly to ${{ env.VERSION }}"
+
+      - name: Build packages
+        run: |
+          echo "Building packages with version: ${{ env.VERSION }}"
+          bun run build
+
+      - name: Publish Packages
+        id: publish
+        run: |
+          echo "Publishing version: ${{ env.VERSION }}"
+
+          # Configure git for commits
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create a temporary commit to satisfy Lerna's clean working tree requirement
+          # This commit will be amended later with the proper message
+          git add lerna.json package.json packages/*/package.json
+          git commit -m "temp: version bump for publishing"
+
+          # Store the commit SHA so we can reset if needed
+          TEMP_COMMIT=$(git rev-parse HEAD)
+          echo "temp_commit=$TEMP_COMMIT" >> $GITHUB_OUTPUT
+
+          # Publish the already-built packages
+          # Store the result to check if publishing succeeded
+          if npx lerna publish from-package --yes --dist-tag latest --no-private --no-git-reset --no-verify-access; then
+            echo "publish_success=true" >> $GITHUB_OUTPUT
+            echo "✅ Successfully published all packages"
+          else
+            echo "publish_success=false" >> $GITHUB_OUTPUT
+            echo "❌ Failed to publish some packages"
+            # Reset to before the temporary commit since publishing failed
+            git reset --hard HEAD~1
+            exit 1
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Commit and Push Version Bump
+        if: success() && steps.publish.outputs.publish_success == 'true'
         run: |
+          # Reset to before temporary commit
+          git reset --soft HEAD~1
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add **/package.json
+
+          # Add only the files that should have version changes
+          git add lerna.json
+          git add package.json
+          git add packages/*/package.json
+
+          # Also add lock file if it has meaningful changes
+          if git status --porcelain | grep -q "bun.lock"; then
+            echo "Adding bun.lock to commit"
+            git add bun.lock
+          fi
+
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No version changes to commit."
@@ -70,14 +207,3 @@ jobs:
             git commit -m "chore(release): bump versions to v${{ env.VERSION }}"
             git push origin main
           fi
-
-      - name: Create Pull Request to develop
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr create \
-            --base "develop" \
-            --head "main" \
-            --title "Release: Sync main to develop for v${{ env.VERSION }}" \
-            --body "Syncs version bump from main to develop." \
-            --label "1.x"

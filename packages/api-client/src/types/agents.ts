@@ -6,6 +6,7 @@ export interface Agent {
   name: string;
   description?: string;
   status: 'active' | 'inactive' | 'stopped';
+  enabled?: boolean;
   createdAt: Date;
   updatedAt: Date;
   metadata?: Record<string, any>;

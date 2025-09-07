@@ -94,8 +94,8 @@ export default function AgentCreator() {
       <CharacterForm
         characterValue={agentState.agent}
         setCharacterValue={agentState}
-        title="Agent Settings"
-        description="Configure your AI agent's behavior and capabilities. Recommended default plugins: @elizaos/plugin-sql, @elizaos/plugin-local-ai"
+        title="Create Agent"
+        description="Configure your AI agent's behavior and capabilities."
         onSubmit={handleSubmit}
         onReset={() => {
           agentState.reset();

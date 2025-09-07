@@ -3,6 +3,7 @@
 import { readdir, readFile, writeFile, stat, mkdir } from 'fs/promises';
 import { join, relative, dirname, basename } from 'path';
 import { existsSync } from 'fs';
+import * as clack from '@clack/prompts';
 
 interface FileToTest {
   sourcePath: string;
@@ -164,10 +165,18 @@ async function main() {
   console.log('Would you like to generate test skeletons for all untested files?');
   console.log('(This will create .todo tests that you can implement later)\n');
 
-  const answer = prompt('Generate tests? (y/n): ');
+  const shouldGenerateTests = await clack.confirm({
+    message: 'Generate test skeletons for all untested files?',
+    initialValue: true,
+  });
 
-  if (answer?.toLowerCase() !== 'y') {
-    console.log('Cancelled.');
+  if (clack.isCancel(shouldGenerateTests)) {
+    clack.cancel('Operation cancelled.');
+    return;
+  }
+
+  if (!shouldGenerateTests) {
+    clack.outro('Test generation skipped.');
     return;
   }
 

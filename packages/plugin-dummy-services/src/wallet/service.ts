@@ -1,4 +1,4 @@
-import { AgentRuntime, IWalletService, Service, ServiceType, WalletPortfolio } from '@elizaos/core';
+import { AgentRuntime, IWalletService, ServiceType, WalletPortfolio } from '@elizaos/core';
 
 const DEFAULT_QUOTE_ASSET = 'USDC'; // Default asset for cash
 const DEFAULT_TRANSACTION_FEE_FIXED = 0.1; // Example fixed fee in quote asset
@@ -15,10 +15,8 @@ interface DummyAssetDetail {
   lots: DummyPositionLot[]; // For FIFO P&L on sell
 }
 
-export class DummyWalletService extends Service implements IWalletService {
+export class DummyWalletService extends IWalletService {
   public static override readonly serviceType = ServiceType.WALLET;
-  public readonly capabilityDescription =
-    'Provides standardized access to wallet balances and portfolios.';
 
   private balances: Map<string, number>; // assetSymbolOrAddress -> quantity
   private positions: Map<string, DummyAssetDetail>; // assetSymbolOrAddress -> details for owned non-quote assets

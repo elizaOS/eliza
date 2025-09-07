@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.0.15",
+  "version": "1.4.2",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -27,7 +27,8 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*"
+    "@elizaos/plugin-sql": "workspace:*",
+    "bun": "^1.2.17"
   },
   "devDependencies": {
     "@types/bun": "^1.2.16",
@@ -53,5 +54,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+  "gitHead": "f60dd270910361decc4d4e879e8b2f33c5ddfee2"
 }

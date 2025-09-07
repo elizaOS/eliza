@@ -52,12 +52,29 @@ describe('Reply Action', () => {
   });
 
   it('should handle reply action successfully', async () => {
-    const specificUseModelMock = mock().mockImplementation(async (modelType, params) => {
-      console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
-      const result = {
+    // Import the actual module first
+    const coreModule = await import('@elizaos/core');
+
+    // Mock parseKeyValueXml for this test
+    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+      return {
         message: 'Hello there! How can I help you today?',
         thought: 'Responding to the user greeting.',
       };
+    });
+
+    // Override the module mock for this test
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+    }));
+
+    const specificUseModelMock = mock().mockImplementation(async (modelType, params) => {
+      console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
+      const result = `<response>
+  <thought>Responding to the user greeting.</thought>
+  <message>Hello there! How can I help you today?</message>
+</response>`;
       console.log('specificUseModelMock RETURNING:', result);
       return Promise.resolve(result);
     });
@@ -72,7 +89,7 @@ describe('Reply Action', () => {
     mockState = setup.mockState;
     callbackFn = setup.callbackFn as HandlerCallback;
 
-    await replyAction.handler(
+    const result = await replyAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
@@ -86,6 +103,15 @@ describe('Reply Action', () => {
         text: 'Hello there! How can I help you today?',
       })
     );
+    // Check ActionResult return
+    expect(result).toMatchObject({
+      success: true,
+      text: expect.stringContaining('Generated reply'),
+      values: expect.objectContaining({
+        success: true,
+        responded: true,
+      }),
+    });
   });
 
   it('should handle errors in reply action gracefully', async () => {
@@ -100,30 +126,7 @@ describe('Reply Action', () => {
     mockState = setup.mockState;
     callbackFn = setup.callbackFn as HandlerCallback;
 
-    // Implement a fallback handler within the test
-    const mockReplyAction = {
-      ...replyAction,
-      handler: async (
-        runtime: IAgentRuntime,
-        _message: Memory,
-        _state: State,
-        _options: any,
-        cb: HandlerCallback
-      ) => {
-        try {
-          // This will throw because runtime.useModel is errorUseModelMock
-          await runtime.useModel(ModelType.OBJECT_SMALL, {});
-        } catch (error) {
-          logger.error(`Error in reply action: ${(error as Error).message}`);
-          await cb({
-            text: `I apologize, but I encountered an issue while processing your request: ${(error as Error).message}`,
-            actions: ['REPLY_ERROR'],
-          });
-        }
-      },
-    };
-
-    await mockReplyAction.handler(
+    const result = await replyAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
@@ -131,13 +134,15 @@ describe('Reply Action', () => {
       callbackFn
     );
 
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Error in reply action'));
-    expect(callbackFn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining('Model API timeout'),
-        actions: ['REPLY_ERROR'],
-      })
-    );
+    // Check error ActionResult
+    expect(result).toMatchObject({
+      success: false,
+      text: 'Error generating reply',
+      values: expect.objectContaining({
+        success: false,
+        error: true,
+      }),
+    });
   });
 });
 
@@ -181,7 +186,10 @@ describe('Follow Room Action', () => {
     }
     mockState.data!.currentParticipantState = 'ACTIVE';
 
-    await followRoomAction.handler(
+    // Mock the useModel to return true for shouldFollow
+    mockRuntime.useModel = mock().mockResolvedValue('yes');
+
+    const result = await followRoomAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
@@ -195,8 +203,16 @@ describe('Follow Room Action', () => {
       'FOLLOWED'
     );
 
-    // The action creates a memory instead of calling the callback
+    // The action creates a memory and returns ActionResult
     expect(mockRuntime.createMemory).toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: true,
+      text: expect.stringContaining('Now following room'),
+      values: expect.objectContaining({
+        success: true,
+        roomFollowed: true,
+      }),
+    });
   });
 
   it('should handle errors in follow room action gracefully', async () => {
@@ -205,40 +221,14 @@ describe('Follow Room Action', () => {
       mockMessage.content.text = 'Please follow this room';
     }
 
+    // Mock useModel to return true for shouldFollow
+    mockRuntime.useModel = mock().mockResolvedValue('yes');
+
     // Create a specific error message
     const errorMessage = 'Failed to update participant state: Database error';
     mockRuntime.setParticipantUserState = mock().mockRejectedValue(new Error(errorMessage));
 
-    // Create a custom handler that properly handles the error
-    const customErrorHandler = async (
-      runtime: IAgentRuntime,
-      message: Memory,
-      _state: State,
-      _options: any,
-      callback: HandlerCallback
-    ) => {
-      try {
-        // This call will fail with our mocked error
-        await runtime.setParticipantUserState(message.roomId, runtime.agentId, 'FOLLOWED');
-
-        // This part won't execute due to the error
-        await callback({
-          text: 'I am now following this room.',
-          actions: ['FOLLOW_ROOM_SUCCESS'],
-        });
-      } catch (error) {
-        // Log the error
-        logger.error(`Follow room action failed: ${(error as Error).message}`);
-
-        // Return a user-friendly error
-        await callback({
-          text: `I was unable to follow this room due to an error: ${(error as Error).message}`,
-          actions: ['FOLLOW_ROOM_ERROR'],
-        });
-      }
-    };
-
-    await customErrorHandler(
+    const result = await followRoomAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
@@ -246,15 +236,16 @@ describe('Follow Room Action', () => {
       callbackFn
     );
 
-    // Verify proper error handling
+    // Verify proper error handling with ActionResult
     expect(mockRuntime.setParticipantUserState).toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(errorMessage));
-    expect(callbackFn).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: expect.stringContaining(errorMessage),
-        actions: ['FOLLOW_ROOM_ERROR'],
-      })
-    );
+    expect(result).toMatchObject({
+      success: false,
+      text: 'Failed to follow room',
+      values: expect.objectContaining({
+        success: false,
+        error: 'FOLLOW_FAILED',
+      }),
+    });
   });
 });
 
@@ -300,17 +291,28 @@ describe('Ignore Action', () => {
   });
 
   it('should handle ignore action successfully', async () => {
-    // Directly call handler to verify it returns true
-    const handlerResult = await ignoreAction.handler(
+    // Create mock responses
+    const mockResponses = [
+      {
+        content: {
+          text: 'I should ignore this',
+          actions: ['IGNORE'],
+        },
+      },
+    ] as Memory[];
+
+    // Call handler with responses
+    await ignoreAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
       {},
-      callbackFn
+      callbackFn,
+      mockResponses
     );
 
-    // Verify the handler returns true - that's its actual behavior
-    expect(handlerResult).toBe(true);
+    // Verify the callback was called with the response content
+    expect(callbackFn).toHaveBeenCalledWith(mockResponses[0].content);
 
     // Check that no runtime methods were called that shouldn't be
     expect(mockRuntime.createMemory).not.toHaveBeenCalled();
@@ -687,14 +689,24 @@ describe('None Action', () => {
     expect(isValid).toBe(true);
   });
 
-  it('should handle none action successfully (do nothing)', async () => {
-    await noneAction.handler(
+  it('should handle none action successfully (return ActionResult)', async () => {
+    const result = await noneAction.handler(
       mockRuntime as IAgentRuntime,
       mockMessage as Memory,
       mockState as State,
       {},
       callbackFn
     );
+
+    // The none action now returns an ActionResult
+    expect(result).toMatchObject({
+      success: true,
+      text: 'No additional action taken',
+      values: expect.objectContaining({
+        success: true,
+        actionType: 'NONE',
+      }),
+    });
 
     // The callback shouldn't be called for NONE action
     expect(callbackFn).not.toHaveBeenCalled();
@@ -822,14 +834,10 @@ describe('Choice Action (Extended)', () => {
     // Mock realistic response that parses the task from message content
     mockRuntime.useModel = mock().mockImplementation((_modelType, params) => {
       if (params?.prompt?.includes('Extract selected task and option')) {
-        return Promise.resolve(`
-\`\`\`json
-{
-  "taskId": "task-1234",
-  "selectedOption": "OPTION_A"
-}
-\`\`\`
-        `);
+        return Promise.resolve(`<response>
+  <taskId>task-1234</taskId>
+  <selectedOption>OPTION_A</selectedOption>
+</response>`);
       }
       return Promise.resolve('default response');
     });

@@ -19,11 +19,10 @@ RUN npm install -g bun@1.2.5 turbo@2.3.3
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-COPY package.json tsconfig.json tsconfig.build.json tsup.config.ts ./
+COPY bunfig.toml index.html package.json postcss.config.js tailwind.config.js tsconfig.json tsconfig.build.json tsup.config.ts vite.config.ts ./
 COPY src ./src
 COPY assets ./assets
-COPY elizadb ./elizadb
-COPY knowledge ./knowledge
+COPY scripts ./scripts
 
 RUN bun install --no-cache
 
@@ -47,16 +46,21 @@ RUN apt-get update && \
 
 RUN npm install -g bun@1.2.5 turbo@2.3.3
 
+COPY --from=builder /app/bunfig.toml ./bunfig.toml
+# Cypress config removed
+COPY --from=builder /app/index.html ./index.html
+COPY --from=builder /app/postcss.config.js ./postcss.config.js
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/tsconfig.build.json ./
 COPY --from=builder /app/tsup.config.ts ./
+COPY --from=builder /app/tailwind.config.js ./tailwind.config.js
+COPY --from=builder /app/vite.config.ts ./vite.config.ts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/elizadb ./elizadb
-COPY --from=builder /app/knowledge ./knowledge
 COPY --from=builder /app/assets ./assets
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 
 ENV NODE_ENV=production
 

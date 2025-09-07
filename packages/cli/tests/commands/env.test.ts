@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { execSync } from 'node:child_process';
+import { bunExecSync } from '../utils/bun-test-helpers';
 import { writeFile } from 'node:fs/promises';
 import {
   setupTestEnvironment,
   cleanupTestEnvironment,
-  runCliCommand,
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
@@ -20,14 +19,14 @@ describe('ElizaOS Env Commands', () => {
     await cleanupTestEnvironment(context);
   });
 
-  it('env --help shows usage', () => {
-    const result = runCliCommand(context.elizaosCmd, 'env --help');
+  it('env --help shows usage', async () => {
+    const result = bunExecSync('elizaos env --help', { encoding: 'utf8' });
     expectHelpOutput(result, 'env');
   });
 
   it('env list shows environment variables', async () => {
     // First call: no local .env file present
-    let result = runCliCommand(context.elizaosCmd, 'env list');
+    let result = bunExecSync('elizaos env list', { encoding: 'utf8' });
 
     const expectedSections = ['System Information', 'Local Environment Variables'];
     for (const section of expectedSections) {
@@ -39,7 +38,7 @@ describe('ElizaOS Env Commands', () => {
     // Create a local .env file and try again
     await writeFile('.env', 'TEST_VAR=test_value');
 
-    result = runCliCommand(context.elizaosCmd, 'env list');
+    result = bunExecSync('elizaos env list', { encoding: 'utf8' });
     expect(result).toContain('TEST_VAR');
     expect(result).toContain('test_value');
   });
@@ -47,7 +46,7 @@ describe('ElizaOS Env Commands', () => {
   it('env list --local shows only local environment', async () => {
     await writeFile('.env', 'LOCAL_TEST=local_value');
 
-    const result = runCliCommand(context.elizaosCmd, 'env list --local');
+    const result = bunExecSync('elizaos env list --local', { encoding: 'utf8' });
 
     expect(result).toContain('LOCAL_TEST');
     expect(result).toContain('local_value');
@@ -62,7 +61,7 @@ describe('ElizaOS Env Commands', () => {
     }
 
     // Use printf to simulate user input on Unix systems
-    const result = execSync(`printf "y\\n" | ${context.elizaosCmd} env edit-local`, {
+    const result = bunExecSync(`printf "y\\n" | elizaos env edit-local`, {
       encoding: 'utf8',
       shell: '/bin/bash',
     });
@@ -74,7 +73,7 @@ describe('ElizaOS Env Commands', () => {
   it('env reset shows all necessary options', async () => {
     await writeFile('.env', 'DUMMY=value');
 
-    const result = runCliCommand(context.elizaosCmd, 'env reset --yes');
+    const result = bunExecSync('elizaos env reset --yes', { encoding: 'utf8' });
 
     expect(result).toContain('Reset Summary');
     expect(result).toContain('Local environment variables');

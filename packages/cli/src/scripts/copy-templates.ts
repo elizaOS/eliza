@@ -81,6 +81,11 @@ async function main() {
         src: path.resolve(ROOT_DIR, 'packages/plugin-starter'),
         dest: path.resolve(TEMPLATES_DIR, 'plugin-starter'),
       },
+      {
+        name: 'plugin-quick-starter',
+        src: path.resolve(ROOT_DIR, 'packages/plugin-quick-starter'),
+        dest: path.resolve(TEMPLATES_DIR, 'plugin-quick-starter'),
+      },
     ];
 
     // Copy each template and update its package.json

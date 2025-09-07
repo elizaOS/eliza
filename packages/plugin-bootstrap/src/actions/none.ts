@@ -1,4 +1,4 @@
-import type { Action, ActionExample, IAgentRuntime, Memory } from '@elizaos/core';
+import type { Action, ActionExample, IAgentRuntime, Memory, ActionResult } from '@elizaos/core';
 
 /**
  * Represents the none action.
@@ -20,8 +20,19 @@ export const noneAction: Action = {
   },
   description:
     'Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.',
-  handler: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
-    return true;
+  handler: async (_runtime: IAgentRuntime, _message: Memory): Promise<ActionResult> => {
+    return {
+      text: 'No additional action taken',
+      values: {
+        success: true,
+        actionType: 'NONE',
+      },
+      data: {
+        actionName: 'NONE',
+        description: 'Response without additional action',
+      },
+      success: true,
+    };
   },
   examples: [
     [

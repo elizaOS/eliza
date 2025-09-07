@@ -33,7 +33,7 @@ function getCliDirectory(): string | null {
 
     return null;
   } catch (error) {
-    logger.error('Failed to determine CLI directory:', error);
+    logger.error({ error }, 'Failed to determine CLI directory:');
     return null;
   }
 }

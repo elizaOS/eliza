@@ -1,0 +1,23 @@
+# Ignore source files
+src/
+tests/
+scripts/
+examples/
+
+# Ignore config files
+tsconfig.json
+tsconfig.build.json
+tsup.config.ts
+run-all-tests.sh
+bunfig.toml
+.turbo
+.eliza
+
+# Explicitly include template dot files
+!dist/templates/**/.gitignore
+!dist/templates/**/.npmignore
+!dist/templates/**/.*
+
+# Keep dist and templates
+!dist/
+!templates/ 

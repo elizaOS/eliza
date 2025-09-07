@@ -84,23 +84,86 @@ export const recentMessagesProvider: Provider = {
           : Promise.resolve([]),
       ]);
 
+      // Separate action results from regular messages
+      const actionResultMessages = recentMessagesData.filter(
+        (msg) => msg.content?.type === 'action_result' && msg.metadata?.type === 'action_result'
+      );
+
+      const dialogueMessages = recentMessagesData.filter(
+        (msg) => !(msg.content?.type === 'action_result' && msg.metadata?.type === 'action_result')
+      );
+
       // Default to message format if room is not found or type is undefined
       const isPostFormat = room?.type
         ? room.type === ChannelType.FEED || room.type === ChannelType.THREAD
         : false;
 
-      // Format recent messages and posts in parallel
+      // Format recent messages and posts in parallel, using only dialogue messages
       const [formattedRecentMessages, formattedRecentPosts] = await Promise.all([
         formatMessages({
-          messages: recentMessagesData,
+          messages: dialogueMessages,
           entities: entitiesData,
         }),
         formatPosts({
-          messages: recentMessagesData,
+          messages: dialogueMessages,
           entities: entitiesData,
           conversationHeader: false,
         }),
       ]);
+
+      // Format action results separately
+      let actionResultsText = '';
+      if (actionResultMessages.length > 0) {
+        // Group by runId using Map
+        const groupedByRun = new Map<string, Memory[]>();
+
+        for (const mem of actionResultMessages) {
+          const runId: string = String(mem.content?.runId || 'unknown');
+          if (!groupedByRun.has(runId)) {
+            groupedByRun.set(runId, []);
+          }
+          const memories = groupedByRun.get(runId);
+          if (memories) {
+            memories.push(mem);
+          }
+        }
+
+        const formattedActionResults = Array.from(groupedByRun.entries())
+          .slice(-3) // Show last 3 runs
+          .map(([runId, memories]) => {
+            const sortedMemories = memories.sort(
+              (a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0)
+            );
+
+            const thought = sortedMemories[0]?.content?.planThought || '';
+            const runText = sortedMemories
+              .map((mem: Memory) => {
+                const actionName = mem.content?.actionName || 'Unknown';
+                const status = mem.content?.actionStatus || 'unknown';
+                const planStep = mem.content?.planStep || '';
+                const text = mem.content?.text || '';
+                const error = mem.content?.error || '';
+
+                let memText = `  - ${actionName} (${status})`;
+                if (planStep) memText += ` [${planStep}]`;
+                if (error) {
+                  memText += `: Error - ${error}`;
+                } else if (text && text !== `Executed action: ${actionName}`) {
+                  memText += `: ${text}`;
+                }
+
+                return memText;
+              })
+              .join('\n');
+
+            return `**Action Run ${runId.slice(0, 8)}**${thought ? ` - "${thought}"` : ''}\n${runText}`;
+          })
+          .join('\n\n');
+
+        actionResultsText = formattedActionResults
+          ? addHeader('# Recent Action Executions', formattedActionResults)
+          : '';
+      }
 
       // Create formatted text with headers
       const recentPosts =
@@ -114,17 +177,18 @@ export const recentMessagesProvider: Provider = {
           : '';
 
       // If there are no messages at all, and no current message to process, return a specific message.
-      // The check for recentMessagesData.length === 0 ensures we only show this if there's truly nothing.
+      // The check for dialogueMessages.length === 0 ensures we only show this if there's truly nothing.
       if (
         !recentPosts &&
         !recentMessages &&
-        recentMessagesData.length === 0 &&
+        dialogueMessages.length === 0 &&
         !message.content.text
       ) {
         return {
           data: {
-            recentMessages: [],
+            recentMessages: dialogueMessages,
             recentInteractions: [],
+            actionResults: actionResultMessages,
           },
           values: {
             recentPosts: '',
@@ -132,6 +196,7 @@ export const recentMessagesProvider: Provider = {
             recentMessageInteractions: '',
             recentPostInteractions: '',
             recentInteractions: '',
+            recentActionResults: actionResultsText,
           },
           text: 'No recent messages available',
         };
@@ -256,8 +321,9 @@ export const recentMessagesProvider: Provider = {
       ]);
 
       const data = {
-        recentMessages: recentMessagesData,
+        recentMessages: dialogueMessages,
         recentInteractions: recentInteractionsData,
+        actionResults: actionResultMessages,
       };
 
       const values = {
@@ -266,11 +332,13 @@ export const recentMessagesProvider: Provider = {
         recentMessageInteractions,
         recentPostInteractions,
         recentInteractions: isPostFormat ? recentPostInteractions : recentMessageInteractions,
+        recentActionResults: actionResultsText,
       };
 
       // Combine all text sections
       const text = [
         isPostFormat ? recentPosts : recentMessages,
+        actionResultsText, // Include action results in the text output
         // Only add received message and focus headers if there are messages or a current message to process
         recentMessages || recentPosts || message.content.text ? receivedMessageHeader : '',
         recentMessages || recentPosts || message.content.text ? focusHeader : '',
@@ -284,12 +352,13 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error('Error in recentMessagesProvider:', error);
+      logger.error({ error }, 'Error in recentMessagesProvider:');
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {
           recentMessages: [],
           recentInteractions: [],
+          actionResults: [],
         },
         values: {
           recentPosts: '',
@@ -297,6 +366,7 @@ export const recentMessagesProvider: Provider = {
           recentMessageInteractions: '',
           recentPostInteractions: '',
           recentInteractions: '',
+          recentActionResults: '',
         },
         text: 'Error retrieving recent messages.', // Or 'No recent messages available' as the test expects
       };

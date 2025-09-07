@@ -5,7 +5,7 @@ import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
-import { selectDatabase, selectAIModel, selectEmbeddingModel } from './utils';
+import { selectDatabase, selectAIModel, selectEmbeddingModel, hasEmbeddingSupport } from './utils';
 import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
 import type { CreateOptions } from './types';
 
@@ -19,7 +19,6 @@ function formatProjectType(type: string): string {
 export const create = new Command('create')
   .description('Create a new ElizaOS project, plugin, agent, or TEE project')
   .argument('[name]', 'name of the project/plugin/agent to create')
-  .option('--dir <dir>', 'directory to create the project in', '.')
   .option('--yes, -y', 'skip prompts and use defaults')
   .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
@@ -138,16 +137,43 @@ export const create = new Command('create')
         clack.intro(colors.inverse(` Creating ElizaOS ${introType} `));
       }
 
-      const targetDir = options.dir;
-
       // Handle different project types
       switch (projectType) {
-        case 'plugin':
-          await createPlugin(projectName!, targetDir, isNonInteractive);
+        case 'plugin': {
+          let pluginType = 'full'; // Default to full plugin
+
+          if (!isNonInteractive) {
+            const selectedPluginType = await clack.select({
+              message: 'What type of plugin would you like to create?',
+              options: [
+                {
+                  label: 'Quick Plugin (Backend Only)',
+                  value: 'quick',
+                  hint: 'Simple backend-only plugin without frontend',
+                },
+                {
+                  label: 'Full Plugin (with Frontend)',
+                  value: 'full',
+                  hint: 'Complete plugin with React frontend and API routes',
+                },
+              ],
+              initialValue: 'quick',
+            });
+
+            if (clack.isCancel(selectedPluginType)) {
+              clack.cancel('Operation cancelled.');
+              process.exit(0);
+            }
+
+            pluginType = selectedPluginType as string;
+          }
+
+          await createPlugin(projectName!, process.cwd(), pluginType, isNonInteractive);
           break;
+        }
 
         case 'agent':
-          await createAgent(projectName!, targetDir, isNonInteractive);
+          await createAgent(projectName!, process.cwd(), isNonInteractive);
           break;
 
         case 'tee': {
@@ -161,14 +187,14 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }
 
           await createTEEProject(
             projectName!,
-            targetDir,
+            process.cwd(),
             database,
             aiModel,
             embeddingModel,
@@ -189,14 +215,14 @@ export const create = new Command('create')
             aiModel = await selectAIModel();
 
             // Check if selected AI model needs embedding model fallback
-            if (aiModel === 'claude' || aiModel === 'openrouter') {
+            if (!hasEmbeddingSupport(aiModel)) {
               embeddingModel = await selectEmbeddingModel();
             }
           }
 
           await createProject(
             projectName!,
-            targetDir,
+            process.cwd(),
             database,
             aiModel,
             embeddingModel,
@@ -217,7 +243,7 @@ export const create = new Command('create')
         const errorType = formatProjectType(projectType || 'project');
         clack.cancel(`Failed to create ${errorType}.`);
       }
-      logger.error('Create command failed:', error);
+      logger.error({ error }, 'Create command failed:');
       handleError(error);
       process.exit(1);
     }

@@ -55,6 +55,11 @@ export enum EventType {
 
   // Model events
   MODEL_USED = 'MODEL_USED',
+
+  // Embedding events
+  EMBEDDING_GENERATION_REQUESTED = 'EMBEDDING_GENERATION_REQUESTED',
+  EMBEDDING_GENERATION_COMPLETED = 'EMBEDDING_GENERATION_COMPLETED',
+  EMBEDDING_GENERATION_FAILED = 'EMBEDDING_GENERATION_FAILED',
 }
 
 /**
@@ -179,6 +184,18 @@ export interface ModelEventPayload extends EventPayload {
   };
 }
 
+/**
+ * Payload for embedding generation events
+ */
+export interface EmbeddingGenerationPayload extends EventPayload {
+  memory: Memory;
+  priority?: 'high' | 'normal' | 'low';
+  retryCount?: number;
+  maxRetries?: number;
+  embedding?: number[];
+  error?: any;
+}
+
 export type MessageReceivedHandlerParams = {
   runtime: IAgentRuntime;
   message: Memory;
@@ -211,6 +228,9 @@ export interface EventPayloadMap {
   [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
   [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
   [EventType.MODEL_USED]: ModelEventPayload;
+  [EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
+  [EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
+  [EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
 }
 
 /**

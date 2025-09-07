@@ -114,9 +114,9 @@ export function formatActionNames(actions: Action[]): string {
 export function formatActions(actions: Action[]): string {
   if (!actions?.length) return '';
 
-  // Create a shuffled copy instead of mutating the original array
+  // Create a shuffled copy without mutating the original
   return [...actions]
     .sort(() => Math.random() - 0.5)
-    .map((action) => `${action.name}: ${action.description}`)
-    .join(',\n');
+    .map((action) => `- **${action.name}**: ${action.description || 'No description available'}`)
+    .join('\n');
 }

@@ -7,7 +7,7 @@
 The comprehensive test suite that runs everything:
 
 1. **TypeScript Type Checking** - Validates all TypeScript types
-2. **Vitest Unit Tests** - Runs unit tests with coverage
+2. **bun:test Unit Tests** - Runs unit tests with coverage
 3. **ElizaOS Core Tests** - Runs the core ElizaOS test suite
 4. **Cypress Component Tests** - Tests individual UI components
 5. **E2E Tests with Servers** - Starts backend and frontend servers, then runs E2E tests

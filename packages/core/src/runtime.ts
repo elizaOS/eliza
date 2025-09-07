@@ -1,10 +1,19 @@
 import { v4 as uuidv4 } from 'uuid';
+
+// Interface for working memory entries
+interface WorkingMemoryEntry {
+  actionName: string;
+  result: ActionResult;
+  timestamp: number;
+}
 import { createUniqueUuid } from './entities';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import {
   ChannelType,
+  EventType,
   ModelType,
+  MODEL_SETTINGS,
   type Content,
   type MemoryMetadata,
   type Character,
@@ -38,6 +47,8 @@ import {
   type RuntimeSettings,
   type Component,
   IAgentRuntime,
+  type ActionResult,
+  type ActionContext,
 } from './types';
 
 import { BM25 } from './search';
@@ -70,6 +81,8 @@ export class Semaphore {
   }
 }
 
+type ServiceResolver = (service: Service) => void;
+
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
   readonly agentId: UUID;
@@ -90,8 +103,8 @@ export class AgentRuntime implements IAgentRuntime {
     }
   >();
   readonly fetch = fetch;
-  services = new Map<ServiceTypeName, Service>();
-  private serviceTypes = new Map<ServiceTypeName, typeof Service>();
+  services = new Map<ServiceTypeName, Service[]>();
+  private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
   models = new Map<string, ModelHandler[]>();
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
@@ -106,6 +119,8 @@ export class AgentRuntime implements IAgentRuntime {
   public logger;
   private settings: RuntimeSettings;
   private servicesInitQueue = new Set<typeof Service>();
+  private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
+  private servicePromises = new Map<string, Promise<Service>>(); // read
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -117,6 +132,7 @@ export class AgentRuntime implements IAgentRuntime {
       timestamp: number;
     }>;
   };
+  private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
 
   constructor(opts: {
     conversationLength?: number;
@@ -162,6 +178,13 @@ export class AgentRuntime implements IAgentRuntime {
 
     this.logger.debug(`Success: Agent ID: ${this.agentId}`);
     this.currentRunId = undefined; // Initialize run ID tracker
+
+    // Set max working memory entries from settings or environment
+    if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    } else if (process.env.MAX_WORKING_MEMORY_ENTRIES) {
+      this.maxWorkingMemoryEntries = parseInt(process.env.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
+    }
   }
 
   /**
@@ -284,6 +307,12 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.services) {
       for (const service of plugin.services) {
+        // ensure we have a promise, so when it's actually loaded via registerService,
+        // we can trigger the loading of service dependencies
+        if (!this.servicePromises.has(service.serviceType)) {
+          this._createServiceResolver(service.serviceType as ServiceTypeName);
+        }
+
         if (this.isInitialized) {
           await this.registerService(service);
         } else {
@@ -293,15 +322,17 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  getAllServices(): Map<ServiceTypeName, Service> {
+  getAllServices(): Map<ServiceTypeName, Service[]> {
     return this.services;
   }
 
   async stop() {
     this.logger.debug(`runtime::stop - character ${this.character.name}`);
-    for (const [serviceName, service] of this.services) {
+    for (const [serviceName, services] of this.services) {
       this.logger.debug(`runtime::stop - requesting service stop for ${serviceName}`);
-      await service.stop();
+      for (const service of services) {
+        await service.stop();
+      }
     }
   }
 
@@ -495,23 +526,49 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerAction(action: Action) {
-    this.logger.debug(
-      `${this.character.name}(${this.agentId}) - Registering action: ${action.name}`
-    );
     if (this.actions.find((a) => a.name === action.name)) {
       this.logger.warn(
         `${this.character.name}(${this.agentId}) - Action ${action.name} already exists. Skipping registration.`
       );
     } else {
-      this.actions.push(action);
-      this.logger.debug(
-        `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
-      );
+      try {
+        this.actions.push(action);
+        this.logger.success(
+          `${this.character.name}(${this.agentId}) - Action ${action.name} registered successfully.`
+        );
+      } catch (e) {
+        console.error('Error registering action', e);
+      }
     }
   }
 
   registerEvaluator(evaluator: Evaluator) {
     this.evaluators.push(evaluator);
+  }
+
+  // Helper functions for immutable action plan updates
+  private updateActionPlan<T>(plan: T, updates: Partial<T>): T {
+    return { ...plan, ...updates };
+  }
+
+  private updateActionStep<T, S>(
+    plan: T & { steps: S[] },
+    index: number,
+    stepUpdates: Partial<S>
+  ): T & { steps: S[] } {
+    // Add bounds checking
+    if (!plan.steps || index < 0 || index >= plan.steps.length) {
+      this.logger.warn(
+        `Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`
+      );
+      return plan;
+    }
+    return {
+      ...plan,
+      steps: plan.steps.map((step: S, i: number) =>
+        i === index ? { ...step, ...stepUpdates } : step
+      ),
+    };
   }
 
   async processActions(
@@ -520,47 +577,130 @@ export class AgentRuntime implements IAgentRuntime {
     state?: State,
     callback?: HandlerCallback
   ): Promise<void> {
+    // Determine if we have multiple actions to execute
+    const allActions: string[] = [];
+    for (const response of responses) {
+      if (response.content?.actions && response.content.actions.length > 0) {
+        allActions.push(...response.content.actions);
+      }
+    }
+
+    const hasMultipleActions = allActions.length > 1;
+    const runId = this.createRunId();
+
+    // Create action plan if multiple actions
+    let actionPlan: {
+      runId: UUID;
+      totalSteps: number;
+      currentStep: number;
+      steps: Array<{
+        action: string;
+        status: 'pending' | 'completed' | 'failed';
+        result?: ActionResult;
+        error?: string;
+      }>;
+      thought: string;
+      startTime: number;
+    } | null = null;
+
+    if (hasMultipleActions) {
+      // Extract thought from response content
+      const thought =
+        responses[0]?.content?.thought ||
+        `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
+
+      actionPlan = {
+        runId,
+        totalSteps: allActions.length,
+        currentStep: 0,
+        steps: allActions.map((action) => ({
+          action,
+          status: 'pending' as const,
+        })),
+        thought,
+        startTime: Date.now(),
+      };
+    }
+
+    let actionIndex = 0;
+
     for (const response of responses) {
       if (!response.content?.actions || response.content.actions.length === 0) {
         this.logger.warn('No action found in the response content.');
         continue;
       }
       const actions = response.content.actions;
+
+      // Initialize action results array for this run
+      const actionResults: ActionResult[] = [];
+      let accumulatedState = state;
+
       function normalizeAction(actionString: string) {
-        return actionString.toLowerCase().replace('_', '');
+        return actionString.toLowerCase().replace(/_/g, '');
       }
       this.logger.debug(`Found actions: ${this.actions.map((a) => normalizeAction(a.name))}`);
 
       for (const responseAction of actions) {
-        state = await this.composeState(message, ['RECENT_MESSAGES']);
+        // Update current step in plan immutably
+        if (actionPlan) {
+          actionPlan = this.updateActionPlan(actionPlan, { currentStep: actionIndex + 1 });
+        }
+
+        // Compose state with previous action results and plan
+        accumulatedState = await this.composeState(message, [
+          'RECENT_MESSAGES',
+          'ACTION_STATE', // This will include the action plan
+        ]);
+
+        // Add action plan to state if it exists
+        if (actionPlan && accumulatedState.data) {
+          accumulatedState.data.actionPlan = actionPlan;
+          accumulatedState.data.actionResults = actionResults;
+        }
 
         this.logger.debug(`Success: Calling action: ${responseAction}`);
         const normalizedResponseAction = normalizeAction(responseAction);
-        // try exact first
+
+        // First try exact match
         let action = this.actions.find(
           (a: { name: string }) => normalizeAction(a.name) === normalizedResponseAction
         );
+
         if (!action) {
-          // try relaxed
+          // Then try fuzzy matching
           action = this.actions.find(
             (a: { name: string }) =>
               normalizeAction(a.name).includes(normalizedResponseAction) ||
               normalizedResponseAction.includes(normalizeAction(a.name))
           );
         }
+
         if (action) {
           this.logger.debug(`Success: Found action: ${action?.name}`);
         } else {
           this.logger.debug('Attempting to find action in similes.');
           for (const _action of this.actions) {
-            const simileAction = _action.similes?.find(
-              (simile) =>
-                simile.toLowerCase().replace('_', '').includes(normalizedResponseAction) ||
-                normalizedResponseAction.includes(simile.toLowerCase().replace('_', ''))
+            // First try exact match in similes
+            const exactSimileMatch = _action.similes?.find(
+              (simile) => normalizeAction(simile) === normalizedResponseAction
             );
-            if (simileAction) {
+
+            if (exactSimileMatch) {
               action = _action;
-              this.logger.debug(`Success: Action found in similes: ${action.name}`);
+              this.logger.debug(`Success: Action found in similes (exact match): ${action.name}`);
+              break;
+            }
+
+            // Then try fuzzy match in similes
+            const fuzzySimileMatch = _action.similes?.find(
+              (simile) =>
+                normalizeAction(simile).includes(normalizedResponseAction) ||
+                normalizedResponseAction.includes(normalizeAction(simile))
+            );
+
+            if (fuzzySimileMatch) {
+              action = _action;
+              this.logger.debug(`Success: Action found in similes (fuzzy match): ${action.name}`);
               break;
             }
           }
@@ -568,6 +708,14 @@ export class AgentRuntime implements IAgentRuntime {
         if (!action) {
           const errorMsg = `No action found for: ${responseAction}`;
           this.logger.error(errorMsg);
+
+          // Update plan with error immutably
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMsg,
+            });
+          }
 
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
@@ -577,13 +725,28 @@ export class AgentRuntime implements IAgentRuntime {
             content: {
               thought: errorMsg,
               source: 'auto',
+              type: 'action_result',
+              actionName: responseAction,
+              actionStatus: 'failed',
+              runId,
             },
           };
           await this.createMemory(actionMemory, 'messages');
+          actionIndex++;
           continue;
         }
         if (!action.handler) {
           this.logger.error(`Action ${action.name} has no handler.`);
+
+          // Update plan with error immutably
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: 'No handler',
+            });
+          }
+
+          actionIndex++;
           continue;
         }
         try {
@@ -593,27 +756,187 @@ export class AgentRuntime implements IAgentRuntime {
           const actionId = uuidv4() as UUID;
           this.currentActionContext = {
             actionName: action.name,
-            actionId: actionId,
+            actionId,
             prompts: [],
           };
 
-          await action.handler(this, message, state, {}, callback, responses);
-          this.logger.debug(`Success: Action ${action.name} executed successfully.`);
+          // Create action context with plan information
+          const actionContext: ActionContext = {
+            previousResults: actionResults,
+            getPreviousResult: (actionName: string) => {
+              return actionResults.find((r) => r.data?.actionName === actionName);
+            },
+          };
+
+          // Add plan information to options if multiple actions
+          const options: { [key: string]: unknown } = {
+            context: actionContext,
+          };
+
+          if (actionPlan) {
+            options.actionPlan = {
+              totalSteps: actionPlan.totalSteps,
+              currentStep: actionPlan.currentStep,
+              steps: actionPlan.steps,
+              thought: actionPlan.thought,
+            };
+          }
+
+          // Execute action with context
+          const result = await action.handler(
+            this,
+            message,
+            accumulatedState,
+            options,
+            callback,
+            responses
+          );
+
+          // Handle backward compatibility for void, null, true, false returns
+          const isLegacyReturn =
+            result === undefined || result === null || typeof result === 'boolean';
+
+          // Only create ActionResult if we have a proper result
+          let actionResult: ActionResult | null = null;
+
+          if (!isLegacyReturn) {
+            // Ensure we have an ActionResult with required success field
+            if (
+              typeof result === 'object' &&
+              result !== null &&
+              ('values' in result || 'data' in result || 'text' in result)
+            ) {
+              // Ensure success field exists with default true
+              actionResult = {
+                success: true, // Default to true if not specified
+                ...result,
+              } as ActionResult;
+            } else {
+              actionResult = {
+                success: true, // Default success for legacy results
+                data: {
+                  actionName: action.name,
+                  legacyResult: result,
+                },
+              };
+            }
+
+            actionResults.push(actionResult);
+
+            // Merge returned values into state
+            if (actionResult.values) {
+              accumulatedState = {
+                ...accumulatedState,
+                values: { ...accumulatedState.values, ...actionResult.values },
+                data: {
+                  ...(accumulatedState.data || {}),
+                  actionResults: [...(accumulatedState.data?.actionResults || []), actionResult],
+                  actionPlan,
+                },
+              };
+            }
+
+            // Store in working memory (in state data) with cleanup
+            if (actionResult && accumulatedState.data) {
+              if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
+
+              // Add new entry first, then clean up if we exceed the limit
+              const memoryKey = `action_${responseAction}_${uuidv4()}`;
+              const memoryEntry: WorkingMemoryEntry = {
+                actionName: action.name,
+                result: actionResult,
+                timestamp: Date.now(),
+              };
+              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
+
+              // Clean up old entries if we now exceed the limit
+              const entries = Object.entries(accumulatedState.data.workingMemory);
+              if (entries.length > this.maxWorkingMemoryEntries) {
+                // Sort by timestamp (newest first) and keep only the most recent entries
+                const sorted = entries.sort((a, b) => {
+                  const entryA = a[1] as WorkingMemoryEntry | null;
+                  const entryB = b[1] as WorkingMemoryEntry | null;
+                  const timestampA = entryA?.timestamp ?? 0;
+                  const timestampB = entryB?.timestamp ?? 0;
+                  return timestampB - timestampA;
+                });
+                // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
+                accumulatedState.data.workingMemory = Object.fromEntries(
+                  sorted.slice(0, this.maxWorkingMemoryEntries)
+                );
+              }
+            }
+
+            // Update plan with success immutably
+            if (actionPlan && actionPlan.steps[actionIndex]) {
+              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+                status: 'completed',
+                result: actionResult,
+              });
+            }
+          }
+
+          // Store action result as memory
+          const actionMemory: Memory = {
+            id: actionId,
+            entityId: this.agentId,
+            roomId: message.roomId,
+            worldId: message.worldId,
+            content: {
+              text: actionResult?.text || `Executed action: ${action.name}`,
+              source: 'action',
+              type: 'action_result',
+              actionName: action.name,
+              actionStatus: actionResult?.success ? 'completed' : 'failed',
+              actionResult: isLegacyReturn ? { legacy: result } : actionResult,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
+            },
+            metadata: {
+              type: 'action_result',
+              actionName: action.name,
+              runId,
+              actionId,
+              ...(actionPlan && {
+                totalSteps: actionPlan.totalSteps,
+                currentStep: actionPlan.currentStep,
+              }),
+            },
+          };
+          await this.createMemory(actionMemory, 'messages');
+
+          this.logger.debug(`Action ${action.name} completed`, {
+            isLegacyReturn,
+            result: isLegacyReturn ? result : undefined,
+            hasValues: actionResult ? !!actionResult.values : false,
+            hasData: actionResult ? !!actionResult.data : false,
+            hasText: actionResult ? !!actionResult.text : false,
+          });
 
           // log to database with collected prompts
-          this.adapter.log({
+          await this.adapter.log({
             entityId: message.entityId,
             roomId: message.roomId,
             type: 'action',
             body: {
               action: action.name,
-              actionId: actionId,
+              actionId,
               message: message.content.text,
               messageId: message.id,
-              state,
+              state: accumulatedState,
               responses,
+              result: isLegacyReturn ? { legacy: result } : actionResult,
+              isLegacyReturn,
               prompts: this.currentActionContext?.prompts || [],
               promptCount: this.currentActionContext?.prompts.length || 0,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
             },
           });
 
@@ -623,22 +946,76 @@ export class AgentRuntime implements IAgentRuntime {
           const errorMessage = error instanceof Error ? error.message : String(error);
           this.logger.error(error);
 
+          // Update plan with error using immutable pattern
+          if (actionPlan && actionPlan.steps[actionIndex]) {
+            actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+              status: 'failed',
+              error: errorMessage,
+            });
+          }
+
           // Clear action context on error
           this.currentActionContext = undefined;
+
+          // Create error result
+          const errorResult: ActionResult = {
+            success: false, // Required field
+            data: {
+              actionName: action.name,
+              error: errorMessage,
+              errorObject: error,
+            },
+          };
+          actionResults.push(errorResult);
 
           const actionMemory: Memory = {
             id: uuidv4() as UUID,
             content: {
               thought: errorMessage,
               source: 'auto',
+              type: 'action_result',
+              actionName: action.name,
+              actionStatus: 'failed',
+              error: errorMessage,
+              runId,
+              ...(actionPlan && {
+                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+                planThought: actionPlan.thought,
+              }),
             },
-            entityId: message.entityId,
+            entityId: this.agentId,
             roomId: message.roomId,
             worldId: message.worldId,
+            metadata: {
+              type: 'action_result',
+              actionName: action.name,
+              runId,
+              error: true,
+              ...(actionPlan && {
+                totalSteps: actionPlan.totalSteps,
+                currentStep: actionPlan.currentStep,
+              }),
+            },
           };
           await this.createMemory(actionMemory, 'messages');
-          throw error;
+
+          // Decide whether to continue or abort
+          // For now, only abort on critical errors
+          if (error?.critical || error?.code === 'CRITICAL_ERROR') {
+            throw error;
+          }
         }
+
+        actionIndex++;
+      }
+
+      // Store accumulated results for evaluators and providers
+      if (message.id) {
+        this.stateCache.set(`${message.id}_action_results`, {
+          values: { actionResults },
+          data: { actionResults, actionPlan },
+          text: JSON.stringify(actionResults),
+        });
       }
     }
   }
@@ -743,7 +1120,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Step 2: Create all entities
     const entityIds = entities.map((e) => e.id);
-    const entityExistsCheck = await this.adapter.getEntityByIds(entityIds);
+    const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
     const entitiesToUpdate = entityExistsCheck.map((e) => e.id);
     const entitiesToCreate = entities.filter((e) => !entitiesToUpdate.includes(e.id));
 
@@ -794,7 +1171,10 @@ export class AgentRuntime implements IAgentRuntime {
         firstRoom.id
       );
       // pglite handle this at over 10k records fine though
-      await this.addParticipantsRoom(missingIdsInRoom, firstRoom.id);
+      const batches = chunkArray(missingIdsInRoom, 5000);
+      for (const batch of batches) {
+        await this.addParticipantsRoom(batch, firstRoom.id);
+      }
     }
 
     this.logger.success(`Success: Successfully connected world`);
@@ -1103,13 +1483,13 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
-    const serviceInstance = this.services.get(serviceName as ServiceTypeName);
-    if (!serviceInstance) {
+    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+    if (!serviceInstances || serviceInstances.length === 0) {
       // it's not a warn, a plugin might just not be installed
       this.logger.debug(`Service ${serviceName} not found`);
       return null;
     }
-    return serviceInstance as T;
+    return serviceInstances[0] as T;
   }
 
   /**
@@ -1120,6 +1500,21 @@ export class AgentRuntime implements IAgentRuntime {
    */
   getTypedService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
     return this.getService<T>(serviceName);
+  }
+
+  /**
+   * Get all services of a specific type
+   * @template T - The expected service class type
+   * @param serviceName - The service type name
+   * @returns Array of service instances with proper typing
+   */
+  getServicesByType<T extends Service = Service>(serviceName: ServiceTypeName | string): T[] {
+    const serviceInstances = this.services.get(serviceName as ServiceTypeName);
+    if (!serviceInstances || serviceInstances.length === 0) {
+      this.logger.debug(`No services found for type ${serviceName}`);
+      return [];
+    }
+    return serviceInstances as T[];
   }
 
   /**
@@ -1136,7 +1531,8 @@ export class AgentRuntime implements IAgentRuntime {
    * @returns true if the service is registered
    */
   hasService(serviceType: ServiceTypeName | string): boolean {
-    return this.services.has(serviceType as ServiceTypeName);
+    const serviceInstances = this.services.get(serviceType as ServiceTypeName);
+    return serviceInstances !== undefined && serviceInstances.length > 0;
   }
 
   async registerService(serviceDef: typeof Service): Promise<void> {
@@ -1151,16 +1547,33 @@ export class AgentRuntime implements IAgentRuntime {
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
-    if (this.services.has(serviceType)) {
-      this.logger.warn(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} is already registered. Skipping registration.`
-      );
-      return;
-    }
+
     try {
       const serviceInstance = await serviceDef.start(this);
-      this.services.set(serviceType, serviceInstance);
-      this.serviceTypes.set(serviceType, serviceDef);
+
+      // Initialize arrays if they don't exist
+      if (!this.services.has(serviceType)) {
+        this.services.set(serviceType, []);
+      }
+      if (!this.serviceTypes.has(serviceType)) {
+        this.serviceTypes.set(serviceType, []);
+      }
+
+      // Add the service to the arrays
+      this.services.get(serviceType)!.push(serviceInstance);
+      this.serviceTypes.get(serviceType)!.push(serviceDef);
+
+      // inform everyone that's waiting for this service, that it's now available
+      // removes the need for polling and timers
+      const resolve = this.servicePromiseHandles.get(serviceType);
+      if (resolve) {
+        resolve(serviceInstance);
+      } else {
+        this.logger.debug(
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+        );
+      }
+
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }
@@ -1174,6 +1587,35 @@ export class AgentRuntime implements IAgentRuntime {
       );
       throw error;
     }
+  }
+
+  /// ensures servicePromises & servicePromiseHandles for a serviceType
+  private _createServiceResolver(serviceType: ServiceTypeName) {
+    // consider this in the future iterations
+    // const { promise, resolve, reject } = Promise.withResolvers<T>();
+    let resolver: ServiceResolver | undefined;
+    this.servicePromises.set(
+      serviceType,
+      new Promise<Service>((resolve) => {
+        resolver = resolve;
+      })
+    );
+    if (!resolver) {
+      throw new Error(`Failed to create resolver for service ${serviceType}`);
+    }
+    this.servicePromiseHandles.set(serviceType, resolver);
+    return this.servicePromises.get(serviceType);
+  }
+
+  /// returns a promise that's resolved once this service is loaded
+  getServiceLoadPromise(serviceType: ServiceTypeName): Promise<Service> {
+    // if this.isInitialized then the this p will exist and already be resolved
+    let p = this.servicePromises.get(serviceType);
+    if (!p) {
+      // not initalized or registered yet, registerPlugin is already smart enough to check to see if we make it here
+      p = this._createServiceResolver(serviceType);
+    }
+    return p;
   }
 
   registerModel(
@@ -1232,6 +1674,84 @@ export class AgentRuntime implements IAgentRuntime {
     return models[0].handler;
   }
 
+  /**
+   * Retrieves model configuration settings from character settings with support for
+   * model-specific overrides and default fallbacks.
+   *
+   * Precedence order (highest to lowest):
+   * 1. Model-specific settings (e.g., TEXT_SMALL_TEMPERATURE)
+   * 2. Default settings (e.g., DEFAULT_TEMPERATURE)
+   * 3. Legacy settings for backwards compatibility (e.g., MODEL_TEMPERATURE)
+   *
+   * @param modelType The specific model type to get settings for
+   * @returns Object containing model parameters if they exist, or null if no settings are configured
+   */
+  private getModelSettings(modelType?: ModelTypeName): Record<string, number> | null {
+    const modelSettings: Record<string, number> = {};
+
+    // Helper to get a setting value with fallback chain
+    const getSettingWithFallback = (
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey: string
+    ): number | null => {
+      // Try model-specific setting first
+      if (modelType) {
+        const modelSpecificKey = `${modelType}_${param}`;
+        const modelValue = this.getSetting(modelSpecificKey);
+        if (modelValue !== null && modelValue !== undefined) {
+          const numValue = Number(modelValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
+          // If model-specific value exists but is invalid, continue to fallbacks
+        }
+      }
+
+      // Fall back to default setting
+      const defaultKey = `DEFAULT_${param}`;
+      const defaultValue = this.getSetting(defaultKey);
+      if (defaultValue !== null && defaultValue !== undefined) {
+        const numValue = Number(defaultValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+        // If default value exists but is invalid, continue to legacy
+      }
+
+      // Fall back to legacy setting for backwards compatibility
+      const legacyValue = this.getSetting(legacyKey);
+      if (legacyValue !== null && legacyValue !== undefined) {
+        const numValue = Number(legacyValue);
+        if (!isNaN(numValue)) {
+          return numValue;
+        }
+      }
+
+      return null;
+    };
+
+    // Get settings with proper fallback chain
+    const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
+    const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const frequencyPenalty = getSettingWithFallback(
+      'FREQUENCY_PENALTY',
+      MODEL_SETTINGS.MODEL_FREQ_PENALTY
+    );
+    const presencePenalty = getSettingWithFallback(
+      'PRESENCE_PENALTY',
+      MODEL_SETTINGS.MODEL_PRESENCE_PENALTY
+    );
+
+    // Add settings if they exist
+    if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
+    if (temperature !== null) modelSettings.temperature = temperature;
+    if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
+    if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
+
+    // Return null if no settings were configured
+    return Object.keys(modelSettings).length > 0 ? modelSettings : null;
+  }
+
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'> | any,
@@ -1263,10 +1783,23 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       paramsWithRuntime = params;
     } else {
-      paramsWithRuntime = {
-        ...params,
-        runtime: this,
-      };
+      // Include model settings from character configuration if available
+      const modelSettings = this.getModelSettings(modelKey);
+
+      if (modelSettings) {
+        // Apply model settings if configured
+        paramsWithRuntime = {
+          ...modelSettings, // Apply model settings first (includes defaults and model-specific)
+          ...params, // Then apply specific params (allowing overrides)
+          runtime: this,
+        };
+      } else {
+        // No model settings configured, use params as-is
+        paramsWithRuntime = {
+          ...params,
+          runtime: this,
+        };
+      }
     }
     const startTime = performance.now();
     try {
@@ -1293,27 +1826,6 @@ export class AgentRuntime implements IAgentRuntime {
             timestamp: Date.now(),
           });
         }
-
-        await this.adapter.log({
-          entityId: this.agentId,
-          roomId: this.agentId,
-          body: {
-            modelType,
-            modelKey,
-            prompt: promptContent,
-            runId: this.getCurrentRunId(),
-            timestamp: Date.now(),
-            executionTime: elapsedTime,
-            provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-            actionContext: this.currentActionContext
-              ? {
-                  actionName: this.currentActionContext.actionName,
-                  actionId: this.currentActionContext.actionId,
-                }
-              : undefined,
-          },
-          type: `prompt:${modelKey}`,
-        });
       }
 
       // Keep the existing model logging for backward compatibility
@@ -1327,6 +1839,17 @@ export class AgentRuntime implements IAgentRuntime {
             ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
             prompt: promptContent,
           },
+          prompt: promptContent,
+          runId: this.getCurrentRunId(),
+          timestamp: Date.now(),
+          executionTime: elapsedTime,
+          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+          actionContext: this.currentActionContext
+            ? {
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
+            : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
               ? '[array]'
@@ -1334,6 +1857,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
         type: `useModel:${modelKey}`,
       });
+
       return response as R;
     } catch (error: any) {
       throw error;
@@ -1484,13 +2008,13 @@ export class AgentRuntime implements IAgentRuntime {
     return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
-    const entities = await this.adapter.getEntityByIds([entityId]);
+    const entities = await this.adapter.getEntitiesByIds([entityId]);
     if (!entities?.length) return null;
     return entities[0];
   }
 
-  async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    return await this.adapter.getEntityByIds(entityIds);
+  async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
+    return await this.adapter.getEntitiesByIds(entityIds);
   }
   async getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
     return await this.adapter.getEntitiesForRoom(roomId, includeComponents);
@@ -1549,6 +2073,37 @@ export class AgentRuntime implements IAgentRuntime {
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     }
     return memory;
+  }
+
+  async queueEmbeddingGeneration(
+    memory: Memory,
+    priority: 'high' | 'normal' | 'low' = 'normal'
+  ): Promise<void> {
+    // Skip if memory is null or undefined
+    if (!memory) {
+      return;
+    }
+
+    // Skip if memory already has embeddings
+    if (memory.embedding) {
+      return;
+    }
+
+    // Skip if no text content
+    if (!memory.content?.text) {
+      this.logger.debug('Skipping embedding generation for memory without text content');
+      return;
+    }
+
+    // Emit event for async embedding generation
+    await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+      runtime: this,
+      memory,
+      priority,
+      source: 'runtime',
+      retryCount: 0,
+      maxRetries: 3,
+    });
   }
   async getMemories(params: {
     entityId?: UUID;
@@ -1642,6 +2197,7 @@ export class AgentRuntime implements IAgentRuntime {
     return results.map((result) => memories[result.index]);
   }
   async createMemory(memory: Memory, tableName: string, unique?: boolean): Promise<UUID> {
+    if (unique !== undefined) memory.unique = unique;
     return await this.adapter.createMemory(memory, tableName, unique);
   }
   async updateMemory(

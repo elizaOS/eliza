@@ -2,6 +2,9 @@ import { DevOptions } from '../types';
 import { createDevContext, performInitialBuild, performRebuild } from '../utils/build-utils';
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
+import { findNextAvailablePort } from '@/src/utils';
+import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
+import { logger } from '@elizaos/core';
 
 /**
  * Start development mode with file watching and auto-restart
@@ -10,6 +13,10 @@ import { getServerManager } from '../utils/server-manager';
  */
 export async function startDevMode(options: DevOptions): Promise<void> {
   const cwd = process.cwd();
+
+  // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
+  await ensureElizaOSCli(cwd);
+
   const context = createDevContext(cwd);
   const serverManager = getServerManager();
 
@@ -34,10 +41,33 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Prepare CLI arguments for the start command
   const cliArgs: string[] = [];
 
-  // Pass through port option
-  if (options.port) {
-    cliArgs.push('--port', options.port.toString());
+  // Handle port availability checking
+  let desiredPort: number;
+  if (options.port !== undefined) {
+    desiredPort = options.port;
+  } else {
+    const serverPort = process.env.SERVER_PORT;
+    const parsedPort = serverPort ? Number.parseInt(serverPort, 10) : NaN;
+    desiredPort = Number.isNaN(parsedPort) ? 3000 : parsedPort;
   }
+  let availablePort: number;
+
+  try {
+    availablePort = await findNextAvailablePort(desiredPort);
+
+    if (availablePort !== desiredPort) {
+      logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
+    }
+  } catch (error) {
+    logger.error(
+      `Failed to find available port starting from ${desiredPort}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    logger.error('Please specify a different port using --port option');
+    throw new Error(`No available ports found starting from ${desiredPort}`);
+  }
+
+  // Pass the available port to the start command
+  cliArgs.push('--port', availablePort.toString());
 
   // Pass through configure option
   if (options.configure) {
@@ -87,6 +117,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   // Start the server initially
+  if (process.env.ELIZA_TEST_MODE === 'true') {
+    console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
+  }
   await serverManager.start(cliArgs);
 
   // Set up file watching if we're in a project, plugin, or monorepo directory

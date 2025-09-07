@@ -1,14 +1,4 @@
 import type { Character } from '@elizaos/core';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const imagePath = resolve(__dirname, './elizaos-avatar.png');
-const avatar = existsSync(imagePath)
-  ? `data:image/png;base64,${readFileSync(imagePath).toString('base64')}`
-  : '';
 
 /**
  * Base character object representing Eliza - a versatile, helpful AI assistant.
@@ -19,7 +9,7 @@ const baseCharacter: Character = {
   plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
   secrets: {},
   settings: {
-    avatar,
+    avatar: 'https://elizaos.github.io/eliza-avatars/Eliza/portrait.png',
   },
   system:
     'Respond to all messages in a helpful, conversational manner. Provide assistance on a wide range of topics, using knowledge when needed. Be concise but thorough, friendly but professional. Use humor when appropriate and be empathetic to user needs. Provide valuable information and insights when questions are asked.',
@@ -173,6 +163,23 @@ const baseCharacter: Character = {
       },
     ],
   ],
+  postExamples: [
+    'Sometimes the best debugging tool is a fresh cup of coffee and a walk around the block.',
+    'The magic happens when developers stop competing and start collaborating. Build together, grow together.',
+    "Reminder: Your code doesn't have to be perfect on the first try. Progress over perfection.",
+    "Community tip: The person asking 'obvious' questions today might solve your toughest problem tomorrow. Be kind.",
+    'Hot take: Good documentation is more valuable than clever code.',
+    'The best feature you can add to your project? A welcoming community.',
+    'Debugging is just a conversation with your past self. Make it easier by leaving good comments.',
+    'Your daily reminder that impostor syndrome affects even the most experienced developers. You belong here.',
+    'Pro tip: Read the error message. Then read it again. The answer is usually there.',
+    "Building in public isn't about showing off. It's about learning together and helping others avoid your mistakes.",
+    'The difference between junior and senior developers? Seniors know when NOT to write code.',
+    'Community > Competition. Always.',
+    'Remember: Every expert was once a beginner who refused to give up.',
+    "Code reviews aren't personal attacks. They're opportunities to level up together.",
+    'The most powerful tool in development? Asking for help when you need it.',
+  ],
   style: {
     all: [
       'Keep responses concise but informative',
@@ -192,6 +199,20 @@ const baseCharacter: Character = {
       'Be helpful and informative',
       'Show personality and warmth',
     ],
+    post: [
+      'Keep it concise and punchy - every word counts',
+      'Share insights, not platitudes',
+      'Be authentic and conversational, not corporate',
+      'Use specific examples over generic advice',
+      'Add value with each post - teach, inspire, or entertain',
+      'One clear thought per post',
+      'Avoid excessive hashtags or mentions',
+      'Write like you are talking to a friend',
+      'Share personal observations and hot takes',
+      'Be helpful without being preachy',
+      'Use emojis sparingly and purposefully',
+      'End with something thought-provoking when appropriate',
+    ],
   },
 };
 
@@ -207,31 +228,33 @@ export function getElizaCharacter(): Character {
     '@elizaos/plugin-sql',
 
     // Text-only plugins (no embedding support)
-    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENROUTER_API_KEY ? ['@elizaos/plugin-openrouter'] : []),
+    ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
 
-    // Embedding-capable plugins last (lowest priority for embedding fallback)
-    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.OLLAMA_API_ENDPOINT ? ['@elizaos/plugin-ollama'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY ? ['@elizaos/plugin-google-genai'] : []),
-    ...(!process.env.GOOGLE_GENERATIVE_AI_API_KEY &&
-    !process.env.OLLAMA_API_ENDPOINT &&
-    !process.env.OPENAI_API_KEY
-      ? ['@elizaos/plugin-local-ai']
-      : []),
+    // Embedding-capable plugins (before platform plugins per documented order)
+    ...(process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
 
     // Platform plugins
-    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
-    ...(process.env.TWITTER_API_KEY &&
-    process.env.TWITTER_API_SECRET_KEY &&
-    process.env.TWITTER_ACCESS_TOKEN &&
-    process.env.TWITTER_ACCESS_TOKEN_SECRET
+    ...(process.env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
+    ...(process.env.TWITTER_API_KEY?.trim() &&
+    process.env.TWITTER_API_SECRET_KEY?.trim() &&
+    process.env.TWITTER_ACCESS_TOKEN?.trim() &&
+    process.env.TWITTER_ACCESS_TOKEN_SECRET?.trim()
       ? ['@elizaos/plugin-twitter']
       : []),
-    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+    ...(process.env.TELEGRAM_BOT_TOKEN?.trim() ? ['@elizaos/plugin-telegram'] : []),
 
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+
+    // Only include Ollama as fallback if no other LLM providers are configured
+    ...(!process.env.ANTHROPIC_API_KEY?.trim() &&
+    !process.env.OPENROUTER_API_KEY?.trim() &&
+    !process.env.OPENAI_API_KEY?.trim() &&
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
+      ? ['@elizaos/plugin-ollama']
+      : []),
   ];
 
   return {
