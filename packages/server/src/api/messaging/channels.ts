@@ -6,6 +6,7 @@ import {
   logger,
   validateUuid,
   type UUID,
+  getUploadsChannelsDir,
 } from '@elizaos/core';
 import express from 'express';
 import internalMessageBus from '../../bus';
@@ -44,7 +45,7 @@ async function saveChannelUploadedFile(
   file: Express.Multer.File,
   channelId: string
 ): Promise<{ filename: string; url: string }> {
-  const uploadDir = path.join(process.cwd(), '.eliza/data/uploads/channels', channelId);
+  const uploadDir = path.join(getUploadsChannelsDir(), channelId);
 
   // Ensure directory exists
   if (!fs.existsSync(uploadDir)) {

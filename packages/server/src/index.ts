@@ -5,6 +5,9 @@ import {
   logger,
   type UUID,
   parseBooleanFromText,
+  getDatabaseDir,
+  getGeneratedDir,
+  getUploadsAgentsDir,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -70,19 +73,24 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dotenv.config({ path: envPath });
   }
 
-  const base =
-    dir ??
-    process.env.PGLITE_DATA_DIR ??
-    fallbackDir ??
-    path.join(process.cwd(), '.eliza', '.elizadb');
+  // If explicit dir provided, use it
+  if (dir) {
+    const resolved = expandTildePath(dir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
+  }
 
-  // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const migrated = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), '.elizadb');
-  const resolved =
-    migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
+  // If fallbackDir provided, use it as fallback
+  if (fallbackDir && !process.env.PGLITE_DATA_DIR && !process.env.ELIZA_DATABASE_DIR) {
+    const resolved = expandTildePath(fallbackDir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
+  }
 
-  // Persist chosen root for the process so child modules see it
+  // Use the centralized path configuration from core
+  const resolved = getDatabaseDir();
+  
+  // Persist chosen root for the process so child modules see it (backward compat)
   process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
 }
@@ -467,8 +475,8 @@ export class AgentServer {
         }
       }
 
-      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
-      const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
+      const uploadsBasePath = getUploadsAgentsDir();
+      const generatedBasePath = getGeneratedDir();
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
