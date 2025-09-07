@@ -5,7 +5,6 @@
  */
 
 import path from 'node:path';
-import { getEnv } from './environment.js';
 
 /**
  * Interface for ElizaOS paths configuration
@@ -33,7 +32,7 @@ class ElizaPaths {
         const cached = this.cache.get('dataDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATA_DIR') || path.join(process.cwd(), '.eliza');
+        const dir = process.env.ELIZA_DATA_DIR || path.join(process.cwd(), '.eliza');
         this.cache.set('dataDir', dir);
         return dir;
     }
@@ -45,8 +44,8 @@ class ElizaPaths {
         const cached = this.cache.get('databaseDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATABASE_DIR') || 
-                   getEnv('PGLITE_DATA_DIR') || 
+        const dir = process.env.ELIZA_DATABASE_DIR || 
+                   process.env.PGLITE_DATA_DIR || 
                    path.join(this.getDataDir(), '.elizadb');
         this.cache.set('databaseDir', dir);
         return dir;
@@ -59,7 +58,7 @@ class ElizaPaths {
         const cached = this.cache.get('charactersDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATA_DIR_CHARACTERS') || 
+        const dir = process.env.ELIZA_DATA_DIR_CHARACTERS || 
                    path.join(this.getDataDir(), 'data', 'characters');
         this.cache.set('charactersDir', dir);
         return dir;
@@ -72,7 +71,7 @@ class ElizaPaths {
         const cached = this.cache.get('generatedDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATA_DIR_GENERATED') || 
+        const dir = process.env.ELIZA_DATA_DIR_GENERATED || 
                    path.join(this.getDataDir(), 'data', 'generated');
         this.cache.set('generatedDir', dir);
         return dir;
@@ -85,7 +84,7 @@ class ElizaPaths {
         const cached = this.cache.get('uploadsAgentsDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATA_DIR_UPLOADS_AGENTS') || 
+        const dir = process.env.ELIZA_DATA_DIR_UPLOADS_AGENTS || 
                    path.join(this.getDataDir(), 'data', 'uploads', 'agents');
         this.cache.set('uploadsAgentsDir', dir);
         return dir;
@@ -98,7 +97,7 @@ class ElizaPaths {
         const cached = this.cache.get('uploadsChannelsDir');
         if (cached) return cached;
 
-        const dir = getEnv('ELIZA_DATA_DIR_UPLOADS_CHANNELS') || 
+        const dir = process.env.ELIZA_DATA_DIR_UPLOADS_CHANNELS || 
                    path.join(this.getDataDir(), 'data', 'uploads', 'channels');
         this.cache.set('uploadsChannelsDir', dir);
         return dir;
