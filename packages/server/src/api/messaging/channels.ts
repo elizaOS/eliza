@@ -8,6 +8,7 @@ import {
   type UUID,
   getUploadsChannelsDir,
 } from '@elizaos/core';
+import { transformMessageAttachments } from '../../utils/media-transformer';
 import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
@@ -291,16 +292,20 @@ export function createChannelsRouter(
           const rawMessage =
             typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
 
-          return {
+          // Transform the entire message to handle attachments in both content and metadata
+          const transformedMessage = transformMessageAttachments({
             ...msg,
-            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-            updated_at: new Date(msg.updatedAt).getTime(),
-            // Include thought and actions from rawMessage in metadata for client compatibility
             metadata: {
               ...msg.metadata,
               thought: rawMessage?.thought,
               actions: rawMessage?.actions,
             },
+          });
+
+          return {
+            ...transformedMessage,
+            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+            updated_at: new Date(msg.updatedAt).getTime(),
             // Ensure other fields align with client's MessageServiceStructure / ServerMessage
           };
         });

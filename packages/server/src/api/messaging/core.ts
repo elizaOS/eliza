@@ -3,6 +3,7 @@ import express from 'express';
 import internalMessageBus from '../../bus'; // Import the bus
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
+import { attachmentsToApiUrls } from '../../utils/media-transformer';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
@@ -66,6 +67,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       // Use AgentServer's method to create the message in the DB
       const createdMessage = await serverInstance.createMessage(newRootMessageData);
 
+      // Transform attachments for web client
+      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+
       // Emit to SocketIO for real-time GUI updates
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
@@ -79,7 +83,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           id: createdMessage.id, // Central message ID
           thought: raw_message?.thought,
           actions: raw_message?.actions,
-          attachments: metadata?.attachments,
+          attachments: transformedAttachments,
         });
       }
       // NO broadcast to internalMessageBus here, this endpoint is for messages ALREADY PROCESSED by an agent
@@ -151,6 +155,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
       const savedMessage = await serverInstance.createMessage(baseData);
 
+      // Transform attachments for web client
+      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
           senderId: author_id,
@@ -163,7 +170,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           id: savedMessage.id,
           thought: raw_message?.thought,
           actions: raw_message?.actions,
-          attachments: metadata?.attachments,
+          attachments: transformedAttachments,
           updatedAt: new Date(savedMessage.updatedAt).getTime(),
           rawMessage: raw_message,
         });
@@ -223,6 +230,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         return res.status(404).json({ success: false, error: 'Message not found' });
       }
 
+      // Transform attachments for web client
+      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(updated.channelId).emit('messageBroadcast', {
           senderId: author_id || updated.authorId,
@@ -235,7 +245,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           id: updated.id,
           thought: raw_message?.thought,
           actions: raw_message?.actions,
-          attachments: metadata?.attachments,
+          attachments: transformedAttachments,
           updatedAt: new Date(updated.updatedAt).getTime(),
           rawMessage: raw_message,
         });

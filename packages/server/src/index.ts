@@ -535,13 +535,40 @@ export class AgentServer {
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
+          
           if (!filePath.startsWith(agentGeneratedPath)) {
             res.status(403).json({ error: 'Access denied' });
             return;
           }
-          res.sendFile(filePath, (err) => {
+          
+          // Check if file exists before sending
+          if (!existsSync(filePath)) {
+            res.status(404).json({ error: 'File not found' });
+            return;
+          }
+          
+          // Make sure path is absolute for sendFile
+          const absolutePath = path.resolve(filePath);
+          
+          // Use sendFile with proper options
+          const options = {
+            root: '/', // Set root to allow absolute paths
+            dotfiles: 'deny' as const
+          };
+          
+          res.sendFile(absolutePath, options, (err) => {
             if (err) {
-              res.status(404).json({ error: 'File not found' });
+              // Fallback to manual file reading if sendFile fails
+              try {
+                const fileBuffer = fs.readFileSync(absolutePath);
+                const mimeType = extname(filename) === '.png' ? 'image/png' : 
+                                extname(filename) === '.jpg' || extname(filename) === '.jpeg' ? 'image/jpeg' :
+                                'application/octet-stream';
+                res.setHeader('Content-Type', mimeType);
+                res.send(fileBuffer);
+              } catch (readErr) {
+                res.status(404).json({ error: 'File not found' });
+              }
             }
           });
         }
