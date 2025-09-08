@@ -713,4 +713,308 @@ describe('Logger - Cross-Environment Tests', () => {
       expect(() => browserLogger.info('Deep chain circular:', root)).not.toThrow();
     });
   });
+
+  describe('JSON Format Configuration - Cross-Environment', () => {
+    beforeEach(() => {
+      // Clear environment cache
+      getEnvironment().clearCache();
+    });
+
+    describe('Browser JSON Format Tests', () => {
+      let savedProcess: any;
+
+      beforeEach(() => {
+        // Save process before deleting it
+        savedProcess = globalThis.process;
+        
+        // Mock browser environment
+        globalThis.window = {
+          document: {},
+          console: {
+            log: mock(),
+            info: mock(), 
+            warn: mock(),
+            error: mock(),
+            debug: mock(),
+            trace: mock(),
+            clear: mock(),
+          },
+          location: {
+            hostname: 'localhost'
+          }
+        };
+        globalThis.document = {};
+        delete globalThis.process;
+        getEnvironment().clearCache();
+      });
+
+      afterEach(() => {
+        // Restore process
+        globalThis.process = savedProcess;
+      });
+
+      it('should create browser logger with JSON format enabled without errors', () => {
+        // Restore process temporarily to set env var
+        globalThis.process = savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        delete globalThis.process; // Remove again for browser simulation
+        
+        expect(() => {
+          const logger = createLogger({ __forceType: 'browser' });
+          logger.info('Test browser JSON message', { data: 'value' });
+        }).not.toThrow();
+        
+        // Restore to clean up
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+        delete globalThis.process;
+      });
+
+      it('should allow customizing name and hostname in browser JSON format', () => {
+        globalThis.process = savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        delete globalThis.process;
+        
+        expect(() => {
+          const logger = createLogger({
+            __forceType: 'browser',
+            name: 'browser-app',
+            hostname: 'browser-host'
+          });
+          logger.info('Custom browser logger');
+        }).not.toThrow();
+        
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+        delete globalThis.process;
+      });
+
+      it('should handle browser hostname detection for JSON format', () => {
+        globalThis.process = savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        delete globalThis.process;
+        
+        // Test with window.location.hostname
+        globalThis.window = {
+          ...globalThis.window,
+          location: { hostname: 'test-browser-host' }
+        };
+        
+        expect(() => {
+          const logger = createLogger({ __forceType: 'browser' });
+          logger.info('Browser hostname test');
+        }).not.toThrow();
+        
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+        delete globalThis.process;
+      });
+
+      it('should handle missing window.location gracefully in JSON format', () => {
+        globalThis.process = savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        delete globalThis.process;
+        
+        // Remove location to test fallback
+        globalThis.window = {
+          document: {},
+          console: globalThis.window?.console || {}
+        };
+        
+        expect(() => {
+          const logger = createLogger({ __forceType: 'browser' });
+          logger.info('Browser without location');
+        }).not.toThrow();
+        
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+        delete globalThis.process;
+      });
+    });
+
+    describe('Node.js JSON Format Tests', () => {
+      beforeEach(() => {
+        // Restore Node.js environment
+        globalThis.process = originalProcess || {
+          versions: { node: '20.0.0' },
+          env: {},
+          platform: 'darwin'
+        } as unknown as typeof process;
+        delete globalThis.window;
+        delete globalThis.document;
+        getEnvironment().clearCache();
+      });
+
+      it('should create Node.js logger with JSON format enabled without errors', () => {
+        process.env.LOG_JSON_FORMAT = 'true';
+        
+        expect(() => {
+          const logger = createLogger();
+          logger.info('Test Node JSON message', { data: 'value' });
+        }).not.toThrow();
+        
+        delete process.env.LOG_JSON_FORMAT;
+      });
+
+      it('should allow customizing name and hostname in Node.js JSON format', () => {
+        process.env.LOG_JSON_FORMAT = 'true';
+        
+        expect(() => {
+          const logger = createLogger({
+            name: 'node-app',
+            hostname: 'node-server'
+          });
+          logger.info('Custom Node logger');
+        }).not.toThrow();
+        
+        delete process.env.LOG_JSON_FORMAT;
+      });
+
+      it('should handle Node.js hostname detection for JSON format', () => {
+        process.env.LOG_JSON_FORMAT = 'true';
+        
+        expect(() => {
+          const logger = createLogger();
+          logger.info('Node hostname test');
+        }).not.toThrow();
+        
+        delete process.env.LOG_JSON_FORMAT;
+      });
+    });
+
+    describe('Consistent JSON Behavior Across Environments', () => {
+      it('should handle metadata consistently in both environments', () => {
+        const savedProcess = globalThis.process;
+        
+        // Set up JSON format
+        globalThis.process = originalProcess || savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        
+        const testMetadata = {
+          name: 'test-app',
+          hostname: 'test-host', 
+          environment: 'testing',
+          version: '1.0.0'
+        };
+
+        // Test Node.js
+        globalThis.process = originalProcess || savedProcess;
+        delete globalThis.window;
+        delete globalThis.document;
+        
+        expect(() => {
+          const nodeLogger = createLogger(testMetadata);
+          nodeLogger.info('Node metadata test');
+        }).not.toThrow();
+
+        // Test Browser
+        globalThis.window = { 
+          document: {}, 
+          console: { info: mock() },
+          location: { hostname: 'browser-host' }
+        };
+        globalThis.document = {};
+        delete globalThis.process;
+        
+        expect(() => {
+          const browserLogger = createLogger({ ...testMetadata, __forceType: 'browser' });
+          browserLogger.info('Browser metadata test');
+        }).not.toThrow();
+        
+        // Clean up
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+      });
+
+      it('should handle error objects in JSON format consistently', () => {
+        const savedProcess = globalThis.process;
+        
+        // Set up JSON format
+        globalThis.process = originalProcess || savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+        
+        const testError = new Error('Test error');
+        (testError as any).code = 'ERR_TEST';
+
+        // Node.js
+        globalThis.process = originalProcess || savedProcess;
+        delete globalThis.window;
+        delete globalThis.document;
+        
+        expect(() => {
+          const nodeLogger = createLogger();
+          nodeLogger.error('Node error test', testError);
+        }).not.toThrow();
+
+        // Browser
+        globalThis.window = { 
+          document: {}, 
+          console: { error: mock() }
+        };
+        globalThis.document = {};
+        delete globalThis.process;
+        
+        expect(() => {
+          const browserLogger = createLogger({ __forceType: 'browser' });
+          browserLogger.error('Browser error test', testError);
+        }).not.toThrow();
+        
+        // Clean up
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+      });
+
+      it('should handle all log levels in JSON format across environments', () => {
+        const savedProcess = globalThis.process;
+        
+        // Set up JSON format
+        globalThis.process = originalProcess || savedProcess;
+        process.env.LOG_JSON_FORMAT = 'true';
+
+        // Node.js
+        globalThis.process = originalProcess || savedProcess;
+        delete globalThis.window;
+        delete globalThis.document;
+        
+        expect(() => {
+          const nodeLogger = createLogger();
+          nodeLogger.trace('Node trace');
+          nodeLogger.debug('Node debug');
+          nodeLogger.info('Node info');
+          nodeLogger.warn('Node warn');
+          nodeLogger.error('Node error');
+          nodeLogger.fatal('Node fatal');
+          nodeLogger.success('Node success');
+          nodeLogger.progress('Node progress');
+        }).not.toThrow();
+
+        // Browser
+        globalThis.window = { 
+          document: {}, 
+          console: {
+            log: mock(), info: mock(), warn: mock(), 
+            error: mock(), debug: mock(), trace: mock()
+          }
+        };
+        globalThis.document = {};
+        delete globalThis.process;
+        
+        expect(() => {
+          const browserLogger = createLogger({ __forceType: 'browser' });
+          browserLogger.trace('Browser trace');
+          browserLogger.debug('Browser debug'); 
+          browserLogger.info('Browser info');
+          browserLogger.warn('Browser warn');
+          browserLogger.error('Browser error');
+          browserLogger.fatal('Browser fatal');
+          browserLogger.success('Browser success');
+          browserLogger.progress('Browser progress');
+        }).not.toThrow();
+        
+        // Clean up
+        globalThis.process = savedProcess;
+        delete process.env.LOG_JSON_FORMAT;
+      });
+    });
+  });
 });

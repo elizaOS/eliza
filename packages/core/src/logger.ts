@@ -331,6 +331,32 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   delete (metaBase as any).namespace;
   delete (metaBase as any).namespaces;
 
+  // Add required fields for JSON format if not provided
+  if (raw) {
+    // Only add defaults if user hasn't provided them
+    if (!metaBase.name) {
+      metaBase.name = 'elizaos';
+    }
+    if (!metaBase.hostname) {
+      // Get hostname in a way that works in both Node and browser
+      let hostname = 'unknown';
+      if (typeof process !== 'undefined' && process.platform) {
+        // Node.js environment
+        try {
+          const os = require('os');
+          hostname = os.hostname();
+        } catch {
+          // Fallback if os module not available
+          hostname = 'localhost';
+        }
+      } else if (typeof window !== 'undefined' && window.location) {
+        // Browser environment
+        hostname = window.location.hostname || 'browser';
+      }
+      metaBase.hostname = hostname;
+    }
+  }
+
   // This ensures the sealed logger inherits the correct log level and styling
   const globalConfig = {
     activeLevel: getAdzeActiveLevel(),

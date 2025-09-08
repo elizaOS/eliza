@@ -19,12 +19,12 @@ export interface TrajectoryStep {
 
   /** Step content based on type */
   content:
-    | string
-    | {
-        name: string;
-        parameters: Record<string, any>;
-      }
-    | any;
+  | string
+  | {
+    name: string;
+    parameters: Record<string, any>;
+  }
+  | any;
 }
 
 export interface ReconstructedTrajectory {
@@ -134,19 +134,33 @@ export class TrajectoryReconstructor {
 
     console.log(`🔍 [TrajectoryReconstructor] ===== MEMORY ANALYSIS END =====\n`);
 
-    // Use same filtering as the working evaluator
+    // Use same filtering as the working evaluator for action_result memories
     const actionMemories = memories.filter(
       (mem) =>
         mem && typeof mem.content === 'object' && (mem.content as any)?.type === 'action_result'
     );
 
-    // Reconstruct trajectory steps from action memories
-    const steps: TrajectoryStep[] = [];
-    const runIds = new Set<UUID>();
+    // NEW: Also handle message memories for conversation scenarios
+    const messageMemories = memories.filter(
+      (mem) =>
+        mem && typeof mem.content === 'object' &&
+        (
+          (mem.content as any)?.type === 'agent' ||
+          (mem.content as any)?.type === 'user' ||
+          // Handle memories without explicit type but with thought/actions (agent responses)
+          ((mem.content as any)?.thought && (mem.content as any)?.actions) ||
+          // Handle user messages (scenario messages)
+          ((mem.content as any)?.source === 'scenario_message')
+        )
+    );
 
     console.log(
-      `🎯 [TrajectoryReconstructor] Processing ${actionMemories.length} action memories...`
+      `🎯 [TrajectoryReconstructor] Processing ${actionMemories.length} action memories and ${messageMemories.length} message memories...`
     );
+
+    // Reconstruct trajectory steps from both action and message memories
+    const steps: TrajectoryStep[] = [];
+    const runIds = new Set<UUID>();
 
     // Process action memories to build trajectory (using EXACT same approach as working evaluator)
     for (const memory of actionMemories) {
@@ -219,6 +233,47 @@ export class TrajectoryReconstructor {
       };
       steps.push(observationStep);
       console.log(`   👁️ Created observation step:`, JSON.stringify(observationStep, null, 2));
+    }
+
+    // NEW: Process message memories for conversation scenarios
+    console.log(`\n💬 [TrajectoryReconstructor] Processing ${messageMemories.length} message memories...`);
+    for (const memory of messageMemories) {
+      const content = memory.content as any;
+      const timestamp = new Date(memory.createdAt || Date.now()).toISOString();
+
+      console.log(`\n🔄 Processing message memory ${memory.id}...`);
+      console.log(`   type: ${content?.type}`);
+      console.log(`   text: ${content?.text?.substring(0, 100)}...`);
+      console.log(`   source: ${content?.source}`);
+      console.log(`   thought: ${content?.thought ? 'present' : 'absent'}`);
+      console.log(`   Content Type: ${typeof content}`);
+      console.log(`   Content Keys: ${Object.keys(content || {}).join(', ')}`);
+      console.log(`   Full Content: ${JSON.stringify(content, null, 2)}`);
+
+      // Determine if this is an agent message or user message
+      const isAgentMessage = content?.type === 'agent' || (content?.thought && content?.actions);
+
+      // Create thought step from agent messages
+      if (isAgentMessage && content?.thought) {
+        const thoughtStep: TrajectoryStep = {
+          type: 'thought',
+          timestamp,
+          content: content.thought,
+        };
+        steps.push(thoughtStep);
+        console.log(`   💭 Created thought step from agent message:`, JSON.stringify(thoughtStep, null, 2));
+      }
+
+      // Create observation step from message content
+      const messageContent = content?.text || content?.content || 'No content';
+      const messageType = isAgentMessage ? 'Agent' : 'User';
+      const observationStep: TrajectoryStep = {
+        type: 'observation',
+        timestamp,
+        content: `${messageType} message: ${messageContent}`,
+      };
+      steps.push(observationStep);
+      console.log(`   👁️ Created observation step from message:`, JSON.stringify(observationStep, null, 2));
     }
 
     // Sort all steps by timestamp (ISO string comparison)

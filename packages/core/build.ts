@@ -93,7 +93,7 @@ async function buildBrowser() {
  * Build for both targets
  */
 async function buildAll() {
-  console.log('🚀 Starting dual build process for @elizaos/core\n');
+  console.log('🚀 Starting dual build process for @elizaos/core');
   const totalStart = Date.now();
 
   try {

@@ -1,6 +1,12 @@
 name: Enhanced Evaluation Demo
 description: Demonstrates the new structured JSON output from evaluators
-
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
 character:
   name: test-agent
   bio: A simple test agent for demonstration

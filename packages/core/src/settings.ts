@@ -35,22 +35,55 @@ export function createSettingFromConfig(configSetting: Omit<Setting, 'value'>): 
   };
 }
 
+// Cache for salt value with TTL
+interface SaltCache {
+  value: string;
+  timestamp: number;
+}
+
+let saltCache: SaltCache | null = null;
+let saltErrorLogged = false;
+const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+
 /**
- * Retrieves the salt based on env variable SECRET_SALT
+ * Gets the salt for the agent.
  *
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
+  // Check if cached value exists and is still valid
+  if (saltCache !== null) {
+    const now = Date.now();
+    if (now - saltCache.timestamp < SALT_CACHE_TTL_MS) {
+      return saltCache.value;
+    }
+  }
+
   const secretSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
 
-  if (secretSalt === 'secretsalt') {
-    logger.error('SECRET_SALT is not set or using default value');
+  if (secretSalt === 'secretsalt' && !saltErrorLogged) {
+    logger.warn('SECRET_SALT is not set or using default value');
+    saltErrorLogged = true;
   }
 
   const salt = secretSalt;
 
+  // Cache the salt with current timestamp
+  saltCache = {
+    value: salt,
+    timestamp: Date.now(),
+  };
+
   //logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
   return salt;
+}
+
+/**
+ * Clears the salt cache - useful for tests or when environment changes
+ */
+export function clearSaltCache(): void {
+  saltCache = null;
+  saltErrorLogged = false;
 }
 
 /**

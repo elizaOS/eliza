@@ -10,7 +10,7 @@ import fs from 'node:fs/promises';
 
 // Custom pre-build step to copy templates and generate version
 async function preBuild() {
-  console.log('\nRunning pre-build tasks in parallel...');
+  console.log('\nPre-build tasks...');
   const start = performance.now();
 
   // Run both pre-build tasks in parallel
@@ -38,7 +38,7 @@ async function preBuild() {
   ]);
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-  console.log(`✅ Pre-build tasks completed in parallel (${elapsed}s)`);
+  console.log(`✅ Pre-build tasks completed (${elapsed}s)`);
 }
 
 // Create and run the standardized build runner
@@ -65,7 +65,7 @@ const run = createBuildRunner({
   },
   onBuildComplete: async (success) => {
     if (success) {
-      console.log('\nRunning post-build tasks in parallel...');
+      console.log('\nPost-build tasks...');
       const postBuildStart = performance.now();
       
       // Prepare all post-build tasks
@@ -113,7 +113,7 @@ export default { version: '0.0.0', name: '@elizaos/cli', description: 'elizaOS C
       await Promise.all(postBuildTasks);
       
       const postBuildElapsed = ((performance.now() - postBuildStart) / 1000).toFixed(2);
-      console.log(`✅ Post-build tasks completed in parallel (${postBuildElapsed}s)`);
+      console.log(`✅ Post-build tasks completed (${postBuildElapsed}s)`);
     }
   },
 });

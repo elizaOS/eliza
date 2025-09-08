@@ -36,6 +36,10 @@ export interface WatcherConfig {
   depth: number;
   usePolling: boolean;
   interval: number;
+  awaitWriteFinish?: {
+    stabilityThreshold: number;
+    pollInterval: number;
+  };
 }
 
 /**

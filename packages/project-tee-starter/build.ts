@@ -16,14 +16,14 @@ async function cleanBuild(outdir = 'dist') {
 
 async function build() {
   const start = performance.now();
-  console.log('🚀 Building TEE project...\n');
+  console.log('🚀 Building TEE project...');
 
   try {
     // Clean previous build
     await cleanBuild('dist');
 
     // Run JavaScript build and TypeScript declarations in parallel
-    console.log('Starting parallel build tasks...');
+    console.log('Starting build tasks...');
     
     const [buildResult, tscResult] = await Promise.all([
       // Task 1: Build with Bun
@@ -85,7 +85,7 @@ async function build() {
     }
 
     const elapsed = ((performance.now() - start) / 1000).toFixed(2);
-    console.log(`\n✅ Build complete! (${elapsed}s)\n`);
+    console.log(`✅ Build complete! (${elapsed}s)`);
     return true;
   } catch (error) {
     console.error('Build error:', error);

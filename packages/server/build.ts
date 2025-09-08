@@ -35,12 +35,12 @@ const run = createBuildRunner({
   onBuildComplete: async (success) => {
     if (success) {
       // Prepare asset copy tasks
-      const copyTasks = [];
+      const copyTasks: Promise<void>[] = [];
       const clientDistPath = join(process.cwd(), '../client/dist');
       
       // Check if client assets exist and add to copy tasks
       if (existsSync(clientDistPath)) {
-        console.log('\nPreparing to copy client assets...');
+        console.log('\nCopying client assets...');
         copyTasks.push(
           copyAssets([{ from: clientDistPath, to: './dist/client' }])
             .then(() => console.log('✓ Client assets copied'))
@@ -49,7 +49,7 @@ const run = createBuildRunner({
 
       // Check if static assets exist and add to copy tasks
       if (existsSync('./public')) {
-        console.log('Preparing to copy static assets...');
+        console.log('Copying static assets...');
         copyTasks.push(
           copyAssets([{ from: './public', to: './dist/public' }])
             .then(() => console.log('✓ Static assets copied'))

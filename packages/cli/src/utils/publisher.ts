@@ -28,6 +28,7 @@ interface PackageJson {
   platform?: 'node' | 'browser' | 'universal';
   packageType?: 'plugin' | 'project';
   type?: string; // 'module' or 'commonjs' for Node.js module format
+  npmPackage?: string;
 }
 
 /**
@@ -376,8 +377,8 @@ export async function publishToGitHub(
   // Update package metadata
   const packageName = packageJson.name.replace(/^@[^/]+\//, '');
 
-  // Use the actual npm package name from package.json (not @elizaos/ prefix)
-  const registryPackageName = packageJson.name;
+  // Use the actual npm package name from package.json (scoped)
+  const registryPackageName = packageJson.npmPackage || packageJson.name;
 
   if (!isTest) {
     // Update index.json with simple mapping: npm package name -> github repo
