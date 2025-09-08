@@ -84,6 +84,51 @@ const ExecutionTimeEvaluationSchema = BaseEvaluationSchema.extend({
   target_duration_ms: z.number().optional(),
 });
 
+// NEW: Conversation-specific evaluation schemas
+const ConversationLengthEvaluationSchema = BaseEvaluationSchema.extend({
+  type: z.literal('conversation_length'),
+  min_turns: z.number().int().min(1).optional(),
+  max_turns: z.number().int().min(1).optional(),
+  optimal_turns: z.number().int().min(1).optional(),
+  target_range: z
+    .array(z.number().int())
+    .length(2)
+    .optional()
+    .refine(
+      (arr) => !arr || arr[0] < arr[1],
+      { message: 'target_range: first value (min) must be less than second value (max)' }
+    ),
+});
+
+const ConversationFlowEvaluationSchema = BaseEvaluationSchema.extend({
+  type: z.literal('conversation_flow'),
+  required_patterns: z.array(z.enum([
+    'question_then_answer',
+    'problem_then_solution',
+    'clarification_cycle',
+    'empathy_then_solution',
+    'escalation_pattern'
+  ])),
+  flow_quality_threshold: z.number().min(0).max(1).optional().default(0.7),
+});
+
+const UserSatisfactionEvaluationSchema = BaseEvaluationSchema.extend({
+  type: z.literal('user_satisfaction'),
+  satisfaction_threshold: z.number().min(0).max(1).optional().default(0.7),
+  indicators: z.object({
+    positive: z.array(z.string()).optional(),
+    negative: z.array(z.string()).optional(),
+  }).optional(),
+  measurement_method: z.enum(['sentiment_analysis', 'keyword_analysis', 'llm_judge']).optional().default('llm_judge'),
+});
+
+const ContextRetentionEvaluationSchema = BaseEvaluationSchema.extend({
+  type: z.literal('context_retention'),
+  test_memory_of: z.array(z.string()),
+  retention_turns: z.number().int().min(1).optional().default(3),
+  memory_accuracy_threshold: z.number().min(0).max(1).optional().default(0.8),
+});
+
 export const EvaluationSchema = z.discriminatedUnion('type', [
   StringContainsEvaluationSchema,
   RegexMatchEvaluationSchema,
@@ -91,6 +136,11 @@ export const EvaluationSchema = z.discriminatedUnion('type', [
   TrajectoryContainsActionSchema,
   LLMJudgeEvaluationSchema,
   ExecutionTimeEvaluationSchema,
+  // NEW conversation evaluators
+  ConversationLengthEvaluationSchema,
+  ConversationFlowEvaluationSchema,
+  UserSatisfactionEvaluationSchema,
+  ContextRetentionEvaluationSchema,
 ]);
 
 const MockSchema = z.object({
@@ -150,12 +200,61 @@ const SetupSchema = z.object({
   virtual_fs: z.record(z.string()).optional(),
 });
 
+// NEW: Conversation configuration schema
+const ConversationConfigSchema = z.object({
+  max_turns: z.number().int().min(2).max(20),
+  timeout_per_turn_ms: z.number().int().min(1000).optional().default(30000),
+  total_timeout_ms: z.number().int().min(10000).optional().default(300000),
+
+  user_simulator: z.object({
+    model_type: z.string().optional().default('TEXT_LARGE'),
+    temperature: z.number().min(0).max(2).optional().default(0.7),
+    max_tokens: z.number().int().min(50).max(500).optional().default(200),
+    persona: z.string(),
+    objective: z.string(),
+    style: z.string().optional(),
+    constraints: z.array(z.string()).optional().default([]),
+    emotional_state: z.string().optional(),
+    knowledge_level: z.enum(['beginner', 'intermediate', 'expert']).optional().default('intermediate'),
+  }),
+
+  termination_conditions: z.array(z.object({
+    type: z.enum([
+      'max_turns_reached',
+      'user_expresses_satisfaction',
+      'agent_provides_solution',
+      'conversation_stuck',
+      'escalation_needed',
+      'goal_achieved',
+      'custom_condition'
+    ]),
+    description: z.string().optional(),
+    keywords: z.array(z.string()).optional(),
+    llm_judge: z.object({
+      prompt: z.string(),
+      threshold: z.number().min(0).max(1).optional().default(0.8)
+    }).optional()
+  })).optional().default([]),
+
+  turn_evaluations: z.array(EvaluationSchema).optional().default([]),
+  final_evaluations: z.array(EvaluationSchema).optional().default([]),
+
+  debug_options: z.object({
+    log_user_simulation: z.boolean().optional().default(false),
+    log_turn_decisions: z.boolean().optional().default(false),
+    export_full_transcript: z.boolean().optional().default(true),
+  }).optional().default({})
+});
+
 const RunStepSchema = z.object({
   name: z.string().optional(),
   lang: z.string().optional(),
   code: z.string().optional(),
   input: z.string().optional(), // Natural language input to agent
   evaluations: z.array(EvaluationSchema),
+
+  // NEW: Optional conversation configuration
+  conversation: ConversationConfigSchema.optional(),
 });
 
 const JudgmentSchema = z.object({
@@ -193,12 +292,12 @@ export interface TrajectoryStep {
 
   /** Step content based on type */
   content:
-    | string
-    | {
-        name: string;
-        parameters: Record<string, any>;
-      }
-    | any;
+  | string
+  | {
+    name: string;
+    parameters: Record<string, any>;
+  }
+  | any;
 }
 
 /**

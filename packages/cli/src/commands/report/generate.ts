@@ -231,7 +231,7 @@ async function generateOrganizedReports(
 
   // Use custom output path or default to scenario logs subfolder
   const baseOutputDir =
-    customOutputPath || join(process.cwd(), 'packages/cli/src/commands/scenario/_logs_');
+    customOutputPath || join(__dirname, '..', 'scenario', '_logs_');
   const runDir = join(baseOutputDir, runId);
 
   // Ensure run directory exists
@@ -344,16 +344,15 @@ function createRunSummary(runId: string, reportData: ReportData): string {
 - **Common Trajectory Patterns**: ${reportData.common_trajectories.length}
 
 ## Analysis Summary
-${
-  reportData.summary_stats.total_runs > 0
-    ? `
+${reportData.summary_stats.total_runs > 0
+      ? `
 - **Total Test Cases**: ${reportData.summary_stats.total_runs}
 - **Successful Runs**: ${Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
 - **Failed Runs**: ${reportData.summary_stats.total_runs - Math.round(reportData.summary_stats.total_runs * reportData.summary_stats.overall_success_rate)}
 - **Average Duration**: ${reportData.summary_stats.average_execution_time.toFixed(2)} seconds
 `
-    : 'No run data available.'
-}
+      : 'No run data available.'
+    }
 
 ## Usage
 - Open \`report.html\` in a web browser for interactive viewing
@@ -361,16 +360,15 @@ ${
 - Print or share \`report.pdf\` for formal reports
 
 ## Matrix Parameters
-${
-  Object.keys(reportData.results_by_parameter).length > 0
-    ? Object.keys(reportData.results_by_parameter)
+${Object.keys(reportData.results_by_parameter).length > 0
+      ? Object.keys(reportData.results_by_parameter)
         .map(
           (param) =>
             `- **${param}**: ${Object.keys(reportData.results_by_parameter[param]).length} variations`
         )
         .join('\n')
-    : 'No parameter variations detected.'
-}
+      : 'No parameter variations detected.'
+    }
 `;
 }
 
@@ -643,21 +641,16 @@ async function generateJsonReport(reportData: ReportData, outputPath: string): P
 async function generateHtmlReport(reportData: ReportData, outputPath: string): Promise<void> {
   // Load the HTML template - try built path first, then source path for development
   const builtTemplatePath = join(
-    process.cwd(),
-    'packages',
-    'cli',
-    'dist',
-    'src',
-    'commands',
-    'report',
+    __dirname,
     'src',
     'assets',
     'report_template.html'
   );
   const sourceTemplatePath = join(
-    process.cwd(),
-    'packages',
-    'cli',
+    __dirname,
+    '..',
+    '..',
+    '..',
     'src',
     'commands',
     'report',
@@ -681,13 +674,33 @@ async function generateHtmlReport(reportData: ReportData, outputPath: string): P
     const templateContent = await fs.readFile(templatePath, 'utf-8');
 
     // Inject the real data into the template
+    const dataIslandStart = templateContent.indexOf('<script id="report-data" type="application/json">');
+    if (dataIslandStart !== -1) {
+      const dataIslandEnd = templateContent.indexOf('</script>', dataIslandStart);
+      if (dataIslandEnd !== -1) {
+        const dataIslandContent = templateContent.substring(dataIslandStart, dataIslandEnd + 8);
+
+        // Replace the entire data island
+        const htmlReport = templateContent.replace(
+          dataIslandContent,
+          `<script id="report-data" type="application/json">\n  ${JSON.stringify(reportData, null, 2)}\n</script>`
+        );
+
+        // Write the complete HTML report
+        await fs.writeFile(outputPath, htmlReport, 'utf-8');
+        return;
+      }
+    }
+
+    // Fallback to regex approach if exact match fails
     const htmlReport = templateContent.replace(
-      '<script id="report-data" type="application/json">\n        {}\n    </script>',
-      `<script id="report-data" type="application/json">\n        ${JSON.stringify(reportData, null, 2)}\n    </script>`
+      /<script id="report-data" type="application\/json">[\s\S]*?<\/script>/,
+      `<script id="report-data" type="application/json">\n  ${JSON.stringify(reportData, null, 2)}\n</script>`
     );
 
     // Write the complete HTML report
     await fs.writeFile(outputPath, htmlReport, 'utf-8');
+
   } catch (error) {
     throw new Error(
       `Failed to generate HTML report: ${(error as Error).message}. Make sure the HTML template exists at ${templatePath}`
@@ -705,21 +718,16 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
     // First generate the HTML content (same as HTML report)
     // Try built path first, then source path for development
     const builtTemplatePath = join(
-      process.cwd(),
-      'packages',
-      'cli',
-      'dist',
-      'src',
-      'commands',
-      'report',
+      __dirname,
       'src',
       'assets',
       'report_template.html'
     );
     const sourceTemplatePath = join(
-      process.cwd(),
-      'packages',
-      'cli',
+      __dirname,
+      '..',
+      '..',
+      '..',
       'src',
       'commands',
       'report',
@@ -742,8 +750,8 @@ async function generatePdfReport(reportData: ReportData, outputPath: string): Pr
 
     // Inject the real data into the template
     const htmlContent = templateContent.replace(
-      '<script id="report-data" type="application/json">\n        {}\n    </script>',
-      `<script id="report-data" type="application/json">\n        ${JSON.stringify(reportData, null, 2)}\n    </script>`
+      /<script id="report-data" type="application\/json">\s*\{\s*<\/script>/s,
+      `<script id="report-data" type="application/json">\n  ${JSON.stringify(reportData, null, 2)}\n</script>`
     );
 
     console.log('🔄 Converting HTML to PDF using Puppeteer...');

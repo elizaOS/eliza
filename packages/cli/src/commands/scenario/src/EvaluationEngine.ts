@@ -3,6 +3,12 @@ import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema } from './schema';
 import { z } from 'zod';
 import type { ObjectGenerationParams } from '@elizaos/core';
+import {
+  ConversationLengthEvaluator,
+  ConversationFlowEvaluator,
+  UserSatisfactionEvaluator,
+  ContextRetentionEvaluator
+} from './ConversationEvaluators';
 
 export interface EvaluationResult {
   success: boolean;
@@ -28,6 +34,12 @@ export class EvaluationEngine {
     this.register('trajectory_contains_action', new TrajectoryContainsActionEvaluator());
     this.register('llm_judge', new LLMJudgeEvaluator());
     this.register('execution_time', new ExecutionTimeEvaluator());
+
+    // NEW: Register conversation evaluators
+    this.register('conversation_length', new ConversationLengthEvaluator());
+    this.register('conversation_flow', new ConversationFlowEvaluator());
+    this.register('user_satisfaction', new UserSatisfactionEvaluator());
+    this.register('context_retention', new ContextRetentionEvaluator());
   }
 
   private register(type: string, evaluator: Evaluator) {
@@ -160,6 +172,10 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
     const actionName = params.action;
 
     try {
+      // Wait for action memories to be written to database (prevents race condition)
+      console.log(`🔧 [TrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       // Get action memories from database
       const actionMemories = await runtime.getMemories({
         tableName: 'messages',
@@ -168,19 +184,34 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
         unique: false,
       });
 
-      // Filter for action_result memories
-      const actionResults = actionMemories.filter(
-        (mem) => mem && typeof mem.content === 'object' && mem.content?.type === 'action_result'
-      );
+      // Filter for action_result memories - look for both content.type and metadata.type
+      const actionResults = actionMemories.filter((mem) => {
+        if (!mem || typeof mem.content !== 'object') return false;
+
+        const contentType = mem.content?.type;
+        const metadataType = mem.metadata?.type;
+        const hasActionName = (mem.content as any)?.actionName || (mem.metadata as any)?.actionName;
+
+        return (
+          contentType === 'action_result' ||
+          metadataType === 'action_result' ||
+          (contentType === 'agent' && hasActionName) // Also check agent messages with action names
+        );
+      });
+
       // Normalize function to compare action names robustly (case/underscore insensitive)
       const normalize = (name: string | undefined): string =>
         (typeof name === 'string' ? name : '').toLowerCase().replace(/_/g, '');
       const target = normalize(actionName);
 
-      // Check if any action matches the specified name (normalized)
+      // Check if any action matches the specified name (normalized) - check both content and metadata
       const matchingAction = actionResults.find((mem) => {
-        const actionName = (mem.content as any)?.actionName;
-        return normalize(typeof actionName === 'string' ? actionName : '') === target;
+        const contentActionName = (mem.content as any)?.actionName;
+        const metadataActionName = (mem.metadata as any)?.actionName;
+        const contentNormalized = normalize(contentActionName);
+        const metadataNormalized = normalize(metadataActionName);
+
+        return contentNormalized === target || metadataNormalized === target;
       });
 
       if (!matchingAction) {
@@ -227,8 +258,7 @@ class LLMJudgeEvaluator implements Evaluator {
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
-    let modelType =
-      candidateModels.find((m) => (runtime as any).getModel?.(m)) ?? ModelType.TEXT_LARGE;
+    let modelType = ModelType.TEXT_LARGE;
 
     // Create a simple, clear prompt for object generation
     const fullPrompt = `
@@ -252,12 +282,17 @@ Do not use any other field names. Use only the exact field names specified above
 
     try {
       // Check if the picked model is available; if not, return gracefully
-      // const availableModels = (runtime as any).models; // unused
-      // const modelKeys =
-      //   availableModels && typeof availableModels.keys === 'function'
-      //     ? Array.from(availableModels.keys())
-      //     : Object.keys(availableModels || {});
-      const modelHandler = (runtime as any).getModel(modelType);
+      const availableModels = (runtime as any).models; // unused
+      const modelKeys =
+        availableModels && typeof availableModels.keys === 'function'
+          ? Array.from(availableModels.keys())
+          : Object.keys(availableModels || {});
+      console.log(`🔍 [LLMJudgeEvaluator] Available models: ${JSON.stringify(availableModels)}`);
+      console.log(`🔍 [LLMJudgeEvaluator] Model keys: ${JSON.stringify(modelKeys)}`);
+      const modelHandler = runtime.getModel(modelType);
+      console.log(`🔍 [LLMJudgeEvaluator] Model handler: ${JSON.stringify(modelHandler)}`);
+      console.log(`🔍 [LLMJudgeEvaluator] Model type: ${modelType}`);
+      console.log(`🔍 [LLMJudgeEvaluator] Candidate models: ${candidateModels.join(', ')}`);
       if (!modelHandler) {
         return {
           success: false,

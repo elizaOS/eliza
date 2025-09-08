@@ -127,7 +127,7 @@ print(json.dumps(files))
           this.server,
           this.agentId,
           step.input,
-          30000, // timeout
+          90000, // timeout
           this.serverPort // Pass the actual server port
         );
 

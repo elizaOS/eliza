@@ -183,3 +183,4 @@ bun.lock
 tsconfig.tsbuildinfo
 
 test-data/
+standalone.ts

@@ -98,12 +98,7 @@ export const scenario = new Command()
         // Create unique scenario run identifier
         const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const logsDir = path.join(
-          process.cwd(),
-          'packages',
-          'cli',
-          'src',
-          'commands',
-          'scenario',
+          __dirname,
           '_logs_'
         );
 
@@ -166,7 +161,6 @@ export const scenario = new Command()
           const defaultPlugins = [
             '@elizaos/plugin-sql',
             '@elizaos/plugin-bootstrap',
-            '@elizaos/plugin-e2b',
             '@elizaos/plugin-openai',
           ];
           // Ensure PGLite uses isolated directory per scenario run when not overridden
@@ -177,8 +171,8 @@ export const scenario = new Command()
           // Extract plugin names from scenario configuration, filtering by enabled status
           const scenarioPlugins = Array.isArray((scenario as any).plugins)
             ? (scenario as any).plugins
-                .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-                .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+              .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+              .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
           logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
@@ -381,9 +375,31 @@ export const scenario = new Command()
                 files: {}, // Add required files property
               };
 
+              // Convert legacy evaluation results to enhanced format for data aggregator
+              const enhancedEvaluationResults = allEvaluationResults.map(result => {
+                // If the result has _enhanced field, use that (enhanced format)
+                if (result._enhanced) {
+                  return result._enhanced;
+                }
+                // If the result already has the enhanced format structure, use it directly
+                if (result.evaluator_type && result.summary && result.details) {
+                  return result;
+                }
+                // Otherwise, create a basic enhanced format from legacy
+                return {
+                  evaluator_type: 'legacy',
+                  success: result.success || false,
+                  summary: result.message || 'Legacy evaluation result',
+                  details: {
+                    legacy_result: result,
+                    converted: true
+                  }
+                };
+              });
+
               const scenarioRunResult = await dataAggregator.buildResult(
                 roomId,
-                allEvaluationResults as any[], // Use actual evaluation results, not the definitions
+                enhancedEvaluationResults,
                 combinedExecutionResult
               );
 
@@ -451,12 +467,12 @@ export const scenario = new Command()
               }
               await runtime.close();
               logger.info('Runtime shutdown complete');
-            } catch {}
+            } catch { }
           }
           if (server && createdServer) {
             try {
               await shutdownScenarioServer(server, serverPort);
-            } catch {}
+            } catch { }
           }
 
           // Report final result and exit with appropriate code
@@ -786,12 +802,7 @@ export const scenario = new Command()
 
               // Create output directory with timestamp in scenario logs
               const logsDir = path.join(
-                process.cwd(),
-                'packages',
-                'cli',
-                'src',
-                'commands',
-                'scenario',
+                __dirname,
                 '_logs_'
               );
               const matrixRunId = generateRunFilename(1);

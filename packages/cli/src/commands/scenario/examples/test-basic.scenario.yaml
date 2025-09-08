@@ -4,6 +4,10 @@ description: 'Tests basic agent functionality without external plugins'
 plugins:
   - name: '@elizaos/plugin-bootstrap'
     enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
 
 environment:
   type: local
