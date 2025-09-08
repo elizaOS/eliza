@@ -201,3 +201,13 @@ If you use Eliza in your research, please cite our paper:
   year={2025}
 }
 ```
+
+## Contributors
+
+<a href="https://github.com/elizaos/eliza/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=elizaos/eliza" alt="Eliza project contributors" />
+</a>
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=elizaos/eliza&type=Date)](https://star-history.com/#elizaos/eliza&Date)
