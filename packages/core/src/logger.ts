@@ -78,14 +78,30 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,
   verbose: 10,
   debug: 20,
+  success: 27,
+  progress: 28,
+  log: 29,
   info: 30,
-  log: 30,
   warn: 40,
   error: 50,
   fatal: 60,
   alert: 60,
-  success: 30,
-  progress: 30,
+};
+
+/**
+ * Reverse mapping from numeric level to preferred level name
+ * When multiple level names have the same numeric value, we prioritize the most semantic one
+ */
+const LEVEL_TO_NAME: Record<number, string> = {
+  10: 'trace',    // prefer 'trace' over 'verbose'
+  20: 'debug',
+  27: 'success',
+  28: 'progress',
+  29: 'log',
+  30: 'info',
+  40: 'warn',
+  50: 'error',
+  60: 'fatal',    // prefer 'fatal' over 'alert'
 };
 
 /**
@@ -174,8 +190,8 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       return logs
         .map((entry) => {
           const timestamp = showTimestamps ? new Date(entry.time).toISOString() : '';
-          // Convert numeric level back to string
-          const levelStr = Object.keys(LOG_LEVEL_PRIORITY).find(key => LOG_LEVEL_PRIORITY[key] === entry.level) || 'info';
+          // Convert numeric level back to string using the reverse mapping
+          const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || 'info';
           return `${timestamp} ${levelStr} ${entry.msg}`.trim();
         })
         .join('\n');
