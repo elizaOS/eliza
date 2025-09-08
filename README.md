@@ -10,7 +10,7 @@
   <a href="https://www.npmjs.com/package/@elizaos/cli"><img src="https://img.shields.io/npm/v/@elizaos/cli?style=for-the-badge" alt="NPM Version"></a>
   <a href="https://docs.elizaos.ai/"><img src="https://img.shields.io/badge/Documentation-Read%20Docs-blue?style=for-the-badge" alt="Documentation"></a>
   <a href="https://github.com/elizaos/eliza/actions/workflows/ci.yaml"><img src="https://img.shields.io/github/actions/workflow/status/elizaos/eliza/ci.yaml?branch=main&style=for-the-badge" alt="CI Status"></a>
-  <a href="https://discord.gg/your-discord-link"><img src="https://img.shields.io/discord/your-server-id?style=for-the-badge&logo=discord" alt="Discord"></a>
+  <a href="https://discord.com/invite/ai16z"><img src="https://img.shields.io/discord/your-server-id?style=for-the-badge&logo=discord" alt="Discord"></a>
 </div>
 
 ## ✨ What is Eliza?
