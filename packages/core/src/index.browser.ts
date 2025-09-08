@@ -23,7 +23,7 @@ export * from './utils/buffer';
 export * from './actions';
 export * from './database';
 export * from './entities';
-export * from './logger';
+export * from './logger.browser';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
