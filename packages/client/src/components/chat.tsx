@@ -676,6 +676,47 @@ export default function Chat({
       updateChatState({ currentDmChannelId: agentDmChannels[0].id });
     }
   }, [agentDmChannels, isLoadingAgentDmChannels, updateChatState]);
+  
+  // Function to add channelId to URL
+  const addChannelIdToUrl = useCallback((channelId: UUID) => {
+    if (chatType === ChannelType.DM && contextId && channelId) {
+      const newPath = `/chat/${contextId}/${channelId}`;
+      if (window.location.pathname !== newPath) {
+        window.history.replaceState(null, '', newPath);
+      }
+    }
+  }, [chatType, contextId]);
+
+  // useEffect to listen for channelId switching and append id to URL
+  useEffect(() => {
+  if (chatState.currentDmChannelId) {
+    addChannelIdToUrl(chatState.currentDmChannelId);
+  }
+  }, [chatState.currentDmChannelId, addChannelIdToUrl]);
+
+  // useEffect to handle direct URL navigation with channelId (only runs once on mount)
+  useEffect(() => {
+    clientLogger.info('[Chat] URL navigation effect triggered', {
+      initialDmChannelId,
+      agentDmChannelsLength: agentDmChannels.length,
+      isLoadingAgentDmChannels,
+      currentDmChannelId: chatState.currentDmChannelId
+    });
+
+    if (initialDmChannelId && agentDmChannels.length > 0 && !isLoadingAgentDmChannels && !chatState.currentDmChannelId) {
+      // Check if the channel from URL exists in user's channels
+      const channelExists = agentDmChannels.some(ch => ch.id === initialDmChannelId);
+      if (channelExists) {
+        clientLogger.info('[Chat] Switching to channel from URL:', initialDmChannelId);
+        updateChatState({ currentDmChannelId: initialDmChannelId });
+      } else {
+        clientLogger.warn('[Chat] Channel from URL not found, staying with current channel', {
+          initialDmChannelId,
+          availableChannels: agentDmChannels.map(ch => ch.id)
+        });
+      }
+    }
+  }, [initialDmChannelId, agentDmChannels, isLoadingAgentDmChannels, updateChatState]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
