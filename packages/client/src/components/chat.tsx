@@ -647,8 +647,6 @@ export default function Chat({
     ) {
       handleNewDmChannel(targetAgentData.id);
       setShouldForceNew(false);
-
-      navigate(location.pathname, { replace: true });
     }
   }, [
     shouldForceNew,
