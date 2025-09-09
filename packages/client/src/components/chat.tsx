@@ -360,6 +360,7 @@ export default function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputDisabledRef = useRef<boolean>(false);
+  const hasHandledInitialUrl = useRef<boolean>(false);
   const chatTitleRef = useRef<string>('');
 
   // For DM, we need agent data. For GROUP, we need channel data
@@ -703,17 +704,19 @@ export default function Chat({
       currentDmChannelId: chatState.currentDmChannelId
     });
 
-    if (initialDmChannelId && agentDmChannels.length > 0 && !isLoadingAgentDmChannels && !chatState.currentDmChannelId) {
+    if (initialDmChannelId && agentDmChannels.length > 0 && !isLoadingAgentDmChannels && !hasHandledInitialUrl.current) {
       // Check if the channel from URL exists in user's channels
       const channelExists = agentDmChannels.some(ch => ch.id === initialDmChannelId);
       if (channelExists) {
         clientLogger.info('[Chat] Switching to channel from URL:', initialDmChannelId);
         updateChatState({ currentDmChannelId: initialDmChannelId });
+        hasHandledInitialUrl.current = true;
       } else {
         clientLogger.warn('[Chat] Channel from URL not found, staying with current channel', {
           initialDmChannelId,
           availableChannels: agentDmChannels.map(ch => ch.id)
         });
+        hasHandledInitialUrl.current = true;
       }
     }
   }, [initialDmChannelId, agentDmChannels, isLoadingAgentDmChannels, updateChatState]);
