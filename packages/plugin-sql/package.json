@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.5.8-alpha.19",
+  "version": "1.5.8-alpha.20",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
