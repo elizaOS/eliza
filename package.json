@@ -68,7 +68,6 @@
   "overrides": {
     "@nrwl/devkit": "19.8.4",
     "@nrwl/tao": "19.8.4",
-    "strip-ansi": "7.1.2",
     "color-convert": "2.0.1",
     "color-name": "1.1.4",
     "is-core-module": "2.13.1",
