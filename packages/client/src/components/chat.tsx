@@ -680,9 +680,9 @@ export default function Chat({
   
   // Function to add channelId to URL
   const addChannelIdToUrl = useCallback((channelId: UUID) => {
-    if (chatType === ChannelType.DM && contextId && channelId) {
+    if (chatType === ChannelType.DM && contextId && channelId && typeof window !== 'undefined') {
       const newPath = `/chat/${contextId}/${channelId}`;
-      if (window.location.pathname !== newPath) {
+      if (window.location.pathname !== newPath && window.history) {
         window.history.replaceState(null, '', newPath);
       }
     }
@@ -705,6 +705,14 @@ export default function Chat({
     });
 
     if (initialDmChannelId && agentDmChannels.length > 0 && !isLoadingAgentDmChannels && !hasHandledInitialUrl.current) {
+      // Validate the channel ID format first
+      const validChannelId = validateUuid(initialDmChannelId);
+      if (!validChannelId) {
+        clientLogger.warn('[Chat] Invalid channel ID format from URL:', initialDmChannelId);
+        hasHandledInitialUrl.current = true;
+        return;
+      }
+
       // Check if the channel from URL exists in user's channels
       const channelExists = agentDmChannels.some(ch => ch.id === initialDmChannelId);
       if (channelExists) {
