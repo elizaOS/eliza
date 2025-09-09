@@ -24,6 +24,7 @@ export * from './actions';
 export * from './database';
 export * from './entities';
 export * from './logger';
+export * from './sentry/instrument.node';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';

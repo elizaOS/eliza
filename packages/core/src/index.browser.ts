@@ -26,7 +26,7 @@ export * from './entities';
 export * from './logger.browser';
 export * from './prompts';
 export * from './roles';
-export * from './runtime';
+export * from './runtime.browser';
 export * from './settings';
 export * from './services';
 export * from './search';
