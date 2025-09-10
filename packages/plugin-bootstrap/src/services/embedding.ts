@@ -219,7 +219,7 @@ export class EmbeddingGenerationService extends Service {
             );
           } else {
             // Log embedding failure
-            await this.runtime.adapter.log({
+            await this.runtime.log({
               entityId: this.runtime.agentId,
               roomId: item.memory.roomId || this.runtime.agentId,
               type: 'embedding_event',
@@ -278,7 +278,7 @@ export class EmbeddingGenerationService extends Service {
         });
 
         // Log embedding completion
-        await this.runtime.adapter.log({
+        await this.runtime.log({
           entityId: this.runtime.agentId,
           roomId: memory.roomId || this.runtime.agentId,
           type: 'embedding_event',
