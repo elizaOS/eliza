@@ -14,6 +14,7 @@ interface EmbeddingQueueItem {
   retryCount: number;
   maxRetries: number;
   addedAt: number;
+  runId?: string;
 }
 
 /**
@@ -53,7 +54,7 @@ export class EmbeddingGenerationService extends Service {
   }
 
   private async handleEmbeddingRequest(payload: EmbeddingGenerationPayload): Promise<void> {
-    const { memory, priority = 'normal', retryCount = 0, maxRetries = 3 } = payload;
+    const { memory, priority = 'normal', retryCount = 0, maxRetries = 3, runId } = payload;
 
     // Skip if memory already has embeddings
     if (memory.embedding) {
@@ -76,6 +77,7 @@ export class EmbeddingGenerationService extends Service {
       retryCount,
       maxRetries,
       addedAt: Date.now(),
+      runId,
     };
 
     // Insert based on priority
@@ -216,6 +218,20 @@ export class EmbeddingGenerationService extends Service {
               `[EmbeddingService] Re-queued item for retry (${item.retryCount}/${item.maxRetries})`
             );
           } else {
+            // Log embedding failure
+            await this.runtime.adapter.log({
+              entityId: this.runtime.agentId,
+              roomId: item.memory.roomId || this.runtime.agentId,
+              type: 'embedding_event',
+              body: {
+                runId: item.runId,
+                memoryId: item.memory.id,
+                status: 'failed',
+                error: error instanceof Error ? error.message : String(error),
+                source: 'embeddingService',
+              },
+            });
+
             // Emit failure event
             await this.runtime.emitEvent(EventType.EMBEDDING_GENERATION_FAILED, {
               runtime: this.runtime,
@@ -259,6 +275,20 @@ export class EmbeddingGenerationService extends Service {
         await this.runtime.updateMemory({
           id: memory.id,
           embedding: embedding as number[],
+        });
+
+        // Log embedding completion
+        await this.runtime.adapter.log({
+          entityId: this.runtime.agentId,
+          roomId: memory.roomId || this.runtime.agentId,
+          type: 'embedding_event',
+          body: {
+            runId: item.runId,
+            memoryId: memory.id,
+            status: 'completed',
+            duration,
+            source: 'embeddingService',
+          },
         });
 
         // Emit completion event
