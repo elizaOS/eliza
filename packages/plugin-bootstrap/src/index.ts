@@ -1902,7 +1902,7 @@ const events = {
   ],
 
   [EventType.RUN_STARTED]: [
-    async (payload: any) => {
+    async (payload: RunEventPayload) => {
       try {
         await payload.runtime.adapter.log({
           entityId: payload.entityId,
@@ -1927,7 +1927,7 @@ const events = {
   ],
 
   [EventType.RUN_ENDED]: [
-    async (payload: any) => {
+    async (payload: RunEventPayload) => {
       try {
         await payload.runtime.adapter.log({
           entityId: payload.entityId,
@@ -1955,7 +1955,7 @@ const events = {
   ],
 
   [EventType.RUN_TIMEOUT]: [
-    async (payload: any) => {
+    async (payload: RunEventPayload) => {
       try {
         await payload.runtime.adapter.log({
           entityId: payload.entityId,

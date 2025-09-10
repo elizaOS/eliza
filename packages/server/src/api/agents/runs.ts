@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID, Log } from '@elizaos/core';
 import { validateUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -41,10 +41,30 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
             });
 
             // Group by runId and build run summaries
-            const runMap = new Map<string, any>();
+            type RunListItem = {
+                runId: string;
+                status: 'started' | 'completed' | 'timeout' | 'error';
+                startedAt: number | null;
+                endedAt: number | null;
+                durationMs: number | null;
+                messageId?: UUID;
+                roomId?: UUID;
+                entityId?: UUID;
+                metadata?: Record<string, unknown>;
+                counts?: { actions: number; modelCalls: number; errors: number; evaluators: number };
+            };
+            const runMap = new Map<string, RunListItem>();
 
             for (const log of runEventLogs) {
-                const runId = log.body?.runId as string;
+                const body = log.body as {
+                    runId?: string;
+                    status?: 'started' | 'completed' | 'timeout' | 'error';
+                    messageId?: UUID;
+                    roomId?: UUID;
+                    entityId?: UUID;
+                    metadata?: Record<string, unknown>;
+                };
+                const runId = body.runId as string;
                 if (!runId) continue;
 
                 const logTime = new Date(log.createdAt).getTime();
@@ -60,15 +80,15 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
                         startedAt: null,
                         endedAt: null,
                         durationMs: null,
-                        messageId: log.body?.messageId,
-                        roomId: log.body?.roomId,
-                        entityId: log.body?.entityId,
-                        metadata: log.body?.metadata || {},
+                        messageId: body.messageId,
+                        roomId: body.roomId,
+                        entityId: body.entityId,
+                        metadata: body.metadata || ({} as Record<string, unknown>),
                     });
                 }
 
-                const run = runMap.get(runId);
-                const eventStatus = log.body?.status;
+                const run = runMap.get(runId)!;
+                const eventStatus = body.status;
 
                 if (eventStatus === 'started') {
                     run.startedAt = logTime;
@@ -82,74 +102,81 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
             }
 
             // Filter by status if specified
-            let runs = Array.from(runMap.values());
+            let runs: RunListItem[] = Array.from(runMap.values());
             if (status && status !== 'all') {
                 runs = runs.filter(run => run.status === status);
             }
 
             // Sort by startedAt desc and apply limit
             runs.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-            const limitedRuns = runs.slice(0, limitNum);
+            const limitedRuns: RunListItem[] = runs.slice(0, limitNum);
 
-            // Get counts for each run by fetching related logs
+            // Bulk fetch logs once per type, then aggregate per runId in memory (avoid N+1)
+            const runIdSet = new Set<string>(limitedRuns.map((r) => r.runId));
+
+            const [actionLogs, evaluatorLogs, genericLogs]: [Log[], Log[], Log[]] = await Promise.all([
+                runtime.getLogs({
+                    entityId: agentId,
+                    roomId: roomId ? (roomId as UUID) : undefined,
+                    type: 'action',
+                    count: 5000,
+                }),
+                runtime.getLogs({
+                    entityId: agentId,
+                    roomId: roomId ? (roomId as UUID) : undefined,
+                    type: 'evaluator',
+                    count: 5000,
+                }),
+                runtime.getLogs({
+                    entityId: agentId,
+                    roomId: roomId ? (roomId as UUID) : undefined,
+                    count: 5000,
+                }),
+            ]);
+
+            const countsByRunId: Record<string, { actions: number; modelCalls: number; errors: number; evaluators: number }> = {};
             for (const run of limitedRuns) {
-                try {
-                    // Get action logs for this run
-                    const actionLogs = await runtime.getLogs({
-                        entityId: agentId,
-                        roomId: roomId ? (roomId as UUID) : undefined,
-                        type: 'action',
-                        count: 1000,
-                    });
+                countsByRunId[run.runId] = { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 };
+            }
 
-                    // Get action_event logs for this run
-                    const actionEventLogs = await runtime.getLogs({
-                        entityId: agentId,
-                        roomId: roomId ? (roomId as UUID) : undefined,
-                        type: 'action_event',
-                        count: 1000,
-                    });
+            // Aggregate action logs
+            for (const log of actionLogs) {
+                const rid = (log.body as { runId?: string }).runId;
+                if (!rid || !runIdSet.has(rid)) continue;
+                const entry = countsByRunId[rid];
+                if (!entry) continue;
+                entry.actions += 1;
+                const bodyForAction = log.body as { result?: { success?: boolean }; promptCount?: number };
+                if (bodyForAction.result?.success === false) entry.errors += 1;
+                const promptCount = Number(bodyForAction.promptCount || 0);
+                if (promptCount > 0) entry.modelCalls += promptCount;
+            }
 
-                    // Get evaluator logs for this run
-                    const evaluatorLogs = await runtime.getLogs({
-                        entityId: agentId,
-                        roomId: roomId ? (roomId as UUID) : undefined,
-                        type: 'evaluator',
-                        count: 1000,
-                    });
+            // Aggregate evaluator logs
+            for (const log of evaluatorLogs) {
+                const rid = (log.body as { runId?: string }).runId;
+                if (!rid || !runIdSet.has(rid)) continue;
+                const entry = countsByRunId[rid];
+                if (!entry) continue;
+                entry.evaluators += 1;
+            }
 
-                    // Get generic logs to derive model calls (useModel:*) for this run
-                    const genericLogs = await runtime.getLogs({
-                        entityId: agentId,
-                        roomId: roomId ? (roomId as UUID) : undefined,
-                        count: 1000,
-                    });
-
-                    // Count logs that match this runId
-                    const actionCount = actionLogs.filter(log => log.body?.runId === run.runId).length;
-                    // Sum model calls derived from prompts within action logs plus explicit useModel:* entries
-                    const modelCallsFromActions = actionLogs
-                        .filter(log => log.body?.runId === run.runId && (log.body?.promptCount || 0) > 0)
-                        .reduce((sum, log) => sum + (log.body?.promptCount || 0), 0);
-                    const modelCallsFromUseModel = genericLogs
-                        .filter(log => typeof log.type === 'string' && log.type.startsWith('useModel:') && log.body?.runId === run.runId)
-                        .length;
-                    const modelCallCount = modelCallsFromActions + modelCallsFromUseModel;
-                    const errorCount = actionLogs.filter(log =>
-                        log.body?.runId === run.runId && log.body?.result?.success === false
-                    ).length;
-                    const evaluatorCount = evaluatorLogs.filter(log => log.body?.runId === run.runId).length;
-
-                    run.counts = {
-                        actions: actionCount,
-                        modelCalls: modelCallCount,
-                        errors: errorCount,
-                        evaluators: evaluatorCount,
-                    };
-                } catch (countError) {
-                    // If counting fails, use zeros
-                    run.counts = { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 };
+            // Aggregate generic logs (useModel:* and embedding_event failures)
+            for (const log of genericLogs) {
+                const rid = (log.body as { runId?: string; status?: string }).runId;
+                if (!rid || !runIdSet.has(rid)) continue;
+                const entry = countsByRunId[rid];
+                if (!entry) continue;
+                if (typeof log.type === 'string' && log.type.startsWith('useModel:')) {
+                    entry.modelCalls += 1;
+                } else if (log.type === 'embedding_event' && (log.body as { status?: string }).status === 'failed') {
+                    entry.errors += 1;
                 }
+            }
+
+            // Attach counts
+            for (const run of limitedRuns) {
+                run.counts = countsByRunId[run.runId] || { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 };
             }
 
             const response = {
@@ -190,36 +217,40 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
 
         try {
             // Fetch logs and filter by runId
-            const logs = await runtime.getLogs({
+            const logs: Log[] = await runtime.getLogs({
                 entityId: agentId,
                 roomId: roomId ? (roomId as UUID) : undefined,
                 count: 2000,
             });
 
-            const related = logs.filter((l: any) => l?.body?.runId === runId);
+            const related = logs.filter((l) => (l.body as { runId?: UUID }).runId === runId);
 
             const runEvents = related
-                .filter((l: any) => l.type === 'run_event')
-                .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                .filter((l) => l.type === 'run_event')
+                .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-            const started = runEvents.find((e: any) => e.body?.status === 'started');
+            const started = runEvents.find((e) => (e.body as { status?: string }).status === 'started');
             const last = runEvents[runEvents.length - 1];
 
             const startedAt = started ? new Date(started.createdAt).getTime() : undefined;
-            const endedAt = last && last.body?.status !== 'started' ? new Date(last.createdAt).getTime() : undefined;
-            const status = last?.body?.status || 'started';
+            const endedAt = last && (last.body as { status?: string }).status !== 'started' ? new Date(last.createdAt).getTime() : undefined;
+            const status = (last?.body as { status?: string })?.status || 'started';
             const durationMs = startedAt && endedAt ? endedAt - startedAt : undefined;
 
-            const actionLogs = related.filter((l: any) => l.type === 'action');
-            const actionEventLogs = related.filter((l: any) => l.type === 'action_event');
-            const evaluatorLogs = related.filter((l: any) => l.type === 'evaluator');
-            const embeddingLogs = related.filter((l: any) => l.type === 'embedding_event');
-            const modelLogs = related.filter((l: any) => typeof l.type === 'string' && l.type.startsWith('useModel:'));
+            const actionLogs = related.filter((l) => l.type === 'action');
+            const actionEventLogs = related.filter((l) => l.type === 'action_event');
+            const evaluatorLogs = related.filter((l) => l.type === 'evaluator');
+            const embeddingLogs = related.filter((l) => l.type === 'embedding_event');
+            const modelLogs = related.filter((l) => typeof l.type === 'string' && l.type.startsWith('useModel:'));
 
             const counts = {
                 actions: actionEventLogs.length || actionLogs.length,
-                modelCalls: (actionLogs.reduce((sum: number, l: any) => sum + (l.body?.promptCount || 0), 0) || 0) + modelLogs.length,
-                errors: actionLogs.filter((l: any) => l.body?.result?.success === false).length + embeddingLogs.filter((l: any) => l.body?.status === 'failed').length,
+                modelCalls:
+                    (actionLogs.reduce((sum: number, l: Log) => sum + Number((l.body as { promptCount?: number }).promptCount || 0), 0) || 0) +
+                    modelLogs.length,
+                errors:
+                    actionLogs.filter((l: Log) => (l.body as { result?: { success?: boolean } }).result?.success === false).length +
+                    embeddingLogs.filter((l: Log) => (l.body as { status?: string }).status === 'failed').length,
                 evaluators: evaluatorLogs.length,
             };
 
@@ -227,73 +258,95 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
 
             for (const e of runEvents) {
                 const t = new Date(e.createdAt).getTime();
-                const st = e.body?.status;
+                const body = e.body as { status?: string; source?: string; messageId?: UUID; error?: string; duration?: number };
+                const st = body.status;
                 if (st === 'started') {
-                    events.push({ type: 'RUN_STARTED', timestamp: t, data: { source: e.body?.source, messageId: e.body?.messageId } });
+                    events.push({ type: 'RUN_STARTED', timestamp: t, data: { source: body.source ?? undefined, messageId: body.messageId } });
                 } else {
-                    events.push({ type: 'RUN_ENDED', timestamp: t, data: { status: st, error: e.body?.error, durationMs: e.body?.duration } });
+                    events.push({ type: 'RUN_ENDED', timestamp: t, data: { status: st, error: body.error, durationMs: body.duration } });
                 }
             }
 
             for (const e of actionEventLogs) {
+                const body = e.body as {
+                    actionId?: string;
+                    actionName?: string;
+                    content?: { actions?: string[] };
+                    messageId?: UUID;
+                    planStep?: string;
+                };
                 events.push({
                     type: 'ACTION_STARTED',
                     timestamp: new Date(e.createdAt).getTime(),
                     data: {
-                        actionId: e.body?.actionId,
-                        actionName: e.body?.actionName || e.body?.content?.actions?.[0],
-                        messageId: e.body?.messageId,
-                        planStep: e.body?.planStep,
+                        actionId: body.actionId,
+                        actionName: body.actionName || body.content?.actions?.[0],
+                        messageId: body.messageId,
+                        planStep: body.planStep,
                     },
                 });
             }
 
             for (const e of actionLogs) {
+                const body = e.body as {
+                    actionId?: string;
+                    action?: string;
+                    result?: { success?: boolean };
+                    promptCount?: number;
+                };
                 events.push({
                     type: 'ACTION_COMPLETED',
                     timestamp: new Date(e.createdAt).getTime(),
                     data: {
-                        actionId: e.body?.actionId,
-                        actionName: e.body?.action,
-                        success: e.body?.result?.success !== false,
-                        result: e.body?.result,
-                        promptCount: e.body?.promptCount,
+                        actionId: body.actionId,
+                        actionName: body.action,
+                        success: body.result?.success !== false,
+                        result: body.result as Record<string, unknown> | undefined,
+                        promptCount: body.promptCount,
                     },
                 });
             }
 
             for (const e of modelLogs) {
+                const body = e.body as {
+                    modelType?: string;
+                    provider?: string;
+                    executionTime?: number;
+                    actionContext?: string;
+                };
                 events.push({
                     type: 'MODEL_USED',
                     timestamp: new Date(e.createdAt).getTime(),
                     data: {
-                        modelType: e.body?.modelType || (typeof e.type === 'string' ? e.type.replace('useModel:', '') : undefined),
-                        provider: e.body?.provider,
-                        executionTime: e.body?.executionTime,
-                        actionContext: e.body?.actionContext,
+                        modelType: body.modelType || (typeof e.type === 'string' ? e.type.replace('useModel:', '') : undefined),
+                        provider: body.provider,
+                        executionTime: body.executionTime,
+                        actionContext: body.actionContext,
                     },
                 });
             }
 
             for (const e of evaluatorLogs) {
+                const body = e.body as { evaluator?: string };
                 events.push({
                     type: 'EVALUATOR_COMPLETED',
                     timestamp: new Date(e.createdAt).getTime(),
                     data: {
-                        evaluatorName: e.body?.evaluator,
+                        evaluatorName: body.evaluator,
                         success: true,
                     },
                 });
             }
 
             for (const e of embeddingLogs) {
+                const body = e.body as { status?: string; memoryId?: string; duration?: number };
                 events.push({
                     type: 'EMBEDDING_EVENT',
                     timestamp: new Date(e.createdAt).getTime(),
                     data: {
-                        status: e.body?.status,
-                        memoryId: e.body?.memoryId,
-                        durationMs: e.body?.duration,
+                        status: body.status,
+                        memoryId: body.memoryId,
+                        durationMs: body.duration,
                     },
                 });
             }
