@@ -5,21 +5,25 @@
 import { getGeneratedDir, getUploadsAgentsDir, getUploadsChannelsDir } from '@elizaos/core';
 
 // Path configurations mapping
+// Pattern matches UUID format (8-4-4-4-12 hex digits with hyphens) for agent/channel IDs
+// This ensures we only match valid UUIDs for security
+const UUID_PATTERN = /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[\/\\]([^\/\\]+)$/;
+
 const PATH_CONFIGS = [
   { 
     getPath: getGeneratedDir,
     apiPrefix: '/media/generated/',
-    pattern: /([a-f0-9-]+)[\/\\]([^\/\\]+)$/
+    pattern: UUID_PATTERN
   },
   { 
     getPath: getUploadsAgentsDir,
     apiPrefix: '/media/uploads/agents/',
-    pattern: /([a-f0-9-]+)[\/\\]([^\/\\]+)$/
+    pattern: UUID_PATTERN
   },
   { 
     getPath: getUploadsChannelsDir,
     apiPrefix: '/media/uploads/channels/',
-    pattern: /([a-f0-9-]+)[\/\\]([^\/\\]+)$/
+    pattern: UUID_PATTERN
   }
 ];
 
