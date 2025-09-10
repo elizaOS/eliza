@@ -393,6 +393,8 @@ async function executeActionBenchmarkTest(
               rawMessage,
             } = data;
 
+            console.log('######### DATA', data);
+
             // Only process messages from our agent in our test channel
             if (senderId !== runtime.agentId || messageChannelId !== channelId) {
               return;
