@@ -21,6 +21,10 @@ export * from './utils/environment';
 // Export buffer utilities
 export * from './utils/buffer';
 
+// Export path utilities - these are Node.js specific but needed for backward compatibility
+// Browser builds will handle this through conditional exports in package.json
+export * from './utils/paths';
+
 // Then all other exports
 export * from './actions';
 export * from './database';
