@@ -19,6 +19,13 @@ const browserExternals = [
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
   '@sentry/node', // Ensure node SDK is never bundled into the browser build
+  '@sentry/node-core', // Also exclude node-core
+  '@sentry/node/build/esm/index', // Exclude all Sentry node paths
+  '@sentry/node/build/esm/integrations/tracing/fastify/index', // Exclude specific problematic path
+  '@opentelemetry/context-async-hooks', // Exclude OpenTelemetry Node modules
+  'async_hooks', // Node.js built-in module
+  'node:diagnostics_channel', // Node.js built-in module
+  'node:async_hooks', // Node.js built-in module
   'crypto-browserify',
 ];
 

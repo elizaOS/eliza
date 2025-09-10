@@ -97,11 +97,15 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
 // Extracted function to handle plugin routes
 export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): express.RequestHandler {
   return (req, res, next) => {
-    logger.debug('Handling plugin request in the plugin route handler', {
-      path: req.path,
-      method: req.method,
-      query: req.query,
-    });
+    logger.debug(
+      'Handling plugin request in the plugin route handler',
+      `path: ${req.path}, method: ${req.method}`,
+      {
+        path: req.path,
+        method: req.method,
+        query: req.query,
+      }
+    );
 
     // Skip standard agent API routes - these should be handled by agentRouter
     // Pattern: /agents/{uuid}/...
@@ -144,22 +148,20 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
     const agentIdFromQuery = req.query.agentId as UUID | undefined;
     const reqPath = req.path; // Path to match against plugin routes (e.g., /hello2)
     const baselessReqPath = reqPath.replace(/\/api\/agents\/[^\/]+\/plugins/, ''); // strip out base
-    logger.debug('Plugin Request Path', baselessReqPath)
+    logger.debug('Plugin Request Path', baselessReqPath);
     // might need to ensure /
 
     function findRouteInRuntime(runtime: IAgentRuntime) {
       for (const route of runtime.routes) {
         if (handled) break;
 
-        // this seems sus
-        // if not an exact match, skip?
-        // let's let matcher engine decide that
-        //const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
-        //if (!methodMatches) continue;
+        // Check if HTTP method matches
+        const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
+        if (!methodMatches) continue;
 
         // moved to runtime::registerPlugin so we don't need to do this on each request
         //const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
-        const routePath = route.path
+        const routePath = route.path;
 
         // really non-standard but w/e
         if (routePath.endsWith('/*')) {
@@ -176,8 +178,8 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
             } catch (error) {
               logger.error(
                 `Error handling plugin wildcard route for agent ${agentIdFromQuery}: ${routePath}`,
+                error instanceof Error ? error.message : String(error),
                 {
-                  error,
                   path: reqPath,
                   agent: agentIdFromQuery,
                 }
@@ -189,8 +191,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
                     ? 404
                     : 500;
                 res.status(status).json({
-                  error:
-                    error instanceof Error ? error.message : 'Error processing wildcard route',
+                  error: error instanceof Error ? error.message : 'Error processing wildcard route',
                 });
               }
               handled = true;
@@ -206,7 +207,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
           } catch (err) {
             logger.error(
               `Invalid plugin route path syntax for agent ${agentIdFromQuery}: "${routePath}"`,
-              err
+              err instanceof Error ? err.message : String(err)
             );
             continue;
           }
@@ -226,8 +227,8 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
             } catch (error) {
               logger.error(
                 `Error handling plugin route for agent ${agentIdFromQuery}: ${routePath}`,
+                error instanceof Error ? error.message : String(error),
                 {
-                  error,
                   path: reqPath,
                   agent: agentIdFromQuery,
                   params: req.params,
@@ -248,7 +249,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
           }
         }
       } // End route loop
-      return handled
+      return handled;
     }
 
     // No support for agent name?
@@ -258,7 +259,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
         logger.debug(
           `Agent-scoped request for Agent ID: ${agentIdFromQuery} from query. Path: ${reqPath}`
         );
-        handled = findRouteInRuntime(runtime)
+        handled = findRouteInRuntime(runtime);
       } else {
         logger.warn(
           `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}.`
@@ -304,7 +305,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
         // Iterate over all agents
         if (handled) break; // If handled by a previous agent's route (e.g. specific match)
 
-        handled = findRouteInRuntime(runtime)
+        handled = findRouteInRuntime(runtime);
       } // End agent loop for global matching
     }
 

@@ -62,7 +62,7 @@ export function getSalt(): string {
   const secretSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
 
   if (secretSalt === 'secretsalt' && !saltErrorLogged) {
-    logger.error('SECRET_SALT is not set or using default value');
+    logger.warn('SECRET_SALT is not set or using default value');
     saltErrorLogged = true;
   }
 

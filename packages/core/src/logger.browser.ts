@@ -78,14 +78,30 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,
   verbose: 10,
   debug: 20,
+  success: 27,
+  progress: 28,
+  log: 29,
   info: 30,
-  log: 30,
   warn: 40,
   error: 50,
   fatal: 60,
   alert: 60,
-  success: 30,
-  progress: 30,
+};
+
+/**
+ * Reverse mapping from numeric level to preferred level name
+ * When multiple level names have the same numeric value, we prioritize the most semantic one
+ */
+const LEVEL_TO_NAME: Record<number, string> = {
+  10: 'trace',    // prefer 'trace' over 'verbose'
+  20: 'debug',
+  27: 'success',
+  28: 'progress',
+  29: 'log',
+  30: 'info',
+  40: 'warn',
+  50: 'error',
+  60: 'fatal',    // prefer 'fatal' over 'alert'
 };
 
 /**
@@ -174,7 +190,9 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       return logs
         .map((entry) => {
           const timestamp = showTimestamps ? new Date(entry.time).toISOString() : '';
-          return `${timestamp} ${entry.msg}`.trim();
+          // Convert numeric level back to string using the reverse mapping
+          const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || 'info';
+          return `${timestamp} ${levelStr} ${entry.msg}`.trim();
         })
         .join('\n');
     },
@@ -297,6 +315,7 @@ adzeStore.addListener('*', (log: any) => {
       : typeof d?.message === 'string'
         ? d.message
         : '';
+    
     const entry: LogEntry = {
       time: Date.now(),
       level: typeof d?.level === 'number' ? d.level : undefined,
@@ -530,6 +549,35 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     // Ensure Sentry sees the semantic level name (e.g., 'fatal')
     captureIfError(method, args);
 
+    // Capture to in-memory destination for API access (even for namespaced loggers)
+    try {
+      let msg = '';
+      if (args.length > 0) {
+        msg = args
+          .map((arg) => {
+            if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) return arg.message;
+            return safeStringify(arg);
+          })
+          .join(' ');
+      }
+      
+      // Include namespace in the message if present
+      if (base.namespace) {
+        msg = `#${base.namespace}  ${msg}`;
+      }
+      
+      const entry: LogEntry = {
+        time: Date.now(),
+        level: LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
+        msg,
+      };
+      
+      globalInMemoryDestination.write(entry);
+    } catch {
+      // Silent fail - don't break logging
+    }
+
     // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;
     let adzeArgs = args;
@@ -649,5 +697,6 @@ export const recentLogs = (): string => globalInMemoryDestination.recentLogs();
 // Export everything
 export { logger, createLogger };
 export default logger;
+
 
 
