@@ -301,7 +301,9 @@ export class AgentRuntime implements IAgentRuntime {
     }
     if (plugin.routes) {
       for (const route of plugin.routes) {
-        this.routes.push(route);
+        // namespace plugin name infront of paths
+        const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
+        this.routes.push({ ...route, path: '/' + plugin.name + routePath });
       }
     }
     if (plugin.events) {
@@ -601,6 +603,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     const hasMultipleActions = allActions.length > 1;
+    const parentRunId = this.getCurrentRunId();
     const runId = this.createRunId();
 
     // Create action plan if multiple actions
@@ -811,6 +814,7 @@ export class AgentRuntime implements IAgentRuntime {
                 runId: runId,
                 type: 'agent_action',
                 thought: actionPlan?.thought,
+                source: message.content?.source, // Include original message source
               },
             });
           } catch (error) {
@@ -933,6 +937,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionId: actionId,
                 type: 'agent_action',
                 actionResult: actionResult,
+                source: message.content?.source, // Include original message source
               },
             });
           } catch (error) {
@@ -973,6 +978,7 @@ export class AgentRuntime implements IAgentRuntime {
               type: 'action_result',
               actionName: action.name,
               runId,
+              parentRunId,
               actionId,
               ...(actionPlan && {
                 totalSteps: actionPlan.totalSteps,
@@ -1010,6 +1016,7 @@ export class AgentRuntime implements IAgentRuntime {
               prompts: this.currentActionContext?.prompts || [],
               promptCount: this.currentActionContext?.prompts.length || 0,
               runId,
+              parentRunId,
               ...(actionPlan && {
                 planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
                 planThought: actionPlan.thought,
@@ -1067,6 +1074,7 @@ export class AgentRuntime implements IAgentRuntime {
               type: 'action_result',
               actionName: action.name,
               runId,
+              parentRunId,
               error: true,
               ...(actionPlan && {
                 totalSteps: actionPlan.totalSteps,
@@ -1135,6 +1143,7 @@ export class AgentRuntime implements IAgentRuntime {
               messageId: message.id,
               message: message.content.text,
               state,
+              runId: this.getCurrentRunId(),
             },
           });
         }
@@ -1517,7 +1526,10 @@ export class AgentRuntime implements IAgentRuntime {
           const result = await provider.get(this, message, cachedState);
           const duration = Date.now() - start;
 
-          this.logger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+          // only need to inform if it's taking a long time
+          if (duration > 100) {
+            this.logger.debug(`${provider.name} Provider took ${duration}ms to respond`);
+          }
           return {
             ...result,
             providerName: provider.name,
@@ -1861,7 +1873,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Log input parameters (keep debug log if useful)
     this.logger.debug(
       `[useModel] ${modelKey} input: ` +
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+      JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
     let paramsWithRuntime: any;
     if (
@@ -1906,9 +1918,8 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
-              response.length
-            } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
+          } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -1942,9 +1953,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -1971,6 +1982,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.events.get(event);
   }
 
+  // probably should be <T> typed for params
   async emitEvent(event: string | string[], params: any) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
@@ -2202,6 +2214,7 @@ export class AgentRuntime implements IAgentRuntime {
       source: 'runtime',
       retryCount: 0,
       maxRetries: 3,
+      runId: this.getCurrentRunId(),
     });
   }
   async getMemories(params: {

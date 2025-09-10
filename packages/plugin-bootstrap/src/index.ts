@@ -27,6 +27,7 @@ import {
   parseBooleanFromText,
   Role,
   type Room,
+  type RunEventPayload,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
@@ -1113,7 +1114,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
   let responseContent: Content | null = null;
   if (summary?.text) {
     responseContent = {
-      actions: ['REPLY'],
+      actions: ['MULTI_STEP_SUMMARY'],
       text: summary.text,
       thought: summary.thought || 'Final user-facing message after task completion.',
       simple: true,
@@ -1122,15 +1123,15 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
   const responseMessages: Memory[] = responseContent
     ? [
-        {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
+      {
+        id: asUUID(v4()),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        content: responseContent,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      },
+    ]
     : [];
 
   return {
@@ -1550,14 +1551,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-            ownership: {
-              ownerId: entityId,
-            },
-            roles: {
-              [entityId]: Role.OWNER,
-            },
-            settings: {}, // Initialize empty settings for onboarding
-          }
+          ownership: {
+            ownerId: entityId,
+          },
+          roles: {
+            [entityId]: Role.OWNER,
+          },
+          settings: {}, // Initialize empty settings for onboarding
+        }
         : undefined;
 
     runtime.logger.info(
@@ -1829,17 +1830,42 @@ const events = {
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
       try {
-        const messageBusService = payload.runtime.getService('message-bus-service') as any;
-        if (messageBusService) {
-          await messageBusService.notifyActionStart(
-            payload.roomId,
-            payload.world,
-            payload.content,
-            payload.messageId
-          );
+        // Only notify for client_chat messages
+        if (payload.content?.source === 'client_chat') {
+          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          if (messageBusService) {
+            await messageBusService.notifyActionStart(
+              payload.roomId,
+              payload.world,
+              payload.content,
+              payload.messageId
+            );
+          }
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
+      }
+    },
+    async (payload: ActionEventPayload) => {
+      try {
+        await payload.runtime.log({
+          entityId: payload.runtime.agentId,
+          roomId: payload.roomId,
+          type: 'action_event',
+          body: {
+            runId: payload.content?.runId,
+            actionId: payload.content?.actionId,
+            actionName: payload.content?.actions?.[0],
+            roomId: payload.roomId,
+            messageId: payload.messageId,
+            timestamp: Date.now(),
+            planStep: payload.content?.planStep,
+            source: 'actionHandler',
+          },
+        });
+        logger.debug(`[Bootstrap] Logged ACTION_STARTED event for action ${payload.content?.actions?.[0]}`);
+      } catch (error) {
+        logger.error(`[Bootstrap] Failed to log ACTION_STARTED event: ${error}`);
       }
     },
   ],
@@ -1847,14 +1873,17 @@ const events = {
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
       try {
-        const messageBusService = payload.runtime.getService('message-bus-service') as any;
-        if (messageBusService) {
-          await messageBusService.notifyActionUpdate(
-            payload.roomId,
-            payload.world,
-            payload.content,
-            payload.messageId
-          );
+        // Only notify for client_chat messages
+        if (payload.content?.source === 'client_chat') {
+          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          if (messageBusService) {
+            await messageBusService.notifyActionUpdate(
+              payload.roomId,
+              payload.world,
+              payload.content,
+              payload.messageId
+            );
+          }
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
@@ -1876,6 +1905,84 @@ const events = {
       logger.debug(
         `[Bootstrap] Evaluator ${status}: ${payload.evaluatorName} (${payload.evaluatorId})`
       );
+    },
+  ],
+
+  [EventType.RUN_STARTED]: [
+    async (payload: RunEventPayload) => {
+      try {
+        await payload.runtime.log({
+          entityId: payload.entityId,
+          roomId: payload.roomId,
+          type: 'run_event',
+          body: {
+            runId: payload.runId,
+            status: payload.status,
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            entityId: payload.entityId,
+            startTime: payload.startTime,
+            source: payload.source || 'unknown',
+          },
+        });
+        logger.debug(`[Bootstrap] Logged RUN_STARTED event for run ${payload.runId}`);
+      } catch (error) {
+        logger.error(`[Bootstrap] Failed to log RUN_STARTED event: ${error}`);
+      }
+    },
+  ],
+
+  [EventType.RUN_ENDED]: [
+    async (payload: RunEventPayload) => {
+      try {
+        await payload.runtime.log({
+          entityId: payload.entityId,
+          roomId: payload.roomId,
+          type: 'run_event',
+          body: {
+            runId: payload.runId,
+            status: payload.status,
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            entityId: payload.entityId,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            duration: payload.duration,
+            error: payload.error,
+            source: payload.source || 'unknown',
+          },
+        });
+        logger.debug(`[Bootstrap] Logged RUN_ENDED event for run ${payload.runId} with status ${payload.status}`);
+      } catch (error) {
+        logger.error(`[Bootstrap] Failed to log RUN_ENDED event: ${error}`);
+      }
+    },
+  ],
+
+  [EventType.RUN_TIMEOUT]: [
+    async (payload: RunEventPayload) => {
+      try {
+        await payload.runtime.log({
+          entityId: payload.entityId,
+          roomId: payload.roomId,
+          type: 'run_event',
+          body: {
+            runId: payload.runId,
+            status: payload.status,
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            entityId: payload.entityId,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            duration: payload.duration,
+            error: payload.error,
+            source: payload.source || 'unknown',
+          },
+        });
+        logger.debug(`[Bootstrap] Logged RUN_TIMEOUT event for run ${payload.runId}`);
+      } catch (error) {
+        logger.error(`[Bootstrap] Failed to log RUN_TIMEOUT event: ${error}`);
+      }
     },
   ],
 

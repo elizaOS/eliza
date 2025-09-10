@@ -18,12 +18,15 @@ const browserExternals = [
   // These will be loaded via CDN or bundled by the consuming app
   'sharp', // Image processing - not available in browser
   '@hapi/shot', // Test utility - not needed in browser
-  '@sentry/node', // Ensure node SDK is never bundled into the browser build
+  '@opentelemetry/context-async-hooks', // Exclude OpenTelemetry Node modules
+  'async_hooks', // Node.js built-in module
+  'node:diagnostics_channel', // Node.js built-in module
+  'node:async_hooks', // Node.js built-in module
   'crypto-browserify',
 ];
 
 // Node-specific externals (native modules and node-specific packages)
-const nodeExternals = ['dotenv', 'sharp', 'zod', '@hapi/shot', '@sentry/browser'];
+const nodeExternals = ['dotenv', 'sharp', 'zod', '@hapi/shot'];
 
 // Shared configuration
 const sharedConfig = {
@@ -93,7 +96,7 @@ async function buildBrowser() {
  * Build for both targets
  */
 async function buildAll() {
-  console.log('🚀 Starting dual build process for @elizaos/core\n');
+  console.log('🚀 Starting dual build process for @elizaos/core');
   const totalStart = Date.now();
 
   try {

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.5.7",
+  "version": "1.5.8-alpha.27",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -55,6 +55,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@sentry/node": "^10.11.0",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",

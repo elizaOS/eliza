@@ -50,22 +50,29 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.15.3",
+    "@types/node": "^24.3.1",
     "@types/uuid": "^10.0.0",
     "bun": "^1.2.21",
     "husky": "^9.1.7",
-    "lerna": "8.1.4",
+    "lerna": "8.2.3",
     "turbo": "^2.5.5",
-    "typescript": "5.8.2"
+    "typescript": "5.9.2"
   },
   "resolutions": {
-    "@nrwl/devkit": "19.8.4",
-    "@nrwl/tao": "19.8.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "@types/react": "19.1.5",
     "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9"
+  },
+  "overrides": {
+    "@nrwl/devkit": "19.8.4",
+    "@nrwl/tao": "19.8.4",
+    "color-convert": "2.0.1",
+    "color-name": "1.1.4",
+    "is-core-module": "2.13.1",
+    "error-ex": "1.3.2",
+    "has-ansi": "6.0.2"
   },
   "trustedDependencies": [
     "@swc/core",

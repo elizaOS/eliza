@@ -1,4 +1,3 @@
-import { Sentry } from './sentry/instrument';
 // Expose a tiny test hook to clear env cache in logger tests (kept internal)
 // Note: we re-export a function that clears the environment cache indirectly via getEnv
 export const __loggerTestHooks = {
@@ -78,14 +77,30 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
   trace: 10,
   verbose: 10,
   debug: 20,
+  success: 27,
+  progress: 28,
+  log: 29,
   info: 30,
-  log: 30,
   warn: 40,
   error: 50,
   fatal: 60,
   alert: 60,
-  success: 30,
-  progress: 30,
+};
+
+/**
+ * Reverse mapping from numeric level to preferred level name
+ * When multiple level names have the same numeric value, we prioritize the most semantic one
+ */
+const LEVEL_TO_NAME: Record<number, string> = {
+  10: 'trace',    // prefer 'trace' over 'verbose'
+  20: 'debug',
+  27: 'success',
+  28: 'progress',
+  29: 'log',
+  30: 'info',
+  40: 'warn',
+  50: 'error',
+  60: 'fatal',    // prefer 'fatal' over 'alert'
 };
 
 /**
@@ -174,7 +189,9 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       return logs
         .map((entry) => {
           const timestamp = showTimestamps ? new Date(entry.time).toISOString() : '';
-          return `${timestamp} ${entry.msg}`.trim();
+          // Convert numeric level back to string using the reverse mapping
+          const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || 'info';
+          return `${timestamp} ${levelStr} ${entry.msg}`.trim();
         })
         .join('\n');
     },
@@ -297,6 +314,7 @@ adzeStore.addListener('*', (log: any) => {
       : typeof d?.message === 'string'
         ? d.message
         : '';
+    
     const entry: LogEntry = {
       time: Date.now(),
       level: typeof d?.level === 'number' ? d.level : undefined,
@@ -330,6 +348,32 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   const metaBase = { ...base };
   delete (metaBase as any).namespace;
   delete (metaBase as any).namespaces;
+
+  // Add required fields for JSON format if not provided
+  if (raw) {
+    // Only add defaults if user hasn't provided them
+    if (!metaBase.name) {
+      metaBase.name = 'elizaos';
+    }
+    if (!metaBase.hostname) {
+      // Get hostname in a way that works in both Node and browser
+      let hostname = 'unknown';
+      if (typeof process !== 'undefined' && process.platform) {
+        // Node.js environment
+        try {
+          const os = require('os');
+          hostname = os.hostname();
+        } catch {
+          // Fallback if os module not available
+          hostname = 'localhost';
+        }
+      } else if (typeof window !== 'undefined' && window.location) {
+        // Browser environment
+        hostname = window.location.hostname || 'browser';
+      }
+      metaBase.hostname = hostname;
+    }
+  }
 
   // This ensures the sealed logger inherits the correct log level and styling
   const globalConfig = {
@@ -471,26 +515,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
 
-  /**
-   * Capture errors to Sentry if configured
-   */
-  const captureIfError = (method: string, args: unknown[]): void => {
-    if (getEnvironmentVar('SENTRY_LOGGING') !== 'false') {
-      if (method === 'error' || method === 'fatal' || method === 'alert') {
-        for (const arg of args) {
-          if (arg instanceof Error) {
-            Sentry.captureException(arg);
-            return;
-          }
-        }
-        // Create error from message if no Error object found
-        const message = args.map((a) => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
-        if (message) {
-          Sentry.captureException(new Error(message));
-        }
-      }
-    }
-  };
+  // No-op: previously captured to Sentry; removed for browser compatibility
+  const captureIfError = (_method: string, _args: unknown[]): void => {};
 
   /**
    * Invoke Adze method with error capture
@@ -503,6 +529,35 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 
     // Ensure Sentry sees the semantic level name (e.g., 'fatal')
     captureIfError(method, args);
+
+    // Capture to in-memory destination for API access (even for namespaced loggers)
+    try {
+      let msg = '';
+      if (args.length > 0) {
+        msg = args
+          .map((arg) => {
+            if (typeof arg === 'string') return arg;
+            if (arg instanceof Error) return arg.message;
+            return safeStringify(arg);
+          })
+          .join(' ');
+      }
+      
+      // Include namespace in the message if present
+      if (base.namespace) {
+        msg = `#${base.namespace}  ${msg}`;
+      }
+      
+      const entry: LogEntry = {
+        time: Date.now(),
+        level: LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
+        msg,
+      };
+      
+      globalInMemoryDestination.write(entry);
+    } catch {
+      // Silent fail - don't break logging
+    }
 
     // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;
