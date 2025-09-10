@@ -553,25 +553,23 @@ export class AgentServer {
           // Make sure path is absolute for sendFile
           const absolutePath = path.resolve(filePath);
           
-          // Use sendFile with proper options
+          // Use sendFile with proper options (no root needed for absolute paths)
           const options = {
-            root: '/', // Set root to allow absolute paths
             dotfiles: 'deny' as const
           };
           
           res.sendFile(absolutePath, options, (err) => {
             if (err) {
-              // Fallback to manual file reading if sendFile fails
-              try {
-                const fileBuffer = fs.readFileSync(absolutePath);
-                const mimeType = extname(filename) === '.png' ? 'image/png' : 
-                                extname(filename) === '.jpg' || extname(filename) === '.jpeg' ? 'image/jpeg' :
-                                'application/octet-stream';
-                res.setHeader('Content-Type', mimeType);
-                res.send(fileBuffer);
-              } catch (readErr) {
-                res.status(404).json({ error: 'File not found' });
-              }
+              // Fallback to streaming if sendFile fails (non-blocking)
+              const ext = extname(filename).toLowerCase();
+              const mimeType =
+                ext === '.png' ? 'image/png' :
+                ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+                'application/octet-stream';
+              res.setHeader('Content-Type', mimeType);
+              const stream = fs.createReadStream(absolutePath);
+              stream.on('error', () => res.status(404).json({ error: 'File not found' }));
+              stream.pipe(res);
             }
           });
         }
