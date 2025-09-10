@@ -55,6 +55,7 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@sentry/node": "^10.11.0",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",

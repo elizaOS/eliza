@@ -1,4 +1,3 @@
-import { Sentry } from './sentry/instrument';
 // Expose a tiny test hook to clear env cache in logger tests (kept internal)
 // Note: we re-export a function that clears the environment cache indirectly via getEnv
 export const __loggerTestHooks = {
@@ -516,26 +515,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const levelStr = typeof level === 'number' ? 'info' : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
 
-  /**
-   * Capture errors to Sentry if configured
-   */
-  const captureIfError = (method: string, args: unknown[]): void => {
-    if (getEnvironmentVar('SENTRY_LOGGING') !== 'false') {
-      if (method === 'error' || method === 'fatal' || method === 'alert') {
-        for (const arg of args) {
-          if (arg instanceof Error) {
-            Sentry.captureException(arg);
-            return;
-          }
-        }
-        // Create error from message if no Error object found
-        const message = args.map((a) => (typeof a === 'string' ? a : safeStringify(a))).join(' ');
-        if (message) {
-          Sentry.captureException(new Error(message));
-        }
-      }
-    }
-  };
+  // No-op: previously captured to Sentry; removed for browser compatibility
+  const captureIfError = (_method: string, _args: unknown[]): void => {};
 
   /**
    * Invoke Adze method with error capture

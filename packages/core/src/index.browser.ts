@@ -23,16 +23,14 @@ export * from './utils/buffer';
 export * from './actions';
 export * from './database';
 export * from './entities';
-export * from './logger.browser';
+export * from './logger';
 export * from './prompts';
 export * from './roles';
-export * from './runtime.browser';
+export * from './runtime';
 export * from './settings';
 export * from './services';
 export * from './search';
 
-// Export Sentry instrumentation (browser version - uses @sentry/browser only)
-export * from './sentry/instrument.browser';
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;
