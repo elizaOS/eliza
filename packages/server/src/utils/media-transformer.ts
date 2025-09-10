@@ -27,15 +27,22 @@ const PATH_CONFIGS = [
   }
 ];
 
+// Regex to detect absolute paths: POSIX (/), Windows (C:\), UNC (\\server\)
+const ABSOLUTE_PATH_RE = /^(?:\/|[a-zA-Z]:[\\/]|\\\\)/;
+
+// Check if path is an external URL (http, https, blob, data, file, ipfs, s3, gs, etc.)
+const isExternalUrl = (p: string) =>
+  /^(?:https?:|blob:|data:|file:|ipfs:|s3:|gs:)/i.test(p);
+
 /**
  * Transform a local file path to an API URL
  */
 export function transformPathToApiUrl(filePath: string): string {
-  // Skip if already transformed or not a local path
-  if (!filePath || 
-      filePath.startsWith('http') || 
+  // Skip if already transformed or not a local absolute path
+  if (!filePath ||
+      isExternalUrl(filePath) ||
       filePath.startsWith('/media/') ||
-      !filePath.startsWith('/')) {
+      !ABSOLUTE_PATH_RE.test(filePath)) {
     return filePath;
   }
 
