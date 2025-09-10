@@ -118,11 +118,23 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
                         count: 1000,
                     });
 
+                    // Get generic logs to derive model calls (useModel:*) for this run
+                    const genericLogs = await runtime.getLogs({
+                        entityId: agentId,
+                        roomId: roomId ? (roomId as UUID) : undefined,
+                        count: 1000,
+                    });
+
                     // Count logs that match this runId
                     const actionCount = actionLogs.filter(log => log.body?.runId === run.runId).length;
-                    const modelCallCount = actionLogs.filter(log =>
-                        log.body?.runId === run.runId && log.body?.prompts?.length > 0
-                    ).reduce((sum, log) => sum + (log.body?.promptCount || 0), 0);
+                    // Sum model calls derived from prompts within action logs plus explicit useModel:* entries
+                    const modelCallsFromActions = actionLogs
+                        .filter(log => log.body?.runId === run.runId && (log.body?.promptCount || 0) > 0)
+                        .reduce((sum, log) => sum + (log.body?.promptCount || 0), 0);
+                    const modelCallsFromUseModel = genericLogs
+                        .filter(log => typeof log.type === 'string' && log.type.startsWith('useModel:') && log.body?.runId === run.runId)
+                        .length;
+                    const modelCallCount = modelCallsFromActions + modelCallsFromUseModel;
                     const errorCount = actionLogs.filter(log =>
                         log.body?.runId === run.runId && log.body?.result?.success === false
                     ).length;
