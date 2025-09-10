@@ -351,6 +351,7 @@ export class AgentServer {
           Sentry.init({
             dsn: sentryDsn,
             environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+            integrations: [Sentry.vercelAIIntegration({ force: sentryEnabled })],
             tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
           });
           logger.info('[Sentry] Initialized Sentry for @elizaos/server');
@@ -396,7 +397,7 @@ export class AgentServer {
                   styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
                   // unlocking this, so plugin can include the various frameworks from CDN if needed
                   // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                  scriptSrc: ["*", "'unsafe-inline'", "'unsafe-eval'"],
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
                   imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
                   fontSrc: ["'self'", 'https:', 'http:', 'data:'],
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
@@ -842,12 +843,13 @@ export class AgentServer {
         });
         process.on('unhandledRejection', (reason: any) => {
           try {
-            Sentry.captureException(reason instanceof Error ? reason : new Error(String(reason)), (
-              scope
-            ) => {
-              scope.setTag('type', 'unhandledRejection');
-              return scope;
-            });
+            Sentry.captureException(
+              reason instanceof Error ? reason : new Error(String(reason)),
+              (scope) => {
+                scope.setTag('type', 'unhandledRejection');
+                return scope;
+              }
+            );
           } catch {}
         });
       }
