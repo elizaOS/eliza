@@ -193,6 +193,7 @@ export interface EmbeddingGenerationPayload extends EventPayload {
   maxRetries?: number;
   embedding?: number[];
   error?: any;
+  runId?: UUID;
 }
 
 export type MessageReceivedHandlerParams = {
