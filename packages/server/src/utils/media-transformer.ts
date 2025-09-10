@@ -7,7 +7,7 @@ import { getGeneratedDir, getUploadsAgentsDir, getUploadsChannelsDir } from '@el
 // Path configurations mapping
 // Pattern matches UUID format (8-4-4-4-12 hex digits with hyphens) for agent/channel IDs
 // This ensures we only match valid UUIDs for security
-const UUID_PATTERN = /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[\/\\]([^\/\\]+)$/;
+const UUID_PATTERN = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[\/\\]([^\/\\]+)$/;
 
 const PATH_CONFIGS = [
   { 
@@ -51,13 +51,16 @@ export function transformPathToApiUrl(filePath: string): string {
 
   // Check each path configuration
   for (const config of PATH_CONFIGS) {
-    const configPath = config.getPath().replace(/\\/g, '/');
+    const configPathRaw = config.getPath().replace(/\\/g, '/');
+    const configPath = configPathRaw.endsWith('/') ? configPathRaw : configPathRaw + '/';
     
-    if (normalizedPath.includes(configPath)) {
-      const match = normalizedPath.match(config.pattern);
+    if (normalizedPath.startsWith(configPath)) {
+      const relative = normalizedPath.slice(configPath.length);
+      const match = relative.match(config.pattern);
+
       if (match) {
         const [, id, filename] = match;
-        return `${config.apiPrefix}${id}/${filename}`;
+        return `${config.apiPrefix}${encodeURIComponent(id)}/${encodeURIComponent(filename)}`;
       }
     }
   }
