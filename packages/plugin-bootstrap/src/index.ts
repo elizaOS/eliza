@@ -1829,14 +1829,17 @@ const events = {
   [EventType.ACTION_STARTED]: [
     async (payload: ActionEventPayload) => {
       try {
-        const messageBusService = payload.runtime.getService('message-bus-service') as any;
-        if (messageBusService) {
-          await messageBusService.notifyActionStart(
-            payload.roomId,
-            payload.world,
-            payload.content,
-            payload.messageId
-          );
+        // Only notify for client_chat messages
+        if (payload.content?.source === 'client_chat') {
+          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          if (messageBusService) {
+            await messageBusService.notifyActionStart(
+              payload.roomId,
+              payload.world,
+              payload.content,
+              payload.messageId
+            );
+          }
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
@@ -1869,14 +1872,17 @@ const events = {
   [EventType.ACTION_COMPLETED]: [
     async (payload: ActionEventPayload) => {
       try {
-        const messageBusService = payload.runtime.getService('message-bus-service') as any;
-        if (messageBusService) {
-          await messageBusService.notifyActionUpdate(
-            payload.roomId,
-            payload.world,
-            payload.content,
-            payload.messageId
-          );
+        // Only notify for client_chat messages
+        if (payload.content?.source === 'client_chat') {
+          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          if (messageBusService) {
+            await messageBusService.notifyActionUpdate(
+              payload.roomId,
+              payload.world,
+              payload.content,
+              payload.messageId
+            );
+          }
         }
       } catch (error) {
         logger.error(`[Bootstrap] Error sending refetch request: ${error}`);
