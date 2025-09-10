@@ -68,7 +68,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       const createdMessage = await serverInstance.createMessage(newRootMessageData);
 
       // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+      const transformedAttachments = attachmentsToApiUrls(
+        metadata?.attachments ?? raw_message?.attachments
+      );
 
       // Emit to SocketIO for real-time GUI updates
       if (serverInstance.socketIO) {
@@ -156,7 +158,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       const savedMessage = await serverInstance.createMessage(baseData);
 
       // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+      const transformedAttachments = attachmentsToApiUrls(
+        metadata?.attachments ?? raw_message?.attachments
+      );
 
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
@@ -231,7 +235,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       }
 
       // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(metadata?.attachments);
+      const transformedAttachments = attachmentsToApiUrls(
+        metadata?.attachments ?? raw_message?.attachments
+      );
 
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(updated.channelId).emit('messageBroadcast', {
