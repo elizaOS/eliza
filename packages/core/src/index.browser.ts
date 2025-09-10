@@ -26,12 +26,12 @@ export * from './entities';
 export * from './logger.browser';
 export * from './prompts';
 export * from './roles';
-export * from './runtime';
+export * from './runtime.browser';
 export * from './settings';
 export * from './services';
 export * from './search';
 
-// Export Sentry instrumentation (browser version)
+// Export Sentry instrumentation (browser version - uses @sentry/browser only)
 export * from './sentry/instrument.browser';
 
 // Browser-specific exports or stubs for Node-only features
