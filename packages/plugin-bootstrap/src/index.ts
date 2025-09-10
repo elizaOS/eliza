@@ -27,6 +27,7 @@ import {
   parseBooleanFromText,
   Role,
   type Room,
+  type RunEventPayload,
   shouldRespondTemplate,
   truncateToCompleteSentence,
   type UUID,
@@ -1847,7 +1848,7 @@ const events = {
     },
     async (payload: ActionEventPayload) => {
       try {
-        await payload.runtime.adapter.log({
+        await payload.runtime.log({
           entityId: payload.runtime.agentId,
           roomId: payload.roomId,
           type: 'action_event',
@@ -1910,7 +1911,7 @@ const events = {
   [EventType.RUN_STARTED]: [
     async (payload: RunEventPayload) => {
       try {
-        await payload.runtime.adapter.log({
+        await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
           type: 'run_event',
@@ -1922,7 +1923,6 @@ const events = {
             entityId: payload.entityId,
             startTime: payload.startTime,
             source: payload.source || 'unknown',
-            metadata: payload.metadata || {},
           },
         });
         logger.debug(`[Bootstrap] Logged RUN_STARTED event for run ${payload.runId}`);
@@ -1935,7 +1935,7 @@ const events = {
   [EventType.RUN_ENDED]: [
     async (payload: RunEventPayload) => {
       try {
-        await payload.runtime.adapter.log({
+        await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
           type: 'run_event',
@@ -1950,7 +1950,6 @@ const events = {
             duration: payload.duration,
             error: payload.error,
             source: payload.source || 'unknown',
-            metadata: payload.metadata || {},
           },
         });
         logger.debug(`[Bootstrap] Logged RUN_ENDED event for run ${payload.runId} with status ${payload.status}`);
@@ -1963,7 +1962,7 @@ const events = {
   [EventType.RUN_TIMEOUT]: [
     async (payload: RunEventPayload) => {
       try {
-        await payload.runtime.adapter.log({
+        await payload.runtime.log({
           entityId: payload.entityId,
           roomId: payload.roomId,
           type: 'run_event',
@@ -1978,7 +1977,6 @@ const events = {
             duration: payload.duration,
             error: payload.error,
             source: payload.source || 'unknown',
-            metadata: payload.metadata || {},
           },
         });
         logger.debug(`[Bootstrap] Logged RUN_TIMEOUT event for run ${payload.runId}`);
