@@ -33,8 +33,6 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-// Export Sentry instrumentation
-export * from './sentry/instrument';
 
 // Environment detection utilities
 export const isBrowser =
