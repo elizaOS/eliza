@@ -19,11 +19,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
       // Keep only what is actually used by tests
       buffer: 'buffer',
       process: 'process/browser',
     },
+    dedupe: ['react', 'react-dom'],
   },
   define: {
     global: 'globalThis',
@@ -32,10 +32,16 @@ export default defineConfig({
   },
   optimizeDeps: {
     esbuildOptions: {
+      // Better stack traces in component tests
+      sourcemap: true,
+      keepNames: true,
       define: {
         global: 'globalThis',
       },
     },
     include: ['buffer', 'process'],
+  },
+  esbuild: {
+    keepNames: true,
   },
 });
