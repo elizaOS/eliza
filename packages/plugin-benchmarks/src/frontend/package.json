@@ -15,7 +15,7 @@
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.5.5",
     "uuid": "^11.1.0",
-    "@elizaos/api-client": "workspace:*"
+    "@elizaos/api-client": "1.5.8-alpha.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

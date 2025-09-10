@@ -1,44 +1,66 @@
 import { IAgentRuntime, ModelType, parseKeyValueXml } from '@elizaos/core';
-import { TestStep, StepResult, ActionEvaluationConfig, ResponseEvaluationConfig } from '../types/action-bench-types';
+import {
+  TestStep,
+  StepResult,
+  ActionEvaluationConfig,
+  ResponseEvaluationConfig,
+} from '../types/action-bench-types';
 
 export class ActionBenchEvaluator {
   private collectedActions: string[] = [];
-  
+
   constructor(private runtime: IAgentRuntime) {}
 
   async evaluateStep(
-    step: TestStep, 
-    agentResponse: string, 
+    step: TestStep,
+    agentResponse: string,
     finalActions: string[] = []
   ): Promise<StepResult> {
     // Add any final actions to collected actions
     if (finalActions.length > 0) {
       this.collectedActions.push(...finalActions);
     }
-    
+
     // Evaluate actions
     const actionEvaluation = this.evaluateActions(
-      step.expectedActions, 
-      this.collectedActions, 
-      step.actionEvaluation
+      step.expectedActions,
+      this.collectedActions,
+      step.actionEvaluation,
+      step.requireActions
     );
-    
+
+    // Evaluate patterns if provided
+    let patternEvaluation;
+    if (step.expectedPatterns && step.expectedPatterns.length > 0) {
+      patternEvaluation = this.evaluatePatterns(step.expectedPatterns, agentResponse);
+    }
+
     // Evaluate response if needed
     let responseEvaluation;
     if (step.responseEvaluation.enabled) {
       responseEvaluation = await this.evaluateResponseWithLLM(
-        agentResponse, 
+        agentResponse,
         step.responseEvaluation
       );
     }
 
+    // Determine if step passed
+    let passed = actionEvaluation.passed;
+    if (patternEvaluation) {
+      passed = passed && patternEvaluation.passed;
+    }
+    if (responseEvaluation) {
+      passed = passed && responseEvaluation.passed;
+    }
+
     return {
       stepId: step.stepId,
-      passed: actionEvaluation.passed && (responseEvaluation?.passed !== false),
+      passed,
       collectedActions: [...this.collectedActions],
       agentResponse,
       actionEvaluation,
-      responseEvaluation
+      responseEvaluation,
+      patternEvaluation,
     };
   }
 
@@ -49,45 +71,86 @@ export class ActionBenchEvaluator {
   }
 
   private evaluateActions(
-    expectedActions: string[], 
-    collectedActions: string[], 
-    config: ActionEvaluationConfig
+    expectedActions: string[],
+    collectedActions: string[],
+    config: ActionEvaluationConfig,
+    requireActions?: boolean
   ): { passed: boolean; details: string } {
+    // If requireActions is true and no actions were collected, fail
+    if (requireActions && collectedActions.length === 0 && expectedActions.length > 0) {
+      return {
+        passed: false,
+        details: `❌ Actions required but none were executed. Expected: [${expectedActions.join(', ')}]`,
+      };
+    }
+
+    // If no expected actions, pass if no requirement or no actions collected
+    if (expectedActions.length === 0) {
+      return {
+        passed: true,
+        details: `✅ No specific actions expected`,
+      };
+    }
     if (config.requiresOrder) {
       // Check if expected actions appear in order within collected actions
       let expectedIndex = 0;
       let foundSequence: string[] = [];
-      
+
       for (const action of collectedActions) {
         if (expectedIndex < expectedActions.length && action === expectedActions[expectedIndex]) {
           foundSequence.push(action);
           expectedIndex++;
         }
       }
-      
+
       const passed = expectedIndex === expectedActions.length;
       return {
         passed,
-        details: passed 
+        details: passed
           ? `✅ Found expected sequence: [${foundSequence.join(', ')}]`
-          : `❌ Expected sequence [${expectedActions.join(', ')}], but found [${foundSequence.join(', ')}] (missing ${expectedActions.length - expectedIndex} actions)`
+          : `❌ Expected sequence [${expectedActions.join(', ')}], but found [${foundSequence.join(', ')}] (missing ${expectedActions.length - expectedIndex} actions)`,
       };
     } else {
       // Check if all expected actions are present (order doesn't matter)
-      const missingActions = expectedActions.filter(action => !collectedActions.includes(action));
+      const missingActions = expectedActions.filter((action) => !collectedActions.includes(action));
       const passed = missingActions.length === 0;
-      
+
       return {
         passed,
         details: passed
           ? `✅ Found all expected actions: [${expectedActions.join(', ')}]`
-          : `❌ Missing actions: [${missingActions.join(', ')}]`
+          : `❌ Missing actions: [${missingActions.join(', ')}]`,
       };
     }
   }
 
+  private evaluatePatterns(
+    expectedPatterns: string[],
+    response: string
+  ): { passed: boolean; details: string } {
+    const lowerResponse = response.toLowerCase();
+    const foundPatterns: string[] = [];
+    const missingPatterns: string[] = [];
+
+    for (const pattern of expectedPatterns) {
+      if (lowerResponse.includes(pattern.toLowerCase())) {
+        foundPatterns.push(pattern);
+      } else {
+        missingPatterns.push(pattern);
+      }
+    }
+
+    const passed = missingPatterns.length === 0;
+    return {
+      passed,
+      details: passed
+        ? `✅ Found all expected patterns: [${foundPatterns.join(', ')}]`
+        : `❌ Missing patterns: [${missingPatterns.join(', ')}]. Found: [${foundPatterns.join(', ')}]`,
+    };
+  }
+
   private async evaluateResponseWithLLM(
-    response: string, 
+    response: string,
     config: ResponseEvaluationConfig
   ): Promise<{ passed: boolean; score: number; reasoning: string }> {
     try {
@@ -116,7 +179,7 @@ IMPORTANT: Respond ONLY with XML in this exact format:
 
       const result = await this.runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: evaluationPrompt,
-        temperature: 0.1
+        temperature: 0.1,
       });
 
       const parsed = parseKeyValueXml(result);
@@ -134,7 +197,7 @@ IMPORTANT: Respond ONLY with XML in this exact format:
       return {
         passed: false,
         score: 0,
-        reasoning: `LLM evaluation failed: ${error instanceof Error ? error.message : String(error)}`
+        reasoning: `LLM evaluation failed: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
   }

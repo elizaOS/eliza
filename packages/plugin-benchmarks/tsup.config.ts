@@ -9,11 +9,5 @@ export default defineConfig({
   external: ['@elizaos/core'],
   treeshake: true,
   splitting: false,
-  outExtension({ format }) {
-    // Ensure correct file extensions for different formats
-    if (format === 'cjs') return { js: '.cjs' };
-    if (format === 'esm') return { js: '.js' };
-    return {};
-  },
 });
 

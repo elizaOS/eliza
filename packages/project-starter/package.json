@@ -31,6 +31,7 @@
     "@elizaos/client": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-openrouter": "1.2.6",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
     "@tanstack/react-query": "^5.29.0",

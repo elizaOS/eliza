@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/plugin-action-bench-tests",
+  "version": "1.0.0",
+  "description": "Performance benchmark tests for ElizaOS Plugin Action Bench",
+  "main": "index.ts",
+  "scripts": {
+    "test": "tsx index.ts all",
+    "test:typewriter": "tsx index.ts typewriter",
+    "test:math": "tsx index.ts math",
+    "test:relational": "tsx index.ts relational",
+    "test:verbose": "tsx index.ts all --verbose",
+    "test:typewriter:verbose": "tsx index.ts typewriter --verbose",
+    "test:math:verbose": "tsx index.ts math --verbose",
+    "test:relational:verbose": "tsx index.ts relational --verbose",
+    "clean": "rm -rf test-results"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,7 +1,7 @@
 {
-  "name": "@elizaos/plugin-action-bench",
-  "version": "1.4.4",
-  "description": "Action calling benchmark plugins for ElizaOS with typewriter, multiverse math, and relational data operations",
+  "name": "@elizaos/plugin-benchmarks",
+  "version": "1.4.0",
+  "description": "Action calling benchmark plugins for ElizaOS (Typewriter A–Z actions)",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -9,8 +9,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -22,28 +22,14 @@
     "build": "tsup src/index.ts --format cjs,esm --dts",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "clean": "rm -rf dist",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "benchmark": "cd test-scripts && npm install && npm test",
-    "benchmark:typewriter": "cd test-scripts && npm install && npm run test:typewriter",
-    "benchmark:math": "cd test-scripts && npm install && npm run test:math",
-    "benchmark:relational": "cd test-scripts && npm install && npm run test:relational",
-    "benchmark:verbose": "cd test-scripts && npm install && npm run test:verbose",
-    "benchmark:install": "cd test-scripts && npm install"
+    "format": "prettier --write \"src/**/*.ts\""
   },
   "keywords": [
     "elizaos",
     "plugin",
     "benchmark",
     "typewriter",
-    "actions",
-    "multiverse",
-    "math",
-    "dimensional",
-    "context-dependent",
-    "relational",
-    "graph",
-    "entities",
-    "testing"
+    "actions"
   ],
   "publishConfig": {
     "access": "public"
@@ -69,4 +55,3 @@
     "typescript": "^5.7.2"
   }
 }
-

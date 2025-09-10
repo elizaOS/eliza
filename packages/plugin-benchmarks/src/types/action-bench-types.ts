@@ -11,6 +11,9 @@ export interface TestStep {
   stepId: number;
   userMessage: string;
   expectedActions: string[];
+  expectedPatterns?: string[]; // For retail tests - patterns to check in response
+  requireActions?: boolean; // For retail tests - whether actions must be executed
+  waitForFinalResponse?: boolean; // For retail tests - wait for final response
   actionEvaluation: ActionEvaluationConfig;
   responseEvaluation: ResponseEvaluationConfig;
 }
@@ -18,6 +21,8 @@ export interface TestStep {
 export interface TestDefinition {
   testId: string;
   name: string;
+  category?: string; // Test category (e.g., 'retail', 'typing')
+  description?: string; // Detailed description of the test
   steps: TestStep[];
 }
 
@@ -39,6 +44,10 @@ export interface StepResult {
     passed: boolean;
     score: number;
     reasoning: string;
+  };
+  patternEvaluation?: {
+    passed: boolean;
+    details: string;
   };
 }
 
