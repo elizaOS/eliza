@@ -1113,7 +1113,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
   let responseContent: Content | null = null;
   if (summary?.text) {
     responseContent = {
-      actions: ['REPLY'],
+      actions: ['MULTI_STEP_SUMMARY'],
       text: summary.text,
       thought: summary.thought || 'Final user-facing message after task completion.',
       simple: true,

@@ -20,6 +20,7 @@ async function ensureSentryInitialized(): Promise<SentryBrowserModule | null> {
   if (initialized && sentryClient) return sentryClient;
 
   try {
+    // Only import @sentry/browser - never @sentry/node
     const mod = (await import('@sentry/browser')) as unknown as SentryBrowserModule;
 
     const init = () =>
