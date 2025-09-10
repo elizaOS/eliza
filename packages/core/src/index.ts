@@ -18,9 +18,6 @@ export * from './schemas/character';
 // Export environment utilities
 export * from './utils/environment';
 
-// Export path utilities
-export * from './utils/paths';
-
 // Export buffer utilities
 export * from './utils/buffer';
 
