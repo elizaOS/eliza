@@ -813,6 +813,7 @@ export class AgentRuntime implements IAgentRuntime {
                 runId: runId,
                 type: 'agent_action',
                 thought: actionPlan?.thought,
+                source: message.content?.source, // Include original message source
               },
             });
           } catch (error) {
@@ -935,6 +936,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionId: actionId,
                 type: 'agent_action',
                 actionResult: actionResult,
+                source: message.content?.source, // Include original message source
               },
             });
           } catch (error) {
