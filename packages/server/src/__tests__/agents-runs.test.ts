@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import express from 'express';
 import type { UUID } from '@elizaos/core';
-import { createAgentRunsRouter } from '../runs';
+import { createAgentRunsRouter } from '../api/agents/runs';
 
 type LogEntry = {
     type: string;
