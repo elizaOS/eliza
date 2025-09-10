@@ -289,24 +289,31 @@ export function createChannelsRouter(
         // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
         const messagesForGui = messages.map((msg) => {
           // Extract thought and actions from rawMessage for historical messages
-          const rawMessage =
-            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          let rawMessage: any = {};
+          try {
+            rawMessage =
+              typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          } catch (e) {
+            logger.warn('[Messages Router] Failed to parse rawMessage for message', msg.id);
+          }
 
-          // Transform the entire message to handle attachments in both content and metadata
-          const transformedMessage = transformMessageAttachments({
-            ...msg,
+          // Transform only content and metadata to handle attachments, preserving all other message fields
+          const { content, metadata } = transformMessageAttachments({
+            content: msg.content,
             metadata: {
               ...msg.metadata,
               thought: rawMessage?.thought,
               actions: rawMessage?.actions,
+              attachments: rawMessage?.attachments ?? (msg.metadata as any)?.attachments,
             },
           });
 
           return {
-            ...transformedMessage,
+            ...msg,
+            content,
+            metadata,
             created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
             updated_at: new Date(msg.updatedAt).getTime(),
-            // Ensure other fields align with client's MessageServiceStructure / ServerMessage
           };
         });
         res.json({ success: true, data: { messages: messagesForGui } });
