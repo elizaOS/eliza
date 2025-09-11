@@ -23,8 +23,9 @@ import { apiKeyAuthMiddleware } from './authMiddleware.js';
 import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
-
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+import { AgentManager } from './managers/AgentManager.js';
+import { ElizaOS } from './orchestration/ElizaOS.js';
 
 import internalMessageBus from './bus.js';
 import type {
@@ -155,13 +156,106 @@ export class AgentServer {
   public isInitialized: boolean = false; // Flag to prevent double initialization
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
   private clientPath?: string; // Optional path to client dist files
+  private elizaOS?: ElizaOS; // Core ElizaOS instance
+  private agentManager?: AgentManager; // Manager for agent lifecycle
 
   public database!: DatabaseAdapter;
 
-  public startAgent!: (character: Character) => Promise<IAgentRuntime>;
-  public stopAgent!: (runtime: IAgentRuntime) => void;
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
+
+  /**
+   * Start multiple agents in batch (true parallel)
+   * @param characters - Array of character configurations
+   * @returns Array of started agent runtimes
+   */
+  public async startAgents(characters: Character[]): Promise<IAgentRuntime[]> {
+    if (!this.agentManager) {
+      throw new Error('AgentManager not initialized');
+    }
+    
+    // Delegate to AgentManager for batch operations
+    const runtimes = await this.agentManager.startAgents(characters);
+    
+    // Persist agents to database
+    if (this.database) {
+      for (const runtime of runtimes) {
+        try {
+          // Check if agent already exists in DB
+          const existingAgent = await this.database.getAgent(runtime.agentId);
+          if (!existingAgent) {
+            // Create agent in database
+            await this.database.createAgent({
+              ...runtime.character,
+              id: runtime.agentId,
+            });
+            logger.info(`Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`);
+          }
+        } catch (error) {
+          logger.error(`Failed to persist agent ${runtime.agentId} to database:`, error instanceof Error ? error.message : String(error));
+          // Continue anyway - agent can work without DB persistence
+        }
+      }
+    }
+    
+    // Sync the local map with ElizaOS
+    this.syncAgentsMap();
+    
+    return runtimes;
+  }
+
+  /**
+   * Stop multiple agents in batch
+   * @param agentIds - Array of agent IDs to stop
+   */
+  public async stopAgents(agentIds: UUID[]): Promise<void> {
+    if (!this.elizaOS) {
+      throw new Error('ElizaOS not initialized');
+    }
+    
+    // Delegate to ElizaOS for batch stop
+    await this.elizaOS.stopAgents(agentIds);
+    
+    // Sync the local map with ElizaOS
+    this.syncAgentsMap();
+  }
+
+  /**
+   * Get all agents from the ElizaOS instance
+   * @returns Array of agent runtimes
+   */
+  public getAllAgents(): IAgentRuntime[] {
+    if (!this.elizaOS) {
+      return [];
+    }
+    return this.elizaOS.getAgents();
+  }
+
+  /**
+   * Get an agent by ID from the ElizaOS instance
+   * @param agentId - The agent ID
+   * @returns The agent runtime or undefined
+   */
+  public getAgent(agentId: UUID): IAgentRuntime | undefined {
+    if (!this.elizaOS) {
+      return undefined;
+    }
+    return this.elizaOS.getAgent(agentId);
+  }
+
+  /**
+   * Synchronize local agents map with ElizaOS
+   * This is for compatibility with existing API routes
+   */
+  private syncAgentsMap(): void {
+    if (!this.elizaOS) return;
+    
+    // Clear and rebuild the map from ElizaOS
+    this.agents.clear();
+    this.elizaOS.getAgents().forEach(agent => {
+      this.agents.set(agent.agentId, agent);
+    });
+  }
 
   /**
    * Constructor for AgentServer class.
@@ -202,15 +296,26 @@ export class AgentServer {
 
       const agentDataDir = resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
+      
+      // Ensure the database directory exists
+      const dbDir = path.dirname(agentDataDir);
+      if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+        logger.info(`[INIT] Created database directory: ${dbDir}`);
+      }
+      
+      // Create a temporary database adapter just for server operations (migrations, default server)
+      // Each agent will have its own database adapter created by the SQL plugin
+      const tempServerAgentId = '00000000-0000-0000-0000-000000000000'; // Temporary ID for server operations
       this.database = createDatabaseAdapter(
         {
           dataDir: agentDataDir,
           postgresUrl: options?.postgresUrl,
         },
-        '00000000-0000-0000-0000-000000000002'
+        tempServerAgentId
       ) as DatabaseAdapter;
       await this.database.init();
-      logger.success('Consolidated database initialized successfully');
+      logger.success('Database initialized for server operations');
 
       // Run migrations for the SQL plugin schema
       logger.info('[INIT] Running database migrations for messaging tables...');
@@ -242,6 +347,17 @@ export class AgentServer {
       logger.info('[INIT] Ensuring default server exists...');
       await this.ensureDefaultServer();
       logger.success('[INIT] Default server setup complete');
+      
+      // Server agent is no longer needed - each agent has its own database adapter
+      logger.info('[INIT] Server uses temporary adapter for migrations only');
+
+      logger.info('[INIT] Initializing ElizaOS...');
+      this.elizaOS = new ElizaOS();
+      
+      // Create AgentManager with ElizaOS instance
+      this.agentManager = new AgentManager(this.elizaOS);
+      
+      logger.success('[INIT] ElizaOS initialized');
 
       await this.initializeServer(options);
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -978,6 +1094,8 @@ export class AgentServer {
 
   /**
    * Registers an agent with the provided runtime.
+   * Note: Agents should ideally be created through ElizaOS.addAgent() for proper orchestration.
+   * This method exists primarily for backward compatibility.
    *
    * @param {IAgentRuntime} runtime - The runtime object containing agent information.
    * @throws {Error} if the runtime is null/undefined, if agentId is missing, if character configuration is missing,
@@ -995,8 +1113,10 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      this.agents.set(runtime.agentId, runtime);
-      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) added to agents map`);
+      // Sync the local map with ElizaOS instead of manual set
+      this.syncAgentsMap();
+      
+      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) registered`);
 
       // Auto-register the MessageBusConnector plugin
       try {
@@ -1082,8 +1202,8 @@ export class AgentServer {
         }
       }
 
-      // Delete the agent from the map
-      this.agents.delete(agentId);
+      // Sync the local map with ElizaOS instead of manual delete
+      this.syncAgentsMap();
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
       logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
@@ -1148,6 +1268,8 @@ export class AgentServer {
             logger.success(
               `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
             );
+            // Sync before logging
+            this.syncAgentsMap();
             logger.debug(`Active agents: ${this.agents.size}`);
             this.agents.forEach((agent, id) => {
               logger.debug(`- Agent ${id}: ${agent.character.name}`);
@@ -1400,6 +1522,8 @@ export class AgentServer {
 
       // Stop all agents first
       logger.debug('Stopping all agents...');
+      // Sync before stopping all agents
+      this.syncAgentsMap();
       for (const [id, agent] of this.agents.entries()) {
         try {
           await agent.stop();
@@ -1456,9 +1580,8 @@ export {
 // Export types
 export * from './types';
 
-// Export ElizaOS orchestration class
-export { ElizaOS } from './orchestration/ElizaOS';
-export type { ElizaOSConfig } from './orchestration/ElizaOS';
+// Export ElizaOS from core (re-export for convenience)
+export { ElizaOS } from '@elizaos/core';
 
 // Export managers for advanced usage
 export { AgentManager } from './managers/AgentManager';

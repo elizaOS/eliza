@@ -215,7 +215,7 @@ export function createAgentCrudRouter(
       const isActive = !!agents.get(agentId);
       if (isActive && updatedAgent) {
         serverInstance?.unregisterAgent(agentId);
-        await serverInstance?.startAgent(updatedAgent);
+        await serverInstance?.startAgents([updatedAgent]);
       }
 
       const runtime = agents.get(agentId);

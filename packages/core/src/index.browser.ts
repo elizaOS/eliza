@@ -30,6 +30,7 @@ export * from './runtime';
 export * from './settings';
 export * from './services';
 export * from './search';
+export * from './elizaos';
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;

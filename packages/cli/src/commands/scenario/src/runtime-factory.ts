@@ -114,17 +114,6 @@ export async function createScenarioServer(
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
         await server.initialize({ dataDir: uniqueDataDir });
         
-        // Use AgentManager for agent management with more control
-        const moduleLoader = getModuleLoader();
-        const { AgentManager } = await moduleLoader.load('@elizaos/server');
-        const agentManager = new AgentManager(server);
-        
-        server.startAgent = async (character) => {
-          return agentManager.startAgent(character);
-        };
-        server.stopAgent = async (runtime) => {
-          await agentManager.stopAgent(runtime);
-        };
         await server.start(port);
         createdServer = true;
 
@@ -215,8 +204,11 @@ export async function createScenarioAgent(
   const configManager = new ConfigManager();
   await configManager.setDefaultSecretsFromEnv(character);
   
-  // Pass raw character; encryption is handled inside startAgent
-  const runtime = await server.startAgent(character);
+  // Pass raw character; encryption is handled inside startAgents
+  const [runtime] = await server.startAgents([character]);
+  if (!runtime) {
+    throw new Error(`Failed to start agent: ${character.name}`);
+  }
   const agentId = runtime.character.id as UUID;
 
   return { runtime, agentId };

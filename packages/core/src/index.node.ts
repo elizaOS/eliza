@@ -31,6 +31,7 @@ export * from './runtime';
 export * from './settings';
 export * from './services';
 export * from './search';
+export * from './elizaos';
 
 // Node-specific exports
 export const isBrowser = false;

@@ -129,37 +129,43 @@ export const start = new Command()
         }
       }
 
-      // Use ElizaOS from server package for all cases
+      // Use AgentServer from server package
       const moduleLoader = getModuleLoader();
-      const { ElizaOS } = await moduleLoader.load('@elizaos/server');
+      const { AgentServer } = await moduleLoader.load('@elizaos/server');
       
-      const eliza = new ElizaOS({
-        port: options.port,
+      const server = new AgentServer();
+      
+      // Initialize server with database configuration
+      await server.initialize({
         dataDir: process.env.PGLITE_DATA_DIR,
         postgresUrl: process.env.POSTGRES_URL,
       });
       
-      // Initialize server first
-      await eliza.start();
+      // Start HTTP server
+      await server.start(options.port || 3000);
       
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
-        for (const projectAgent of projectAgents) {
-          // Start agent with its character, init function, and plugins
-          await eliza.startWithCharacter(
-            projectAgent.character,
-            projectAgent.init,
-            projectAgent.plugins || []
-          );
+        // Batch start all project agents
+        const charactersToStart = projectAgents.map(pa => pa.character);
+        const runtimes = await server.startAgents(charactersToStart);
+        
+        // Run init functions for each agent if provided
+        for (let i = 0; i < projectAgents.length; i++) {
+          if (projectAgents[i].init && runtimes[i]) {
+            await projectAgents[i].init(runtimes[i]);
+          }
         }
+        
+        logger.info(`Started ${runtimes.length} project agents`);
       }
       // Handle standalone characters from CLI
       else if (characters && characters.length > 0) {
-        for (const character of characters) {
-          await eliza.startWithCharacter(character);
-        }
+        // Batch start all characters
+        const runtimes = await server.startAgents(characters);
+        logger.info(`Started ${runtimes.length} agents`);
       }
-      // If no characters or agents, ElizaOS.start() already started default Eliza
+      // If no characters or agents specified, server is ready but no agents started
     } catch (e: any) {
       handleError(e);
       process.exit(1);
