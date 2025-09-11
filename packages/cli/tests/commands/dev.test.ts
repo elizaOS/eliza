@@ -535,7 +535,7 @@ describe('ElizaOS Dev Commands', () => {
     await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
 
     // Start a dummy server on port 3000 to create a conflict
-    let dummyServer;
+    let dummyServer: any;
     try {
       dummyServer = Bun.serve({
         port: 3000,
