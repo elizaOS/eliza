@@ -2,6 +2,7 @@ import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
+import { transformMessageAttachments } from '../../utils/media-transformer';
 import type {
   Session,
   SessionTimeoutConfig,
@@ -929,17 +930,23 @@ export function createSessionsRouter(
           );
         }
 
-        return {
-          id: msg.id,
+        // Transform the entire message to handle attachments in both content and metadata
+        const transformedMessage = transformMessageAttachments({
           content: msg.content,
-          authorId: msg.authorId,
-          isAgent: msg.sourceType === 'agent_response',
-          createdAt: msg.createdAt,
           metadata: {
             ...msg.metadata,
             thought: rawMessage.thought,
             actions: rawMessage.actions,
           },
+        });
+
+        return {
+          id: msg.id,
+          content: transformedMessage.content,
+          authorId: msg.authorId,
+          isAgent: msg.sourceType === 'agent_response',
+          createdAt: msg.createdAt,
+          metadata: transformedMessage.metadata,
         };
       });
 

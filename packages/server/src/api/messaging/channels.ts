@@ -6,7 +6,9 @@ import {
   logger,
   validateUuid,
   type UUID,
+  getUploadsChannelsDir,
 } from '@elizaos/core';
+import { transformMessageAttachments } from '../../utils/media-transformer';
 import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
@@ -44,7 +46,7 @@ async function saveChannelUploadedFile(
   file: Express.Multer.File,
   channelId: string
 ): Promise<{ filename: string; url: string }> {
-  const uploadDir = path.join(process.cwd(), '.eliza/data/uploads/channels', channelId);
+  const uploadDir = path.join(getUploadsChannelsDir(), channelId);
 
   // Ensure directory exists
   if (!fs.existsSync(uploadDir)) {
@@ -287,20 +289,31 @@ export function createChannelsRouter(
         // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
         const messagesForGui = messages.map((msg) => {
           // Extract thought and actions from rawMessage for historical messages
-          const rawMessage =
-            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          let rawMessage: any = {};
+          try {
+            rawMessage =
+              typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          } catch (e) {
+            logger.warn('[Messages Router] Failed to parse rawMessage for message', msg.id);
+          }
 
-          return {
-            ...msg,
-            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-            updated_at: new Date(msg.updatedAt).getTime(),
-            // Include thought and actions from rawMessage in metadata for client compatibility
+          // Transform only content and metadata to handle attachments, preserving all other message fields
+          const { content, metadata } = transformMessageAttachments({
+            content: msg.content,
             metadata: {
               ...msg.metadata,
               thought: rawMessage?.thought,
               actions: rawMessage?.actions,
+              attachments: rawMessage?.attachments ?? (msg.metadata as any)?.attachments,
             },
-            // Ensure other fields align with client's MessageServiceStructure / ServerMessage
+          });
+
+          return {
+            ...msg,
+            content,
+            metadata,
+            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+            updated_at: new Date(msg.updatedAt).getTime(),
           };
         });
         res.json({ success: true, data: { messages: messagesForGui } });

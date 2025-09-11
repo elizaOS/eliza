@@ -1,4 +1,4 @@
-import { validateUuid, logger } from '@elizaos/core';
+import { validateUuid, logger, getUploadsChannelsDir } from '@elizaos/core';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import { ALLOWED_MEDIA_MIME_TYPES, MAX_FILE_SIZE } from '../shared/constants';
@@ -30,7 +30,7 @@ async function saveUploadedFile(
   file: Express.Multer.File,
   channelId: string
 ): Promise<{ filename: string; url: string }> {
-  const uploadDir = path.join(process.cwd(), '.eliza/data/uploads/channels', channelId);
+  const uploadDir = path.join(getUploadsChannelsDir(), channelId);
 
   // Ensure directory exists
   if (!fs.existsSync(uploadDir)) {

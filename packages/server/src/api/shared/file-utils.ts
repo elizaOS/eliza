@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { logger } from '@elizaos/core';
+import { logger, getUploadsAgentsDir, getUploadsChannelsDir } from '@elizaos/core';
 
 /**
  * Safely constructs and validates upload directory paths to prevent path traversal attacks
@@ -12,8 +12,8 @@ export function createSecureUploadDir(id: string, type: 'agents' | 'channels'): 
   }
 
   // Use CLI data directory structure consistently
-  const baseUploadDir = path.join(process.cwd(), '.eliza', 'data', 'uploads');
-  const finalDir = path.join(baseUploadDir, type, id);
+  const baseUploadDir = type === 'agents' ? getUploadsAgentsDir() : getUploadsChannelsDir();
+  const finalDir = path.join(baseUploadDir, id);
 
   // Ensure the resolved path is still within the expected directory
   const resolvedPath = path.resolve(finalDir);
