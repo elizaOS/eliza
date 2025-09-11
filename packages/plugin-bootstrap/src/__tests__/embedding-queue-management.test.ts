@@ -29,6 +29,8 @@ describe('EmbeddingGenerationService - Queue Management', () => {
         warn: mock(),
         error: mock(),
       },
+      // Add log method used by EmbeddingGenerationService
+      log: mock().mockResolvedValue(undefined),
     } as any;
   });
 

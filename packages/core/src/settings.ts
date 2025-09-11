@@ -51,31 +51,30 @@ const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
-  // Check if cached value exists and is still valid
+  // Always read current env first to detect changes
+  const currentEnvSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
+  const now = Date.now();
+
+  // Return cached value only if still valid AND matches current env
   if (saltCache !== null) {
-    const now = Date.now();
-    if (now - saltCache.timestamp < SALT_CACHE_TTL_MS) {
+    const cacheFresh = now - saltCache.timestamp < SALT_CACHE_TTL_MS;
+    if (cacheFresh && saltCache.value === currentEnvSalt) {
       return saltCache.value;
     }
   }
 
-  const secretSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
-
-  if (secretSalt === 'secretsalt' && !saltErrorLogged) {
+  if (currentEnvSalt === 'secretsalt' && !saltErrorLogged) {
     logger.warn('SECRET_SALT is not set or using default value');
     saltErrorLogged = true;
   }
 
-  const salt = secretSalt;
-
-  // Cache the salt with current timestamp
+  // Update cache with latest env-derived salt
   saltCache = {
-    value: salt,
-    timestamp: Date.now(),
+    value: currentEnvSalt,
+    timestamp: now,
   };
 
-  //logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
-  return salt;
+  return currentEnvSalt;
 }
 
 /**
