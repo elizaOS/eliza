@@ -195,6 +195,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
     registerEvent: mock(),
     getCache: mock().mockResolvedValue(null),
     setCache: mock().mockResolvedValue(true),
+    log: mock().mockResolvedValue(undefined),
 
     // Task-related methods needed for TaskService tests
     registerTaskWorker: mock(),
