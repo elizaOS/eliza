@@ -144,7 +144,8 @@ export async function runE2eTests(
       
       server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
-        return agentManager.startAgent(character, undefined, [], { isTestMode: true });
+        const [runtime] = await agentManager.startAgents([character], undefined, [], { isTestMode: true });
+        return runtime;
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
       server.jsonToCharacter = jsonToCharacter;
@@ -195,8 +196,8 @@ export async function runE2eTests(
 
             // The AgentManager now handles all dependency resolution,
             // including testDependencies when isTestMode is true.
-            const runtime = await agentManager.startAgent(
-              defaultElizaCharacter,
+            const [runtime] = await agentManager.startAgents(
+              [defaultElizaCharacter],
               undefined, // No custom init for default test setup
               [pluginUnderTest], // Pass the local plugin module directly
               { isTestMode: true }
@@ -226,8 +227,8 @@ export async function runE2eTests(
 
               logger.debug(`Starting agent: ${originalCharacter.name}`);
 
-              const runtime = await agentManager.startAgent(
-                originalCharacter,
+              const [runtime] = await agentManager.startAgents(
+                [originalCharacter],
                 agent.init,
                 agent.plugins || [],
                 { isTestMode: true } // Pass isTestMode for project tests as well

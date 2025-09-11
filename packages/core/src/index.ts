@@ -36,6 +36,9 @@ export * from './search';
 // Export Sentry instrumentation
 export * from './sentry/instrument';
 
+// Export ElizaOS
+export * from './elizaos';
+
 // Environment detection utilities
 export const isBrowser =
   typeof globalThis !== 'undefined' &&

@@ -43,7 +43,8 @@ export function createAgentLifecycleRouter(
         });
       }
 
-      await serverInstance?.startAgent(agent);
+      // Use batch method even for single agent
+      await serverInstance?.startAgents([agent]);
 
       const runtime = agents.get(agentId);
       if (!runtime) {

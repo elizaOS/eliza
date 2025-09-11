@@ -30,6 +30,7 @@ export * from './runtime.browser';
 export * from './settings';
 export * from './services';
 export * from './search';
+export * from './elizaos';
 
 // Export Sentry instrumentation (browser version - uses @sentry/browser only)
 export * from './sentry/instrument.browser';
