@@ -2,9 +2,9 @@
   "name": "@elizaos/plugin-sql",
   "version": "1.5.9-alpha.1",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "types/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-sql"
@@ -13,14 +13,21 @@
     "access": "public"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./types/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
+        "types": "./types/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./package.json": "./package.json"
   },
+  "sideEffects": false,
   "files": [
     "dist",
     "drizzle"
@@ -43,7 +50,7 @@
     "typescript-eslint": "^8.26.0"
   },
   "scripts": {
-    "build": "bun run build.ts",
+    "build": "bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
     "dev": "bun run build.ts --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
