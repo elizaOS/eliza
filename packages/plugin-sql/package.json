@@ -2,8 +2,8 @@
   "name": "@elizaos/plugin-sql",
   "version": "1.5.9-alpha.1",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
+  "main": "dist/node/index.js",
+  "module": "dist/node/index.js",
   "types": "dist/index.d.ts",
   "repository": {
     "type": "git",
@@ -13,14 +13,19 @@
     "access": "public"
   },
   "exports": {
-    "./package.json": "./package.json",
     ".": {
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/browser/index.js"
+      },
       "import": {
         "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
+        "default": "./dist/node/index.js"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
+  "sideEffects": false,
   "files": [
     "dist",
     "drizzle"
