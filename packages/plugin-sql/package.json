@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",
-  "types": "dist/index.d.ts",
+  "types": "types/index.d.ts",
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaos-plugins/plugin-sql"
@@ -15,11 +15,11 @@
   "exports": {
     ".": {
       "browser": {
-        "types": "./dist/index.d.ts",
+        "types": "./types/index.d.ts",
         "default": "./dist/browser/index.js"
       },
       "import": {
-        "types": "./dist/index.d.ts",
+        "types": "./types/index.d.ts",
         "default": "./dist/node/index.js"
       }
     },
@@ -48,7 +48,7 @@
     "typescript-eslint": "^8.26.0"
   },
   "scripts": {
-    "build": "bun run build.ts",
+    "build": "bun run build.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.build.node.json",
     "dev": "bun run build.ts --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
