@@ -24,7 +24,7 @@ interface GlobalSingletons {
   postgresConnectionManager?: PostgresConnectionManager;
 }
 
-const globalSymbols = global as unknown as Record<symbol, GlobalSingletons>;
+const globalSymbols = globalThis as unknown as Record<symbol, GlobalSingletons>;
 
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
