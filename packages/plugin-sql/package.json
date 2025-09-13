@@ -30,7 +30,8 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "drizzle"
+    "drizzle",
+    "types"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
