@@ -51,13 +51,14 @@ export const plugin: Plugin = {
   init: async (_config, runtime: IAgentRuntime) => {
     logger.info('plugin-sql (node) init starting...');
 
-    try {
-      const existingAdapter = (runtime as any).databaseAdapter;
-      if (existingAdapter) {
-        logger.info('Database adapter already registered, skipping creation');
-        return;
-      }
-    } catch {}
+    const adapterRegistered = await runtime
+      .isReady()
+      .then(() => true)
+      .catch(() => false);
+    if (adapterRegistered) {
+      logger.info('Database adapter already registered, skipping creation');
+      return;
+    }
 
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
     const dataDir =
