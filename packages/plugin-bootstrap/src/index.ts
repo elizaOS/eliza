@@ -348,6 +348,39 @@ export function shouldBypassShouldRespond(
   return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
 }
 
+export class CancelRunSignal {
+  private static byRunId: Map<UUID, CancelRunSignal> = new Map();
+  private resolve?: (content?: Content) => void;
+  private promise: Promise<Content | undefined>;
+  public isCancelled = false;
+  constructor() {
+    this.promise = new Promise<Content | undefined>((resolve) => {
+      this.resolve = resolve;
+    });
+  }
+
+  cancel(content?: Content) {
+    this.isCancelled = true;
+    this.resolve?.(content);
+  }
+
+  wait() {
+    return this.promise;
+  }
+
+  static getSignal(runId: UUID) {
+    if (!this.byRunId.has(runId)) {
+      this.byRunId.set(runId, new CancelRunSignal());
+    }
+
+    return this.byRunId.get(runId)!;
+  }
+
+  static clear(runId: UUID) {
+    this.byRunId.delete(runId);
+  }
+}
+
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
@@ -409,8 +442,51 @@ const messageReceivedHandler = async ({
       metadata: message.content,
     });
 
+    const cancelSignal = CancelRunSignal.getSignal(runId);
+
+    const cancelPromise = (async () => {
+      const content = await cancelSignal.wait();
+      CancelRunSignal.clear(runId);
+
+      if (content) {
+        if (message.id) {
+          content.inReplyTo = createUniqueUuid(runtime, message.id);
+        }
+
+        await callback(content);
+
+        const cancelMemory = {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        };
+
+        await runtime.createMemory(cancelMemory, 'messages');
+        logger.debug('[Bootstrap] Saved cancel response to memory', {
+          memoryId: cancelMemory.id,
+        });
+      }
+
+      await runtime.emitEvent(EventType.RUN_ENDED, {
+        runtime,
+        runId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        startTime,
+        status: 'cancelled',
+        endTime: Date.now(),
+        duration: Date.now() - startTime,
+        source: 'messageHandler',
+      });
+    })();
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(async () => {
+        CancelRunSignal.clear(runId);
         await runtime.emitEvent(EventType.RUN_TIMEOUT, {
           runtime,
           runId,
@@ -466,6 +542,10 @@ const messageReceivedHandler = async ({
           // Create a memory object with the new ID for queuing
           memoryToQueue = { ...message, id: memoryId };
           await runtime.queueEmbeddingGeneration(memoryToQueue, 'normal');
+        }
+
+        if (cancelSignal.isCancelled) {
+          return;
         }
 
         const agentUserState = await runtime.getParticipantUserState(
@@ -826,10 +906,12 @@ const messageReceivedHandler = async ({
           error: error.message,
           source: 'messageHandler',
         });
+      } finally {
+        CancelRunSignal.clear(runId);
       }
     })();
 
-    await Promise.race([processingPromise, timeoutPromise]);
+    await Promise.race([processingPromise, timeoutPromise, cancelPromise]);
   } finally {
     clearTimeout(timeoutId);
     onComplete?.();
