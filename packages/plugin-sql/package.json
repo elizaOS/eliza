@@ -16,7 +16,7 @@
     ".": {
       "browser": {
         "types": "./types/index.d.ts",
-        "default": "./dist/browser/index.js"
+        "default": "./dist/browser/index.browser.js"
       },
       "import": {
         "types": "./types/index.d.ts",
