@@ -19,9 +19,23 @@ declare module '@elizaos/server' {
 }
 
 declare module '@elizaos/plugin-sql' {
-  import type { Plugin } from '@elizaos/core';
+  import type { Plugin, type UUID, type IDatabaseAdapter } from '@elizaos/core';
 
   export const plugin: Plugin;
+  export default plugin;
+
+  // Factory to create a database adapter (PGLite or Postgres)
+  export function createDatabaseAdapter(
+    config: { dataDir?: string; postgresUrl?: string },
+    agentId: UUID
+  ): IDatabaseAdapter;
+
+  // Server-side migration helper
+  export class DatabaseMigrationService {
+    initializeWithDatabase(db: any): Promise<void>;
+    discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+    runAllPluginMigrations(): Promise<void>;
+  }
 }
 
 declare module '@elizaos/plugin-e2b' {

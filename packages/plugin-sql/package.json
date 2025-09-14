@@ -12,20 +12,32 @@
   "publishConfig": {
     "access": "public"
   },
+  "browser": "dist/browser/index.browser.js",
   "exports": {
+    "./package.json": "./package.json",
     ".": {
+      "types": "./types/index.d.ts",
       "browser": {
-        "types": "./types/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
-      "import": {
-        "types": "./types/index.d.ts",
+      "node": {
+        "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
-      "require": "./dist/node/index.node.js",
+      "bun": {
+        "default": "./dist/node/index.node.js"
+      },
       "default": "./dist/node/index.node.js"
     },
-    "./package.json": "./package.json"
+    "./node": {
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    }
   },
   "sideEffects": false,
   "files": [

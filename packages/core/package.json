@@ -7,6 +7,7 @@
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {

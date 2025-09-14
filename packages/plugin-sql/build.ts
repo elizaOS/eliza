@@ -29,6 +29,7 @@ async function buildAll() {
         'fs',
         'path',
         'postgres',
+        'pg',
       ],
       sourcemap: true,
       minify: false,
