@@ -8,6 +8,7 @@ import {
   getDatabaseDir,
   getGeneratedDir,
   getUploadsAgentsDir,
+  ElizaOS,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -24,8 +25,9 @@ import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
-import { AgentManager } from './managers/AgentManager.js';
-import { ElizaOS } from './orchestration/ElizaOS.js';
+import { PluginLoader } from './managers/PluginLoader.js';
+import { ConfigManager } from './managers/ConfigManager.js';
+import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 
 import internalMessageBus from './bus.js';
 import type {
@@ -156,8 +158,9 @@ export class AgentServer {
   public isInitialized: boolean = false; // Flag to prevent double initialization
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
   private clientPath?: string; // Optional path to client dist files
-  private elizaOS?: ElizaOS; // Core ElizaOS instance
-  private agentManager?: AgentManager; // Manager for agent lifecycle
+  public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
+  private pluginLoader?: PluginLoader; // Plugin loading and resolution
+  private configManager?: ConfigManager; // Configuration management
 
   public database!: DatabaseAdapter;
 
@@ -167,34 +170,123 @@ export class AgentServer {
   /**
    * Start multiple agents in batch (true parallel)
    * @param characters - Array of character configurations
+   * @param plugins - Optional plugins to load
    * @returns Array of started agent runtimes
    */
-  public async startAgents(characters: Character[]): Promise<IAgentRuntime[]> {
-    if (!this.agentManager) {
-      throw new Error('AgentManager not initialized');
+  public async startAgents(
+    characters: Character[],
+    plugins: (Plugin | string)[] = []
+  ): Promise<IAgentRuntime[]> {
+    if (!this.elizaOS || !this.pluginLoader || !this.configManager) {
+      throw new Error('Server not properly initialized');
     }
     
-    // Delegate to AgentManager for batch operations
-    const runtimes = await this.agentManager.startAgents(characters);
-    
-    // Persist agents to database
-    if (this.database) {
-      for (const runtime of runtimes) {
-        try {
-          // Check if agent already exists in DB
-          const existingAgent = await this.database.getAgent(runtime.agentId);
-          if (!existingAgent) {
-            // Create agent in database
-            await this.database.createAgent({
-              ...runtime.character,
-              id: runtime.agentId,
-            });
-            logger.info(`Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`);
-          }
-        } catch (error) {
-          logger.error(`Failed to persist agent ${runtime.agentId} to database:`, error instanceof Error ? error.message : String(error));
-          // Continue anyway - agent can work without DB persistence
+    // Prepare all characters in parallel
+    const preparations = await Promise.all(
+      characters.map(async (character) => {
+        character.id ??= stringToUuid(character.name);
+        
+        // Handle secrets for character configuration
+        if (!this.configManager!.hasCharacterSecrets(character)) {
+          await this.configManager!.setDefaultSecretsFromEnv(character);
         }
+        
+        // Load and resolve plugins
+        const loadedPlugins = new Map<string, Plugin>();
+        const pluginsToLoad = new Set<string>(character.plugins || []);
+        
+        for (const p of plugins) {
+          if (typeof p === 'string') {
+            pluginsToLoad.add(p);
+          } else if (this.pluginLoader!.isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
+            loadedPlugins.set(p.name, p);
+            (p.dependencies || []).forEach((dep) => { pluginsToLoad.add(dep); });
+          }
+        }
+        
+        // Load all requested plugins
+        const allAvailablePlugins = new Map<string, Plugin>();
+        for (const p of loadedPlugins.values()) {
+          allAvailablePlugins.set(p.name, p);
+        }
+        for (const name of pluginsToLoad) {
+          if (!allAvailablePlugins.has(name)) {
+            const loaded = await this.pluginLoader!.loadAndPreparePlugin(name);
+            if (loaded) {
+              allAvailablePlugins.set(loaded.name, loaded);
+            }
+          }
+        }
+        
+        // Check if we have a SQL plugin
+        let haveSql = false;
+        for (const n of allAvailablePlugins.keys()) {
+          if (n === sqlPlugin.name || n === 'mysql') {
+            haveSql = true;
+            break;
+          }
+        }
+        
+        // Ensure an adapter
+        if (!haveSql) {
+          allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
+        }
+        
+        // Always include the message bus connector plugin for server agents
+        allAvailablePlugins.set(messageBusConnectorPlugin.name, messageBusConnectorPlugin as unknown as Plugin);
+        
+        // Resolve dependencies and get final plugin list
+        const finalPlugins = this.pluginLoader!.resolvePluginDependencies(
+          allAvailablePlugins,
+          false // isTestMode
+        );
+        
+        // Prepare the character with encrypted data
+        const preparedCharacter = encryptedCharacter(character);
+        
+        return { character: preparedCharacter, plugins: finalPlugins };
+      })
+    );
+    
+    // Step 1: Add all agents (create them with their plugins)
+    const agentIds = await this.elizaOS.addAgents(preparations.map(p => ({
+      character: p.character,
+      plugins: p.plugins
+    })));
+    
+    // Step 2: Start all agents (initialize them)
+    await this.elizaOS.startAgents(agentIds);
+    
+    // Step 3: Get the created runtimes and apply settings
+    const runtimes: IAgentRuntime[] = [];
+    const settings = await this.configManager!.loadEnvConfig();
+    
+    for (const id of agentIds) {
+      const runtime = this.elizaOS.getAgent(id);
+      if (runtime) {
+        // Apply settings
+        Object.assign(runtime, { settings });
+        
+        // Register the agent in the server
+        await this.registerAgent(runtime);
+        
+        // Persist to database
+        if (this.database) {
+          try {
+            const existingAgent = await this.database.getAgent(runtime.agentId);
+            if (!existingAgent) {
+              await this.database.createAgent({
+                ...runtime.character,
+                id: runtime.agentId,
+              });
+              logger.info(`Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`);
+            }
+          } catch (error) {
+            logger.error(`Failed to persist agent ${runtime.agentId} to database:`, error);
+          }
+        }
+        
+        runtimes.push(runtime);
       }
     }
     
@@ -355,7 +447,8 @@ export class AgentServer {
       this.elizaOS = new ElizaOS();
       
       // Create AgentManager with ElizaOS instance
-      this.agentManager = new AgentManager(this.elizaOS);
+      this.pluginLoader = new PluginLoader();
+      this.configManager = new ConfigManager();
       
       logger.success('[INIT] ElizaOS initialized');
 
@@ -1584,6 +1677,5 @@ export * from './types';
 export { ElizaOS } from '@elizaos/core';
 
 // Export managers for advanced usage
-export { AgentManager } from './managers/AgentManager';
 export { PluginLoader } from './managers/PluginLoader';
 export { ConfigManager } from './managers/ConfigManager';

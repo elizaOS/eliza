@@ -90,33 +90,26 @@ export class ElizaOS extends EventTarget {
     this.database = options?.database;
   }
 
-  /**
-   * Add a single agent (without starting it)
-   */
-  async addAgent(character: Character, plugins?: Plugin[]): Promise<UUID> {
-    const runtime = new AgentRuntime({
-      character,
-      plugins: plugins || this.globalDefaults?.plugins || [],
-    });
-
-    // Do NOT call runtime.init() here - that's done in startAgent
-    this.runtimes.set(runtime.agentId, runtime);
-
-    this.dispatchEvent(
-      new CustomEvent('agent:added', {
-        detail: { agentId: runtime.agentId, character },
-      })
-    );
-
-    return runtime.agentId;
-  }
 
   /**
    * Add multiple agents (batch operation)
    */
   async addAgents(agents: Array<{ character: Character; plugins?: Plugin[] }>): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      return this.addAgent(agent.character, agent.plugins);
+      const runtime = new AgentRuntime({
+        character: agent.character,
+        plugins: agent.plugins || this.globalDefaults?.plugins || [],
+      });
+      
+      this.runtimes.set(runtime.agentId, runtime);
+      
+      this.dispatchEvent(
+        new CustomEvent('agent:added', {
+          detail: { agentId: runtime.agentId, character: agent.character },
+        })
+      );
+      
+      return runtime.agentId;
     });
 
     const ids = await Promise.all(promises);
@@ -130,60 +123,8 @@ export class ElizaOS extends EventTarget {
     return ids;
   }
 
-  /**
-   * Stop a single agent
-   */
-  async stopAgent(agentId: UUID): Promise<void> {
-    const runtime = this.runtimes.get(agentId);
-    if (!runtime) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
 
-    await runtime.close();
-    
-    this.dispatchEvent(
-      new CustomEvent('agent:stopped', {
-        detail: { agentId },
-      })
-    );
-  }
 
-  /**
-   * Start a single agent (after it was stopped)
-   */
-  async startAgent(agentId: UUID): Promise<void> {
-    const runtime = this.runtimes.get(agentId);
-    if (!runtime) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
-
-    await runtime.initialize();
-    
-    this.dispatchEvent(
-      new CustomEvent('agent:started', {
-        detail: { agentId },
-      })
-    );
-  }
-
-  /**
-   * Delete a single agent
-   */
-  async deleteAgent(agentId: UUID): Promise<void> {
-    const runtime = this.runtimes.get(agentId);
-    if (!runtime) {
-      throw new Error(`Agent ${agentId} not found`);
-    }
-
-    // Clean up and remove from memory
-    this.runtimes.delete(agentId);
-    
-    this.dispatchEvent(
-      new CustomEvent('agent:deleted', {
-        detail: { agentId },
-      })
-    );
-  }
 
   /**
    * Register an existing runtime
@@ -228,8 +169,12 @@ export class ElizaOS extends EventTarget {
   /**
    * Delete agents
    */
-  async delAgents(agentIds: UUID[]): Promise<void> {
+  async deleteAgents(agentIds: UUID[]): Promise<void> {
     await this.stopAgents(agentIds);
+    
+    for (const id of agentIds) {
+      this.runtimes.delete(id);
+    }
 
     this.dispatchEvent(
       new CustomEvent('agents:deleted', {
@@ -244,7 +189,20 @@ export class ElizaOS extends EventTarget {
    */
   async startAgents(agentIds?: UUID[]): Promise<void> {
     const ids = agentIds || Array.from(this.runtimes.keys());
-    await Promise.all(ids.map((id) => this.startAgent(id)));
+    
+    await Promise.all(ids.map(async (id) => {
+      const runtime = this.runtimes.get(id);
+      if (!runtime) {
+        throw new Error(`Agent ${id} not found`);
+      }
+      await runtime.initialize();
+      
+      this.dispatchEvent(
+        new CustomEvent('agent:started', {
+          detail: { agentId: id },
+        })
+      );
+    }));
 
     this.dispatchEvent(
       new CustomEvent('agents:started', {
@@ -259,12 +217,12 @@ export class ElizaOS extends EventTarget {
   async stopAgents(agentIds?: UUID[]): Promise<void> {
     const ids = agentIds || Array.from(this.runtimes.keys());
 
-    for (const id of ids) {
+    await Promise.all(ids.map(async (id) => {
       const runtime = this.runtimes.get(id);
       if (runtime) {
         await runtime.close();
       }
-    }
+    }));
 
     this.dispatchEvent(
       new CustomEvent('agents:stopped', {
@@ -337,6 +295,89 @@ export class ElizaOS extends EventTarget {
     return this.getAgents().find(
       (runtime) => runtime.character.id === characterId
     );
+  }
+
+  /**
+   * Send a message to a specific agent - THE ONLY WAY to send messages
+   * All message sending (WebSocket, API, CLI, Tests, MessageBus) must use this method
+   */
+  async sendMessage(
+    agentId: UUID,
+    message: Memory | string,
+    options?: {
+      userId?: UUID;
+      roomId?: UUID;
+      metadata?: Record<string, any>;
+    }
+  ): Promise<Memory[]> {
+    const runtime = this.runtimes.get(agentId);
+    if (!runtime) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+
+    // Convert string to Memory if needed
+    const memory: Memory = typeof message === 'string' 
+      ? {
+          id: uuidv4() as UUID,
+          entityId: options?.userId || ('system' as UUID),
+          agentId,
+          roomId: options?.roomId || agentId, // Default to agent's ID as room
+          content: { text: message },
+          createdAt: Date.now(),
+          metadata: options?.metadata
+        } as Memory
+      : message;
+
+    // Process directly with runtime
+    const responses: Memory[] = [];
+    await runtime.processActions(memory, responses);
+    
+    this.dispatchEvent(
+      new CustomEvent('message:sent', {
+        detail: { agentId, message: memory, responses },
+      })
+    );
+    
+    return responses;
+  }
+
+  /**
+   * Send messages to multiple agents (batch operation)
+   * All batch message sending must use this method
+   */
+  async sendMessages(
+    messages: Array<{
+      agentId: UUID;
+      message: Memory | string;
+      options?: {
+        userId?: UUID;
+        roomId?: UUID;
+        metadata?: Record<string, any>;
+      };
+    }>
+  ): Promise<Array<{agentId: UUID; responses: Memory[]; error?: Error}>> {
+    const results = await Promise.all(
+      messages.map(async ({agentId, message, options}) => {
+        try {
+          const responses = await this.sendMessage(agentId, message, options);
+          return { agentId, responses };
+        } catch (error) {
+          return { 
+            agentId, 
+            responses: [], 
+            error: error instanceof Error ? error : new Error(String(error))
+          };
+        }
+      })
+    );
+    
+    this.dispatchEvent(
+      new CustomEvent('messages:sent', {
+        detail: { results, count: messages.length },
+      })
+    );
+    
+    return results;
   }
 
   /**
@@ -451,56 +492,6 @@ export class ElizaOS extends EventTarget {
     return results;
   }
 
-  /**
-   * Send messages to multiple agents (batch operation)
-   */
-  async sendMessages(
-    operations: Array<{ agentId: UUID; message: string; roomId: UUID }>
-  ): Promise<BatchResult[]> {
-    const results = await Promise.allSettled(
-      operations.map(async (op) => {
-        const runtime = this.runtimes.get(op.agentId);
-        if (!runtime) {
-          throw new Error(`Agent ${op.agentId} not found`);
-        }
-
-        // Create message memory
-        const message: Memory = {
-          id: uuidv4() as UUID,
-          entityId: 'system' as UUID,
-          agentId: op.agentId,
-          roomId: op.roomId,
-          content: { text: op.message },
-          createdAt: Date.now(),
-        };
-
-        // Process the message using processActions
-        // Note: This is a simplified version. Full implementation would need
-        // proper state management and response handling
-        const responses: Memory[] = [];
-        await runtime.processActions(message, responses);
-
-        return {
-          agentId: op.agentId,
-          success: true,
-          result: responses,
-        };
-      })
-    );
-
-    // Convert PromiseSettledResult to BatchResult
-    return results.map((result, index) => {
-      if (result.status === 'fulfilled') {
-        return result.value;
-      } else {
-        return {
-          agentId: operations[index].agentId,
-          success: false,
-          error: result.reason,
-        };
-      }
-    });
-  }
 
   /**
    * Get a read-only runtime accessor
