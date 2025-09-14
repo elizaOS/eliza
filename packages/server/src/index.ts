@@ -21,11 +21,8 @@ import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  plugin as sqlPlugin,
-} from '@elizaos/plugin-sql';
+import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+
 import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,

@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+import sqlPlugin from '@elizaos/plugin-sql';
 import { AgentServer } from '@elizaos/server';
 import { AgentStartOptions } from '../types';
 import {

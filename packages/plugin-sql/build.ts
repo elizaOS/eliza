@@ -49,7 +49,15 @@ async function buildAll() {
       target: 'browser',
       format: 'esm',
       // Keep core external to avoid bundling workspace deps; avoid Node externals
-      external: ['@elizaos/core'],
+      // Externalize PGlite and Drizzle so Next/Webpack can resolve their browser exports
+      external: [
+        '@elizaos/core',
+        '@electric-sql/pglite',
+        '@electric-sql/pglite/vector',
+        '@electric-sql/pglite/contrib/fuzzystrmatch',
+        'drizzle-orm',
+        'drizzle-orm/pglite',
+      ],
       sourcemap: true,
       minify: false,
       generateDts: true,
@@ -78,7 +86,7 @@ async function buildAll() {
   ].join('\n');
   await writeFile(rootIndexDtsPath, rootAlias, 'utf8');
 
-  // Browser alias (stable entry)
+  // Browser alias (stable entry) with explicit types for subpath
   const browserIndexDtsPath = join(browserDir, 'index.d.ts');
   const browserAlias = [
     'export * from "./index.browser";',
