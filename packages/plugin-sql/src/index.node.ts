@@ -87,7 +87,6 @@ export const plugin: Plugin = {
 
 export default plugin;
 
-// Server-only: expose migration service for server package usage
 export { DatabaseMigrationService } from './migration-service';
 
 
