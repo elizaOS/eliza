@@ -54,5 +54,29 @@ export interface MessageServiceStructure {
   metadata?: MessageMetadata;
 }
 
+// Attachment types for media transformation
+export interface Attachment {
+  url?: string;
+  [key: string]: unknown;
+}
+
+export type AttachmentInput = string | Attachment | (string | Attachment)[];
+
+export interface MessageContentWithAttachments {
+  attachments?: AttachmentInput;
+  [key: string]: unknown;
+}
+
+export interface MessageMetadataWithAttachments {
+  attachments?: AttachmentInput;
+  [key: string]: unknown;
+}
+
+export interface MessageWithAttachments {
+  content?: MessageContentWithAttachments | unknown;
+  metadata?: MessageMetadataWithAttachments;
+  [key: string]: unknown;
+}
+
 // Re-export session types
 export * from './types/sessions';
