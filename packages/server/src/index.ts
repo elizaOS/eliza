@@ -282,7 +282,7 @@ export class AgentServer {
               logger.info(`Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`);
             }
           } catch (error) {
-            logger.error(`Failed to persist agent ${runtime.agentId} to database:`, error);
+            logger.error({ error }, `Failed to persist agent ${runtime.agentId} to database`);
           }
         }
         

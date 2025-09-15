@@ -2061,7 +2061,9 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.init();
   }
   async close(): Promise<void> {
-    await this.adapter.close();
+    if (this.adapter) {
+      await this.adapter.close();
+    }
   }
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return await this.adapter.getAgent(agentId);
