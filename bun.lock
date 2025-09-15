@@ -304,6 +304,7 @@
         "drizzle-kit": "^0.31.1",
         "drizzle-orm": "^0.44.2",
         "pg": "^8.13.3",
+        "uuid": "^11.0.5",
       },
       "devDependencies": {
         "@eslint/js": "^9.28.0",
