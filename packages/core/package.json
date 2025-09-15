@@ -1,12 +1,13 @@
 {
   "name": "@elizaos/core",
-  "version": "1.5.8-alpha.24",
+  "version": "1.5.9-alpha.8",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -65,7 +66,6 @@
     "typescript": "5.8.3"
   },
   "dependencies": {
-    "@sentry/browser": "^9.22.0",
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dotenv": "16.5.0",
@@ -76,9 +76,6 @@
     "unique-names-generator": "4.7.1",
     "uuid": "11.1.0",
     "zod": "^3.24.4"
-  },
-  "optionalDependencies": {
-    "@sentry/node": "^10.7.0"
   },
   "publishConfig": {
     "access": "public"

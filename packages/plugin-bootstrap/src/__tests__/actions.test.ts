@@ -780,7 +780,8 @@ describe('Generate Image Action', () => {
         actions: ['GENERATE_IMAGE'],
         attachments: expect.any(Array),
         text: expect.stringContaining('Draw a cat on the moon'),
-      })
+      }),
+      expect.any(Array)
     );
 
     // Check ActionResult return

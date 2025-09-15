@@ -18,7 +18,9 @@
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["packages/core/src"],
-      "@elizaos/core/*": ["packages/core/src/*"]
+      "@elizaos/core/*": ["packages/core/src/*"],
+      "@elizaos/plugin-sql": ["packages/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["packages/plugin-sql/src/*"]
     }
   },
   "files": [],

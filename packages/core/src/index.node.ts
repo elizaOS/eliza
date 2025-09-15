@@ -25,7 +25,6 @@ export * from './actions';
 export * from './database';
 export * from './entities';
 export * from './logger';
-export * from './sentry/instrument.node';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
@@ -33,8 +32,6 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-// Export Sentry instrumentation (node version)
-export * from './sentry/instrument.node';
 
 // Node-specific exports
 export const isBrowser = false;

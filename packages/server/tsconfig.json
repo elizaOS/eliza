@@ -17,8 +17,6 @@
     "strict": true,
     "incremental": true,
     "composite": true,
-    "declaration": true,
-    "declarationMap": true,
     "noImplicitAny": false,
     "resolveJsonModule": true,
     "noUnusedLocals": true,

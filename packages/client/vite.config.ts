@@ -15,6 +15,8 @@ export default defineConfig(({ mode, command }) => {
       port: 5173,
       strictPort: true,
       host: true,
+      // Include sourcemaps for dependencies during development to improve stack traces
+      sourcemapIgnoreList: false,
       // Reduce watcher pressure to avoid EMFILE on large workspaces
       watch: {
         ignored: [
@@ -40,19 +42,18 @@ export default defineConfig(({ mode, command }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
-        // In dev mode, use source. In build/production, let Node resolution handle it
-        ...(isDev
-          ? {
-              '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
-            }
-          : {}),
         // Prevent node Sentry code from entering the browser bundle
         '@sentry/node': path.resolve(__dirname, './src/mocks/empty-module.ts'),
         '@sentry/node-core': path.resolve(__dirname, './src/mocks/empty-module.ts'),
       },
+      // Ensure a single React instance to avoid "older version of React" element errors
+      dedupe: ['react', 'react-dom'],
     },
     optimizeDeps: {
       esbuildOptions: {
+        // Generate sourcemaps for pre-bundled deps to unminify vendor stack traces
+        sourcemap: true,
+        keepNames: true,
         define: {
           global: 'globalThis',
         },
@@ -62,7 +63,8 @@ export default defineConfig(({ mode, command }) => {
     },
     build: {
       target: 'esnext',
-      sourcemap: false,
+      // Enable full sourcemaps in production builds for better error stacks
+      sourcemap: true,
       reportCompressedSize: false,
       minify: 'esbuild',
       chunkSizeWarningLimit: 2200, // Increase chunk size warning limit to accommodate large chunks
@@ -91,6 +93,10 @@ export default defineConfig(({ mode, command }) => {
         transformMixedEsModules: true,
         ignoreTryCatch: false,
       },
+    },
+    // Preserve function/class names to improve stack trace readability
+    esbuild: {
+      keepNames: true,
     },
     define: {
       // Define globals for browser compatibility

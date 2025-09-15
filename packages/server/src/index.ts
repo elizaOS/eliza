@@ -22,12 +22,10 @@ import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/
 import { apiKeyAuthMiddleware } from './authMiddleware.js';
 import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
+import * as Sentry from '@sentry/node';
 
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  plugin as sqlPlugin,
-} from '@elizaos/plugin-sql';
+import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+
 import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,
@@ -347,6 +345,26 @@ export class AgentServer {
       // Initialize middleware and database
       this.app = express();
 
+      // Initialize Sentry (if configured) before any other middleware
+      const DEFAULT_SENTRY_DSN =
+        'https://c20e2d51b66c14a783b0689d536f7e5c@o4509349865259008.ingest.us.sentry.io/4509352524120064';
+      const sentryDsn =
+        (process.env.SENTRY_DSN && process.env.SENTRY_DSN.trim()) || DEFAULT_SENTRY_DSN;
+      const sentryEnabled = Boolean(sentryDsn);
+      if (sentryEnabled) {
+        try {
+          Sentry.init({
+            dsn: sentryDsn,
+            environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+            integrations: [Sentry.vercelAIIntegration({ force: sentryEnabled })],
+            tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
+          });
+          logger.info('[Sentry] Initialized Sentry for @elizaos/server');
+        } catch (sentryInitError) {
+          logger.error({ error: sentryInitError }, '[Sentry] Failed to initialize Sentry');
+        }
+      }
+
       // Security headers first - before any other middleware
       const isProd = process.env.NODE_ENV === 'production';
       logger.debug('Setting up security headers...');
@@ -384,7 +402,7 @@ export class AgentServer {
                   styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
                   // unlocking this, so plugin can include the various frameworks from CDN if needed
                   // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                  scriptSrc: ["*", "'unsafe-inline'", "'unsafe-eval'"],
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
                   imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
                   fontSrc: ["'self'", 'https:', 'http:', 'data:'],
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
@@ -820,6 +838,18 @@ export class AgentServer {
         },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
+          // Capture error with Sentry if configured
+          if (sentryDsn) {
+            Sentry.captureException(err, (scope) => {
+              scope.setTag('route', req.path);
+              scope.setContext('request', {
+                method: req.method,
+                path: req.path,
+                query: req.query,
+              });
+              return scope;
+            });
+          }
           logger.error({ err }, `API error: ${req.method} ${req.path}`);
           res.status(500).json({
             success: false,
@@ -830,6 +860,29 @@ export class AgentServer {
           });
         }
       );
+
+      // Global process-level handlers to capture unhandled errors (if Sentry enabled)
+      if (sentryDsn) {
+        process.on('uncaughtException', (error) => {
+          try {
+            Sentry.captureException(error, (scope) => {
+              scope.setTag('type', 'uncaughtException');
+              return scope;
+            });
+          } catch {}
+        });
+        process.on('unhandledRejection', (reason: any) => {
+          try {
+            Sentry.captureException(
+              reason instanceof Error ? reason : new Error(String(reason)),
+              (scope) => {
+                scope.setTag('type', 'unhandledRejection');
+                return scope;
+              }
+            );
+          } catch {}
+        });
+      }
 
       // Add a catch-all route for API 404s
       this.app.use((_req, res, next) => {

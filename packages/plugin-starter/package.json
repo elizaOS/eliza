@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.5.8-alpha.24",
+  "version": "1.5.9-alpha.8",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
