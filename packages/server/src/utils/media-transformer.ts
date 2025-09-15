@@ -2,33 +2,32 @@
  * Transform local file paths to API URLs for web clients
  */
 
+import path from 'node:path';
 import { getGeneratedDir, getUploadsAgentsDir, getUploadsChannelsDir } from '@elizaos/core';
+import type { AttachmentInput, MessageWithAttachments, MessageContentWithAttachments } from '../types';
 
 // Path configurations mapping
-// Pattern matches UUID format (8-4-4-4-12 hex digits with hyphens) for agent/channel IDs
-// This ensures we only match valid UUIDs for security
-const UUID_PATTERN = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})[\/\\]([^\/\\]+)$/;
+// Pattern matches any ID format (not just UUIDs) to support all valid IDs
+// The pattern captures the ID (first path segment) and filename (second path segment)
+const ID_PATTERN = /^([^/\\]+)[/\\]([^/\\]+)$/;
 
 const PATH_CONFIGS = [
-  { 
+  {
     getPath: getGeneratedDir,
     apiPrefix: '/media/generated/',
-    pattern: UUID_PATTERN
+    pattern: ID_PATTERN
   },
-  { 
+  {
     getPath: getUploadsAgentsDir,
     apiPrefix: '/media/uploads/agents/',
-    pattern: UUID_PATTERN
+    pattern: ID_PATTERN
   },
-  { 
+  {
     getPath: getUploadsChannelsDir,
     apiPrefix: '/media/uploads/channels/',
-    pattern: UUID_PATTERN
+    pattern: ID_PATTERN
   }
 ];
-
-// Regex to detect absolute paths: POSIX (/), Windows (C:\), UNC (\\server\)
-const ABSOLUTE_PATH_RE = /^(?:\/|[a-zA-Z]:[\\/]|\\\\)/;
 
 // Check if path is an external URL (http, https, blob, data, file, ipfs, s3, gs, etc.)
 const isExternalUrl = (p: string) =>
@@ -42,7 +41,7 @@ export function transformPathToApiUrl(filePath: string): string {
   if (!filePath ||
       isExternalUrl(filePath) ||
       filePath.startsWith('/media/') ||
-      !ABSOLUTE_PATH_RE.test(filePath)) {
+      !path.isAbsolute(filePath)) {
     return filePath;
   }
 
@@ -52,15 +51,19 @@ export function transformPathToApiUrl(filePath: string): string {
   // Check each path configuration
   for (const config of PATH_CONFIGS) {
     const configPathRaw = config.getPath().replace(/\\/g, '/');
-    const configPath = configPathRaw.endsWith('/') ? configPathRaw : configPathRaw + '/';
-    
-    if (normalizedPath.startsWith(configPath)) {
-      const relative = normalizedPath.slice(configPath.length);
-      const match = relative.match(config.pattern);
+    const configPath = configPathRaw.endsWith('/') ? configPathRaw : `${configPathRaw}/`;
 
-      if (match) {
-        const [, id, filename] = match;
-        return `${config.apiPrefix}${encodeURIComponent(id)}/${encodeURIComponent(filename)}`;
+    // Use strict boundary-aware startsWith check to prevent path traversal
+    if (normalizedPath === configPathRaw || normalizedPath.startsWith(configPath)) {
+      const relative = normalizedPath === configPathRaw ? '' : normalizedPath.slice(configPath.length);
+
+      // Only process if we have a valid relative path
+      if (relative) {
+        const match = relative.match(config.pattern);
+        if (match) {
+          const [, id, filename] = match;
+          return `${config.apiPrefix}${encodeURIComponent(id)}${'/'}${encodeURIComponent(filename)}`;
+        }
       }
     }
   }
@@ -71,7 +74,7 @@ export function transformPathToApiUrl(filePath: string): string {
 /**
  * Convert local file paths to API URLs for attachments
  */
-export function attachmentsToApiUrls(attachments: any): any {
+export function attachmentsToApiUrls(attachments: AttachmentInput): AttachmentInput {
   if (!attachments) return attachments;
   
   if (Array.isArray(attachments)) {
@@ -99,18 +102,21 @@ export function attachmentsToApiUrls(attachments: any): any {
 /**
  * Transform attachments in message content and metadata to API URLs
  */
-export function transformMessageAttachments(message: any): any {
+export function transformMessageAttachments(message: MessageWithAttachments): MessageWithAttachments {
   if (!message || typeof message !== 'object') {
     return message;
   }
 
   // Transform attachments in content
-  if (message.content && typeof message.content === 'object' && message.content.attachments) {
-    message.content.attachments = attachmentsToApiUrls(message.content.attachments);
+  if (message.content && typeof message.content === 'object' && 'attachments' in message.content) {
+    const content = message.content as MessageContentWithAttachments;
+    if (content.attachments) {
+      content.attachments = attachmentsToApiUrls(content.attachments);
+    }
   }
 
   // Transform attachments in metadata
-  if (message.metadata && message.metadata.attachments) {
+  if (message.metadata?.attachments) {
     message.metadata.attachments = attachmentsToApiUrls(message.metadata.attachments);
   }
 

@@ -940,13 +940,23 @@ export function createSessionsRouter(
           },
         });
 
+        const metadata: SimplifiedMessage['metadata'] = {
+          thought: rawMessage.thought,
+          actions: rawMessage.actions,
+        };
+
+        // Add any attachments from transformedMessage.metadata
+        if (transformedMessage.metadata && typeof transformedMessage.metadata === 'object') {
+          Object.assign(metadata, transformedMessage.metadata);
+        }
+
         return {
           id: msg.id,
-          content: transformedMessage.content,
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
           authorId: msg.authorId,
           isAgent: msg.sourceType === 'agent_response',
           createdAt: msg.createdAt,
-          metadata: transformedMessage.metadata,
+          metadata,
         };
       });
 

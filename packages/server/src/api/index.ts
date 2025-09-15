@@ -75,7 +75,12 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
       try {
         let logEntry;
         if (typeof data === 'string') {
-          logEntry = JSON.parse(data);
+          try {
+            logEntry = JSON.parse(data);
+          } catch (parseError) {
+            // If JSON parsing fails, treat as plain text log
+            logEntry = { message: data, level: 'info' };
+          }
         } else {
           logEntry = data;
         }

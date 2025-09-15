@@ -19,7 +19,9 @@ export function createSecureUploadDir(id: string, type: 'agents' | 'channels'): 
   const resolvedPath = path.resolve(finalDir);
   const expectedBase = path.resolve(baseUploadDir);
 
-  if (!resolvedPath.startsWith(expectedBase)) {
+  // Use path.relative for more robust path traversal prevention
+  const relativePath = path.relative(expectedBase, resolvedPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
     throw new Error(`Invalid ${type.slice(0, -1)} upload path: outside allowed directory`);
   }
 
