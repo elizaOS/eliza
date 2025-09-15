@@ -139,34 +139,60 @@ describe('AgentServer Agent Management Tests', () => {
   });
 
   it('should unregister agent successfully', async () => {
-    // Mock elizaOS to return agent, then empty after unregister
+    // Create a mutable array to track agents
+    let mockAgents = [mockRuntime];
+
+    // Mock elizaOS to return current state of mockAgents
     server.elizaOS = {
-      getAgents: jest.fn()
-        .mockReturnValueOnce([mockRuntime])
-        .mockReturnValueOnce([mockRuntime])
-        .mockReturnValue([])
+      getAgents: jest.fn(() => [...mockAgents]),
+      getAgent: jest.fn((id) => mockAgents.find(a => a.agentId === id)),
+      deleteAgents: jest.fn(async (ids) => {
+        // Simulate deletion by removing from mockAgents
+        mockAgents = mockAgents.filter(a => !ids.includes(a.agentId));
+      }),
+      registerAgent: jest.fn((agent) => {
+        if (!mockAgents.find(a => a.agentId === agent.agentId)) {
+          mockAgents.push(agent);
+        }
+      })
     } as any;
 
     await server.registerAgent(mockRuntime);
-    
+
     let agents = server.getAllAgents();
     expect(agents.find(a => a.agentId === mockRuntime.agentId)).toBeDefined();
 
-    server.unregisterAgent(mockRuntime.agentId);
+    await server.unregisterAgent(mockRuntime.agentId);
 
     agents = server.getAllAgents();
     expect(agents.find(a => a.agentId === mockRuntime.agentId)).toBeUndefined();
     expect(mockRuntime.stop).toHaveBeenCalled();
   });
 
-  it('should handle unregistering non-existent agent gracefully', () => {
+  it('should handle unregistering non-existent agent gracefully', async () => {
     const nonExistentId = '999e4567-e89b-12d3-a456-426614174999';
 
-    expect(() => server.unregisterAgent(nonExistentId as any)).not.toThrow();
+    // Mock elizaOS with empty agents
+    server.elizaOS = {
+      getAgent: jest.fn().mockReturnValue(undefined),
+      deleteAgents: jest.fn().mockResolvedValue(undefined)
+    } as any;
+
+    // Should not throw when unregistering non-existent agent
+    await server.unregisterAgent(nonExistentId as any);
+    expect(true).toBe(true); // Test passes if no error thrown
   });
 
-  it('should handle missing agentId in unregister gracefully', () => {
-    expect(() => server.unregisterAgent(null as any)).not.toThrow();
-    expect(() => server.unregisterAgent(undefined as any)).not.toThrow();
+  it('should handle missing agentId in unregister gracefully', async () => {
+    // Mock elizaOS
+    server.elizaOS = {
+      getAgent: jest.fn().mockReturnValue(undefined),
+      deleteAgents: jest.fn().mockResolvedValue(undefined)
+    } as any;
+
+    // Should not throw when agentId is null or undefined
+    await server.unregisterAgent(null as any);
+    await server.unregisterAgent(undefined as any);
+    expect(true).toBe(true); // Test passes if no error thrown
   });
 });

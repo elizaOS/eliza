@@ -152,7 +152,6 @@ export function isWebUIEnabled(): boolean {
  */
 export class AgentServer {
   public app!: express.Application;
-  private agents: Map<UUID, IAgentRuntime>;
   public server!: http.Server;
   public socketIO!: SocketIOServer;
   public isInitialized: boolean = false; // Flag to prevent double initialization
@@ -290,9 +289,6 @@ export class AgentServer {
       }
     }
     
-    // Sync the local map with ElizaOS
-    this.syncAgentsMap();
-    
     return runtimes;
   }
 
@@ -307,9 +303,6 @@ export class AgentServer {
     
     // Delegate to ElizaOS for batch stop
     await this.elizaOS.stopAgents(agentIds);
-    
-    // Sync the local map with ElizaOS
-    this.syncAgentsMap();
   }
 
   /**
@@ -336,20 +329,6 @@ export class AgentServer {
   }
 
   /**
-   * Synchronize local agents map with ElizaOS
-   * This is for compatibility with existing API routes
-   */
-  private syncAgentsMap(): void {
-    if (!this.elizaOS) return;
-    
-    // Clear and rebuild the map from ElizaOS
-    this.agents.clear();
-    this.elizaOS.getAgents().forEach(agent => {
-      this.agents.set(agent.agentId, agent);
-    });
-  }
-
-  /**
    * Constructor for AgentServer class.
    *
    * @constructor
@@ -357,7 +336,6 @@ export class AgentServer {
   constructor() {
     try {
       logger.debug('Initializing AgentServer (constructor)...');
-      this.agents = new Map();
 
       // Initialize character loading functions
       this.loadCharacterTryPath = loadCharacterTryPath;
@@ -1025,7 +1003,7 @@ export class AgentServer {
       }
 
       // *** NEW: Mount the plugin route handler BEFORE static serving ***
-      const pluginRouteHandler = createPluginRouteHandler(this.agents);
+      const pluginRouteHandler = createPluginRouteHandler(this.elizaOS!);
       this.app.use(pluginRouteHandler);
 
       // Mount the core API router under /api
@@ -1038,7 +1016,7 @@ export class AgentServer {
       // - /api/server/* - Runtime and server management
       // - /api/tee/* - TEE (Trusted Execution Environment) operations
       // - /api/system/* - System configuration and health checks
-      const apiRouter = createApiRouter(this.agents, this);
+      const apiRouter = createApiRouter(this.elizaOS!, this);
       this.app.use(
         '/api',
         (req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -1176,7 +1154,7 @@ export class AgentServer {
       this.server = http.createServer(this.app);
 
       // Initialize Socket.io, passing the AgentServer instance
-      this.socketIO = setupSocketIO(this.server, this.agents, this);
+      this.socketIO = setupSocketIO(this.server, this.elizaOS!, this);
 
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
@@ -1206,9 +1184,7 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      // Sync the local map with ElizaOS instead of manual set
-      this.syncAgentsMap();
-      
+      // Agent is now registered in ElizaOS
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) registered`);
 
       // Auto-register the MessageBusConnector plugin
@@ -1267,15 +1243,15 @@ export class AgentServer {
    * @param {UUID} agentId - The unique identifier of the agent to unregister.
    * @returns {void}
    */
-  public unregisterAgent(agentId: UUID) {
+  public async unregisterAgent(agentId: UUID) {
     if (!agentId) {
       logger.warn('[AGENT UNREGISTER] Attempted to unregister undefined or invalid agent runtime');
       return;
     }
 
     try {
-      // Retrieve the agent before deleting it from the map
-      const agent = this.agents.get(agentId);
+      // Retrieve the agent from ElizaOS
+      const agent = this.elizaOS?.getAgent(agentId);
 
       if (agent) {
         // Stop all services of the agent before unregistering it
@@ -1295,9 +1271,12 @@ export class AgentServer {
         }
       }
 
-      // Sync the local map with ElizaOS instead of manual delete
-      this.syncAgentsMap();
-      logger.debug(`Agent ${agentId} removed from agents map`);
+      // Delete agent from ElizaOS
+      if (this.elizaOS) {
+        await this.elizaOS.deleteAgents([agentId]);
+      }
+      
+      logger.debug(`Agent ${agentId} unregistered`);
     } catch (error) {
       logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
     }
@@ -1326,7 +1305,7 @@ export class AgentServer {
         }
 
         logger.debug(`Starting server on port ${port}...`);
-        logger.debug(`Current agents count: ${this.agents.size}`);
+        logger.debug(`Current agents count: ${this.elizaOS?.getAgents().length || 0}`);
         logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
         // Use http server instead of app.listen with explicit host binding and error handling
@@ -1361,11 +1340,10 @@ export class AgentServer {
             logger.success(
               `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
             );
-            // Sync before logging
-            this.syncAgentsMap();
-            logger.debug(`Active agents: ${this.agents.size}`);
-            this.agents.forEach((agent, id) => {
-              logger.debug(`- Agent ${id}: ${agent.character.name}`);
+            const agents = this.elizaOS?.getAgents() || [];
+            logger.debug(`Active agents: ${agents.length}`);
+            agents.forEach((agent) => {
+              logger.debug(`- Agent ${agent.agentId}: ${agent.character.name}`);
             });
 
             // Resolve the promise now that the server is actually listening
@@ -1615,14 +1593,13 @@ export class AgentServer {
 
       // Stop all agents first
       logger.debug('Stopping all agents...');
-      // Sync before stopping all agents
-      this.syncAgentsMap();
-      for (const [id, agent] of this.agents.entries()) {
+      const agents = this.elizaOS?.getAgents() || [];
+      for (const agent of agents) {
         try {
           await agent.stop();
-          logger.debug(`Stopped agent ${id}`);
+          logger.debug(`Stopped agent ${agent.agentId}`);
         } catch (error) {
-          logger.error({ error, agentId: id }, `Error stopping agent ${id}:`);
+          logger.error({ error, agentId: agent.agentId }, `Error stopping agent ${agent.agentId}:`);
         }
       }
 

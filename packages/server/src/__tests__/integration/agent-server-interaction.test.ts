@@ -135,7 +135,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       const initialCount = initialAgents.filter((id) => id === agent1.agentId).length;
 
       // Unregister the agent
-      agentServer.unregisterAgent(agent1.agentId);
+      await agentServer.unregisterAgent(agent1.agentId);
 
       // Verify agent was removed from the server
       const finalAgents = await agentServer.getAgentsForServer(

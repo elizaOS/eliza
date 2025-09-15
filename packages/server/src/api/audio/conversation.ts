@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID, Content, Memory } from '@elizaos/core';
+import type { ElizaOS, UUID, Content, Memory } from '@elizaos/core';
 import {
   validateUuid,
   logger,
@@ -15,7 +15,7 @@ import { convertToAudioBuffer } from './audioBuffer';
 /**
  * Speech conversation functionality
  */
-export function createConversationRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
+export function createConversationRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
 
   // Speech conversation endpoint
@@ -30,7 +30,7 @@ export function createConversationRouter(agents: Map<UUID, IAgentRuntime>): expr
       return sendError(res, 400, 'INVALID_REQUEST', 'Text is required for conversation');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
