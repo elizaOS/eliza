@@ -1,5 +1,10 @@
-import type { IDatabaseAdapter, UUID } from '@elizaos/core';
-import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
+import {
+  type IAgentRuntime,
+  type IDatabaseAdapter,
+  type UUID,
+  type Plugin,
+  logger,
+} from '@elizaos/core/browser';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import * as schema from './schema';
@@ -58,6 +63,3 @@ export const plugin: Plugin = {
 };
 
 export default plugin;
-
-
-
