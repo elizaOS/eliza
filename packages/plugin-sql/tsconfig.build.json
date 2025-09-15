@@ -12,7 +12,9 @@
     "src/schema/**/*.ts",
     "src/base.ts",
     "src/types.ts",
-    "src/utils.browser.ts"
+    "src/utils.browser.ts",
+    "src/migration-service.ts",
+    "src/custom-migrator.ts"
   ],
   "exclude": [
     "node_modules",
