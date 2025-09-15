@@ -99,8 +99,9 @@ export class ElizaOS extends EventTarget {
       const runtime = new AgentRuntime({
         character: agent.character,
         plugins: agent.plugins || this.globalDefaults?.plugins || [],
+        adapter: this.globalDefaults?.database,
       });
-      
+
       this.runtimes.set(runtime.agentId, runtime);
       
       this.dispatchEvent(

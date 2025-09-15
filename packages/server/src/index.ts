@@ -217,18 +217,31 @@ export class AgentServer {
           }
         }
         
-        // Check if we have a SQL plugin
+        // Check if we have a SQL plugin and ensure it has the adapter
         let haveSql = false;
-        for (const n of allAvailablePlugins.keys()) {
-          if (n === sqlPlugin.name || n === 'mysql') {
+        for (const [name, plugin] of allAvailablePlugins.entries()) {
+          if (name === sqlPlugin.name || name === 'mysql') {
             haveSql = true;
+            // If the SQL plugin doesn't have an adapter, add our database
+            if (!plugin.adapter && this.database) {
+              const configuredPlugin = {
+                ...plugin,
+                adapter: this.database
+              };
+              allAvailablePlugins.set(name, configuredPlugin);
+            }
             break;
           }
         }
-        
-        // Ensure an adapter
-        if (!haveSql) {
-          allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
+
+        // Ensure an adapter with the database
+        if (!haveSql && this.database) {
+          // Configure the SQL plugin with the server's database adapter
+          const configuredSqlPlugin = {
+            ...sqlPlugin,
+            adapter: this.database
+          };
+          allAvailablePlugins.set(sqlPlugin.name, configuredSqlPlugin as unknown as Plugin);
         }
         
         // Always include the message bus connector plugin for server agents
@@ -422,7 +435,11 @@ export class AgentServer {
       logger.info('[INIT] Server uses temporary adapter for migrations only');
 
       logger.info('[INIT] Initializing ElizaOS...');
-      this.elizaOS = new ElizaOS();
+      // Pass the database adapter as a global default so all agents can use it
+      logger.debug(`[INIT] Passing database adapter to ElizaOS: ${this.database ? 'Yes' : 'No'}`);
+      this.elizaOS = new ElizaOS({
+        database: this.database
+      });
       
       // Create AgentManager with ElizaOS instance
       this.pluginLoader = new PluginLoader();

@@ -89,14 +89,17 @@ export const plugin: Plugin = {
 
     // Check if a database adapter is already registered
     try {
-      // Try to access the database adapter to see if one exists
-      const existingAdapter = (runtime as any).databaseAdapter;
-      if (existingAdapter) {
-        logger.info('Database adapter already registered, skipping creation');
+      // Try to access the adapter through different methods
+      const hasAdapter = (runtime as any).adapter || (runtime as any).databaseAdapter;
+      logger.debug(`Checking for existing adapter: adapter=${!!(runtime as any).adapter}, databaseAdapter=${!!(runtime as any).databaseAdapter}`);
+
+      if (hasAdapter) {
+        logger.info('Database adapter already registered, skipping plugin-sql adapter creation');
         return;
       }
     } catch (error) {
       // No adapter exists, continue with creation
+      logger.debug('Error checking for adapter, will create new one');
     }
 
     // Get database configuration from runtime settings
