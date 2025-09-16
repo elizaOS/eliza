@@ -3,9 +3,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
-import { getVersionChannel, getLatestCliVersionForChannel } from './version-channel';
+import { getLatestCliVersionForChannel } from './version-channel';
 
 // Import the version module - this will be bundled at build time
 // Using dynamic import within the function to avoid top-level await
