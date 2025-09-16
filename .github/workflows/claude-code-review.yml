@@ -1,5 +1,10 @@
 name: Claude Code Review
 
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: claude-code-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [opened, ready_for_review, synchronize]
