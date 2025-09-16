@@ -14,20 +14,8 @@ import chalk from 'chalk';
 let clientDevServerProcess: Subprocess | null = null;
 
 /**
- * Check if client package exists in the monorepo or project
+ * (removed) hasClientPackage: no longer used
  */
-function hasClientPackage(cwd: string): boolean {
-  // Check for @elizaos/client in node_modules (installed dependency)
-  const installedClientPath = path.join(cwd, 'node_modules', '@elizaos', 'client', 'package.json');
-
-  // Check for client package in monorepo structure
-  const monorepoClientPath = path.join(cwd, 'packages', 'client', 'package.json');
-
-  // Check for client in parent directories (when running from within monorepo)
-  const parentClientPath = path.join(path.dirname(cwd), 'client', 'package.json');
-
-  return fs.existsSync(installedClientPath) || fs.existsSync(monorepoClientPath) || fs.existsSync(parentClientPath);
-}
 
 /**
  * Determine if there is a local client source we can run in dev (Vite)
