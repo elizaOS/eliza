@@ -54,11 +54,18 @@ export const plugin: Plugin = {
     const adapterRegistered = await runtime
       .isReady()
       .then(() => true)
-      .catch((error) => {
-        logger.warn(
-          'Database adapter readiness check failed; proceeding to register adapter',
-          error
-        );
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('Database adapter not registered')) {
+          // Expected on first load before the adapter is created; not a warning condition
+          logger.info('No pre-registered database adapter detected; registering adapter');
+        } else {
+          // Unexpected readiness error - keep as a warning with details
+          logger.warn(
+            { error },
+            'Database adapter readiness check error; proceeding to register adapter'
+          );
+        }
         return false;
       });
     if (adapterRegistered) {
