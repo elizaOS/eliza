@@ -3,22 +3,11 @@ import { AgentRuntime } from './runtime';
 import type {
   Character,
   IAgentRuntime,
-  IDatabaseAdapter,
   UUID,
   Memory,
   State,
   Plugin,
 } from './types';
-
-/**
- * Global configuration defaults for ElizaOS
- */
-export interface GlobalDefaults {
-  database?: IDatabaseAdapter;
-  plugins?: Plugin[];
-  modelProvider?: string;
-  apiKeys?: Record<string, string>;
-}
 
 /**
  * Batch operation for sending messages
@@ -49,15 +38,6 @@ export interface ReadonlyRuntime {
 }
 
 /**
- * Project data for loading multiple agents
- */
-export interface ProjectData {
-  agents?: Character[];
-  defaults?: GlobalDefaults;
-  plugins?: string[];
-}
-
-/**
  * Health status for an agent
  */
 export interface HealthStatus {
@@ -81,7 +61,6 @@ export interface AgentUpdate {
  */
 export class ElizaOS extends EventTarget {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
-  private globalDefaults?: GlobalDefaults;
   private editableMode = false;
 
 
@@ -93,8 +72,7 @@ export class ElizaOS extends EventTarget {
     const promises = agents.map(async (agent) => {
       const runtime = new AgentRuntime({
         character: agent.character,
-        plugins: agent.plugins || this.globalDefaults?.plugins || [],
-        adapter: this.globalDefaults?.database,
+        plugins: agent.plugins || [],
       });
 
       this.runtimes.set(runtime.agentId, runtime);
@@ -376,69 +354,6 @@ export class ElizaOS extends EventTarget {
     return results;
   }
 
-  /**
-   * Set global defaults
-   */
-  setGlobalDefaults(defaults: GlobalDefaults): void {
-    this.globalDefaults = { ...this.globalDefaults, ...defaults };
-  }
-
-  /**
-   * Load a project with multiple agents
-   */
-  async loadProject(data: ProjectData): Promise<void> {
-    // Set defaults from project
-    if (data.defaults) {
-      this.setGlobalDefaults(data.defaults);
-    }
-
-    // Load agents from project
-    if (data.agents) {
-      const agentIds = await this.addAgents(data.agents.map(character => ({ character })));
-      await this.startAgents(agentIds);
-    }
-
-    // Load plugins
-    if (data.plugins) {
-      for (const plugin of data.plugins) {
-        this.enablePlugin(plugin);
-      }
-    }
-  }
-
-  /**
-   * Enable a plugin by name
-   */
-  enablePlugin(pluginName: string): void {
-    // Dynamic plugin loading
-    const plugin = this.loadPlugin(pluginName);
-    if (plugin) {
-      for (const runtime of this.runtimes.values()) {
-        runtime.registerPlugin(plugin);
-      }
-    }
-  }
-
-  /**
-   * Load a plugin dynamically
-   */
-  private loadPlugin(name: string): Plugin | undefined {
-    // Plugin loading logic
-    try {
-      // In browser environment, plugins need to be pre-loaded
-      if (typeof window !== 'undefined') {
-        console.warn(`Dynamic plugin loading not supported in browser: ${name}`);
-        return undefined;
-      }
-
-      // In Node.js, we can dynamically require
-      const module = require(`@elizaos/plugin-${name}`);
-      return module.default || module;
-    } catch (error) {
-      console.warn(`Failed to load plugin: ${name}`, error);
-      return undefined;
-    }
-  }
 
   /**
    * Validate API keys for agents
