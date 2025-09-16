@@ -462,21 +462,18 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   console.log('═'.repeat(60) + '\n');
 
   // Handle graceful shutdown - only register in non-test mode to avoid conflicts
-  if (process.env.ELIZA_TEST_MODE !== 'true') {
-    process.on('SIGINT', async () => {
-      console.info('\nShutting down dev mode...');
-      await stopClientDevServer();
-      await serverManager.stop();
-      process.exit(0);
-    });
+  process.on('SIGINT', async () => {
+    console.info('\nShutting down dev mode...');
+    await stopClientDevServer();
+    await serverManager.stop();
+    process.exit(0);
+  });
 
-    process.on('SIGTERM', async () => {
-      console.info('\nShutting down dev mode...');
-      await stopClientDevServer();
-      await serverManager.stop();
-      process.exit(0);
-    });
-  } else {
-    console.log('[DEV] Test mode detected - skipping signal handler registration to avoid conflicts');
-  }
+  process.on('SIGTERM', async () => {
+    console.info('\nShutting down dev mode...');
+    await stopClientDevServer();
+    await serverManager.stop();
+    process.exit(0);
+  });
+
 }
