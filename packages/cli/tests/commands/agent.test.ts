@@ -190,7 +190,7 @@ describe('ElizaOS Agent Commands', () => {
     if (serverProcess && serverProcess.exitCode === null) {
       try {
         // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => {});
+        const exitPromise = serverProcess.exited.catch(() => { });
 
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');
@@ -278,7 +278,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     bunExecSync(
-      `elizaos agent get --remote-url ${testServerUrl} -n Ada --output "${outputFile}"`,
+      `elizaos agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
 
@@ -294,7 +294,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = bunExecSync(
-        `elizaos agent start --remote-url ${testServerUrl} --path "${maxPath}"`,
+        `elizaos agent start --remote-url ${testServerUrl} --path ${maxPath}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
@@ -371,7 +371,7 @@ describe('ElizaOS Agent Commands', () => {
     await writeFile(configFile, configContent);
 
     const result = bunExecSync(
-      `elizaos agent set --remote-url ${testServerUrl} -n Ada -f "${configFile}"`,
+      `elizaos agent set --remote-url ${testServerUrl} -n Ada -f ${configFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toMatch(/(updated|Updated)/);
