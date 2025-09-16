@@ -216,7 +216,7 @@ export class ElizaOS extends EventTarget {
     await Promise.all(ids.map(async (id) => {
       const runtime = this.runtimes.get(id);
       if (runtime) {
-        await runtime.close();
+        await runtime.stop();
       }
     }));
 
