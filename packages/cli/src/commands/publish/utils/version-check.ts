@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as clack from '@clack/prompts';
 import { performCliUpdate } from '../../update';
+import { getVersionChannel } from '../../../utils/version-channel';
 
 /**
  * Check if the current CLI version is up to date
@@ -19,6 +20,9 @@ export async function checkCliVersion(): Promise<string> {
     const cliPackageJson = JSON.parse(cliPackageJsonContent);
     const currentVersion = cliPackageJson.version || '0.0.0';
 
+    // Determine the channel of the current version
+    const currentChannel = getVersionChannel(currentVersion);
+
     // Get the time data for all published versions to find the most recent
     const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
     const timeData = JSON.parse(stdout);
@@ -27,11 +31,16 @@ export async function checkCliVersion(): Promise<string> {
     delete timeData.created;
     delete timeData.modified;
 
-    // Find the most recently published version
+    // Filter versions by channel and find the most recently published version
     let latestVersion = '';
     let latestDate = new Date(0); // Start with epoch time
 
     for (const [version, dateString] of Object.entries(timeData)) {
+      // Skip versions from different channels
+      if (getVersionChannel(version) !== currentChannel) {
+        continue;
+      }
+
       const publishDate = new Date(dateString as string);
       if (publishDate > latestDate) {
         latestDate = publishDate;

@@ -1,8 +1,46 @@
 import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
-import { bunExecInherit } from '@/src/utils/bun-exec';
+import { bunExecInherit, bunExecSimple } from '@/src/utils/bun-exec';
 import { GlobalUpdateOptions } from '../types';
 import { checkVersionNeedsUpdate, fetchLatestVersion, getVersion } from '../utils/version-utils';
+import { getVersionChannel } from '@/src/utils/version-channel';
+
+// --- Utility: Get latest CLI version for specific channel ---
+async function getLatestCliVersionForChannel(currentVersion: string): Promise<string | null> {
+  try {
+    // Determine the channel of the current version
+    const currentChannel = getVersionChannel(currentVersion);
+
+    // Get the time data for all published versions to find the most recent
+    const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
+    const timeData = JSON.parse(stdout);
+
+    // Remove metadata entries like 'created' and 'modified'
+    delete timeData.created;
+    delete timeData.modified;
+
+    // Filter versions by channel and find the most recently published version
+    let latestVersion = '';
+    let latestDate = new Date(0); // Start with epoch time
+
+    for (const [version, dateString] of Object.entries(timeData)) {
+      // Skip versions from different channels
+      if (getVersionChannel(version) !== currentChannel) {
+        continue;
+      }
+
+      const publishDate = new Date(dateString as string);
+      if (publishDate > latestDate) {
+        latestDate = publishDate;
+        latestVersion = version;
+      }
+    }
+
+    return latestVersion || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Update CLI to latest version
@@ -16,11 +54,18 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
 
     let latestVersion: string;
     if (targetVersion === 'latest') {
-      const fetchedVersion = await fetchLatestVersion('@elizaos/cli');
+      // Use channel-aware version checking
+      const fetchedVersion = await getLatestCliVersionForChannel(currentVersion);
       if (!fetchedVersion) {
-        throw new Error('Unable to fetch latest CLI version');
+        // Fall back to standard latest version if channel detection fails
+        const fallbackVersion = await fetchLatestVersion('@elizaos/cli');
+        if (!fallbackVersion) {
+          throw new Error('Unable to fetch latest CLI version');
+        }
+        latestVersion = fallbackVersion;
+      } else {
+        latestVersion = fetchedVersion;
       }
-      latestVersion = fetchedVersion;
     } else {
       latestVersion = targetVersion;
     }

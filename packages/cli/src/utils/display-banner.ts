@@ -5,6 +5,7 @@ import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bunExecSimple } from './bun-exec';
 import { UserEnvironment } from './user-environment';
+import { getVersionChannel } from './version-channel';
 
 // Import the version module - this will be bundled at build time
 // Using dynamic import within the function to avoid top-level await
@@ -126,6 +127,9 @@ export async function getLatestCliVersion(currentVersion: string): Promise<strin
       return versionCheckCache.latestVersion;
     }
 
+    // Determine the channel of the current version
+    const currentChannel = getVersionChannel(currentVersion);
+
     // Get the time data for all published versions to find the most recent
     const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
     const timeData = JSON.parse(stdout);
@@ -134,11 +138,16 @@ export async function getLatestCliVersion(currentVersion: string): Promise<strin
     delete timeData.created;
     delete timeData.modified;
 
-    // Find the most recently published version
+    // Filter versions by channel and find the most recently published version
     let latestVersion = '';
     let latestDate = new Date(0); // Start with epoch time
 
     for (const [version, dateString] of Object.entries(timeData)) {
+      // Skip versions from different channels
+      if (getVersionChannel(version) !== currentChannel) {
+        continue;
+      }
+
       const publishDate = new Date(dateString as string);
       if (publishDate > latestDate) {
         latestDate = publishDate;
