@@ -30,6 +30,23 @@ function hasClientPackage(cwd: string): boolean {
 }
 
 /**
+ * Determine if there is a local client source we can run in dev (Vite)
+ * Excludes installed client in node_modules to avoid missing dev deps.
+ */
+function hasLocalClientSource(cwd: string): boolean {
+  const monorepoClient = path.join(cwd, 'packages', 'client', 'package.json');
+  const parentClient = path.join(path.dirname(cwd), 'client', 'package.json');
+  const localViteTs = path.join(cwd, 'vite.config.ts');
+  const localViteJs = path.join(cwd, 'vite.config.js');
+  return (
+    fs.existsSync(monorepoClient) ||
+    fs.existsSync(parentClient) ||
+    fs.existsSync(localViteTs) ||
+    fs.existsSync(localViteJs)
+  );
+}
+
+/**
  * Start the Vite development server for the client
  */
 async function startClientDevServer(cwd: string): Promise<void> {
@@ -58,11 +75,27 @@ async function startClientDevServer(cwd: string): Promise<void> {
       if (fs.existsSync(path.join(installedClientPath, 'package.json'))) {
         clientDir = installedClientPath;
       }
+      // Fallback: if a local Vite config exists (standalone plugin demo UI), treat current dir as client
+      if (!clientDir) {
+        const localViteTs = path.join(cwd, 'vite.config.ts');
+        const localViteJs = path.join(cwd, 'vite.config.js');
+        if (fs.existsSync(localViteTs) || fs.existsSync(localViteJs)) {
+          clientDir = cwd;
+        }
+      }
     }
   }
 
   if (!clientDir) {
     console.warn('Client package not found, skipping client dev server');
+    return;
+  }
+
+  // If the "client" is an installed dependency, don't try to run its dev server.
+  // The installed package won't have dev dependencies available.
+  const isInstalledClient = clientDir.includes(path.join('node_modules', '@elizaos', 'client'));
+  if (isInstalledClient) {
+    console.info('Detected installed @elizaos/client. Using server static UI instead of running Vite.');
     return;
   }
 
@@ -193,9 +226,11 @@ async function stopClientDevServer(): Promise<void> {
  */
 async function getClientPort(cwd: string): Promise<number | null> {
   const possibleClientDirs = [
+    cwd,
     path.join(cwd, 'packages', 'client'),
     path.join(path.dirname(cwd), 'client'),
-    path.join(cwd, '..', 'client')
+    path.join(cwd, '..', 'client'),
+    path.join(cwd, 'node_modules', '@elizaos', 'client')
   ];
 
   // 1) Check dev:client or dev script for --port flag
@@ -326,7 +361,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       await serverManager.stop();
 
       // Also stop client dev server for clean restart
-      if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+      const hasLocalVite = fs.existsSync(path.join(cwd, 'vite.config.ts')) || fs.existsSync(path.join(cwd, 'vite.config.js'));
+      const shouldStartClient = ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+      if (shouldStartClient) {
         await stopClientDevServer();
       }
 
@@ -339,7 +376,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       await serverManager.start(cliArgs);
       
       // Restart client dev server if needed
-      if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+      if (shouldStartClient) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await startClientDevServer(cwd);
       }
@@ -379,8 +416,10 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Give the server a moment to fully initialize  
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  // Start the client dev server if available (for monorepo or projects with client)
-  if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+  // Start the client dev server if available (project/monorepo) or if a standalone plugin exposes a local Vite config
+  const hasLocalVite = fs.existsSync(path.join(cwd, 'vite.config.ts')) || fs.existsSync(path.join(cwd, 'vite.config.js'));
+  const shouldStartClient = ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+  if (shouldStartClient) {
     // Start the client dev server
     await startClientDevServer(cwd);
     
