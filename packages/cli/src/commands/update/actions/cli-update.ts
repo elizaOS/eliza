@@ -1,46 +1,9 @@
 import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
 import { logger } from '@elizaos/core';
-import { bunExecInherit, bunExecSimple } from '@/src/utils/bun-exec';
+import { bunExecInherit } from '@/src/utils/bun-exec';
 import { GlobalUpdateOptions } from '../types';
 import { checkVersionNeedsUpdate, fetchLatestVersion, getVersion } from '../utils/version-utils';
-import { getVersionChannel } from '@/src/utils/version-channel';
-
-// --- Utility: Get latest CLI version for specific channel ---
-async function getLatestCliVersionForChannel(currentVersion: string): Promise<string | null> {
-  try {
-    // Determine the channel of the current version
-    const currentChannel = getVersionChannel(currentVersion);
-
-    // Get the time data for all published versions to find the most recent
-    const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
-    const timeData = JSON.parse(stdout);
-
-    // Remove metadata entries like 'created' and 'modified'
-    delete timeData.created;
-    delete timeData.modified;
-
-    // Filter versions by channel and find the most recently published version
-    let latestVersion = '';
-    let latestDate = new Date(0); // Start with epoch time
-
-    for (const [version, dateString] of Object.entries(timeData)) {
-      // Skip versions from different channels
-      if (getVersionChannel(version) !== currentChannel) {
-        continue;
-      }
-
-      const publishDate = new Date(dateString as string);
-      if (publishDate > latestDate) {
-        latestDate = publishDate;
-        latestVersion = version;
-      }
-    }
-
-    return latestVersion || null;
-  } catch {
-    return null;
-  }
-}
+import { getLatestCliVersionForChannel } from '@/src/utils/version-channel';
 
 /**
  * Update CLI to latest version
