@@ -81,14 +81,9 @@ export interface AgentUpdate {
  */
 export class ElizaOS extends EventTarget {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
-  private database?: IDatabaseAdapter;
   private globalDefaults?: GlobalDefaults;
   private editableMode = false;
 
-  constructor(options?: { database?: IDatabaseAdapter }) {
-    super();
-    this.database = options?.database;
-  }
 
 
   /**

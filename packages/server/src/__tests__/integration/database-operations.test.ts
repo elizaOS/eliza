@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentServer, CentralRootMessage } from '../../index';
-import type { UUID } from '@elizaos/core';
+import type { UUID, Character } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -12,6 +12,8 @@ import fs from 'node:fs';
 describe('Database Operations Integration Tests', () => {
   let agentServer: AgentServer;
   let testDbPath: string;
+  let serverPort: number;
+  let isServerStarted: boolean = false;
 
   beforeAll(async () => {
     // Use a test database with unique path
@@ -36,6 +38,15 @@ describe('Database Operations Integration Tests', () => {
       await agentServer.initialize({
         dataDir: testDbPath,
       });
+
+      // Actually start the HTTP server to prevent MessageBusService errors
+      serverPort = 3000 + Math.floor(Math.random() * 1000); // Random port to avoid conflicts
+      process.env.SERVER_PORT = serverPort.toString();
+
+      await agentServer.start(serverPort);
+      isServerStarted = true;
+
+      console.log(`Test server started on port ${serverPort}`);
     } catch (error) {
       console.error('Failed to initialize agent server:', error);
       // Clean up on failure
@@ -45,16 +56,29 @@ describe('Database Operations Integration Tests', () => {
       throw error;
     }
 
-    // Wait a bit for database to settle
+    // Wait a bit for server to be ready
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }); // Increase timeout to 60 seconds
 
   afterAll(async () => {
-    // Stop server
-    await agentServer.stop();
+    // Stop all agents first to prevent MessageBusService connection errors
+    if (isServerStarted && agentServer) {
+      const allAgents = agentServer.getAllAgents();
+      const agentIds = allAgents.map(agent => agent.agentId);
+      if (agentIds.length > 0) {
+        await agentServer.stopAgents(agentIds);
+        // Give agents time to clean up their connections
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // Then stop the server
+      await agentServer.stop();
+    }
 
     // Clean up test database
     if (fs.existsSync(testDbPath)) {
+      // Wait a bit before cleanup to ensure all file handles are released
+      await new Promise((resolve) => setTimeout(resolve, 500));
       fs.rmSync(testDbPath, { recursive: true, force: true });
     }
   });
@@ -242,11 +266,27 @@ describe('Database Operations Integration Tests', () => {
 
   describe('Database State Consistency', () => {
     it('should maintain consistent state across operations', async () => {
-      const agentId = 'consistency-agent' as UUID;
-
       // Initial state check
       const initialServers = await agentServer.getServers();
       const initialServerCount = initialServers.length;
+
+      // Create an agent first (required for foreign key constraint)
+      // Don't specify ID, let the system generate it
+      const agentChar = {
+        name: 'Consistency Test Agent',
+        bio: ['Test agent for consistency checks'],
+        topics: [],
+        clients: [],
+        plugins: [],
+        settings: {
+          secrets: {},
+        }
+      } as Character;
+
+      // Start the agent to ensure it exists in database
+      const [runtime] = await agentServer.startAgents([agentChar]);
+      expect(runtime).toBeDefined();
+      const agentId = runtime.agentId; // Get the generated agent ID
 
       // Create new server
       const newServer = await agentServer.createServer({
@@ -306,14 +346,33 @@ describe('Database Operations Integration Tests', () => {
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
       const channelId = '567e8901-e89b-12d3-a456-426614174000' as UUID;
 
-      // Create channel
+      // Get or create an agent to be participant (to avoid MessageBusService warnings)
+      let participantAgentId: UUID;
+      const existingAgents = agentServer.getAllAgents();
+      if (existingAgents.length > 0) {
+        participantAgentId = existingAgents[0].agentId;
+      } else {
+        // Create a test agent if none exists
+        const testAgent = {
+          name: 'Bulk Test Agent',
+          bio: ['Agent for bulk test'],
+          topics: [],
+          clients: [],
+          plugins: [],
+          settings: { secrets: {} }
+        } as Character;
+        const [runtime] = await agentServer.startAgents([testAgent]);
+        participantAgentId = runtime.agentId;
+      }
+
+      // Create channel with the agent as participant
       await agentServer.createChannel({
         id: channelId,
         name: 'Bulk Test Channel',
         type: ChannelType.GROUP,
         messageServerId: serverId,
         metadata: {},
-      });
+      }, [participantAgentId]);
 
       const startTime = Date.now();
 

@@ -186,8 +186,8 @@ export class AgentServer {
         character.id ??= stringToUuid(character.name);
         
         // Handle secrets for character configuration
-        if (!this.configManager!.hasCharacterSecrets(character)) {
-          await this.configManager!.setDefaultSecretsFromEnv(character);
+        if (!this.configManager?.hasCharacterSecrets(character)) {
+          await this.configManager?.setDefaultSecretsFromEnv(character);
         }
         
         // Load and resolve plugins
@@ -197,7 +197,7 @@ export class AgentServer {
         for (const p of plugins) {
           if (typeof p === 'string') {
             pluginsToLoad.add(p);
-          } else if (this.pluginLoader!.isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
+          } else if (this.pluginLoader?.isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
             loadedPlugins.set(p.name, p);
             (p.dependencies || []).forEach((dep) => { pluginsToLoad.add(dep); });
           }
@@ -210,45 +210,32 @@ export class AgentServer {
         }
         for (const name of pluginsToLoad) {
           if (!allAvailablePlugins.has(name)) {
-            const loaded = await this.pluginLoader!.loadAndPreparePlugin(name);
+            const loaded = await this.pluginLoader?.loadAndPreparePlugin(name);
             if (loaded) {
               allAvailablePlugins.set(loaded.name, loaded);
             }
           }
         }
         
-        // Check if we have a SQL plugin and ensure it has the adapter
+        // Check if we have a SQL plugin
         let haveSql = false;
-        for (const [name, plugin] of allAvailablePlugins.entries()) {
+        for (const [name] of allAvailablePlugins.entries()) {
           if (name === sqlPlugin.name || name === 'mysql') {
             haveSql = true;
-            // If the SQL plugin doesn't have an adapter, add our database
-            if (!plugin.adapter && this.database) {
-              const configuredPlugin = {
-                ...plugin,
-                adapter: this.database
-              };
-              allAvailablePlugins.set(name, configuredPlugin);
-            }
             break;
           }
         }
 
-        // Ensure an adapter with the database
-        if (!haveSql && this.database) {
-          // Configure the SQL plugin with the server's database adapter
-          const configuredSqlPlugin = {
-            ...sqlPlugin,
-            adapter: this.database
-          };
-          allAvailablePlugins.set(sqlPlugin.name, configuredSqlPlugin as unknown as Plugin);
+        // Each agent will get its own adapter instance from the plugin's init
+        if (!haveSql) {
+          allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
         }
         
         // Always include the message bus connector plugin for server agents
         allAvailablePlugins.set(messageBusConnectorPlugin.name, messageBusConnectorPlugin as unknown as Plugin);
         
         // Resolve dependencies and get final plugin list
-        const finalPlugins = this.pluginLoader!.resolvePluginDependencies(
+        const finalPlugins = this.pluginLoader?.resolvePluginDependencies(
           allAvailablePlugins,
           false // isTestMode
         );
@@ -271,7 +258,7 @@ export class AgentServer {
     
     // Step 3: Get the created runtimes and apply settings
     const runtimes: IAgentRuntime[] = [];
-    const settings = await this.configManager!.loadEnvConfig();
+    const settings = await this.configManager?.loadEnvConfig();
     
     for (const id of agentIds) {
       const runtime = this.elizaOS.getAgent(id);
@@ -435,11 +422,10 @@ export class AgentServer {
       logger.info('[INIT] Server uses temporary adapter for migrations only');
 
       logger.info('[INIT] Initializing ElizaOS...');
-      // Pass the database adapter as a global default so all agents can use it
-      logger.debug(`[INIT] Passing database adapter to ElizaOS: ${this.database ? 'Yes' : 'No'}`);
-      this.elizaOS = new ElizaOS({
-        database: this.database
-      });
+      // Don't pass the server's database adapter to ElizaOS
+      // Each agent will get its own adapter from the SQL plugin
+      logger.debug('[INIT] ElizaOS will use agent-specific database adapters from SQL plugin');
+      this.elizaOS = new ElizaOS();
       
       // Create AgentManager with ElizaOS instance
       this.pluginLoader = new PluginLoader();
@@ -553,7 +539,7 @@ export class AgentServer {
       const DEFAULT_SENTRY_DSN =
         'https://c20e2d51b66c14a783b0689d536f7e5c@o4509349865259008.ingest.us.sentry.io/4509352524120064';
       const sentryDsn =
-        (process.env.SENTRY_DSN && process.env.SENTRY_DSN.trim()) || DEFAULT_SENTRY_DSN;
+        process.env.SENTRY_DSN?.trim() || DEFAULT_SENTRY_DSN;
       const sentryEnabled = Boolean(sentryDsn);
       if (sentryEnabled) {
         try {
