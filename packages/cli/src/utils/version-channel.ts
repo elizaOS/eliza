@@ -46,3 +46,45 @@ export async function getLatestCliVersionForChannel(currentVersion: string): Pro
         return null;
     }
 }
+
+/**
+ * Detailed outcome for channel-aware version checks so callers can
+ * distinguish between "no update available" and "error occurred".
+ */
+export type ChannelVersionCheckOutcome =
+    | { status: 'update_available'; version: string }
+    | { status: 'up_to_date' }
+    | { status: 'error'; message?: string };
+
+/**
+ * Check the latest CLI version for the current channel with explicit outcome.
+ * Never throws; returns a discriminated result instead.
+ */
+export async function checkLatestCliVersionForChannel(
+    currentVersion: string
+): Promise<ChannelVersionCheckOutcome> {
+    try {
+        const currentChannel = getVersionChannel(currentVersion);
+        const { stdout } = await bunExecSimple('npm', [
+            'view',
+            `@elizaos/cli@${currentChannel}`,
+            'version',
+        ]);
+        const latestVersion = stdout.trim();
+
+        if (!latestVersion) {
+            return { status: 'error', message: 'Empty version string from npm' };
+        }
+
+        if (latestVersion === currentVersion) {
+            return { status: 'up_to_date' };
+        }
+
+        return { status: 'update_available', version: latestVersion };
+    } catch (error) {
+        return {
+            status: 'error',
+            message: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
