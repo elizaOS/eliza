@@ -4,16 +4,23 @@ import type { Character } from '@elizaos/core';
 
 describe('ConfigManager', () => {
   let configManager: ConfigManager;
-  const originalEnv = process.env;
+  let originalEnvSnapshot: NodeJS.ProcessEnv;
 
   beforeEach(() => {
     configManager = new ConfigManager();
-    // Reset environment for each test
-    process.env = { ...originalEnv };
+    // Snapshot and clear env
+    originalEnvSnapshot = { ...process.env };
+    for (const k of Object.keys(process.env)) {
+      delete (process.env as any)[k];
+    }
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    // Restore env in-place
+    for (const k of Object.keys(process.env)) {
+      delete (process.env as any)[k];
+    }
+    Object.assign(process.env, originalEnvSnapshot);
   });
 
   describe('loadEnvConfig', () => {
