@@ -465,6 +465,16 @@ describe('ElizaOS Dev Commands', () => {
               // Give more time for complete output on macOS
               setTimeout(resolve, process.platform === 'darwin' ? 3000 : 1000);
             }
+
+            // If we've already confirmed standalone mode, terminate early to avoid
+            // unnecessary module loading (which can fail on Windows global envs).
+            if (/standalone mode|not.*recognized.*ElizaOS/i.test(text)) {
+              try {
+                devProcess.kill('SIGTERM');
+              } catch { }
+              // Resolve quickly once the key condition is met
+              setTimeout(resolve, 250);
+            }
           }
         } finally {
           reader.releaseLock();
@@ -504,9 +514,11 @@ describe('ElizaOS Dev Commands', () => {
       console.log('[NON-ELIZA DIR TEST] No output but process started successfully');
     }
 
-    // Proper cleanup
-    devProcess.kill('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Proper cleanup (may already be stopped)
+    if (!devProcess.killed) {
+      devProcess.kill('SIGTERM');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }, 15000); // Reduced timeout for CI stability
 
   it('dev command validates port parameter', () => {
