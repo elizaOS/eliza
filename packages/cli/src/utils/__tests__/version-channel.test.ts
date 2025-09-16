@@ -50,18 +50,8 @@ describe('getLatestCliVersionForChannel', () => {
     });
 
     test('should return latest stable version for stable current version', async () => {
-        const mockTimeData = {
-            created: '2024-01-01T00:00:00.000Z',
-            modified: '2024-01-15T00:00:00.000Z',
-            '1.5.7': '2024-01-10T00:00:00.000Z',
-            '1.5.8': '2024-01-12T00:00:00.000Z',
-            '1.5.9-alpha.1': '2024-01-14T00:00:00.000Z',
-            '1.5.9-beta.1': '2024-01-13T00:00:00.000Z',
-            '1.5.9': '2024-01-15T00:00:00.000Z',
-        };
-
         mockBunExecSimple.mockResolvedValue({
-            stdout: JSON.stringify(mockTimeData),
+            stdout: '1.5.9\n',
             stderr: '',
         });
 
@@ -69,67 +59,54 @@ describe('getLatestCliVersionForChannel', () => {
         expect(result).toBe('1.5.9');
         expect(mockBunExecSimple).toHaveBeenCalledWith('npm', [
             'view',
-            '@elizaos/cli',
-            'time',
-            '--json',
+            '@elizaos/cli@latest',
+            'version',
         ]);
     });
 
     test('should return latest alpha version for alpha current version', async () => {
-        const mockTimeData = {
-            created: '2024-01-01T00:00:00.000Z',
-            modified: '2024-01-15T00:00:00.000Z',
-            '1.5.8': '2024-01-12T00:00:00.000Z',
-            '1.5.9-alpha.1': '2024-01-14T00:00:00.000Z',
-            '1.5.9-alpha.2': '2024-01-16T00:00:00.000Z',
-            '1.5.9-beta.1': '2024-01-13T00:00:00.000Z',
-            '1.5.9': '2024-01-15T00:00:00.000Z',
-        };
-
         mockBunExecSimple.mockResolvedValue({
-            stdout: JSON.stringify(mockTimeData),
+            stdout: '1.5.9-alpha.2\n',
             stderr: '',
         });
 
         const result = await getLatestCliVersionForChannel('1.5.9-alpha.1');
         expect(result).toBe('1.5.9-alpha.2');
+        expect(mockBunExecSimple).toHaveBeenCalledWith('npm', [
+            'view',
+            '@elizaos/cli@alpha',
+            'version',
+        ]);
     });
 
     test('should return latest beta version for beta current version', async () => {
-        const mockTimeData = {
-            created: '2024-01-01T00:00:00.000Z',
-            modified: '2024-01-15T00:00:00.000Z',
-            '1.5.8': '2024-01-12T00:00:00.000Z',
-            '1.5.9-alpha.1': '2024-01-14T00:00:00.000Z',
-            '1.5.9-beta.1': '2024-01-13T00:00:00.000Z',
-            '1.5.9-beta.2': '2024-01-17T00:00:00.000Z',
-            '1.5.9': '2024-01-15T00:00:00.000Z',
-        };
-
         mockBunExecSimple.mockResolvedValue({
-            stdout: JSON.stringify(mockTimeData),
+            stdout: '1.5.9-beta.2\n',
             stderr: '',
         });
 
         const result = await getLatestCliVersionForChannel('1.5.9-beta.1');
         expect(result).toBe('1.5.9-beta.2');
+        expect(mockBunExecSimple).toHaveBeenCalledWith('npm', [
+            'view',
+            '@elizaos/cli@beta',
+            'version',
+        ]);
     });
 
-    test('should return null if no newer version in same channel', async () => {
-        const mockTimeData = {
-            created: '2024-01-01T00:00:00.000Z',
-            modified: '2024-01-15T00:00:00.000Z',
-            '1.5.8': '2024-01-12T00:00:00.000Z',
-            '1.5.9-alpha.1': '2024-01-14T00:00:00.000Z',
-        };
-
+    test('should return the version from npm dist-tag', async () => {
         mockBunExecSimple.mockResolvedValue({
-            stdout: JSON.stringify(mockTimeData),
+            stdout: '1.5.8\n',
             stderr: '',
         });
 
         const result = await getLatestCliVersionForChannel('1.5.9');
-        expect(result).toBe('1.5.8'); // Latest stable is 1.5.8, not the alpha
+        expect(result).toBe('1.5.8');
+        expect(mockBunExecSimple).toHaveBeenCalledWith('npm', [
+            'view',
+            '@elizaos/cli@latest',
+            'version',
+        ]);
     });
 
     test('should handle npm command errors gracefully', async () => {
@@ -139,9 +116,9 @@ describe('getLatestCliVersionForChannel', () => {
         expect(result).toBeNull();
     });
 
-    test('should handle malformed JSON gracefully', async () => {
+    test('should handle empty response gracefully', async () => {
         mockBunExecSimple.mockResolvedValue({
-            stdout: 'not valid json',
+            stdout: '',
             stderr: '',
         });
 
@@ -149,31 +126,32 @@ describe('getLatestCliVersionForChannel', () => {
         expect(result).toBeNull();
     });
 
-    test('should filter out non-matching channels correctly', async () => {
-        const mockTimeData = {
-            '1.5.8': '2024-01-12T00:00:00.000Z',
-            '1.5.9-alpha.1': '2024-01-14T00:00:00.000Z',
-            '1.5.9-alpha.2': '2024-01-16T00:00:00.000Z',
-            '1.5.9-beta.1': '2024-01-13T00:00:00.000Z',
-            '1.6.0-alpha.1': '2024-01-18T00:00:00.000Z',
-            '1.6.0': '2024-01-20T00:00:00.000Z',
-        };
+    test('should verify correct dist-tags are used for each channel', async () => {
+        // Test stable channel
+        mockBunExecSimple.mockResolvedValue({ stdout: '1.6.0\n', stderr: '' });
+        await getLatestCliVersionForChannel('1.5.8');
+        expect(mockBunExecSimple).toHaveBeenLastCalledWith('npm', [
+            'view',
+            '@elizaos/cli@latest',
+            'version',
+        ]);
 
-        mockBunExecSimple.mockResolvedValue({
-            stdout: JSON.stringify(mockTimeData),
-            stderr: '',
-        });
+        // Test alpha channel
+        mockBunExecSimple.mockResolvedValue({ stdout: '1.6.0-alpha.1\n', stderr: '' });
+        await getLatestCliVersionForChannel('1.5.9-alpha.1');
+        expect(mockBunExecSimple).toHaveBeenLastCalledWith('npm', [
+            'view',
+            '@elizaos/cli@alpha',
+            'version',
+        ]);
 
-        // Check stable channel filters correctly
-        const stableResult = await getLatestCliVersionForChannel('1.5.8');
-        expect(stableResult).toBe('1.6.0');
-
-        // Check alpha channel filters correctly
-        const alphaResult = await getLatestCliVersionForChannel('1.5.9-alpha.1');
-        expect(alphaResult).toBe('1.6.0-alpha.1');
-
-        // Check beta channel filters correctly
-        const betaResult = await getLatestCliVersionForChannel('1.5.9-beta.1');
-        expect(betaResult).toBe('1.5.9-beta.1'); // Only beta version available
+        // Test beta channel
+        mockBunExecSimple.mockResolvedValue({ stdout: '1.5.9-beta.1\n', stderr: '' });
+        await getLatestCliVersionForChannel('1.5.9-beta.1');
+        expect(mockBunExecSimple).toHaveBeenLastCalledWith('npm', [
+            'view',
+            '@elizaos/cli@beta',
+            'version',
+        ]);
     });
 });

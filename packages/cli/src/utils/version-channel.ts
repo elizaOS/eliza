@@ -28,30 +28,9 @@ export async function getLatestCliVersionForChannel(currentVersion: string): Pro
         // Determine the channel of the current version
         const currentChannel = getVersionChannel(currentVersion);
 
-        // Get the time data for all published versions to find the most recent
-        const { stdout } = await bunExecSimple('npm', ['view', '@elizaos/cli', 'time', '--json']);
-        const timeData = JSON.parse(stdout);
-
-        // Remove metadata entries like 'created' and 'modified'
-        delete timeData.created;
-        delete timeData.modified;
-
-        // Filter versions by channel and find the most recently published version
-        let latestVersion = '';
-        let latestDate = new Date(0); // Start with epoch time
-
-        for (const [version, dateString] of Object.entries(timeData)) {
-            // Skip versions from different channels
-            if (getVersionChannel(version) !== currentChannel) {
-                continue;
-            }
-
-            const publishDate = new Date(dateString as string);
-            if (publishDate > latestDate) {
-                latestDate = publishDate;
-                latestVersion = version;
-            }
-        }
+        // Use npm dist-tag to get the latest version for the channel
+        const { stdout } = await bunExecSimple('npm', ['view', `@elizaos/cli@${currentChannel}`, 'version']);
+        const latestVersion = stdout.trim();
 
         return latestVersion || null;
     } catch (error) {
