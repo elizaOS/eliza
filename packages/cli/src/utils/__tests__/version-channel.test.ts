@@ -94,14 +94,14 @@ describe('getLatestCliVersionForChannel', () => {
         ]);
     });
 
-    test('should return the version from npm dist-tag', async () => {
+    test('should return null when already at latest version', async () => {
         mockBunExecSimple.mockResolvedValue({
             stdout: '1.5.8\n',
             stderr: '',
         });
 
-        const result = await getLatestCliVersionForChannel('1.5.9');
-        expect(result).toBe('1.5.8');
+        const result = await getLatestCliVersionForChannel('1.5.8');
+        expect(result).toBeNull(); // Same version, no update needed
         expect(mockBunExecSimple).toHaveBeenCalledWith('npm', [
             'view',
             '@elizaos/cli@latest',

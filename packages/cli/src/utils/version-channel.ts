@@ -21,7 +21,7 @@ export function getVersionChannel(version: string): 'latest' | 'alpha' | 'beta' 
 /**
  * Get the latest CLI version for a specific distribution channel
  * @param currentVersion - The current version to determine the channel
- * @returns The latest version in the same channel, or null if none found
+ * @returns The latest version if newer than current, or null if already up-to-date
  */
 export async function getLatestCliVersionForChannel(currentVersion: string): Promise<string | null> {
     try {
@@ -32,10 +32,17 @@ export async function getLatestCliVersionForChannel(currentVersion: string): Pro
         const { stdout } = await bunExecSimple('npm', ['view', `@elizaos/cli@${currentChannel}`, 'version']);
         const latestVersion = stdout.trim();
 
-        return latestVersion || null;
+        // Only return if there's a version and it's different from current
+        if (latestVersion && latestVersion !== currentVersion) {
+            return latestVersion;
+        }
+
+        // Already at latest version in this channel
+        return null;
     } catch (error) {
-        // Log error for debugging
+        // Log error for debugging - network issues, npm down, etc.
         console.debug('Error checking for CLI updates:', error);
+        // Return null to indicate check failed - caller should handle gracefully
         return null;
     }
 }

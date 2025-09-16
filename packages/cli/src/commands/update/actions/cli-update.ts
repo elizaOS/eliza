@@ -20,15 +20,11 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
       // Use channel-aware version checking
       const fetchedVersion = await getLatestCliVersionForChannel(currentVersion);
       if (!fetchedVersion) {
-        // Fall back to standard latest version if channel detection fails
-        const fallbackVersion = await fetchLatestVersion('@elizaos/cli');
-        if (!fallbackVersion) {
-          throw new Error('Unable to fetch latest CLI version');
-        }
-        latestVersion = fallbackVersion;
-      } else {
-        latestVersion = fetchedVersion;
+        // No update available in the current channel
+        console.log(`CLI is already at the latest version (${currentVersion}) [✓]`);
+        return true;
       }
+      latestVersion = fetchedVersion;
     } else {
       latestVersion = targetVersion;
     }
