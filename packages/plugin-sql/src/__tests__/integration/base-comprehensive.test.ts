@@ -159,7 +159,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: entityId,
           roomId: testRoomId,
           content: { text: 'Related memory' } as Content,
-          createdAt: new Date().getTime(),
+          createdAt: new Date(),
           metadata: { type: 'test' },
         },
         'memories'
@@ -194,7 +194,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           text: 'Comprehensive test memory',
           metadata: { important: true },
         } as Content,
-        createdAt: new Date().getTime(),
+        createdAt: new Date(),
         metadata: {
           type: 'test',
           category: 'comprehensive',
@@ -272,7 +272,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: testEntityId,
           roomId: roomId,
           content: { text: `Memory for room ${i}` } as Content,
-          createdAt: new Date().getTime(),
+          createdAt: new Date(),
           metadata: { type: 'test', roomIndex: i },
         };
         memories.push(memory);
@@ -316,7 +316,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           relationshipType: 'friend',
           strength: 0.8,
         },
-        createdAt: new Date().getTime(),
+        createdAt: new Date(),
       };
 
       // Create component
@@ -419,7 +419,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           roomId: testRoomId,
           content: { text: 'Memory with embedding' } as Content,
           embedding: Array.from(embedding),
-          createdAt: new Date().getTime(),
+          createdAt: new Date(),
           metadata: { type: 'embedding' },
         },
         'memories'
@@ -492,7 +492,8 @@ describe('Base Adapter Comprehensive Tests', () => {
           entityId: testEntityId, // Required field
           roomId: testRoomId,
           content: { text: 'Memory with entity' } as Content,
-          createdAt: new Date().getTime(),
+          createdAt: new Date(),
+
         },
         'memories'
       );

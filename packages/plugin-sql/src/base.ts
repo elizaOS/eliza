@@ -250,10 +250,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         const existing =
           conditions.length > 0
             ? await this.db
-                .select({ id: agentTable.id })
-                .from(agentTable)
-                .where(or(...conditions))
-                .limit(1)
+              .select({ id: agentTable.id })
+              .from(agentTable)
+              .where(or(...conditions))
+              .limit(1)
             : [];
 
         if (existing.length > 0) {
@@ -2535,10 +2535,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
               ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
-                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
-                      params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
-                    )}]::text[]`,
-                  ]
+                  sql`${taskTable.tags} @> ARRAY[${sql.raw(
+                    params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
+                  )}]::text[]`,
+                ]
                 : [])
             )
           );
@@ -2841,14 +2841,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(1);
       return results.length > 0
         ? {
-            id: results[0].id as UUID,
-            name: results[0].name,
-            sourceType: results[0].sourceType,
-            sourceId: results[0].sourceId || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
+          id: results[0].id as UUID,
+          name: results[0].name,
+          sourceType: results[0].sourceType,
+          sourceId: results[0].sourceId || undefined,
+          metadata: results[0].metadata || undefined,
+          createdAt: results[0].createdAt,
+          updatedAt: results[0].updatedAt,
+        }
         : null;
     });
   }
@@ -2972,17 +2972,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(1);
       return results.length > 0
         ? {
-            id: results[0].id as UUID,
-            messageServerId: results[0].messageServerId as UUID,
-            name: results[0].name,
-            type: results[0].type,
-            sourceType: results[0].sourceType || undefined,
-            sourceId: results[0].sourceId || undefined,
-            topic: results[0].topic || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
+          id: results[0].id as UUID,
+          messageServerId: results[0].messageServerId as UUID,
+          name: results[0].name,
+          type: results[0].type,
+          sourceType: results[0].sourceType || undefined,
+          sourceId: results[0].sourceId || undefined,
+          topic: results[0].topic || undefined,
+          metadata: results[0].metadata || undefined,
+          createdAt: results[0].createdAt,
+          updatedAt: results[0].updatedAt,
+        }
         : null;
     });
   }
