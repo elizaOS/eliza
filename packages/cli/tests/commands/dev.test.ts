@@ -1,3 +1,11 @@
+/**
+ * Dev Command Tests
+ * 
+ * Note: Windows dev command tests are currently skipped in CI environments
+ * due to process management complexities and port conflict handling differences
+ * on Windows. The tests run locally but are disabled in CI to prevent flaky failures.
+ */
+
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
