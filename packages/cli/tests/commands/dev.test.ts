@@ -90,7 +90,7 @@ describe('ElizaOS Dev Commands', () => {
 
       try {
         // For Bun.spawn processes, use the exited promise
-        const exitPromise = proc.exited ? proc.exited.catch(() => {}) : Promise.resolve();
+        const exitPromise = proc.exited ? proc.exited.catch(() => { }) : Promise.resolve();
 
         // First attempt graceful shutdown
         proc.kill('SIGTERM');
@@ -550,7 +550,7 @@ describe('ElizaOS Dev Commands', () => {
     }
 
     try {
-      // Run dev command without specifying port (should default to 3000 but find 3001)
+      // Run dev command without specifying port (should default to 3000 but find next open port)
       const devProcess = Bun.spawn(['elizaos', 'dev'], {
         cwd: projectDir,
         env: {
@@ -558,61 +558,77 @@ describe('ElizaOS Dev Commands', () => {
           FORCE_COLOR: '0',
           LOG_LEVEL: 'debug', // Enable debug to see port conflict message
           PGLITE_DATA_DIR: join(testTmpDir, 'elizadb'),
+          ELIZA_TEST_MODE: 'true',
+          ELIZA_NONINTERACTIVE: 'true',
         },
+        stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
+        ...(process.platform === 'win32' && {
+          windowsHide: true,
+          windowsVerbatimArguments: false,
+        }),
       });
 
       runningProcesses.push(devProcess);
 
-      // Collect output to check for port conflict message
+      // Concurrently stream stdout/stderr without overlapping reads
       let output = '';
       let stderrOutput = '';
       const decoder = new TextDecoder();
 
-      // Create readers for both stdout and stderr
-      const stdoutReader = devProcess.stdout!.getReader();
-      const stderrReader = devProcess.stderr!.getReader();
-
-      // Read output for a few seconds to capture the port conflict message
-      const startTime = Date.now();
-      while (Date.now() - startTime < 3000) {
-        // Read from stdout
-        const stdoutPromise = stdoutReader.read().then(({ done, value }) => {
-          if (!done && value) {
-            const chunk = decoder.decode(value);
-            output += chunk;
+      const handleStream = async (stream: ReadableStream<Uint8Array> | undefined) => {
+        if (!stream) return;
+        const reader = stream.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              const chunk = decoder.decode(value);
+              if (stream === devProcess.stdout) {
+                output += chunk;
+              } else {
+                stderrOutput += chunk;
+              }
+            }
           }
-        });
+        } catch {
+          // ignore stream errors during shutdown
+        } finally {
+          reader.releaseLock();
+        }
+      };
 
-        // Read from stderr
-        const stderrPromise = stderrReader.read().then(({ done, value }) => {
-          if (!done && value) {
-            const chunk = decoder.decode(value);
-            stderrOutput += chunk;
-          }
-        });
+      const stdoutTask = handleStream(devProcess.stdout);
+      const stderrTask = handleStream(devProcess.stderr);
 
-        // Wait for both with a timeout
-        await Promise.race([
-          Promise.all([stdoutPromise, stderrPromise]),
-          new Promise((resolve) => setTimeout(resolve, 100)),
-        ]);
+      // Wait until we see the conflict message or until timeout (longer on CI/Windows)
+      const maxWaitMs = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true'
+        ? (process.platform === 'win32' ? 10000 : 6000)
+        : 4000;
 
-        // Check if we see the expected port conflict message in either output
-        const combinedOutput = output + stderrOutput;
-        if (combinedOutput.match(/Port 3000 is in use, using port \d+ instead/)) {
+      const start = Date.now();
+      let matched = false;
+      const pattern = /Port 3000 is in use, using port \d+ instead/;
+      while (Date.now() - start < maxWaitMs) {
+        const combined = output + stderrOutput;
+        if (pattern.test(combined)) {
+          matched = true;
           break;
         }
+        await new Promise((r) => setTimeout(r, 100));
       }
 
-      // Verify the server started successfully with any alternative port
-      const combinedOutput = output + stderrOutput;
-      expect(combinedOutput).toMatch(/Port 3000 is in use, using port \d+ instead/);
+      expect(matched).toBe(true);
 
-      // Clean up the dev process
+      // Clean up the dev process and stream tasks
       devProcess.kill('SIGTERM');
       await devProcess.exited;
+      await Promise.race([
+        Promise.allSettled([stdoutTask, stderrTask]),
+        new Promise((r) => setTimeout(r, 1000)),
+      ]);
     } finally {
       // Clean up the dummy server
       dummyServer.stop();
