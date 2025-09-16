@@ -245,8 +245,6 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
 
     // Delegate to local CLI
     await delegateToLocalCli(localCliPath);
-    // Note: delegateToLocalCli calls process.exit, so this line is never reached
-    // in production. It only returns true in tests where process.exit is mocked.
     return true;
   } catch (error) {
     logger.error(
