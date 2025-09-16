@@ -1,5 +1,5 @@
 import { logger, type Plugin } from '@elizaos/core';
-import { runPluginMigrations } from './custom-migrator';
+import { runPluginMigrations } from './migrator';
 import type { DrizzleDatabase } from './types';
 
 export class DatabaseMigrationService {

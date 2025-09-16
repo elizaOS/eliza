@@ -1,82 +1,11 @@
-import { sql } from 'drizzle-orm';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { PgliteDatabase } from 'drizzle-orm/pglite';
 import { logger } from '@elizaos/core';
-
-type DrizzleDB = NodePgDatabase | PgliteDatabase;
-
-/**
- * Extract clean error message from Drizzle wrapped errors
- * Drizzle wraps PostgreSQL errors and only shows the SQL query in the error message,
- * hiding the actual error in the cause property.
- */
-function extractErrorMessage(error: unknown): string {
-  if (error instanceof Error && 'cause' in error && error.cause) {
-    return (error.cause as Error).message;
-  } else if (error instanceof Error) {
-    return error.message;
-  }
-  return 'Unknown error';
-}
-
-/**
- * Extract detailed error information including stack trace for logging
- * Returns both the clean message and stack trace for comprehensive debugging
- */
-function extractErrorDetails(error: unknown): { message: string; stack?: string } {
-  if (error instanceof Error && 'cause' in error && error.cause) {
-    const cause = error.cause as Error;
-    return {
-      message: cause.message,
-      stack: cause.stack || error.stack,
-    };
-  } else if (error instanceof Error) {
-    return {
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-  return { message: 'Unknown error' };
-}
-
-interface ColumnDefinition {
-  name: string;
-  type: string;
-  primaryKey?: boolean;
-  notNull?: boolean;
-  defaultValue?: string;
-  unique?: boolean;
-}
-
-interface IndexDefinition {
-  name: string;
-  columns: string[];
-  unique?: boolean;
-}
-
-interface ForeignKeyDefinition {
-  name: string;
-  columns: string[];
-  referencedTable: string;
-  referencedColumns: string[];
-  onDelete?: string;
-}
-
-interface TableDefinition {
-  name: string;
-  columns: ColumnDefinition[];
-  indexes: IndexDefinition[];
-  foreignKeys: ForeignKeyDefinition[];
-  checkConstraints: { name: string; expression: string }[];
-  dependencies: string[]; // Tables this table depends on
-  compositePrimaryKey?: { name: string; columns: string[] }; // Add composite primary key support
-}
-
-// Known composite primary keys for tables that don't have proper metadata
-const KNOWN_COMPOSITE_PRIMARY_KEYS: Record<string, { columns: string[] }> = {
-  cache: { columns: ['key', 'agent_id'] },
-  // Add other tables with composite primary keys here if needed
-};
+import type {
+  TableDefinition,
+  ColumnDefinition,
+  IndexDefinition,
+  ForeignKeyDefinition,
+} from '../types';
+import { KNOWN_COMPOSITE_PRIMARY_KEYS } from '../constants';
 
 export class DrizzleSchemaIntrospector {
   parseTableDefinition(table: any, exportKey?: string): TableDefinition {
@@ -116,14 +45,6 @@ export class DrizzleSchemaIntrospector {
   }
 
   private getTableName(table: any, exportKey?: string): string {
-    // logger.debug(`[INTROSPECTOR] Getting table name for table:`, {
-    //   hasTableConfig: !!(table && table._),
-    //   tableName: table && table._ && table._.name,
-    //   exportKey,
-    //   tableKeys: table ? Object.keys(table) : [],
-    //   hasSymbols: table ? Object.getOwnPropertySymbols(table).length > 0 : false,
-    // });
-
     if (!table) {
       logger.debug(`[INTROSPECTOR] No table provided, using fallback: unknown_table`);
       return 'unknown_table';
@@ -131,7 +52,6 @@ export class DrizzleSchemaIntrospector {
 
     // Method 1: Direct access via table._.name
     if (table._ && table._.name) {
-      // logger.debug(`[INTROSPECTOR] Found table name via table._.name: ${table._.name}`);
       return table._.name;
     }
 
@@ -141,7 +61,6 @@ export class DrizzleSchemaIntrospector {
       if (symbol.description && symbol.description.includes('drizzle:Name')) {
         const tableName = table[symbol];
         if (typeof tableName === 'string') {
-          // logger.debug(`[INTROSPECTOR] Found table name via symbol: ${tableName}`);
           return tableName;
         }
       }
@@ -152,7 +71,6 @@ export class DrizzleSchemaIntrospector {
       if (symbol.description && symbol.description.includes('drizzle:OriginalName')) {
         const tableName = table[symbol];
         if (typeof tableName === 'string') {
-          // logger.debug(`[INTROSPECTOR] Found table name via OriginalName symbol: ${tableName}`);
           return tableName;
         }
       }
@@ -166,13 +84,9 @@ export class DrizzleSchemaIntrospector {
         .replace(/([A-Z])/g, '_$1') // Add underscores before capitals
         .toLowerCase()
         .replace(/^_/, ''); // Remove leading underscore
-      // logger.debug(`[INTROSPECTOR] Using export key fallback: ${tableName} (from ${exportKey})`);
       return tableName;
     }
 
-    // logger.debug(
-    //   `[INTROSPECTOR] Using fallback table name: unknown_table (from ${exportKey || 'no-key'})`
-    // );
     return 'unknown_table';
   }
 
@@ -201,34 +115,16 @@ export class DrizzleSchemaIntrospector {
   private parseColumnsFallback(table: any): ColumnDefinition[] {
     const columns: ColumnDefinition[] = [];
 
-    // logger.debug(`[INTROSPECTOR] Parsing columns fallback for table. Keys:`, Object.keys(table));
-
     // Parse columns directly from table object properties
     for (const [key, value] of Object.entries(table)) {
       if (key === '_' || key === 'enableRLS' || typeof value !== 'object' || !value) continue;
 
       const col = value as any;
-      // logger.debug(`[INTROSPECTOR] Examining column ${key}:`, {
-      //   hasColumnType: !!col.columnType,
-      //   hasConfig: !!col.config,
-      //   hasDataType: !!col.dataType,
-      //   configKeys: col.config ? Object.keys(col.config) : [],
-      //   colKeys: Object.keys(col),
-      // });
 
       // Check if this looks like a Drizzle column
       if (col && (col.columnType || col.config || col.dataType)) {
         const config = col.config || col;
         const columnName = config.name || key;
-
-        // logger.debug(`[INTROSPECTOR] Processing column ${columnName}:`, {
-        //   type: col.columnType,
-        //   primaryKey: config.primaryKey || config.primary,
-        //   notNull: config.notNull,
-        //   hasDefault: !!config.default || !!config.defaultValue,
-        //   defaultValue: config.default || config.defaultValue,
-        //   hasReferences: !!config.references,
-        // });
 
         columns.push({
           name: columnName,
@@ -241,18 +137,11 @@ export class DrizzleSchemaIntrospector {
       }
     }
 
-    // logger.debug(
-    //   `[INTROSPECTOR] Parsed ${columns.length} columns:`,
-    //   columns.map((c) => ({ name: c.name, type: c.type, hasDefault: !!c.defaultValue }))
-    // );
     return columns;
   }
 
   private parseForeignKeys(table: any): ForeignKeyDefinition[] {
     const foreignKeys: ForeignKeyDefinition[] = [];
-    const tableConfig = table._;
-
-    // logger.debug(`[INTROSPECTOR] Parsing foreign keys. Has table._:`, !!tableConfig);
 
     // Check inline foreign keys first
     const symbols = Object.getOwnPropertySymbols(table);
@@ -260,32 +149,11 @@ export class DrizzleSchemaIntrospector {
 
     if (fkSymbol && Array.isArray(table[fkSymbol])) {
       const inlineForeignKeys = table[fkSymbol];
-      // logger.debug(`[INTROSPECTOR] Found ${inlineForeignKeys.length} inline foreign keys in symbol`);
 
       for (const [index, fk] of inlineForeignKeys.entries()) {
-        // logger.debug(`[INTROSPECTOR] Processing foreign key:`, {
-        //   hasReference: !!(fk && fk.reference),
-        //   onDelete: fk?.onDelete,
-        //   onUpdate: fk?.onUpdate,
-        //   referenceType: typeof fk?.reference,
-        // });
-
         if (fk && fk.reference && typeof fk.reference === 'function') {
           try {
             const referenceResult = fk.reference();
-            // logger.debug(`[INTROSPECTOR] Reference function result:`, {
-            //   hasTableDef: !!(referenceResult && referenceResult.table),
-            //   hasMetadata: !!(referenceResult && referenceResult.table && referenceResult.table._),
-            //   tableName:
-            //     referenceResult && referenceResult.table
-            //       ? this.getTableName(referenceResult.table, '')
-            //       : undefined,
-            //   resultKeys: referenceResult ? Object.keys(referenceResult) : [],
-            //   hasName: !!(referenceResult && referenceResult.name),
-            //   hasForeignTable: !!(referenceResult && referenceResult.foreignTable),
-            //   hasColumns: !!(referenceResult && referenceResult.columns),
-            //   hasForeignColumns: !!(referenceResult && referenceResult.foreignColumns),
-            // });
 
             // Extract referenced table name using multiple methods
             let referencedTableName: string | null = null;
@@ -299,7 +167,6 @@ export class DrizzleSchemaIntrospector {
 
             // Method 2: Direct properties from reference result
             if (!referencedTableName && referenceResult.foreignTable) {
-              // Ensure it's a string, not a table object
               if (typeof referenceResult.foreignTable === 'string') {
                 referencedTableName = referenceResult.foreignTable;
               } else if (typeof referenceResult.foreignTable === 'object') {
@@ -309,7 +176,6 @@ export class DrizzleSchemaIntrospector {
 
             // Method 3: Extract from name if it looks like a table name
             if (!referencedTableName && referenceResult.name) {
-              // Ensure it's a string, not a table object
               if (typeof referenceResult.name === 'string') {
                 referencedTableName = referenceResult.name;
               } else if (typeof referenceResult.name === 'object') {
@@ -383,7 +249,6 @@ export class DrizzleSchemaIntrospector {
               };
 
               foreignKeys.push(foreignKey);
-              // logger.debug(`[INTROSPECTOR] Created foreign key:`, foreignKey);
             } else {
               logger.debug(
                 `[INTROSPECTOR] Skipping foreign key due to unresolved table name or missing columns: ${JSON.stringify(
@@ -406,13 +271,6 @@ export class DrizzleSchemaIntrospector {
       logger.debug(`[INTROSPECTOR] No inline foreign keys found, trying fallback methods`);
     }
 
-    // Fallback: Try to extract from table config if no inline FKs found
-    if (foreignKeys.length === 0 && tableConfig) {
-      logger.debug(`[INTROSPECTOR] Using fallback foreign key parsing`);
-      // Add any additional fallback logic here if needed
-    }
-
-    // logger.debug(`[INTROSPECTOR] Found ${foreignKeys.length} foreign keys:`, foreignKeys);
     return foreignKeys;
   }
 
@@ -449,7 +307,6 @@ export class DrizzleSchemaIntrospector {
     }
 
     // Method 3: Handle reference function result objects
-    // When we call a reference function, it returns an object with foreignTable property
     if (reference.foreignTable && typeof reference.foreignTable === 'string') {
       logger.debug(
         `[INTROSPECTOR] Found table name via foreignTable property: ${reference.foreignTable}`
@@ -565,33 +422,18 @@ export class DrizzleSchemaIntrospector {
 
     // Enhanced: Check for constraints in table symbol properties
     if (indexes.length === 0) {
-      // logger.debug(`[INTROSPECTOR] No indexes found, checking symbols for constraints`);
       try {
         // Look for symbols that might contain constraint information
         const symbols = Object.getOwnPropertySymbols(table);
-        // logger.debug(`[INTROSPECTOR] Found ${symbols.length} symbols to check`);
 
         for (const symbol of symbols) {
           const symbolValue = table[symbol];
-          // logger.debug(
-          //   `[INTROSPECTOR] Checking symbol ${symbol.description} (isArray: ${Array.isArray(symbolValue)}, type: ${typeof symbolValue})`
-          // );
 
           if (Array.isArray(symbolValue)) {
             for (const item of symbolValue) {
               if (item && typeof item === 'object') {
-                // logger.debug(`[INTROSPECTOR] Symbol array item:`, {
-                //   hasName: !!item.name,
-                //   hasColumns: !!item.columns,
-                //   hasUnique: item.unique !== undefined,
-                //   name: item.name,
-                //   unique: item.unique,
-                //   itemKeys: Object.keys(item),
-                // });
-
                 // Check for unique constraints
                 if (item.name && item.columns && item.unique !== undefined) {
-                  // logger.debug(`[INTROSPECTOR] Found constraint in symbol: ${item.name}`);
                   indexes.push({
                     name: item.name,
                     columns: Array.isArray(item.columns)
@@ -785,7 +627,7 @@ export class DrizzleSchemaIntrospector {
 
   private mapDrizzleColumnType(columnType: string, config: any, columnName: string): string {
     // Check if this is a vector column by name pattern
-    if (columnName && columnName.match(/^dim_?\\d+$/)) {
+    if (columnName && columnName.match(/^dim_?\d+$/)) {
       const dimensions = columnName.replace(/^dim_?/, '');
       return `vector(${dimensions})`;
     }
@@ -827,7 +669,7 @@ export class DrizzleSchemaIntrospector {
         return 'TEXT[]';
       case 'PgCustomColumn':
         // Check if it's a vector column
-        if (columnName && columnName.match(/^dim_?\\d+$/)) {
+        if (columnName && columnName.match(/^dim_?\d+$/)) {
           const dimensions = columnName.replace(/^dim_?/, '');
           return `vector(${dimensions})`;
         }
@@ -865,17 +707,9 @@ export class DrizzleSchemaIntrospector {
   private formatDefaultValue(defaultValue: any): string | undefined {
     if (defaultValue === undefined || defaultValue === null) return undefined;
 
-    // logger.debug(`[INTROSPECTOR] Formatting default value:`, {
-    //   type: typeof defaultValue,
-    //   value: defaultValue,
-    //   hasQueryChunks: !!(defaultValue && defaultValue.queryChunks),
-    //   constructorName: defaultValue?.constructor?.name,
-    // });
-
     // Handle SQL template literals
     if (defaultValue && typeof defaultValue === 'object') {
       if (defaultValue.sql) {
-        // logger.debug(`[INTROSPECTOR] Using SQL property: ${defaultValue.sql}`);
         return defaultValue.sql;
       }
       if (defaultValue.queryChunks && Array.isArray(defaultValue.queryChunks)) {
@@ -886,19 +720,16 @@ export class DrizzleSchemaIntrospector {
             return '';
           })
           .join('');
-        // logger.debug(`[INTROSPECTOR] Using queryChunks: ${result}`);
         return result;
       }
       // Handle empty object for JSONB defaults
       if (defaultValue.constructor && defaultValue.constructor.name === 'Object') {
         if (Object.keys(defaultValue).length === 0) {
-          // logger.debug(`[INTROSPECTOR] Empty object default for JSONB: '{}'`);
           return "'{}'";
         }
       }
       // Handle SQL constructor objects (like now())
       if (defaultValue.constructor && defaultValue.constructor.name === 'SQL') {
-        // logger.debug(`[INTROSPECTOR] SQL object detected, checking for known patterns`);
         // Try to extract the actual SQL from the object
         const sqlStr = defaultValue.toString();
         if (sqlStr.includes('now()') || sqlStr.includes('NOW()')) {
@@ -913,11 +744,9 @@ export class DrizzleSchemaIntrospector {
     }
 
     if (typeof defaultValue === 'string') {
-      // logger.debug(`[INTROSPECTOR] String default: '${defaultValue}'`);
       return `'${defaultValue}'`;
     }
     if (typeof defaultValue === 'number' || typeof defaultValue === 'boolean') {
-      // logger.debug(`[INTROSPECTOR] Primitive default: ${defaultValue}`);
       return defaultValue.toString();
     }
 
@@ -988,382 +817,5 @@ export class DrizzleSchemaIntrospector {
         `REFERENCES "${schemaName}"."${fk.referencedTable}" ("${fk.referencedColumns.join('", "')}")` +
         (fk.onDelete ? ` ON DELETE ${fk.onDelete.toUpperCase()}` : '')
     );
-  }
-}
-
-export class PluginNamespaceManager {
-  constructor(private db: DrizzleDB) {}
-
-  async getPluginSchema(pluginName: string): Promise<string> {
-    if (pluginName === '@elizaos/plugin-sql') {
-      // For the core SQL plugin, try to use the current schema if available (for PG)
-      // Otherwise, default to public.
-      try {
-        const result = await this.db.execute(sql.raw('SHOW search_path'));
-        if (result.rows && result.rows.length > 0) {
-          const searchPath = (result.rows[0] as any).search_path;
-          // The search_path can be a comma-separated list, iterate to find the first valid schema
-          const schemas = searchPath.split(',').map((s: string) => s.trim());
-          for (const schema of schemas) {
-            if (schema && !schema.includes('$user')) {
-              return schema;
-            }
-          }
-        }
-      } catch (e) {
-        // This query might fail on PGLite if not supported, fallback to public
-        logger.debug('Could not determine search_path, defaulting to public schema.');
-      }
-      return 'public';
-    }
-    return pluginName.replace(/@elizaos\/plugin-|\W/g, '_').toLowerCase();
-  }
-
-  async ensureNamespace(schemaName: string): Promise<void> {
-    if (schemaName === 'public') return;
-    await this.db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`));
-  }
-
-  async introspectExistingTables(schemaName: string): Promise<string[]> {
-    const res = await this.db.execute(
-      sql.raw(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = '${schemaName}'`
-      )
-    );
-    return (res.rows as any[]).map((row) => row.table_name);
-  }
-
-  async foreignKeyExists(
-    schemaName: string,
-    tableName: string,
-    constraintName: string
-  ): Promise<boolean> {
-    try {
-      const res = await this.db.execute(
-        sql.raw(
-          `SELECT constraint_name 
-           FROM information_schema.table_constraints 
-           WHERE table_schema = '${schemaName}' 
-           AND table_name = '${tableName}' 
-           AND constraint_name = '${constraintName}' 
-           AND constraint_type = 'FOREIGN KEY'`
-        )
-      );
-      return res.rows.length > 0;
-    } catch (error) {
-      // If the query fails, assume the constraint doesn't exist
-      return false;
-    }
-  }
-
-  async checkConstraintExists(
-    schemaName: string,
-    tableName: string,
-    constraintName: string
-  ): Promise<boolean> {
-    try {
-      const res = await this.db.execute(
-        sql.raw(
-          `SELECT constraint_name 
-           FROM information_schema.table_constraints 
-           WHERE table_schema = '${schemaName}' 
-           AND table_name = '${tableName}' 
-           AND constraint_name = '${constraintName}' 
-           AND constraint_type = 'CHECK'`
-        )
-      );
-      return res.rows.length > 0;
-    } catch (error) {
-      // If the query fails, assume the constraint doesn't exist
-      return false;
-    }
-  }
-
-  async uniqueConstraintExists(
-    schemaName: string,
-    tableName: string,
-    constraintName: string
-  ): Promise<boolean> {
-    try {
-      const res = await this.db.execute(
-        sql.raw(
-          `SELECT constraint_name 
-           FROM information_schema.table_constraints 
-           WHERE table_schema = '${schemaName}' 
-           AND table_name = '${tableName}' 
-           AND constraint_name = '${constraintName}' 
-           AND constraint_type = 'UNIQUE'`
-        )
-      );
-      return res.rows.length > 0;
-    } catch (error) {
-      // If the query fails, assume the constraint doesn't exist
-      return false;
-    }
-  }
-
-  async createTable(tableDef: TableDefinition, schemaName: string): Promise<void> {
-    const introspector = new DrizzleSchemaIntrospector();
-    const createTableSQL = introspector.generateCreateTableSQL(tableDef, schemaName);
-
-    await this.db.execute(sql.raw(createTableSQL));
-    logger.info(`Created table: ${tableDef.name}`);
-  }
-
-  async addConstraints(tableDef: TableDefinition, schemaName: string): Promise<void> {
-    // Add foreign key constraints
-    if (tableDef.foreignKeys.length > 0) {
-      const introspector = new DrizzleSchemaIntrospector();
-      const constraintSQLs = introspector.generateForeignKeySQL(tableDef, schemaName);
-      for (let i = 0; i < tableDef.foreignKeys.length; i++) {
-        const fk = tableDef.foreignKeys[i];
-        const constraintSQL = constraintSQLs[i];
-
-        try {
-          // Check if foreign key already exists
-          const exists = await this.foreignKeyExists(schemaName, tableDef.name, fk.name);
-          if (exists) {
-            logger.debug(
-              `[CUSTOM MIGRATOR] Foreign key constraint ${fk.name} already exists, skipping`
-            );
-            continue;
-          }
-
-          await this.db.execute(sql.raw(constraintSQL));
-          logger.debug(`[CUSTOM MIGRATOR] Successfully added foreign key constraint: ${fk.name}`);
-        } catch (error: any) {
-          // Log the error but continue processing other constraints
-          const errorMessage = extractErrorMessage(error);
-          if (errorMessage.includes('already exists')) {
-            logger.debug(`[CUSTOM MIGRATOR] Foreign key constraint already exists: ${fk.name}`);
-          } else {
-            logger.warn(
-              `[CUSTOM MIGRATOR] Could not add foreign key constraint (may already exist): ${errorMessage}`
-            );
-          }
-        }
-      }
-    }
-
-    // Add check constraints
-    if (tableDef.checkConstraints.length > 0) {
-      for (const checkConstraint of tableDef.checkConstraints) {
-        try {
-          // Check if check constraint already exists
-          const exists = await this.checkConstraintExists(
-            schemaName,
-            tableDef.name,
-            checkConstraint.name
-          );
-          if (exists) {
-            logger.debug(
-              `[CUSTOM MIGRATOR] Check constraint ${checkConstraint.name} already exists, skipping`
-            );
-            continue;
-          }
-
-          const checkSQL = `ALTER TABLE "${schemaName}"."${tableDef.name}" ADD CONSTRAINT "${checkConstraint.name}" CHECK (${checkConstraint.expression})`;
-          await this.db.execute(sql.raw(checkSQL));
-          logger.debug(
-            `[CUSTOM MIGRATOR] Successfully added check constraint: ${checkConstraint.name}`
-          );
-        } catch (error: any) {
-          const errorMessage = extractErrorMessage(error);
-          if (errorMessage.includes('already exists')) {
-            logger.debug(
-              `[CUSTOM MIGRATOR] Check constraint already exists: ${checkConstraint.name}`
-            );
-          } else {
-            logger.warn(
-              `[CUSTOM MIGRATOR] Could not add check constraint ${checkConstraint.name} (may already exist): ${errorMessage}`
-            );
-          }
-        }
-      }
-    }
-  }
-}
-
-export class ExtensionManager {
-  constructor(private db: DrizzleDB) {}
-
-  async installRequiredExtensions(requiredExtensions: string[]): Promise<void> {
-    for (const extension of requiredExtensions) {
-      try {
-        await this.db.execute(sql.raw(`CREATE EXTENSION IF NOT EXISTS "${extension}"`));
-      } catch (error) {
-        const errorDetails = extractErrorDetails(error);
-        logger.warn(`Could not install extension ${extension}: ${errorDetails.message}`);
-        if (errorDetails.stack) {
-          logger.debug(
-            `[CUSTOM MIGRATOR] Extension installation stack trace: ${errorDetails.stack}`
-          );
-        }
-      }
-    }
-  }
-}
-
-// Topological sort for dependency ordering
-function topologicalSort(tables: Map<string, TableDefinition>): string[] {
-  const sorted: string[] = [];
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-
-  function visit(tableName: string) {
-    if (visiting.has(tableName)) {
-      logger.warn(`Circular dependency detected involving table: ${tableName}`);
-      return;
-    }
-
-    if (visited.has(tableName)) {
-      return;
-    }
-
-    visiting.add(tableName);
-
-    const table = tables.get(tableName);
-    if (table) {
-      // Visit dependencies first
-      for (const dep of table.dependencies) {
-        if (tables.has(dep)) {
-          visit(dep);
-        }
-      }
-    }
-
-    visiting.delete(tableName);
-    visited.add(tableName);
-    sorted.push(tableName);
-  }
-
-  // Visit all tables
-  for (const tableName of tables.keys()) {
-    visit(tableName);
-  }
-
-  return sorted;
-}
-
-export async function runPluginMigrations(
-  db: DrizzleDB,
-  pluginName: string,
-  schema: any
-): Promise<void> {
-  logger.debug(`[CUSTOM MIGRATOR] Starting migration for plugin: ${pluginName}`);
-
-  // Test database connection first
-  try {
-    await db.execute(sql.raw('SELECT 1'));
-    logger.debug('[CUSTOM MIGRATOR] Database connection verified');
-  } catch (error) {
-    const errorDetails = extractErrorDetails(error);
-    logger.error(`[CUSTOM MIGRATOR] Database connection failed: ${errorDetails.message}`);
-    if (errorDetails.stack) {
-      logger.error(`[CUSTOM MIGRATOR] Stack trace: ${errorDetails.stack}`);
-    }
-    throw new Error(`Database connection failed: ${errorDetails.message}`);
-  }
-
-  const namespaceManager = new PluginNamespaceManager(db);
-  const introspector = new DrizzleSchemaIntrospector();
-  const extensionManager = new ExtensionManager(db);
-
-  await extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch']);
-  const schemaName = await namespaceManager.getPluginSchema(pluginName);
-  await namespaceManager.ensureNamespace(schemaName);
-  const existingTables = await namespaceManager.introspectExistingTables(schemaName);
-
-  // logger.debug(`[CUSTOM MIGRATOR] Schema name: ${schemaName}`);
-  // logger.debug(`[CUSTOM MIGRATOR] Existing tables:`, existingTables);
-
-  // Discover all tables
-  const tableEntries = Object.entries(schema).filter(([key, v]) => {
-    const isDrizzleTable =
-      v &&
-      (((v as any)._ && typeof (v as any)._.name === 'string') ||
-        (typeof v === 'object' &&
-          v !== null &&
-          ('tableName' in v || 'dbName' in v || key.toLowerCase().includes('table'))));
-    return isDrizzleTable;
-  });
-
-  // logger.debug(
-  //   `[CUSTOM MIGRATOR] Found ${tableEntries.length} tables to process:`,
-  //   tableEntries.map(([key]) => key)
-  // );
-
-  // Parse all table definitions
-  const tableDefinitions = new Map<string, TableDefinition>();
-  for (const [exportKey, table] of tableEntries) {
-    const tableDef = introspector.parseTableDefinition(table, exportKey);
-    tableDefinitions.set(tableDef.name, tableDef);
-  }
-
-  // Sort tables by dependencies (topological sort)
-  const sortedTableNames = topologicalSort(tableDefinitions);
-  // logger.debug(`[CUSTOM MIGRATOR] Table creation order:`, sortedTableNames);
-
-  // logger.info(
-  //   `Migrating ${tableDefinitions.size} tables for ${pluginName} to schema ${schemaName}`
-  // );
-
-  try {
-    // Phase 1: Create all tables without foreign key constraints
-    logger.debug(`[CUSTOM MIGRATOR] Phase 1: Creating tables...`);
-    for (const tableName of sortedTableNames) {
-      const tableDef = tableDefinitions.get(tableName);
-      if (!tableDef) continue;
-
-      const tableExists = existingTables.includes(tableDef.name);
-      logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} exists: ${tableExists}`);
-
-      if (!tableExists) {
-        logger.debug(`[CUSTOM MIGRATOR] Creating table: ${tableDef.name}`);
-        try {
-          await namespaceManager.createTable(tableDef, schemaName);
-        } catch (error) {
-          const errorDetails = extractErrorDetails(error);
-          logger.error(
-            `[CUSTOM MIGRATOR] Failed to create table ${tableDef.name}: ${errorDetails.message}`
-          );
-          if (errorDetails.stack) {
-            logger.error(`[CUSTOM MIGRATOR] Table creation stack trace: ${errorDetails.stack}`);
-          }
-          throw new Error(`Failed to create table ${tableDef.name}: ${errorDetails.message}`);
-        }
-      } else {
-        logger.debug(`[CUSTOM MIGRATOR] Table ${tableDef.name} already exists, skipping creation`);
-      }
-    }
-
-    // Phase 2: Add constraints (foreign keys, check constraints, etc.)
-    logger.debug(`[CUSTOM MIGRATOR] Phase 2: Adding constraints...`);
-    for (const tableName of sortedTableNames) {
-      const tableDef = tableDefinitions.get(tableName);
-      if (!tableDef) continue;
-
-      // Add constraints if table has foreign keys OR check constraints
-      if (tableDef.foreignKeys.length > 0 || tableDef.checkConstraints.length > 0) {
-        logger.debug(
-          `[CUSTOM MIGRATOR] Adding constraints for table: ${tableDef.name} - ${JSON.stringify({
-            foreignKeys: tableDef.foreignKeys.length,
-            checkConstraints: tableDef.checkConstraints.length,
-          })}`
-        );
-        await namespaceManager.addConstraints(tableDef, schemaName);
-      }
-    }
-
-    logger.debug(`[CUSTOM MIGRATOR] Completed migration for plugin: ${pluginName}`);
-  } catch (error) {
-    const errorDetails = extractErrorDetails(error);
-    logger.error(
-      `[CUSTOM MIGRATOR] Migration failed for plugin ${pluginName}: ${errorDetails.message}`
-    );
-    if (errorDetails.stack) {
-      logger.error(`[CUSTOM MIGRATOR] Migration stack trace: ${errorDetails.stack}`);
-    }
-    throw new Error(`Migration failed for plugin ${pluginName}: ${errorDetails.message}`);
   }
 }

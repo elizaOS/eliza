@@ -18,7 +18,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { drizzle } from 'drizzle-orm/pglite';
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { DrizzleSchemaIntrospector, runPluginMigrations } from '../../custom-migrator';
+import { DrizzleSchemaIntrospector, runPluginMigrations } from '../../migrator';
 
 // Test schema with all possible scenarios
 const testBaseTable = pgTable(
