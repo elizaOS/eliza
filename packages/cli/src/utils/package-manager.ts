@@ -176,7 +176,19 @@ export async function executeInstallationWithFallback(
   // First try normal installation
   const result = await executeInstallation(packageName, versionOrTag, directory);
 
-  if (result.success || !githubFallback) {
+  if (result.success) {
+    return result;
+  }
+
+  // If a channel tag (alpha/beta) was provided and failed, retry without any tag
+  if (versionOrTag && ['alpha', 'beta'].includes(versionOrTag)) {
+    const retryNoTag = await executeInstallation(packageName, '', directory);
+    if (retryNoTag.success) {
+      return retryNoTag;
+    }
+  }
+
+  if (!githubFallback) {
     return result;
   }
 
@@ -187,6 +199,8 @@ export async function executeInstallationWithFallback(
   await removeFromBunLock(packageName, directory);
 
   // Try GitHub installation
-  const githubSpecifier = `github:${githubFallback}${versionOrTag ? `#${versionOrTag}` : ''}`;
+  // Prefer no tag for GitHub fallback unless a non-channel ref was explicitly provided
+  const ref = versionOrTag && !['alpha', 'beta'].includes(versionOrTag) ? versionOrTag : '';
+  const githubSpecifier = `github:${githubFallback}${ref ? `#${ref}` : ''}`;
   return await executeInstallation(githubSpecifier, '', directory);
 }
