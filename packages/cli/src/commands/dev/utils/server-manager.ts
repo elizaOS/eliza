@@ -71,6 +71,12 @@ function setupEnvironment(): Record<string, string> {
   // Ensure color output
   env.FORCE_COLOR = '1';
 
+  // Default PGLite to Node/WASM-in-Node runtime for dev to avoid WASM init issues
+  // Users can override this by explicitly setting PGLITE_WASM_MODE in their env
+  if (!env.PGLITE_WASM_MODE) {
+    env.PGLITE_WASM_MODE = 'node';
+  }
+
   // Preserve ELIZA_TEST_MODE for test environments
   if (process.env.ELIZA_TEST_MODE) {
     env.ELIZA_TEST_MODE = process.env.ELIZA_TEST_MODE;
