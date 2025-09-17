@@ -65,6 +65,18 @@ export class RuntimeMigrator {
       // Check if there are actual changes
       if (!hasChanges(previousSnapshot, currentSnapshot)) {
         logger.info(`[RuntimeMigrator] No schema changes for ${pluginName}`);
+
+        // For empty schemas, we still want to record the migration
+        // to ensure idempotency and consistency
+        if (!previousSnapshot && Object.keys(currentSnapshot.tables).length === 0) {
+          logger.info(`[RuntimeMigrator] Recording empty schema for ${pluginName}`);
+          await this.migrationTracker.recordMigration(pluginName, currentHash, Date.now());
+          const idx = await this.journalStorage.getNextIdx(pluginName);
+          const tag = this.generateMigrationTag(idx, pluginName);
+          await this.journalStorage.updateJournal(pluginName, idx, tag, true);
+          await this.snapshotStorage.saveSnapshot(pluginName, idx, currentSnapshot);
+        }
+
         return;
       }
 
@@ -124,43 +136,126 @@ export class RuntimeMigrator {
     hash: string,
     sqlStatements: string[]
   ): Promise<void> {
-    // Use transaction for atomicity - automatic rollback on failure
-    await (this.db as any).transaction(async (tx: DrizzleDB) => {
+    // Check if we can use transactions (PostgreSQL) or need to execute directly (PGLite)
+    const isPGLite = this.checkIfPGLite();
+
+    if (isPGLite) {
+      // PGLite doesn't support Drizzle transactions the same way
+      // Execute statements directly with manual transaction control
       try {
-        // Execute all SQL statements
-        for (const stmt of sqlStatements) {
-          logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
-          await tx.execute(sql.raw(stmt));
+        // Start manual transaction for PGLite
+        await this.db.execute(sql`BEGIN`);
+
+        try {
+          // Execute all SQL statements
+          for (const stmt of sqlStatements) {
+            logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
+            await this.db.execute(sql.raw(stmt));
+          }
+
+          // Get next index for journal
+          const idx = await this.journalStorage.getNextIdx(pluginName);
+
+          // Record migration
+          await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
+
+          // Update journal
+          const tag = this.generateMigrationTag(idx, pluginName);
+          await this.journalStorage.updateJournal(
+            pluginName,
+            idx,
+            tag,
+            true // breakpoints
+          );
+
+          // Store snapshot
+          await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
+
+          // Commit the transaction
+          await this.db.execute(sql`COMMIT`);
+
+          logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
+        } catch (error) {
+          // Rollback on error
+          await this.db.execute(sql`ROLLBACK`);
+          logger.error(
+            '[RuntimeMigrator] Migration failed, rolled back:',
+            JSON.stringify(error as any)
+          );
+          throw error;
         }
-
-        // Get next index for journal
-        const idx = await this.journalStorage.getNextIdx(pluginName);
-
-        // Record migration
-        await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
-
-        // Update journal
-        const tag = this.generateMigrationTag(idx, pluginName);
-        await this.journalStorage.updateJournal(
-          pluginName,
-          idx,
-          tag,
-          true // breakpoints
-        );
-
-        // Store snapshot
-        await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
-
-        logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
       } catch (error) {
-        // Transaction will automatically rollback
         logger.error(
           '[RuntimeMigrator] Migration transaction failed:',
           JSON.stringify(error as any)
         );
         throw error;
       }
-    });
+    } else {
+      // Use Drizzle transaction for PostgreSQL
+      await (this.db as any).transaction(async (tx: DrizzleDB) => {
+        try {
+          // Execute all SQL statements
+          for (const stmt of sqlStatements) {
+            logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
+            await tx.execute(sql.raw(stmt));
+          }
+
+          // Get next index for journal
+          const idx = await this.journalStorage.getNextIdx(pluginName);
+
+          // Record migration
+          await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
+
+          // Update journal
+          const tag = this.generateMigrationTag(idx, pluginName);
+          await this.journalStorage.updateJournal(
+            pluginName,
+            idx,
+            tag,
+            true // breakpoints
+          );
+
+          // Store snapshot
+          await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
+
+          logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
+        } catch (error) {
+          // Transaction will automatically rollback
+          logger.error(
+            '[RuntimeMigrator] Migration transaction failed:',
+            JSON.stringify(error as any)
+          );
+          throw error;
+        }
+      });
+    }
+  }
+
+  /**
+   * Check if the database is PGLite
+   */
+  private checkIfPGLite(): boolean {
+    // Check if the db object has a transaction method
+    // PGLite's drizzle adapter might not have it or it might throw
+    try {
+      // Check if db has the transaction method and if it's a function
+      if (typeof (this.db as any).transaction !== 'function') {
+        return true; // No transaction method, likely PGLite
+      }
+
+      // Additional check: see if we can detect PGLite specific properties
+      // PGLite connections often have specific markers
+      const dbString = JSON.stringify(this.db);
+      if (dbString.includes('PGlite') || dbString.includes('pglite')) {
+        return true;
+      }
+
+      return false; // Assume it's regular PostgreSQL
+    } catch {
+      // If checking causes an error, assume it's PGLite
+      return true;
+    }
   }
 
   /**

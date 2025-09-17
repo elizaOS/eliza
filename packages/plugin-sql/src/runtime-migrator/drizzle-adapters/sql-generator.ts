@@ -156,6 +156,15 @@ function generateCreateTableSQL(
     }
   }
 
+  // Add check constraints
+  const checkConstraints = table.checkConstraints || {};
+  for (const [checkName, checkDef] of Object.entries(checkConstraints)) {
+    const check = checkDef as any;
+    if (check.value) {
+      columns.push(`CONSTRAINT "${checkName}" CHECK (${check.value})`);
+    }
+  }
+
   let tableSQL = '';
 
   // Create schema if not public
@@ -272,32 +281,37 @@ function generateCreateIndexSQL(index: any): string {
       if (c.isExpression) {
         return c.expression;
       }
-      return `"${c.expression}"${c.asc === false ? ' DESC' : ''}${c.nulls ? ' NULLS ' + c.nulls.toUpperCase() : ''}`;
+      // Only add DESC if explicitly set to false, no NULLS clause by default
+      return `"${c.expression}"${c.asc === false ? ' DESC' : ''}`;
     })
     .join(', ');
 
-  const [schema, indexName] = index.name.includes('.')
-    ? index.name.split('.')
-    : ['public', index.name];
-  const [tableSchema, tableName] = index.table
-    ? index.table.includes('.')
-      ? index.table.split('.')
-      : ['public', index.table]
-    : [schema, ''];
+  // Extract just the index name without schema
+  const indexName = index.name.includes('.') ? index.name.split('.')[1] : index.name;
 
-  return `CREATE ${unique}INDEX "${indexName}" ON "${tableSchema}"."${tableName}" USING ${method} (${columns});`;
+  // Extract just the table name without schema
+  const tableName = index.table
+    ? index.table.includes('.')
+      ? index.table.split('.')[1]
+      : index.table
+    : '';
+
+  // Match Drizzle's format exactly - no schema qualification on table
+  return `CREATE ${unique}INDEX "${indexName}" ON "${tableName}" USING ${method} (${columns});`;
 }
 
 /**
  * Generate DROP INDEX SQL
  */
 function generateDropIndexSQL(index: any): string {
-  const [schema, indexName] = index.name
+  // Extract just the index name without schema
+  const indexName = index.name
     ? index.name.includes('.')
-      ? index.name.split('.')
-      : ['public', index.name]
-    : ['public', index];
-  return `DROP INDEX IF EXISTS "${schema}"."${indexName}";`;
+      ? index.name.split('.')[1]
+      : index.name
+    : index;
+  // Match Drizzle's format - no schema qualification
+  return `DROP INDEX IF EXISTS "${indexName}";`;
 }
 
 /**

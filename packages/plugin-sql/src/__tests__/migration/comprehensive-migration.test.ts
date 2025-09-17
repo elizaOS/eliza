@@ -114,6 +114,7 @@ const testSchema = {
 describe('Comprehensive Dynamic Migration Tests', () => {
   let db: any;
   let pgLite: PGlite;
+  let migrator: RuntimeMigrator;
 
   beforeAll(async () => {
     // Create a fresh in-memory database with vector extension
@@ -138,8 +139,6 @@ describe('Comprehensive Dynamic Migration Tests', () => {
   });
 
   describe('Migration Execution', () => {
-    let migrator: RuntimeMigrator;
-
     // Clean up any existing schemas before migration tests
     beforeAll(async () => {
       try {
@@ -351,10 +350,13 @@ describe('Comprehensive Dynamic Migration Tests', () => {
     it('should handle idempotent migrations (running same migration twice)', async () => {
       // Run migration again - should not fail
       let errorThrown = false;
+      let errorDetails: any = null;
       try {
         await migrator.migrate('test-plugin', testSchema, { verbose: true });
       } catch (error) {
         errorThrown = true;
+        errorDetails = error;
+        console.error('[TEST] Idempotent migration failed:', error);
       }
       expect(errorThrown).toBe(false);
 
@@ -367,27 +369,42 @@ describe('Comprehensive Dynamic Migration Tests', () => {
 
     it('should handle empty schema gracefully', async () => {
       let errorThrown = false;
+      let errorDetails: any = null;
       try {
         await migrator.migrate('empty-plugin', {}, { verbose: true });
       } catch (error) {
         errorThrown = true;
+        errorDetails = error;
+        console.error('[TEST] Empty schema migration failed:', error);
       }
       expect(errorThrown).toBe(false);
     });
 
     it('should handle schema with non-table exports', async () => {
+      // Create a simple table just for this test to avoid conflicts
+      const testMixedTable = pgTable('mixed_test_table', {
+        id: uuid('id').primaryKey().defaultRandom(),
+        name: text('name').notNull(),
+        created_at: timestamp('created_at', { withTimezone: true })
+          .default(sql`now()`)
+          .notNull(),
+      });
+
       const mixedSchema = {
-        testBaseTable,
+        testMixedTable,
         someConstant: 'not-a-table',
         someFunction: () => 'also-not-a-table',
         someObject: { notATable: true },
       };
 
       let errorThrown = false;
+      let errorDetails: any = null;
       try {
         await migrator.migrate('mixed-plugin', mixedSchema, { verbose: true });
       } catch (error) {
         errorThrown = true;
+        errorDetails = error;
+        console.error('[TEST] Mixed schema migration failed:', error);
       }
       expect(errorThrown).toBe(false);
 
@@ -395,9 +412,11 @@ describe('Comprehensive Dynamic Migration Tests', () => {
       const result = await db.execute(
         sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
-      // Should have base_entities plus any tables from previous tests
-      const baseTableExists = result.rows.some((row: any) => row.table_name === 'base_entities');
-      expect(baseTableExists).toBe(true);
+      // Should have mixed_test_table plus any tables from previous tests
+      const mixedTableExists = result.rows.some(
+        (row: any) => row.table_name === 'mixed_test_table'
+      );
+      expect(mixedTableExists).toBe(true);
     });
   });
 });
