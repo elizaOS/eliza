@@ -100,6 +100,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       schema: tableSchema,
       primaryKeys,
       uniqueConstraints,
+      checks,
     } = config;
 
     const columnsObject: any = {};
@@ -107,6 +108,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
     const foreignKeysObject: any = {};
     const primaryKeysObject: any = {};
     const uniqueConstraintObject: any = {};
+    const checksObject: any = {};
 
     // Process columns - EXACT copy of Drizzle's logic
     columns.forEach((column: PgColumn) => {
@@ -211,12 +213,16 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
             isExpression: true,
           };
         } else {
-          return {
+          const indexCol: any = {
             expression: col.name,
             isExpression: false,
             asc: col.indexConfig?.order === 'asc',
-            nulls: col.indexConfig?.nulls || 'last',
           };
+          // Only add nulls if explicitly specified in the config
+          if (col.indexConfig?.nulls) {
+            indexCol.nulls = col.indexConfig.nulls;
+          }
+          return indexCol;
         }
       });
 
@@ -232,6 +238,17 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       };
     });
 
+    // Process check constraints
+    if (checks) {
+      checks.forEach((check: any) => {
+        const checkName = check.name;
+        checksObject[checkName] = {
+          name: checkName,
+          value: dialect.sqlToQuery(check.value).sql,
+        };
+      });
+    }
+
     // Build the table object
     tables[`${tableSchema || 'public'}.${tableName}`] = {
       name: tableName,
@@ -241,6 +258,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       foreignKeys: foreignKeysObject,
       compositePrimaryKeys: primaryKeysObject,
       uniqueConstraints: uniqueConstraintObject,
+      checkConstraints: checksObject,
     };
 
     // Track schemas

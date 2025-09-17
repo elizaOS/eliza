@@ -4,12 +4,12 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from '../../schema';
 import { RuntimeMigrator } from '../../runtime-migrator';
-import type { DrizzleDB } from '../../types';
+import type { DrizzleDatabase } from '../../types';
 
 const { Client } = pg;
 
 describe('Migration System Comprehensive Verification', () => {
-  let db: DrizzleDB;
+  let db: DrizzleDatabase;
   let client: pg.Client;
   let migrator: RuntimeMigrator;
   const migrationGaps: string[] = [];
@@ -22,7 +22,7 @@ describe('Migration System Comprehensive Verification', () => {
     // Connect to PostgreSQL
     client = new Client({ connectionString: POSTGRES_URL });
     await client.connect();
-    db = drizzle(client, { schema }) as unknown as DrizzleDB;
+    db = drizzle(client, { schema }) as unknown as DrizzleDatabase;
 
     console.log('\n📦 Starting Migration System Verification...\n');
     console.log(`🔌 Connected to PostgreSQL: ${POSTGRES_URL}\n`);
