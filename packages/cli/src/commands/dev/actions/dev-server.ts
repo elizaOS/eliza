@@ -354,6 +354,11 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Function to rebuild and restart the server
   const rebuildAndRestart = async () => {
     try {
+      // Guard: if a rebuild is already pending, skip chaining restarts
+      if ((rebuildAndRestart as any)._inFlight) {
+        return;
+      }
+      (rebuildAndRestart as any)._inFlight = true;
       // Ensure the server is stopped first
       await serverManager.stop();
 
@@ -389,6 +394,8 @@ export async function startDevMode(options: DevOptions): Promise<void> {
         console.info('Attempting to restart server regardless of build failure...');
         await serverManager.start(cliArgs);
       }
+    } finally {
+      (rebuildAndRestart as any)._inFlight = false;
     }
   };
 

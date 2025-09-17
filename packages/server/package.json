@@ -49,7 +49,8 @@
     "tsx": "4.19.4",
     "typescript": "^5.5.4",
     "which": "^4.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "@elizaos/client": "workspace:*"
   },
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
   "dependencies": {
