@@ -19,11 +19,13 @@ export async function publishToNpm(
     if (!packageJson.name || packageJson.name.trim() === '') {
       throw new Error('Invalid package.json: name field is required for scoping');
     }
-    
+
     if (packageJson.name.startsWith('@')) {
-      throw new Error('Package name is already scoped - this should not happen with current templates');
+      throw new Error(
+        'Package name is already scoped - this should not happen with current templates'
+      );
     }
-    
+
     if (!npmUsername || npmUsername.trim() === '') {
       throw new Error('npm username is required for package scoping');
     }

@@ -190,7 +190,7 @@ describe('ElizaOS Agent Commands', () => {
     if (serverProcess && serverProcess.exitCode === null) {
       try {
         // For Bun.spawn processes, we use the exited promise
-        const exitPromise = serverProcess.exited.catch(() => { });
+        const exitPromise = serverProcess.exited.catch(() => {});
 
         // Use SIGTERM for graceful shutdown
         serverProcess.kill('SIGTERM');

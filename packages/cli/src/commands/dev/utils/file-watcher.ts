@@ -24,7 +24,7 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
     '**/.turbo/**',
     '**/tmp/**',
     '**/.cache/**',
-    '**/*.log'
+    '**/*.log',
   ],
   ignoreInitial: true,
   persistent: true,
@@ -34,8 +34,8 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
   interval: 1000, // Poll every second
   awaitWriteFinish: {
     stabilityThreshold: 100,
-    pollInterval: 100
-  }
+    pollInterval: 100,
+  },
 };
 
 // Singleton watcher state
@@ -109,7 +109,7 @@ export async function watchDirectory(
     // Determine which directories to watch - prefer src if it exists
     const srcDir = path.join(absoluteDir, 'src');
     const watchPaths: string[] = [];
-    
+
     if (existsSync(srcDir)) {
       // Watch specific file patterns in src directory only
       watchPaths.push(
@@ -176,7 +176,9 @@ export async function watchDirectory(
     if (process.env.DEBUG) {
       const watchDir = existsSync(srcDir) ? srcDir : absoluteDir;
       const tsFiles = findTsFiles(watchDir, watchDir);
-      console.debug(`Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`);
+      console.debug(
+        `Found ${tsFiles.length} TypeScript/JavaScript files in ${path.relative(process.cwd(), watchDir)}`
+      );
     }
 
     // debounceAndRun already defined above (shared)
@@ -186,7 +188,7 @@ export async function watchDirectory(
       if (readyLogged) return;
       readyLogged = true;
       // Log only once when watcher is initially set up
-      const watchPath = existsSync(srcDir) 
+      const watchPath = existsSync(srcDir)
         ? `${path.relative(process.cwd(), srcDir)}/**/*.{ts,js,tsx,jsx}`
         : `${path.relative(process.cwd(), absoluteDir)}/**/*.{ts,js,tsx,jsx}`;
       console.log(`✓ Watching for file changes in ${watchPath}`);

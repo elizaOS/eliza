@@ -7,7 +7,7 @@ import {
   ConversationLengthEvaluator,
   ConversationFlowEvaluator,
   UserSatisfactionEvaluator,
-  ContextRetentionEvaluator
+  ContextRetentionEvaluator,
 } from './ConversationEvaluators';
 
 export interface EvaluationResult {
@@ -173,8 +173,10 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
 
     try {
       // Wait for action memories to be written to database (prevents race condition)
-      console.log(`🔧 [TrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(
+        `🔧 [TrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Get action memories from database
       const actionMemories = await runtime.getMemories({

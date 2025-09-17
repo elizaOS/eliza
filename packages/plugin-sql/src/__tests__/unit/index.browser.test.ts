@@ -33,5 +33,3 @@ describe('plugin-sql browser entrypoint', () => {
     expect(typeof arg.isReady).toBe('function');
   });
 });
-
-

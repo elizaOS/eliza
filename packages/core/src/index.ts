@@ -37,7 +37,6 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-
 // Environment detection utilities
 export const isBrowser =
   typeof globalThis !== 'undefined' &&

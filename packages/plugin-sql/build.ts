@@ -82,7 +82,7 @@ async function buildAll() {
   const rootAlias = [
     'export * from "./node/index";',
     'export { default } from "./node/index";',
-    ''
+    '',
   ].join('\n');
   await writeFile(rootIndexDtsPath, rootAlias, 'utf8');
 
@@ -91,7 +91,7 @@ async function buildAll() {
   const browserAlias = [
     'export * from "./index.browser";',
     'export { default } from "./index.browser";',
-    ''
+    '',
   ].join('\n');
   await writeFile(browserIndexDtsPath, browserAlias, 'utf8');
 
@@ -100,16 +100,18 @@ async function buildAll() {
   const nodeAlias = [
     'export * from "./index.node";',
     'export { default } from "./index.node";',
-    ''
+    '',
   ].join('\n');
   await writeFile(nodeIndexDtsPath, nodeAlias, 'utf8');
 
   return true;
 }
 
-buildAll().then((ok) => {
-  if (!ok) process.exit(1);
-}).catch((error) => {
-  console.error('Build script error:', error);
-  process.exit(1);
-});
+buildAll()
+  .then((ok) => {
+    if (!ok) process.exit(1);
+  })
+  .catch((error) => {
+    console.error('Build script error:', error);
+    process.exit(1);
+  });

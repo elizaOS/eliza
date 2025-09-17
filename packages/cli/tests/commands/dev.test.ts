@@ -1,6 +1,6 @@
 /**
  * Dev Command Tests
- * 
+ *
  * Note: Windows dev command tests are currently skipped in CI environments
  * due to process management complexities and port conflict handling differences
  * on Windows. The tests run locally but are disabled in CI to prevent flaky failures.
@@ -48,7 +48,9 @@ describe('ElizaOS Dev Commands', () => {
 
     try {
       // First attempt: Use AbortController for clean termination
-      const processWithController = devProcess as Subprocess & { abortController?: AbortController };
+      const processWithController = devProcess as Subprocess & {
+        abortController?: AbortController;
+      };
       if (processWithController.abortController) {
         console.log(`[CLEANUP] Aborting process ${pid} via AbortController`);
         processWithController.abortController.abort();
@@ -57,7 +59,7 @@ describe('ElizaOS Dev Commands', () => {
         if (devProcess.exited) {
           await Promise.race([
             devProcess.exited.catch(() => null), // Suppress exit errors
-            new Promise((resolve) => setTimeout(resolve, waitTime))
+            new Promise((resolve) => setTimeout(resolve, waitTime)),
           ]);
         }
       } else {
@@ -80,7 +82,7 @@ describe('ElizaOS Dev Commands', () => {
             if (devProcess.exited) {
               await Promise.race([
                 devProcess.exited.catch(() => null),
-                new Promise((resolve) => setTimeout(resolve, waitTime))
+                new Promise((resolve) => setTimeout(resolve, waitTime)),
               ]);
             }
           }
@@ -91,7 +93,9 @@ describe('ElizaOS Dev Commands', () => {
       const index = runningProcesses.indexOf(devProcess);
       if (index > -1) {
         runningProcesses.splice(index, 1);
-        console.log(`[CLEANUP] Process ${pid} removed from tracking (remaining: ${runningProcesses.length})`);
+        console.log(
+          `[CLEANUP] Process ${pid} removed from tracking (remaining: ${runningProcesses.length})`
+        );
       }
     } catch (error) {
       console.log(`[CLEANUP] Error cleaning process ${pid}:`, error);
@@ -151,7 +155,9 @@ describe('ElizaOS Dev Commands', () => {
 
     // Track the process for cleanup
     runningProcesses.push(proc);
-    console.log(`[SPAWN] Process ${proc.pid} spawned with AbortSignal (total: ${runningProcesses.length})`);
+    console.log(
+      `[SPAWN] Process ${proc.pid} spawned with AbortSignal (total: ${runningProcesses.length})`
+    );
 
     return proc;
   };
@@ -237,12 +243,14 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[AFTEREACH] Starting cleanup with ${runningProcesses.length} processes`);
 
     // Use the cleanupDevProcess helper for each process
-    const cleanupPromises = runningProcesses.map(proc => cleanupDevProcess(proc, 1000));
+    const cleanupPromises = runningProcesses.map((proc) => cleanupDevProcess(proc, 1000));
     await Promise.allSettled(cleanupPromises);
 
     // Final safety check - force kill any remaining processes using Windows taskkill
     if (runningProcesses.length > 0 && process.platform === 'win32') {
-      console.log(`[AFTEREACH] Force cleaning ${runningProcesses.length} remaining processes on Windows`);
+      console.log(
+        `[AFTEREACH] Force cleaning ${runningProcesses.length} remaining processes on Windows`
+      );
       for (const proc of runningProcesses) {
         if (proc && proc.pid) {
           try {
@@ -368,15 +376,12 @@ describe('ElizaOS Dev Commands', () => {
     console.log(`[DEBUG] Running command: ${commandStr}`);
 
     try {
-      const devProcess = spawnDevProcess(
-        ['elizaos', 'dev', ...args.split(' ')],
-        {
-          cwd: cwd || projectDir,
-          env: {
-            SERVER_PORT: testServerPort.toString(),
-          },
-        }
-      );
+      const devProcess = spawnDevProcess(['elizaos', 'dev', ...args.split(' ')], {
+        cwd: cwd || projectDir,
+        env: {
+          SERVER_PORT: testServerPort.toString(),
+        },
+      });
 
       // Wait briefly for process to start
       await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -405,51 +410,56 @@ describe('ElizaOS Dev Commands', () => {
     expect(result).toContain('auto-rebuild');
   });
 
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')('dev command starts in project directory', async () => {
-    // Start dev process with shorter wait time for CI
-    const devProcess = await startDevAndWait('--port ' + testServerPort, 500); // Quick 500ms wait
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command starts in project directory',
+    async () => {
+      // Start dev process with shorter wait time for CI
+      const devProcess = await startDevAndWait('--port ' + testServerPort, 500); // Quick 500ms wait
 
-    // Check that process was created (has a PID)
-    expect(devProcess.pid).toBeDefined();
+      // Check that process was created (has a PID)
+      expect(devProcess.pid).toBeDefined();
 
-    // Kill the process immediately before it spawns child processes
-    await cleanupDevProcess(devProcess);
-  }, 10000); // Further reduced timeout for CI
+      // Kill the process immediately before it spawns child processes
+      await cleanupDevProcess(devProcess);
+    },
+    10000
+  ); // Further reduced timeout for CI
 
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')('dev command detects project type correctly', async () => {
-    // Start dev process and capture output
-    console.log(`[DEBUG] Testing project detection with port ${testServerPort}`);
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command detects project type correctly',
+    async () => {
+      // Start dev process and capture output
+      console.log(`[DEBUG] Testing project detection with port ${testServerPort}`);
 
-    const devProcess = spawnDevProcess(
-      ['elizaos', 'dev', '--port', testServerPort.toString()],
-      {
+      const devProcess = spawnDevProcess(['elizaos', 'dev', '--port', testServerPort.toString()], {
         env: {
           LOG_LEVEL: 'info',
         },
-      }
-    );
+      });
 
-    // Capture output using helper
-    const { output } = await captureProcessOutput(devProcess);
+      // Capture output using helper
+      const { output } = await captureProcessOutput(devProcess);
 
-    console.log(
-      `[DEV TEST] Final output length: ${output.length}, content: ${output.slice(0, 200)}...`
-    );
-
-    // Verify process started and detected project type
-    expect(devProcess.pid).toBeDefined();
-
-    if (output && output.length > 0) {
-      expect(output).toMatch(
-        /(ElizaOS project|project mode|Identified as|Starting|development|dev mode|project|error|info)/i
+      console.log(
+        `[DEV TEST] Final output length: ${output.length}, content: ${output.slice(0, 200)}...`
       );
-    } else {
-      console.log('[DEV TEST] Warning: No output received, but process started');
-    }
 
-    // Cleanup
-    await cleanupDevProcess(devProcess);
-  }, 20000);
+      // Verify process started and detected project type
+      expect(devProcess.pid).toBeDefined();
+
+      if (output && output.length > 0) {
+        expect(output).toMatch(
+          /(ElizaOS project|project mode|Identified as|Starting|development|dev mode|project|error|info)/i
+        );
+      } else {
+        console.log('[DEV TEST] Warning: No output received, but process started');
+      }
+
+      // Cleanup
+      await cleanupDevProcess(devProcess);
+    },
+    20000
+  );
 
   it('dev command responds to file changes in project', async () => {
     // Skip file watching test in CI as it's prone to hanging
@@ -479,23 +489,27 @@ describe('ElizaOS Dev Commands', () => {
     await cleanupDevProcess(devProcess);
   }, 10000); // Much shorter timeout for CI stability
 
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')('dev command accepts character file', async () => {
-    const charactersDir = join(__dirname, '../test-characters');
-    const adaPath = join(charactersDir, 'ada.json');
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command accepts character file',
+    async () => {
+      const charactersDir = join(__dirname, '../test-characters');
+      const adaPath = join(charactersDir, 'ada.json');
 
-    // Start dev process with character
-    const devProcess = await startDevAndWait(
-      `--port ${testServerPort} --character ${adaPath}`,
-      500  // Quick 500ms wait
-    );
+      // Start dev process with character
+      const devProcess = await startDevAndWait(
+        `--port ${testServerPort} --character ${adaPath}`,
+        500 // Quick 500ms wait
+      );
 
-    // Check that process started
-    expect(devProcess.pid).toBeDefined();
-    expect(devProcess.killed).toBe(false);
+      // Check that process started
+      expect(devProcess.pid).toBeDefined();
+      expect(devProcess.killed).toBe(false);
 
-    // Immediate cleanup before child processes spawn
-    await cleanupDevProcess(devProcess);
-  }, 10000); // Reduced timeout for CI stability
+      // Immediate cleanup before child processes spawn
+      await cleanupDevProcess(devProcess);
+    },
+    10000
+  ); // Reduced timeout for CI stability
 
   it('dev command handles non-elizaos directory gracefully', async () => {
     // Create a non-ElizaOS project directory
@@ -508,15 +522,12 @@ describe('ElizaOS Dev Commands', () => {
 
     console.log(`[DEBUG] Testing non-ElizaOS directory handling with port ${testServerPort}`);
 
-    const devProcess = spawnDevProcess(
-      ['elizaos', 'dev', '--port', testServerPort.toString()],
-      {
-        cwd: nonElizaDir,
-        env: {
-          LOG_LEVEL: 'info',
-        },
-      }
-    );
+    const devProcess = spawnDevProcess(['elizaos', 'dev', '--port', testServerPort.toString()], {
+      cwd: nonElizaDir,
+      env: {
+        LOG_LEVEL: 'info',
+      },
+    });
 
     // Capture output with early termination on standalone mode detection
     const { output } = await captureProcessOutput(devProcess, TEST_TIMEOUTS.MEDIUM_WAIT);
@@ -556,111 +567,112 @@ describe('ElizaOS Dev Commands', () => {
     }
   });
 
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')('dev command handles port conflicts by finding next available port', async () => {
-    // This test verifies the CLI properly handles port conflicts by attempting to use an alternative port
-    // However, since the test environment skips CLI delegation and goes directly to update checks,
-    // we'll modify this to test the actual functionality that runs in the test environment
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command handles port conflicts by finding next available port',
+    async () => {
+      // This test verifies the CLI properly handles port conflicts by attempting to use an alternative port
+      // However, since the test environment skips CLI delegation and goes directly to update checks,
+      // we'll modify this to test the actual functionality that runs in the test environment
 
-    // Ensure elizadb directory exists
-    await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
+      // Ensure elizadb directory exists
+      await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-    // Kill any existing process on port 3000
-    await killProcessOnPort(3000);
-    await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
+      // Kill any existing process on port 3000
+      await killProcessOnPort(3000);
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
 
-    // Start a dummy server on port 3000 to create a conflict
-    let dummyServer;
-    try {
-      dummyServer = Bun.serve({
-        port: 3000,
-        fetch() {
-          return new Response('Dummy server');
-        },
-      });
-    } catch (error) {
-      // If we can't create the dummy server, skip this test
-      console.log('[PORT CONFLICT TEST] Cannot create dummy server on port 3000, skipping test');
-      return;
-    }
+      // Start a dummy server on port 3000 to create a conflict
+      let dummyServer;
+      try {
+        dummyServer = Bun.serve({
+          port: 3000,
+          fetch() {
+            return new Response('Dummy server');
+          },
+        });
+      } catch (error) {
+        // If we can't create the dummy server, skip this test
+        console.log('[PORT CONFLICT TEST] Cannot create dummy server on port 3000, skipping test');
+        return;
+      }
 
-    try {
-      // In test environment, the CLI skips dev server logic and goes to CLI delegation checks
-      // This is expected behavior, so we'll test that the CLI at least starts without error
-      const devProcess = spawnDevProcess(
-        ['elizaos', 'dev'],
-        {
+      try {
+        // In test environment, the CLI skips dev server logic and goes to CLI delegation checks
+        // This is expected behavior, so we'll test that the CLI at least starts without error
+        const devProcess = spawnDevProcess(['elizaos', 'dev'], {
           env: {
             FORCE_COLOR: '0',
             LOG_LEVEL: 'debug',
             ELIZA_NONINTERACTIVE: 'true',
             // Don't unset ELIZA_TEST_MODE as it's needed for proper test isolation
           },
-        }
-      );
+        });
 
-      // Wait for the process to start and capture output
-      const maxWaitMs = 2000; // Shorter timeout since we're not waiting for full server startup
-      const { output, stderrOutput } = await captureProcessOutput(devProcess, maxWaitMs);
-      const combined = output + stderrOutput;
+        // Wait for the process to start and capture output
+        const maxWaitMs = 2000; // Shorter timeout since we're not waiting for full server startup
+        const { output, stderrOutput } = await captureProcessOutput(devProcess, maxWaitMs);
+        const combined = output + stderrOutput;
 
-      // In test mode, we expect to see the test environment detection message
-      // This confirms the CLI is working correctly in test mode
-      const testModePatterns = [
-        /Running in test or CI environment, skipping local CLI delegation/i,
-        /test.*environment/i,
-        /CI.*environment/i,
-        /bunExec.*Executing/i, // The CLI proceeds to npm operations
-      ];
+        // In test mode, we expect to see the test environment detection message
+        // This confirms the CLI is working correctly in test mode
+        const testModePatterns = [
+          /Running in test or CI environment, skipping local CLI delegation/i,
+          /test.*environment/i,
+          /CI.*environment/i,
+          /bunExec.*Executing/i, // The CLI proceeds to npm operations
+        ];
 
-      const foundTestPattern = testModePatterns.some(pattern => pattern.test(combined));
+        const foundTestPattern = testModePatterns.some((pattern) => pattern.test(combined));
 
-      // The CLI should start successfully and detect test mode
-      expect(devProcess.pid).toBeDefined();
-      expect(foundTestPattern).toBe(true);
+        // The CLI should start successfully and detect test mode
+        expect(devProcess.pid).toBeDefined();
+        expect(foundTestPattern).toBe(true);
 
-      // Clean up the dev process
-      await cleanupDevProcess(devProcess);
-    } finally {
-      // Clean up the dummy server
-      dummyServer.stop();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+        // Clean up the dev process
+        await cleanupDevProcess(devProcess);
+      } finally {
+        // Clean up the dummy server
+        dummyServer.stop();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     }
-  });
+  );
 
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')('dev command uses specified port when provided', async () => {
-    const specifiedPort = 8888;
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command uses specified port when provided',
+    async () => {
+      const specifiedPort = 8888;
 
-    // This test is simpler - just verify that the dev command accepts --port argument
-    // and passes it along. We don't need to wait for the server to fully start.
+      // This test is simpler - just verify that the dev command accepts --port argument
+      // and passes it along. We don't need to wait for the server to fully start.
 
-    // Run dev command with --help to check if port option is supported
-    const helpResult = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
-    expect(helpResult).toContain('--port');
-    expect(helpResult).toContain('Port to listen on');
+      // Run dev command with --help to check if port option is supported
+      const helpResult = bunExecSync(`elizaos dev --help`, { encoding: 'utf8' });
+      expect(helpResult).toContain('--port');
+      expect(helpResult).toContain('Port to listen on');
 
-    // Now run the dev command with a port and verify it starts without error
-    // We'll use a very short-lived process just to verify the port argument is accepted
-    const devProcess = spawnDevProcess(
-      ['elizaos', 'dev', '--port', specifiedPort.toString()],
-      {
+      // Now run the dev command with a port and verify it starts without error
+      // We'll use a very short-lived process just to verify the port argument is accepted
+      const devProcess = spawnDevProcess(['elizaos', 'dev', '--port', specifiedPort.toString()], {
         env: {
           FORCE_COLOR: '0',
           LOG_LEVEL: 'error', // Reduce noise
         },
-      }
-    );
+      });
 
-    // Just wait a moment to ensure the process starts without immediate error
-    await new Promise((resolve) => setTimeout(resolve, 500));
+      // Just wait a moment to ensure the process starts without immediate error
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-    // Check that process started (has a PID and isn't immediately killed)
-    expect(devProcess.pid).toBeDefined();
-    expect(devProcess.killed).toBe(false);
+      // Check that process started (has a PID and isn't immediately killed)
+      expect(devProcess.pid).toBeDefined();
+      expect(devProcess.killed).toBe(false);
 
-    // The fact that the process started without error means it accepted the --port argument
-    // This is sufficient to verify the functionality without needing full server startup
+      // The fact that the process started without error means it accepted the --port argument
+      // This is sufficient to verify the functionality without needing full server startup
 
-    // Clean up the dev process
-    await cleanupDevProcess(devProcess);
-  }, 5000);
+      // Clean up the dev process
+      await cleanupDevProcess(devProcess);
+    },
+    5000
+  );
 });

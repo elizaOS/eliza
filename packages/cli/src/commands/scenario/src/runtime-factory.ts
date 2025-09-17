@@ -31,9 +31,15 @@ function ensureEnvLoaded(): RuntimeSettings {
 /**
  * Find an available port in the given range
  */
-async function findAvailablePort(startPort: number, endPort: number, host?: string): Promise<number> {
+async function findAvailablePort(
+  startPort: number,
+  endPort: number,
+  host?: string
+): Promise<number> {
   const serverHost = host || process.env.SERVER_HOST || '0.0.0.0';
-  console.log(`🔧 [DEBUG] Searching for available port in range ${startPort}-${endPort} on host ${serverHost}...`);
+  console.log(
+    `🔧 [DEBUG] Searching for available port in range ${startPort}-${endPort} on host ${serverHost}...`
+  );
 
   // Try ports in random order to avoid conflicts
   const ports = Array.from({ length: endPort - startPort + 1 }, (_, i) => startPort + i);
@@ -340,21 +346,30 @@ export async function askAgentViaApi(
         channel = { id: existingChannelId };
 
         // Validate channel exists by attempting to get its details
-        const channelDetailsResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels/${existingChannelId}/details`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
+        const channelDetailsResponse = await fetch(
+          `http://localhost:${port}/api/messaging/central-channels/${existingChannelId}/details`,
+          {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
 
         if (!channelDetailsResponse.ok) {
-          console.log(`🔧 [askAgentViaApi] ⚠️ Channel ${existingChannelId} validation failed: ${channelDetailsResponse.status}, creating new channel`);
+          console.log(
+            `🔧 [askAgentViaApi] ⚠️ Channel ${existingChannelId} validation failed: ${channelDetailsResponse.status}, creating new channel`
+          );
           throw new Error(`Channel validation failed: ${channelDetailsResponse.status}`);
         }
 
         const channelDetails = await channelDetailsResponse.json();
         channel = channelDetails.data;
-        console.log(`🔧 [askAgentViaApi] ✅ Using existing channel: ${channel.id} (${channel.name || 'unnamed'})`);
+        console.log(
+          `🔧 [askAgentViaApi] ✅ Using existing channel: ${channel.id} (${channel.name || 'unnamed'})`
+        );
       } catch (error) {
-        console.log(`🔧 [askAgentViaApi] ⚠️ Channel validation failed, creating new channel: ${(error as Error).message}`);
+        console.log(
+          `🔧 [askAgentViaApi] ⚠️ Channel validation failed, creating new channel: ${(error as Error).message}`
+        );
         channel = null; // Fall back to creating new channel
       }
     }
@@ -364,19 +379,25 @@ export async function askAgentViaApi(
       console.log(
         `🔧 [askAgentViaApi] About to create channel via POST /api/messaging/central-channels...`
       );
-      const channelResponse = await fetch(`http://localhost:${port}/api/messaging/central-channels`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'scenario-test-channel',
-          server_id: defaultServer.id,
-          participantCentralUserIds: [testUserId],
-          type: ChannelType.GROUP,
-          metadata: { scenario: true },
-        }),
-      });
-      console.log(`🔧 [askAgentViaApi] Channel creation response status: ${channelResponse.status}`);
-      if (!channelResponse.ok) throw new Error(`Channel creation failed: ${channelResponse.status}`);
+      const channelResponse = await fetch(
+        `http://localhost:${port}/api/messaging/central-channels`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'scenario-test-channel',
+            server_id: defaultServer.id,
+            participantCentralUserIds: [testUserId],
+            type: ChannelType.GROUP,
+            metadata: { scenario: true },
+          }),
+        }
+      );
+      console.log(
+        `🔧 [askAgentViaApi] Channel creation response status: ${channelResponse.status}`
+      );
+      if (!channelResponse.ok)
+        throw new Error(`Channel creation failed: ${channelResponse.status}`);
 
       console.log(`🔧 [askAgentViaApi] About to parse channel response JSON...`);
       const channelResult = await channelResponse.json();
@@ -395,18 +416,27 @@ export async function askAgentViaApi(
       console.log(`🔧 [askAgentViaApi] ✅ Agent added to channel`);
     } catch (error) {
       // Agent might already be in channel when reusing - this is expected
-      console.log(`🔧 [askAgentViaApi] Agent add result: ${(error as Error).message} (may already be in channel)`);
+      console.log(
+        `🔧 [askAgentViaApi] Agent add result: ${(error as Error).message} (may already be in channel)`
+      );
     }
 
     // Debug: Check what channels exist on the server
     console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Checking server channels before sync...`);
     try {
       const serverChannels = await client.messaging.getServerChannels(defaultServer.id);
-      console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${serverChannels.channels.length} total channels`);
+      console.log(
+        `🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${serverChannels.channels.length} total channels`
+      );
       const ourChannel = serverChannels.channels.find((c: any) => c.id === channel.id);
-      console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Our channel ${channel.id} found in server list: ${!!ourChannel}`);
+      console.log(
+        `🔧 [askAgentViaApi] 🔍 DEBUG: Our channel ${channel.id} found in server list: ${!!ourChannel}`
+      );
       if (ourChannel) {
-        console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Channel details:`, JSON.stringify(ourChannel, null, 2));
+        console.log(
+          `🔧 [askAgentViaApi] 🔍 DEBUG: Channel details:`,
+          JSON.stringify(ourChannel, null, 2)
+        );
       }
     } catch (error) {
       console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Error checking server channels:`, error);
@@ -416,7 +446,7 @@ export async function askAgentViaApi(
     if (!existingChannelId) {
       // Minimal delay for new channels - just enough for message bus to register
       console.log(`🔧 [askAgentViaApi] Waiting 1s for MessageBusService channel sync...`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Try to refresh agent's channel cache without restart (faster)
       console.log(`🔧 [askAgentViaApi] 🔄 Refreshing agent channel cache...`);
@@ -425,7 +455,9 @@ export async function askAgentViaApi(
         await client.messaging.addAgentToChannel(channel.id, agentId as UUID);
         console.log(`🔧 [askAgentViaApi] 🔄 Agent re-added to channel for cache refresh`);
       } catch (error) {
-        console.log(`🔧 [askAgentViaApi] Cache refresh result: ${(error as Error).message} (may already be cached)`);
+        console.log(
+          `🔧 [askAgentViaApi] Cache refresh result: ${(error as Error).message} (may already be cached)`
+        );
       }
     } else {
       console.log(`🔧 [askAgentViaApi] ✅ Reusing existing channel - skipping cache sync delays`);

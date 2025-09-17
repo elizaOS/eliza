@@ -44,6 +44,7 @@ There are two recommended paths for using Eliza:
 Get your first AI agent running in just a few commands.
 
 **Prerequisites:**
+
 - [Node.js](https://nodejs.org/) (v23+)
 - [bun](https://bun.sh/docs/installation)
 
@@ -81,6 +82,7 @@ elizaos env edit-local
 ```
 
 Add your model provider's API key (e.g., for OpenAI):
+
 ```env
 OPENAI_API_KEY=your_api_key_here
 ```
@@ -93,6 +95,7 @@ elizaos start
 ```
 
 Your agent is now running!
+
 - **Web Interface**: [http://localhost:3000](http://localhost:3000)
 - **API Endpoint**: `http://localhost:3000/api`
 
@@ -104,6 +107,7 @@ Your agent is now running!
 Eliza's CLI is powerful. Here are some more commands for development and management.
 
 #### Development Workflow
+
 ```bash
 # Make changes to your agent code, then rebuild and restart
 bun run build
@@ -117,6 +121,7 @@ elizaos test
 ```
 
 #### Agent & Environment Management
+
 ```bash
 # List all available agents
 elizaos agent list
@@ -129,10 +134,12 @@ elizaos env list
 ```
 
 #### Debugging
+
 ```bash
 # Start with detailed debug logging
 LOG_LEVEL=debug elizaos start
 ```
+
 For a full command reference, run `elizaos --help` or `elizaos <command> --help`.
 
 </details>

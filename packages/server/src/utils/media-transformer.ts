@@ -4,7 +4,11 @@
 
 import path from 'node:path';
 import { getGeneratedDir, getUploadsAgentsDir, getUploadsChannelsDir } from '@elizaos/core';
-import type { AttachmentInput, MessageWithAttachments, MessageContentWithAttachments } from '../types';
+import type {
+  AttachmentInput,
+  MessageWithAttachments,
+  MessageContentWithAttachments,
+} from '../types';
 
 // Path configurations mapping
 // Pattern matches any ID format (not just UUIDs) to support all valid IDs
@@ -15,33 +19,34 @@ const PATH_CONFIGS = [
   {
     getPath: getGeneratedDir,
     apiPrefix: '/media/generated/',
-    pattern: ID_PATTERN
+    pattern: ID_PATTERN,
   },
   {
     getPath: getUploadsAgentsDir,
     apiPrefix: '/media/uploads/agents/',
-    pattern: ID_PATTERN
+    pattern: ID_PATTERN,
   },
   {
     getPath: getUploadsChannelsDir,
     apiPrefix: '/media/uploads/channels/',
-    pattern: ID_PATTERN
-  }
+    pattern: ID_PATTERN,
+  },
 ];
 
 // Check if path is an external URL (http, https, blob, data, file, ipfs, s3, gs, etc.)
-const isExternalUrl = (p: string) =>
-  /^(?:https?:|blob:|data:|file:|ipfs:|s3:|gs:)/i.test(p);
+const isExternalUrl = (p: string) => /^(?:https?:|blob:|data:|file:|ipfs:|s3:|gs:)/i.test(p);
 
 /**
  * Transform a local file path to an API URL
  */
 export function transformPathToApiUrl(filePath: string): string {
   // Skip if already transformed or not a local absolute path
-  if (!filePath ||
-      isExternalUrl(filePath) ||
-      filePath.startsWith('/media/') ||
-      !path.isAbsolute(filePath)) {
+  if (
+    !filePath ||
+    isExternalUrl(filePath) ||
+    filePath.startsWith('/media/') ||
+    !path.isAbsolute(filePath)
+  ) {
     return filePath;
   }
 
@@ -55,7 +60,8 @@ export function transformPathToApiUrl(filePath: string): string {
 
     // Use strict boundary-aware startsWith check to prevent path traversal
     if (normalizedPath === configPathRaw || normalizedPath.startsWith(configPath)) {
-      const relative = normalizedPath === configPathRaw ? '' : normalizedPath.slice(configPath.length);
+      const relative =
+        normalizedPath === configPathRaw ? '' : normalizedPath.slice(configPath.length);
 
       // Only process if we have a valid relative path
       if (relative) {
@@ -76,9 +82,9 @@ export function transformPathToApiUrl(filePath: string): string {
  */
 export function attachmentsToApiUrls(attachments: AttachmentInput): AttachmentInput {
   if (!attachments) return attachments;
-  
+
   if (Array.isArray(attachments)) {
-    return attachments.map(attachment => {
+    return attachments.map((attachment) => {
       if (typeof attachment === 'string') {
         return transformPathToApiUrl(attachment);
       }
@@ -88,7 +94,7 @@ export function attachmentsToApiUrls(attachments: AttachmentInput): AttachmentIn
       return attachment;
     });
   }
-  
+
   // Single attachment
   if (typeof attachments === 'string') {
     return transformPathToApiUrl(attachments);
@@ -102,7 +108,9 @@ export function attachmentsToApiUrls(attachments: AttachmentInput): AttachmentIn
 /**
  * Transform attachments in message content and metadata to API URLs
  */
-export function transformMessageAttachments(message: MessageWithAttachments): MessageWithAttachments {
+export function transformMessageAttachments(
+  message: MessageWithAttachments
+): MessageWithAttachments {
   if (!message || typeof message !== 'object') {
     return message;
   }

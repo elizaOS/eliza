@@ -40,33 +40,33 @@ name: 'Customer Support Conversation Test'
 environment:
   type: e2b # Use a safe, sandboxed environment
 run:
-  - name: "Billing Support"
-    input: "Hi, I need help with my billing"
-    
+  - name: 'Billing Support'
+    input: 'Hi, I need help with my billing'
+
     conversation:
       max_turns: 4
       user_simulator:
-        persona: "customer with a billing question"
-        objective: "find out why charged twice this month"
+        persona: 'customer with a billing question'
+        objective: 'find out why charged twice this month'
         temperature: 0.6
-        style: "polite and patient"
+        style: 'polite and patient'
         constraints:
-          - "Provide details when asked"
-          - "Express gratitude for help"
-      
+          - 'Provide details when asked'
+          - 'Express gratitude for help'
+
       termination_conditions:
-        - type: "user_expresses_satisfaction"
-          keywords: ["thank you", "resolved", "perfect"]
-      
+        - type: 'user_expresses_satisfaction'
+          keywords: ['thank you', 'resolved', 'perfect']
+
       turn_evaluations:
-        - type: "llm_judge"
-          prompt: "Did the agent respond helpfully?"
-          expected: "yes"
-      
+        - type: 'llm_judge'
+          prompt: 'Did the agent respond helpfully?'
+          expected: 'yes'
+
       final_evaluations:
-        - type: "llm_judge"
-          prompt: "Was the billing issue resolved?"
-          expected: "yes"
+        - type: 'llm_judge'
+          prompt: 'Was the billing issue resolved?'
+          expected: 'yes'
 ```
 
 When you run either type with `elizaos scenario run` (or `bun packages/cli/dist/index.js scenario run` for local development), the system will execute the appropriate workflow. For single-turn scenarios, it runs once and evaluates. For conversation scenarios, it simulates a realistic multi-turn dialogue and evaluates both individual turns and the overall conversation success.
@@ -192,104 +192,104 @@ By supporting both single-turn and conversational scenarios, we can:
 For complex scenarios involving multiple agents:
 
 ```yaml
-name: "Multi-Agent Collaboration"
+name: 'Multi-Agent Collaboration'
 run:
-  - name: "Sales and Support Handoff"
+  - name: 'Sales and Support Handoff'
     input: "I want to upgrade my plan but I'm having billing issues"
-    
+
     conversation:
       max_turns: 10
       agents:
-        - role: "sales"
+        - role: 'sales'
           priority: 0.6
-          expertise: ["pricing", "upgrades", "plans"]
-        - role: "support"
+          expertise: ['pricing', 'upgrades', 'plans']
+        - role: 'support'
           priority: 0.4
-          expertise: ["billing", "account_issues", "technical_problems"]
-      
+          expertise: ['billing', 'account_issues', 'technical_problems']
+
       user_simulator:
-        persona: "existing customer with mixed sales and support needs"
-        objective: "upgrade plan after resolving billing issue"
-      
+        persona: 'existing customer with mixed sales and support needs'
+        objective: 'upgrade plan after resolving billing issue'
+
       final_evaluations:
-        - type: "agent_collaboration"
-          prompt: "Did agents coordinate effectively?"
-        - type: "handoff_quality"
-          required_elements: ["context_transfer", "seamless_transition"]
+        - type: 'agent_collaboration'
+          prompt: 'Did agents coordinate effectively?'
+        - type: 'handoff_quality'
+          required_elements: ['context_transfer', 'seamless_transition']
 ```
 
 ### Emotional Intelligence Testing
 
 ```yaml
-name: "Emotional Intelligence Assessment"
+name: 'Emotional Intelligence Assessment'
 run:
   - input: "I'm really stressed about this deadline and your software crashed"
-    
+
     conversation:
       max_turns: 5
       user_simulator:
-        persona: "highly stressed professional facing work deadline"
-        emotional_state: "anxiety, frustration, urgency"
+        persona: 'highly stressed professional facing work deadline'
+        emotional_state: 'anxiety, frustration, urgency'
         objectives:
-          - primary: "get software working immediately"
-          - secondary: "feel heard and supported"
-        
+          - primary: 'get software working immediately'
+          - secondary: 'feel heard and supported'
+
         emotional_progression:
           - turn: 1
-            state: "high stress, frustrated"
+            state: 'high stress, frustrated'
           - turn: 2-3
-            state: "cautiously hopeful if agent shows empathy"
+            state: 'cautiously hopeful if agent shows empathy'
           - turn: 4-5
-            state: "grateful if problem resolved, still stressed about deadline"
-      
+            state: 'grateful if problem resolved, still stressed about deadline'
+
       final_evaluations:
-        - type: "emotional_intelligence"
+        - type: 'emotional_intelligence'
           criteria:
             - "acknowledged user's emotional state"
-            - "showed appropriate empathy"
-            - "prioritized urgent problem solving"
-            - "avoided dismissive language"
-        - type: "stress_level_change"
-          expected_direction: "decrease"
-          measurement_method: "sentiment_analysis"
+            - 'showed appropriate empathy'
+            - 'prioritized urgent problem solving'
+            - 'avoided dismissive language'
+        - type: 'stress_level_change'
+          expected_direction: 'decrease'
+          measurement_method: 'sentiment_analysis'
 ```
 
 ### Knowledge Transfer Testing
 
 ```yaml
-name: "Complex Knowledge Transfer"
+name: 'Complex Knowledge Transfer'
 run:
   - input: "Can you explain how machine learning works? I'm not very technical"
-    
+
     conversation:
       max_turns: 12
       user_simulator:
-        persona: "curious non-technical professional"
-        learning_style: "needs analogies and concrete examples"
-        knowledge_level: "beginner"
+        persona: 'curious non-technical professional'
+        learning_style: 'needs analogies and concrete examples'
+        knowledge_level: 'beginner'
         constraints:
-          - "Ask clarifying questions when confused"
-          - "Request simpler explanations for complex terms"
-          - "Give feedback on understanding level"
-          - "Ask for practical applications"
-      
+          - 'Ask clarifying questions when confused'
+          - 'Request simpler explanations for complex terms'
+          - 'Give feedback on understanding level'
+          - 'Ask for practical applications'
+
       turn_evaluations:
-        - type: "explanation_clarity"
-          prompt: "Was the explanation appropriate for a beginner?"
-        - type: "analogy_usage"
-          prompt: "Did the agent use helpful analogies or examples?"
-      
+        - type: 'explanation_clarity'
+          prompt: 'Was the explanation appropriate for a beginner?'
+        - type: 'analogy_usage'
+          prompt: 'Did the agent use helpful analogies or examples?'
+
       final_evaluations:
-        - type: "knowledge_transfer_success"
-          assessment_method: "comprehension_questions"
+        - type: 'knowledge_transfer_success'
+          assessment_method: 'comprehension_questions'
           passing_score: 0.7
-        - type: "teaching_quality"
+        - type: 'teaching_quality'
           capabilities:
             - "Adapted language to user's level"
-            - "Used concrete examples and analogies"
-            - "Checked understanding regularly"
-            - "Built concepts progressively"
-            - "Encouraged questions"
+            - 'Used concrete examples and analogies'
+            - 'Checked understanding regularly'
+            - 'Built concepts progressively'
+            - 'Encouraged questions'
 ```
 
 ### Implementation Patterns
@@ -297,64 +297,64 @@ run:
 #### Service Desk Scenario Pattern
 
 ```yaml
-name: "Service Desk Multi-Turn Pattern"
+name: 'Service Desk Multi-Turn Pattern'
 setup:
   mocks:
-    - service: "knowledge_base"
-      method: "search"
+    - service: 'knowledge_base'
+      method: 'search'
       when:
         input:
-          query: "login issues"
+          query: 'login issues'
       response:
         articles:
-          - title: "Common Login Problems"
-            solution: "Clear browser cache and cookies"
-          - title: "Password Reset Guide"
-            solution: "Use forgot password link"
+          - title: 'Common Login Problems'
+            solution: 'Clear browser cache and cookies'
+          - title: 'Password Reset Guide'
+            solution: 'Use forgot password link'
 
 run:
   - input: "I can't log into my account"
     conversation:
       max_turns: 5
       user_simulator:
-        persona: "business user who needs to access account for work"
-        objective: "regain access to account quickly"
+        persona: 'business user who needs to access account for work'
+        objective: 'regain access to account quickly'
         constraints:
-          - "Provide details when asked"
-          - "Express urgency about work deadline"
-          - "Follow technical instructions carefully"
-      
+          - 'Provide details when asked'
+          - 'Express urgency about work deadline'
+          - 'Follow technical instructions carefully'
+
       final_evaluations:
-        - type: "problem_resolution"
-          success_indicators: ["logged in", "access restored", "working now"]
+        - type: 'problem_resolution'
+          success_indicators: ['logged in', 'access restored', 'working now']
 ```
 
 #### Escalation Handling Pattern
 
 ```yaml
-name: "Escalation Decision Pattern"
+name: 'Escalation Decision Pattern'
 run:
   - input: "I've been trying to fix this for hours and nothing works!"
     conversation:
       max_turns: 6
       user_simulator:
-        persona: "frustrated user who has tried basic solutions"
-        objective: "get advanced help or escalation"
+        persona: 'frustrated user who has tried basic solutions'
+        objective: 'get advanced help or escalation'
         constraints:
-          - "Mention previous attempts at solutions"
-          - "Express increasing frustration if basic solutions offered"
-          - "Accept escalation if offered"
-      
+          - 'Mention previous attempts at solutions'
+          - 'Express increasing frustration if basic solutions offered'
+          - 'Accept escalation if offered'
+
       termination_conditions:
-        - type: "agent_escalates"
-          keywords: ["specialist", "escalate", "supervisor", "advanced support"]
-        - type: "advanced_solution_provided"
-          description: "Agent provides non-standard solution"
-      
+        - type: 'agent_escalates'
+          keywords: ['specialist', 'escalate', 'supervisor', 'advanced support']
+        - type: 'advanced_solution_provided'
+          description: 'Agent provides non-standard solution'
+
       final_evaluations:
-        - type: "escalation_decision"
-          prompt: "Did the agent appropriately escalate or provide advanced solution?"
-          expected: "yes"
+        - type: 'escalation_decision'
+          prompt: 'Did the agent appropriately escalate or provide advanced solution?'
+          expected: 'yes'
 ```
 
 ---
@@ -366,7 +366,7 @@ run:
 The conversation system uses existing ElizaOS infrastructure:
 
 - **No API Changes**: Uses existing `askAgentViaApi` endpoints
-- **Trajectory Reconstruction**: Leverages existing trajectory tracking  
+- **Trajectory Reconstruction**: Leverages existing trajectory tracking
 - **Database Compatibility**: Works with existing memory and state systems
 - **Plugin Support**: Full compatibility with all existing plugins
 
@@ -393,20 +393,23 @@ graph TD
 ```
 
 **Key Design Principles:**
+
 1. **Non-Breaking Changes**: All existing scenarios continue to work unchanged
-2. **Incremental Adoption**: Teams can add conversation features gradually  
+2. **Incremental Adoption**: Teams can add conversation features gradually
 3. **Infrastructure Reuse**: Leverages existing APIs, evaluation system, trajectory reconstruction
 4. **Extensible Framework**: Easy to add new user simulation strategies and evaluation types
 
 ### **Risk Mitigation**
 
 **Technical Risks - All Addressed:**
+
 - **LLM API failures**: Retry logic and fallback mechanisms implemented
 - **Infinite loops**: Hard limits and termination conditions enforced
 - **Memory leaks**: Resource management and cleanup implemented
 - **Performance impact**: Optimized execution within reasonable time limits
 
 **Integration Risks - All Mitigated:**
+
 - **Breaking changes**: 100% backward compatibility maintained
 - **Provider compatibility**: Seamless integration with existing providers
 - **Evaluation conflicts**: New evaluators properly isolated and registered

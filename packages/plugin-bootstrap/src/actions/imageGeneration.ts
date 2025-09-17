@@ -103,7 +103,7 @@ export const generateImageAction = {
       }
 
       const imageUrl = imageResponse[0].url;
-      
+
       logger.info(`[GENERATE_IMAGE] Received image URL: ${imageUrl}`);
 
       // Determine file extension from URL or default to png

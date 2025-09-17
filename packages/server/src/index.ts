@@ -87,7 +87,7 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 
   // Use the centralized path configuration from core
   const resolved = getDatabaseDir();
-  
+
   // Persist chosen root for the process so child modules see it (backward compat)
   process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
@@ -556,34 +556,36 @@ export class AgentServer {
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
-          
+
           if (!filePath.startsWith(agentGeneratedPath)) {
             res.status(403).json({ error: 'Access denied' });
             return;
           }
-          
+
           // Check if file exists before sending
           if (!existsSync(filePath)) {
             res.status(404).json({ error: 'File not found' });
             return;
           }
-          
+
           // Make sure path is absolute for sendFile
           const absolutePath = path.resolve(filePath);
-          
+
           // Use sendFile with proper options (no root needed for absolute paths)
           const options = {
-            dotfiles: 'deny' as const
+            dotfiles: 'deny' as const,
           };
-          
+
           res.sendFile(absolutePath, options, (err) => {
             if (err) {
               // Fallback to streaming if sendFile fails (non-blocking)
               const ext = extname(filename).toLowerCase();
               const mimeType =
-                ext === '.png' ? 'image/png' :
-                ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
-                'application/octet-stream';
+                ext === '.png'
+                  ? 'image/png'
+                  : ext === '.jpg' || ext === '.jpeg'
+                    ? 'image/jpeg'
+                    : 'application/octet-stream';
               res.setHeader('Content-Type', mimeType);
               const stream = fs.createReadStream(absolutePath);
               stream.on('error', () => res.status(404).json({ error: 'File not found' }));

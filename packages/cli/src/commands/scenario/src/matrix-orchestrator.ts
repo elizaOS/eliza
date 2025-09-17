@@ -257,8 +257,8 @@ export async function executeMatrixRuns(
     const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap']; // Always include core plugins
     const scenarioPlugins = Array.isArray(baseScenario.plugins)
       ? baseScenario.plugins
-        .filter((p: any) => typeof p === 'string' || p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-        .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+          .filter((p: any) => typeof p === 'string' || p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+          .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
       : [];
     const finalPlugins = Array.from(
       new Set([...scenarioPlugins, ...defaultPlugins, '@elizaos/plugin-openai'])
@@ -808,7 +808,9 @@ async function executeScenarioWithTimeout(
 
           // Ensure SERVER_PORT is set for shared server scenarios
           process.env.SERVER_PORT = port.toString();
-          console.log(`🔧 [DEBUG] Set SERVER_PORT environment variable to ${port} for shared server`);
+          console.log(
+            `🔧 [DEBUG] Set SERVER_PORT environment variable to ${port} for shared server`
+          );
 
           // Create new agent on shared server (with unique ID for isolation)
           const uniqueAgentName = `scenario-agent-${runId}`;
@@ -1088,7 +1090,7 @@ async function calculateRunDiskUsage(tempDir: string): Promise<number> {
       scenarioPath: '',
       dbPath: '',
       logPath: '',
-      cleanup: async () => { },
+      cleanup: async () => {},
     };
     const resources = await monitorIsolatedResources(context);
     return resources.diskUsage;

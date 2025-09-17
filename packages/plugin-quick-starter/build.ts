@@ -24,7 +24,7 @@ async function build() {
 
     // Run JavaScript build and TypeScript declarations in parallel
     console.log('Starting build tasks...');
-    
+
     const [buildResult, tscResult] = await Promise.all([
       // Task 1: Build with Bun
       (async () => {
@@ -36,7 +36,16 @@ async function build() {
           format: 'esm',
           sourcemap: true,
           minify: false,
-          external: ['dotenv', 'fs', 'path', 'https', 'node:*', '@elizaos/core', '@elizaos/cli', 'zod'],
+          external: [
+            'dotenv',
+            'fs',
+            'path',
+            'https',
+            'node:*',
+            '@elizaos/core',
+            '@elizaos/cli',
+            'zod',
+          ],
           naming: {
             entry: '[dir]/[name].[ext]',
           },
@@ -50,10 +59,10 @@ async function build() {
         const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
         const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
         console.log(`✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB`);
-        
+
         return result;
       })(),
-      
+
       // Task 2: Generate TypeScript declarations
       (async () => {
         console.log('📝 Generating TypeScript declarations...');
@@ -66,7 +75,7 @@ async function build() {
           console.warn('  This is usually due to test files or type errors.');
           return { success: false };
         }
-      })()
+      })(),
     ]);
 
     if (!buildResult.success) {

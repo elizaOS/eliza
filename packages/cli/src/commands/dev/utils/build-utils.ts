@@ -145,7 +145,9 @@ export function createDevContext(cwd: string): DevContext {
     // also trigger rebuilds when developing from a plugin directory.
     watchDirectory: directoryType.monorepoRoot
       ? directoryType.monorepoRoot
-      : (existsSync(srcDir) ? srcDir : cwd),
+      : existsSync(srcDir)
+        ? srcDir
+        : cwd,
     buildRequired: directoryType.type !== 'elizaos-monorepo',
   };
 }

@@ -19,12 +19,12 @@ export interface TrajectoryStep {
 
   /** Step content based on type */
   content:
-  | string
-  | {
-    name: string;
-    parameters: Record<string, any>;
-  }
-  | any;
+    | string
+    | {
+        name: string;
+        parameters: Record<string, any>;
+      }
+    | any;
 }
 
 export interface ReconstructedTrajectory {
@@ -143,15 +143,14 @@ export class TrajectoryReconstructor {
     // NEW: Also handle message memories for conversation scenarios
     const messageMemories = memories.filter(
       (mem) =>
-        mem && typeof mem.content === 'object' &&
-        (
-          (mem.content as any)?.type === 'agent' ||
+        mem &&
+        typeof mem.content === 'object' &&
+        ((mem.content as any)?.type === 'agent' ||
           (mem.content as any)?.type === 'user' ||
           // Handle memories without explicit type but with thought/actions (agent responses)
           ((mem.content as any)?.thought && (mem.content as any)?.actions) ||
           // Handle user messages (scenario messages)
-          ((mem.content as any)?.source === 'scenario_message')
-        )
+          (mem.content as any)?.source === 'scenario_message')
     );
 
     console.log(
@@ -236,7 +235,9 @@ export class TrajectoryReconstructor {
     }
 
     // NEW: Process message memories for conversation scenarios
-    console.log(`\n💬 [TrajectoryReconstructor] Processing ${messageMemories.length} message memories...`);
+    console.log(
+      `\n💬 [TrajectoryReconstructor] Processing ${messageMemories.length} message memories...`
+    );
     for (const memory of messageMemories) {
       const content = memory.content as any;
       const timestamp = new Date(memory.createdAt || Date.now()).toISOString();
@@ -261,7 +262,10 @@ export class TrajectoryReconstructor {
           content: content.thought,
         };
         steps.push(thoughtStep);
-        console.log(`   💭 Created thought step from agent message:`, JSON.stringify(thoughtStep, null, 2));
+        console.log(
+          `   💭 Created thought step from agent message:`,
+          JSON.stringify(thoughtStep, null, 2)
+        );
       }
 
       // Create observation step from message content
@@ -273,7 +277,10 @@ export class TrajectoryReconstructor {
         content: `${messageType} message: ${messageContent}`,
       };
       steps.push(observationStep);
-      console.log(`   👁️ Created observation step from message:`, JSON.stringify(observationStep, null, 2));
+      console.log(
+        `   👁️ Created observation step from message:`,
+        JSON.stringify(observationStep, null, 2)
+      );
     }
 
     // Sort all steps by timestamp (ISO string comparison)

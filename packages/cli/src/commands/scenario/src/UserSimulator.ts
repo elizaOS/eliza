@@ -29,24 +29,19 @@ export class UserSimulator {
     latestAgentResponse: string,
     context: SimulationContext
   ): Promise<string> {
-    const prompt = this.buildSimulationPrompt(
-      conversationHistory,
-      latestAgentResponse,
-      context
-    );
+    const prompt = this.buildSimulationPrompt(conversationHistory, latestAgentResponse, context);
 
     try {
-      console.log(`👤 [UserSimulator] Calling LLM with model: ${this.config.model_type || ModelType.TEXT_LARGE}`);
+      console.log(
+        `👤 [UserSimulator] Calling LLM with model: ${this.config.model_type || ModelType.TEXT_LARGE}`
+      );
       console.log(`👤 [UserSimulator] Prompt length: ${prompt.length}`);
       console.log(`👤 [UserSimulator] Prompt preview: ${prompt.substring(0, 200)}...`);
 
-      const response = await this.runtime.useModel(
-        this.config.model_type || ModelType.TEXT_LARGE,
-        {
-          prompt: prompt,
-          temperature: this.config.temperature || 0.8,
-        }
-      );
+      const response = await this.runtime.useModel(this.config.model_type || ModelType.TEXT_LARGE, {
+        prompt: prompt,
+        temperature: this.config.temperature || 0.8,
+      });
 
       console.log(`👤 [UserSimulator] Raw LLM response: "${response}"`);
       console.log(`👤 [UserSimulator] Response type: ${typeof response}`);
@@ -70,7 +65,6 @@ export class UserSimulator {
       }
 
       return cleanedResponse;
-
     } catch (error) {
       console.error(`❌ [UserSimulator] Failed to generate response:`, error);
       console.error(`❌ [UserSimulator] Error details:`, {
@@ -79,7 +73,7 @@ export class UserSimulator {
         promptLength: prompt.length,
         modelType: this.config.model_type || 'TEXT_LARGE',
         temperature: this.config.temperature || 0.8,
-        maxTokens: this.config.max_tokens || 200
+        maxTokens: this.config.max_tokens || 200,
       });
       // Fallback to a simple response based on persona
       return this.generateFallbackResponse(latestAgentResponse, context);
@@ -95,7 +89,8 @@ export class UserSimulator {
     agentResponse: string,
     _context: SimulationContext
   ): string {
-    const { persona, objective, style, constraints, emotional_state, knowledge_level } = this.config;
+    const { persona, objective, style, constraints, emotional_state, knowledge_level } =
+      this.config;
 
     // Simplified prompt structure to avoid LLM confusion
     let prompt = `Roleplay as a user with this profile:
@@ -171,7 +166,7 @@ Respond as the user (20-100 words, natural conversation):`;
     }
 
     if (persona.toLowerCase().includes('technical') || persona.toLowerCase().includes('expert')) {
-      return "Can you provide more specific technical details?";
+      return 'Can you provide more specific technical details?';
     }
 
     // Default fallback
@@ -179,7 +174,7 @@ Respond as the user (20-100 words, natural conversation):`;
       return `I need help with ${objective}. Can you assist me?`;
     }
 
-    return "Could you help me understand what I should do next?";
+    return 'Could you help me understand what I should do next?';
   }
 
   /**

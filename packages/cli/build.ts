@@ -34,7 +34,7 @@ async function preBuild() {
       .catch((err) => {
         console.error('  ✗ Template copying failed:', err);
         throw err;
-      })
+      }),
   ]);
 
   const elapsed = ((performance.now() - start) / 1000).toFixed(2);
@@ -67,15 +67,13 @@ const run = createBuildRunner({
     if (success) {
       console.log('\nPost-build tasks...');
       const postBuildStart = performance.now();
-      
+
       // Prepare all post-build tasks
       const postBuildTasks: Promise<void>[] = [];
 
       // Task 1: Copy templates
       postBuildTasks.push(
-        copyAssets([
-          { from: './templates', to: './dist/templates' },
-        ])
+        copyAssets([{ from: './templates', to: './dist/templates' }])
           .then(() => console.log('  ✓ Templates copied to dist'))
           .catch((err) => {
             console.error('  ✗ Template copying failed:', err);
@@ -111,7 +109,7 @@ export default { version: '0.0.0', name: '@elizaos/cli', description: 'elizaOS C
 
       // Execute all post-build tasks in parallel
       await Promise.all(postBuildTasks);
-      
+
       const postBuildElapsed = ((performance.now() - postBuildStart) / 1000).toFixed(2);
       console.log(`✅ Post-build tasks completed (${postBuildElapsed}s)`);
     }

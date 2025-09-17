@@ -32,7 +32,6 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;

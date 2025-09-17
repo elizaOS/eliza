@@ -46,23 +46,25 @@ export function createLoggingRouter(): express.Router {
     try {
       // Get logs from the ElizaOS logger's recentLogs function
       const recentLogsString = recentLogs();
-      
+
       // Parse the string into log entries
       let logEntries: LogEntry[] = [];
-      
+
       if (recentLogsString) {
-        const lines = recentLogsString.split('\n').filter(line => line.trim());
-        
+        const lines = recentLogsString.split('\n').filter((line) => line.trim());
+
         logEntries = lines.map((line, index) => {
           // First, clean all ANSI escape sequences from the entire line
           const cleanLine = line.replace(/\u001B\[[0-9;]*m/g, '');
-          
+
           // Parse the cleaned line format: "TIMESTAMP LEVEL MESSAGE"
-          const logMatch = cleanLine.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(\w+)\s+(.+)$/);
-          
+          const logMatch = cleanLine.match(
+            /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(\w+)\s+(.+)$/
+          );
+
           if (logMatch) {
             const [, timestamp, levelStr, message] = logMatch;
-            
+
             // Map log level string to numeric value
             let level: number = LOG_LEVELS.info; // Default
             const levelLower = levelStr.trim().toLowerCase();
@@ -75,18 +77,18 @@ export function createLoggingRouter(): express.Router {
             else if (levelLower === 'debug') level = LOG_LEVELS.debug;
             else if (levelLower === 'trace') level = LOG_LEVELS.trace;
             else if (levelLower === 'fatal') level = LOG_LEVELS.fatal;
-            
+
             return {
               time: new Date(timestamp).getTime(),
               level: level,
-              msg: message.trim()
+              msg: message.trim(),
             };
           } else {
             // Fallback if parsing fails
             return {
               time: Date.now() - (lines.length - index) * 1000, // Approximate timestamps
               level: LOG_LEVELS.info,
-              msg: line.trim()
+              msg: line.trim(),
             };
           }
         });
@@ -150,7 +152,7 @@ export function createLoggingRouter(): express.Router {
       // Log debug information for troubleshooting
       logger.debug(
         `Logs request processed: ${filtered.length}/${logEntries.length} logs returned ` +
-        `(level: ${requestedLevel}, agent: ${requestedAgentName})`
+          `(level: ${requestedLevel}, agent: ${requestedAgentName})`
       );
 
       res.json({

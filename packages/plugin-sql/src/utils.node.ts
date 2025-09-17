@@ -65,6 +65,3 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 
   return resolved;
 }
-
-
-

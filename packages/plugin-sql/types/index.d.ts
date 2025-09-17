@@ -17,5 +17,3 @@ export class DatabaseMigrationService {
 }
 
 export default plugin;
-
-

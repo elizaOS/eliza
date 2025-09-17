@@ -16,5 +16,3 @@ describe('utils.browser', () => {
     expect(resolvePgliteDir('/any/path')).toBe('in-memory');
   });
 });
-
-

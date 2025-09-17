@@ -25,8 +25,14 @@ export interface UserSimulatorConfig {
  * Conditions that can terminate a conversation early
  */
 export interface TerminationCondition {
-  type: 'max_turns_reached' | 'user_expresses_satisfaction' | 'agent_provides_solution' |
-  'conversation_stuck' | 'escalation_needed' | 'goal_achieved' | 'custom_condition';
+  type:
+    | 'max_turns_reached'
+    | 'user_expresses_satisfaction'
+    | 'agent_provides_solution'
+    | 'conversation_stuck'
+    | 'escalation_needed'
+    | 'goal_achieved'
+    | 'custom_condition';
   description?: string;
   keywords?: string[];
   llm_judge?: {

@@ -105,7 +105,7 @@ async function buildAll() {
     const [nodeResult, browserResult, _] = await Promise.all([
       buildNode(),
       buildBrowser(),
-      generateTypeScriptDeclarations() // Run in parallel, not sequentially
+      generateTypeScriptDeclarations(), // Run in parallel, not sequentially
     ]);
 
     const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
@@ -137,16 +137,22 @@ async function generateTypeScriptDeclarations() {
 
     // Create re-export files for conditional exports structure
     // dist/node/index.d.ts - points to the Node.js entry point
-    await fs.writeFile('dist/node/index.d.ts', 
-      `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node';\n`);
+    await fs.writeFile(
+      'dist/node/index.d.ts',
+      `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node';\n`
+    );
 
-    // dist/browser/index.d.ts - points to the browser entry point  
-    await fs.writeFile('dist/browser/index.d.ts', 
-      `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser';\n`);
+    // dist/browser/index.d.ts - points to the browser entry point
+    await fs.writeFile(
+      'dist/browser/index.d.ts',
+      `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser';\n`
+    );
 
     // Create main index.js for runtime fallback (when conditional exports don't match)
-    await fs.writeFile('dist/index.js', 
-      `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`);
+    await fs.writeFile(
+      'dist/index.js',
+      `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`
+    );
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`✅ TypeScript declarations generated in ${duration}s`);

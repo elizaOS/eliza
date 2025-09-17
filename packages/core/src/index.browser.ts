@@ -31,7 +31,6 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
-
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;
 export const isNode = false;

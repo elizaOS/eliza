@@ -83,14 +83,18 @@ async function startClientDevServer(cwd: string): Promise<void> {
   // The installed package won't have dev dependencies available.
   const isInstalledClient = clientDir.includes(path.join('node_modules', '@elizaos', 'client'));
   if (isInstalledClient) {
-    console.info('Detected installed @elizaos/client. Using server static UI instead of running Vite.');
+    console.info(
+      'Detected installed @elizaos/client. Using server static UI instead of running Vite.'
+    );
     return;
   }
 
   console.info('Starting Vite dev server for client with HMR...');
 
   // Check if the client has a dev:client script
-  const clientPackageJson = JSON.parse(fs.readFileSync(path.join(clientDir, 'package.json'), 'utf-8'));
+  const clientPackageJson = JSON.parse(
+    fs.readFileSync(path.join(clientDir, 'package.json'), 'utf-8')
+  );
   const hasDevClientScript = clientPackageJson.scripts?.['dev:client'];
   const hasDevScript = clientPackageJson.scripts?.['dev'];
 
@@ -99,7 +103,9 @@ async function startClientDevServer(cwd: string): Promise<void> {
 
   try {
     if (!devScript) {
-      console.warn('Client package does not have a dev:client or dev script, trying vite directly...');
+      console.warn(
+        'Client package does not have a dev:client or dev script, trying vite directly...'
+      );
       // Try to run vite via bun x as fallback
       clientDevServerProcess = Bun.spawn(['bun', 'x', 'vite', '--host', '0.0.0.0'], {
         cwd: clientDir,
@@ -115,7 +121,9 @@ async function startClientDevServer(cwd: string): Promise<void> {
       });
     }
   } catch (spawnError) {
-    console.error(`Failed to start client dev server: ${spawnError instanceof Error ? spawnError.message : String(spawnError)}`);
+    console.error(
+      `Failed to start client dev server: ${spawnError instanceof Error ? spawnError.message : String(spawnError)}`
+    );
     clientDevServerProcess = null;
     return;
   }
@@ -218,7 +226,7 @@ async function getClientPort(cwd: string): Promise<number | null> {
     path.join(cwd, 'packages', 'client'),
     path.join(path.dirname(cwd), 'client'),
     path.join(cwd, '..', 'client'),
-    path.join(cwd, 'node_modules', '@elizaos', 'client')
+    path.join(cwd, 'node_modules', '@elizaos', 'client'),
   ];
 
   // 1) Check dev:client or dev script for --port flag
@@ -350,8 +358,11 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       await serverManager.stop();
 
       // Also stop client dev server for clean restart
-      const hasLocalVite = fs.existsSync(path.join(cwd, 'vite.config.ts')) || fs.existsSync(path.join(cwd, 'vite.config.js'));
-      const shouldStartClient = ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+      const hasLocalVite =
+        fs.existsSync(path.join(cwd, 'vite.config.ts')) ||
+        fs.existsSync(path.join(cwd, 'vite.config.js'));
+      const shouldStartClient =
+        ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
       if (shouldStartClient) {
         await stopClientDevServer();
       }
@@ -399,9 +410,10 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
     // Extract the actual port being used (after availability check)
     const portArgIndex = cliArgs.indexOf('--port');
-    serverPort = portArgIndex !== -1 && cliArgs[portArgIndex + 1]
-      ? parseInt(cliArgs[portArgIndex + 1], 10)
-      : availablePort || 3000;
+    serverPort =
+      portArgIndex !== -1 && cliArgs[portArgIndex + 1]
+        ? parseInt(cliArgs[portArgIndex + 1], 10)
+        : availablePort || 3000;
 
     await serverManager.start(cliArgs);
     backendStarted = true;
@@ -413,8 +425,11 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   }
 
   // Start the client dev server if available (project/monorepo) or if a standalone plugin exposes a local Vite config
-  const hasLocalVite = fs.existsSync(path.join(cwd, 'vite.config.ts')) || fs.existsSync(path.join(cwd, 'vite.config.js'));
-  const shouldStartClient = ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+  const hasLocalVite =
+    fs.existsSync(path.join(cwd, 'vite.config.ts')) ||
+    fs.existsSync(path.join(cwd, 'vite.config.js'));
+  const shouldStartClient =
+    ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
   if (shouldStartClient) {
     // Start the client dev server
     await startClientDevServer(cwd);
@@ -475,5 +490,4 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     await serverManager.stop();
     process.exit(0);
   });
-
 }

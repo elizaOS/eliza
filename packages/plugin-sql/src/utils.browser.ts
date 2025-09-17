@@ -28,5 +28,3 @@ export function resolveEnvFile(_startDir?: string): string {
 export function resolvePgliteDir(_dir?: string, _fallbackDir?: string): string {
   return 'in-memory';
 }
-
-

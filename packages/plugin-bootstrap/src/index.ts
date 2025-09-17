@@ -1123,15 +1123,15 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
 
   const responseMessages: Memory[] = responseContent
     ? [
-      {
-        id: asUUID(v4()),
-        entityId: runtime.agentId,
-        agentId: runtime.agentId,
-        content: responseContent,
-        roomId: message.roomId,
-        createdAt: Date.now(),
-      },
-    ]
+        {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
     : [];
 
   return {
@@ -1551,14 +1551,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-          ownership: {
-            ownerId: entityId,
-          },
-          roles: {
-            [entityId]: Role.OWNER,
-          },
-          settings: {}, // Initialize empty settings for onboarding
-        }
+            ownership: {
+              ownerId: entityId,
+            },
+            roles: {
+              [entityId]: Role.OWNER,
+            },
+            settings: {}, // Initialize empty settings for onboarding
+          }
         : undefined;
 
     runtime.logger.info(
@@ -1863,7 +1863,9 @@ const events = {
             source: 'actionHandler',
           },
         });
-        logger.debug(`[Bootstrap] Logged ACTION_STARTED event for action ${payload.content?.actions?.[0]}`);
+        logger.debug(
+          `[Bootstrap] Logged ACTION_STARTED event for action ${payload.content?.actions?.[0]}`
+        );
       } catch (error) {
         logger.error(`[Bootstrap] Failed to log ACTION_STARTED event: ${error}`);
       }
@@ -1952,7 +1954,9 @@ const events = {
             source: payload.source || 'unknown',
           },
         });
-        logger.debug(`[Bootstrap] Logged RUN_ENDED event for run ${payload.runId} with status ${payload.status}`);
+        logger.debug(
+          `[Bootstrap] Logged RUN_ENDED event for run ${payload.runId} with status ${payload.status}`
+        );
       } catch (error) {
         logger.error(`[Bootstrap] Failed to log RUN_ENDED event: ${error}`);
       }
