@@ -1,17 +1,39 @@
-import { IAgentRuntime } from '@elizaos/core';
-import {
-  IPdfService,
-  PdfExtractionResult,
-  PdfGenerationOptions,
-  PdfConversionOptions,
-} from '@elizaos/core';
+import { IAgentRuntime, Service, ServiceType, logger } from '@elizaos/core';
+
+// Define PDF-specific types locally since they're not in core
+export interface PdfExtractionResult {
+  text: string;
+  metadata?: {
+    title?: string;
+    author?: string;
+    pages?: number;
+    creationDate?: Date;
+  };
+}
+
+export interface PdfGenerationOptions {
+  format?: 'A4' | 'Letter' | 'Legal';
+  margin?: {
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  };
+}
+
+export interface PdfConversionOptions {
+  quality?: number;
+  dpi?: number;
+}
 
 /**
  * Dummy PDF service for testing purposes
- * Provides mock implementations of PDF processing operations
+ * Provides mock implementations of PDF operations
  */
-export class DummyPdfService extends IPdfService {
-  static override readonly serviceType = IPdfService.serviceType;
+export class DummyPdfService extends Service {
+  static readonly serviceType = ServiceType.PDF;
+
+  capabilityDescription = 'Dummy PDF service for testing';
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
@@ -24,89 +46,76 @@ export class DummyPdfService extends IPdfService {
   }
 
   async initialize(): Promise<void> {
-    this.runtime.logger.info('DummyPdfService initialized');
+    logger.info('DummyPdfService initialized');
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger.info('DummyPdfService stopped');
+    logger.info('DummyPdfService stopped');
   }
 
-  async extractText(pdfPath: string | Buffer): Promise<PdfExtractionResult> {
-    const isBuffer = Buffer.isBuffer(pdfPath);
-    const filename = isBuffer ? 'buffer.pdf' : pdfPath;
+  async extractText(pdfBuffer: Buffer): Promise<PdfExtractionResult> {
+    logger.debug(`Extracting text from PDF (${pdfBuffer.length} bytes)`);
 
-    this.runtime.logger.debug(`Extracting text from ${filename}`);
-
-    // Mock extraction result
     return {
-      text: `Mock extracted text from ${filename}.\n\nThis is a dummy PDF service that simulates text extraction.\n\nPage 1: Lorem ipsum dolor sit amet, consectetur adipiscing elit.\nPage 2: Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nPage 3: Ut enim ad minim veniam, quis nostrud exercitation ullamco.`,
-      pageCount: 3,
+      text: 'This is dummy extracted text from the PDF document.',
       metadata: {
-        title: 'Mock PDF Document',
-        author: 'Dummy Service',
-        createdAt: new Date('2024-01-01'),
-        modifiedAt: new Date(),
+        title: 'Dummy PDF Document',
+        author: 'Dummy Author',
+        pages: 10,
+        creationDate: new Date(),
       },
     };
   }
 
-  async generatePdf(htmlContent: string, options?: PdfGenerationOptions): Promise<Buffer> {
-    this.runtime.logger.debug('Generating PDF from HTML content');
+  async generatePdf(
+    content: string | { html: string },
+    options?: PdfGenerationOptions
+  ): Promise<Buffer> {
+    logger.debug('Generating PDF', JSON.stringify(options));
 
-    // Mock PDF generation
-    const pdfContent = `Mock PDF generated from HTML content with ${htmlContent.length} characters`;
-    const mockPdfBuffer = Buffer.from(pdfContent, 'utf8');
+    // Return dummy PDF buffer
+    const dummyPdf = Buffer.from('dummy-pdf-content');
 
-    // Simulate processing options
-    if (options) {
-      this.runtime.logger.debug('PDF generation options:', options);
-    }
+    logger.debug(`Generated PDF: ${dummyPdf.length} bytes`);
 
-    return mockPdfBuffer;
+    return dummyPdf;
   }
 
-  async convertToPdf(filePath: string, options?: PdfConversionOptions): Promise<Buffer> {
-    this.runtime.logger.debug(`Converting ${filePath} to PDF`);
+  async convertToPdf(
+    input: Buffer,
+    inputFormat: 'html' | 'markdown' | 'docx',
+    options?: PdfConversionOptions
+  ): Promise<Buffer> {
+    logger.debug(`Converting ${inputFormat} to PDF`, JSON.stringify(options));
 
-    // Mock PDF conversion
-    const pdfContent = `Mock PDF converted from ${filePath}`;
-    const mockPdfBuffer = Buffer.from(pdfContent, 'utf8');
+    // Return dummy PDF buffer
+    const dummyPdf = Buffer.from(`dummy-pdf-from-${inputFormat}`);
 
-    // Simulate processing options
-    if (options) {
-      this.runtime.logger.debug('PDF conversion options:', options);
-    }
+    logger.debug(`Converted to PDF: ${dummyPdf.length} bytes`);
 
-    return mockPdfBuffer;
+    return dummyPdf;
   }
 
-  async mergePdfs(pdfPaths: (string | Buffer)[]): Promise<Buffer> {
-    this.runtime.logger.debug(`Merging ${pdfPaths.length} PDF files`);
+  async mergePdfs(pdfBuffers: Buffer[]): Promise<Buffer> {
+    logger.debug(`Merging ${pdfBuffers.length} PDFs`);
 
-    // Mock PDF merging
-    const mergedContent = pdfPaths
-      .map((path, index) => {
-        const name = Buffer.isBuffer(path) ? `buffer-${index}` : path;
-        return `Content from ${name}`;
-      })
-      .join('\n\n');
+    // Return dummy merged PDF buffer
+    const totalSize = pdfBuffers.reduce((sum, buf) => sum + buf.length, 0);
+    const mergedPdf = Buffer.from(`dummy-merged-pdf-${totalSize}`);
 
-    const mockMergedBuffer = Buffer.from(`Mock merged PDF:\n${mergedContent}`, 'utf8');
-    return mockMergedBuffer;
+    return mergedPdf;
   }
 
-  async splitPdf(pdfPath: string | Buffer): Promise<Buffer[]> {
-    this.runtime.logger.debug('Splitting PDF into pages');
+  async splitPdf(pdfBuffer: Buffer, ranges: Array<[number, number]>): Promise<Buffer[]> {
+    logger.debug(`Splitting PDF into ${ranges.length} parts`);
 
-    const filename = Buffer.isBuffer(pdfPath) ? 'buffer.pdf' : pdfPath;
+    // Return dummy split PDF buffers
+    return ranges.map((range, index) =>
+      Buffer.from(`dummy-split-pdf-part-${index}-pages-${range[0]}-${range[1]}`)
+    );
+  }
 
-    // Mock PDF splitting - return 3 pages
-    const pages = [
-      Buffer.from(`Mock Page 1 from ${filename}`, 'utf8'),
-      Buffer.from(`Mock Page 2 from ${filename}`, 'utf8'),
-      Buffer.from(`Mock Page 3 from ${filename}`, 'utf8'),
-    ];
-
-    return pages;
+  getDexName(): string {
+    return 'dummy-pdf';
   }
 }

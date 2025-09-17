@@ -406,3 +406,48 @@ esac`;
     expect(result).toContain('dry-run');
   });
 });
+
+// Test the npmPackage scoping fix
+describe('npmPackage Scoping', () => {
+  let testTmpDir: string;
+  let originalCwd: string;
+
+  beforeEach(async () => {
+    originalCwd = process.cwd();
+    testTmpDir = await mkdtemp(join(tmpdir(), 'eliza-test-npmpackage-'));
+    process.chdir(testTmpDir);
+  });
+
+  afterEach(async () => {
+    safeChangeDirectory(originalCwd);
+    if (testTmpDir && testTmpDir.includes('eliza-test-npmpackage-')) {
+      try {
+        await rm(testTmpDir, { recursive: true });
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    }
+  });
+
+  it('should validate package name before scoping', async () => {
+    const { publishToNpm } = await import('../../src/commands/publish/actions/npm-publish');
+
+    // Test empty package name
+    const emptyNamePackage = { name: '', version: '1.0.0' };
+    await expect(publishToNpm(testTmpDir, emptyNamePackage as any, 'testuser')).rejects.toThrow(
+      'Invalid package.json: name field is required for scoping'
+    );
+
+    // Test already scoped package name
+    const scopedPackage = { name: '@existing/plugin-test', version: '1.0.0' };
+    await expect(publishToNpm(testTmpDir, scopedPackage as any, 'testuser')).rejects.toThrow(
+      'Package name is already scoped - this should not happen with current templates'
+    );
+
+    // Test empty npm username
+    const validPackage = { name: 'plugin-test', version: '1.0.0' };
+    await expect(publishToNpm(testTmpDir, validPackage as any, '')).rejects.toThrow(
+      'npm username is required for package scoping'
+    );
+  });
+});

@@ -4,7 +4,7 @@ import { character } from './character.ts';
 
 const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
   logger.info('Initializing character');
-  logger.info('Name: ', character.name);
+  logger.info({ name: character.name }, 'Name:');
 };
 
 export const projectAgent: ProjectAgent = {
@@ -12,12 +12,11 @@ export const projectAgent: ProjectAgent = {
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
   // plugins: [starterPlugin], <-- Import custom plugins here
 };
+
 const project: Project = {
   agents: [projectAgent],
 };
 
-// Export test suites for the test runner
-export { testSuites } from './__tests__/e2e';
 export { character } from './character.ts';
 
 export default project;

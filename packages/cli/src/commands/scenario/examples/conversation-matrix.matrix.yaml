@@ -1,0 +1,28 @@
+name: 'Dynamic Prompting Matrix Test'
+description: 'Matrix testing of conversation scenarios across different user personas and conversation lengths'
+
+base_scenario: 'basic-conversation.scenario.yaml'
+runs_per_combination: 1
+
+matrix:
+  # Test different user personas
+  - parameter: 'run[0].conversation.user_simulator.persona'
+    values:
+      - 'frustrated customer who had a bad experience'
+      - 'experienced power user who wants quick solutions'
+
+  # Test different user objectives
+  - parameter: 'run[0].conversation.user_simulator.objective'
+    values:
+      - 'resolve account login issue quickly'
+      - 'get refund for unwanted charge'
+
+  # Test different termination conditions
+  - parameter: 'run[0].conversation.termination_conditions[0].type'
+    values:
+      - 'user_expresses_satisfaction'
+      - 'escalation_needed'
+
+  # Test different user simulator temperatures
+  - parameter: 'run[0].conversation.user_simulator.temperature'
+    values: [0.3, 0.9]

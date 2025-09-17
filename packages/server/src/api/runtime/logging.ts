@@ -1,4 +1,4 @@
-import { logger } from '@elizaos/core';
+import { logger, recentLogs } from '@elizaos/core';
 import express from 'express';
 
 // Custom levels from @elizaos/core logger
@@ -43,28 +43,65 @@ export function createLoggingRouter(): express.Router {
     const requestedAgentId = req.query.agentId?.toString() || 'all'; // Add support for agentId parameter
     const limit = Math.min(Number(req.query.limit) || 100, 1000); // Max 1000 entries
 
-    // Access the underlying logger instance
-    const destination = (logger as any)[Symbol.for('pino-destination')];
-
-    if (!destination?.recentLogs) {
-      return res.status(500).json({
-        error: 'Logger destination not available',
-        message: 'The logger is not configured to maintain recent logs',
-      });
-    }
-
     try {
-      // Get logs from the destination's buffer
-      const recentLogs: LogEntry[] = destination.recentLogs();
+      // Get logs from the ElizaOS logger's recentLogs function
+      const recentLogsString = recentLogs();
+
+      // Parse the string into log entries
+      let logEntries: LogEntry[] = [];
+
+      if (recentLogsString) {
+        const lines = recentLogsString.split('\n').filter((line) => line.trim());
+
+        logEntries = lines.map((line, index) => {
+          // First, clean all ANSI escape sequences from the entire line
+          const cleanLine = line.replace(/\u001B\[[0-9;]*m/g, '');
+
+          // Parse the cleaned line format: "TIMESTAMP LEVEL MESSAGE"
+          const logMatch = cleanLine.match(
+            /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+(\w+)\s+(.+)$/
+          );
+
+          if (logMatch) {
+            const [, timestamp, levelStr, message] = logMatch;
+
+            // Map log level string to numeric value
+            let level: number = LOG_LEVELS.info; // Default
+            const levelLower = levelStr.trim().toLowerCase();
+            if (levelLower === 'error') level = LOG_LEVELS.error;
+            else if (levelLower === 'warn') level = LOG_LEVELS.warn;
+            else if (levelLower === 'info') level = LOG_LEVELS.info;
+            else if (levelLower === 'log') level = LOG_LEVELS.log;
+            else if (levelLower === 'progress') level = LOG_LEVELS.progress;
+            else if (levelLower === 'success') level = LOG_LEVELS.success;
+            else if (levelLower === 'debug') level = LOG_LEVELS.debug;
+            else if (levelLower === 'trace') level = LOG_LEVELS.trace;
+            else if (levelLower === 'fatal') level = LOG_LEVELS.fatal;
+
+            return {
+              time: new Date(timestamp).getTime(),
+              level: level,
+              msg: message.trim(),
+            };
+          } else {
+            // Fallback if parsing fails
+            return {
+              time: Date.now() - (lines.length - index) * 1000, // Approximate timestamps
+              level: LOG_LEVELS.info,
+              msg: line.trim(),
+            };
+          }
+        });
+      }
       const requestedLevelValue =
         requestedLevel === 'all'
           ? 0 // Show all levels when 'all' is requested
           : LOG_LEVELS[requestedLevel as keyof typeof LOG_LEVELS] || LOG_LEVELS.info;
 
       // Calculate population rates once for efficiency
-      const logsWithAgentNames = recentLogs.filter((l) => l.agentName).length;
-      const logsWithAgentIds = recentLogs.filter((l) => l.agentId).length;
-      const totalLogs = recentLogs.length;
+      const logsWithAgentNames = logEntries.filter((l) => l.agentName).length;
+      const logsWithAgentIds = logEntries.filter((l) => l.agentId).length;
+      const totalLogs = logEntries.length;
       const agentNamePopulationRate = totalLogs > 0 ? logsWithAgentNames / totalLogs : 0;
       const agentIdPopulationRate = totalLogs > 0 ? logsWithAgentIds / totalLogs : 0;
 
@@ -72,7 +109,7 @@ export function createLoggingRouter(): express.Router {
       const isAgentNameDataSparse = agentNamePopulationRate < 0.1;
       const isAgentIdDataSparse = agentIdPopulationRate < 0.1;
 
-      const filtered = recentLogs
+      const filtered = logEntries
         .filter((log) => {
           // Filter by time always
           const timeMatch = log.time >= since;
@@ -112,32 +149,16 @@ export function createLoggingRouter(): express.Router {
         })
         .slice(-limit);
 
-      // Add debug log to help troubleshoot
-      logger.debug('Logs request processed', {
-        requestedLevel,
-        requestedLevelValue,
-        requestedAgentName,
-        requestedAgentId,
-        filteredCount: filtered.length,
-        totalLogs: recentLogs.length,
-        logsWithAgentNames,
-        logsWithAgentIds,
-        agentNamePopulationRate: Math.round(agentNamePopulationRate * 100) + '%',
-        agentIdPopulationRate: Math.round(agentIdPopulationRate * 100) + '%',
-        isAgentNameDataSparse,
-        isAgentIdDataSparse,
-        sampleLogAgentNames: recentLogs.slice(0, 5).map((log) => log.agentName),
-        uniqueAgentNamesInLogs: [...new Set(recentLogs.map((log) => log.agentName))].filter(
-          Boolean
-        ),
-        exactAgentNameMatches: recentLogs.filter((log) => log.agentName === requestedAgentName)
-          .length,
-      });
+      // Log debug information for troubleshooting
+      logger.debug(
+        `Logs request processed: ${filtered.length}/${logEntries.length} logs returned ` +
+          `(level: ${requestedLevel}, agent: ${requestedAgentName})`
+      );
 
       res.json({
         logs: filtered,
         count: filtered.length,
-        total: recentLogs.length,
+        total: logEntries.length,
         requestedLevel: requestedLevel,
         agentName: requestedAgentName,
         agentId: requestedAgentId,
@@ -158,18 +179,8 @@ export function createLoggingRouter(): express.Router {
   // Handler for clearing logs
   const logsClearHandler = (_req: express.Request, res: express.Response) => {
     try {
-      // Access the underlying logger instance
-      const destination = (logger as any)[Symbol.for('pino-destination')];
-
-      if (!destination?.clear) {
-        return res.status(500).json({
-          error: 'Logger clear method not available',
-          message: 'The logger is not configured to clear logs',
-        });
-      }
-
-      // Clear the logs
-      destination.clear();
+      // Clear the logs using the logger's clear method
+      logger.clear();
 
       logger.debug('Logs cleared via API endpoint');
       res.json({ status: 'success', message: 'Logs cleared successfully' });

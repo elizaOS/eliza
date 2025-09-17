@@ -107,7 +107,7 @@ describe('Actions', () => {
           expect(result).toBe(true);
         } catch (e) {
           error = e as Error;
-          logger.error('Validate function error:', e);
+          logger.error({ error: e }, 'Validate function error:');
         }
 
         documentTestResult('HELLO_WORLD action validate', result, error);
@@ -145,7 +145,7 @@ describe('Actions', () => {
           expect(callbackResponse).toHaveProperty('source', 'test');
         } catch (e) {
           error = e as Error;
-          logger.error('Handler function error:', e);
+          logger.error({ error: e }, 'Handler function error:');
         }
 
         documentTestResult('HELLO_WORLD action handler', callbackResponse, error);

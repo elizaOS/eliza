@@ -44,10 +44,16 @@ export const update = new Command()
           console.info('Please install the CLI globally:');
           console.info(' bun install -g @elizaos/cli');
 
-          if (!updatePackages) return;
+          if (!updatePackages) {
+            console.log('Update completed');
+            return;
+          }
         } else {
           const success = await performCliUpdate();
-          if (!updatePackages) return;
+          if (!updatePackages) {
+            console.log('Update completed');
+            return;
+          }
           if (!success) {
             console.warn('CLI update failed, continuing with package updates...');
           }

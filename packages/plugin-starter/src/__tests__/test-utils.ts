@@ -164,6 +164,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     searchMemories: mock().mockResolvedValue([]),
 
     addEmbeddingToMemory: mock().mockImplementation(async (memory: Memory) => memory),
+    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
     getAllMemories: mock().mockResolvedValue([]),
     clearAllAgentMemories: mock().mockResolvedValue(undefined),
     updateMemory: mock().mockResolvedValue(true),
@@ -207,6 +208,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     registerService: mock().mockResolvedValue(undefined),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
+    getServiceLoadPromise: mock().mockResolvedValue(null),
 
     // Plugin/Action/Provider methods
     registerPlugin: mock().mockResolvedValue(undefined),

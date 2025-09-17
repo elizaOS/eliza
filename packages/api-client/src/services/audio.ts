@@ -141,7 +141,7 @@ export class AudioService extends BaseApiClient {
 
     // Handle Buffer and ArrayBuffer types
     if (this.isBuffer(audio)) {
-      return new Blob([audio], { type: 'audio/wav' });
+      return new Blob([new Uint8Array(audio)], { type: 'audio/wav' });
     }
 
     // Cast to any for runtime type checking since TypeScript can't narrow the union type properly

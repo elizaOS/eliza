@@ -202,6 +202,22 @@ The server respects these environment variables:
 - `LOG_LEVEL` - Logging level (debug, info, warn, error)
 - `CORS_ORIGIN` - CORS allowed origins
 
+### Error Monitoring (Sentry)
+
+Set these to enable Sentry error reporting:
+
+- `SENTRY_DSN` - Your Sentry DSN (enables Sentry when set)
+- `SENTRY_ENVIRONMENT` - Environment name (e.g. `production`, `staging`, `development`)
+- `SENTRY_TRACES_SAMPLE_RATE` - Number between 0 and 1 to enable tracing (optional; default 0)
+
+When `SENTRY_DSN` is present, the server:
+
+- Initializes Sentry during startup
+- Captures API handler exceptions with route and request context
+- Captures `uncaughtException` and `unhandledRejection` at the process level
+
+Note: The server includes a default DSN that will be used if `SENTRY_DSN` is not set. To disable Sentry entirely, set `SENTRY_DSN` to an empty string.
+
 ### Server Options
 
 ```typescript

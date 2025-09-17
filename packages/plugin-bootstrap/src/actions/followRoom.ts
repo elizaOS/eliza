@@ -196,7 +196,7 @@ export const followRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error('Error following room:', error);
+        logger.error({ error }, 'Error following room');
         return {
           text: 'Failed to follow room',
           values: {

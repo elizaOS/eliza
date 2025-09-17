@@ -42,11 +42,16 @@ describe('ElizaOS Agent Commands', () => {
 
     // Verify elizaos command is available
     try {
-      bunExecSync('elizaos --version', { encoding: 'utf8', timeout: 5000 });
+      const result = bunExecSync('elizaos --version', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.QUICK_COMMAND,
+      });
+      console.log(`[DEBUG] elizaos version: ${result.trim()}`);
     } catch (error) {
       console.error(
         '[ERROR] elizaos command not available. Run "bun link" in the CLI package first.'
       );
+      console.error('[ERROR] Error details:', error);
       throw new Error('elizaos command not available');
     }
 
@@ -165,7 +170,7 @@ describe('ElizaOS Agent Commands', () => {
         throw serverError;
       }
 
-      await waitForServerReady(parseInt(testServerPort, 10), 30000); // 30 second timeout in tests
+      await waitForServerReady(parseInt(testServerPort, 10), TEST_TIMEOUTS.SERVER_STARTUP);
       console.log('[DEBUG] Server is ready!');
     } catch (error) {
       console.error('[ERROR] Server failed to start:', error);
@@ -273,7 +278,7 @@ describe('ElizaOS Agent Commands', () => {
   it('agent get with output flag saves to file', async () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     bunExecSync(
-      `elizaos agent get --remote-url ${testServerUrl} -n Ada --output "${outputFile}"`,
+      `elizaos agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
 
@@ -289,7 +294,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = bunExecSync(
-        `elizaos agent start --remote-url ${testServerUrl} --path "${maxPath}"`,
+        `elizaos agent start --remote-url ${testServerUrl} --path ${maxPath}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
@@ -366,7 +371,7 @@ describe('ElizaOS Agent Commands', () => {
     await writeFile(configFile, configContent);
 
     const result = bunExecSync(
-      `elizaos agent set --remote-url ${testServerUrl} -n Ada -f "${configFile}"`,
+      `elizaos agent set --remote-url ${testServerUrl} -n Ada -f ${configFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toMatch(/(updated|Updated)/);

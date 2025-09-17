@@ -19,7 +19,6 @@ import {
   documentMemoryId,
   memoryTestAgentId,
   memoryTestDocument,
-  memoryTestEntityId,
   memoryTestFragments,
   memoryTestMemories,
   memoryTestMemoriesWithEmbedding,
@@ -488,10 +487,13 @@ describe('Memory Integration Tests', () => {
     });
 
     it('should handle partial Memory objects in mapToMemoryModel', async () => {
+      // Create a unique entity ID for this test to avoid conflicts
+      const uniqueEntityId = v4() as UUID;
+
       // Create the required entity first to avoid foreign key constraint violations
       await adapter.createEntities([
         {
-          id: memoryTestEntityId,
+          id: uniqueEntityId,
           agentId: testAgentId,
           names: ['Test Entity'],
         } as Entity,
@@ -500,7 +502,7 @@ describe('Memory Integration Tests', () => {
       // Create a partial memory object
       const partialMemory: Partial<any> = {
         id: memoryTestAgentId, // Using a known UUID
-        entityId: memoryTestEntityId,
+        entityId: uniqueEntityId,
         roomId: testRoomId,
         agentId: testAgentId,
         content: {
@@ -528,10 +530,13 @@ describe('Memory Integration Tests', () => {
 
   describe('Memory Batch Operations', () => {
     it('should delete all memories in a room', async () => {
+      // Create a unique entity ID for this test to avoid conflicts
+      const uniqueEntityId = v4() as UUID;
+
       // Create the required entity first to avoid foreign key constraint violations
       await adapter.createEntities([
         {
-          id: memoryTestEntityId,
+          id: uniqueEntityId,
           agentId: testAgentId,
           names: ['Test Entity'],
         } as Entity,
@@ -542,7 +547,7 @@ describe('Memory Integration Tests', () => {
         const testMemory = {
           ...memory,
           agentId: testAgentId,
-          entityId: memoryTestEntityId,
+          entityId: uniqueEntityId,
           roomId: testRoomId,
         };
         await adapter.createMemory(testMemory, 'memories');

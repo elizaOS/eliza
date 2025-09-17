@@ -72,7 +72,6 @@ There are others but they are not as important
 
 - **Types**: `packages/core/src/types.ts` - All core type definitions
 - **Runtime**: `packages/core/src/runtime.ts` - Main runtime implementation
-- **Plugin Compatibility**: Shim everything through /specs (currently defaulting to v2)
 
 ### Abstraction Layers
 

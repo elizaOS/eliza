@@ -1,0 +1,57 @@
+name: 'LLM Judge with Custom Capabilities Demo'
+description: 'Demonstrates the new capabilities feature for LLM Judge evaluator (Ticket #5784)'
+
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+  - name: '@elizaos/plugin-github'
+    enabled: true
+
+environment:
+  type: local
+
+run:
+  # Step 1: Ask the agent to analyze GitHub issues with multiple capabilities
+  - name: 'GitHub Issues Analysis with Custom Capabilities'
+    input: 'List open issues for elizaOS/eliza and provide a concise summary of them.'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Evaluate how well the agent performed the GitHub issue analysis task'
+        expected: 'yes'
+        # NEW: Custom capabilities specific to this task
+        capabilities:
+          - 'Understands the multi-step nature of the request (list AND summarize)'
+          - 'Successfully retrieves the list of GitHub issues'
+          - 'Provides an accurate and concise summary of the issues'
+          - 'Formats the final response in a clean, readable manner'
+          - 'Demonstrates understanding of GitHub repository context'
+
+  # Step 2: Test backward compatibility with no custom capabilities
+  - name: 'Project Understanding with Default Capabilities'
+    input: 'What is the purpose of the elizaOS project?'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: "Evaluate the agent's understanding of the project"
+        expected: 'yes'
+        # No capabilities array - should use default capabilities
+
+  # Step 3: Test with different custom capabilities for a different task type
+  - name: 'Contribution Guide with Task-Specific Capabilities'
+    input: 'Explain how to contribute to the elizaOS project'
+    evaluations:
+      - type: 'llm_judge'
+        prompt: 'Assess the quality of the contribution guidance'
+        expected: 'yes'
+        capabilities:
+          - 'Provides clear step-by-step instructions'
+          - 'Mentions key contribution requirements (issues, PRs, documentation)'
+          - 'Demonstrates understanding of open source contribution practices'
+          - 'Uses appropriate technical language for developers'
+
+# The final verdict: all evaluations in the run steps must pass.
+judgment:
+  strategy: 'all_pass'

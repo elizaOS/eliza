@@ -6,6 +6,7 @@ import {
   logger,
   parseAndValidateCharacter,
   validateCharacter,
+  getCharactersDir,
 } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -327,7 +328,7 @@ function commaSeparatedStringToArray(commaSeparated: string): string[] {
  */
 async function readCharactersFromStorage(characterPaths: string[]): Promise<string[]> {
   try {
-    const uploadDir = path.join(process.cwd(), '.eliza', 'data', 'characters');
+    const uploadDir = getCharactersDir();
     await fs.promises.mkdir(uploadDir, { recursive: true });
     const fileNames = await fs.promises.readdir(uploadDir);
     for (const fileName of fileNames) {

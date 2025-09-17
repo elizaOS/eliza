@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node", "bun"],
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "composite": false,
+    "incremental": false
+  },
+  "include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]
+}

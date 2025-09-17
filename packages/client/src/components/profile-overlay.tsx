@@ -102,9 +102,9 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
               <div className="flex flex-col gap-2">
                 <div className="w-24 h-24 flex justify-center items-center relative">
                   <div className="text-4xl bg-muted rounded-full h-full w-full flex justify-center items-center overflow-hidden border-4 border-background">
-                    {agent?.settings?.avatar ? (
+                    {typeof agent?.settings?.avatar === 'string' ? (
                       <img
-                        src={agent?.settings.avatar}
+                        src={agent.settings.avatar}
                         alt="Agent Avatar"
                         className="w-full h-full object-cover"
                       />
@@ -175,7 +175,13 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
               <p className="font-medium text-sm mb-2">Model</p>
               <div className="flex items-center gap-2">
                 <Brain className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm">{agent?.settings?.model || 'Default'}</span>
+                <span className="text-sm">
+                  {typeof agent?.settings?.model === 'string'
+                    ? agent.settings.model
+                    : agent?.settings?.model !== undefined
+                      ? String(agent.settings.model)
+                      : 'Default'}
+                </span>
               </div>
             </div>
 

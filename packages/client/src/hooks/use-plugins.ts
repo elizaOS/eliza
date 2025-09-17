@@ -76,14 +76,17 @@ export function usePlugins() {
         // Process agent plugins from the parallel fetch
         let agentPlugins: string[] = [];
         try {
-          if (agentsResponse?.length > 0) {
+          const agents = agentsResponse?.agents || [];
+          if (agents.length > 0) {
             // Get plugins from the first active agent
-            const activeAgent = agentsResponse.find((agent) => agent.status === 'active');
+            const activeAgent = agents.find((agent) => agent.status === 'active');
             if (activeAgent && activeAgent.id) {
               const agentDetailResponse = await elizaClient.agents.getAgent(activeAgent.id);
 
-              if (agentDetailResponse?.plugins) {
-                agentPlugins = agentDetailResponse.plugins;
+              // Extract plugins from the agent response
+              const plugins = (agentDetailResponse as any)?.plugins;
+              if (Array.isArray(plugins)) {
+                agentPlugins = plugins;
               }
             }
           }

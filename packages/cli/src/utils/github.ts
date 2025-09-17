@@ -465,7 +465,7 @@ export async function updateFile(
 
     return false;
   } catch (error) {
-    logger.error(`Error updating file: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error('Error updating file:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }
@@ -726,12 +726,20 @@ export async function ensureDirectory(
       logger.info(`Directory ${path} doesn't exist, creating it`);
     }
 
+    // Split repo into owner and repo name for updateFile
+    const [owner, repoName] = repo.split('/');
+    if (!owner || !repoName) {
+      logger.error(`Invalid repository format: ${repo}. Expected format: owner/repo`);
+      return false;
+    }
+
     // Create a placeholder file in the directory
     // (GitHub doesn't have a concept of empty directories)
     const placeholderPath = `${path}/.gitkeep`;
     const result = await updateFile(
       token,
-      repo,
+      owner,
+      repoName,
       placeholderPath,
       '', // Empty content for placeholder
       `Create directory: ${path}`,

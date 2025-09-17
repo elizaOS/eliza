@@ -4,7 +4,6 @@
   "compilerOptions": {
     "outDir": "dist",
     "lib": ["ESNext", "DOM"],
-    "emitDeclarationOnly": true,
     "declaration": true,
     "moduleResolution": "bundler",
     "types": ["node", "cypress", "bun-types"],

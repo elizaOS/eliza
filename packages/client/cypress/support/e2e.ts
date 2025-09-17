@@ -24,6 +24,59 @@ import '@testing-library/cypress/add-commands';
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
 
+// Mock API endpoints to prevent infinite redirects during E2E tests
+beforeEach(() => {
+  // Mock system environment endpoint
+  cy.intercept('GET', '/api/system/env/local', {
+    statusCode: 200,
+    body: {
+      NODE_ENV: 'test',
+      VERSION: '0.0.0-test',
+    },
+  }).as('getEnvLocal');
+
+  // Mock messaging central servers endpoint
+  cy.intercept('GET', '/api/messaging/central-servers', {
+    statusCode: 200,
+    body: [],
+  }).as('getCentralServers');
+
+  // Mock server logs endpoint
+  cy.intercept('GET', '/api/server/logs*', {
+    statusCode: 200,
+    body: { events: [] },
+  }).as('getServerLogs');
+
+  // Mock agents list endpoint
+  cy.intercept('GET', '/api/agents*', {
+    statusCode: 200,
+    body: { data: [] },
+  }).as('getAgents');
+
+  // Mock ping/health check endpoint
+  cy.intercept('GET', '/api/system/ping', {
+    statusCode: 200,
+    body: { status: 'ok' },
+  }).as('getPing');
+
+  // Mock any other API calls to prevent failures
+  cy.intercept('GET', '/api/**', (req) => {
+    console.log('Mocking unhandled GET request:', req.url);
+    req.reply({
+      statusCode: 200,
+      body: {},
+    });
+  }).as('mockGetRequests');
+
+  cy.intercept('POST', '/api/**', (req) => {
+    console.log('Mocking unhandled POST request:', req.url);
+    req.reply({
+      statusCode: 200,
+      body: { success: true },
+    });
+  }).as('mockPostRequests');
+});
+
 // Hide fetch/XHR requests from command log to reduce noise
 const app = window.top;
 if (app && !app.document.head.querySelector('[data-hide-command-log-request]')) {

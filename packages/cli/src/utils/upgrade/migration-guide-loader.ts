@@ -202,14 +202,17 @@ export class MigrationGuideLoader {
             keywords: config.keywords,
           });
         } catch (error) {
-          logger.warn(`Failed to load migration guide: ${config.name}`, error);
+          logger.warn({ error, guideName: config.name }, `Failed to load migration guide`);
         }
       } else {
-        logger.warn(`Migration guide not found: ${guidePath}`);
+        logger.warn({ guidePath }, `Migration guide not found`);
       }
     }
 
-    logger.info(`Loaded ${this.guides.length} migration guides from ${this.guidesDir}`);
+    logger.info(
+      { count: this.guides.length, guidesDir: this.guidesDir },
+      `Loaded migration guides`
+    );
   }
 
   private createEmbeddedGuides(guideConfigs: any[]): void {

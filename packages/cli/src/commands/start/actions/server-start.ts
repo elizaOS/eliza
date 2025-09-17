@@ -1,7 +1,6 @@
 import { getElizaCharacter } from '@/src/characters/eliza';
 import { configureDatabaseSettings, findNextAvailablePort, resolvePgliteDir } from '@/src/utils';
 import { getModuleLoader } from '@/src/utils/module-loader';
-import { UserEnvironment } from '@/src/utils/user-environment';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { startAgent, stopAgent } from './agent-start';
 import path from 'node:path';
@@ -76,21 +75,22 @@ export async function startAgents(options: ServerStartOptions): Promise<void> {
     postgresUrl: postgresUrl || undefined,
   });
 
-  server.startAgent = (character) => startAgent(character, server);
-  server.stopAgent = (runtime) => stopAgent(runtime, server);
+  server.startAgent = (character: Character) => startAgent(character, server);
+  server.stopAgent = (runtime: any) => stopAgent(runtime, server);
   server.loadCharacterTryPath = loadCharacterTryPath;
   server.jsonToCharacter = jsonToCharacter;
 
   const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-  const serverPort = await findNextAvailablePort(desiredPort);
+  const serverHost = process.env.SERVER_HOST || '0.0.0.0';
+  const serverPort = await findNextAvailablePort(desiredPort, serverHost);
   if (serverPort !== desiredPort) {
-    logger.warn(`Port ${desiredPort} is in use, using port ${serverPort} instead`);
+    logger.warn({ desiredPort, serverPort }, 'Port is in use, using alternate port');
   }
   process.env.SERVER_PORT = serverPort.toString();
   try {
     await server.start(serverPort);
   } catch (error) {
-    logger.error(`Failed to start server on port ${serverPort}:`, error);
+    logger.error({ error, serverPort }, `Failed to start server on port:`);
     throw error;
   }
 

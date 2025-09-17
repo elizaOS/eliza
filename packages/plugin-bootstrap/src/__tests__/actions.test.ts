@@ -7,6 +7,7 @@ import {
   unfollowRoomAction,
   replyAction,
   noneAction,
+  generateImageAction,
 } from '../actions';
 import { createMockMemory, setupActionTest } from './test-utils';
 import type { MockRuntime } from './test-utils';
@@ -56,7 +57,7 @@ describe('Reply Action', () => {
     const coreModule = await import('@elizaos/core');
 
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((xml: string) => {
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
         message: 'Hello there! How can I help you today?',
         thought: 'Responding to the user greeting.',
@@ -710,6 +711,113 @@ describe('None Action', () => {
 
     // The callback shouldn't be called for NONE action
     expect(callbackFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('Generate Image Action', () => {
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+  let mockState: Partial<State>;
+  let callbackFn: HandlerCallback;
+
+  beforeEach(() => {
+    const setup = setupActionTest();
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+    mockState = setup.mockState;
+    callbackFn = setup.callbackFn as HandlerCallback;
+  });
+
+  afterEach(() => {
+    mock.restore();
+  });
+
+  it('should validate generate image action correctly', async () => {
+    const isValid = await generateImageAction.validate(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State
+    );
+
+    expect(isValid).toBe(true);
+  });
+
+  it('should handle generate image action successfully', async () => {
+    // Ensure XML parsing returns our expected prompt
+    const coreModule = await import('@elizaos/core');
+    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => ({
+      prompt: 'Draw a cat on the moon',
+    }));
+    mock.module('@elizaos/core', () => ({
+      ...coreModule,
+      parseKeyValueXml: parseKeyValueXmlMock,
+    }));
+
+    // Mock useModel for both TEXT_LARGE and IMAGE models
+    mockRuntime.useModel = mock().mockImplementation((modelType, params) => {
+      if (modelType === ModelType.TEXT_LARGE) {
+        // Return XML with <prompt>
+        return Promise.resolve(
+          `<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>`
+        );
+      }
+      if (modelType === ModelType.IMAGE) {
+        return Promise.resolve([{ url: 'https://example.com/image.png' }]);
+      }
+      return Promise.resolve('');
+    });
+
+    const result = await generateImageAction.handler(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State,
+      {},
+      callbackFn
+    );
+
+    expect(callbackFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actions: ['GENERATE_IMAGE'],
+        attachments: expect.any(Array),
+        text: expect.stringContaining('Draw a cat on the moon'),
+      }),
+      expect.any(Array)
+    );
+
+    // Check ActionResult return
+    expect(result).toMatchObject({
+      success: true,
+      text: 'Generated image',
+      values: expect.objectContaining({
+        success: true,
+        imageGenerated: true,
+      }),
+    });
+  });
+
+  it('should handle errors in generate image action gracefully', async () => {
+    // Mock useModel to fail during image generation
+    mockRuntime.useModel = mock().mockRejectedValue(
+      new Error('Image generation service unavailable')
+    );
+
+    const result = await generateImageAction.handler(
+      mockRuntime as IAgentRuntime,
+      mockMessage as Memory,
+      mockState as State,
+      {},
+      callbackFn
+    );
+
+    // Check error ActionResult
+    expect(result).toMatchObject({
+      success: false,
+      text: 'Image generation failed',
+      values: expect.objectContaining({
+        success: false,
+        error: 'IMAGE_GENERATION_FAILED',
+      }),
+    });
   });
 });
 

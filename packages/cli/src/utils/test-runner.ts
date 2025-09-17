@@ -10,12 +10,13 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 // Ensure logger has all required methods with fallbacks
+// Bind methods to preserve pino logger context with safer optional chaining
 const safeLogger = {
-  debug: logger?.debug || console.log,
-  info: logger?.info || console.log,
-  warn: logger?.warn || console.warn,
-  error: logger?.error || console.error,
-  success: logger?.success || console.log,
+  debug: logger?.debug?.bind(logger) ?? console.debug,
+  info: logger?.info.bind(logger) ?? console.log,
+  warn: logger?.warn.bind(logger) ?? console.warn,
+  error: logger?.error?.bind(logger) ?? console.error,
+  success: logger?.success?.bind(logger) ?? console.log,
 };
 
 interface TestStats {
@@ -110,8 +111,12 @@ export class TestRunner {
     let processedFilter = filter;
     if (processedFilter.endsWith('.test.ts') || processedFilter.endsWith('.test.js')) {
       processedFilter = processedFilter.slice(0, -8); // Remove '.test.ts' or '.test.js'
+    } else if (processedFilter.endsWith('.spec.ts') || processedFilter.endsWith('.spec.js')) {
+      processedFilter = processedFilter.slice(0, -8); // Remove '.spec.ts' or '.spec.js'
     } else if (processedFilter.endsWith('.test')) {
       processedFilter = processedFilter.slice(0, -5); // Remove '.test'
+    } else if (processedFilter.endsWith('.spec')) {
+      processedFilter = processedFilter.slice(0, -5); // Remove '.spec'
     }
 
     // Match against test suite name (case insensitive for better UX)
@@ -134,6 +139,8 @@ export class TestRunner {
 
       try {
         safeLogger.info(`  Running test: ${test.name}`);
+
+        // Pass the runtime directly to avoid pino logger context issues
         await test.fn(this.runtime);
         this.stats.passed++;
         safeLogger.success(`  [✓] ${test.name}`);
@@ -205,9 +212,9 @@ export class TestRunner {
 export const myPlugin = {
   name: "my-plugin",
   description: "My awesome plugin",
-  
+
   // ... other plugin properties ...
-  
+
   tests: [
     {
       name: "Basic Tests",
@@ -263,10 +270,10 @@ export const myPlugin = {
     }
 
     try {
-      // Check for e2e directory
-      const e2eDir = path.join(process.cwd(), 'e2e');
+      // Check for e2e directory in the standard location only
+      const e2eDir = path.join(process.cwd(), 'src', '__tests__', 'e2e');
       if (!fs.existsSync(e2eDir)) {
-        safeLogger.debug('No e2e directory found, skipping e2e tests');
+        safeLogger.debug('No test files found in src/__tests__/e2e/, skipping e2e tests');
         return;
       }
 
@@ -279,7 +286,7 @@ export const myPlugin = {
           .flatMap((entry) =>
             entry.isDirectory()
               ? walk(path.join(dir, entry.name))
-              : entry.name.match(/\.test\.(t|j)sx?$/)
+              : entry.name.match(/\.(test|spec|e2e)\.(ts|js|tsx|jsx)$/)
                 ? [path.join(dir, entry.name)]
                 : []
           );
@@ -292,8 +299,8 @@ export const myPlugin = {
 
       safeLogger.info(`Found ${testFiles.length} e2e test files`);
 
-      // Check if we have compiled dist versions
-      const distE2eDir = path.join(process.cwd(), 'dist', 'e2e');
+      // Check if we have compiled dist versions in the standard location only
+      const distE2eDir = path.join(process.cwd(), 'dist', '__tests__', 'e2e');
       const hasDistE2e = fs.existsSync(distE2eDir);
 
       // Load and run each test file
@@ -301,14 +308,17 @@ export const myPlugin = {
         try {
           // Get the file name for logging
           const fileName = path.basename(testFile);
-          const fileNameWithoutExt = path.basename(testFile, '.test.ts');
+          // Remove any test file extension pattern
+          const fileNameWithoutExt = fileName.replace(/\.(test|spec|e2e)\.(ts|js|tsx|jsx)$/, '');
           safeLogger.info(`Loading test file: ${fileName}`);
 
           // Check if we should try to load from the dist directory instead
           let moduleImportPath = testFile;
           if (hasDistE2e) {
-            // Try to find a .js version in dist/e2e
-            const distFile = path.join(distE2eDir, `${fileNameWithoutExt}.test.js`);
+            // Calculate the relative path from e2eDir to get the correct structure in dist
+            const relativePath = path.relative(e2eDir, testFile);
+            const distFile = path.join(distE2eDir, relativePath.replace(/\.ts$/, '.js'));
+
             if (fs.existsSync(distFile)) {
               moduleImportPath = distFile;
               safeLogger.debug(`Using compiled version from ${distFile}`);
@@ -320,7 +330,7 @@ export const myPlugin = {
             }
           } else {
             safeLogger.warn(
-              `No dist/e2e directory found. E2E tests should be compiled first. Import may fail.`
+              `No dist/__tests__/e2e directory found. E2E tests should be compiled first. Import may fail.`
             );
           }
 
@@ -329,7 +339,10 @@ export const myPlugin = {
           try {
             testModule = await import(pathToFileURL(moduleImportPath).href);
           } catch (importError) {
-            safeLogger.error(`Failed to import test file ${fileName}:`, importError);
+            safeLogger.error(
+              `Failed to import test file ${fileName}:`,
+              importError instanceof Error ? importError.message : String(importError)
+            );
             safeLogger.info(
               `Make sure your e2e tests are properly compiled with 'npm run build' or 'bun run build'`
             );
@@ -372,12 +385,18 @@ export const myPlugin = {
           // Run the test suite
           await this.runTestSuite(testSuite);
         } catch (error) {
-          safeLogger.error(`Error running tests from ${testFile}:`, error);
+          safeLogger.error(
+            `Error running tests from ${testFile}:`,
+            error instanceof Error ? error.message : String(error)
+          );
           this.stats.failed++;
         }
       }
     } catch (error) {
-      safeLogger.error(`Error running e2e tests:`, error);
+      safeLogger.error(
+        `Error running e2e tests:`,
+        error instanceof Error ? error.message : String(error)
+      );
     }
   }
 

@@ -1,0 +1,20 @@
+name: 'Trajectory Logging Demo'
+description: 'Demonstrates the agent trajectory logging feature from ticket #5785'
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+environment:
+  type: 'local'
+run:
+  - name: 'Simple greeting with trajectory'
+    input: 'Hello! Please say hi back to me.'
+    evaluations:
+      - type: 'string_contains'
+        value: 'hello'
+        case_sensitive: false
+judgment:
+  strategy: 'all_pass'

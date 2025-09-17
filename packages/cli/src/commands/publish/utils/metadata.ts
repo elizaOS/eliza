@@ -15,7 +15,7 @@ export async function generatePackageMetadata(
     type: packageJson.type || 'plugin', // plugin or project
     platform: packageJson.platform || 'universal', // node, browser, or universal
     runtimeVersion: cliVersion, // Compatible CLI/runtime version
-    repository: packageJson.repository?.url || '',
+    ...(packageJson.repository?.url && { repository: packageJson.repository.url }), // Only include if present
     maintainers: packageJson.maintainers || [username],
     publishedAt: new Date().toISOString(),
     publishedBy: username,

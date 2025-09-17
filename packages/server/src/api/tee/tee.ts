@@ -25,7 +25,7 @@
 //       const attestation = await teeLogService.generateAttestation(JSON.stringify(allAgents));
 //       res.json({ agents: allAgents, attestation: attestation });
 //     } catch (error) {
-//       logger.error('Failed to get TEE agents:', error);
+//       logger.error('Failed to get TEE agents:', error instanceof Error ? error.message : String(error));
 //       res.status(500).json({
 //         error: 'Failed to get TEE agents',
 //       });
@@ -48,7 +48,7 @@
 //       const attestation = await teeLogService.generateAttestation(JSON.stringify(teeAgent));
 //       res.json({ agent: teeAgent, attestation: attestation });
 //     } catch (error) {
-//       logger.error('Failed to get TEE agent:', error);
+//       logger.error('Failed to get TEE agent:', error instanceof Error ? error.message : String(error));
 //       res.status(500).json({
 //         error: 'Failed to get TEE agent',
 //       });
@@ -80,7 +80,7 @@
 //         attestation: attestation,
 //       });
 //     } catch (error) {
-//       logger.error('Failed to get TEE logs:', error);
+//       logger.error('Failed to get TEE logs:', error instanceof Error ? error.message : String(error));
 //       res.status(500).json({
 //         error: 'Failed to get TEE logs',
 //       });

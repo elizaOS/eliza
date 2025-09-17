@@ -1,5 +1,8 @@
+// @ts-ignore
 import crypto from 'crypto-browserify';
 import { createUniqueUuid } from './entities';
+import { getEnv } from './utils/environment';
+import { BufferUtils } from './utils/buffer';
 import { logger } from './logger';
 import type {
   Character,
@@ -10,11 +13,6 @@ import type {
   WorldSettings,
 } from './types';
 
-/**
- * Creates a new Setting object based on provided config settings.
- * @param {Omit<Setting, "value">} configSetting - The configuration settings for the new Setting object.
- * @returns {Setting} - The newly created Setting object.
- */
 /**
  * Creates a Setting object from a configSetting object by omitting the 'value' property.
  *
@@ -28,34 +26,63 @@ export function createSettingFromConfig(configSetting: Omit<Setting, 'value'>): 
     usageDescription: configSetting.usageDescription || '',
     value: null,
     required: configSetting.required,
-    validation: configSetting.validation || null,
+    validation: configSetting.validation || undefined,
     public: configSetting.public || false,
     secret: configSetting.secret || false,
     dependsOn: configSetting.dependsOn || [],
-    onSetAction: configSetting.onSetAction || null,
-    visibleIf: configSetting.visibleIf || null,
+    onSetAction: configSetting.onSetAction || undefined,
+    visibleIf: configSetting.visibleIf || undefined,
   };
 }
 
+// Cache for salt value with TTL
+interface SaltCache {
+  value: string;
+  timestamp: number;
+}
+
+let saltCache: SaltCache | null = null;
+let saltErrorLogged = false;
+const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+
 /**
- * Retrieves the salt based on env variable SECRET_SALT
+ * Gets the salt for the agent.
  *
  * @returns {string} The salt for the agent.
  */
 export function getSalt(): string {
-  const secretSalt =
-    (typeof process !== 'undefined'
-      ? process.env.SECRET_SALT
-      : (import.meta as any).env.SECRET_SALT) || 'secretsalt';
+  // Always read current env first to detect changes
+  const currentEnvSalt = getEnv('SECRET_SALT', 'secretsalt') || 'secretsalt';
+  const now = Date.now();
 
-  if (!secretSalt) {
-    logger.error('SECRET_SALT is not set');
+  // Return cached value only if still valid AND matches current env
+  if (saltCache !== null) {
+    const cacheFresh = now - saltCache.timestamp < SALT_CACHE_TTL_MS;
+    if (cacheFresh && saltCache.value === currentEnvSalt) {
+      return saltCache.value;
+    }
   }
 
-  const salt = secretSalt;
+  if (currentEnvSalt === 'secretsalt' && !saltErrorLogged) {
+    logger.warn('SECRET_SALT is not set or using default value');
+    saltErrorLogged = true;
+  }
 
-  logger.debug(`Generated salt with length: ${salt.length} (truncated for security)`);
-  return salt;
+  // Update cache with latest env-derived salt
+  saltCache = {
+    value: currentEnvSalt,
+    timestamp: now,
+  };
+
+  return currentEnvSalt;
+}
+
+/**
+ * Clears the salt cache - useful for tests or when environment changes
+ */
+export function clearSaltCache(): void {
+  saltCache = null;
+  saltErrorLogged = false;
 }
 
 /**
@@ -86,7 +113,7 @@ export function encryptStringValue(value: string, salt: string): string {
   if (parts.length === 2) {
     try {
       // Try to parse the first part as hex to see if it's already encrypted
-      const possibleIv = Buffer.from(parts[0], 'hex');
+      const possibleIv = BufferUtils.fromHex(parts[0]);
       if (possibleIv.length === 16) {
         // Value is likely already encrypted, return as is
         logger.debug('Value appears to be already encrypted, skipping re-encryption');
@@ -99,7 +126,7 @@ export function encryptStringValue(value: string, salt: string): string {
 
   // Create key and iv from the salt
   const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
-  const iv = crypto.randomBytes(16);
+  const iv = BufferUtils.randomBytes(16);
 
   // Encrypt the value
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
@@ -107,7 +134,7 @@ export function encryptStringValue(value: string, salt: string): string {
   encrypted += cipher.final('hex');
 
   // Store IV with the encrypted value so we can decrypt it later
-  return `${iv.toString('hex')}:${encrypted}`;
+  return `${BufferUtils.toHex(iv)}:${encrypted}`;
 }
 
 /**
@@ -144,7 +171,7 @@ export function decryptStringValue(value: string, salt: string): string {
       return value; // Return the original value without decryption
     }
 
-    const iv = Buffer.from(parts[0], 'hex');
+    const iv = BufferUtils.fromHex(parts[0]);
     const encrypted = parts[1];
 
     // Verify IV length

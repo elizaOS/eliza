@@ -22,17 +22,19 @@ export function createAgentPanelsRouter(agents: Map<UUID, IAgentRuntime>): expre
     }
 
     try {
-      const publicPanels = runtime.plugins
-        .flatMap((plugin) => plugin.routes || [])
+      const publicPanels = runtime.routes
         .filter((route) => route.public === true && route.type === 'GET' && route.name)
         .map((route) => ({
           name: route.name,
-          path: `/api${route.path.startsWith('/') ? route.path : `/${route.path}`}?agentId=${agentId}`,
+          path: `/api/agents/${agentId}/plugins${route.path.startsWith('/') ? route.path : `/${route.path}`}?agentId=${agentId}`,
         }));
 
       sendSuccess(res, publicPanels);
     } catch (error) {
-      logger.error(`[AGENT PANELS] Error retrieving panels for agent ${agentId}:`, error);
+      logger.error(
+        `[AGENT PANELS] Error retrieving panels for agent ${agentId}:`,
+        error instanceof Error ? error.message : String(error)
+      );
       sendError(
         res,
         500,

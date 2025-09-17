@@ -98,6 +98,8 @@ export const actionStateProvider: Provider = {
         .join('\n\n');
 
       resultsText = addHeader('# Previous Action Results', formattedResults);
+    } else {
+      resultsText = 'No previous action results available.';
     }
 
     // Format working memory
@@ -132,7 +134,7 @@ export const actionStateProvider: Provider = {
         (msg) => msg.content?.type === 'action_result' && msg.metadata?.type === 'action_result'
       );
     } catch (error) {
-      logger?.error('Failed to retrieve action memories:', error);
+      logger?.error({ error }, 'Failed to retrieve action memories:');
     }
 
     // Format recent action memories
@@ -200,6 +202,7 @@ export const actionStateProvider: Provider = {
         hasActionPlan: !!actionPlan,
         currentActionStep: actionPlan?.currentStep || 0,
         totalActionSteps: actionPlan?.totalSteps || 0,
+        actionResults: resultsText,
         completedActions: actionResults.filter((r: any) => r.success).length,
         failedActions: actionResults.filter((r: any) => !r.success).length,
       },

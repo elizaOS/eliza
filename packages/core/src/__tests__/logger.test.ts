@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, beforeEach, afterEach, spyOn } from 'bun:test';
 import { mock } from 'bun:test';
 import { createLogger, logger, elizaLogger } from '../logger';
 
@@ -11,12 +11,7 @@ const mockEnv = {
   LOG_DIAGNOSTIC: '',
 };
 
-// Mock pino-pretty
-mock.module('pino-pretty', () => ({
-  default: mock(() => ({
-    write: mock(),
-  })),
-}));
+// No external logger transport to mock; Adze is used internally
 
 describe('Logger', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -121,6 +116,8 @@ describe('Logger', () => {
       const customLogger = createLogger();
 
       expect(customLogger).toBeDefined();
+      // The actual JSON output is verified in integration tests
+      // since Adze's output mechanism is not easily mockable in unit tests
     });
 
     it('should use pretty format when LOG_JSON_FORMAT is false', () => {
@@ -128,6 +125,20 @@ describe('Logger', () => {
       const customLogger = createLogger();
 
       expect(customLogger).toBeDefined();
+    });
+
+    it('should enable JSON format without throwing required fields error', () => {
+      process.env.LOG_JSON_FORMAT = 'true';
+
+      // This test verifies the main bug fix - that JSON format works without
+      // "Required fields are missing" error. Detailed JSON format tests are
+      // in logger-browser-node.test.ts for cross-environment coverage.
+      expect(() => {
+        const customLogger = createLogger();
+        customLogger.info('Test message');
+      }).not.toThrow();
+
+      delete process.env.LOG_JSON_FORMAT;
     });
   });
 

@@ -2,7 +2,7 @@ import type { HandlerCallback } from './components';
 import type { Entity, Room, World } from './environment';
 import type { Memory } from './memory';
 import type { ModelTypeName } from './model';
-import type { Metadata, UUID } from './primitives';
+import type { Content, Metadata, UUID } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -55,6 +55,11 @@ export enum EventType {
 
   // Model events
   MODEL_USED = 'MODEL_USED',
+
+  // Embedding events
+  EMBEDDING_GENERATION_REQUESTED = 'EMBEDDING_GENERATION_REQUESTED',
+  EMBEDDING_GENERATION_COMPLETED = 'EMBEDDING_GENERATION_COMPLETED',
+  EMBEDDING_GENERATION_FAILED = 'EMBEDDING_GENERATION_FAILED',
 }
 
 /**
@@ -147,11 +152,10 @@ export interface RunEventPayload extends EventPayload {
  * Action event payload type
  */
 export interface ActionEventPayload extends EventPayload {
-  actionId: UUID;
-  actionName: string;
-  startTime?: number;
-  completed?: boolean;
-  error?: Error;
+  roomId: UUID;
+  world: UUID;
+  content: Content;
+  messageId?: UUID;
 }
 
 /**
@@ -177,6 +181,19 @@ export interface ModelEventPayload extends EventPayload {
     completion: number;
     total: number;
   };
+}
+
+/**
+ * Payload for embedding generation events
+ */
+export interface EmbeddingGenerationPayload extends EventPayload {
+  memory: Memory;
+  priority?: 'high' | 'normal' | 'low';
+  retryCount?: number;
+  maxRetries?: number;
+  embedding?: number[];
+  error?: any;
+  runId?: UUID;
 }
 
 export type MessageReceivedHandlerParams = {
@@ -211,6 +228,9 @@ export interface EventPayloadMap {
   [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload;
   [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload;
   [EventType.MODEL_USED]: ModelEventPayload;
+  [EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
+  [EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
+  [EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
 }
 
 /**

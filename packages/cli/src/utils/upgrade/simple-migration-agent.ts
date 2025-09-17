@@ -35,7 +35,6 @@ export class SimpleMigrationAgent extends EventTarget {
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
   private totalCost = 0;
-  private lastTokenUpdate = Date.now();
   private lastCostSummary = Date.now();
 
   constructor(repoPath: string, options: { verbose?: boolean } = {}) {
@@ -51,7 +50,7 @@ export class SimpleMigrationAgent extends EventTarget {
         logger.info('Migration guide loader initialized successfully');
       }
     } catch (error) {
-      logger.warn('Failed to initialize migration guide loader', error);
+      logger.warn({ error }, 'Failed to initialize migration guide loader');
       throw new Error('Cannot initialize migration system without guide access');
     }
   }
@@ -258,8 +257,6 @@ export class SimpleMigrationAgent extends EventTarget {
     if (usage.output_tokens) {
       this.totalCost += (usage.output_tokens / 1000) * outputCostPer1k;
     }
-
-    this.lastTokenUpdate = Date.now();
   }
 
   private formatTokenDisplay(): string {
@@ -421,7 +418,6 @@ ABSOLUTE REQUIREMENT: The migration is NOT complete until bun run test shows zer
       try {
         queryGenerator = query({
           prompt: migrationPrompt,
-          abortController: this.abortController,
           options: {
             cwd: this.repoPath,
             model: 'opus',
@@ -587,7 +583,8 @@ ABSOLUTE REQUIREMENT: The migration is NOT complete until bun run test shows zer
 
         // Update token and cost tracking from message metadata
         if (message.type === 'assistant' && 'usage' in message) {
-          this.updateTokenTracking(message.usage);
+          const usage = message.usage as { input_tokens?: number; output_tokens?: number };
+          this.updateTokenTracking(usage);
 
           // Show periodic cost summaries during long operations (every 30 seconds)
           const timeSinceCostSummary = now - this.lastCostSummary;

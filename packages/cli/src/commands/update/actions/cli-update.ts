@@ -1,8 +1,9 @@
-import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
-import { logger } from '@elizaos/core';
 import { bunExecInherit } from '@/src/utils/bun-exec';
+import { isCliInstalledViaNpm, migrateCliToBun } from '@/src/utils/cli-bun-migration';
+import { checkLatestCliVersionForChannel } from '@/src/utils/version-channel';
+import { logger } from '@elizaos/core';
 import { GlobalUpdateOptions } from '../types';
-import { checkVersionNeedsUpdate, fetchLatestVersion, getVersion } from '../utils/version-utils';
+import { checkVersionNeedsUpdate, getVersion } from '../utils/version-utils';
 
 /**
  * Update CLI to latest version
@@ -16,11 +17,21 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
 
     let latestVersion: string;
     if (targetVersion === 'latest') {
-      const fetchedVersion = await fetchLatestVersion('@elizaos/cli');
-      if (!fetchedVersion) {
-        throw new Error('Unable to fetch latest CLI version');
+      // Use channel-aware version checking with explicit outcome handling
+      const outcome = await checkLatestCliVersionForChannel(currentVersion);
+      if (outcome.status === 'error') {
+        console.warn('Could not check for CLI updates.');
+        if (outcome.message) {
+          logger.debug({ error: outcome.message }, 'CLI version check error');
+        }
+        // Do not claim success; indicate CLI update not performed
+        return false;
       }
-      latestVersion = fetchedVersion;
+      if (outcome.status === 'up_to_date') {
+        console.log(`CLI is already at the latest version (${currentVersion}) [✓]`);
+        return true;
+      }
+      latestVersion = outcome.version;
     } else {
       latestVersion = targetVersion;
     }
@@ -72,7 +83,10 @@ export async function performCliUpdate(options: GlobalUpdateOptions = {}): Promi
       console.error('  curl -fsSL https://bun.sh/install | bash');
       console.error('  # or');
       console.error('  npm install -g bun');
-      logger.debug('Bun error:', bunError instanceof Error ? bunError.message : String(bunError));
+      logger.debug(
+        { error: bunError instanceof Error ? bunError.message : String(bunError) },
+        'Bun error:'
+      );
       return false;
     }
   } catch (error) {

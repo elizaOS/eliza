@@ -1,42 +1,53 @@
 {
   "name": "@elizaos/core",
-  "version": "1.3.1",
+  "version": "1.5.9-beta.1",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
-  "bun": "./dist/index.js",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "bun": "./dist/index.js",
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
     },
-    "./v1": {
-      "import": {
-        "types": "./dist/specs/v1/index.d.ts",
-        "default": "./dist/specs/v1/index.js"
-      }
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
     },
-    "./v2": {
-      "import": {
-        "types": "./dist/specs/v2/index.d.ts",
-        "default": "./dist/specs/v2/index.js"
-      }
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
-    "watch": "tsc --watch",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "dev": "tsup --watch",
+    "build": "bun run build.ts",
+    "build:node": "bun run build.ts --target node",
+    "build:browser": "bun run build.ts --target browser",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "build:docs": "cd docs && bun run build",
     "test": "bun test --coverage",
     "test:coverage": "bun test --coverage",
@@ -48,26 +59,20 @@
   "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
+    "@types/bun": "^1.2.21",
     "@types/node": "^24.0.3",
     "@types/uuid": "10.0.0",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "typescript": "5.8.3"
   },
   "dependencies": {
-    "@sentry/browser": "^9.22.0",
-    "buffer": "^6.0.3",
-    "crypto-browserify": "^3.12.1",
+    "adze": "^2.2.5",
+    "crypto-browserify": "^3.12.0",
     "dotenv": "16.5.0",
-    "events": "^3.3.0",
     "glob": "11.0.3",
     "handlebars": "^4.7.8",
-    "js-sha1": "0.7.0",
     "langchain": "^0.3.15",
     "pdfjs-dist": "^5.2.133",
-    "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
-    "stream-browserify": "^3.0.0",
     "unique-names-generator": "4.7.1",
     "uuid": "11.1.0",
     "zod": "^3.24.4"
@@ -75,5 +80,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "48d0b08182b5fd5b17dd58198b1fee15b0815775"
+  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f"
 }

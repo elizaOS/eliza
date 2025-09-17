@@ -1,11 +1,10 @@
-import handlebars from 'handlebars';
-import { sha1 } from 'js-sha1';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-
+import Handlebars from 'handlebars';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
 
 import logger from './logger';
+import { getEnv } from './utils/environment';
 import type { Content, Entity, IAgentRuntime, Memory, State, TemplateType } from './types';
 import { ModelType, UUID, ContentType } from './types';
 
@@ -22,14 +21,14 @@ import { ModelType, UUID, ContentType } from './types';
  * @param  tpl  Handlebars template source
  * @return      Transformed template
  */
-function upgradeDoubleToTriple(tpl) {
+function upgradeDoubleToTriple(tpl: string) {
   return tpl.replace(
     // ────────╮ negative-LB: not already "{{{"
     //          │   {{     ─ opening braces
     //          │    ╰──── negative-LA: not {, #, /, !, >
     //          ▼
     /(?<!{){{(?![{#\/!>])([\s\S]*?)}}/g,
-    (_match, inner) => {
+    (_match: string, inner: string) => {
       // keep the block keyword {{else}} unchanged
       if (inner.trim() === 'else') return `{{${inner}}}`;
       return `{{{${inner}}}}`;
@@ -85,7 +84,7 @@ export const composePrompt = ({
   template: TemplateType;
 }) => {
   const templateStr = typeof template === 'function' ? template({ state }) : template;
-  const templateFunction = handlebars.compile(upgradeDoubleToTriple(templateStr));
+  const templateFunction = Handlebars.compile(upgradeDoubleToTriple(templateStr));
   const output = composeRandomUser(templateFunction(state), 10);
   return output;
 };
@@ -106,14 +105,14 @@ export const composePromptFromState = ({
   template: TemplateType;
 }) => {
   const templateStr = typeof template === 'function' ? template({ state }) : template;
-  const templateFunction = handlebars.compile(upgradeDoubleToTriple(templateStr));
+  const templateFunction = Handlebars.compile(upgradeDoubleToTriple(templateStr));
 
   // get any keys that are in state but are not named text, values or data
   const stateKeys = Object.keys(state);
   const filteredKeys = stateKeys.filter((key) => !['text', 'values', 'data'].includes(key));
 
   // this flattens out key/values in text/values/data
-  const filteredState = filteredKeys.reduce((acc, key) => {
+  const filteredState = filteredKeys.reduce((acc: Record<string, any>, key) => {
     acc[key] = state[key];
     return acc;
   }, {});
@@ -200,13 +199,14 @@ export const formatPosts = ({
 
   // Sort messages within each roomId by createdAt (oldest to newest)
   Object.values(groupedMessages).forEach((roomMessages) => {
-    roomMessages.sort((a, b) => a.createdAt - b.createdAt);
+    roomMessages.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   });
 
   // Sort rooms by the newest message's createdAt
   const sortedRooms = Object.entries(groupedMessages).sort(
     ([, messagesA], [, messagesB]) =>
-      messagesB[messagesB.length - 1].createdAt - messagesA[messagesA.length - 1].createdAt
+      (messagesB[messagesB.length - 1]?.createdAt || 0) -
+      (messagesA[messagesA.length - 1]?.createdAt || 0)
   );
 
   const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
@@ -215,7 +215,7 @@ export const formatPosts = ({
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
         if (!entity) {
-          logger.warn('core::prompts:formatPosts - no entity for', message.entityId);
+          logger.warn({ entityId: message.entityId }, 'core::prompts:formatPosts - no entity for');
         }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
@@ -224,7 +224,7 @@ export const formatPosts = ({
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ''}
 Source: ${message.content.source}
-Date: ${formatTimestamp(message.createdAt)}
+Date: ${formatTimestamp(message.createdAt || 0)}
 Text:
 ${message.content.text}`;
       });
@@ -279,12 +279,12 @@ export const formatMessages = ({
               )})`
           : null;
 
-      const messageTime = new Date(message.createdAt);
+      const messageTime = new Date(message.createdAt || 0);
       const hours = messageTime.getHours().toString().padStart(2, '0');
       const minutes = messageTime.getMinutes().toString().padStart(2, '0');
       const timeString = `${hours}:${minutes}`;
 
-      const timestamp = formatTimestamp(message.createdAt);
+      const timestamp = formatTimestamp(message.createdAt || 0);
 
       // const shortId = message.entityId.slice(-5);
 
@@ -359,29 +359,184 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     xmlContent = xmlBlockMatch[1];
     logger.debug('Found response XML block');
   } else {
-    // Fall back to finding any XML block (e.g., <response>...</response>)
-    const fallbackMatch = text.match(/<(\w+)>([\s\S]*?)<\/\1>/);
-    if (!fallbackMatch) {
+    // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
+    // This avoids potentially expensive backtracking on crafted inputs
+    const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
+      let i = 0;
+      const length = input.length;
+      while (i < length) {
+        const openIdx = input.indexOf('<', i);
+        if (openIdx === -1) break;
+        // Skip closing tags and comments/decls
+        if (
+          input.startsWith('</', openIdx) ||
+          input.startsWith('<!--', openIdx) ||
+          input.startsWith('<?', openIdx)
+        ) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Extract tag name [letters, digits, dash, underscore]
+        let j = openIdx + 1;
+        let tag = '';
+        while (j < length) {
+          const ch = input[j];
+          if (/^[A-Za-z0-9_-]$/.test(ch)) {
+            tag += ch;
+            j++;
+            continue;
+          }
+          break;
+        }
+        if (!tag) {
+          i = openIdx + 1;
+          continue;
+        }
+        // Find end of start tag '>' (skip attributes if present)
+        const startTagEnd = input.indexOf('>', j);
+        if (startTagEnd === -1) break;
+        // Self-closing tag? tolerate whitespace before '/>'
+        const startTagText = input.slice(openIdx, startTagEnd + 1);
+        if (/\/\s*>$/.test(startTagText)) {
+          i = startTagEnd + 1;
+          continue;
+        }
+        const closeSeq = `</${tag}>`;
+        // Implement nested tag counting for same-named tags
+        let depth = 1;
+        let searchStart = startTagEnd + 1;
+        while (depth > 0 && searchStart < length) {
+          const nextOpen = input.indexOf(`<${tag}`, searchStart);
+          const nextClose = input.indexOf(closeSeq, searchStart);
+          if (nextClose === -1) {
+            break;
+          }
+          if (nextOpen !== -1 && nextOpen < nextClose) {
+            // Determine if the next open is self-closing; if so, do not increase depth
+            const nestedStartEnd = input.indexOf('>', nextOpen + 1);
+            if (nestedStartEnd === -1) {
+              break;
+            }
+            const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
+            if (/\/\s*>$/.test(nestedStartText)) {
+              // self-closing; skip without changing depth
+              searchStart = nestedStartEnd + 1;
+            } else {
+              depth++;
+              searchStart = nestedStartEnd + 1;
+            }
+          } else {
+            depth--;
+            searchStart = nextClose + closeSeq.length;
+          }
+        }
+        if (depth === 0) {
+          const closeIdx = searchStart - closeSeq.length;
+          const inner = input.slice(startTagEnd + 1, closeIdx);
+          return { tag, content: inner };
+        }
+        i = startTagEnd + 1;
+      }
+      return null;
+    };
+
+    const fb = findFirstXmlBlock(text);
+    if (!fb) {
       logger.warn('Could not find XML block in text');
-      logger.debug('Text content:', text.substring(0, 200) + '...');
+      logger.debug({ textPreview: text.substring(0, 200) + '...' }, 'Text content');
       return null;
     }
-    xmlContent = fallbackMatch[2];
-    logger.debug(`Found XML block with tag: ${fallbackMatch[1]}`);
+    xmlContent = fb.content;
+    logger.debug(`Found XML block with tag: ${fb.tag}`);
   }
 
   const result: Record<string, any> = {};
 
-  // Regex to find <key>value</key> patterns
-  const tagPattern = /<([\w-]+)>([\s\S]*?)<\/([\w-]+)>/g;
-  let match;
+  // Safer linear scan to extract direct child <key>value</key> elements
+  // Avoids potentially expensive backtracking from broad regexes
+  const extractDirectChildren = (input: string): Array<{ key: string; value: string }> => {
+    const pairs: Array<{ key: string; value: string }> = [];
+    const length = input.length;
+    let i = 0;
 
-  while ((match = tagPattern.exec(xmlContent)) !== null) {
-    // Ensure opening and closing tags match
-    if (match[1] === match[3]) {
-      const key = match[1];
+    while (i < length) {
+      const openIdx = input.indexOf('<', i);
+      if (openIdx === -1) break;
+
+      // Skip closing tags and comments/decls
+      if (
+        input.startsWith('</', openIdx) ||
+        input.startsWith('<!--', openIdx) ||
+        input.startsWith('<?', openIdx)
+      ) {
+        i = openIdx + 1;
+        continue;
+      }
+
+      // Extract tag name [letters, digits, dash, underscore]
+      let j = openIdx + 1;
+      let tag = '';
+      while (j < length) {
+        const ch = input[j];
+        if (/^[A-Za-z0-9_-]$/.test(ch)) {
+          tag += ch;
+          j++;
+          continue;
+        }
+        break;
+      }
+      if (!tag) {
+        i = openIdx + 1;
+        continue;
+      }
+
+      // Find end of start tag '>' (skip attributes if present)
+      const startTagEnd = input.indexOf('>', j);
+      if (startTagEnd === -1) break;
+
+      // Self-closing tag? tolerate whitespace before '/>'
+      const startTagText = input.slice(openIdx, startTagEnd + 1);
+      if (/\/\s*>$/.test(startTagText)) {
+        i = startTagEnd + 1;
+        continue;
+      }
+
+      // Find the matching close tag, handling nested tags with the same name
+      const closeSeq = `</${tag}>`;
+      let depth = 1;
+      let searchStart = startTagEnd + 1;
+      while (depth > 0 && searchStart < length) {
+        const nextOpen = input.indexOf(`<${tag}`, searchStart);
+        const nextClose = input.indexOf(closeSeq, searchStart);
+        if (nextClose === -1) {
+          break;
+        }
+        if (nextOpen !== -1 && nextOpen < nextClose) {
+          const nestedStartEnd = input.indexOf('>', nextOpen + 1);
+          if (nestedStartEnd === -1) {
+            break;
+          }
+          const nestedStartText = input.slice(nextOpen, nestedStartEnd + 1);
+          if (!/\/\s*>$/.test(nestedStartText)) {
+            depth++;
+          }
+          searchStart = nestedStartEnd + 1;
+        } else {
+          depth--;
+          searchStart = nextClose + closeSeq.length;
+        }
+      }
+      if (depth !== 0) {
+        // Unbalanced tag, advance to avoid infinite loops
+        i = startTagEnd + 1;
+        continue;
+      }
+
+      const closeIdx = searchStart - closeSeq.length;
+      const innerRaw = input.slice(startTagEnd + 1, closeIdx);
+
       // Basic unescaping for common XML entities (add more as needed)
-      const value = match[2]
+      const unescaped = innerRaw
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&')
@@ -389,24 +544,29 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
         .replace(/&apos;/g, "'")
         .trim();
 
-      // Handle potential comma-separated lists for specific keys
-      if (key === 'actions' || key === 'providers' || key === 'evaluators') {
-        result[key] = value ? value.split(',').map((s) => s.trim()) : [];
-      } else if (key === 'simple') {
-        result[key] = value.toLowerCase() === 'true';
-      } else {
-        result[key] = value;
-      }
+      pairs.push({ key: tag, value: unescaped });
+      // Move cursor past this element to avoid processing nested children as direct siblings
+      i = searchStart;
+    }
+
+    return pairs;
+  };
+
+  const children = extractDirectChildren(xmlContent);
+  for (const { key, value } of children) {
+    if (key === 'actions' || key === 'providers' || key === 'evaluators') {
+      result[key] = value ? value.split(',').map((s) => s.trim()) : [];
+    } else if (key === 'simple') {
+      result[key] = value.toLowerCase() === 'true';
     } else {
-      logger.warn(`Mismatched XML tags found: <${match[1]}> and </${match[3]}>`);
-      // Potentially skip this mismatched pair or return null depending on strictness needed
+      result[key] = value;
     }
   }
 
   // Return null if no key-value pairs were found
   if (Object.keys(result).length === 0) {
     logger.warn('No key-value pairs extracted from XML content');
-    logger.debug('XML content was:', xmlContent.substring(0, 200) + '...');
+    logger.debug({ xmlPreview: xmlContent.substring(0, 200) + '...' }, 'XML content was');
     return null;
   }
 
@@ -533,10 +693,13 @@ export async function splitChunks(content: string, chunkSize = 512, bleed = 20):
   });
 
   const chunks = await textSplitter.splitText(content);
-  logger.debug('[splitChunks] Split complete:', {
-    numberOfChunks: chunks.length,
-    averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
-  });
+  logger.debug(
+    {
+      numberOfChunks: chunks.length,
+      averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
+    },
+    '[splitChunks] Split complete'
+  );
 
   return chunks;
 }
@@ -642,34 +805,259 @@ export function stringToUuid(target: string | number): UUID {
     throw TypeError('Value must be string');
   }
 
-  const _uint8ToHex = (ubyte: number): string => {
-    const first = ubyte >> 4;
-    const second = ubyte - (first << 4);
-    const HEX_DIGITS = '0123456789abcdef'.split('');
-    return HEX_DIGITS[first] + HEX_DIGITS[second];
-  };
-
-  const _uint8ArrayToHex = (buf: Uint8Array): string => {
-    let out = '';
-    for (let i = 0; i < buf.length; i++) {
-      out += _uint8ToHex(buf[i]);
-    }
-    return out;
-  };
+  // If already a UUID, return as-is to avoid re-hashing
+  const maybeUuid = validateUuid(target);
+  if (maybeUuid) return maybeUuid;
 
   const escapedStr = encodeURIComponent(target);
-  const buffer = new Uint8Array(escapedStr.length);
-  for (let i = 0; i < escapedStr.length; i++) {
-    buffer[i] = escapedStr[i].charCodeAt(0);
+
+  // Deterministic UUID derived from SHA-1(escapedStr)
+  // Use WebCrypto if available (sync via cache), otherwise pure JS
+  const digest = getCachedSha1(escapedStr); // 20 bytes
+  const bytes = digest.slice(0, 16);
+
+  // Set RFC4122 variant bits: 10xxxxxx
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  // Set custom version nibble to 0x0 to indicate legacy/custom (matches prior tests expecting '0')
+  bytes[6] = (bytes[6] & 0x0f) | 0x00;
+
+  return bytesToUuid(bytes) as UUID;
+}
+
+/**
+ * Pre-warm the SHA-1 cache with common values using WebCrypto
+ * Call this during initialization to improve performance
+ */
+export async function prewarmUuidCache(values: string[]): Promise<void> {
+  if (!checkWebCrypto()) return;
+
+  const promises = values.map(async (value) => {
+    const escapedStr = encodeURIComponent(value);
+    const digest = await sha1BytesAsync(escapedStr);
+    sha1Cache.set(escapedStr, digest);
+  });
+
+  await Promise.all(promises);
+}
+
+// Cache for SHA-1 digests to enable synchronous WebCrypto usage
+const sha1Cache = new Map<string, Uint8Array>();
+let webCryptoAvailable: boolean | null = null;
+
+/**
+ * Check if WebCrypto is available for SHA-1
+ */
+function checkWebCrypto(): boolean {
+  if (webCryptoAvailable !== null) return webCryptoAvailable;
+
+  try {
+    // Check for crypto.subtle (WebCrypto API)
+    if (
+      typeof globalThis !== 'undefined' &&
+      globalThis.crypto &&
+      globalThis.crypto.subtle &&
+      typeof globalThis.crypto.subtle.digest === 'function'
+    ) {
+      webCryptoAvailable = true;
+      return true;
+    }
+  } catch {
+    // Ignore errors
   }
 
-  const hash = sha1(buffer);
-  const hashBuffer = new Uint8Array(hash.length / 2);
-  for (let i = 0; i < hash.length; i += 2) {
-    hashBuffer[i / 2] = Number.parseInt(hash.slice(i, i + 2), 16);
+  webCryptoAvailable = false;
+  return false;
+}
+
+/**
+ * Get SHA-1 digest using cache for synchronous operation
+ * Uses WebCrypto when available (via background pre-computation), falls back to pure JS
+ */
+function getCachedSha1(message: string): Uint8Array {
+  // Check cache first
+  const cached = sha1Cache.get(message);
+  if (cached) return cached;
+
+  // Use synchronous pure JS implementation for immediate result
+  const digest = sha1Bytes(message);
+  sha1Cache.set(message, digest);
+
+  // Asynchronously compute with WebCrypto for next time (if available)
+  if (checkWebCrypto()) {
+    sha1BytesAsync(message)
+      .then((webDigest) => {
+        // Update cache with WebCrypto result (should be identical)
+        sha1Cache.set(message, webDigest);
+      })
+      .catch(() => {
+        // Ignore errors, we already have the pure JS result
+      });
   }
 
-  return `${_uint8ArrayToHex(hashBuffer.slice(0, 4))}-${_uint8ArrayToHex(hashBuffer.slice(4, 6))}-${_uint8ToHex(hashBuffer[6] & 0x0f)}${_uint8ToHex(hashBuffer[7])}-${_uint8ToHex((hashBuffer[8] & 0x3f) | 0x80)}${_uint8ToHex(hashBuffer[9])}-${_uint8ArrayToHex(hashBuffer.slice(10, 16))}` as UUID;
+  // Limit cache size to prevent memory leaks
+  if (sha1Cache.size > 10000) {
+    // Remove oldest entries (first ones in iteration order)
+    const keysToDelete = Array.from(sha1Cache.keys()).slice(0, 5000);
+    keysToDelete.forEach((key) => sha1Cache.delete(key));
+  }
+
+  return digest;
+}
+
+/**
+ * Async SHA-1 using WebCrypto when available
+ * This can be used to pre-warm the cache
+ */
+async function sha1BytesAsync(message: string): Promise<Uint8Array> {
+  if (checkWebCrypto()) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(message);
+      const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', data);
+      return new Uint8Array(hashBuffer);
+    } catch {
+      // Fall through to pure JS
+    }
+  }
+
+  // Fallback to pure JS implementation
+  return sha1Bytes(message);
+}
+
+/**
+ * Minimal SHA-1 implementation returning raw bytes.
+ * Source adapted from public-domain references for portability (browser/Node).
+ * Used as fallback when WebCrypto is not available.
+ */
+function sha1Bytes(message: string): Uint8Array {
+  const bytes = utf8Encode(message);
+  const ml = bytes.length;
+
+  // Pre-processing (padding)
+  const withOne = new Uint8Array(((ml + 9 + 63) >>> 6) << 6); // multiple of 64
+  withOne.set(bytes);
+  withOne[ml] = 0x80;
+  const bitLen = ml * 8;
+  // Append length as 64-bit big-endian
+  const dv = new DataView(withOne.buffer);
+  dv.setUint32(withOne.length - 4, bitLen >>> 0, false);
+  dv.setUint32(withOne.length - 8, Math.floor(bitLen / 2 ** 32) >>> 0, false);
+
+  // Initialize hash values
+  let h0 = 0x67452301;
+  let h1 = 0xefcdab89;
+  let h2 = 0x98badcfe;
+  let h3 = 0x10325476;
+  let h4 = 0xc3d2e1f0;
+
+  const w = new Uint32Array(80);
+
+  for (let i = 0; i < withOne.length; i += 64) {
+    // Break chunk into sixteen 32-bit big-endian words
+    for (let j = 0; j < 16; j++) {
+      w[j] = dv.getUint32(i + j * 4, false);
+    }
+    // Extend to 80 words
+    for (let j = 16; j < 80; j++) {
+      const t = w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16];
+      w[j] = (t << 1) | (t >>> 31);
+    }
+
+    // Initialize working vars
+    let a = h0;
+    let b = h1;
+    let c = h2;
+    let d = h3;
+    let e = h4;
+
+    for (let j = 0; j < 80; j++) {
+      let f: number;
+      let k: number;
+      if (j < 20) {
+        f = (b & c) | (~b & d);
+        k = 0x5a827999;
+      } else if (j < 40) {
+        f = b ^ c ^ d;
+        k = 0x6ed9eba1;
+      } else if (j < 60) {
+        f = (b & c) | (b & d) | (c & d);
+        k = 0x8f1bbcdc;
+      } else {
+        f = b ^ c ^ d;
+        k = 0xca62c1d6;
+      }
+      const temp = (((a << 5) | (a >>> 27)) + f + e + k + w[j]) >>> 0;
+      e = d;
+      d = c;
+      c = ((b << 30) | (b >>> 2)) >>> 0;
+      b = a;
+      a = temp;
+    }
+
+    h0 = (h0 + a) >>> 0;
+    h1 = (h1 + b) >>> 0;
+    h2 = (h2 + c) >>> 0;
+    h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0;
+  }
+
+  const out = new Uint8Array(20);
+  const outDv = new DataView(out.buffer);
+  outDv.setUint32(0, h0, false);
+  outDv.setUint32(4, h1, false);
+  outDv.setUint32(8, h2, false);
+  outDv.setUint32(12, h3, false);
+  outDv.setUint32(16, h4, false);
+  return out;
+}
+
+function utf8Encode(str: string): Uint8Array {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(str);
+  }
+  // Fallback
+  const utf8: number[] = [];
+  for (let i = 0; i < str.length; i++) {
+    let charcode = str.charCodeAt(i);
+    if (charcode < 0x80) utf8.push(charcode);
+    else if (charcode < 0x800) {
+      utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+    } else if (charcode < 0xd800 || charcode >= 0xe000) {
+      utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+    } else {
+      // surrogate pair
+      i++;
+      // UTF-16 to Unicode code point
+      const codePoint = 0x10000 + (((charcode & 0x3ff) << 10) | (str.charCodeAt(i) & 0x3ff));
+      utf8.push(
+        0xf0 | (codePoint >> 18),
+        0x80 | ((codePoint >> 12) & 0x3f),
+        0x80 | ((codePoint >> 6) & 0x3f),
+        0x80 | (codePoint & 0x3f)
+      );
+    }
+  }
+  return new Uint8Array(utf8);
+}
+
+function bytesToUuid(bytes: Uint8Array): string {
+  const hex: string[] = [];
+  for (let i = 0; i < bytes.length; i++) {
+    const h = bytes[i].toString(16).padStart(2, '0');
+    hex.push(h);
+  }
+  // Format: 8-4-4-4-12 hexadecimal digits
+  return (
+    hex.slice(0, 4).join('') +
+    '-' +
+    hex.slice(4, 6).join('') +
+    '-' +
+    hex.slice(6, 8).join('') +
+    '-' +
+    hex.slice(8, 10).join('') +
+    '-' +
+    hex.slice(10, 16).join('')
+  );
 }
 
 export const getContentTypeFromMimeType = (mimeType: string): ContentType | undefined => {
@@ -683,6 +1071,6 @@ export const getContentTypeFromMimeType = (mimeType: string): ContentType | unde
 };
 
 export function getLocalServerUrl(path: string): string {
-  const port = process.env.SERVER_PORT || '3000';
+  const port = getEnv('SERVER_PORT', '3000');
   return `http://localhost:${port}${path}`;
 }

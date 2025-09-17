@@ -1,57 +1,81 @@
-import { IAgentRuntime } from '@elizaos/core';
-import {
-  IEmailService,
-  EmailAddress,
-  EmailAttachment,
-  EmailMessage,
-  EmailSendOptions,
-  EmailSearchOptions,
-  EmailFolder,
-  EmailAccount,
-} from '@elizaos/core';
+import { IAgentRuntime, Service, ServiceType, logger } from '@elizaos/core';
+
+// Define email-specific types locally since they're not in core
+export interface EmailAddress {
+  name?: string;
+  address: string;
+}
+
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string;
+  contentType?: string;
+}
+
+export interface EmailMessage {
+  id: string;
+  from: EmailAddress;
+  to: EmailAddress[];
+  cc?: EmailAddress[];
+  bcc?: EmailAddress[];
+  subject: string;
+  body: string;
+  html?: string;
+  attachments?: EmailAttachment[];
+  date: Date;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string[];
+}
+
+export interface EmailSendOptions {
+  priority?: 'high' | 'normal' | 'low';
+  readReceipt?: boolean;
+  deliveryReceipt?: boolean;
+}
+
+export interface EmailSearchOptions {
+  from?: string;
+  to?: string;
+  subject?: string;
+  body?: string;
+  since?: Date;
+  before?: Date;
+  hasAttachments?: boolean;
+  folder?: string;
+  limit?: number;
+}
+
+export interface EmailFolder {
+  name: string;
+  path: string;
+  messageCount: number;
+  unreadCount: number;
+}
+
+export interface EmailAccount {
+  address: string;
+  name?: string;
+  provider: string;
+}
 
 /**
  * Dummy email service for testing purposes
  * Provides mock implementations of email operations
  */
-export class DummyEmailService extends IEmailService {
-  static override readonly serviceType = IEmailService.serviceType;
+export class DummyEmailService extends Service {
+  static readonly serviceType = ServiceType.EMAIL;
 
-  private mockEmails: EmailMessage[] = [];
-  private mockFolders: EmailFolder[] = [
-    {
-      name: 'Inbox',
-      path: 'INBOX',
-      type: 'inbox',
-      messageCount: 15,
-      unreadCount: 3,
-    },
-    {
-      name: 'Sent',
-      path: 'SENT',
-      type: 'sent',
-      messageCount: 8,
-      unreadCount: 0,
-    },
-    {
-      name: 'Drafts',
-      path: 'DRAFTS',
-      type: 'drafts',
-      messageCount: 2,
-      unreadCount: 0,
-    },
-    {
-      name: 'Trash',
-      path: 'TRASH',
-      type: 'trash',
-      messageCount: 5,
-      unreadCount: 0,
-    },
+  capabilityDescription = 'Dummy email service for testing';
+
+  private emails: EmailMessage[] = [];
+  private folders: EmailFolder[] = [
+    { name: 'Inbox', path: 'INBOX', messageCount: 0, unreadCount: 0 },
+    { name: 'Sent', path: 'SENT', messageCount: 0, unreadCount: 0 },
   ];
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.initializeMockEmails();
   }
 
   static async start(runtime: IAgentRuntime): Promise<DummyEmailService> {
@@ -61,239 +85,180 @@ export class DummyEmailService extends IEmailService {
   }
 
   async initialize(): Promise<void> {
-    this.runtime.logger.info('DummyEmailService initialized');
+    logger.info('DummyEmailService initialized');
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger.info('DummyEmailService stopped');
+    logger.info('DummyEmailService stopped');
   }
 
-  private initializeMockEmails(): void {
-    this.mockEmails = [
-      {
-        from: { email: 'alice@example.com', name: 'Alice Smith' },
-        to: [{ email: 'user@example.com', name: 'User' }],
-        subject: 'Project Update',
-        text: "Hi! Just wanted to update you on the project progress. We've completed the first phase and are moving to the next milestone.",
-        date: new Date('2024-01-15T10:30:00Z'),
-        messageId: 'msg-001',
-      },
-      {
-        from: { email: 'bob@company.com', name: 'Bob Johnson' },
-        to: [{ email: 'user@example.com', name: 'User' }],
-        cc: [{ email: 'team@company.com', name: 'Team' }],
-        subject: 'Meeting Tomorrow',
-        text: "Don't forget about our meeting tomorrow at 2 PM. We'll be discussing the quarterly results.",
-        date: new Date('2024-01-14T14:15:00Z'),
-        messageId: 'msg-002',
-      },
-      {
-        from: { email: 'newsletter@tech.com', name: 'Tech Newsletter' },
-        to: [{ email: 'user@example.com', name: 'User' }],
-        subject: 'Weekly Tech Update',
-        html: '<h1>This Week in Tech</h1><p>Latest technology news and updates.</p>',
-        text: 'This Week in Tech\n\nLatest technology news and updates.',
-        date: new Date('2024-01-13T09:00:00Z'),
-        messageId: 'msg-003',
-      },
-    ];
-  }
-
-  async sendEmail(message: EmailMessage, options?: EmailSendOptions): Promise<string> {
-    this.runtime.logger.debug(`Sending email to ${message.to.map((t) => t.email).join(', ')}`);
-    this.runtime.logger.debug(`Subject: ${message.subject}`);
-
-    if (options) {
-      this.runtime.logger.debug('Send options:', options);
+  async sendEmail(
+    to: EmailAddress[],
+    subject: string,
+    body: string,
+    options?: {
+      cc?: EmailAddress[];
+      bcc?: EmailAddress[];
+      html?: string;
+      attachments?: EmailAttachment[];
+      sendOptions?: EmailSendOptions;
     }
+  ): Promise<string> {
+    logger.debug('Sending email', JSON.stringify({ to, subject }));
+    logger.debug('Email options:', JSON.stringify(options));
 
-    // Generate a mock message ID
-    const messageId = `mock-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const messageId = `dummy-${Date.now()}@example.com`;
 
-    // Add to mock emails
-    this.mockEmails.push({
-      ...message,
-      messageId,
+    logger.info(`Email sent successfully. Message ID: ${messageId}`);
+
+    // Create and store the sent email
+    const sentEmail: EmailMessage = {
+      id: messageId,
+      from: { address: 'dummy@example.com', name: 'Dummy Sender' },
+      to,
+      cc: options?.cc,
+      bcc: options?.bcc,
+      subject,
+      body,
+      html: options?.html,
+      attachments: options?.attachments,
       date: new Date(),
-    });
+      messageId,
+    };
 
-    // Simulate sending delay
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
+    this.emails.push(sentEmail);
     return messageId;
   }
 
-  async getEmails(options?: EmailSearchOptions): Promise<EmailMessage[]> {
-    this.runtime.logger.debug('Getting emails');
+  async searchEmails(options?: EmailSearchOptions): Promise<EmailMessage[]> {
+    logger.debug('Searching emails', JSON.stringify(options));
+
+    // Return filtered dummy emails based on search options
+    let results = this.emails;
 
     if (options) {
-      this.runtime.logger.debug('Search options:', options);
+      if (options.from) {
+        results = results.filter((e) => e.from.address.includes(options.from!));
+      }
+      if (options.subject) {
+        results = results.filter((e) =>
+          e.subject.toLowerCase().includes(options.subject!.toLowerCase())
+        );
+      }
+      if (options.limit) {
+        results = results.slice(0, options.limit);
+      }
     }
 
-    let filteredEmails = [...this.mockEmails];
+    logger.debug(`Found ${results.length} emails`);
 
-    // Apply filters
-    if (options?.from) {
-      filteredEmails = filteredEmails.filter(
-        (email) =>
-          email.from.email.includes(options.from!) || email.from.name?.includes(options.from!)
-      );
-    }
-
-    if (options?.subject) {
-      filteredEmails = filteredEmails.filter((email) =>
-        email.subject.toLowerCase().includes(options.subject!.toLowerCase())
-      );
-    }
-
-    if (options?.since) {
-      filteredEmails = filteredEmails.filter((email) => email.date && email.date >= options.since!);
-    }
-
-    if (options?.before) {
-      filteredEmails = filteredEmails.filter(
-        (email) => email.date && email.date <= options.before!
-      );
-    }
-
-    // Apply pagination
-    const offset = options?.offset || 0;
-    const limit = options?.limit || 50;
-
-    return filteredEmails.slice(offset, offset + limit);
+    return results;
   }
 
-  async getEmail(messageId: string): Promise<EmailMessage> {
-    this.runtime.logger.debug(`Getting email with ID: ${messageId}`);
+  async getEmail(messageId: string): Promise<EmailMessage | null> {
+    logger.debug(`Getting email: ${messageId}`);
 
-    const email = this.mockEmails.find((e) => e.messageId === messageId);
-    if (!email) {
-      throw new Error(`Email with ID ${messageId} not found`);
-    }
-
-    return email;
+    const email = this.emails.find((e) => e.id === messageId);
+    return email || null;
   }
 
-  async deleteEmail(messageId: string): Promise<void> {
-    this.runtime.logger.debug(`Deleting email with ID: ${messageId}`);
+  async deleteEmail(messageId: string): Promise<boolean> {
+    logger.debug(`Deleting email: ${messageId}`);
 
-    const index = this.mockEmails.findIndex((e) => e.messageId === messageId);
-    if (index === -1) {
-      throw new Error(`Email with ID ${messageId} not found`);
+    const index = this.emails.findIndex((e) => e.id === messageId);
+    if (index !== -1) {
+      this.emails.splice(index, 1);
+      return true;
     }
-
-    this.mockEmails.splice(index, 1);
+    return false;
   }
 
-  async markEmailAsRead(messageId: string, read: boolean): Promise<void> {
-    this.runtime.logger.debug(`Marking email ${messageId} as ${read ? 'read' : 'unread'}`);
-
-    const email = this.mockEmails.find((e) => e.messageId === messageId);
-    if (!email) {
-      throw new Error(`Email with ID ${messageId} not found`);
-    }
-
-    // In a real implementation, this would update email flags
-    // For mock purposes, we just log the action
+  async markAsRead(messageId: string): Promise<boolean> {
+    logger.debug(`Marking email as read: ${messageId}`);
+    // Dummy implementation always returns true
+    return true;
   }
 
-  async flagEmail(messageId: string, flagged: boolean): Promise<void> {
-    this.runtime.logger.debug(`${flagged ? 'Flagging' : 'Unflagging'} email ${messageId}`);
-
-    const email = this.mockEmails.find((e) => e.messageId === messageId);
-    if (!email) {
-      throw new Error(`Email with ID ${messageId} not found`);
-    }
-
-    // In a real implementation, this would update email flags
-    // For mock purposes, we just log the action
+  async markAsUnread(messageId: string): Promise<boolean> {
+    logger.debug(`Marking email as unread: ${messageId}`);
+    // Dummy implementation always returns true
+    return true;
   }
 
-  async moveEmail(messageId: string, folderPath: string): Promise<void> {
-    this.runtime.logger.debug(`Moving email ${messageId} to folder ${folderPath}`);
-
-    const email = this.mockEmails.find((e) => e.messageId === messageId);
-    if (!email) {
-      throw new Error(`Email with ID ${messageId} not found`);
-    }
-
-    const folder = this.mockFolders.find((f) => f.path === folderPath);
-    if (!folder) {
-      throw new Error(`Folder ${folderPath} not found`);
-    }
-
-    // In a real implementation, this would move the email
-    // For mock purposes, we just log the action
+  async moveToFolder(messageId: string, folderPath: string): Promise<boolean> {
+    logger.debug(`Moving email ${messageId} to folder: ${folderPath}`);
+    // Dummy implementation always returns true
+    return true;
   }
 
   async getFolders(): Promise<EmailFolder[]> {
-    this.runtime.logger.debug('Getting email folders');
-    return [...this.mockFolders];
+    logger.debug('Getting email folders');
+    return this.folders;
   }
 
-  async createFolder(folderName: string, parentPath?: string): Promise<void> {
-    this.runtime.logger.debug(
-      `Creating folder ${folderName}${parentPath ? ` under ${parentPath}` : ''}`
-    );
+  async createFolder(name: string, parentPath?: string): Promise<EmailFolder> {
+    logger.debug(`Creating folder: ${name}`, JSON.stringify({ parentPath }));
 
-    const newFolder: EmailFolder = {
-      name: folderName,
-      path: parentPath ? `${parentPath}/${folderName}` : folderName,
-      type: 'custom',
+    const path = parentPath ? `${parentPath}/${name}` : name;
+    const folder: EmailFolder = {
+      name,
+      path,
       messageCount: 0,
       unreadCount: 0,
     };
 
-    this.mockFolders.push(newFolder);
+    this.folders.push(folder);
+    return folder;
   }
 
-  async getAccountInfo(): Promise<EmailAccount> {
-    this.runtime.logger.debug('Getting account info');
+  async deleteFolder(folderPath: string): Promise<boolean> {
+    logger.debug(`Deleting folder: ${folderPath}`);
 
-    return {
-      email: 'user@example.com',
-      name: 'Mock User',
-      provider: 'MockProvider',
-      folders: [...this.mockFolders],
-      quotaUsed: 512000000, // 512 MB
-      quotaLimit: 1073741824, // 1 GB
-    };
+    const index = this.folders.findIndex((f) => f.path === folderPath);
+    if (index !== -1) {
+      this.folders.splice(index, 1);
+      return true;
+    }
+    return false;
   }
 
-  async searchEmails(query: string, options?: EmailSearchOptions): Promise<EmailMessage[]> {
-    this.runtime.logger.debug(`Searching emails with query: "${query}"`);
-
-    if (options) {
-      this.runtime.logger.debug('Search options:', options);
+  async replyToEmail(
+    messageId: string,
+    body: string,
+    options?: {
+      html?: string;
+      attachments?: EmailAttachment[];
+      replyAll?: boolean;
     }
+  ): Promise<string> {
+    logger.debug(`Replying to email: ${messageId}`, JSON.stringify(options));
 
-    const filteredEmails = this.mockEmails.filter((email) => {
-      const searchText = `${email.subject} ${email.text || ''} ${email.html || ''} ${email.from.name || ''} ${email.from.email}`;
-      return searchText.toLowerCase().includes(query.toLowerCase());
-    });
+    const replyMessageId = `dummy-reply-${Date.now()}@example.com`;
 
-    // Apply additional filters from options
-    let results = filteredEmails;
+    logger.info(`Reply sent successfully. Message ID: ${replyMessageId}`);
 
-    if (options?.from) {
-      results = results.filter(
-        (email) =>
-          email.from.email.includes(options.from!) || email.from.name?.includes(options.from!)
-      );
+    return replyMessageId;
+  }
+
+  async forwardEmail(
+    messageId: string,
+    to: EmailAddress[],
+    options?: {
+      body?: string;
+      html?: string;
+      attachments?: EmailAttachment[];
     }
+  ): Promise<string> {
+    logger.debug(`Forwarding email: ${messageId}`, JSON.stringify({ to, options }));
 
-    if (options?.since) {
-      results = results.filter((email) => email.date && email.date >= options.since!);
-    }
+    const forwardMessageId = `dummy-forward-${Date.now()}@example.com`;
 
-    if (options?.before) {
-      results = results.filter((email) => email.date && email.date <= options.before!);
-    }
+    logger.info(`Email forwarded successfully. Message ID: ${forwardMessageId}`);
 
-    // Apply pagination
-    const offset = options?.offset || 0;
-    const limit = options?.limit || 50;
+    return forwardMessageId;
+  }
 
-    return results.slice(offset, offset + limit);
+  getDexName(): string {
+    return 'dummy-email';
   }
 }

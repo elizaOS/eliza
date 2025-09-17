@@ -1,5 +1,4 @@
 import * as path from 'node:path';
-import { bunExecInherit } from '@/src/utils/bun-exec';
 import type { Subprocess } from 'bun';
 import type { ServerProcess } from '../types';
 
@@ -44,7 +43,14 @@ async function getLocalCliPath(): Promise<string | null> {
  * Set up environment with proper module resolution paths
  */
 function setupEnvironment(): Record<string, string> {
-  const env = { ...process.env };
+  const env: Record<string, string> = {};
+
+  // Filter out undefined values from process.env
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
 
   // Add local node_modules to NODE_PATH for proper module resolution
   const localModulesPath = path.join(process.cwd(), 'node_modules');
@@ -64,6 +70,12 @@ function setupEnvironment(): Record<string, string> {
 
   // Ensure color output
   env.FORCE_COLOR = '1';
+
+  // Default PGLite to Node/WASM-in-Node runtime for dev to avoid WASM init issues
+  // Users can override this by explicitly setting PGLITE_WASM_MODE in their env
+  if (!env.PGLITE_WASM_MODE) {
+    env.PGLITE_WASM_MODE = 'node';
+  }
 
   // Preserve ELIZA_TEST_MODE for test environments
   if (process.env.ELIZA_TEST_MODE) {
@@ -178,12 +190,10 @@ async function stopServerProcess(): Promise<boolean> {
 
   try {
     // Send SIGTERM to the process
-    const killed = serverState.process.kill('SIGTERM');
+    serverState.process.kill('SIGTERM');
 
-    if (!killed) {
-      console.warn('Failed to kill server process, trying force kill...');
-      serverState.process.kill('SIGKILL');
-    }
+    // Give the process a moment to clean up
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Reset state
     serverState.process = null;

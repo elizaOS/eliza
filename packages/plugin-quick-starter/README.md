@@ -17,11 +17,13 @@ This quick-starter template is ideal for:
 ```
 plugin-quick-starter/
 ├── src/
-│   ├── __tests__/          # Unit tests
-│   │   ├── plugin.test.ts
-│   │   └── test-utils.ts
-│   ├── plugin.ts           # Main plugin implementation
-│   ├── tests.ts            # Plugin test suite
+│   ├── __tests__/          # Test directory
+│   │   ├── e2e/            # E2E tests
+│   │   │   ├── plugin-quick-starter.e2e.ts
+│   │   │   └── README.md
+│   │   ├── plugin.test.ts  # Component tests
+│   │   └── test-utils.ts   # Test utilities
+│   ├── plugin.ts           # Main plugin implementation (exports tests)
 │   └── index.ts            # Plugin export
 ├── scripts/
 │   └── install-test-deps.js # Test dependency installer
@@ -66,11 +68,11 @@ plugin-quick-starter/
 - No frontend frameworks or build tools
 - Fast installation and builds
 
-### Simple Testing
+### Comprehensive Testing
 
-- Unit tests only with Bun test runner
-- No E2E or component testing overhead
-- Quick test execution
+- Component tests with Bun test runner for unit testing
+- E2E tests with ElizaOS test runner for integration testing
+- Quick test execution with focused test suites
 
 ### Backend Focus
 
@@ -174,7 +176,47 @@ bun run format
 
 ## Testing
 
-Write unit tests in `src/__tests__/`:
+ElizaOS employs a dual testing strategy:
+
+1. **Component Tests** (`src/__tests__/*.test.ts`)
+
+   - Run with Bun's native test runner
+   - Fast, isolated tests using mocks
+   - Perfect for TDD and component logic
+
+2. **E2E Tests** (`src/__tests__/e2e/*.e2e.ts`)
+   - Run with ElizaOS custom test runner
+   - Real runtime with actual database (PGLite)
+   - Test complete user scenarios
+
+### Test Structure
+
+```
+src/
+  __tests__/              # All tests live inside src
+    *.test.ts            # Component tests (use Bun test runner)
+    e2e/                 # E2E tests (use ElizaOS test runner)
+      plugin-quick-starter.e2e.ts  # E2E test suite
+      README.md          # E2E testing documentation
+  plugin.ts              # Export tests here: tests: [QuickStarterPluginTestSuite]
+```
+
+### Running Tests
+
+```bash
+# Run all tests (component + e2e)
+elizaos test
+
+# Component tests only
+elizaos test component
+# or
+bun test
+
+# E2E tests only
+elizaos test e2e
+```
+
+### Writing Component Tests
 
 ```typescript
 import { describe, it, expect } from 'bun:test';

@@ -134,6 +134,32 @@ bun run release:alpha   # Release alpha version
 - **IF A COMMAND DOESN'T WORK:** Check `package.json` in the relevant package directory for correct script names
 - Use `bun` for global installs: `bun install -g @elizaos/cli`
 
+### Workspace Dependencies
+
+- **ALWAYS USE `workspace:*` FOR ALL `@elizaos/` PACKAGE DEPENDENCIES**
+- **NEVER USE HARDCODED VERSIONS** for internal monorepo packages
+- **Example of CORRECT usage:**
+  ```json
+  {
+    "dependencies": {
+      "@elizaos/core": "workspace:*",
+      "@elizaos/plugin-sql": "workspace:*",
+      "@elizaos/server": "workspace:*"
+    }
+  }
+  ```
+- **Example of INCORRECT usage:**
+  ```json
+  {
+    "dependencies": {
+      "@elizaos/core": "1.4.2", // ❌ Don't use hardcoded versions
+      "@elizaos/plugin-sql": "^1.4.0", // ❌ Don't use version ranges
+      "@elizaos/server": "latest" // ❌ Don't use version tags
+    }
+  }
+  ```
+- **RATIONALE:** Workspace references ensure proper monorepo dependency resolution and prevent version conflicts
+
 ### Process Execution
 
 - **NEVER USE `execa` OR OTHER PROCESS EXECUTION LIBRARIES**
@@ -227,7 +253,7 @@ The `elizaos test` command runs tests for ElizaOS projects and plugins:
 elizaos test [path]           # Run all tests (component + e2e)
 elizaos test -t component     # Run only component tests
 elizaos test -t e2e          # Run only e2e tests
-elizaos test --name "test"   # Filter tests by name
+elizaos test --name "test"   # Filter tests by name (case sensitive)
 elizaos test --skip-build    # Skip building before tests
 ```
 
@@ -448,7 +474,6 @@ bun run build
 - **TypeScript with proper typing for all new code**
 - **NEVER use any, never, or unknown types - always opt for specific types that accurately represent the data**
 - **Ensure code is free of TypeScript errors or warnings - code must compile without issues**
-- **Use functional programming patterns; avoid classes**
 - **Prefer iteration and modularization over code duplication**
 - **Comprehensive error handling required**
 - **Clear separation of concerns**
@@ -578,7 +603,6 @@ SOLANA_PRIVATE_KEY=
 
 ### Compatibility
 
-- Plugin compatibility through `/specs` (currently defaulting to v2)
 - Maintain backwards compatibility in changes
 - Consider migration paths for proposed changes
 

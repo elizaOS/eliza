@@ -213,7 +213,7 @@ describe('Provider Tests', () => {
           }
         } catch (e) {
           error = e as Error;
-          logger.error('Error in provider.get:', e);
+          logger.error({ error: e }, 'Error in provider.get:');
         }
 
         documentTestResult('Provider get method', result, error);
@@ -249,7 +249,7 @@ describe('Provider Tests', () => {
           logger.info('Provider handled invalid input without throwing');
         } catch (e) {
           error = e as Error;
-          logger.error('Provider threw an error with invalid input:', e);
+          logger.error({ error: e }, 'Provider threw an error with invalid input:');
         }
 
         documentTestResult('Provider error handling', result, error);

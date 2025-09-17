@@ -16,6 +16,7 @@ import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SplitButton } from '@/components/ui/split-button';
+import { Tool, type ToolPart } from '@/components/actionTool';
 import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
@@ -90,6 +91,60 @@ moment.extend(relativeTime);
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
+// Helper function to convert action message to ToolPart format
+const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
+  const rawMessage = message.rawMessage as any; // Type assertion to access raw message properties
+
+  // Map actionStatus to ToolPart state
+  const mapActionStatusToState = (status: string): ToolPart['state'] => {
+    switch (status) {
+      case 'pending':
+      case 'executing':
+      case 'running':
+        return 'input-streaming';
+      case 'completed':
+      case 'success':
+        return 'output-available';
+      case 'failed':
+      case 'error':
+        return 'output-error';
+      default:
+        return 'input-available';
+    }
+  };
+
+  // Get the primary action name (first action or fallback to message type)
+  const actionName = rawMessage.actions?.[0] || rawMessage.action || 'ACTION';
+  const actionStatus = rawMessage.actionStatus || 'completed';
+  const actionId = rawMessage.actionId;
+
+  // Create input data from available action properties
+  const inputData: Record<string, unknown> = {};
+  if (rawMessage.actions) inputData.actions = rawMessage.actions;
+  if (rawMessage.action) inputData.action = rawMessage.action;
+  if (rawMessage.thought) inputData.thought = rawMessage.thought;
+
+  // Create output data based on status and content
+  const outputData: Record<string, unknown> = {};
+  if (rawMessage.text) outputData.result = rawMessage.text;
+  if (actionStatus) outputData.status = actionStatus;
+  if (rawMessage.thought) outputData.thought = rawMessage.thought;
+  if (rawMessage.actionResult) outputData.actionResult = rawMessage.actionResult;
+
+  // Handle error cases
+  const isError = actionStatus === 'failed' || actionStatus === 'error';
+  const errorText = isError ? rawMessage.text || 'Action failed' : undefined;
+
+  return {
+    type: actionName,
+    state: mapActionStatusToState(actionStatus),
+    toolCallId: actionId,
+    input: Object.keys(inputData).length > 0 ? inputData : undefined,
+    output: Object.keys(outputData).length > 0 ? outputData : undefined,
+    errorText,
+  };
+};
+
 interface UnifiedChatViewProps {
   chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
@@ -146,6 +201,7 @@ export function MessageContent({
   agentAvatarMap?: Record<UUID, string | null>;
   chatType?: ChannelType;
 }) {
+  const isActionMessage = message.type === 'agent_action' || message.source === 'agent_action';
   return (
     <div className="flex flex-col w-full">
       <ChatBubbleMessage
@@ -153,51 +209,59 @@ export function MessageContent({
         {...(isUser ? { variant: 'sent' } : {})}
         {...(!message.text && !message.attachments?.length ? { className: 'bg-transparent' } : {})}
       >
-        <div>
-          {(() => {
-            if (!message.text) return null;
+        {isActionMessage ? (
+          <Tool
+            toolPart={convertActionMessageToToolPart(message)}
+            defaultOpen={false}
+            className="max-w-none"
+          />
+        ) : (
+          <div>
+            {(() => {
+              if (!message.text) return null;
 
-            const mediaInfos = parseMediaFromText(message.text);
-            const attachmentUrls = new Set(
-              message.attachments?.map((att) => att.url).filter(Boolean) || []
-            );
-            const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
-            const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
+              const mediaInfos = parseMediaFromText(message.text);
+              const attachmentUrls = new Set(
+                message.attachments?.map((att) => att.url).filter(Boolean) || []
+              );
+              const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
+              const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
 
-            return (
-              <div className="space-y-3">
-                {textWithoutUrls.trim() && (
-                  <div>
-                    {isUser ? (
-                      <Markdown className="prose-sm max-w-none" variant="user">
-                        {textWithoutUrls}
-                      </Markdown>
-                    ) : (
-                      <AnimatedMarkdown
-                        className="prose-sm max-w-none"
-                        variant="agent"
-                        shouldAnimate={shouldAnimate}
-                        messageId={message.id}
-                      >
-                        {textWithoutUrls}
-                      </AnimatedMarkdown>
-                    )}
-                  </div>
-                )}
+              return (
+                <div className="space-y-3">
+                  {textWithoutUrls.trim() && (
+                    <div>
+                      {isUser ? (
+                        <Markdown className="prose-sm max-w-none" variant="user">
+                          {textWithoutUrls}
+                        </Markdown>
+                      ) : (
+                        <AnimatedMarkdown
+                          className="prose-sm max-w-none"
+                          variant="agent"
+                          shouldAnimate={shouldAnimate}
+                          messageId={message.id}
+                        >
+                          {textWithoutUrls}
+                        </AnimatedMarkdown>
+                      )}
+                    </div>
+                  )}
 
-                {uniqueMediaInfos.length > 0 && (
-                  <div className="space-y-2">
-                    {uniqueMediaInfos.map((media, index) => (
-                      <div key={`${media.url}-${index}`}>
-                        <MediaContent url={media.url} title="Shared media" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+                  {uniqueMediaInfos.length > 0 && (
+                    <div className="space-y-2">
+                      {uniqueMediaInfos.map((media, index) => (
+                        <div key={`${media.url}-${index}`}>
+                          <MediaContent url={media.url} title="Shared media" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         {message.attachments
           ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
@@ -229,7 +293,7 @@ export function MessageContent({
             </>
           )}
           {isUser && message.text && !message.isLoading && onRetry && (
-            <RetryButton onClick={() => onRetry(message)} />
+            <RetryButton onClick={() => onRetry(message.text || '')} />
           )}
           <DeleteButton onClick={() => onDelete(message.id as string)} />
         </div>
@@ -296,6 +360,7 @@ export default function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const inputDisabledRef = useRef<boolean>(false);
+  const hasHandledInitialUrl = useRef<boolean>(false);
   const chatTitleRef = useRef<string>('');
 
   // For DM, we need agent data. For GROUP, we need channel data
@@ -313,8 +378,9 @@ export default function Chat({
       } as Agent)
     : undefined;
 
-  const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } =
-    useDeleteAgent(targetAgentData);
+  const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
+    targetAgentData || ({} as Agent) // Provide safe default if undefined
+  );
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
@@ -371,7 +437,9 @@ export default function Chat({
     () =>
       allAgents.reduce(
         (acc, agent) => {
-          if (agent.id && agent.settings?.avatar) acc[agent.id] = agent.settings.avatar;
+          if (agent.id && typeof agent.settings?.avatar === 'string') {
+            acc[agent.id] = agent.settings.avatar;
+          }
           return acc;
         },
         {} as Record<UUID, string | null>
@@ -579,8 +647,6 @@ export default function Chat({
     ) {
       handleNewDmChannel(targetAgentData.id);
       setShouldForceNew(false);
-
-      navigate(location.pathname, { replace: true });
     }
   }, [
     shouldForceNew,
@@ -609,6 +675,65 @@ export default function Chat({
       updateChatState({ currentDmChannelId: agentDmChannels[0].id });
     }
   }, [agentDmChannels, isLoadingAgentDmChannels, updateChatState]);
+
+  // Function to add channelId to URL
+  const addChannelIdToUrl = useCallback(
+    (channelId: UUID) => {
+      if (chatType === ChannelType.DM && contextId && channelId && typeof window !== 'undefined') {
+        const newPath = `/chat/${contextId}/${channelId}`;
+        if (window.location.pathname !== newPath && window.history) {
+          window.history.replaceState(null, '', newPath);
+        }
+      }
+    },
+    [chatType, contextId]
+  );
+
+  // useEffect to listen for channelId switching and append id to URL
+  useEffect(() => {
+    if (chatState.currentDmChannelId) {
+      addChannelIdToUrl(chatState.currentDmChannelId);
+    }
+  }, [chatState.currentDmChannelId, addChannelIdToUrl]);
+
+  // useEffect to handle direct URL navigation with channelId (only runs once on mount)
+  useEffect(() => {
+    clientLogger.info('[Chat] URL navigation effect triggered', {
+      initialDmChannelId,
+      agentDmChannelsLength: agentDmChannels.length,
+      isLoadingAgentDmChannels,
+      currentDmChannelId: chatState.currentDmChannelId,
+    });
+
+    if (
+      initialDmChannelId &&
+      agentDmChannels.length > 0 &&
+      !isLoadingAgentDmChannels &&
+      !hasHandledInitialUrl.current
+    ) {
+      // Validate the channel ID format first
+      const validChannelId = validateUuid(initialDmChannelId);
+      if (!validChannelId) {
+        clientLogger.warn('[Chat] Invalid channel ID format from URL:', initialDmChannelId);
+        hasHandledInitialUrl.current = true;
+        return;
+      }
+
+      // Check if the channel from URL exists in user's channels
+      const channelExists = agentDmChannels.some((ch) => ch.id === initialDmChannelId);
+      if (channelExists) {
+        clientLogger.info('[Chat] Switching to channel from URL:', initialDmChannelId);
+        updateChatState({ currentDmChannelId: initialDmChannelId });
+        hasHandledInitialUrl.current = true;
+      } else {
+        clientLogger.warn('[Chat] Channel from URL not found, staying with current channel', {
+          initialDmChannelId,
+          availableChannels: agentDmChannels.map((ch) => ch.id),
+        });
+        hasHandledInitialUrl.current = true;
+      }
+    }
+  }, [initialDmChannelId, agentDmChannels, isLoadingAgentDmChannels, updateChatState]);
 
   // Effect to handle initial DM channel selection or creation
   useEffect(() => {
@@ -733,6 +858,12 @@ export default function Chat({
       return;
     }
 
+    // Guard against undefined channel IDs
+    if (!finalChannelIdForHooks || !chatState.currentDmChannelId) {
+      clientLogger.warn('Cannot update chat title: missing channel ID');
+      return;
+    }
+
     const elizaClient = createElizaClient();
     const data = await elizaClient.messaging.generateChannelTitle(
       finalChannelIdForHooks,
@@ -777,11 +908,11 @@ export default function Chat({
       if (message.isAgent) safeScrollToBottom();
     },
     onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
-      updateMessage(messageId, updates);
+      updateMessage(messageId as UUID, updates);
       if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
     },
     onDeleteMessage: (messageId: string) => {
-      removeMessage(messageId);
+      removeMessage(messageId as UUID);
     },
     onClearMessages: () => {
       // Clear the local message list immediately for instant UI response
@@ -957,7 +1088,7 @@ export default function Chat({
     const validMessageId = validateUuid(messageId);
     if (validMessageId) {
       // Immediately remove message from UI for optimistic update
-      removeMessage(messageId);
+      removeMessage(messageId as UUID);
       // Call server mutation to delete on backend
       deleteMessageCentral({ channelId: finalChannelIdForHooks, messageId: validMessageId });
     }
@@ -989,15 +1120,28 @@ export default function Chat({
     addMessage(optimisticUiMessage);
     safeScrollToBottom();
 
+    // Guard against undefined IDs
+    if (!finalServerIdForHooks || !finalChannelIdForHooks) {
+      clientLogger.error('Cannot retry message: missing server or channel ID');
+      toast({
+        title: 'Error Sending Message',
+        description: 'Missing required channel information.',
+        variant: 'destructive',
+      });
+      updateChatState({ inputDisabled: false });
+      removeMessage(retryMessageId);
+      return;
+    }
+
     try {
       await sendMessage(
         finalTextContent,
-        finalServerIdForHooks!,
+        finalServerIdForHooks,
         chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
         message.attachments,
         retryMessageId,
         undefined,
-        finalChannelIdForHooks!
+        finalChannelIdForHooks
       );
     } catch (error) {
       clientLogger.error('Error sending message or uploading files:', error);
@@ -1078,7 +1222,7 @@ export default function Chat({
     confirm(
       {
         title: 'Delete Agent',
-        description: `Are you sure you want to delete the agent "${targetAgentData.name}"? This action cannot be undone.`,
+        description: `Are you sure you want to delete the agent "${targetAgentData?.name}"? This action cannot be undone.`,
         confirmText: 'Delete',
         variant: 'destructive',
       },
@@ -1215,7 +1359,10 @@ export default function Chat({
                                 </span>
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
-                                    channel.metadata?.createdAt ||
+                                    (typeof channel.metadata?.createdAt === 'string' ||
+                                    typeof channel.metadata?.createdAt === 'number'
+                                      ? channel.metadata.createdAt
+                                      : null) ||
                                       channel.updatedAt ||
                                       channel.createdAt
                                   ).fromNow()}
@@ -1331,6 +1478,8 @@ export default function Chat({
                     label: 'Delete Group',
                     onClick: () => {
                       if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                      // Capture the channel ID to use in the async callback
+                      const channelIdToDelete = finalChannelIdForHooks;
                       confirm(
                         {
                           title: 'Delete Group',
@@ -1342,7 +1491,7 @@ export default function Chat({
                         async () => {
                           try {
                             const elizaClient = createElizaClient();
-                            await elizaClient.messaging.deleteChannel(finalChannelIdForHooks);
+                            await elizaClient.messaging.deleteChannel(channelIdToDelete);
                             toast({
                               title: 'Group Deleted',
                               description: 'The group has been successfully deleted.',
@@ -1451,8 +1600,8 @@ export default function Chat({
                   targetAgentData={targetAgentData}
                   allAgents={allAgents}
                   animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef}
-                  contentRef={contentRef}
+                  scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                  contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1460,7 +1609,28 @@ export default function Chat({
                   getAgentInMessage={getAgentInMessage}
                   agentAvatarMap={agentAvatarMap}
                   onDeleteMessage={handleDeleteMessage}
-                  onRetryMessage={handleRetryMessage}
+                  onRetryMessage={(messageText) => {
+                    // Ensure we have required IDs before retrying
+                    if (!finalChannelIdForHooks) {
+                      toast({
+                        title: 'Error',
+                        description: 'Cannot retry message: missing channel information.',
+                        variant: 'destructive',
+                      });
+                      return;
+                    }
+                    const message: UiMessage = {
+                      id: randomUUID() as UUID,
+                      text: messageText,
+                      name: USER_NAME,
+                      senderId: currentClientEntityId as UUID,
+                      isAgent: false,
+                      createdAt: Date.now(),
+                      channelId: finalChannelIdForHooks,
+                      serverId: finalServerIdForHooks,
+                    };
+                    handleRetryMessage(message);
+                  }}
                   selectedGroupAgentId={chatState.selectedGroupAgentId}
                 />
               </div>
@@ -1519,8 +1689,8 @@ export default function Chat({
                         targetAgentData={targetAgentData}
                         allAgents={allAgents}
                         animatedMessageId={animatedMessageId}
-                        scrollRef={scrollRef}
-                        contentRef={contentRef}
+                        scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                        contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}
@@ -1528,7 +1698,28 @@ export default function Chat({
                         getAgentInMessage={getAgentInMessage}
                         agentAvatarMap={agentAvatarMap}
                         onDeleteMessage={handleDeleteMessage}
-                        onRetryMessage={handleRetryMessage}
+                        onRetryMessage={(messageText) => {
+                          // Ensure we have required IDs before retrying
+                          if (!finalChannelIdForHooks) {
+                            toast({
+                              title: 'Error',
+                              description: 'Cannot retry message: missing channel information.',
+                              variant: 'destructive',
+                            });
+                            return;
+                          }
+                          const message: UiMessage = {
+                            id: randomUUID() as UUID,
+                            text: messageText,
+                            name: USER_NAME,
+                            senderId: currentClientEntityId as UUID,
+                            isAgent: false,
+                            createdAt: Date.now(),
+                            channelId: finalChannelIdForHooks,
+                            serverId: finalServerIdForHooks,
+                          };
+                          handleRetryMessage(message);
+                        }}
                         selectedGroupAgentId={chatState.selectedGroupAgentId}
                       />
                     </div>

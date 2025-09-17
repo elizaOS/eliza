@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+import sqlPlugin from '@elizaos/plugin-sql';
 import { AgentServer } from '@elizaos/server';
 import { AgentStartOptions } from '../types';
 import {
@@ -38,8 +38,6 @@ export async function startAgent(
   }
 
   const loadedPlugins = new Map<string, Plugin>();
-  // Type-cast to ensure compatibility with local types
-  loadedPlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin); // Always include sqlPlugin
 
   const pluginsToLoad = new Set<string>(character.plugins || []);
   for (const p of plugins) {
@@ -68,6 +66,22 @@ export async function startAgent(
     }
   }
 
+  // does this list contain a sql plugin
+  let haveSql = false;
+  for (const n of allAvailablePlugins.keys()) {
+    // we need a better way to detect adapters
+    if (n === sqlPlugin.name || n === 'mysql') {
+      haveSql = true;
+      break;
+    }
+  }
+
+  // ensure an adapter
+  if (!haveSql) {
+    // Type-cast to ensure compatibility with local types
+    allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
+  }
+
   // Resolve dependencies and get final plugin list
   const finalPlugins = resolvePluginDependencies(allAvailablePlugins, options.isTestMode);
 
@@ -87,23 +101,8 @@ export async function startAgent(
 
   await runtime.initialize();
 
-  // Discover and run plugin schema migrations
-  try {
-    const migrationService = runtime.getService('database_migration');
-    if (migrationService) {
-      logger.info('Discovering plugin schemas for dynamic migration...');
-      (migrationService as any).discoverAndRegisterPluginSchemas(finalPlugins);
-
-      logger.info('Running all plugin migrations...');
-      await (migrationService as any).runAllPluginMigrations();
-      logger.info('All plugin migrations completed successfully');
-    } else {
-      logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
-    }
-  } catch (error) {
-    logger.error('Failed to run plugin migrations:', error);
-    throw error;
-  }
+  // Plugin schema migrations are handled during runtime.initialize() (runPluginMigrations)
+  // and at server startup for core SQL tables. No additional action needed here.
 
   server.registerAgent(runtime);
   logger.log(`Started ${runtime.character.name} as ${runtime.agentId}`);

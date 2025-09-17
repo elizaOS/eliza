@@ -1,13 +1,55 @@
-# React + TypeScript + Vite
+# @elizaos/client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The official web client for ElizaOS agents, providing a modern React-based interface for interacting with ElizaOS agents.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🤖 Real-time agent communication via Socket.IO
+- 💬 Chat interface with message history
+- 🧠 Agent memory and action viewer
+- 🔌 Plugin management interface
+- 📊 Agent monitoring and logs
+- 🎨 Modern, responsive UI with Tailwind CSS
+- 🔐 Secure API key management
 
-## Expanding the ESLint configuration
+## Installation
+
+```bash
+bun add @elizaos/client
+```
+
+## Usage
+
+### Development
+
+```bash
+# Install dependencies
+bun install
+
+# Run development server
+bun run dev
+
+# Build for production
+bun run build
+
+# Run tests
+bun test
+```
+
+## Configuration
+
+Configure via environment variables:
+
+- `VITE_API_URL` - Backend API URL (default: http://localhost:3000)
+- `VITE_SOCKET_URL` - Socket.IO server URL (default: http://localhost:3000)
+
+## License
+
+MIT
+
+---
+
+## ESLint Configuration (for contributors)
 
 If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
 
@@ -55,29 +97,29 @@ export default tseslint.config({
 
 ```bash
 # Run all tests with the ElizaOS UI automatically started
-npm test
+bun test
 
 # Run tests with browser visible
-npm run test:headed
+bun run test:headed
 
 # Run tests with Playwright UI mode for easier debugging
-npm run test:ui
+bun run test:ui
 ```
 
 ### Advanced Options
 
 ```bash
 # Run a specific test file
-npx playwright test tests/05-modify-character-settings.spec.ts
+bunx playwright test tests/05-modify-character-settings.spec.ts
 
 # Run tests in a specific browser
-npx playwright test --project=chromium
+bunx playwright test --project=chromium
 
 # Run tests with verbose logging
-npx playwright test --debug
+bunx playwright test --debug
 
 # Run tests and keep the browser open after tests finish
-npx playwright test --headed --timeout 0
+bunx playwright test --headed --timeout 0
 ```
 
 ## Test Architecture
@@ -205,7 +247,7 @@ If you prefer to run the UI server separately:
 2. Run tests in another terminal:
    ```bash
    cd eliza/packages/client/ui-tests
-   PLAYWRIGHT_TEST_BASE_URL=http://localhost:3000 npm test
+   PLAYWRIGHT_TEST_BASE_URL=http://localhost:3000 bun test
    ```
 
 ## Troubleshooting
@@ -237,23 +279,23 @@ If you prefer to run the UI server separately:
    - Update Playwright to the latest version
 
 5. **Browser launch failures**
-   - Ensure browsers are installed with `npm run install:browsers`
-   - Check for missing dependencies on Linux systems (run `npx playwright install-deps`)
-   - On headless systems, install xvfb: `apt-get install xvfb` and run with `xvfb-run npx playwright test`
-   - For permission issues, try running with sudo: `sudo npx playwright install`
+   - Ensure browsers are installed with `bun run install:browsers`
+   - Check for missing dependencies on Linux systems (run `bunx playwright install-deps`)
+   - On headless systems, install xvfb: `apt-get install xvfb` and run with `xvfb-run bunx playwright test`
+   - For permission issues, try running with sudo: `sudo bunx playwright install`
 
 ### Debugging Strategies
 
 1. **Interactive debugging**:
 
    ```bash
-   npx playwright test --debug
+   bunx playwright test --debug
    ```
 
 2. **UI Mode for test inspection**:
 
    ```bash
-   npx playwright test --ui
+   bunx playwright test --ui
    ```
 
 3. **Error screenshots**:
@@ -263,7 +305,7 @@ If you prefer to run the UI server separately:
 
 4. **Trace viewing**:
    ```bash
-   npx playwright show-trace test-results/trace.zip
+   bunx playwright show-trace test-results/trace.zip
    ```
 
 ## Extending the Test Suite
@@ -291,7 +333,7 @@ Tests can be run in CI environments with:
 
 ```bash
 # CI-friendly command
-npm run test:ci
+bun run test:ci
 ```
 
 The CI configuration:

@@ -14,7 +14,6 @@ const __dirname = path.dirname(__filename);
 
 // Define paths
 const ROOT_DIR = path.resolve(__dirname, '../../../..');
-const CLI_DIST_DIR = path.resolve(ROOT_DIR, 'packages/cli/dist');
 const TEMPLATES_DIR = path.resolve(ROOT_DIR, 'packages/cli/templates');
 
 /**

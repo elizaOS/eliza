@@ -153,11 +153,10 @@ export async function getElizaDirectories(targetProjectDir?: string) {
   const elizaDir = targetProjectDir ? path.resolve(targetProjectDir, '.eliza') : paths.elizaDir;
   const envFilePath = targetProjectDir ? path.resolve(targetProjectDir, '.env') : paths.envFilePath;
 
-  logger.debug('Eliza directories:', {
-    elizaDir,
-    projectRoot,
-    targetProjectDir: targetProjectDir || 'none',
-  });
+  logger.debug(
+    { elizaDir, projectRoot, targetProjectDir: targetProjectDir || 'none' },
+    'Eliza directories:'
+  );
 
   const defaultElizaDbDir = path.resolve(projectRoot, '.eliza', '.elizadb');
   // Pass targetProjectDir to resolvePgliteDir to ensure it uses the correct base directory
@@ -211,10 +210,10 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
       }
     }
   } catch (error) {
-    logger.error('Error setting up .env file:', {
-      error: error instanceof Error ? error.message : String(error),
-      envFilePath,
-    });
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), envFilePath },
+      'Error setting up .env file:'
+    );
     throw error;
   }
 }
@@ -265,7 +264,7 @@ export async function setupPgLite(
   try {
     // Ensure the PGLite database directory exists
     await ensureDir(targetDbDir);
-    logger.debug('[PGLite] Created database directory:', targetDbDir);
+    logger.debug({ targetDbDir }, '[PGLite] Created database directory:');
 
     // Set up the .env file with the full template first
     await setupEnvFile(targetEnvPath);
@@ -276,11 +275,10 @@ export async function setupPgLite(
 
     logger.success('PGLite configuration saved');
   } catch (error) {
-    logger.error('Error setting up PGLite directory:', {
-      error: error instanceof Error ? error.message : String(error),
-      elizaDbDir,
-      envFilePath,
-    });
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), elizaDbDir, envFilePath },
+      'Error setting up PGLite directory:'
+    );
     throw error;
   }
 }
@@ -318,7 +316,7 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
 
     logger.success('Postgres URL saved to configuration');
   } catch (error) {
-    logger.error('Error saving database configuration:', error);
+    logger.error({ error }, 'Error saving database configuration:');
     throw error; // Re-throw to handle upstream
   }
 }
@@ -352,7 +350,7 @@ export async function storePgliteDataDir(dataDir: string, envFilePath: string): 
 
     logger.success('PGLite data directory saved to configuration');
   } catch (error) {
-    logger.error('Error saving PGLite configuration:', error);
+    logger.error({ error }, 'Error saving PGLite configuration:');
     throw error; // Re-throw to handle upstream
   }
 }
@@ -459,7 +457,10 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
 
     logger.success('OpenAI API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving OpenAI API key:', error);
+    logger.error(
+      'Error saving OpenAI API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -490,7 +491,10 @@ export async function storeGoogleKey(key: string, envFilePath: string): Promise<
 
     logger.success('Google Generative AI API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving Google API key:', error);
+    logger.error(
+      'Error saving Google API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -519,7 +523,10 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
 
     logger.success('Anthropic API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving Anthropic API key:', error);
+    logger.error(
+      'Error saving Anthropic API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -723,7 +730,10 @@ export async function storeOllamaConfig(
 
     logger.success('Ollama configuration saved to configuration');
   } catch (error) {
-    logger.error('Error saving Ollama configuration:', error);
+    logger.error(
+      'Error saving Ollama configuration:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -815,7 +825,10 @@ export async function promptAndStoreOllamaEmbeddingConfig(
 
         logger.success('Ollama embedding configuration saved');
       } catch (error) {
-        logger.error('Error saving Ollama embedding configuration:', error);
+        logger.error(
+          'Error saving Ollama embedding configuration:',
+          error instanceof Error ? error.message : String(error)
+        );
         throw error;
       }
     },
@@ -956,7 +969,10 @@ export async function storeOpenRouterKey(key: string, envFilePath: string): Prom
 
     logger.success('OpenRouter API key saved to configuration');
   } catch (error) {
-    logger.error('Error saving OpenRouter API key:', error);
+    logger.error(
+      'Error saving OpenRouter API key:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   }
 }
@@ -1090,7 +1106,10 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
       },
     });
   } catch (error) {
-    logger.error('Failed to resolve config paths:', error);
+    logger.error(
+      'Failed to resolve config paths:',
+      error instanceof Error ? error.message : String(error)
+    );
     throw new Error('Invalid configuration: failed to resolve paths');
   }
 }

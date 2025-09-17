@@ -6,14 +6,16 @@ import {
   logger,
   validateUuid,
   type UUID,
+  getUploadsChannelsDir,
 } from '@elizaos/core';
+import { transformMessageAttachments } from '../../utils/media-transformer';
 import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
-import { cleanupUploadedFile } from '../shared/file-utils';
+
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -28,11 +30,13 @@ const channelUploadMiddleware = multer({
     fileSize: MAX_FILE_SIZE,
     files: 1,
   },
-  fileFilter: (req, file, cb) => {
-    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+  fileFilter: (_req, file, cb) => {
+    // Check if mimetype is in the allowed list
+    const isAllowed = ALLOWED_MEDIA_MIME_TYPES.some((allowed) => allowed === file.mimetype);
+    if (isAllowed) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type'), false);
+      cb(new Error(`Invalid file type. Only ${ALLOWED_MEDIA_MIME_TYPES.join(', ')} are allowed`));
     }
   },
 });
@@ -42,7 +46,7 @@ async function saveChannelUploadedFile(
   file: Express.Multer.File,
   channelId: string
 ): Promise<{ filename: string; url: string }> {
-  const uploadDir = path.join(process.cwd(), '.eliza/data/uploads/channels', channelId);
+  const uploadDir = path.join(getUploadsChannelsDir(), channelId);
 
   // Ensure directory exists
   if (!fs.existsSync(uploadDir)) {
@@ -190,7 +194,7 @@ export function createChannelsRouter(
               createError instanceof Error ? createError.message : String(createError);
             logger.error(
               `[Messages Router] Failed to auto-create channel ${channelIdParam}:`,
-              createError
+              createError instanceof Error ? createError.message : String(createError)
             );
             return res
               .status(500)
@@ -259,7 +263,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           '[Messages Router /central-channels/:channelId/messages] Error processing GUI message:',
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to process message' });
       }
@@ -274,6 +278,7 @@ export function createChannelsRouter(
       const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 50;
       const before = req.query.before ? Number.parseInt(req.query.before as string, 10) : undefined;
       const beforeDate = before ? new Date(before) : undefined;
+      // TODO: Add 'after' parameter support when database layer is updated
 
       if (!channelId) {
         return res.status(400).json({ success: false, error: 'Invalid channelId' });
@@ -284,27 +289,38 @@ export function createChannelsRouter(
         // Transform to MessageService structure if GUI expects timestamps as numbers, or align types
         const messagesForGui = messages.map((msg) => {
           // Extract thought and actions from rawMessage for historical messages
-          const rawMessage =
-            typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          let rawMessage: any = {};
+          try {
+            rawMessage =
+              typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+          } catch (e) {
+            logger.warn('[Messages Router] Failed to parse rawMessage for message', msg.id);
+          }
 
-          return {
-            ...msg,
-            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
-            updated_at: new Date(msg.updatedAt).getTime(),
-            // Include thought and actions from rawMessage in metadata for client compatibility
+          // Transform only content and metadata to handle attachments, preserving all other message fields
+          const { content, metadata } = transformMessageAttachments({
+            content: msg.content,
             metadata: {
               ...msg.metadata,
               thought: rawMessage?.thought,
               actions: rawMessage?.actions,
+              attachments: rawMessage?.attachments ?? (msg.metadata as any)?.attachments,
             },
-            // Ensure other fields align with client's MessageServiceStructure / ServerMessage
+          });
+
+          return {
+            ...msg,
+            content,
+            metadata,
+            created_at: new Date(msg.createdAt).getTime(), // Ensure timestamp number
+            updated_at: new Date(msg.updatedAt).getTime(),
           };
         });
         res.json({ success: true, data: { messages: messagesForGui } });
       } catch (error) {
         logger.error(
           `[Messages Router /central-channels/:channelId/messages] Error fetching messages for channel ${channelId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to fetch messages' });
       }
@@ -328,7 +344,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           `[Messages Router /central-servers/:serverId/channels] Error fetching channels for server ${serverId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to fetch channels' });
       }
@@ -381,7 +397,10 @@ export function createChannelsRouter(
       });
       res.status(201).json({ success: true, data: { channel } });
     } catch (error) {
-      logger.error('[Messages Router /channels] Error creating channel:', error);
+      logger.error(
+        '[Messages Router /channels] Error creating channel:',
+        error instanceof Error ? error.message : String(error)
+      );
       res.status(500).json({ success: false, error: 'Failed to create channel' });
     }
   });
@@ -437,7 +456,7 @@ export function createChannelsRouter(
             }
           : { message: String(error) };
 
-      logger.error('Error finding/creating DM channel:', errorDetails);
+      logger.error('Error finding/creating DM channel:', JSON.stringify(errorDetails));
       res.status(500).json({ success: false, error: 'Failed to find or create DM channel' });
     }
   });
@@ -512,7 +531,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: channelDetails });
       } catch (error) {
-        logger.error(`[Messages Router] Error fetching details for channel ${channelId}:`, error);
+        logger.error(
+          `[Messages Router] Error fetching details for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channel details' });
       }
     }
@@ -532,7 +554,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           `[Messages Router] Error fetching participants for channel ${channelId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to fetch channel participants' });
       }
@@ -582,7 +604,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           `[Messages Router] Error adding agent ${agentId} to channel ${channelId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({
           success: false,
@@ -646,7 +668,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           `[Messages Router] Error removing agent ${agentId} from channel ${channelId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({
           success: false,
@@ -688,7 +710,10 @@ export function createChannelsRouter(
           },
         });
       } catch (error) {
-        logger.error(`[Messages Router] Error fetching agents for channel ${channelId}:`, error);
+        logger.error(
+          `[Messages Router] Error fetching agents for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to fetch channel agents',
@@ -733,7 +758,7 @@ export function createChannelsRouter(
       } catch (error) {
         logger.error(
           `[Messages Router] Error deleting message ${messageId} from channel ${channelId}:`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to delete message' });
       }
@@ -769,7 +794,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error(`[Messages Router] Error clearing messages for channel ${channelId}:`, error);
+        logger.error(
+          `[Messages Router] Error clearing messages for channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to clear messages' });
       }
     }
@@ -799,7 +827,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: updatedChannel });
       } catch (error) {
-        logger.error(`[Messages Router] Error updating channel ${channelId}:`, error);
+        logger.error(
+          `[Messages Router] Error updating channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to update channel' });
       }
     }
@@ -841,7 +872,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error(`[Messages Router] Error deleting channel ${channelId}:`, error);
+        logger.error(
+          `[Messages Router] Error deleting channel ${channelId}:`,
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({ success: false, error: 'Failed to delete channel' });
       }
     }
@@ -897,7 +931,7 @@ export function createChannelsRouter(
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(
           `[MessagesRouter /upload-media] Error processing upload for channel ${channelId}: ${errorMessage}`,
-          error
+          error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
@@ -1017,7 +1051,10 @@ Respond with just the title, nothing else.
           data: result,
         });
       } catch (error) {
-        logger.error('[CHANNEL SUMMARIZE] Error summarizing channel:', error);
+        logger.error(
+          '[CHANNEL SUMMARIZE] Error summarizing channel:',
+          error instanceof Error ? error.message : String(error)
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to summarize channel',

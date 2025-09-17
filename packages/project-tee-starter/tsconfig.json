@@ -12,9 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "strictFunctionTypes": false,
     "useUnknownInCatchVariables": false,
-    "allowImportingTsExtensions": true,
     "declaration": true,
-    "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "allowJs": true,
     "checkJs": false,
@@ -28,6 +26,6 @@
       "@elizaos/core/*": ["../../core/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "*.json"],
   "exclude": ["dist", "node_modules", "src/__tests__/**/*", "**/*.test.ts", "**/*.spec.ts"]
 }

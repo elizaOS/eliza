@@ -32,7 +32,13 @@ const TestAgentCard: React.FC<{
             : 'unknown'}
       </div>
       {agent.settings?.avatar && (
-        <img data-testid="agent-avatar" src={agent.settings.avatar} alt={agentName} />
+        <img
+          data-testid="agent-avatar"
+          src={
+            typeof agent.settings.avatar === 'string' ? agent.settings.avatar : '/elizaos-icon.png'
+          }
+          alt={agentName}
+        />
       )}
       {!agent.settings?.avatar && (
         <div data-testid="agent-initials">{agentName.substring(0, 2).toUpperCase()}</div>

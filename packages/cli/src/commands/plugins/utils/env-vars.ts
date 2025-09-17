@@ -1,5 +1,5 @@
 import { logger } from '@elizaos/core';
-import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import * as clack from '@clack/prompts';
 import { EnvVarConfig } from '../types';
@@ -50,7 +50,7 @@ export const extractPluginEnvRequirements = async (
     for (const possiblePath of possiblePaths) {
       if (existsSync(possiblePath)) {
         packageJsonPath = possiblePath;
-        logger.debug(`Found plugin package.json at: ${packageJsonPath}`);
+        logger.debug({ packageJsonPath }, `Found plugin package.json at:`);
         break;
       }
     }
@@ -65,7 +65,7 @@ export const extractPluginEnvRequirements = async (
             const pkgJsonPath = path.join(nodeModulesPath, pkg, 'package.json');
             if (existsSync(pkgJsonPath)) {
               packageJsonPath = pkgJsonPath;
-              logger.debug(`Found matching plugin package.json at: ${packageJsonPath}`);
+              logger.debug({ packageJsonPath }, `Found matching plugin package.json at:`);
               break;
             }
           }
@@ -74,8 +74,8 @@ export const extractPluginEnvRequirements = async (
     }
 
     if (!packageJsonPath) {
-      logger.debug(`Plugin package.json not found for: ${packageName}`);
-      logger.debug(`Searched paths: ${possiblePaths.join(', ')}`);
+      logger.debug({ packageName }, `Plugin package.json not found`);
+      logger.debug({ paths: possiblePaths }, `Searched paths:`);
       return {};
     }
 
@@ -90,14 +90,13 @@ export const extractPluginEnvRequirements = async (
     }
 
     logger.debug(
-      `Found environment variables for ${packageName}: ${Object.keys(agentConfig.pluginParameters).join(', ')}`
+      { packageName, vars: Object.keys(agentConfig.pluginParameters) },
+      'Found environment variables'
     );
 
     return agentConfig.pluginParameters;
   } catch (error) {
-    logger.debug(
-      `Error reading plugin package.json for ${packageName}: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ error, packageName }, 'Error reading plugin package.json');
     return {};
   }
 };

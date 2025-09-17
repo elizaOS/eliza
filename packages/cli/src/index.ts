@@ -10,6 +10,7 @@ import { env } from '@/src/commands/env';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
 import { monorepo } from '@/src/commands/monorepo';
+import { report } from '@/src/commands/report';
 import { start } from '@/src/commands/start';
 import { teeCommand as tee } from '@/src/commands/tee';
 import { test } from '@/src/commands/test';
@@ -20,6 +21,7 @@ import { logger } from '@elizaos/core';
 import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
 import { stopServer } from '@/src/commands/dev/utils/server-manager';
+import { scenario } from '@/src/commands/scenario';
 
 /**
  * Shutdown state management to prevent race conditions
@@ -64,7 +66,7 @@ async function gracefulShutdown(signal: string) {
     // Extract error message for better debugging
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`Error stopping server: ${errorMessage}`);
-    logger.debug('Full error details:', error);
+    logger.debug({ error }, 'Full error details:');
   }
 
   // Use appropriate exit codes for different signals
@@ -137,7 +139,9 @@ async function main() {
     .addCommand(test)
     .addCommand(env)
     .addCommand(dev)
-    .addCommand(publish);
+    .addCommand(publish)
+    .addCommand(report)
+    .addCommand(scenario);
 
   // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {
@@ -148,6 +152,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error('An error occurred:', error);
+  logger.error({ error }, 'An error occurred:');
   process.exit(1);
 });

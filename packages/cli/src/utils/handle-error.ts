@@ -30,13 +30,13 @@ export function handleError(error: unknown) {
       logger.error(colors.red(String(error)));
     }
   } else {
-    logger.error('An error occurred:', error);
+    logger.error({ error }, 'An error occurred:');
     if (error instanceof Error) {
-      logger.error('Error details:', error.message);
-      logger.error('Stack trace:', error.stack);
+      logger.error({ message: error.message }, 'Error details:');
+      logger.error({ stack: error.stack }, 'Stack trace:');
     } else {
-      logger.error('Unknown error type:', typeof error);
-      logger.error('Error value:', error);
+      logger.error({ type: typeof error }, 'Unknown error type:');
+      logger.error({ error }, 'Error value:');
     }
   }
   process.exit(1);

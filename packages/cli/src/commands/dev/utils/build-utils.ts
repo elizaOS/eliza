@@ -141,7 +141,13 @@ export function createDevContext(cwd: string): DevContext {
   return {
     directory: cwd,
     directoryType,
-    watchDirectory: existsSync(srcDir) ? srcDir : cwd,
+    // In a monorepo, watch the entire monorepo root so edits to sibling packages (e.g. core/server/plugins)
+    // also trigger rebuilds when developing from a plugin directory.
+    watchDirectory: directoryType.monorepoRoot
+      ? directoryType.monorepoRoot
+      : existsSync(srcDir)
+        ? srcDir
+        : cwd,
     buildRequired: directoryType.type !== 'elizaos-monorepo',
   };
 }

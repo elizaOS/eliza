@@ -5,6 +5,9 @@ import {
   logger,
   type UUID,
   parseBooleanFromText,
+  getDatabaseDir,
+  getGeneratedDir,
+  getUploadsAgentsDir,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -19,12 +22,10 @@ import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/
 import { apiKeyAuthMiddleware } from './authMiddleware.js';
 import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
+import * as Sentry from '@sentry/node';
 
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  plugin as sqlPlugin,
-} from '@elizaos/plugin-sql';
+import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+
 import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,
@@ -70,21 +71,25 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dotenv.config({ path: envPath });
   }
 
-  const base =
-    dir ??
-    process.env.PGLITE_DATA_DIR ??
-    fallbackDir ??
-    path.join(process.cwd(), '.eliza', '.elizadb');
-
-  // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const resolved = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), '.elizadb');
-  if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
-    process.env.PGLITE_DATA_DIR = newPath;
-    return newPath;
+  // If explicit dir provided, use it
+  if (dir) {
+    const resolved = expandTildePath(dir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
   }
 
+  // If fallbackDir provided, use it as fallback
+  if (fallbackDir && !process.env.PGLITE_DATA_DIR && !process.env.ELIZA_DATABASE_DIR) {
+    const resolved = expandTildePath(fallbackDir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
+  }
+
+  // Use the centralized path configuration from core
+  const resolved = getDatabaseDir();
+
+  // Persist chosen root for the process so child modules see it (backward compat)
+  process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
 }
 
@@ -175,7 +180,7 @@ export class AgentServer {
       // Register signal handlers once in constructor to prevent accumulation
       this.registerSignalHandlers();
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (constructor):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (constructor):');
       throw error;
     }
   }
@@ -224,7 +229,7 @@ export class AgentServer {
 
         logger.success('[INIT] Database migrations completed successfully');
       } catch (migrationError) {
-        logger.error('[INIT] Failed to run database migrations:', migrationError);
+        logger.error({ error: migrationError }, '[INIT] Failed to run database migrations:');
         throw new Error(
           `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
         );
@@ -242,7 +247,7 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
-      logger.error('Failed to initialize AgentServer (async operations):', error);
+      logger.error({ error }, 'Failed to initialize AgentServer (async operations):');
       console.trace(error);
       throw error;
     }
@@ -319,7 +324,7 @@ export class AgentServer {
         logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
-      logger.error('[AgentServer] Error ensuring default server:', error);
+      logger.error({ error }, '[AgentServer] Error ensuring default server:');
       throw error; // Re-throw to prevent startup if default server can't be created
     }
   }
@@ -340,6 +345,26 @@ export class AgentServer {
       // Initialize middleware and database
       this.app = express();
 
+      // Initialize Sentry (if configured) before any other middleware
+      const DEFAULT_SENTRY_DSN =
+        'https://c20e2d51b66c14a783b0689d536f7e5c@o4509349865259008.ingest.us.sentry.io/4509352524120064';
+      const sentryDsn =
+        (process.env.SENTRY_DSN && process.env.SENTRY_DSN.trim()) || DEFAULT_SENTRY_DSN;
+      const sentryEnabled = Boolean(sentryDsn);
+      if (sentryEnabled) {
+        try {
+          Sentry.init({
+            dsn: sentryDsn,
+            environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+            integrations: [Sentry.vercelAIIntegration({ force: sentryEnabled })],
+            tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
+          });
+          logger.info('[Sentry] Initialized Sentry for @elizaos/server');
+        } catch (sentryInitError) {
+          logger.error({ error: sentryInitError }, '[Sentry] Failed to initialize Sentry');
+        }
+      }
+
       // Security headers first - before any other middleware
       const isProd = process.env.NODE_ENV === 'production';
       logger.debug('Setting up security headers...');
@@ -356,13 +381,14 @@ export class AgentServer {
                 directives: {
                   defaultSrc: ["'self'"],
                   styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  // this should probably be unlocked too
                   scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
                   imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
                   fontSrc: ["'self'", 'https:', 'data:'],
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
                   mediaSrc: ["'self'", 'blob:', 'data:'],
                   objectSrc: ["'none'"],
-                  frameSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
                   baseUri: ["'self'"],
                   formAction: ["'self'"],
                   // upgrade-insecure-requests is added by helmet automatically
@@ -374,7 +400,9 @@ export class AgentServer {
                 directives: {
                   defaultSrc: ["'self'"],
                   styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  // unlocking this, so plugin can include the various frameworks from CDN if needed
+                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
                   imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
                   fontSrc: ["'self'", 'https:', 'http:', 'data:'],
                   connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
@@ -468,8 +496,8 @@ export class AgentServer {
         }
       }
 
-      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
-      const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
+      const uploadsBasePath = getUploadsAgentsDir();
+      const generatedBasePath = getGeneratedDir();
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
@@ -528,13 +556,40 @@ export class AgentServer {
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
+
           if (!filePath.startsWith(agentGeneratedPath)) {
             res.status(403).json({ error: 'Access denied' });
             return;
           }
-          res.sendFile(filePath, (err) => {
+
+          // Check if file exists before sending
+          if (!existsSync(filePath)) {
+            res.status(404).json({ error: 'File not found' });
+            return;
+          }
+
+          // Make sure path is absolute for sendFile
+          const absolutePath = path.resolve(filePath);
+
+          // Use sendFile with proper options (no root needed for absolute paths)
+          const options = {
+            dotfiles: 'deny' as const,
+          };
+
+          res.sendFile(absolutePath, options, (err) => {
             if (err) {
-              res.status(404).json({ error: 'File not found' });
+              // Fallback to streaming if sendFile fails (non-blocking)
+              const ext = extname(filename).toLowerCase();
+              const mimeType =
+                ext === '.png'
+                  ? 'image/png'
+                  : ext === '.jpg' || ext === '.jpeg'
+                    ? 'image/jpeg'
+                    : 'application/octet-stream';
+              res.setHeader('Content-Type', mimeType);
+              const stream = fs.createReadStream(absolutePath);
+              stream.on('error', () => res.status(404).json({ error: 'File not found' }));
+              stream.pipe(res);
             }
           });
         }
@@ -564,7 +619,7 @@ export class AgentServer {
 
           res.sendFile(filePath, (err) => {
             if (err) {
-              logger.warn(`[STATIC] Channel media file not found: ${filePath}`, err);
+              logger.warn({ err, filePath }, `[STATIC] Channel media file not found: ${filePath}`);
               if (!res.headersSent) {
                 res.status(404).json({ error: 'File not found' });
               }
@@ -576,9 +631,9 @@ export class AgentServer {
       );
 
       // Add specific middleware to handle portal assets
-      this.app.use((req, res, next) => {
+      this.app.use((_req, res, next) => {
         // Automatically detect and handle static assets based on file extension
-        const ext = extname(req.path).toLowerCase();
+        const ext = extname(_req.path).toLowerCase();
 
         // Set correct content type based on file extension
         if (ext === '.js' || ext === '.mjs') {
@@ -785,7 +840,19 @@ export class AgentServer {
         },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
-          logger.error(`API error: ${req.method} ${req.path}`, err);
+          // Capture error with Sentry if configured
+          if (sentryDsn) {
+            Sentry.captureException(err, (scope) => {
+              scope.setTag('route', req.path);
+              scope.setContext('request', {
+                method: req.method,
+                path: req.path,
+                query: req.query,
+              });
+              return scope;
+            });
+          }
+          logger.error({ err }, `API error: ${req.method} ${req.path}`);
           res.status(500).json({
             success: false,
             error: {
@@ -796,12 +863,35 @@ export class AgentServer {
         }
       );
 
+      // Global process-level handlers to capture unhandled errors (if Sentry enabled)
+      if (sentryDsn) {
+        process.on('uncaughtException', (error) => {
+          try {
+            Sentry.captureException(error, (scope) => {
+              scope.setTag('type', 'uncaughtException');
+              return scope;
+            });
+          } catch {}
+        });
+        process.on('unhandledRejection', (reason: any) => {
+          try {
+            Sentry.captureException(
+              reason instanceof Error ? reason : new Error(String(reason)),
+              (scope) => {
+                scope.setTag('type', 'unhandledRejection');
+                return scope;
+              }
+            );
+          } catch {}
+        });
+      }
+
       // Add a catch-all route for API 404s
-      this.app.use((req, res, next) => {
+      this.app.use((_req, res, next) => {
         // Check if this is an API route that wasn't handled
-        if (req.path.startsWith('/api/')) {
+        if (_req.path.startsWith('/api/')) {
           // worms are going to hitting it all the time, use a reverse proxy if you need this type of logging
-          //logger.warn(`API 404: ${req.method} ${req.path}`);
+          //logger.warn(`API 404: ${_req.method} ${_req.path}`);
           res.status(404).json({
             success: false,
             error: {
@@ -881,7 +971,7 @@ export class AgentServer {
 
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
-      logger.error('Failed to complete server initialization:', error);
+      logger.error({ error }, 'Failed to complete server initialization:');
       throw error;
     }
   }
@@ -920,8 +1010,8 @@ export class AgentServer {
         }
       } catch (e) {
         logger.error(
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`,
-          e
+          { error: e },
+          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
         // Decide if this is a fatal error for the agent.
       }
@@ -953,7 +1043,7 @@ export class AgentServer {
         `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
-      logger.error('Failed to register agent:', error);
+      logger.error({ error }, 'Failed to register agent:');
       throw error;
     }
   }
@@ -979,13 +1069,16 @@ export class AgentServer {
         try {
           agent.stop().catch((stopError) => {
             logger.error(
-              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`,
-              stopError
+              { error: stopError, agentId },
+              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
             );
           });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
         } catch (stopError) {
-          logger.error(`[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`, stopError);
+          logger.error(
+            { error: stopError, agentId },
+            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+          );
         }
       }
 
@@ -993,7 +1086,7 @@ export class AgentServer {
       this.agents.delete(agentId);
       logger.debug(`Agent ${agentId} removed from agents map`);
     } catch (error) {
-      logger.error(`Error removing agent ${agentId}:`, error);
+      logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
     }
   }
 
@@ -1064,7 +1157,7 @@ export class AgentServer {
             resolve();
           })
           .on('error', (error: any) => {
-            logger.error(`Failed to bind server to ${host}:${port}:`, error);
+            logger.error({ error, host, port }, `Failed to bind server to ${host}:${port}:`);
 
             // Provide helpful error messages for common issues
             if (error.code === 'EADDRINUSE') {
@@ -1087,7 +1180,7 @@ export class AgentServer {
 
         // Server is now listening successfully
       } catch (error) {
-        logger.error('Failed to start server:', error);
+        logger.error({ error }, 'Failed to start server:');
         reject(error);
       }
     });
@@ -1216,7 +1309,22 @@ export class AgentServer {
     limit: number = 50,
     beforeTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
+    // TODO: Add afterTimestamp support when database layer is updated
     return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
+  }
+
+  async updateMessage(
+    messageId: UUID,
+    patch: {
+      content?: string;
+      rawMessage?: any;
+      sourceType?: string;
+      sourceId?: string;
+      metadata?: any;
+      inReplyToRootMessageId?: UUID;
+    }
+  ): Promise<CentralRootMessage | null> {
+    return (this.database as any).updateMessage(messageId, patch);
   }
 
   // Optional: Method to remove a participant
@@ -1297,7 +1405,7 @@ export class AgentServer {
           await agent.stop();
           logger.debug(`Stopped agent ${id}`);
         } catch (error) {
-          logger.error(`Error stopping agent ${id}:`, error);
+          logger.error({ error, agentId: id }, `Error stopping agent ${id}:`);
         }
       }
 
@@ -1307,7 +1415,7 @@ export class AgentServer {
           await this.database.close();
           logger.info('Database closed.');
         } catch (error) {
-          logger.error('Error closing database:', error);
+          logger.error({ error }, 'Error closing database:');
         }
       }
 

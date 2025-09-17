@@ -1,69 +1,29 @@
 import react from '@vitejs/plugin-react-swc';
 import path from 'node:path';
-import { defineConfig } from 'vite';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { defineConfig, type PluginOption } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import inject from '@rollup/plugin-inject';
 
 export default defineConfig({
   plugins: [
-    tailwindcss(),
-    react(),
-    nodePolyfills({
-      // Configure polyfills to work properly in browser
-      protocolImports: false,
-      globals: {
-        Buffer: true,
-        global: true,
-        process: true,
+    tailwindcss() as unknown as PluginOption,
+    react() as unknown as PluginOption,
+    // Minimal shims for tests without pulling full node polyfills
+    inject({
+      modules: {
+        Buffer: ['buffer', 'Buffer'],
+        process: ['process', 'default'],
       },
-      overrides: {
-        // Make sure crypto uses the browser version
-        crypto: 'crypto-browserify',
-      },
-      // Include specific modules that need polyfilling
-      include: [
-        'buffer',
-        'crypto',
-        'stream',
-        'util',
-        'process',
-        'events',
-        'path',
-        'punycode',
-        'querystring',
-        'string_decoder',
-        'url',
-        'fs',
-        'http',
-        'https',
-        'os',
-        'assert',
-        'constants',
-        'timers',
-        'console',
-        'vm',
-        'zlib',
-        'tty',
-        'domain',
-      ],
-    }),
+    }) as unknown as PluginOption,
   ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@elizaos/core': path.resolve(__dirname, '../core/src/index.ts'),
-      // Explicit polyfill aliases
-      crypto: 'crypto-browserify',
-      stream: 'stream-browserify',
+      // Keep only what is actually used by tests
       buffer: 'buffer',
       process: 'process/browser',
-      assert: 'assert',
-      http: 'stream-http',
-      https: 'https-browserify',
-      os: 'os-browserify',
-      url: 'url',
-      util: 'util',
     },
+    dedupe: ['react', 'react-dom'],
   },
   define: {
     global: 'globalThis',
@@ -72,10 +32,16 @@ export default defineConfig({
   },
   optimizeDeps: {
     esbuildOptions: {
+      // Better stack traces in component tests
+      sourcemap: true,
+      keepNames: true,
       define: {
         global: 'globalThis',
       },
     },
-    include: ['buffer', 'process', 'crypto-browserify', 'stream-browserify', 'util'],
+    include: ['buffer', 'process'],
+  },
+  esbuild: {
+    keepNames: true,
   },
 });

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.3.1",
+  "version": "1.5.9-beta.1",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -29,32 +29,33 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsup && bun run src/scripts/copy-client-dist.ts",
+    "build": "bun run build.ts",
     "type-check": "tsc --project tsconfig.build.json --noEmit",
     "lint": "prettier --write ./src",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "bun test src/**/*.test.ts",
     "test:unit": "bun test src/**/*.test.ts --exclude **/integration/**",
     "test:integration": "bun test src/__tests__/integration/**/*.test.ts",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
-    "test:cli": "bun test tests/commands/"
+    "test:cli": "bun test tests/commands/",
+    "dev": "bun run build.ts --watch"
   },
   "devDependencies": {
     "@types/node": "^24.0.1",
     "prettier": "3.5.3",
-    "tsup": "8.5.0",
     "tsx": "4.19.4",
     "typescript": "^5.5.4",
     "which": "^4.0.0",
     "ws": "^8.18.0"
   },
-  "gitHead": "48d0b08182b5fd5b17dd58198b1fee15b0815775",
+  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "@sentry/node": "^10.11.0",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^1.4.13",

@@ -18,7 +18,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
-          bun-version: latest
+          bun-version: 1.2.21
 
       - name: Install dependencies
         run: |
@@ -31,14 +31,6 @@ jobs:
 
       - name: Run update script
         run: ./scripts/update-news.sh
-
-      - name: Build and Deploy Docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd packages/docs
-          bun install
-          bun run deploy
 
       - name: Run repomix
         run: |

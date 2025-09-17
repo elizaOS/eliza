@@ -15,7 +15,26 @@ export async function publishToNpm(
 
   // Update npmPackage field if it's a placeholder or not set
   if (!packageJson.npmPackage || packageJson.npmPackage === '${NPM_PACKAGE}') {
-    packageJson.npmPackage = packageJson.name;
+    // Validate inputs before creating scoped name
+    if (!packageJson.name || packageJson.name.trim() === '') {
+      throw new Error('Invalid package.json: name field is required for scoping');
+    }
+
+    if (packageJson.name.startsWith('@')) {
+      throw new Error(
+        'Package name is already scoped - this should not happen with current templates'
+      );
+    }
+
+    if (!npmUsername || npmUsername.trim() === '') {
+      throw new Error('npm username is required for package scoping');
+    }
+
+    // Strip any existing scope from packageJson.name
+    const unscopedName = packageJson.name.startsWith('@')
+      ? packageJson.name.split('/').slice(1).join('/')
+      : packageJson.name;
+    packageJson.npmPackage = `@${npmUsername}/${unscopedName}`;
     console.info(`Set npmPackage to: ${packageJson.npmPackage}`);
 
     // Save updated package.json

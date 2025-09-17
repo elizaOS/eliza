@@ -28,6 +28,7 @@ interface PackageJson {
   platform?: 'node' | 'browser' | 'universal';
   packageType?: 'plugin' | 'project';
   type?: string; // 'module' or 'commonjs' for Node.js module format
+  npmPackage?: string;
 }
 
 /**
@@ -55,10 +56,10 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error('Test failed:', error);
+    logger.error({ error }, 'Test failed:');
     if (error instanceof Error) {
-      logger.error(`Error message: ${error.message}`);
-      logger.error(`Error stack: ${error.stack}`);
+      logger.error({ message: error.message }, 'Error message:');
+      logger.error({ stack: error.stack }, 'Error stack:');
     }
     return false;
   }
@@ -179,7 +180,7 @@ export async function testPublishToGitHub(
 
     return true;
   } catch (error) {
-    logger.error('Test failed:', error);
+    logger.error({ error }, 'Test failed:');
     return false;
   }
 }
@@ -199,7 +200,7 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error('Failed to publish to npm:', error);
+    logger.error({ error }, 'Failed to publish to npm:');
     return false;
   }
 }
@@ -376,8 +377,8 @@ export async function publishToGitHub(
   // Update package metadata
   const packageName = packageJson.name.replace(/^@[^/]+\//, '');
 
-  // Use the actual npm package name from package.json (not @elizaos/ prefix)
-  const registryPackageName = packageJson.name;
+  // Use the actual npm package name from package.json (scoped)
+  const registryPackageName = packageJson.npmPackage || packageJson.name;
 
   if (!isTest) {
     // Update index.json with simple mapping: npm package name -> github repo
@@ -414,8 +415,8 @@ export async function publishToGitHub(
             break;
           }
 
-          // Check if this is a package entry line
-          const match = line.match(/^\s*"(@[^"]+)"/);
+          // Check if this is a package entry line (both scoped and unscoped)
+          const match = line.match(/^\s*"([^"]+)"/);
           if (match) {
             const existingPackage = match[1];
             // If our package should come before this one alphabetically
@@ -441,8 +442,34 @@ export async function publishToGitHub(
           return false;
         }
 
-        // Insert the new entry at the correct alphabetical position
-        lines.splice(insertIndex, 0, newEntry);
+        // Check if we're inserting before the closing brace (last entry)
+        const isLastEntry = lines[insertIndex].trim() === '}';
+
+        if (isLastEntry) {
+          // Find the previous non-empty line
+          let prevLineIndex = insertIndex - 1;
+          while (prevLineIndex >= 0 && lines[prevLineIndex].trim() === '') {
+            prevLineIndex--;
+          }
+
+          if (prevLineIndex >= 0) {
+            const prevLine = lines[prevLineIndex];
+            const prevTrim = prevLine.trim();
+            // Only add a comma if the previous non-empty line is an entry (not an opening brace)
+            const isEntryLine = /^"[^"]+"\s*:/.test(prevTrim);
+            if (isEntryLine && !prevTrim.endsWith(',')) {
+              lines[prevLineIndex] = prevLine.trimEnd() + ',';
+            }
+          }
+
+          // Remove comma from new entry since it's the last one
+          const newEntryWithoutComma = newEntry.replace(/,\s*$/, '');
+          lines.splice(insertIndex, 0, newEntryWithoutComma);
+        } else {
+          // Not the last entry, keep the comma
+          lines.splice(insertIndex, 0, newEntry);
+        }
+
         const updatedContent = lines.join('\n');
 
         // Update index.json with minimal change - preserve original structure

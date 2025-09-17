@@ -8,7 +8,17 @@ const COMMAND_EXISTS_TIMEOUT_MS = 5000; // 5 seconds timeout for command existen
  * Helper to ensure bun is in PATH for subprocess execution
  */
 function ensureBunInPath(env: Record<string, string> = {}): Record<string, string> {
-  const enhancedEnv = { ...process.env, ...env };
+  const enhancedEnv: Record<string, string> = {};
+
+  // Filter out undefined values from process.env
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      enhancedEnv[key] = value;
+    }
+  }
+
+  // Override with provided env
+  Object.assign(enhancedEnv, env);
 
   if (enhancedEnv.PATH) {
     const pathSeparator = process.platform === 'win32' ? ';' : ':';
@@ -113,7 +123,10 @@ async function readStreamSafe(
     const text = await new Response(stream).text();
     return text;
   } catch (error) {
-    logger.debug(`[bunExec] Error reading ${streamName}:`, error);
+    logger.debug(
+      `[bunExec] Error reading ${streamName}:`,
+      error instanceof Error ? error.message : String(error)
+    );
     return '';
   }
 }
@@ -228,7 +241,7 @@ export async function bunExec(
     if (!success && options.stdio !== 'ignore') {
       logger.debug(`[bunExec] Command failed with exit code ${exitCode}`);
       if (stderr) {
-        logger.debug(`[bunExec] stderr: ${stderr}`);
+        logger.debug({ stderr }, `[bunExec] stderr:`);
       }
     }
 
@@ -270,7 +283,7 @@ export async function bunExec(
         // Process may have exited between our check and the kill attempt
         logger.debug(
           '[bunExec] Process cleanup error (process may have already exited):',
-          cleanupError
+          cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
         );
       }
     }
