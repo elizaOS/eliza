@@ -294,7 +294,7 @@ describe('ElizaOS Agent Commands', () => {
     const outputFile = join(testTmpDir, 'output_ada.json');
     const cliPath = join(__dirname, '../../src/index.ts');
     bunExecSync(
-      `bun ${cliPath} agent get --remote-url ${testServerUrl} -n Ada --output "${outputFile}"`,
+      `bun ${cliPath} agent get --remote-url ${testServerUrl} -n Ada --output ${outputFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
 
@@ -311,7 +311,7 @@ describe('ElizaOS Agent Commands', () => {
 
     try {
       const result = bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path "${maxPath}"`,
+        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${maxPath}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(result).toMatch(/(started successfully|created|already exists|already running)/);
@@ -377,7 +377,7 @@ describe('ElizaOS Agent Commands', () => {
 
       // Start the unique test agent
       bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path "${tempCharFile}"`,
+        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
         getPlatformOptions({ stdio: 'pipe' })
       );
     } catch (e) {
@@ -397,7 +397,7 @@ describe('ElizaOS Agent Commands', () => {
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     const result = bunExecSync(
-      `bun ${cliPath} agent set --remote-url ${testServerUrl} -n ${testAgentName} -f "${configFile}"`,
+      `bun ${cliPath} agent set --remote-url ${testServerUrl} -n ${testAgentName} -f ${configFile}`,
       getPlatformOptions({ encoding: 'utf8' })
     );
     expect(result).toMatch(/(updated|Updated)/);
@@ -430,7 +430,7 @@ describe('ElizaOS Agent Commands', () => {
     // Start the test agent
     try {
       const startResult = bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path "${tempCharFile}"`,
+        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
         getPlatformOptions({
           encoding: 'utf8',
         })
@@ -460,7 +460,7 @@ describe('ElizaOS Agent Commands', () => {
     // Verify agent is stopped by trying to start again
     try {
       const restartResult = bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path "${tempCharFile}"`,
+        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
         getPlatformOptions({ encoding: 'utf8' })
       );
       expect(restartResult).toMatch(/(started|created)/);
@@ -492,7 +492,7 @@ describe('ElizaOS Agent Commands', () => {
     // Start the test agent
     try {
       bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path "${tempCharFile}"`,
+        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
         getPlatformOptions({ stdio: 'pipe' })
       );
     } catch (e: any) {
