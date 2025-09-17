@@ -6,13 +6,18 @@
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/client#build": {
+      "dependsOn": ["^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/cli#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
     "@elizaos/server#build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["@elizaos/client#build", "^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
