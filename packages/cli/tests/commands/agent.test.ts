@@ -406,7 +406,7 @@ describe('ElizaOS Agent Commands', () => {
     try {
       bunExecSync(
         `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${testAgentName}`,
-        getPlatformOptions({ stdio: 'pipe' })
+        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
       );
     } catch (e) {
       // Ignore cleanup errors
@@ -470,7 +470,7 @@ describe('ElizaOS Agent Commands', () => {
       // Clean up: stop the agent again
       bunExecSync(
         `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${lifecycleAgentName}`,
-        getPlatformOptions({ stdio: 'pipe' })
+        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
       );
     } catch (e) {
       // Ignore cleanup errors
