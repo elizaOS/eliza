@@ -411,7 +411,7 @@ describe('ElizaOS Agent Commands', () => {
     } catch (e) {
       // Ignore cleanup errors
     }
-  }, { timeout: TEST_TIMEOUTS.INDIVIDUAL_TEST });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   it('agent full lifecycle management', async () => {
     // Create a unique agent for this test to avoid affecting other tests
@@ -475,7 +475,7 @@ describe('ElizaOS Agent Commands', () => {
     } catch (e) {
       // Ignore cleanup errors
     }
-  }, { timeout: TEST_TIMEOUTS.INDIVIDUAL_TEST });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   it('agent stop works after start', async () => {
     // Create a unique agent for this test
@@ -517,7 +517,7 @@ describe('ElizaOS Agent Commands', () => {
     } catch (e: any) {
       throw new Error(`Failed to stop test agent: ${e.message}`);
     }
-  }, { timeout: TEST_TIMEOUTS.INDIVIDUAL_TEST });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // This test must be absolutely last as it kills the server
   // Moving it after all other tests to avoid disrupting them
