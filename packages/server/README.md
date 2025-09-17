@@ -211,6 +211,7 @@ Set these to enable Sentry error reporting:
 - `SENTRY_TRACES_SAMPLE_RATE` - Number between 0 and 1 to enable tracing (optional; default 0)
 
 When `SENTRY_DSN` is present, the server:
+
 - Initializes Sentry during startup
 - Captures API handler exceptions with route and request context
 - Captures `uncaughtException` and `unhandledRejection` at the process level

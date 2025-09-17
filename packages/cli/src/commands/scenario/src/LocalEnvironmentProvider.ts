@@ -112,7 +112,9 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           );
         }
 
-        console.log(`🗣️  [LocalEnvironmentProvider] Executing conversation step: ${step.name || 'unnamed'}`);
+        console.log(
+          `🗣️  [LocalEnvironmentProvider] Executing conversation step: ${step.name || 'unnamed'}`
+        );
 
         const conversationResult = await this.conversationManager.executeConversation(
           step.input || 'Hello, I need help.',
@@ -131,7 +133,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           startedAtMs,
           endedAtMs,
           durationMs,
-          trajectory: conversationResult.turns.flatMap(turn => turn.trajectory),
+          trajectory: conversationResult.turns.flatMap((turn) => turn.trajectory),
         };
 
         // Add conversation metadata to result for conversation evaluators
@@ -139,11 +141,10 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           turnCount: conversationResult.turns.length,
           terminatedEarly: conversationResult.terminatedEarly,
           terminationReason: conversationResult.terminationReason,
-          finalEvaluations: conversationResult.finalEvaluations
+          finalEvaluations: conversationResult.finalEvaluations,
         };
 
         results.push(executionResult);
-
       } else if (step.input) {
         if (!this.server || !this.agentId) {
           throw new Error(

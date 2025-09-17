@@ -28,7 +28,7 @@ export interface EnhancedEvaluator {
 /**
  * Adapter that can work with both legacy and enhanced evaluators
  */
-export interface DualEvaluator extends Evaluator, EnhancedEvaluator { }
+export interface DualEvaluator extends Evaluator, EnhancedEvaluator {}
 
 /**
  * Enhanced Evaluation Engine that provides structured JSON output
@@ -279,8 +279,10 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
 
     try {
       // Wait for action memories to be written to database (prevents race condition)
-      console.log(`🔧 [EnhancedTrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(
+        `🔧 [EnhancedTrajectoryContainsActionEvaluator] Waiting 2s for action memories to be written...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Get action memories from database
       const actionMemories = await runtime.getMemories({

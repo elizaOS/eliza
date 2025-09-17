@@ -97,10 +97,7 @@ export const scenario = new Command()
 
         // Create unique scenario run identifier
         const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const logsDir = path.join(
-          __dirname,
-          '_logs_'
-        );
+        const logsDir = path.join(__dirname, '_logs_');
 
         // Initialize RunDataAggregator for centralized data collection (Ticket #5786)
         let dataAggregator: RunDataAggregator | null = null;
@@ -171,8 +168,8 @@ export const scenario = new Command()
           // Extract plugin names from scenario configuration, filtering by enabled status
           const scenarioPlugins = Array.isArray((scenario as any).plugins)
             ? (scenario as any).plugins
-              .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-              .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+                .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+                .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
           logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
@@ -376,7 +373,7 @@ export const scenario = new Command()
               };
 
               // Convert legacy evaluation results to enhanced format for data aggregator
-              const enhancedEvaluationResults = allEvaluationResults.map(result => {
+              const enhancedEvaluationResults = allEvaluationResults.map((result) => {
                 // If the result has _enhanced field, use that (enhanced format)
                 if (result._enhanced) {
                   return result._enhanced;
@@ -392,8 +389,8 @@ export const scenario = new Command()
                   summary: result.message || 'Legacy evaluation result',
                   details: {
                     legacy_result: result,
-                    converted: true
-                  }
+                    converted: true,
+                  },
                 };
               });
 
@@ -467,12 +464,12 @@ export const scenario = new Command()
               }
               await runtime.close();
               logger.info('Runtime shutdown complete');
-            } catch { }
+            } catch {}
           }
           if (server && createdServer) {
             try {
               await shutdownScenarioServer(server, serverPort);
-            } catch { }
+            } catch {}
           }
 
           // Report final result and exit with appropriate code
@@ -801,10 +798,7 @@ export const scenario = new Command()
               logger.info('\n🚀 Starting Matrix Execution...');
 
               // Create output directory with timestamp in scenario logs
-              const logsDir = path.join(
-                __dirname,
-                '_logs_'
-              );
+              const logsDir = path.join(__dirname, '_logs_');
               const matrixRunId = generateRunFilename(1);
               const outputDir = path.join(logsDir, matrixRunId.replace('run-', 'matrix-'));
 

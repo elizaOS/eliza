@@ -476,6 +476,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           id: entityId,
           agentId: testAgentId,
           names: ['No Metadata Entity'],
+          metadata: {},
         },
       ]);
 

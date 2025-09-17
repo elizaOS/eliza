@@ -10,6 +10,7 @@ import {
 } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
+import { attachmentsToApiUrls } from '../utils/media-transformer';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 export class SocketIORouter {
@@ -364,6 +365,9 @@ export class SocketIORouter {
         `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
       );
 
+      // Transform attachments for web client
+      const transformedAttachments = attachmentsToApiUrls(attachments);
+
       // Immediately broadcast the message to all clients in the channel
       const messageBroadcast = {
         id: createdRootMessage.id,
@@ -375,7 +379,7 @@ export class SocketIORouter {
         serverId: serverId, // Use serverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
-        attachments: attachments,
+        attachments: transformedAttachments,
       };
 
       // Broadcast to everyone in the channel except the sender

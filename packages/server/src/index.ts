@@ -5,6 +5,9 @@ import {
   logger,
   type UUID,
   parseBooleanFromText,
+  getDatabaseDir,
+  getGeneratedDir,
+  getUploadsAgentsDir,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -21,11 +24,8 @@ import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  plugin as sqlPlugin,
-} from '@elizaos/plugin-sql';
+import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+
 import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,
@@ -71,19 +71,24 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dotenv.config({ path: envPath });
   }
 
-  const base =
-    dir ??
-    process.env.PGLITE_DATA_DIR ??
-    fallbackDir ??
-    path.join(process.cwd(), '.eliza', '.elizadb');
+  // If explicit dir provided, use it
+  if (dir) {
+    const resolved = expandTildePath(dir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
+  }
 
-  // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
-  const migrated = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), '.elizadb');
-  const resolved =
-    migrated === legacyPath ? path.join(process.cwd(), '.eliza', '.elizadb') : migrated;
+  // If fallbackDir provided, use it as fallback
+  if (fallbackDir && !process.env.PGLITE_DATA_DIR && !process.env.ELIZA_DATABASE_DIR) {
+    const resolved = expandTildePath(fallbackDir);
+    process.env.PGLITE_DATA_DIR = resolved;
+    return resolved;
+  }
 
-  // Persist chosen root for the process so child modules see it
+  // Use the centralized path configuration from core
+  const resolved = getDatabaseDir();
+
+  // Persist chosen root for the process so child modules see it (backward compat)
   process.env.PGLITE_DATA_DIR = resolved;
   return resolved;
 }
@@ -491,8 +496,8 @@ export class AgentServer {
         }
       }
 
-      const uploadsBasePath = path.join(process.cwd(), '.eliza', 'data', 'uploads', 'agents');
-      const generatedBasePath = path.join(process.cwd(), '.eliza', 'data', 'generated');
+      const uploadsBasePath = getUploadsAgentsDir();
+      const generatedBasePath = getGeneratedDir();
       fs.mkdirSync(uploadsBasePath, { recursive: true });
       fs.mkdirSync(generatedBasePath, { recursive: true });
 
@@ -551,13 +556,40 @@ export class AgentServer {
           const sanitizedFilename = basename(filename);
           const agentGeneratedPath = join(generatedBasePath, agentId);
           const filePath = join(agentGeneratedPath, sanitizedFilename);
+
           if (!filePath.startsWith(agentGeneratedPath)) {
             res.status(403).json({ error: 'Access denied' });
             return;
           }
-          res.sendFile(filePath, (err) => {
+
+          // Check if file exists before sending
+          if (!existsSync(filePath)) {
+            res.status(404).json({ error: 'File not found' });
+            return;
+          }
+
+          // Make sure path is absolute for sendFile
+          const absolutePath = path.resolve(filePath);
+
+          // Use sendFile with proper options (no root needed for absolute paths)
+          const options = {
+            dotfiles: 'deny' as const,
+          };
+
+          res.sendFile(absolutePath, options, (err) => {
             if (err) {
-              res.status(404).json({ error: 'File not found' });
+              // Fallback to streaming if sendFile fails (non-blocking)
+              const ext = extname(filename).toLowerCase();
+              const mimeType =
+                ext === '.png'
+                  ? 'image/png'
+                  : ext === '.jpg' || ext === '.jpeg'
+                    ? 'image/jpeg'
+                    : 'application/octet-stream';
+              res.setHeader('Content-Type', mimeType);
+              const stream = fs.createReadStream(absolutePath);
+              stream.on('error', () => res.status(404).json({ error: 'File not found' }));
+              stream.pipe(res);
             }
           });
         }

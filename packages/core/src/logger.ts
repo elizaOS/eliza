@@ -92,7 +92,7 @@ const LOG_LEVEL_PRIORITY: Record<string, number> = {
  * When multiple level names have the same numeric value, we prioritize the most semantic one
  */
 const LEVEL_TO_NAME: Record<number, string> = {
-  10: 'trace',    // prefer 'trace' over 'verbose'
+  10: 'trace', // prefer 'trace' over 'verbose'
   20: 'debug',
   27: 'success',
   28: 'progress',
@@ -100,7 +100,7 @@ const LEVEL_TO_NAME: Record<number, string> = {
   30: 'info',
   40: 'warn',
   50: 'error',
-  60: 'fatal',    // prefer 'fatal' over 'alert'
+  60: 'fatal', // prefer 'fatal' over 'alert'
 };
 
 /**
@@ -314,7 +314,7 @@ adzeStore.addListener('*', (log: any) => {
       : typeof d?.message === 'string'
         ? d.message
         : '';
-    
+
     const entry: LogEntry = {
       time: Date.now(),
       level: typeof d?.level === 'number' ? d.level : undefined,
@@ -542,18 +542,18 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
           })
           .join(' ');
       }
-      
+
       // Include namespace in the message if present
       if (base.namespace) {
         msg = `#${base.namespace}  ${msg}`;
       }
-      
+
       const entry: LogEntry = {
         time: Date.now(),
         level: LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
         msg,
       };
-      
+
       globalInMemoryDestination.write(entry);
     } catch {
       // Silent fail - don't break logging

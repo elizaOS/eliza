@@ -14,19 +14,24 @@ import chalk from 'chalk';
 let clientDevServerProcess: Subprocess | null = null;
 
 /**
- * Check if client package exists in the monorepo or project
+ * (removed) hasClientPackage: no longer used
  */
-function hasClientPackage(cwd: string): boolean {
-  // Check for @elizaos/client in node_modules (installed dependency)
-  const installedClientPath = path.join(cwd, 'node_modules', '@elizaos', 'client', 'package.json');
-  
-  // Check for client package in monorepo structure
-  const monorepoClientPath = path.join(cwd, 'packages', 'client', 'package.json');
-  
-  // Check for client in parent directories (when running from within monorepo)
-  const parentClientPath = path.join(path.dirname(cwd), 'client', 'package.json');
-  
-  return fs.existsSync(installedClientPath) || fs.existsSync(monorepoClientPath) || fs.existsSync(parentClientPath);
+
+/**
+ * Determine if there is a local client source we can run in dev (Vite)
+ * Excludes installed client in node_modules to avoid missing dev deps.
+ */
+function hasLocalClientSource(cwd: string): boolean {
+  const monorepoClient = path.join(cwd, 'packages', 'client', 'package.json');
+  const parentClient = path.join(path.dirname(cwd), 'client', 'package.json');
+  const localViteTs = path.join(cwd, 'vite.config.ts');
+  const localViteJs = path.join(cwd, 'vite.config.js');
+  return (
+    fs.existsSync(monorepoClient) ||
+    fs.existsSync(parentClient) ||
+    fs.existsSync(localViteTs) ||
+    fs.existsSync(localViteJs)
+  );
 }
 
 /**
@@ -42,7 +47,7 @@ async function startClientDevServer(cwd: string): Promise<void> {
 
   // Determine the client directory
   let clientDir: string | null = null;
-  
+
   // Check for client in monorepo packages
   const monorepoClientPath = path.join(cwd, 'packages', 'client');
   if (fs.existsSync(path.join(monorepoClientPath, 'package.json'))) {
@@ -58,6 +63,14 @@ async function startClientDevServer(cwd: string): Promise<void> {
       if (fs.existsSync(path.join(installedClientPath, 'package.json'))) {
         clientDir = installedClientPath;
       }
+      // Fallback: if a local Vite config exists (standalone plugin demo UI), treat current dir as client
+      if (!clientDir) {
+        const localViteTs = path.join(cwd, 'vite.config.ts');
+        const localViteJs = path.join(cwd, 'vite.config.js');
+        if (fs.existsSync(localViteTs) || fs.existsSync(localViteJs)) {
+          clientDir = cwd;
+        }
+      }
     }
   }
 
@@ -66,19 +79,33 @@ async function startClientDevServer(cwd: string): Promise<void> {
     return;
   }
 
+  // If the "client" is an installed dependency, don't try to run its dev server.
+  // The installed package won't have dev dependencies available.
+  const isInstalledClient = clientDir.includes(path.join('node_modules', '@elizaos', 'client'));
+  if (isInstalledClient) {
+    console.info(
+      'Detected installed @elizaos/client. Using server static UI instead of running Vite.'
+    );
+    return;
+  }
+
   console.info('Starting Vite dev server for client with HMR...');
-  
+
   // Check if the client has a dev:client script
-  const clientPackageJson = JSON.parse(fs.readFileSync(path.join(clientDir, 'package.json'), 'utf-8'));
+  const clientPackageJson = JSON.parse(
+    fs.readFileSync(path.join(clientDir, 'package.json'), 'utf-8')
+  );
   const hasDevClientScript = clientPackageJson.scripts?.['dev:client'];
   const hasDevScript = clientPackageJson.scripts?.['dev'];
-  
+
   // Use dev:client if available, otherwise try dev
   const devScript = hasDevClientScript ? 'dev:client' : hasDevScript ? 'dev' : null;
-  
+
   try {
     if (!devScript) {
-      console.warn('Client package does not have a dev:client or dev script, trying vite directly...');
+      console.warn(
+        'Client package does not have a dev:client or dev script, trying vite directly...'
+      );
       // Try to run vite via bun x as fallback
       clientDevServerProcess = Bun.spawn(['bun', 'x', 'vite', '--host', '0.0.0.0'], {
         cwd: clientDir,
@@ -94,14 +121,16 @@ async function startClientDevServer(cwd: string): Promise<void> {
       });
     }
   } catch (spawnError) {
-    console.error(`Failed to start client dev server: ${spawnError instanceof Error ? spawnError.message : String(spawnError)}`);
+    console.error(
+      `Failed to start client dev server: ${spawnError instanceof Error ? spawnError.message : String(spawnError)}`
+    );
     clientDevServerProcess = null;
     return;
   }
 
   // Handle process output to capture the actual URL
   const decoder = new TextDecoder();
-  
+
   if (clientDevServerProcess.stdout) {
     const stdoutStream = clientDevServerProcess.stdout;
     if (typeof stdoutStream !== 'number') {
@@ -130,7 +159,7 @@ async function startClientDevServer(cwd: string): Promise<void> {
       })();
     }
   }
-  
+
   // Also handle stderr for errors
   if (clientDevServerProcess.stderr) {
     const stderrStream = clientDevServerProcess.stderr;
@@ -182,7 +211,7 @@ async function stopClientDevServer(): Promise<void> {
     console.info('Stopping client dev server...');
     clientDevServerProcess.kill();
     clientDevServerProcess = null;
-    
+
     // Give it a moment to clean up
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -193,9 +222,11 @@ async function stopClientDevServer(): Promise<void> {
  */
 async function getClientPort(cwd: string): Promise<number | null> {
   const possibleClientDirs = [
+    cwd,
     path.join(cwd, 'packages', 'client'),
     path.join(path.dirname(cwd), 'client'),
-    path.join(cwd, '..', 'client')
+    path.join(cwd, '..', 'client'),
+    path.join(cwd, 'node_modules', '@elizaos', 'client'),
   ];
 
   // 1) Check dev:client or dev script for --port flag
@@ -259,6 +290,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   const isProject = directoryType.type === 'elizaos-project';
   const isPlugin = directoryType.type === 'elizaos-plugin';
   const isMonorepo = directoryType.type === 'elizaos-monorepo';
+  const inStandalone = !isProject && !isPlugin && !isMonorepo;
 
   // Log project type
   if (isProject) {
@@ -326,7 +358,12 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       await serverManager.stop();
 
       // Also stop client dev server for clean restart
-      if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+      const hasLocalVite =
+        fs.existsSync(path.join(cwd, 'vite.config.ts')) ||
+        fs.existsSync(path.join(cwd, 'vite.config.js'));
+      const shouldStartClient =
+        ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+      if (shouldStartClient) {
         await stopClientDevServer();
       }
 
@@ -337,9 +374,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
       // Start the server with the args
       await serverManager.start(cliArgs);
-      
+
       // Restart client dev server if needed
-      if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+      if (shouldStartClient) {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         await startClientDevServer(cwd);
       }
@@ -363,38 +400,57 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     await performInitialBuild(context);
   }
 
-  // Start the server initially
-  if (process.env.ELIZA_TEST_MODE === 'true') {
-    console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
+  // Start the server initially (skip in standalone mode)
+  let backendStarted = false;
+  let serverPort = availablePort || 3000;
+  if (!inStandalone) {
+    if (process.env.ELIZA_TEST_MODE === 'true') {
+      console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
+    }
+
+    // Extract the actual port being used (after availability check)
+    const portArgIndex = cliArgs.indexOf('--port');
+    serverPort =
+      portArgIndex !== -1 && cliArgs[portArgIndex + 1]
+        ? parseInt(cliArgs[portArgIndex + 1], 10)
+        : availablePort || 3000;
+
+    await serverManager.start(cliArgs);
+    backendStarted = true;
+
+    // Give the server a moment to fully initialize
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  } else if (process.env.ELIZA_TEST_MODE === 'true') {
+    console.info('[DEV] Standalone mode detected, skipping backend server start');
   }
-  
-  // Extract the actual port being used (after availability check)
-  const portArgIndex = cliArgs.indexOf('--port');
-  const serverPort = portArgIndex !== -1 && cliArgs[portArgIndex + 1] 
-    ? parseInt(cliArgs[portArgIndex + 1], 10) 
-    : availablePort || 3000;
-    
-  await serverManager.start(cliArgs);
 
-  // Give the server a moment to fully initialize  
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Start the client dev server if available (for monorepo or projects with client)
-  if ((isProject || isMonorepo) && hasClientPackage(cwd)) {
+  // Start the client dev server if available (project/monorepo) or if a standalone plugin exposes a local Vite config
+  const hasLocalVite =
+    fs.existsSync(path.join(cwd, 'vite.config.ts')) ||
+    fs.existsSync(path.join(cwd, 'vite.config.js'));
+  const shouldStartClient =
+    ((isProject || isMonorepo) && hasLocalClientSource(cwd)) || (isPlugin && hasLocalVite);
+  if (shouldStartClient) {
     // Start the client dev server
     await startClientDevServer(cwd);
-    
+
     // Give the client server a moment to start
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
   // Display server information prominently
   console.info('\n' + '═'.repeat(60));
-  console.info('🚀 Development servers are running:');
+  if (backendStarted || clientDevServerProcess) {
+    console.info('🚀 Development servers are running:');
+  } else {
+    console.info('🚀 Dev environment ready (standalone mode)');
+  }
   console.info('═'.repeat(60));
-  console.info(`\n  Backend Server: ${chalk.cyan(`http://localhost:${serverPort}`)}`);
-  console.info(`  API Endpoint:   ${chalk.cyan(`http://localhost:${serverPort}/api`)}`);
-  
+  if (backendStarted) {
+    console.info(`\n  Backend Server: ${chalk.cyan(`http://localhost:${serverPort}`)}`);
+    console.info(`  API Endpoint:   ${chalk.cyan(`http://localhost:${serverPort}/api`)}`);
+  }
+
   // Display client dev server info if it was started
   if (clientDevServerProcess) {
     const clientPort = await getClientPort(cwd);
@@ -402,9 +458,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       console.info(`  Client UI:      ${chalk.green(`http://localhost:${clientPort}`)}`);
     }
   }
-  
+
   console.info('\n' + '─'.repeat(60));
-  
+
   // Set up file watching if we're in a project, plugin, or monorepo directory
   if (isProject || isPlugin || isMonorepo) {
     // Pass the rebuildAndRestart function as the onChange callback
@@ -413,14 +469,14 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     console.log('📁 Watching for file changes...');
     console.log('🔄 The server will restart automatically when files change.');
   } else {
-    // In standalone mode, just keep the server running without watching files
-    console.log('⚡ Running in standalone mode (no file watching)');
+    // In standalone mode, no backend or file watching
+    console.log('⚡ Running in standalone mode (no backend, no file watching)');
   }
-  
+
   console.log('\nPress Ctrl+C to stop all servers');
   console.log('═'.repeat(60) + '\n');
 
-  // Handle graceful shutdown
+  // Handle graceful shutdown - only register in non-test mode to avoid conflicts
   process.on('SIGINT', async () => {
     console.info('\nShutting down dev mode...');
     await stopClientDevServer();

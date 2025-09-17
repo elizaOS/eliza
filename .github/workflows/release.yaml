@@ -116,12 +116,12 @@ jobs:
           RELEASE_TYPE="${{ steps.release_type.outputs.type }}"
           CURRENT_VERSION=$(node -p "require('./lerna.json').version")
           echo "Current version: ${CURRENT_VERSION}"
-          
+
           # Helper functions for version manipulation
           get_base_version() {
             echo "$1" | sed 's/-.*$//'
           }
-          
+
           get_prerelease_type() {
             if [[ "$1" =~ -([a-z]+)\. ]]; then
               echo "${BASH_REMATCH[1]}"
@@ -129,7 +129,7 @@ jobs:
               echo ""
             fi
           }
-          
+
           bump_version() {
             local version="$1"
             local type="$2"  # major, minor, patch
@@ -488,35 +488,35 @@ jobs:
       # Sync version back to develop after production release
       - name: Sync version to develop branch
         if: github.event_name == 'release' && success()
-        continue-on-error: true  # Don't fail the release if sync fails
+        continue-on-error: true # Don't fail the release if sync fails
         run: |
           echo "📤 Syncing production release back to develop branch..."
-          
+
           # Get the released version
           RELEASED_VERSION="${{ steps.version.outputs.version }}"
           BASE_VERSION=$(echo "$RELEASED_VERSION" | sed 's/-.*$//')
-          
+
           echo "Released version: ${RELEASED_VERSION}"
           echo "Base version: ${BASE_VERSION}"
-          
+
           # Fetch latest develop
           git fetch origin develop:refs/remotes/origin/develop || {
             echo "⚠️ Could not fetch develop branch, skipping sync"
             exit 0
           }
-          
+
           # Get current develop version
           git checkout origin/develop -- lerna.json 2>/dev/null || true
           DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "unknown")
-          
+
           # Restore our lerna.json
           git checkout HEAD -- lerna.json
-          
+
           echo "Current develop version: ${DEVELOP_VERSION}"
-          
+
           # Extract base versions for comparison
           DEVELOP_BASE=$(echo "$DEVELOP_VERSION" | sed 's/-.*$//')
-          
+
           # Compare versions and auto-advance if needed
           if [[ "$DEVELOP_BASE" < "$BASE_VERSION" ]]; then
             # Develop is behind - update it to match production with alpha suffix
@@ -592,44 +592,44 @@ jobs:
             # Develop is ahead - this is fine, means a new version is being worked on
             # Don't touch it - developer has manually set the next version
           fi
-          
+
           # Also sync main branch to match production release
           echo "🔄 Syncing main branch to production release..."
-          
+
           # Fetch latest main
           git fetch origin main:refs/remotes/origin/main || {
             echo "⚠️ Could not fetch main branch, skipping main sync"
             exit 0
           }
-          
+
           # Get current main version
           git checkout origin/main -- lerna.json 2>/dev/null || true
           MAIN_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "unknown")
-          
+
           # Restore our lerna.json
           git checkout HEAD -- lerna.json
-          
+
           echo "Current main version: ${MAIN_VERSION}"
-          
+
           MAIN_BASE=$(echo "$MAIN_VERSION" | sed 's/-.*$//')
-          
+
           # Main should follow develop's base version
           # First, get the new develop version that was just set
           git fetch origin develop:refs/remotes/origin/develop || {
             echo "⚠️ Could not fetch updated develop branch"
             NEW_DEVELOP_BASE="$BASE_VERSION"
           }
-          
+
           if [[ -z "${NEW_DEVELOP_BASE}" ]]; then
             git checkout origin/develop -- lerna.json 2>/dev/null || true
             NEW_DEVELOP_VERSION=$(node -p "require('./lerna.json').version" 2>/dev/null || echo "${BASE_VERSION}-alpha.0")
             NEW_DEVELOP_BASE=$(echo "$NEW_DEVELOP_VERSION" | sed 's/-.*$//')
             git checkout HEAD -- lerna.json
           fi
-          
+
           echo "New develop base: ${NEW_DEVELOP_BASE}"
           echo "Current main base: ${MAIN_BASE}"
-          
+
           # Main should match develop's base version
           if [[ "$MAIN_BASE" != "$NEW_DEVELOP_BASE" ]]; then
             NEXT_BETA="${NEW_DEVELOP_BASE}-beta.0"

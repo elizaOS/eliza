@@ -18,6 +18,7 @@ export * from './schemas/character';
 export * from './utils/environment';
 export * from './utils/buffer';
 export * from './utils/server-health';
+export * from './utils/paths';
 
 // Export all core modules
 export * from './actions';
@@ -30,7 +31,6 @@ export * from './runtime';
 export * from './settings';
 export * from './services';
 export * from './search';
-
 
 // Node-specific exports
 export const isBrowser = false;

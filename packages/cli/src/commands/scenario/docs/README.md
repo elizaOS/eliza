@@ -60,7 +60,7 @@ For production use with globally installed CLI:
 # Run a single scenario
 elizaos scenario run <scenario-file> [options]
 
-# Run matrix testing with parameter combinations  
+# Run matrix testing with parameter combinations
 elizaos scenario matrix <matrix-config> [options]
 
 # Generate comprehensive reports
@@ -85,15 +85,18 @@ bun packages/cli/dist/index.js report generate <input-directory> [options]
 #### **Command Options**
 
 **Scenario Run Options:**
+
 - `--live` - Run in live mode, ignoring mocks (default: false)
 
 **Matrix Options:**
+
 - `--dry-run` - Show matrix analysis without executing tests
 - `--parallel <number>` - Maximum parallel test runs (default: 1)
 - `--filter <pattern>` - Filter parameter combinations by pattern
 - `--verbose` - Show detailed progress information
 
 **Report Options:**
+
 - `--output-path <path>` - Path where report files will be saved
 - `--format <format>` - Output format: "json", "html", "pdf", or "all" (default: "all")
 
@@ -550,14 +553,14 @@ judgment:
 name: 'Conversation Test Name'
 description: 'Test Description'
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - '@elizaos/plugin-bootstrap'
+  - '@elizaos/plugin-openai'
 environment:
   type: 'local' # or "e2b"
 run:
-  - name: "Conversation Name"
+  - name: 'Conversation Name'
     input: 'Initial user message'
-    
+
     conversation:
       max_turns: 4
       user_simulator:
@@ -568,18 +571,18 @@ run:
         constraints:
           - 'Behavioral constraint 1'
           - 'Behavioral constraint 2'
-      
+
       termination_conditions:
         - type: 'user_expresses_satisfaction'
           keywords: ['thank you', 'resolved', 'perfect']
         - type: 'agent_provides_solution'
           keywords: ['follow these steps', 'issue resolved']
-      
+
       turn_evaluations:
         - type: 'llm_judge'
           prompt: 'Per-turn evaluation question'
           expected: 'yes'
-      
+
       final_evaluations:
         - type: 'llm_judge'
           prompt: 'Overall conversation evaluation'
@@ -591,7 +594,7 @@ run:
           min_turns: 2
           max_turns: 6
           optimal_turns: 3
-    
+
     # Traditional evaluations still supported
     evaluations:
       - type: 'string_contains'
@@ -633,45 +636,45 @@ judgment:
 name: 'Customer Support Conversation'
 description: 'Tests multi-turn customer support capabilities'
 plugins:
-  - "@elizaos/plugin-bootstrap"
-  - "@elizaos/plugin-openai"
+  - '@elizaos/plugin-bootstrap'
+  - '@elizaos/plugin-openai'
 environment:
   type: 'local'
 run:
-  - name: "Billing Support"
-    input: "Hi, I need help with my billing"
-    
+  - name: 'Billing Support'
+    input: 'Hi, I need help with my billing'
+
     conversation:
       max_turns: 4
       user_simulator:
-        persona: "customer with a billing question"
-        objective: "find out why charged twice this month"
+        persona: 'customer with a billing question'
+        objective: 'find out why charged twice this month'
         temperature: 0.6
-        style: "polite and patient"
+        style: 'polite and patient'
         constraints:
-          - "Be polite and cooperative"
-          - "Provide details when asked"
-          - "Express gratitude for help"
-      
+          - 'Be polite and cooperative'
+          - 'Provide details when asked'
+          - 'Express gratitude for help'
+
       termination_conditions:
-        - type: "user_expresses_satisfaction"
-          keywords: ["thank you", "resolved", "perfect"]
-        - type: "agent_provides_solution"
-          keywords: ["follow these steps", "issue resolved"]
-      
+        - type: 'user_expresses_satisfaction'
+          keywords: ['thank you', 'resolved', 'perfect']
+        - type: 'agent_provides_solution'
+          keywords: ['follow these steps', 'issue resolved']
+
       turn_evaluations:
-        - type: "llm_judge"
-          prompt: "Did the agent respond helpfully and professionally?"
-          expected: "yes"
-      
+        - type: 'llm_judge'
+          prompt: 'Did the agent respond helpfully and professionally?'
+          expected: 'yes'
+
       final_evaluations:
-        - type: "llm_judge"
-          prompt: "Was the billing issue successfully resolved?"
-          expected: "yes"
+        - type: 'llm_judge'
+          prompt: 'Was the billing issue successfully resolved?'
+          expected: 'yes'
           capabilities:
             - "Understood the customer's billing concern"
-            - "Asked appropriate follow-up questions"
-            - "Provided helpful solutions"
+            - 'Asked appropriate follow-up questions'
+            - 'Provided helpful solutions'
 judgment:
   strategy: 'all_pass'
 ```
@@ -683,7 +686,7 @@ judgment:
 The scenario system now supports sophisticated multi-turn conversations with:
 
 - **User Simulator**: AI-powered user that maintains personas, objectives, and behavioral constraints
-- **Dynamic Responses**: Context-aware responses that adapt to conversation flow  
+- **Dynamic Responses**: Context-aware responses that adapt to conversation flow
 - **Intelligent Termination**: Natural conversation endings based on satisfaction or solution detection
 - **Turn-based Evaluation**: Real-time assessment of each conversation turn
 - **Persona Consistency**: Maintains character traits and objectives across turns
@@ -695,35 +698,35 @@ The scenario system now supports sophisticated multi-turn conversations with:
 
 ```yaml
 conversation:
-  max_turns: 6                    # Maximum conversation length
+  max_turns: 6 # Maximum conversation length
   user_simulator:
-    persona: "customer support"    # Character description
-    objective: "resolve billing"   # What user wants to achieve
-    temperature: 0.6              # Response creativity (0.0-1.0)
-    style: "professional"         # Communication style
-    constraints:                  # Behavioral rules
-      - "Be polite and patient"
-      - "Provide details when asked"
-  
-  termination_conditions:         # When to end conversation
-    - type: "user_expresses_satisfaction"
-      keywords: ["thank you", "resolved"]
-    - type: "agent_provides_solution"
-      keywords: ["follow these steps"]
-  
-  turn_evaluations:              # Evaluate each turn
-    - type: "llm_judge"
-      prompt: "Was this response helpful?"
-      expected: "yes"
-  
-  final_evaluations:             # Evaluate overall conversation
-    - type: "llm_judge"
-      prompt: "Was the issue resolved?"
-      expected: "yes"
+    persona: 'customer support' # Character description
+    objective: 'resolve billing' # What user wants to achieve
+    temperature: 0.6 # Response creativity (0.0-1.0)
+    style: 'professional' # Communication style
+    constraints: # Behavioral rules
+      - 'Be polite and patient'
+      - 'Provide details when asked'
+
+  termination_conditions: # When to end conversation
+    - type: 'user_expresses_satisfaction'
+      keywords: ['thank you', 'resolved']
+    - type: 'agent_provides_solution'
+      keywords: ['follow these steps']
+
+  turn_evaluations: # Evaluate each turn
+    - type: 'llm_judge'
+      prompt: 'Was this response helpful?'
+      expected: 'yes'
+
+  final_evaluations: # Evaluate overall conversation
+    - type: 'llm_judge'
+      prompt: 'Was the issue resolved?'
+      expected: 'yes'
       capabilities:
-        - "Understood the problem"
-        - "Provided solutions"
-    - type: "conversation_length"
+        - 'Understood the problem'
+        - 'Provided solutions'
+    - type: 'conversation_length'
       min_turns: 2
       max_turns: 8
       optimal_turns: 4
@@ -745,7 +748,7 @@ conversation:
   - Parameters: `test_memory_of`, `retention_turns`, `memory_accuracy_threshold`
 
 ### Usage notes
- 
+
 Occassionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
 
 ```bash
@@ -840,48 +843,52 @@ When adding new scenarios:
 ### **Conversation Design Principles**
 
 #### **Start Simple**
+
 ```yaml
 # Begin with basic 2-3 turn conversations
 conversation:
   max_turns: 3
   user_simulator:
-    persona: "straightforward user with simple goal"
-    objective: "basic problem resolution"
+    persona: 'straightforward user with simple goal'
+    objective: 'basic problem resolution'
 ```
 
 #### **Gradual Complexity**
+
 ```yaml
 # Build up to complex multi-persona scenarios
 conversation:
   max_turns: 8
   user_simulator:
-    persona: "complex user with evolving needs"
-    emotional_state: "initially frustrated, becomes cooperative"
+    persona: 'complex user with evolving needs'
+    emotional_state: 'initially frustrated, becomes cooperative'
     constraints:
-      - "Start with complaints"
-      - "Become helpful when shown empathy"
+      - 'Start with complaints'
+      - 'Become helpful when shown empathy'
 ```
 
 ### **User Simulator Best Practices**
 
 #### **Persona Consistency**
+
 ```yaml
 user_simulator:
-  persona: "experienced developer who values efficiency"
-  style: "direct, technical, impatient with basic explanations"
-  knowledge_level: "expert"
+  persona: 'experienced developer who values efficiency'
+  style: 'direct, technical, impatient with basic explanations'
+  knowledge_level: 'expert'
   constraints:
-    - "Use technical terminology correctly"
-    - "Skip basic explanations"
-    - "Ask detailed implementation questions"
+    - 'Use technical terminology correctly'
+    - 'Skip basic explanations'
+    - 'Ask detailed implementation questions'
 ```
 
 #### **Realistic Objectives**
+
 ```yaml
 user_simulator:
   # Good: Specific, measurable objective
-  objective: "configure SSL certificate for production deployment"
-  
+  objective: 'configure SSL certificate for production deployment'
+
   # Avoid: Vague objective
   # objective: "get help with website"
 ```
@@ -889,47 +896,49 @@ user_simulator:
 ### **Performance Considerations**
 
 #### **Resource Management**
+
 ```yaml
 conversation:
-  max_turns: 6              # Reasonable limit to prevent infinite loops
-  timeout_per_turn_ms: 30000  # 30 second timeout per turn
-  total_timeout_ms: 300000    # 5 minute total conversation timeout
+  max_turns: 6 # Reasonable limit to prevent infinite loops
+  timeout_per_turn_ms: 30000 # 30 second timeout per turn
+  total_timeout_ms: 300000 # 5 minute total conversation timeout
 ```
 
 #### **LLM Usage Optimization**
+
 ```yaml
 user_simulator:
-  model_type: "TEXT_LARGE"   # Use appropriate model size
-  temperature: 0.7           # Balance creativity and consistency
-  max_tokens: 150           # Limit response length
+  model_type: 'TEXT_LARGE' # Use appropriate model size
+  temperature: 0.7 # Balance creativity and consistency
+  max_tokens: 150 # Limit response length
 ```
 
 ### **Matrix Testing with Conversations**
 
 ```yaml
-name: "Conversation Matrix Testing"
-base_scenario: "customer-support.scenario.yaml"
+name: 'Conversation Matrix Testing'
+base_scenario: 'customer-support.scenario.yaml'
 runs_per_combination: 2
 
 matrix:
   # Test different user personas
-  - parameter: "run[0].conversation.user_simulator.persona"
+  - parameter: 'run[0].conversation.user_simulator.persona'
     values:
-      - "frustrated customer"
-      - "confused beginner"  
-      - "experienced power user"
-      - "non-native English speaker"
-  
+      - 'frustrated customer'
+      - 'confused beginner'
+      - 'experienced power user'
+      - 'non-native English speaker'
+
   # Test different conversation lengths
-  - parameter: "run[0].conversation.max_turns"
+  - parameter: 'run[0].conversation.max_turns'
     values: [3, 5, 8]
-  
+
   # Test different termination conditions
-  - parameter: "run[0].conversation.termination_conditions[0].type"
+  - parameter: 'run[0].conversation.termination_conditions[0].type'
     values:
-      - "user_expresses_satisfaction"
-      - "agent_provides_solution"
-      - "escalation_needed"
+      - 'user_expresses_satisfaction'
+      - 'agent_provides_solution'
+      - 'escalation_needed'
 ```
 
 ## 📚 **References & Epic Information**

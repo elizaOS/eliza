@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Plugin,
 } from '@elizaos/core';
-import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
+import sqlPlugin from '@elizaos/plugin-sql';
 import { AgentServer } from '@elizaos/server';
 import { AgentStartOptions } from '../types';
 import {
@@ -101,23 +101,8 @@ export async function startAgent(
 
   await runtime.initialize();
 
-  // Discover and run plugin schema migrations
-  try {
-    const migrationService = runtime.getService('database_migration');
-    if (migrationService) {
-      logger.info('Discovering plugin schemas for dynamic migration...');
-      (migrationService as any).discoverAndRegisterPluginSchemas(finalPlugins);
-
-      logger.info('Running all plugin migrations...');
-      await (migrationService as any).runAllPluginMigrations();
-      logger.info('All plugin migrations completed successfully');
-    } else {
-      logger.warn('DatabaseMigrationService not found - plugin schema migrations skipped');
-    }
-  } catch (error) {
-    logger.error({ error }, 'Failed to run plugin migrations:');
-    throw error;
-  }
+  // Plugin schema migrations are handled during runtime.initialize() (runPluginMigrations)
+  // and at server startup for core SQL tables. No additional action needed here.
 
   server.registerAgent(runtime);
   logger.log(`Started ${runtime.character.name} as ${runtime.agentId}`);

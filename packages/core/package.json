@@ -1,12 +1,13 @@
 {
   "name": "@elizaos/core",
-  "version": "1.5.9-beta.0",
+  "version": "1.5.9-alpha.16",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
   "exports": {
     "./package.json": "./package.json",
     ".": {

@@ -6,7 +6,7 @@ import {
   ConversationLengthEvaluator,
   ConversationFlowEvaluator,
   UserSatisfactionEvaluator,
-  ContextRetentionEvaluator
+  ContextRetentionEvaluator,
 } from '../ConversationEvaluators';
 import type { ExecutionResult } from '../providers';
 
@@ -19,7 +19,7 @@ describe('Conversation Evaluators', () => {
       useModel: async (modelType: string, params: any) => {
         // Default LLM responses for testing
         const prompt = params.messages[0].content.toLowerCase();
-        
+
         if (prompt.includes('yes or no')) {
           return 'yes';
         }
@@ -27,7 +27,7 @@ describe('Conversation Evaluators', () => {
           return '0.8';
         }
         return 'Mock LLM response';
-      }
+      },
     };
 
     mockExecutionResult = {
@@ -38,7 +38,7 @@ describe('Conversation Evaluators', () => {
       startedAtMs: Date.now() - 5000,
       endedAtMs: Date.now(),
       durationMs: 5000,
-      trajectory: []
+      trajectory: [],
     };
   });
 
@@ -56,15 +56,15 @@ describe('Conversation Evaluators', () => {
           turnCount: 4,
           terminatedEarly: false,
           terminationReason: null,
-          finalEvaluations: []
-        }
+          finalEvaluations: [],
+        },
       };
 
       const params = {
         type: 'conversation_length' as const,
         min_turns: 2,
         max_turns: 6,
-        optimal_turns: 4
+        optimal_turns: 4,
       };
 
       const result = await evaluator.evaluate(params, resultWithMetadata, mockRuntime);
@@ -81,14 +81,14 @@ describe('Conversation Evaluators', () => {
           turnCount: 1,
           terminatedEarly: true,
           terminationReason: 'user_expresses_satisfaction',
-          finalEvaluations: []
-        }
+          finalEvaluations: [],
+        },
       };
 
       const params = {
         type: 'conversation_length' as const,
         min_turns: 3,
-        max_turns: 8
+        max_turns: 8,
       };
 
       const result = await evaluator.evaluate(params, resultWithMetadata, mockRuntime);
@@ -105,15 +105,15 @@ describe('Conversation Evaluators', () => {
           turnCount: 12,
           terminatedEarly: false,
           terminationReason: null,
-          finalEvaluations: []
-        }
+          finalEvaluations: [],
+        },
       };
 
       const params = {
         type: 'conversation_length' as const,
         min_turns: 2,
         max_turns: 8,
-        optimal_turns: 5
+        optimal_turns: 5,
       };
 
       const result = await evaluator.evaluate(params, resultWithMetadata, mockRuntime);
@@ -131,13 +131,13 @@ describe('Conversation Evaluators', () => {
           turnCount: 10,
           terminatedEarly: false,
           terminationReason: null,
-          finalEvaluations: []
-        }
+          finalEvaluations: [],
+        },
       };
 
       const params = {
         type: 'conversation_length' as const,
-        target_range: [3, 7]
+        target_range: [3, 7],
       };
 
       const result = await evaluator.evaluate(params, resultWithMetadata, mockRuntime);
@@ -150,7 +150,7 @@ describe('Conversation Evaluators', () => {
       const params = {
         type: 'conversation_length' as const,
         min_turns: 2,
-        max_turns: 6
+        max_turns: 6,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -176,7 +176,7 @@ Agent: What specific issue are you experiencing?
 
 Turn 2:
 User: I can't log in to my account
-Agent: Let me help you reset your password. Here is the solution: try this link.`
+Agent: Let me help you reset your password. Here is the solution: try this link.`,
       };
 
       // Mock LLM to detect patterns
@@ -194,7 +194,7 @@ Agent: Let me help you reset your password. Here is the solution: try this link.
       const params = {
         type: 'conversation_flow' as const,
         required_patterns: ['question_then_answer', 'problem_then_solution'],
-        flow_quality_threshold: 0.8
+        flow_quality_threshold: 0.8,
       };
 
       const result = await evaluator.evaluate(params, conversationResult, mockRuntime);
@@ -213,7 +213,7 @@ Agent: Hello back
 
 Turn 2:
 User: How are you?
-Agent: I am fine`
+Agent: I am fine`,
       };
 
       // Mock LLM to not detect patterns
@@ -222,7 +222,7 @@ Agent: I am fine`
       const params = {
         type: 'conversation_flow' as const,
         required_patterns: ['problem_then_solution', 'escalation_pattern'],
-        flow_quality_threshold: 0.7
+        flow_quality_threshold: 0.7,
       };
 
       const result = await evaluator.evaluate(params, conversationResult, mockRuntime);
@@ -244,7 +244,7 @@ Agent: I am fine`
       const params = {
         type: 'conversation_flow' as const,
         required_patterns: ['empathy_then_solution', 'clarification_cycle'],
-        flow_quality_threshold: 0.5 // 50% threshold
+        flow_quality_threshold: 0.5, // 50% threshold
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -261,7 +261,7 @@ Agent: I am fine`
       const params = {
         type: 'conversation_flow' as const,
         required_patterns: ['question_then_answer'],
-        flow_quality_threshold: 0.8
+        flow_quality_threshold: 0.8,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -287,7 +287,7 @@ Agent: I can help with that
 
 Turn 2: 
 User: Thank you so much! That was perfect and very helpful
-Agent: You're welcome!`
+Agent: You're welcome!`,
       };
 
       const params = {
@@ -296,8 +296,8 @@ Agent: You're welcome!`
         measurement_method: 'keyword_analysis' as const,
         indicators: {
           positive: ['thank you', 'perfect', 'helpful'],
-          negative: ['frustrated', 'unhelpful']
-        }
+          negative: ['frustrated', 'unhelpful'],
+        },
       };
 
       const result = await evaluator.evaluate(params, satisfiedConversation, mockRuntime);
@@ -318,7 +318,7 @@ Agent: You're welcome!`
       const params = {
         type: 'user_satisfaction' as const,
         satisfaction_threshold: 0.8,
-        measurement_method: 'llm_judge' as const
+        measurement_method: 'llm_judge' as const,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -339,7 +339,7 @@ Agent: You're welcome!`
       const params = {
         type: 'user_satisfaction' as const,
         satisfaction_threshold: 0.7,
-        measurement_method: 'sentiment_analysis' as const
+        measurement_method: 'sentiment_analysis' as const,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -358,7 +358,7 @@ Agent: I apologize
 
 Turn 2:
 User: Still confused and angry
-Agent: Let me try again`
+Agent: Let me try again`,
       };
 
       const params = {
@@ -367,8 +367,8 @@ Agent: Let me try again`
         measurement_method: 'keyword_analysis' as const,
         indicators: {
           positive: ['great', 'helpful'],
-          negative: ['frustrating', 'unhelpful', 'confused', 'angry']
-        }
+          negative: ['frustrating', 'unhelpful', 'confused', 'angry'],
+        },
       };
 
       const result = await evaluator.evaluate(params, dissatisfiedConversation, mockRuntime);
@@ -386,13 +386,13 @@ Agent: Here is the information
 
 Turn 2:
 User: Okay
-Agent: Anything else?`
+Agent: Anything else?`,
       };
 
       const params = {
         type: 'user_satisfaction' as const,
         satisfaction_threshold: 0.6,
-        measurement_method: 'keyword_analysis' as const
+        measurement_method: 'keyword_analysis' as const,
       };
 
       const result = await evaluator.evaluate(params, neutralConversation, mockRuntime);
@@ -407,7 +407,7 @@ Agent: Anything else?`
       const params = {
         type: 'user_satisfaction' as const,
         satisfaction_threshold: 0.7,
-        measurement_method: 'llm_judge' as const
+        measurement_method: 'llm_judge' as const,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -437,7 +437,7 @@ Agent: Of course John, let me look up your billing information
 
 Turn 3:
 User: What do you see?
-Agent: I can see your billing issue John, there was a duplicate charge`
+Agent: I can see your billing issue John, there was a duplicate charge`,
       };
 
       // Mock LLM to detect memory retention
@@ -453,7 +453,7 @@ Agent: I can see your billing issue John, there was a duplicate charge`
         type: 'context_retention' as const,
         test_memory_of: ['John Smith', 'billing'],
         retention_turns: 3,
-        memory_accuracy_threshold: 0.8
+        memory_accuracy_threshold: 0.8,
       };
 
       const result = await evaluator.evaluate(params, conversationWithMemory, mockRuntime);
@@ -477,7 +477,7 @@ Agent: Sure, what's your name again?
 
 Turn 3:
 User: Alice, as I mentioned
-Agent: Right, what did you need help with?`
+Agent: Right, what did you need help with?`,
       };
 
       // Mock LLM to detect poor memory retention
@@ -487,7 +487,7 @@ Agent: Right, what did you need help with?`
         if (prompt.includes('Alice') && (prompt.includes('Turn 2') || prompt.includes('Turn 3'))) {
           return 'no'; // Agent forgot Alice's name
         }
-        if (prompt.includes('password reset') && (prompt.includes('Turn 3'))) {
+        if (prompt.includes('password reset') && prompt.includes('Turn 3')) {
           return 'no'; // Agent forgot the password reset request
         }
         return 'yes';
@@ -497,7 +497,7 @@ Agent: Right, what did you need help with?`
         type: 'context_retention' as const,
         test_memory_of: ['Alice', 'password reset'],
         retention_turns: 2,
-        memory_accuracy_threshold: 0.8
+        memory_accuracy_threshold: 0.8,
       };
 
       const result = await evaluator.evaluate(params, conversationWithForgetfulness, mockRuntime);
@@ -517,14 +517,14 @@ Agent: Hi there
 
 Turn 2:
 User: How are you?
-Agent: I'm good`
+Agent: I'm good`,
       };
 
       const params = {
         type: 'context_retention' as const,
         test_memory_of: ['nonexistent_item', 'another_missing_item'],
         retention_turns: 2,
-        memory_accuracy_threshold: 0.5
+        memory_accuracy_threshold: 0.5,
       };
 
       const result = await evaluator.evaluate(params, conversationResult, mockRuntime);
@@ -555,7 +555,7 @@ Agent: Order #12345 should ship tomorrow Bob
 
 Turn 5:
 User: Thank you
-Agent: You're welcome!`
+Agent: You're welcome!`,
       };
 
       mockRuntime.useModel = async (modelType: string, params: any) => {
@@ -571,7 +571,7 @@ Agent: You're welcome!`
         type: 'context_retention' as const,
         test_memory_of: ['Bob', 'order #12345'],
         retention_turns: 4,
-        memory_accuracy_threshold: 0.75
+        memory_accuracy_threshold: 0.75,
       };
 
       const result = await evaluator.evaluate(params, longConversation, mockRuntime);
@@ -589,7 +589,7 @@ Agent: You're welcome!`
         type: 'context_retention' as const,
         test_memory_of: ['test_item'],
         retention_turns: 2,
-        memory_accuracy_threshold: 0.8
+        memory_accuracy_threshold: 0.8,
       };
 
       const result = await evaluator.evaluate(params, mockExecutionResult, mockRuntime);
@@ -603,14 +603,14 @@ Agent: You're welcome!`
         ...mockExecutionResult,
         stdout: `Malformed conversation without proper turn markers
 Some text here
-More text there`
+More text there`,
       };
 
       const params = {
         type: 'context_retention' as const,
         test_memory_of: ['test'],
         retention_turns: 1,
-        memory_accuracy_threshold: 0.5
+        memory_accuracy_threshold: 0.5,
       };
 
       // Should handle malformed conversations gracefully
@@ -633,21 +633,21 @@ More text there`
           turnCount: 3,
           terminatedEarly: false,
           terminationReason: null,
-          finalEvaluations: []
-        }
+          finalEvaluations: [],
+        },
       };
 
       const evaluations = [
         {
           type: 'conversation_length' as const,
           min_turns: 2,
-          max_turns: 5
+          max_turns: 5,
         },
         {
           type: 'user_satisfaction' as const,
           satisfaction_threshold: 0.6,
-          measurement_method: 'llm_judge' as const
-        }
+          measurement_method: 'llm_judge' as const,
+        },
       ];
 
       const results = await engine.runEvaluations(evaluations, conversationResult);

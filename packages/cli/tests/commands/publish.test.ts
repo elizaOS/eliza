@@ -431,20 +431,23 @@ describe('npmPackage Scoping', () => {
 
   it('should validate package name before scoping', async () => {
     const { publishToNpm } = await import('../../src/commands/publish/actions/npm-publish');
-    
+
     // Test empty package name
     const emptyNamePackage = { name: '', version: '1.0.0' };
-    await expect(publishToNpm(testTmpDir, emptyNamePackage as any, 'testuser'))
-      .rejects.toThrow('Invalid package.json: name field is required for scoping');
+    await expect(publishToNpm(testTmpDir, emptyNamePackage as any, 'testuser')).rejects.toThrow(
+      'Invalid package.json: name field is required for scoping'
+    );
 
-    // Test already scoped package name  
+    // Test already scoped package name
     const scopedPackage = { name: '@existing/plugin-test', version: '1.0.0' };
-    await expect(publishToNpm(testTmpDir, scopedPackage as any, 'testuser'))
-      .rejects.toThrow('Package name is already scoped - this should not happen with current templates');
+    await expect(publishToNpm(testTmpDir, scopedPackage as any, 'testuser')).rejects.toThrow(
+      'Package name is already scoped - this should not happen with current templates'
+    );
 
     // Test empty npm username
     const validPackage = { name: 'plugin-test', version: '1.0.0' };
-    await expect(publishToNpm(testTmpDir, validPackage as any, ''))
-      .rejects.toThrow('npm username is required for package scoping');
+    await expect(publishToNpm(testTmpDir, validPackage as any, '')).rejects.toThrow(
+      'npm username is required for package scoping'
+    );
   });
 });

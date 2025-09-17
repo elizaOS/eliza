@@ -15,43 +15,41 @@ describe('Backwards Compatibility', () => {
       useModel: async () => 'Mock runtime response',
       getSetting: (key: string) => {
         const settings: Record<string, string> = {
-          'OPENAI_API_KEY': 'mock-key',
-          'MODEL_PROVIDER': 'openai'
+          OPENAI_API_KEY: 'mock-key',
+          MODEL_PROVIDER: 'openai',
         };
         return settings[key] || null;
-      }
+      },
     };
-
-
   });
 
   describe('Legacy Single-Turn Scenarios', () => {
     it('should execute original single-turn scenario without modifications', async () => {
       const legacyScenario: Scenario = {
-        name: "Legacy Customer Support Test",
-        description: "Original single-turn customer support scenario",
+        name: 'Legacy Customer Support Test',
+        description: 'Original single-turn customer support scenario',
         environment: {
-          type: "local"
+          type: 'local',
         },
         run: [
           {
-            input: "I need help with my account",
+            input: 'I need help with my account',
             evaluations: [
               {
-                type: "string_contains",
-                value: "account"
+                type: 'string_contains',
+                value: 'account',
               },
               {
-                type: "llm_judge",
-                prompt: "Was the response helpful?",
-                expected: "yes"
-              }
-            ]
-          }
+                type: 'llm_judge',
+                prompt: 'Was the response helpful?',
+                expected: 'yes',
+              },
+            ],
+          },
         ],
         judgment: {
-          strategy: "all_pass"
-        }
+          strategy: 'all_pass',
+        },
       };
 
       // Validate schema
@@ -79,31 +77,31 @@ describe('Backwards Compatibility', () => {
 
     it('should handle code execution scenarios unchanged', async () => {
       const codeScenario: Scenario = {
-        name: "Code Execution Test",
-        description: "Test bash script execution",
+        name: 'Code Execution Test',
+        description: 'Test bash script execution',
         environment: {
-          type: "local"
+          type: 'local',
         },
         run: [
           {
-            name: "Echo test",
-            lang: "bash",
+            name: 'Echo test',
+            lang: 'bash',
             code: "echo 'Hello from bash'",
             evaluations: [
               {
-                type: "string_contains",
-                value: "Hello from bash"
+                type: 'string_contains',
+                value: 'Hello from bash',
               },
               {
-                type: "execution_time",
-                max_duration_ms: 5000
-              }
-            ]
-          }
+                type: 'execution_time',
+                max_duration_ms: 5000,
+              },
+            ],
+          },
         ],
         judgment: {
-          strategy: "all_pass"
-        }
+          strategy: 'all_pass',
+        },
       };
 
       // Validate schema
@@ -120,72 +118,72 @@ describe('Backwards Compatibility', () => {
 
     it('should support complex multi-step legacy scenarios', async () => {
       const complexScenario: Scenario = {
-        name: "Complex Multi-Step Legacy",
-        description: "Multiple steps with different types",
+        name: 'Complex Multi-Step Legacy',
+        description: 'Multiple steps with different types',
         plugins: [
-          "@elizaos/plugin-bootstrap",
+          '@elizaos/plugin-bootstrap',
           {
-            name: "@elizaos/plugin-custom",
-            version: "1.0.0",
+            name: '@elizaos/plugin-custom',
+            version: '1.0.0',
             config: { enabled: true },
-            enabled: true
-          }
+            enabled: true,
+          },
         ],
         environment: {
-          type: "local"
+          type: 'local',
         },
         setup: {
           mocks: [
             {
-              service: "database",
-              method: "query",
+              service: 'database',
+              method: 'query',
               when: {
-                input: { table: "users" }
+                input: { table: 'users' },
               },
-              response: { count: 5 }
-            }
+              response: { count: 5 },
+            },
           ],
           virtual_fs: {
-            "test.txt": "test content"
-          }
+            'test.txt': 'test content',
+          },
         },
         run: [
           {
-            name: "Natural language step",
-            input: "Check the database for user count",
+            name: 'Natural language step',
+            input: 'Check the database for user count',
             evaluations: [
               {
-                type: "string_contains",
-                value: "database"
-              }
-            ]
+                type: 'string_contains',
+                value: 'database',
+              },
+            ],
           },
           {
-            name: "Code execution step",
-            lang: "python",
+            name: 'Code execution step',
+            lang: 'python',
             code: "print(f'User count: {5}')",
             evaluations: [
               {
-                type: "string_contains",
-                value: "User count: 5"
-              }
-            ]
+                type: 'string_contains',
+                value: 'User count: 5',
+              },
+            ],
           },
           {
-            name: "File check step",
-            lang: "bash",
-            code: "ls test.txt",
+            name: 'File check step',
+            lang: 'bash',
+            code: 'ls test.txt',
             evaluations: [
               {
-                type: "file_exists",
-                path: "test.txt"
-              }
-            ]
-          }
+                type: 'file_exists',
+                path: 'test.txt',
+              },
+            ],
+          },
         ],
         judgment: {
-          strategy: "all_pass"
-        }
+          strategy: 'all_pass',
+        },
       };
 
       // Validate schema
@@ -213,45 +211,45 @@ describe('Backwards Compatibility', () => {
 
     it('should handle all existing evaluation types', async () => {
       const evaluationScenario: Scenario = {
-        name: "All Evaluation Types Test",
-        description: "Test all existing evaluation types work unchanged",
+        name: 'All Evaluation Types Test',
+        description: 'Test all existing evaluation types work unchanged',
         environment: {
-          type: "local"
+          type: 'local',
         },
         run: [
           {
-            input: "Test all evaluations with trajectory data",
+            input: 'Test all evaluations with trajectory data',
             evaluations: [
               {
-                type: "string_contains",
-                value: "trajectory"
+                type: 'string_contains',
+                value: 'trajectory',
               },
               {
-                type: "regex_match",
-                pattern: "\\btrajectory\\b"
+                type: 'regex_match',
+                pattern: '\\btrajectory\\b',
               },
               {
-                type: "trajectory_contains_action",
-                action: "SEARCH"
+                type: 'trajectory_contains_action',
+                action: 'SEARCH',
               },
               {
-                type: "llm_judge",
-                prompt: "Does this response mention testing?",
-                expected: "yes",
+                type: 'llm_judge',
+                prompt: 'Does this response mention testing?',
+                expected: 'yes',
                 temperature: 0.1,
-                capabilities: ["analysis", "reasoning"]
+                capabilities: ['analysis', 'reasoning'],
               },
               {
-                type: "execution_time",
+                type: 'execution_time',
                 max_duration_ms: 30000,
-                min_duration_ms: 100
-              }
-            ]
-          }
+                min_duration_ms: 100,
+              },
+            ],
+          },
         ],
         judgment: {
-          strategy: "any_pass"
-        }
+          strategy: 'any_pass',
+        },
       };
 
       // Validate schema
@@ -276,54 +274,54 @@ describe('Backwards Compatibility', () => {
   describe('Mixed Mode Scenarios', () => {
     it('should support mixing legacy and conversation steps in same scenario', async () => {
       const mixedScenario: Scenario = {
-        name: "Mixed Legacy and Conversation",
-        description: "Combine old and new step types",
+        name: 'Mixed Legacy and Conversation',
+        description: 'Combine old and new step types',
         environment: {
-          type: "local"
+          type: 'local',
         },
         run: [
           {
-            name: "Legacy single-turn step",
-            input: "This is a traditional step",
+            name: 'Legacy single-turn step',
+            input: 'This is a traditional step',
             evaluations: [
               {
-                type: "string_contains",
-                value: "traditional"
-              }
-            ]
+                type: 'string_contains',
+                value: 'traditional',
+              },
+            ],
           },
           {
-            name: "New conversation step",
-            input: "Start a conversation",
+            name: 'New conversation step',
+            input: 'Start a conversation',
             conversation: {
               max_turns: 2,
               user_simulator: {
-                persona: "helpful user",
-                objective: "complete the conversation"
-              }
+                persona: 'helpful user',
+                objective: 'complete the conversation',
+              },
             },
             evaluations: [
               {
-                type: "string_contains",
-                value: "conversation"
-              }
-            ]
+                type: 'string_contains',
+                value: 'conversation',
+              },
+            ],
           },
           {
-            name: "Another legacy step",
-            lang: "bash",
+            name: 'Another legacy step',
+            lang: 'bash',
             code: "echo 'Back to legacy'",
             evaluations: [
               {
-                type: "string_contains",
-                value: "Back to legacy"
-              }
-            ]
-          }
+                type: 'string_contains',
+                value: 'Back to legacy',
+              },
+            ],
+          },
         ],
         judgment: {
-          strategy: "all_pass"
-        }
+          strategy: 'all_pass',
+        },
       };
 
       // Validate schema
@@ -335,7 +333,7 @@ describe('Backwards Compatibility', () => {
       expect(parsed.run[0].conversation).toBeUndefined(); // Legacy step
       expect(parsed.run[1].conversation).toBeDefined(); // Conversation step
       expect(parsed.run[2].conversation).toBeUndefined(); // Legacy step
-      expect(parsed.run[2].lang).toBe("bash");
+      expect(parsed.run[2].lang).toBe('bash');
 
       const provider = new LocalEnvironmentProvider(
         null, // Server object not needed for real askAgentViaApi calls
@@ -375,24 +373,24 @@ describe('Backwards Compatibility', () => {
   describe('CLI Command Compatibility', () => {
     it('should maintain CLI command interface for legacy scenarios', () => {
       // Test that CLI commands work unchanged
-      // This would typically be tested at a higher level, but we verify 
+      // This would typically be tested at a higher level, but we verify
       // that the scenario structure remains compatible
 
       const legacyScenarios = [
         {
-          name: "Simple Test",
-          description: "Basic test",
-          environment: { type: "local" as const },
-          run: [{ input: "test", evaluations: [] }],
-          judgment: { strategy: "all_pass" as const }
+          name: 'Simple Test',
+          description: 'Basic test',
+          environment: { type: 'local' as const },
+          run: [{ input: 'test', evaluations: [] }],
+          judgment: { strategy: 'all_pass' as const },
         },
         {
-          name: "Code Test",
-          description: "Code execution test",
-          environment: { type: "e2b" as const },
-          run: [{ lang: "python", code: "print('test')", evaluations: [] }],
-          judgment: { strategy: "any_pass" as const }
-        }
+          name: 'Code Test',
+          description: 'Code execution test',
+          environment: { type: 'e2b' as const },
+          run: [{ lang: 'python', code: "print('test')", evaluations: [] }],
+          judgment: { strategy: 'any_pass' as const },
+        },
       ];
 
       legacyScenarios.forEach((scenario, index) => {
@@ -404,7 +402,7 @@ describe('Backwards Compatibility', () => {
         expect(parsed.judgment.strategy).toBe(scenario.judgment.strategy);
 
         // Ensure conversation field is optional and undefined for legacy scenarios
-        parsed.run.forEach(step => {
+        parsed.run.forEach((step) => {
           expect(step.conversation).toBeUndefined();
         });
       });
@@ -412,11 +410,11 @@ describe('Backwards Compatibility', () => {
 
     it('should preserve all existing schema properties and defaults', () => {
       const minimalScenario = {
-        name: "Minimal",
-        description: "Test",
-        environment: { type: "local" as const },
+        name: 'Minimal',
+        description: 'Test',
+        environment: { type: 'local' as const },
         run: [{ evaluations: [] }],
-        judgment: { strategy: "all_pass" as const }
+        judgment: { strategy: 'all_pass' as const },
       };
 
       const parsed = ScenarioSchema.parse(minimalScenario);
@@ -442,49 +440,49 @@ describe('Backwards Compatibility', () => {
       const invalidScenarios = [
         // Missing required fields
         {
-          name: "Invalid",
+          name: 'Invalid',
           // Missing description, environment, run, judgment
         },
         // Invalid judgment strategy
         {
-          name: "Invalid",
-          description: "Test",
-          environment: { type: "local" as const },
+          name: 'Invalid',
+          description: 'Test',
+          environment: { type: 'local' as const },
           run: [{ evaluations: [] }],
-          judgment: { strategy: "invalid_strategy" as any }
+          judgment: { strategy: 'invalid_strategy' as any },
         },
         // Invalid environment type
         {
-          name: "Invalid",
-          description: "Test",
-          environment: { type: "invalid_env" as any },
+          name: 'Invalid',
+          description: 'Test',
+          environment: { type: 'invalid_env' as any },
           run: [{ evaluations: [] }],
-          judgment: { strategy: "all_pass" as const }
-        }
+          judgment: { strategy: 'all_pass' as const },
+        },
       ];
 
-      invalidScenarios.forEach(scenario => {
+      invalidScenarios.forEach((scenario) => {
         expect(() => ScenarioSchema.parse(scenario)).toThrow();
       });
     });
 
     it('should handle legacy scenario execution errors gracefully', async () => {
       const errorScenario: Scenario = {
-        name: "Error Test",
-        description: "Test error handling",
-        environment: { type: "local" },
+        name: 'Error Test',
+        description: 'Test error handling',
+        environment: { type: 'local' },
         run: [
           {
-            input: "This should trigger an error",
+            input: 'This should trigger an error',
             evaluations: [
               {
-                type: "string_contains",
-                value: "error"
-              }
-            ]
-          }
+                type: 'string_contains',
+                value: 'error',
+              },
+            ],
+          },
         ],
-        judgment: { strategy: "all_pass" }
+        judgment: { strategy: 'all_pass' },
       };
 
       // Mock an API failure
@@ -516,21 +514,21 @@ describe('Backwards Compatibility', () => {
   describe('Performance Backwards Compatibility', () => {
     it('should maintain same performance characteristics for legacy scenarios', async () => {
       const performanceScenario: Scenario = {
-        name: "Performance Test",
-        description: "Test execution speed",
-        environment: { type: "local" },
+        name: 'Performance Test',
+        description: 'Test execution speed',
+        environment: { type: 'local' },
         run: [
           {
-            input: "Quick response test",
+            input: 'Quick response test',
             evaluations: [
               {
-                type: "execution_time",
-                max_duration_ms: 5000
-              }
-            ]
-          }
+                type: 'execution_time',
+                max_duration_ms: 5000,
+              },
+            ],
+          },
         ],
-        judgment: { strategy: "all_pass" }
+        judgment: { strategy: 'all_pass' },
       };
 
       const provider = new LocalEnvironmentProvider(

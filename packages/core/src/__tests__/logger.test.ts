@@ -129,15 +129,15 @@ describe('Logger', () => {
 
     it('should enable JSON format without throwing required fields error', () => {
       process.env.LOG_JSON_FORMAT = 'true';
-      
-      // This test verifies the main bug fix - that JSON format works without 
+
+      // This test verifies the main bug fix - that JSON format works without
       // "Required fields are missing" error. Detailed JSON format tests are
       // in logger-browser-node.test.ts for cross-environment coverage.
       expect(() => {
         const customLogger = createLogger();
         customLogger.info('Test message');
       }).not.toThrow();
-      
+
       delete process.env.LOG_JSON_FORMAT;
     });
   });

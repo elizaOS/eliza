@@ -169,14 +169,14 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
         return {
           success: true,
           message: `Copied ${asset.from} to ${asset.to} (${assetTimer.elapsed()}ms)`,
-          asset
+          asset,
         };
       } else {
         return {
           success: false,
           message: `Source not found: ${asset.from}`,
           asset,
-          error: 'Source not found'
+          error: 'Source not found',
         };
       }
     } catch (error: unknown) {
@@ -185,7 +185,7 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
         success: false,
         message: `Failed to copy ${asset.from} to ${asset.to}: ${errorMessage}`,
         asset,
-        error: errorMessage
+        error: errorMessage,
       };
     }
   });
@@ -197,7 +197,7 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   let successCount = 0;
   let failedAssets: Array<{ asset: { from: string; to: string }; error: string }> = [];
 
-  results.forEach(result => {
+  results.forEach((result) => {
     if (result.success) {
       successCount++;
     } else {
@@ -475,27 +475,25 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
 
     // Run post-build tasks
     const postBuildTasks: Promise<void | null>[] = [];
-    
+
     // Add TypeScript declarations generation if requested
     if (buildOptions.generateDts) {
       postBuildTasks.push(
-        generateDts('./tsconfig.build.json')
-          .catch((err) => {
-            console.error('⚠ TypeScript declarations generation failed:', err);
-            // Don't throw here, as it's often non-critical
-            return null;
-          })
+        generateDts('./tsconfig.build.json').catch((err) => {
+          console.error('⚠ TypeScript declarations generation failed:', err);
+          // Don't throw here, as it's often non-critical
+          return null;
+        })
       );
     }
 
     // Add asset copying if specified
     if (buildOptions.assets?.length) {
       postBuildTasks.push(
-        copyAssets(buildOptions.assets)
-          .catch((err) => {
-            console.error('✗ Asset copying failed:', err);
-            throw err; // Asset copying failure is critical
-          })
+        copyAssets(buildOptions.assets).catch((err) => {
+          console.error('✗ Asset copying failed:', err);
+          throw err; // Asset copying failure is critical
+        })
       );
     }
 
