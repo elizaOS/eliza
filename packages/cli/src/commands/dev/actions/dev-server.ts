@@ -457,6 +457,24 @@ export async function startDevMode(options: DevOptions): Promise<void> {
     if (clientPort) {
       console.info(`  Client UI:      ${chalk.green(`http://localhost:${clientPort}`)}`);
     }
+  } else {
+    // If no client dev server is running but a static client is installed,
+    // surface the Client UI URL to avoid confusion during development.
+    try {
+      const staticClientIndex = path.join(
+        cwd,
+        'node_modules',
+        '@elizaos',
+        'client',
+        'dist',
+        'index.html'
+      );
+      if (fs.existsSync(staticClientIndex) && backendStarted) {
+        console.info(`  Client UI:      ${chalk.green(`http://localhost:${serverPort}`)} (static)`);
+      }
+    } catch {
+      // noop
+    }
   }
 
   console.info('\n' + '─'.repeat(60));
