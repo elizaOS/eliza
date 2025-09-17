@@ -476,6 +476,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           id: entityId,
           agentId: testAgentId,
           names: ['No Metadata Entity'],
+          metadata: {},
         },
       ]);
 
@@ -492,6 +493,7 @@ describe('Base Adapter Comprehensive Tests', () => {
           roomId: testRoomId,
           content: { text: 'Memory with entity' } as Content,
           createdAt: new Date(),
+
         },
         'memories'
       );
