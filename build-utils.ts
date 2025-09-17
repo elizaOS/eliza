@@ -231,7 +231,7 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 /**
  * Generate TypeScript declarations using tsc
  */
-export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = false) {
+export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = true) {
   const timer = getTimer();
   const { $ } = await import('bun');
 
@@ -247,14 +247,13 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
     console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
   } catch (error: unknown) {
     console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);
-    console.error("This is usually due to test files or type errors that don't affect the build.");
     console.error('Error details:', error instanceof Error ? error.message : String(error));
 
     if (throwOnError) {
+      // Propagate so calling build fails hard on TS errors
       throw error;
-    } else {
-      console.warn('Continuing build without TypeScript declarations...');
     }
+    console.warn('Continuing build without TypeScript declarations...');
   }
 }
 
