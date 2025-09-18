@@ -157,8 +157,10 @@ export const start = new Command()
         
         // Run init functions for each agent if provided
         for (let i = 0; i < projectAgents.length; i++) {
-          if (projectAgents[i].init && runtimes[i]) {
-            await projectAgents[i].init(runtimes[i]);
+          const init = projectAgents[i]?.init;
+          const runtime = runtimes[i];
+          if (typeof init === 'function' && runtime) {
+            await init(runtime);
           }
         }
         

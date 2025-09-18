@@ -14,11 +14,11 @@ export * from './utils';
 // Export schemas
 export * from './schemas/character';
 
-// Export all utilities (including Node-specific ones)
+// Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
-export * from './utils/server-health';
-export * from './utils/paths';
+// Export Node-specific utilities
+export * from './utils/node';
 
 // Export all core modules
 export * from './actions';

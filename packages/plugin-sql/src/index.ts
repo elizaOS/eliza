@@ -87,28 +87,25 @@ export const plugin: Plugin = {
   init: async (_, runtime: IAgentRuntime) => {
     logger.info('plugin-sql init starting...');
 
-    // Check if a database adapter is already registered
-    const adapterRegistered = await runtime
-      .isReady()
-      .then(() => true)
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes('Database adapter not registered')) {
-          // Expected on first load before the adapter is created; not a warning condition
-          logger.warn(`Database adapter readiness check failed; proceeding to register adapter warn: ${message}`);
-        } else {
-          // Unexpected readiness error - keep as a warning with details
-          logger.warn(
-            { error },
-            'Database adapter readiness check error; proceeding to register adapter'
-          );
-        }
-        return false;
-      });
+    // Prefer direct check for existing adapter (avoid readiness heuristics)
+    const adapterRegistered =
+      typeof (runtime as any).hasDatabaseAdapter === 'function'
+        ? (runtime as any).hasDatabaseAdapter()
+        : (() => {
+            try {
+              const existing = (runtime as any).getDatabaseAdapter?.() ?? (runtime as any).databaseAdapter ?? (runtime as any).adapter;
+              return Boolean(existing);
+            } catch {
+              return false;
+            }
+          })();
+
     if (adapterRegistered) {
       logger.info('Database adapter already registered, skipping creation');
       return;
     }
+
+    logger.debug('No database adapter found, proceeding to register new adapter');
 
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');

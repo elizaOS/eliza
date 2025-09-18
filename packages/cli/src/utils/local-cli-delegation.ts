@@ -109,18 +109,21 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
 
   // Spawn the local CLI process using Bun.spawn
   const childProcess = Bun.spawn([nodeExecutable, localCliPath, ...args], {
-    stdio: ['inherit', 'inherit', 'inherit'], // Inherit stdio to maintain interactive behavior
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
     env,
     cwd: process.cwd(),
   });
 
   // Handle process signals to forward them to the child
   const forwardSignal = (signal: NodeJS.Signals) => {
-    process.on(signal, () => {
-      if (!childProcess.killed) {
-        childProcess.kill(signal);
-      }
-    });
+    const handler = () => {
+      // Bun's kill is idempotent - safe to call even if process already exited
+      childProcess.kill(signal);
+    };
+    // Use 'once' to avoid accumulating handlers across invocations
+    process.once(signal, handler);
   };
 
   forwardSignal('SIGINT');

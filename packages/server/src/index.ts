@@ -426,7 +426,11 @@ export class AgentServer {
       // Each agent will get its own adapter from the SQL plugin
       logger.debug('[INIT] ElizaOS will use agent-specific database adapters from SQL plugin');
       this.elizaOS = new ElizaOS();
-      
+
+      // Enable editable mode to allow updating agent characters at runtime
+      // This is required for the API to be able to update agents
+      this.elizaOS.enableEditableMode();
+
       // Create AgentManager with ElizaOS instance
       this.pluginLoader = new PluginLoader();
       this.configManager = new ConfigManager();

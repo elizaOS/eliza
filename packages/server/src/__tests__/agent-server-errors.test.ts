@@ -3,10 +3,13 @@
  */
 
 import { describe, it, expect, jest, mock } from 'bun:test';
-import { AgentServer } from '../index';
 
 // Mock logger to avoid console output during tests
+// Import the real module first to preserve all exports
+const coreModule = await import('@elizaos/core');
+
 mock.module('@elizaos/core', () => ({
+  ...coreModule,
   logger: {
     warn: jest.fn(),
     info: jest.fn(),
@@ -19,7 +22,10 @@ mock.module('@elizaos/core', () => ({
 }));
 
 describe('AgentServer Error Handling Tests', () => {
-  it('should handle constructor errors gracefully', () => {
+  it('should handle constructor errors gracefully', async () => {
+    // Import AgentServer after mocks are set up
+    const { AgentServer } = await import('../index');
+
     // Logger.debug is mocked to throw error
     expect(() => new AgentServer()).toThrow('Logger error');
   });
@@ -29,6 +35,7 @@ describe('AgentServer Error Handling Tests', () => {
     mock.restore();
     
     mock.module('@elizaos/core', () => ({
+      ...coreModule,
       logger: {
         warn: jest.fn(),
         info: jest.fn(),
@@ -53,6 +60,7 @@ describe('AgentServer Error Handling Tests', () => {
     }));
 
     const { logger } = await import('@elizaos/core');
+    const { AgentServer } = await import('../index');
     const errorSpy = jest.spyOn(logger, 'error');
 
     const server = new AgentServer();

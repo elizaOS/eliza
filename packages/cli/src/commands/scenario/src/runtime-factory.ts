@@ -1,6 +1,6 @@
 import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
 import { getModuleLoader } from '@/src/utils/module-loader';
-import { AgentServer } from '@elizaos/server';
+import { AgentServer, ConfigManager } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
@@ -199,8 +199,6 @@ export async function createScenarioAgent(
   };
 
   // Use ConfigManager from server to set default secrets
-  const moduleLoader = getModuleLoader();
-  const { ConfigManager } = await moduleLoader.load('@elizaos/server');
   const configManager = new ConfigManager();
   await configManager.setDefaultSecretsFromEnv(character);
   

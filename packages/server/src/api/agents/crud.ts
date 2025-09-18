@@ -212,10 +212,16 @@ export function createAgentCrudRouter(
 
       const updatedAgent = await db.getAgent(agentId);
 
-      const isActive = !!elizaOS.getAgent(agentId);
-      if (isActive && updatedAgent) {
-        await serverInstance?.unregisterAgent(agentId);
-        await serverInstance?.startAgents([updatedAgent]);
+      // Check if agent is currently active
+      const activeRuntime = elizaOS.getAgent(agentId);
+      if (activeRuntime && updatedAgent) {
+        // Extract character properties from the Agent (Agent extends Character)
+        const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+
+        // Update the character on the active runtime instead of unregistering/restarting
+        // This preserves database connections and other resources
+        await elizaOS.updateAgent(agentId, characterData as Character);
+        logger.debug(`[AGENT UPDATE] Updated active agent ${agentId} without restart`);
       }
 
       const runtime = elizaOS.getAgent(agentId);

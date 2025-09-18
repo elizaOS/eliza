@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { setupProjectEnvironment } from '@/src/commands/create/actions/setup';
 
 // Create mocks for all dependencies
 const mockInstallPluginWithSpinner = mock();
 const mockEnsureElizaDir = mock();
 const mockSetupPgLite = mock();
 
-// Mock the spinner utils
+// Mock the spinner utils - MUST be before any imports that use it
 mock.module('@/src/utils/spinner-utils', () => ({
   installPluginWithSpinner: mockInstallPluginWithSpinner,
 }));
 
-// Mock the utils module with all required functions
+// Mock the utils module with all required functions - MUST be before imports
 mock.module('@/src/utils', () => ({
   ensureElizaDir: mockEnsureElizaDir,
   setupPgLite: mockSetupPgLite,
@@ -24,7 +23,7 @@ mock.module('@/src/utils', () => ({
   promptAndStoreOpenRouterKey: mock(),
 }));
 
-// Mock file system operations
+// Mock file system operations - MUST be before imports
 mock.module('node:fs', () => ({
   existsSync: mock(() => false),
 }));
@@ -34,6 +33,9 @@ mock.module('node:fs/promises', () => ({
   writeFile: mock(() => Promise.resolve()),
   mkdir: mock(() => Promise.resolve()),
 }));
+
+// Import SUT AFTER all mocks are registered
+const { setupProjectEnvironment } = await import('@/src/commands/create/actions/setup');
 
 describe('Ollama Plugin Installation', () => {
   beforeEach(() => {
