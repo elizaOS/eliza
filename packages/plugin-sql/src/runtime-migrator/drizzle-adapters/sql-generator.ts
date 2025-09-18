@@ -1,5 +1,156 @@
 import type { SchemaSnapshot } from '../types';
 import type { SchemaDiff } from './diff-calculator';
+import { logger } from '@elizaos/core';
+
+/**
+ * Data loss detection result
+ * Based on Drizzle's pgPushUtils approach
+ */
+export interface DataLossCheck {
+  hasDataLoss: boolean;
+  tablesToRemove: string[];
+  columnsToRemove: string[];
+  tablesToTruncate: string[];
+  typeChanges: Array<{
+    table: string;
+    column: string;
+    from: string;
+    to: string;
+  }>;
+  warnings: string[];
+  requiresConfirmation: boolean;
+}
+
+/**
+ * Check for potential data loss in schema changes
+ * Based on Drizzle's pgSuggestions function
+ */
+export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
+  const result: DataLossCheck = {
+    hasDataLoss: false,
+    tablesToRemove: [],
+    columnsToRemove: [],
+    tablesToTruncate: [],
+    typeChanges: [],
+    warnings: [],
+    requiresConfirmation: false,
+  };
+
+  // Check for table deletions
+  if (diff.tables.deleted.length > 0) {
+    result.hasDataLoss = true;
+    result.requiresConfirmation = true;
+    result.tablesToRemove = [...diff.tables.deleted];
+    for (const table of diff.tables.deleted) {
+      result.warnings.push(`Table "${table}" will be dropped with all its data`);
+    }
+  }
+
+  // Check for column deletions
+  if (diff.columns.deleted.length > 0) {
+    result.hasDataLoss = true;
+    result.requiresConfirmation = true;
+    for (const col of diff.columns.deleted) {
+      result.columnsToRemove.push(`${col.table}.${col.column}`);
+      result.warnings.push(`Column "${col.column}" in table "${col.table}" will be dropped`);
+    }
+  }
+
+  // Check for column type changes that might cause data loss
+  for (const modified of diff.columns.modified) {
+    const from = modified.changes.from;
+    const to = modified.changes.to;
+
+    // Check if type change is destructive
+    if (from.type !== to.type) {
+      const isDestructive = checkIfTypeChangeIsDestructive(from.type, to.type);
+
+      if (isDestructive) {
+        result.hasDataLoss = true;
+        result.requiresConfirmation = true;
+        result.typeChanges.push({
+          table: modified.table,
+          column: modified.column,
+          from: from.type,
+          to: to.type,
+        });
+        result.tablesToTruncate.push(modified.table);
+        result.warnings.push(
+          `Column "${modified.column}" in table "${modified.table}" changes type from "${from.type}" to "${to.type}". ` +
+            `This may require truncating the table to avoid data conversion errors.`
+        );
+      }
+    }
+
+    // Check for adding NOT NULL without default to existing column
+    if (!from.notNull && to.notNull && !to.default) {
+      result.hasDataLoss = true;
+      result.requiresConfirmation = true;
+      result.warnings.push(
+        `Column "${modified.column}" in table "${modified.table}" is becoming NOT NULL without a default value. ` +
+          `This will fail if the table contains NULL values.`
+      );
+    }
+  }
+
+  // Check for adding NOT NULL columns without defaults
+  for (const added of diff.columns.added) {
+    if (added.definition.notNull && !added.definition.default) {
+      // This is only a problem if the table already has data
+      // We'll flag it as a potential issue
+      result.warnings.push(
+        `Column "${added.column}" is being added to table "${added.table}" as NOT NULL without a default value. ` +
+          `This will fail if the table contains data.`
+      );
+      // Don't set requiresConfirmation here - it's only a warning
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Check if a type change is destructive
+ * Based on PostgreSQL's type casting rules
+ */
+function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boolean {
+  // Safe conversions (PostgreSQL) - based on Drizzle's logic
+  const safeConversions: Record<string, string[]> = {
+    smallint: ['integer', 'bigint', 'numeric', 'real', 'double precision'],
+    integer: ['bigint', 'numeric', 'real', 'double precision'],
+    bigint: ['numeric'],
+    real: ['double precision'],
+    varchar: ['text'],
+    char: ['varchar', 'text'],
+    citext: ['text'],
+    text: ['citext'],
+    // UUID to text is safe
+    uuid: ['text', 'varchar'],
+    // Timestamp variations are generally safe
+    timestamp: ['timestamptz', 'timestamp with time zone', 'timestamp without time zone'],
+    timestamptz: ['timestamp', 'timestamp with time zone', 'timestamp without time zone'],
+    // Date/time conversions
+    date: ['timestamp', 'timestamptz'],
+    time: ['timetz'],
+  };
+
+  const fromBase = fromType.split('(')[0].toLowerCase();
+  const toBase = toType.split('(')[0].toLowerCase();
+
+  // Same type is always safe
+  if (fromBase === toBase) {
+    return false;
+  }
+
+  // Check if it's a safe conversion
+  const safeTo = safeConversions[fromBase];
+  if (safeTo && safeTo.includes(toBase)) {
+    return false;
+  }
+
+  // All other conversions are considered potentially destructive
+  return true;
+}
 
 /**
  * Generate SQL statements from a schema diff
@@ -16,6 +167,17 @@ export async function generateMigrationSQL(
   if (!diff) {
     const { calculateDiff } = await import('./diff-calculator');
     diff = await calculateDiff(previousSnapshot, currentSnapshot);
+  }
+
+  // Check for data loss
+  const dataLossCheck = checkForDataLoss(diff);
+
+  // Log warnings if any
+  if (dataLossCheck.warnings.length > 0) {
+    logger.warn('[RuntimeMigrator] Schema changes may cause data loss:');
+    for (const warning of dataLossCheck.warnings) {
+      logger.warn(`  - ${warning}`);
+    }
   }
 
   // Phase 1: Generate CREATE TABLE statements for new tables (WITHOUT foreign keys)
@@ -64,29 +226,105 @@ export async function generateMigrationSQL(
   }
 
   // Generate ALTER TABLE statements for column changes
+  // Handle column additions
   for (const added of diff.columns.added) {
     statements.push(generateAddColumnSQL(added.table, added.column, added.definition));
   }
 
+  // Handle column deletions
   for (const deleted of diff.columns.deleted) {
     statements.push(generateDropColumnSQL(deleted.table, deleted.column));
   }
 
+  // Handle column modifications
   for (const modified of diff.columns.modified) {
-    statements.push(...generateAlterColumnSQL(modified.table, modified.column, modified.changes));
+    const alterStatements = generateAlterColumnSQL(
+      modified.table,
+      modified.column,
+      modified.changes
+    );
+    statements.push(...alterStatements);
   }
 
-  // Generate CREATE INDEX statements
-  for (const index of diff.indexes.created) {
-    statements.push(generateCreateIndexSQL(index));
-  }
-
-  // Generate DROP INDEX statements
+  // Generate DROP INDEX statements (including altered ones - drop old version)
   for (const index of diff.indexes.deleted) {
     statements.push(generateDropIndexSQL(index));
   }
 
-  // Handle foreign key modifications (for existing tables)
+  // Drop old version of altered indexes
+  for (const alteredIndex of diff.indexes.altered) {
+    statements.push(generateDropIndexSQL(alteredIndex.old));
+  }
+
+  // Generate CREATE INDEX statements (including altered ones - create new version)
+  for (const index of diff.indexes.created) {
+    statements.push(generateCreateIndexSQL(index));
+  }
+
+  // Create new version of altered indexes
+  for (const alteredIndex of diff.indexes.altered) {
+    statements.push(generateCreateIndexSQL(alteredIndex.new));
+  }
+
+  // Generate CREATE UNIQUE CONSTRAINT statements
+  for (const constraint of diff.uniqueConstraints.created) {
+    // Skip if it's part of a new table (already handled)
+    const isNewTable = diff.tables.created.some((tableName) => {
+      const [schema, table] = tableName.includes('.')
+        ? tableName.split('.')
+        : ['public', tableName];
+      const constraintTable = constraint.table || '';
+      const [constraintSchema, constraintTableName] = constraintTable.includes('.')
+        ? constraintTable.split('.')
+        : ['public', constraintTable];
+      return table === constraintTableName && schema === constraintSchema;
+    });
+
+    if (!isNewTable) {
+      statements.push(generateCreateUniqueConstraintSQL(constraint));
+    }
+  }
+
+  // Generate DROP UNIQUE CONSTRAINT statements
+  for (const constraint of diff.uniqueConstraints.deleted) {
+    statements.push(generateDropUniqueConstraintSQL(constraint));
+  }
+
+  // Generate CREATE CHECK CONSTRAINT statements
+  for (const constraint of diff.checkConstraints.created) {
+    // Skip if it's part of a new table (already handled)
+    const isNewTable = diff.tables.created.some((tableName) => {
+      const [schema, table] = tableName.includes('.')
+        ? tableName.split('.')
+        : ['public', tableName];
+      const constraintTable = constraint.table || '';
+      const [constraintSchema, constraintTableName] = constraintTable.includes('.')
+        ? constraintTable.split('.')
+        : ['public', constraintTable];
+      return table === constraintTableName && schema === constraintSchema;
+    });
+
+    if (!isNewTable) {
+      statements.push(generateCreateCheckConstraintSQL(constraint));
+    }
+  }
+
+  // Generate DROP CHECK CONSTRAINT statements
+  for (const constraint of diff.checkConstraints.deleted) {
+    statements.push(generateDropCheckConstraintSQL(constraint));
+  }
+
+  // Handle foreign key deletions first (including altered ones)
+  for (const fk of diff.foreignKeys.deleted) {
+    statements.push(generateDropForeignKeySQL(fk));
+  }
+
+  // Drop old version of altered foreign keys
+  for (const alteredFK of diff.foreignKeys.altered) {
+    statements.push(generateDropForeignKeySQL(alteredFK.old));
+  }
+
+  // Handle foreign key creations (for existing tables)
   for (const fk of diff.foreignKeys.created) {
     // Only add if it's not part of a new table (those were handled above)
     // Check both with and without schema prefix
@@ -107,8 +345,9 @@ export async function generateMigrationSQL(
     }
   }
 
-  for (const fk of diff.foreignKeys.deleted) {
-    statements.push(generateDropForeignKeySQL(fk));
+  // Create new version of altered foreign keys
+  for (const alteredFK of diff.foreignKeys.altered) {
+    statements.push(generateCreateForeignKeySQL(alteredFK.new));
   }
 
   return statements;
@@ -201,73 +440,227 @@ function generateColumnDefinition(name: string, def: any): string {
     sql += ' NOT NULL';
   }
 
-  // Add DEFAULT value
+  // Add DEFAULT value - properly formatted
   if (def.default !== undefined) {
-    sql += ` DEFAULT ${def.default}`;
+    const defaultValue = formatDefaultValue(def.default, def.type);
+    sql += ` DEFAULT ${defaultValue}`;
   }
 
   return sql;
 }
 
 /**
- * Generate ADD COLUMN SQL
+ * Generate ALTER TABLE ADD COLUMN SQL
+ * Based on Drizzle's PgAlterTableAddColumnConvertor
  */
 function generateAddColumnSQL(table: string, column: string, definition: any): string {
   const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
-  const colDef = generateColumnDefinition(column, definition);
-  return `ALTER TABLE "${schema}"."${tableName}" ADD COLUMN ${colDef};`;
+  const tableNameWithSchema = `"${schema}"."${tableName}"`;
+
+  // Build column definition parts in the correct order (like Drizzle)
+  const parts: string[] = [`"${column}"`];
+
+  // Type
+  parts.push(definition.type);
+
+  // Primary key
+  if (definition.primaryKey) {
+    parts.push('PRIMARY KEY');
+  }
+
+  // Default value - needs proper formatting based on type
+  if (definition.default !== undefined) {
+    const defaultValue = formatDefaultValue(definition.default, definition.type);
+    if (defaultValue) {
+      parts.push(`DEFAULT ${defaultValue}`);
+    }
+  }
+
+  // Generated columns
+  if (definition.generated) {
+    parts.push(`GENERATED ALWAYS AS (${definition.generated}) STORED`);
+  }
+
+  // NOT NULL constraint - comes after DEFAULT
+  if (definition.notNull) {
+    parts.push('NOT NULL');
+  }
+
+  return `ALTER TABLE ${tableNameWithSchema} ADD COLUMN ${parts.join(' ')};`;
 }
 
 /**
- * Generate DROP COLUMN SQL
+ * Generate ALTER TABLE DROP COLUMN SQL
+ * Based on Drizzle's approach with CASCADE
  */
 function generateDropColumnSQL(table: string, column: string): string {
   const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
-  return `ALTER TABLE "${schema}"."${tableName}" DROP COLUMN "${column}";`;
+  const tableNameWithSchema = `"${schema}"."${tableName}"`;
+  // Use CASCADE to handle dependent objects
+  return `ALTER TABLE ${tableNameWithSchema} DROP COLUMN "${column}" CASCADE;`;
 }
 
 /**
- * Generate ALTER COLUMN SQL
+ * Generate ALTER TABLE ALTER COLUMN SQL
+ * Based on Drizzle's approach with proper type casting and handling
  */
 function generateAlterColumnSQL(table: string, column: string, changes: any): string[] {
   const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const tableNameWithSchema = `"${schema}"."${tableName}"`;
   const statements: string[] = [];
 
-  // Handle type changes
+  // Handle type changes - need to handle enums and complex types
   if (changes.to?.type !== changes.from?.type) {
     const newType = changes.to?.type || 'TEXT';
-    statements.push(
-      `ALTER TABLE "${schema}"."${tableName}" ALTER COLUMN "${column}" TYPE ${newType};`
-    );
+
+    // Check if we need a USING clause for type conversion
+    const needsUsing = checkIfNeedsUsingClause(changes.from?.type, newType);
+
+    if (needsUsing) {
+      // For complex type changes, use USING clause like Drizzle
+      statements.push(
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING "${column}"::text::${newType};`
+      );
+    } else {
+      statements.push(
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DATA TYPE ${newType};`
+      );
+    }
   }
 
   // Handle NOT NULL changes
   if (changes.to?.notNull !== changes.from?.notNull) {
     if (changes.to?.notNull) {
-      statements.push(
-        `ALTER TABLE "${schema}"."${tableName}" ALTER COLUMN "${column}" SET NOT NULL;`
-      );
+      // When adding NOT NULL, might need to set defaults for existing NULL values
+      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET NOT NULL;`);
     } else {
-      statements.push(
-        `ALTER TABLE "${schema}"."${tableName}" ALTER COLUMN "${column}" DROP NOT NULL;`
-      );
+      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP NOT NULL;`);
     }
   }
 
-  // Handle DEFAULT changes
+  // Handle default value changes
   if (changes.to?.default !== changes.from?.default) {
     if (changes.to?.default !== undefined) {
+      const defaultValue = formatDefaultValue(changes.to.default, changes.to?.type);
       statements.push(
-        `ALTER TABLE "${schema}"."${tableName}" ALTER COLUMN "${column}" SET DEFAULT ${changes.to.default};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DEFAULT ${defaultValue};`
       );
     } else {
-      statements.push(
-        `ALTER TABLE "${schema}"."${tableName}" ALTER COLUMN "${column}" DROP DEFAULT;`
-      );
+      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP DEFAULT;`);
     }
   }
 
   return statements;
+}
+
+/**
+ * Check if a type change needs a USING clause
+ * Based on Drizzle's type conversion logic
+ */
+function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
+  if (!fromType || !toType) return false;
+
+  // Enum changes always need USING
+  if (fromType.includes('enum') || toType.includes('enum')) {
+    return true;
+  }
+
+  const fromBase = fromType.split('(')[0].toLowerCase();
+  const toBase = toType.split('(')[0].toLowerCase();
+
+  // Text/varchar to JSONB always needs USING
+  if (
+    (fromBase === 'text' || fromBase === 'varchar' || fromBase === 'character varying') &&
+    (toBase === 'jsonb' || toBase === 'json')
+  ) {
+    return true;
+  }
+
+  // Some specific type conversions need USING
+  const needsUsingPairs = [
+    ['integer', 'boolean'],
+    ['boolean', 'integer'],
+    ['text', 'integer'],
+    ['text', 'numeric'],
+    ['text', 'boolean'],
+    ['text', 'uuid'],
+    ['text', 'jsonb'],
+    ['text', 'json'],
+    ['varchar', 'integer'],
+    ['varchar', 'numeric'],
+    ['varchar', 'boolean'],
+    ['varchar', 'uuid'],
+    ['varchar', 'jsonb'],
+    ['varchar', 'json'],
+    ['character varying', 'jsonb'],
+    ['character varying', 'json'],
+    // Add more as needed based on PostgreSQL casting rules
+  ];
+
+  for (const [from, to] of needsUsingPairs) {
+    if ((fromBase === from && toBase === to) || (fromBase === to && toBase === from)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Format a default value for SQL
+ * Based on Drizzle's default value formatting
+ */
+function formatDefaultValue(value: any, type: string): string {
+  // Handle NULL
+  if (value === null || value === 'NULL') {
+    return 'NULL';
+  }
+
+  // Handle boolean
+  if (type && (type.toLowerCase().includes('boolean') || type.toLowerCase() === 'bool')) {
+    if (value === true || value === 'true' || value === 't' || value === 1) {
+      return 'true';
+    }
+    if (value === false || value === 'false' || value === 'f' || value === 0) {
+      return 'false';
+    }
+  }
+
+  // Handle numeric types
+  if (type && type.match(/^(integer|bigint|smallint|numeric|decimal|real|double)/i)) {
+    return String(value);
+  }
+
+  // Handle SQL expressions and pre-formatted defaults
+  if (typeof value === 'string') {
+    // Already formatted with type cast (e.g., '[]'::jsonb, '{}'::jsonb)
+    // These come from the snapshot and are already properly formatted
+    if (value.includes('::')) {
+      return value;
+    }
+
+    // Already quoted string literals (from snapshot)
+    // These start and end with single quotes
+    if (value.startsWith("'") && value.endsWith("'")) {
+      return value;
+    }
+
+    // SQL functions like now(), gen_random_uuid(), etc.
+    if (value.match(/^\w+\(\)/i) || (value.includes('(') && value.includes(')'))) {
+      return value;
+    }
+
+    // SQL expressions starting with CURRENT_
+    if (value.toUpperCase().startsWith('CURRENT_')) {
+      return value;
+    }
+
+    // Otherwise, it's an unquoted string literal - wrap and escape
+    return `'${value.replace(/'/g, "''")}'`;
+  }
+
+  // Default: return as-is
+  return String(value);
 }
 
 /**
@@ -364,4 +757,59 @@ export function generateRenameTableSQL(oldName: string, newName: string): string
 export function generateRenameColumnSQL(table: string, oldName: string, newName: string): string {
   const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
   return `ALTER TABLE "${schema}"."${tableName}" RENAME COLUMN "${oldName}" TO "${newName}";`;
+}
+
+/**
+ * Generate CREATE UNIQUE CONSTRAINT SQL
+ */
+function generateCreateUniqueConstraintSQL(constraint: any): string {
+  const table = constraint.table || '';
+  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+
+  const name = constraint.name;
+  const columns = constraint.columns.map((c: string) => `"${c}"`).join(', ');
+
+  let sql = `ALTER TABLE "${schema}"."${tableName}" ADD CONSTRAINT "${name}" UNIQUE`;
+
+  // Handle NULLS NOT DISTINCT if specified (PostgreSQL 15+)
+  if (constraint.nullsNotDistinct) {
+    sql += ` NULLS NOT DISTINCT`;
+  }
+
+  sql += ` (${columns});`;
+
+  return sql;
+}
+
+/**
+ * Generate DROP UNIQUE CONSTRAINT SQL
+ */
+function generateDropUniqueConstraintSQL(constraint: any): string {
+  const table = constraint.table || '';
+  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+
+  return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${constraint.name}";`;
+}
+
+/**
+ * Generate CREATE CHECK CONSTRAINT SQL
+ */
+function generateCreateCheckConstraintSQL(constraint: any): string {
+  const table = constraint.table || '';
+  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+
+  const name = constraint.name;
+  const value = constraint.value;
+
+  return `ALTER TABLE "${schema}"."${tableName}" ADD CONSTRAINT "${name}" CHECK (${value});`;
+}
+
+/**
+ * Generate DROP CHECK CONSTRAINT SQL
+ */
+function generateDropCheckConstraintSQL(constraint: any): string {
+  const table = constraint.table || '';
+  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+
+  return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${constraint.name}";`;
 }

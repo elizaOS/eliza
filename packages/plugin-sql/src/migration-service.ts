@@ -35,26 +35,83 @@ export class DatabaseMigrationService {
     logger.info(`Registered schema for plugin: ${pluginName}`);
   }
 
-  async runAllPluginMigrations(): Promise<void> {
+  async runAllPluginMigrations(options?: {
+    verbose?: boolean;
+    force?: boolean;
+    dryRun?: boolean;
+  }): Promise<void> {
     if (!this.db || !this.migrator) {
       throw new Error('Database or migrator not initialized in DatabaseMigrationService');
     }
 
-    logger.info(`Running migrations for ${this.registeredSchemas.size} plugins...`);
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    // Build migration options with sensible defaults
+    const migrationOptions = {
+      verbose: options?.verbose ?? !isProduction,
+      force: options?.force ?? false,
+      dryRun: options?.dryRun ?? false,
+    };
+
+    // Log migration start
+    logger.info('[DatabaseMigrationService] Starting migrations');
+    logger.info(
+      `[DatabaseMigrationService] Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`
+    );
+    logger.info(`[DatabaseMigrationService] Plugins to migrate: ${this.registeredSchemas.size}`);
+
+    if (migrationOptions.dryRun) {
+      logger.info('[DatabaseMigrationService] DRY RUN mode - no changes will be applied');
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
 
     for (const [pluginName, schema] of this.registeredSchemas) {
-      logger.info(`Starting migration for plugin: ${pluginName}`);
-
       try {
-        await this.migrator.migrate(pluginName, schema, { verbose: true });
-        logger.info(`Completed migration for plugin: ${pluginName}`);
+        await this.migrator.migrate(pluginName, schema, migrationOptions);
+        successCount++;
+        logger.info(`[DatabaseMigrationService] ✅ Completed: ${pluginName}`);
       } catch (error) {
-        logger.error(`Failed to migrate plugin ${pluginName}:`, JSON.stringify(error));
-        throw error; // Re-throw to maintain existing behavior
+        failureCount++;
+        const errorMessage = (error as Error).message;
+
+        if (errorMessage.includes('Destructive migration blocked')) {
+          // Destructive migration was blocked - this is expected behavior
+          logger.error(
+            `[DatabaseMigrationService] ❌ Blocked: ${pluginName} (destructive changes detected)`
+          );
+
+          if (!migrationOptions.force && !process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS) {
+            logger.error('[DatabaseMigrationService] To allow destructive migrations:');
+            logger.error(
+              '[DatabaseMigrationService]   - Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true'
+            );
+            logger.error('[DatabaseMigrationService]   - Or pass { force: true } to this method');
+          }
+        } else {
+          // Unexpected error
+          logger.error(
+            `[DatabaseMigrationService] ❌ Failed: ${pluginName}`,
+            JSON.stringify(error)
+          );
+        }
+
+        // Re-throw to maintain existing behavior
+        throw error;
       }
     }
 
-    logger.info('All plugin migrations completed.');
+    // Final summary
+    if (failureCount === 0) {
+      logger.info(
+        `[DatabaseMigrationService] All ${successCount} migrations completed successfully`
+      );
+    } else {
+      logger.error(
+        `[DatabaseMigrationService] Migrations failed: ${failureCount} failed, ${successCount} succeeded`
+      );
+    }
   }
 
   /**

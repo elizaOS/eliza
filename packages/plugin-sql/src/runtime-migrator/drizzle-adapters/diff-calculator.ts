@@ -28,8 +28,26 @@ export interface SchemaDiff {
   indexes: {
     created: any[];
     deleted: any[];
+    altered: Array<{
+      // Indexes with same name but different definition
+      old: any;
+      new: any;
+    }>;
   };
   foreignKeys: {
+    created: any[];
+    deleted: any[];
+    altered: Array<{
+      // FKs with modified CASCADE behavior
+      old: any;
+      new: any;
+    }>;
+  };
+  uniqueConstraints: {
+    created: any[];
+    deleted: any[];
+  };
+  checkConstraints: {
     created: any[];
     deleted: any[];
   };
@@ -56,8 +74,18 @@ export async function calculateDiff(
     indexes: {
       created: [],
       deleted: [],
+      altered: [],
     },
     foreignKeys: {
+      created: [],
+      deleted: [],
+      altered: [],
+    },
+    uniqueConstraints: {
+      created: [],
+      deleted: [],
+    },
+    checkConstraints: {
       created: [],
       deleted: [],
     },
@@ -107,6 +135,26 @@ export async function calculateDiff(
         for (const indexName in table.indexes) {
           diff.indexes.created.push({
             ...table.indexes[indexName],
+            table: tableName,
+          });
+        }
+      }
+
+      // Add unique constraints for new table
+      if (table.uniqueConstraints) {
+        for (const uqName in table.uniqueConstraints) {
+          diff.uniqueConstraints.created.push({
+            ...table.uniqueConstraints[uqName],
+            table: tableName,
+          });
+        }
+      }
+
+      // Add check constraints for new table
+      if (table.checkConstraints) {
+        for (const checkName in table.checkConstraints) {
+          diff.checkConstraints.created.push({
+            ...table.checkConstraints[checkName],
             table: tableName,
           });
         }
@@ -189,17 +237,42 @@ export async function calculateDiff(
       const prevIndexes = prevTable.indexes || {};
       const currIndexes = currTable.indexes || {};
 
-      // Find new indexes
+      // Find new, deleted, and altered indexes
       for (const indexName in currIndexes) {
         if (!(indexName in prevIndexes)) {
+          // New index
           diff.indexes.created.push({
             ...currIndexes[indexName],
             table: tableName,
           });
+        } else {
+          // Check if index definition changed
+          const prevIndex = prevIndexes[indexName];
+          const currIndex = currIndexes[indexName];
+
+          // Compare columns (could be different order or different columns)
+          const prevColumns = JSON.stringify(prevIndex.columns || []);
+          const currColumns = JSON.stringify(currIndex.columns || []);
+
+          if (prevColumns !== currColumns) {
+            // Index definition changed - need to drop and recreate
+            diff.indexes.altered.push({
+              old: {
+                ...prevIndex,
+                table: tableName,
+                name: indexName,
+              },
+              new: {
+                ...currIndex,
+                table: tableName,
+                name: indexName,
+              },
+            });
+          }
         }
       }
 
-      // Find deleted indexes
+      // Find deleted indexes (not altered)
       for (const indexName in prevIndexes) {
         if (!(indexName in currIndexes)) {
           diff.indexes.deleted.push({
@@ -209,18 +282,85 @@ export async function calculateDiff(
         }
       }
 
+      // Compare unique constraints
+      const prevUniqueConstraints = prevTable.uniqueConstraints || {};
+      const currUniqueConstraints = currTable.uniqueConstraints || {};
+
+      // Find new unique constraints
+      for (const uqName in currUniqueConstraints) {
+        if (!(uqName in prevUniqueConstraints)) {
+          diff.uniqueConstraints.created.push({
+            ...currUniqueConstraints[uqName],
+            table: tableName,
+          });
+        }
+      }
+
+      // Find deleted unique constraints
+      for (const uqName in prevUniqueConstraints) {
+        if (!(uqName in currUniqueConstraints)) {
+          diff.uniqueConstraints.deleted.push({
+            name: uqName,
+            table: tableName,
+          });
+        }
+      }
+
+      // Compare check constraints
+      const prevCheckConstraints = prevTable.checkConstraints || {};
+      const currCheckConstraints = currTable.checkConstraints || {};
+
+      // Find new check constraints
+      for (const checkName in currCheckConstraints) {
+        if (!(checkName in prevCheckConstraints)) {
+          diff.checkConstraints.created.push({
+            ...currCheckConstraints[checkName],
+            table: tableName,
+          });
+        }
+      }
+
+      // Find deleted check constraints
+      for (const checkName in prevCheckConstraints) {
+        if (!(checkName in currCheckConstraints)) {
+          diff.checkConstraints.deleted.push({
+            name: checkName,
+            table: tableName,
+          });
+        }
+      }
+
       // Compare foreign keys
       const prevFKs = prevTable.foreignKeys || {};
       const currFKs = currTable.foreignKeys || {};
 
-      // Find new foreign keys
+      // Find new, deleted, and altered foreign keys
       for (const fkName in currFKs) {
         if (!(fkName in prevFKs)) {
+          // New FK
           diff.foreignKeys.created.push(currFKs[fkName]);
+        } else {
+          // Check if FK definition changed (CASCADE behavior, etc.)
+          const prevFK = prevFKs[fkName];
+          const currFK = currFKs[fkName];
+
+          // Compare FK properties
+          const prevOnDelete = prevFK.onDelete || 'no action';
+          const currOnDelete = currFK.onDelete || 'no action';
+          const prevOnUpdate = prevFK.onUpdate || 'no action';
+          const currOnUpdate = currFK.onUpdate || 'no action';
+
+          if (prevOnDelete !== currOnDelete || prevOnUpdate !== currOnUpdate) {
+            // FK CASCADE behavior changed - need to drop and recreate
+            diff.foreignKeys.altered.push({
+              old: prevFK,
+              new: currFK,
+            });
+          }
         }
       }
 
-      // Find deleted foreign keys
+      // Find deleted foreign keys (not altered)
       for (const fkName in prevFKs) {
         if (!(fkName in currFKs)) {
           diff.foreignKeys.deleted.push({
@@ -248,7 +388,13 @@ export function hasDiffChanges(diff: SchemaDiff): boolean {
     diff.columns.modified.length > 0 ||
     diff.indexes.created.length > 0 ||
     diff.indexes.deleted.length > 0 ||
+    diff.indexes.altered.length > 0 ||
     diff.foreignKeys.created.length > 0 ||
-    diff.foreignKeys.deleted.length > 0
+    diff.foreignKeys.deleted.length > 0 ||
+    diff.foreignKeys.altered.length > 0 ||
+    diff.uniqueConstraints.created.length > 0 ||
+    diff.uniqueConstraints.deleted.length > 0 ||
+    diff.checkConstraints.created.length > 0 ||
+    diff.checkConstraints.deleted.length > 0
   );
 }
