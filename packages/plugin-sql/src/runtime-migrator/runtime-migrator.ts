@@ -7,7 +7,11 @@ import { SnapshotStorage } from './storage/snapshot-storage';
 import { ExtensionManager } from './extension-manager';
 import { generateSnapshot, hashSnapshot, hasChanges } from './drizzle-adapters/snapshot-generator';
 import { calculateDiff, hasDiffChanges } from './drizzle-adapters/diff-calculator';
-import { generateMigrationSQL } from './drizzle-adapters/sql-generator';
+import {
+  generateMigrationSQL,
+  checkForDataLoss,
+  type DataLossCheck,
+} from './drizzle-adapters/sql-generator';
 
 export class RuntimeMigrator {
   private migrationTracker: MigrationTracker;
@@ -89,6 +93,65 @@ export class RuntimeMigrator {
         return;
       }
 
+      // Check for potential data loss
+      const dataLossCheck = checkForDataLoss(diff);
+
+      if (dataLossCheck.hasDataLoss) {
+        const isProduction = process.env.NODE_ENV === 'production';
+
+        // Determine if destructive migrations are allowed
+        // Priority: explicit options > environment variable
+        const allowDestructive =
+          options.force ||
+          options.allowDataLoss ||
+          process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === 'true';
+
+        if (!allowDestructive) {
+          // Block the migration and provide clear instructions
+          logger.error('[RuntimeMigrator] Destructive migration blocked');
+          logger.error(`[RuntimeMigrator] Plugin: ${pluginName}`);
+          logger.error(
+            `[RuntimeMigrator] Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`
+          );
+          logger.error('[RuntimeMigrator] Destructive operations detected:');
+
+          for (const warning of dataLossCheck.warnings) {
+            logger.error(`[RuntimeMigrator]   - ${warning}`);
+          }
+
+          logger.error('[RuntimeMigrator] To proceed with destructive migrations:');
+          logger.error(
+            '[RuntimeMigrator]   1. Set environment variable: export ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true'
+          );
+          logger.error(
+            '[RuntimeMigrator]   2. Or use option: migrate(plugin, schema, { force: true })'
+          );
+
+          if (isProduction) {
+            logger.error(
+              '[RuntimeMigrator]   3. For production, consider using drizzle-kit for manual migration'
+            );
+          }
+
+          const errorMessage = isProduction
+            ? `Destructive migration blocked in production for ${pluginName}. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true or use drizzle-kit.`
+            : `Destructive migration blocked for ${pluginName}. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true to proceed.`;
+
+          throw new Error(errorMessage);
+        }
+
+        // Log that we're proceeding with destructive operations
+        if (dataLossCheck.requiresConfirmation) {
+          logger.warn('[RuntimeMigrator] Proceeding with destructive migration');
+          logger.warn(`[RuntimeMigrator] Plugin: ${pluginName}`);
+          logger.warn('[RuntimeMigrator] The following operations will be performed:');
+
+          for (const warning of dataLossCheck.warnings) {
+            logger.warn(`[RuntimeMigrator]   ⚠️ ${warning}`);
+          }
+        }
+      }
+
       // Generate SQL statements
       const sqlStatements = await generateMigrationSQL(previousSnapshot, currentSnapshot, diff);
 
@@ -136,125 +199,52 @@ export class RuntimeMigrator {
     hash: string,
     sqlStatements: string[]
   ): Promise<void> {
-    // Check if we can use transactions (PostgreSQL) or need to execute directly (PGLite)
-    const isPGLite = this.checkIfPGLite();
+    // Use manual transactions for all databases to avoid deadlocks
+    try {
+      // Start manual transaction
+      await this.db.execute(sql`BEGIN`);
 
-    if (isPGLite) {
-      // PGLite doesn't support Drizzle transactions the same way
-      // Execute statements directly with manual transaction control
       try {
-        // Start manual transaction for PGLite
-        await this.db.execute(sql`BEGIN`);
-
-        try {
-          // Execute all SQL statements
-          for (const stmt of sqlStatements) {
-            logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
-            await this.db.execute(sql.raw(stmt));
-          }
-
-          // Get next index for journal
-          const idx = await this.journalStorage.getNextIdx(pluginName);
-
-          // Record migration
-          await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
-
-          // Update journal
-          const tag = this.generateMigrationTag(idx, pluginName);
-          await this.journalStorage.updateJournal(
-            pluginName,
-            idx,
-            tag,
-            true // breakpoints
-          );
-
-          // Store snapshot
-          await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
-
-          // Commit the transaction
-          await this.db.execute(sql`COMMIT`);
-
-          logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
-        } catch (error) {
-          // Rollback on error
-          await this.db.execute(sql`ROLLBACK`);
-          logger.error(
-            '[RuntimeMigrator] Migration failed, rolled back:',
-            JSON.stringify(error as any)
-          );
-          throw error;
+        // Execute all SQL statements
+        for (const stmt of sqlStatements) {
+          logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
+          await this.db.execute(sql.raw(stmt));
         }
+
+        // Get next index for journal
+        const idx = await this.journalStorage.getNextIdx(pluginName);
+
+        // Record migration
+        await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
+
+        // Update journal
+        const tag = this.generateMigrationTag(idx, pluginName);
+        await this.journalStorage.updateJournal(
+          pluginName,
+          idx,
+          tag,
+          true // breakpoints
+        );
+
+        // Store snapshot
+        await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
+
+        // Commit the transaction
+        await this.db.execute(sql`COMMIT`);
+
+        logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
       } catch (error) {
+        // Rollback on error
+        await this.db.execute(sql`ROLLBACK`);
         logger.error(
-          '[RuntimeMigrator] Migration transaction failed:',
+          '[RuntimeMigrator] Migration failed, rolled back:',
           JSON.stringify(error as any)
         );
         throw error;
       }
-    } else {
-      // Use Drizzle transaction for PostgreSQL
-      await (this.db as any).transaction(async (tx: DrizzleDB) => {
-        try {
-          // Execute all SQL statements
-          for (const stmt of sqlStatements) {
-            logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
-            await tx.execute(sql.raw(stmt));
-          }
-
-          // Get next index for journal
-          const idx = await this.journalStorage.getNextIdx(pluginName);
-
-          // Record migration
-          await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
-
-          // Update journal
-          const tag = this.generateMigrationTag(idx, pluginName);
-          await this.journalStorage.updateJournal(
-            pluginName,
-            idx,
-            tag,
-            true // breakpoints
-          );
-
-          // Store snapshot
-          await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
-
-          logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
-        } catch (error) {
-          // Transaction will automatically rollback
-          logger.error(
-            '[RuntimeMigrator] Migration transaction failed:',
-            JSON.stringify(error as any)
-          );
-          throw error;
-        }
-      });
-    }
-  }
-
-  /**
-   * Check if the database is PGLite
-   */
-  private checkIfPGLite(): boolean {
-    // Check if the db object has a transaction method
-    // PGLite's drizzle adapter might not have it or it might throw
-    try {
-      // Check if db has the transaction method and if it's a function
-      if (typeof (this.db as any).transaction !== 'function') {
-        return true; // No transaction method, likely PGLite
-      }
-
-      // Additional check: see if we can detect PGLite specific properties
-      // PGLite connections often have specific markers
-      const dbString = JSON.stringify(this.db);
-      if (dbString.includes('PGlite') || dbString.includes('pglite')) {
-        return true;
-      }
-
-      return false; // Assume it's regular PostgreSQL
-    } catch {
-      // If checking causes an error, assume it's PGLite
-      return true;
+    } catch (error) {
+      logger.error('[RuntimeMigrator] Migration transaction failed:', JSON.stringify(error as any));
+      throw error;
     }
   }
 
@@ -302,5 +292,47 @@ export class RuntimeMigrator {
     await this.db.execute(sql`DELETE FROM migrations._snapshots WHERE plugin_name = ${pluginName}`);
 
     logger.warn(`[RuntimeMigrator] Reset complete for ${pluginName}`);
+  }
+
+  /**
+   * Check if a migration would cause data loss without executing it
+   * Useful for pre-flight checks and confirmation dialogs
+   */
+  async checkMigration(pluginName: string, schema: any): Promise<DataLossCheck | null> {
+    try {
+      logger.info(`[RuntimeMigrator] Checking migration for ${pluginName}...`);
+
+      // Generate current snapshot from schema
+      const currentSnapshot = await generateSnapshot(schema);
+
+      // Load previous snapshot
+      const previousSnapshot = await this.snapshotStorage.getLatestSnapshot(pluginName);
+
+      // Check if there are changes
+      if (!hasChanges(previousSnapshot, currentSnapshot)) {
+        logger.info(`[RuntimeMigrator] No changes detected for ${pluginName}`);
+        return null;
+      }
+
+      // Calculate diff
+      const diff = await calculateDiff(previousSnapshot, currentSnapshot);
+
+      // Check for data loss
+      const dataLossCheck = checkForDataLoss(diff);
+
+      if (dataLossCheck.hasDataLoss) {
+        logger.warn(`[RuntimeMigrator] Migration for ${pluginName} would cause data loss`);
+      } else {
+        logger.info(`[RuntimeMigrator] Migration for ${pluginName} is safe (no data loss)`);
+      }
+
+      return dataLossCheck;
+    } catch (error) {
+      logger.error(
+        `[RuntimeMigrator] Failed to check migration for ${pluginName}:`,
+        JSON.stringify(error)
+      );
+      throw error;
+    }
   }
 }

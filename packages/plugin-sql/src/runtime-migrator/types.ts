@@ -44,6 +44,15 @@ export interface MigrationOptions {
 }
 
 export interface RuntimeMigrationOptions {
+  /** Run without executing SQL statements */
   dryRun?: boolean;
+
+  /** Log detailed information about the migration */
   verbose?: boolean;
+
+  /** Force migration even in production with destructive changes */
+  force?: boolean;
+
+  /** Allow operations that will cause data loss (tables/columns being dropped) */
+  allowDataLoss?: boolean;
 }
