@@ -127,7 +127,7 @@ describe('SQL Plugin', () => {
       expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
-    it('should use default path if PGLITE_DATA_DIR is not set', async () => {
+    it('should prefer to use PGLITE_DATA_DIR when environment variable is set', async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
       mockRuntime.getSetting = mock(() => null);
