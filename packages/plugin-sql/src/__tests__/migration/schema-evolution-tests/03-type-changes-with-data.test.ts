@@ -1,24 +1,25 @@
 import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
 import { pgTable, text, uuid, jsonb, integer, boolean } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 /**
- * Smoke Test 3: Type Changes with Incompatible Data
+ * Schema Evolution Test 3: Type Changes with Incompatible Data
  *
  * This test verifies handling of column type changes that could
  * cause data loss, conversion errors, or precision loss.
  */
 
-describe('Smoke Test: Type Changes with Data', () => {
+describe('Schema Evolution Test: Type Changes with Data', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests('smoke_type_changes_test');
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_type_changes_test'
+    );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 
@@ -46,7 +47,7 @@ describe('Smoke Test: Type Changes with Data', () => {
 
     const schemaV1 = { memories: memoryTableV1 };
 
-    await migrator.migrate('@elizaos/smoke-test-types-v1', schemaV1);
+    await migrator.migrate('@elizaos/schema-evolution-test-types-v1', schemaV1);
 
     // Insert complex JSON data
     await db.insert(memoryTableV1).values([
@@ -112,7 +113,10 @@ describe('Smoke Test: Type Changes with Data', () => {
     const schemaV2 = { memories: memoryTableV2 };
 
     // Check migration warnings
-    const check = await migrator.checkMigration('@elizaos/smoke-test-types-v1', schemaV2);
+    const check = await migrator.checkMigration(
+      '@elizaos/schema-evolution-test-types-v1',
+      schemaV2
+    );
 
     expect(check).toBeDefined();
     expect(check!.warnings.length).toBeGreaterThan(0);
@@ -123,7 +127,7 @@ describe('Smoke Test: Type Changes with Data', () => {
     });
 
     // Migration allowed because ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS is set in beforeEach
-    await migrator.migrate('@elizaos/smoke-test-types-v1', schemaV2);
+    await migrator.migrate('@elizaos/schema-evolution-test-types-v1', schemaV2);
 
     // Check converted data
     const afterData = await db.select().from(memoryTableV2);
@@ -157,7 +161,7 @@ describe('Smoke Test: Type Changes with Data', () => {
 
     const schemaV1 = { users: userTableV1 };
 
-    await migrator.migrate('@elizaos/smoke-test-text-to-int-v1', schemaV1);
+    await migrator.migrate('@elizaos/schema-evolution-test-text-to-int-v1', schemaV1);
 
     // Insert mixed data - some valid, some invalid for integer conversion
     await db.insert(userTableV1).values([
@@ -200,7 +204,10 @@ describe('Smoke Test: Type Changes with Data', () => {
     const schemaV2 = { users: userTableV2 };
 
     // This should warn about potential conversion issues
-    const check = await migrator.checkMigration('@elizaos/smoke-test-text-to-int-v1', schemaV2);
+    const check = await migrator.checkMigration(
+      '@elizaos/schema-evolution-test-text-to-int-v1',
+      schemaV2
+    );
 
     expect(check).toBeDefined();
     expect(check!.warnings.length).toBeGreaterThan(0);
@@ -218,7 +225,7 @@ describe('Smoke Test: Type Changes with Data', () => {
     // Attempting migration should fail due to invalid data
     let migrationError: Error | null = null;
     try {
-      await migrator.migrate('@elizaos/smoke-test-text-to-int-v1', schemaV2);
+      await migrator.migrate('@elizaos/schema-evolution-test-text-to-int-v1', schemaV2);
     } catch (error) {
       migrationError = error as Error;
     }
@@ -252,7 +259,7 @@ describe('Smoke Test: Type Changes with Data', () => {
 
     const schemaV1 = { settings: settingsTableV1 };
 
-    await migrator.migrate('@elizaos/smoke-test-bool-v1', schemaV1);
+    await migrator.migrate('@elizaos/schema-evolution-test-bool-v1', schemaV1);
 
     // Insert boolean data
     await db.insert(settingsTableV1).values([
@@ -280,7 +287,7 @@ describe('Smoke Test: Type Changes with Data', () => {
 
     const schemaV2 = { settings: settingsTableV2 };
 
-    await migrator.migrate('@elizaos/smoke-test-bool-v1', schemaV2);
+    await migrator.migrate('@elizaos/schema-evolution-test-bool-v1', schemaV2);
 
     const afterTextData = await db.select().from(settingsTableV2);
     console.log('\n📊 After boolean → text conversion:');

@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 // Import the ACTUAL production schemas
 import { agentTable } from '../../../schema/agent';
@@ -24,13 +24,13 @@ import { taskTable } from '../../../schema/tasks';
 import { serverAgentsTable } from '../../../schema/serverAgent';
 
 /**
- * Smoke Test 1: Dropping Columns from Production Schema
+ * Schema Evolution Test 1: Dropping Columns from Production Schema
  *
  * This test uses the ACTUAL ElizaOS production schemas to verify
  * that schema evolution properly handles column drops with real data.
  */
 
-describe('Smoke Test: Drop Column with Production Schema', () => {
+describe('Schema Evolution Test: Drop Column with Production Schema', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
@@ -57,7 +57,9 @@ describe('Smoke Test: Drop Column with Production Schema', () => {
   });
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests('smoke_drop_column_test');
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_drop_column_test'
+    );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 

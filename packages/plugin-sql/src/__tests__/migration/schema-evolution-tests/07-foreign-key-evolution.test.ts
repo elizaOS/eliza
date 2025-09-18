@@ -3,23 +3,23 @@ import { pgTable, text, uuid, foreignKey, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 /**
- * Smoke Test 11 & 12: Foreign Key Evolution
+ * Schema Evolution Test 11 & 12: Foreign Key Evolution
  *
  * Tests adding foreign keys to existing data and modifying CASCADE behavior.
  * These operations can fail if there are orphaned records.
  */
 
-describe('Smoke Test: Foreign Key Evolution', () => {
+describe('Schema Evolution Test: Foreign Key Evolution', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests(
-      'smoke_foreign_key_evolution_test'
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_foreign_key_evolution_test'
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;

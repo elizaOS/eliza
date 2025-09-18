@@ -3,22 +3,24 @@ import { pgTable, text, uuid, jsonb, timestamp, index } from 'drizzle-orm/pg-cor
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 /**
- * Smoke Test 9 & 10: Index Evolution
+ * Schema Evolution Test 9 & 10: Index Evolution
  *
  * Tests adding, dropping, and recreating various types of indexes.
  * Index operations are generally safe as they don't affect data.
  */
 
-describe('Smoke Test: Index Evolution', () => {
+describe('Schema Evolution Test: Index Evolution', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests('smoke_index_evolution_test');
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_index_evolution_test'
+    );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 

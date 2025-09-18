@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 // Import ALL production schemas
 import { agentTable } from '../../../schema/agent';
@@ -24,13 +24,13 @@ import { taskTable } from '../../../schema/tasks';
 import { serverAgentsTable } from '../../../schema/serverAgent';
 
 /**
- * Smoke Test 2: Dropping Tables with Foreign Key Relationships
+ * Schema Evolution Test 2: Dropping Tables with Foreign Key Relationships
  *
  * This test uses the ACTUAL ElizaOS production schemas with their
  * complex foreign key relationships to verify cascade behavior.
  */
 
-describe('Smoke Test: Drop Table with Production Relationships', () => {
+describe('Schema Evolution Test: Drop Table with Production Relationships', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
@@ -57,7 +57,9 @@ describe('Smoke Test: Drop Table with Production Relationships', () => {
   });
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests('smoke_drop_table_test');
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_drop_table_test'
+    );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
 

@@ -283,14 +283,14 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
 }
 
 /**
- * Creates an isolated test database for smoke tests that need to test schema evolution
+ * Creates an isolated test database for schema evolution tests that need to test schema evolution
  * with destructive migrations. This helper manages the ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS
  * environment variable and provides a clean database for each test.
  *
  * @param testName - A unique name for this test to ensure isolation
  * @returns Database connection, adapter, cleanup function, and environment management
  */
-export async function createIsolatedTestDatabaseForSmokeTests(testName: string): Promise<{
+export async function createIsolatedTestDatabaseForSchemaEvolutionTests(testName: string): Promise<{
   db: any; // DrizzleDatabase
   adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   cleanup: () => Promise<void>;

@@ -3,23 +3,23 @@ import { pgTable, text, uuid, jsonb, boolean, timestamp, integer } from 'drizzle
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 /**
- * Smoke Test 4 & 5: Safe Column Additions
+ * Schema Evolution Test 4 & 5: Safe Column Additions
  *
  * This test verifies that adding nullable columns and columns with defaults
  * works correctly without data loss warnings.
  */
 
-describe('Smoke Test: Safe Column Additions', () => {
+describe('Schema Evolution Test: Safe Column Additions', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests(
-      'smoke_safe_column_additions_test'
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_safe_column_additions_test'
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
