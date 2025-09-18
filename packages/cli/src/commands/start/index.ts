@@ -49,6 +49,11 @@ export const start = new Command()
         process.env.PATH = localBinPath;
       }
 
+      // Force Node runtime for PGlite when running the server via CLI
+      if (!process.env.PGLITE_WASM_MODE) {
+        process.env.PGLITE_WASM_MODE = 'node';
+      }
+
       // Build the project first (unless it's a monorepo)
       const cwd = process.cwd();
       const dirInfo = detectDirectoryType(cwd);
