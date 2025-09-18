@@ -12,6 +12,7 @@ import {
   checkForDataLoss,
   type DataLossCheck,
 } from './drizzle-adapters/sql-generator';
+import { createHash } from 'crypto';
 
 export class RuntimeMigrator {
   private migrationTracker: MigrationTracker;
@@ -24,6 +25,38 @@ export class RuntimeMigrator {
     this.journalStorage = new JournalStorage(db);
     this.snapshotStorage = new SnapshotStorage(db);
     this.extensionManager = new ExtensionManager(db);
+  }
+
+  /**
+   * Generate a stable advisory lock ID from plugin name
+   * PostgreSQL advisory locks use bigint, so we need to hash the plugin name
+   * and convert to a stable bigint value
+   */
+  private getAdvisoryLockId(pluginName: string): string {
+    // Create a hash of the plugin name
+    const hash = createHash('sha256').update(pluginName).digest();
+
+    // Take first 8 bytes and convert to a positive bigint
+    // We use the first 8 bytes for a 64-bit integer
+    const buffer = hash.slice(0, 8);
+
+    // Convert to bigint and ensure it's positive
+    let lockId = BigInt('0x' + buffer.toString('hex'));
+
+    // Ensure the value fits in PostgreSQL's bigint range
+    // PostgreSQL bigint range: -9223372036854775808 to 9223372036854775807
+    // We'll use positive values only for simplicity
+    if (lockId < 0n) {
+      lockId = -lockId;
+    }
+
+    // Ensure it's not too large
+    const maxBigInt = 9223372036854775807n;
+    if (lockId > maxBigInt) {
+      lockId = lockId % maxBigInt;
+    }
+
+    return lockId.toString();
   }
 
   /**
@@ -43,11 +76,63 @@ export class RuntimeMigrator {
     schema: any,
     options: RuntimeMigrationOptions = {}
   ): Promise<void> {
+    const lockId = this.getAdvisoryLockId(pluginName);
+    let lockAcquired = false;
+
     try {
       logger.info(`[RuntimeMigrator] Starting migration for plugin: ${pluginName}`);
 
       // Ensure migration tables exist
       await this.initialize();
+
+      // Only use advisory locks for real PostgreSQL databases
+      // Skip for PGLite or development databases
+      const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || '';
+      const isRealPostgres =
+        postgresUrl &&
+        !postgresUrl.includes(':memory:') &&
+        !postgresUrl.includes('pglite') &&
+        postgresUrl.includes('postgres');
+
+      if (isRealPostgres) {
+        try {
+          logger.debug(`[RuntimeMigrator] Using PostgreSQL advisory locks for ${pluginName}`);
+
+          const lockResult = await this.db.execute(
+            sql.raw(`SELECT pg_try_advisory_lock(${lockId}) as acquired`)
+          );
+
+          lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
+
+          if (!lockAcquired) {
+            logger.info(
+              `[RuntimeMigrator] Migration already in progress for ${pluginName}, waiting for lock...`
+            );
+
+            // Wait for the lock (blocking call)
+            await this.db.execute(sql.raw(`SELECT pg_advisory_lock(${lockId})`));
+            lockAcquired = true;
+
+            logger.info(`[RuntimeMigrator] Lock acquired for ${pluginName}`);
+          } else {
+            logger.debug(
+              `[RuntimeMigrator] Advisory lock acquired for ${pluginName} (lock ID: ${lockId})`
+            );
+          }
+        } catch (lockError) {
+          // If advisory locks fail, log but continue
+          // This might happen if the PostgreSQL version doesn't support advisory locks
+          logger.warn(
+            `[RuntimeMigrator] Failed to acquire advisory lock, continuing without lock: ${lockError}`
+          );
+          lockAcquired = false;
+        }
+      } else {
+        // For PGLite or other development databases, skip advisory locks
+        logger.debug(
+          `[RuntimeMigrator] Development database detected (PGLite or non-PostgreSQL), skipping advisory locks`
+        );
+      }
 
       // Install required extensions (same as old migrator)
       await this.extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch']);
@@ -57,10 +142,22 @@ export class RuntimeMigrator {
       const currentHash = hashSnapshot(currentSnapshot);
 
       // Check if we've already run this exact migration
+      // This check happens AFTER acquiring the lock to handle concurrent scenarios
       const lastMigration = await this.migrationTracker.getLastMigration(pluginName);
       if (lastMigration && lastMigration.hash === currentHash) {
         logger.info(`[RuntimeMigrator] No changes detected for ${pluginName}, skipping migration`);
         return;
+      }
+
+      // Double-check: Another process might have completed the migration while we were waiting for the lock
+      // This is especially important when not using advisory locks (e.g., in PGLite)
+      if (lastMigration) {
+        // Re-check with the latest data
+        const recheckMigration = await this.migrationTracker.getLastMigration(pluginName);
+        if (recheckMigration && recheckMigration.hash === currentHash) {
+          logger.info(`[RuntimeMigrator] Migration completed by another process for ${pluginName}`);
+          return;
+        }
       }
 
       // Load previous snapshot
@@ -184,9 +281,32 @@ export class RuntimeMigrator {
       await this.executeMigration(pluginName, currentSnapshot, currentHash, sqlStatements);
 
       logger.info(`[RuntimeMigrator] Migration completed successfully for ${pluginName}`);
+
+      // Return a success result
+      return;
     } catch (error) {
       logger.error(`[RuntimeMigrator] Migration failed for ${pluginName}:`, JSON.stringify(error));
       throw error;
+    } finally {
+      // Always release the advisory lock if we acquired it (only for real PostgreSQL)
+      const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || '';
+      const isRealPostgres =
+        postgresUrl &&
+        !postgresUrl.includes(':memory:') &&
+        !postgresUrl.includes('pglite') &&
+        postgresUrl.includes('postgres');
+
+      if (lockAcquired && isRealPostgres) {
+        try {
+          await this.db.execute(sql.raw(`SELECT pg_advisory_unlock(${lockId})`));
+          logger.debug(`[RuntimeMigrator] Advisory lock released for ${pluginName}`);
+        } catch (unlockError) {
+          logger.warn(
+            `[RuntimeMigrator] Failed to release advisory lock for ${pluginName}:`,
+            JSON.stringify(unlockError)
+          );
+        }
+      }
     }
   }
 
@@ -199,51 +319,57 @@ export class RuntimeMigrator {
     hash: string,
     sqlStatements: string[]
   ): Promise<void> {
-    // Use manual transactions for all databases to avoid deadlocks
+    let transactionStarted = false;
+
     try {
       // Start manual transaction
       await this.db.execute(sql`BEGIN`);
+      transactionStarted = true;
 
-      try {
-        // Execute all SQL statements
-        for (const stmt of sqlStatements) {
-          logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
-          await this.db.execute(sql.raw(stmt));
-        }
-
-        // Get next index for journal
-        const idx = await this.journalStorage.getNextIdx(pluginName);
-
-        // Record migration
-        await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
-
-        // Update journal
-        const tag = this.generateMigrationTag(idx, pluginName);
-        await this.journalStorage.updateJournal(
-          pluginName,
-          idx,
-          tag,
-          true // breakpoints
-        );
-
-        // Store snapshot
-        await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
-
-        // Commit the transaction
-        await this.db.execute(sql`COMMIT`);
-
-        logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
-      } catch (error) {
-        // Rollback on error
-        await this.db.execute(sql`ROLLBACK`);
-        logger.error(
-          '[RuntimeMigrator] Migration failed, rolled back:',
-          JSON.stringify(error as any)
-        );
-        throw error;
+      // Execute all SQL statements
+      for (const stmt of sqlStatements) {
+        logger.debug(`[RuntimeMigrator] Executing: ${stmt}`);
+        await this.db.execute(sql.raw(stmt));
       }
+
+      // Get next index for journal
+      const idx = await this.journalStorage.getNextIdx(pluginName);
+
+      // Record migration
+      await this.migrationTracker.recordMigration(pluginName, hash, Date.now());
+
+      // Update journal
+      const tag = this.generateMigrationTag(idx, pluginName);
+      await this.journalStorage.updateJournal(
+        pluginName,
+        idx,
+        tag,
+        true // breakpoints
+      );
+
+      // Store snapshot
+      await this.snapshotStorage.saveSnapshot(pluginName, idx, snapshot);
+
+      // Commit the transaction
+      await this.db.execute(sql`COMMIT`);
+
+      logger.info(`[RuntimeMigrator] Recorded migration ${tag} for ${pluginName}`);
     } catch (error) {
-      logger.error('[RuntimeMigrator] Migration transaction failed:', JSON.stringify(error as any));
+      // Rollback on error if transaction was started
+      if (transactionStarted) {
+        try {
+          await this.db.execute(sql`ROLLBACK`);
+          logger.error(
+            '[RuntimeMigrator] Migration failed, rolled back:',
+            JSON.stringify(error as any)
+          );
+        } catch (rollbackError) {
+          logger.error(
+            '[RuntimeMigrator] Failed to rollback transaction:',
+            JSON.stringify(rollbackError as any)
+          );
+        }
+      }
       throw error;
     }
   }
