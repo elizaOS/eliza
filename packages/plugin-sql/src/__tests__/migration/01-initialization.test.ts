@@ -1,46 +1,38 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg';
-import * as originalSchema from '../../schema';
 import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDatabase } from '../../types';
-
-const { Client } = pg;
+import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
+import type { UUID } from '@elizaos/core';
+import * as originalSchema from '../../schema';
 
 describe('Runtime Migrator - Initialization Tests', () => {
   let db: DrizzleDatabase;
-  let client: pg.Client;
   let migrator: RuntimeMigrator;
-
-  const POSTGRES_URL =
-    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5555/eliza2';
+  let cleanup: () => Promise<void>;
+  let testAgentId: UUID;
 
   beforeAll(async () => {
     console.log('\n🚀 Testing Runtime Migrator Initialization...\n');
 
-    client = new Client({ connectionString: POSTGRES_URL });
-    await client.connect();
-    db = drizzle(client, { schema: originalSchema }) as unknown as DrizzleDatabase;
+    const testSetup = await createIsolatedTestDatabaseForMigration('initialization_tests');
+    cleanup = testSetup.cleanup;
+    testAgentId = testSetup.testAgentId;
+    db = testSetup.db;
 
-    // Clean slate
-    try {
-      await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
-      await db.execute(sql.raw(`DROP SCHEMA IF EXISTS public CASCADE`));
-      await db.execute(sql.raw(`CREATE SCHEMA public`));
-    } catch (error) {
-      console.warn('Cleanup warning:', error);
-    }
-
+    // Create a new migrator for testing (don't initialize yet as tests will do that)
     migrator = new RuntimeMigrator(db);
   });
 
   afterAll(async () => {
-    await client.end();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   describe('Migration Infrastructure Setup', () => {
     it('should initialize migration schema and tables', async () => {
+      // Initialize the migrator - this creates the migration infrastructure
       await migrator.initialize();
 
       // Check migrations schema exists

@@ -12,6 +12,7 @@ import {
   checkForDataLoss,
   type DataLossCheck,
 } from './drizzle-adapters/sql-generator';
+import { deriveSchemaName } from './schema-transformer';
 import { createHash } from 'crypto';
 
 export class RuntimeMigrator {
@@ -25,6 +26,79 @@ export class RuntimeMigrator {
     this.journalStorage = new JournalStorage(db);
     this.snapshotStorage = new SnapshotStorage(db);
     this.extensionManager = new ExtensionManager(db);
+  }
+
+  /**
+   * Get expected schema name for a plugin
+   * @elizaos/plugin-sql uses 'public' schema (core application)
+   * All other plugins should use namespaced schemas
+   */
+  private getExpectedSchemaName(pluginName: string): string {
+    // Core plugin uses public schema
+    if (pluginName === '@elizaos/plugin-sql') {
+      return 'public';
+    }
+
+    // Use the schema transformer's logic for consistency
+    return deriveSchemaName(pluginName);
+  }
+
+  /**
+   * Ensure all schemas used in the snapshot exist
+   */
+  private async ensureSchemasExist(snapshot: SchemaSnapshot): Promise<void> {
+    const schemasToCreate = new Set<string>();
+
+    // Collect all schemas from tables
+    for (const table of Object.values(snapshot.tables)) {
+      const tableData = table as any; // Tables in snapshot have schema property
+      const schema = tableData.schema || 'public';
+      if (schema !== 'public') {
+        schemasToCreate.add(schema);
+      }
+    }
+
+    // Also add schemas from the snapshot's schemas object
+    for (const schema of Object.keys(snapshot.schemas || {})) {
+      if (schema !== 'public') {
+        schemasToCreate.add(schema);
+      }
+    }
+
+    // Create all non-public schemas
+    for (const schemaName of schemasToCreate) {
+      logger.debug(`[RuntimeMigrator] Ensuring schema '${schemaName}' exists`);
+      await this.db.execute(sql.raw(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`));
+    }
+  }
+
+  /**
+   * Validate schema usage and provide warnings
+   */
+  private validateSchemaUsage(pluginName: string, snapshot: SchemaSnapshot): void {
+    const expectedSchema = this.getExpectedSchemaName(pluginName);
+    const isCorePLugin = pluginName === '@elizaos/plugin-sql';
+
+    for (const table of Object.values(snapshot.tables)) {
+      const tableData = table as any; // Tables in snapshot have schema and name properties
+      const actualSchema = tableData.schema || 'public';
+
+      // Warn if non-core plugin is using public schema
+      if (!isCorePLugin && actualSchema === 'public') {
+        logger.warn(
+          `[RuntimeMigrator] WARNING: Plugin '${pluginName}' table '${tableData.name}' is using public schema. ` +
+            `Consider using pgSchema('${expectedSchema}').table(...) for better isolation.`
+        );
+      }
+
+      // Warn if core plugin is not using public schema
+      if (isCorePLugin && actualSchema !== 'public') {
+        logger.warn(
+          `[RuntimeMigrator] WARNING: Core plugin '@elizaos/plugin-sql' table '${tableData.name}' is using schema '${actualSchema}'. ` +
+            `Core tables should use public schema.`
+        );
+      }
+    }
   }
 
   /**
@@ -139,6 +213,13 @@ export class RuntimeMigrator {
 
       // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);
+
+      // Ensure all schemas referenced in the snapshot exist
+      await this.ensureSchemasExist(currentSnapshot);
+
+      // Validate schema usage and warn about potential issues
+      this.validateSchemaUsage(pluginName, currentSnapshot);
+
       const currentHash = hashSnapshot(currentSnapshot);
 
       // Check if we've already run this exact migration

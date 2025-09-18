@@ -1,28 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
 import { pgTable, uuid, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
-import pg from 'pg';
-import * as originalSchema from '../../schema';
 import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDatabase } from '../../types';
-
-const { Client } = pg;
+import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
 
 describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
   let db: DrizzleDatabase;
-  let client: pg.Client;
   let migrator: RuntimeMigrator;
-
-  const POSTGRES_URL =
-    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5555/eliza2';
+  let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
     console.log('\n🔒 Testing Transaction Support and Concurrent Migration Handling...\n');
 
-    client = new Client({ connectionString: POSTGRES_URL });
-    await client.connect();
-    db = drizzle(client, { schema: originalSchema }) as unknown as DrizzleDatabase;
+    const testSetup = await createIsolatedTestDatabaseForMigration('transaction_concurrency_tests');
+    db = testSetup.db;
+    cleanup = testSetup.cleanup;
 
     migrator = new RuntimeMigrator(db);
     await migrator.initialize();
@@ -86,7 +79,9 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
   });
 
   afterAll(async () => {
-    await client.end();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   describe('Transaction Atomicity', () => {
