@@ -3,23 +3,23 @@ import { pgTable, text, uuid, boolean, integer, unique, check } from 'drizzle-or
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
-import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
+import { createIsolatedTestDatabaseForSchemaEvolutionTests } from '../../test-helpers';
 
 /**
- * Smoke Test 6, 7, 8: Constraint Modifications
+ * Schema Evolution Test 6, 7, 8: Constraint Modifications
  *
  * Tests adding NOT NULL, UNIQUE, and CHECK constraints to existing data.
  * These operations can fail if existing data violates the new constraints.
  */
 
-describe('Smoke Test: Constraint Modifications', () => {
+describe('Schema Evolution Test: Constraint Modifications', () => {
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
   let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    const testSetup = await createIsolatedTestDatabaseForSmokeTests(
-      'smoke_constraint_modifications_test'
+    const testSetup = await createIsolatedTestDatabaseForSchemaEvolutionTests(
+      'schema_evolution_constraint_modifications_test'
     );
     db = testSetup.db;
     cleanup = testSetup.cleanup;
