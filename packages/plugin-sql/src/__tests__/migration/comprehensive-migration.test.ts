@@ -1,6 +1,3 @@
-import { PGlite } from '@electric-sql/pglite';
-import { fuzzystrmatch as fuzzystrmatchExtension } from '@electric-sql/pglite/contrib/fuzzystrmatch';
-import { vector as vectorExtension } from '@electric-sql/pglite/vector';
 import { sql } from 'drizzle-orm';
 import {
   boolean,
@@ -16,9 +13,10 @@ import {
   uuid,
   vector,
 } from 'drizzle-orm/pg-core';
-import { drizzle } from 'drizzle-orm/pglite';
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { RuntimeMigrator } from '../../runtime-migrator';
+import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
+import type { DrizzleDatabase } from '../../types';
 
 // Test schema with all possible scenarios
 const testBaseTable = pgTable(
@@ -112,24 +110,22 @@ const testSchema = {
 };
 
 describe('Comprehensive Dynamic Migration Tests', () => {
-  let db: any;
-  let pgLite: PGlite;
+  let db: DrizzleDatabase;
   let migrator: RuntimeMigrator;
+  let cleanup: () => Promise<void>;
 
   beforeAll(async () => {
-    // Create a fresh in-memory database with vector extension
-    pgLite = new PGlite(':memory:', {
-      extensions: { vector: vectorExtension, fuzzystrmatch: fuzzystrmatchExtension },
-    });
-    db = drizzle(pgLite as any);
+    const testSetup = await createIsolatedTestDatabaseForMigration('comprehensive_migration_tests');
+    db = testSetup.db;
+    cleanup = testSetup.cleanup;
 
-    // Install required extensions
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "vector"`);
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS "fuzzystrmatch"`);
+    // Note: Vector extension is already installed by adapter.init()
   });
 
   afterAll(async () => {
-    await pgLite.close();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   // Skip introspection tests since our RuntimeMigrator handles this internally

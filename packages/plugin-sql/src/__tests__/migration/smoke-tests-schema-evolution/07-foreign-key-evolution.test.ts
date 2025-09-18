@@ -1,10 +1,9 @@
 import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
 import { pgTable, text, uuid, foreignKey, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
+import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
 
 /**
  * Smoke Test 11 & 12: Foreign Key Evolution
@@ -15,44 +14,26 @@ import type { DrizzleDB } from '../../../runtime-migrator/types';
 
 describe('Smoke Test: Foreign Key Evolution', () => {
   let db: DrizzleDB;
-  let pool: Pool;
   let migrator: RuntimeMigrator;
+  let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    // Save original env var
-    const originalAllowDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+    const testSetup = await createIsolatedTestDatabaseForSmokeTests(
+      'smoke_foreign_key_evolution_test'
+    );
+    db = testSetup.db;
+    cleanup = testSetup.cleanup;
 
-    pool = new Pool({
-      connectionString: 'postgresql://postgres:postgres@localhost:5555/eliza2',
-      max: 1,
-    });
-
-    db = drizzle(pool) as DrizzleDB;
     migrator = new RuntimeMigrator(db);
-
-    await db.execute(sql`DROP SCHEMA IF EXISTS public CASCADE`);
-    await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
-    await db.execute(sql`CREATE SCHEMA public`);
     await migrator.initialize();
-
-    // Store original value for cleanup
-    (global as any).originalAllowDestructive = originalAllowDestructive;
 
     // Enable for tests that need it
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = 'true';
   });
 
   afterEach(async () => {
-    await db.execute(sql`DROP SCHEMA IF EXISTS public CASCADE`);
-    await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
-    await db.execute(sql`CREATE SCHEMA public`);
-    await pool.end();
-
-    // Restore original environment variable
-    if ((global as any).originalAllowDestructive !== undefined) {
-      process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = (global as any).originalAllowDestructive;
-    } else {
-      delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+    if (cleanup) {
+      await cleanup();
     }
   });
 
@@ -225,7 +206,7 @@ describe('Smoke Test: Foreign Key Evolution', () => {
     const remainingChildren = await db.execute(
       sql`SELECT COUNT(*) as count FROM children WHERE parent_id = ${parent1Id}`
     );
-    expect((remainingChildren.rows[0] as any).count).toBe('0');
+    expect((remainingChildren.rows[0] as any).count).toBe(0);
     console.log('  ✅ CASCADE delete removed children as expected');
 
     // Restore data
@@ -404,9 +385,9 @@ describe('Smoke Test: Foreign Key Evolution', () => {
     `);
 
     const result = counts.rows[0] as any;
-    expect(result.agents).toBe('0');
-    expect(result.rooms).toBe('0');
-    expect(result.memories).toBe('0');
+    expect(result.agents).toBe(0);
+    expect(result.rooms).toBe(0);
+    expect(result.memories).toBe(0);
 
     console.log('  ✅ CASCADE delete propagated correctly through all relationships');
   });

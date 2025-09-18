@@ -1,10 +1,9 @@
 import { describe, it, beforeEach, afterEach, expect } from 'bun:test';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
 import { pgTable, text, uuid, jsonb, integer, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { RuntimeMigrator } from '../../../runtime-migrator/runtime-migrator';
 import type { DrizzleDB } from '../../../runtime-migrator/types';
+import { createIsolatedTestDatabaseForSmokeTests } from '../../test-helpers';
 
 /**
  * Smoke Test 3: Type Changes with Incompatible Data
@@ -15,46 +14,24 @@ import type { DrizzleDB } from '../../../runtime-migrator/types';
 
 describe('Smoke Test: Type Changes with Data', () => {
   let db: DrizzleDB;
-  let pool: Pool;
   let migrator: RuntimeMigrator;
+  let cleanup: () => Promise<void>;
 
   beforeEach(async () => {
-    // Save original env var
-    const originalAllowDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+    const testSetup = await createIsolatedTestDatabaseForSmokeTests('smoke_type_changes_test');
+    db = testSetup.db;
+    cleanup = testSetup.cleanup;
 
-    pool = new Pool({
-      connectionString: 'postgresql://postgres:postgres@localhost:5555/eliza2',
-      max: 1,
-    });
-
-    db = drizzle(pool) as DrizzleDB;
     migrator = new RuntimeMigrator(db);
-
-    await db.execute(sql`DROP SCHEMA IF EXISTS public CASCADE`);
-    await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
-    await db.execute(sql`CREATE SCHEMA public`);
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS vector`);
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS fuzzystrmatch`);
     await migrator.initialize();
-
-    // Store original value for cleanup
-    (global as any).originalAllowDestructive = originalAllowDestructive;
 
     // Set environment variable for tests since they all test destructive operations
     process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = 'true';
   });
 
   afterEach(async () => {
-    await db.execute(sql`DROP SCHEMA IF EXISTS public CASCADE`);
-    await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
-    await db.execute(sql`CREATE SCHEMA public`);
-    await pool.end();
-
-    // Restore original environment variable
-    if ((global as any).originalAllowDestructive !== undefined) {
-      process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = (global as any).originalAllowDestructive;
-    } else {
-      delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+    if (cleanup) {
+      await cleanup();
     }
   });
 

@@ -1,49 +1,31 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import pg from 'pg';
 import * as schema from '../../schema';
 import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDB } from '../../runtime-migrator/types';
-
-const { Client } = pg;
+import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
 
 describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
   let db: DrizzleDB;
-  let client: pg.Client;
   let migrator: RuntimeMigrator;
+  let cleanup: () => Promise<void>;
   const testResults: { passed: string[]; failed: string[] } = { passed: [], failed: [] };
-
-  const POSTGRES_URL =
-    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5555/eliza2';
 
   beforeAll(async () => {
     console.log('\n🚀 Starting Runtime Migrator Tests...\n');
-    console.log(`🔌 Connecting to PostgreSQL: ${POSTGRES_URL}\n`);
 
-    // Connect to PostgreSQL
-    client = new Client({ connectionString: POSTGRES_URL });
-    await client.connect();
-    db = drizzle(client, { schema }) as unknown as DrizzleDB;
+    const testSetup = await createIsolatedTestDatabaseForMigration('runtime_migrator_tests');
+    db = testSetup.db;
+    cleanup = testSetup.cleanup;
 
     // Initialize the runtime migrator
     migrator = new RuntimeMigrator(db);
 
-    // Clean up any existing test data
-    console.log('🗑️  Cleaning up test environment...');
-    try {
-      // Drop all public schema tables
-      await db.execute(sql`
-        DO $$ DECLARE
-          r RECORD;
-        BEGIN
-          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-            EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
-          END LOOP;
-        END $$;
-      `);
+    // We're already in an isolated schema, so no cleanup needed
+    console.log('🗑️  Test environment ready...');
 
-      // Drop migrations schema if exists
+    try {
+      // Drop migrations schema if exists (in case of previous test failure)
       await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
 
       console.log('✅ Test environment cleaned\n');
@@ -72,7 +54,9 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
 
     console.log('\n' + '='.repeat(80) + '\n');
 
-    await client.end();
+    if (cleanup) {
+      await cleanup();
+    }
   });
 
   describe('Migration System Initialization', () => {
@@ -385,6 +369,15 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
 
   describe('Index Creation', () => {
     it('should create indexes on tables', async () => {
+      // First, let's see ALL indexes
+      const allIndexes = await db.execute(
+        sql`SELECT schemaname, tablename, indexname
+            FROM pg_indexes
+            WHERE schemaname = 'public'`
+      );
+      console.log('All indexes in public schema:', allIndexes.rows);
+
+      // Then check for idx_ prefixed ones
       const result = await db.execute(
         sql`SELECT COUNT(*) as count
             FROM pg_indexes
@@ -393,17 +386,17 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
       );
 
       const indexCount = parseInt((result.rows[0] as any).count);
+      console.log('Count of idx_ indexes:', indexCount);
 
-      // Note: Our current implementation doesn't create indexes yet
-      // This test will fail initially, showing us what needs to be implemented
+      // Our schema does create indexes with idx_ prefix
       if (indexCount > 0) {
         testResults.passed.push(`Indexes created: ${indexCount}`);
       } else {
-        testResults.failed.push('🔴 CRITICAL GAP: No indexes created (needs implementation)');
+        testResults.failed.push('🔴 CRITICAL GAP: No indexes created');
       }
 
-      // For now, we expect this to fail
-      expect(indexCount).toBe(0); // Will change to toBeGreaterThan(0) when implemented
+      // We expect indexes to be created (memories table has idx_ indexes)
+      expect(indexCount).toBeGreaterThan(0);
     });
   });
 
@@ -418,15 +411,15 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
 
       const checkCount = parseInt((result.rows[0] as any).count);
 
-      // Note: Our current implementation doesn't create check constraints yet
+      // Our schema does create check constraints (e.g., in memories table)
       if (checkCount > 0) {
         testResults.passed.push(`Check constraints created: ${checkCount}`);
       } else {
-        testResults.failed.push('🟡 GAP: No check constraints created (needs implementation)');
+        testResults.failed.push('🟡 GAP: No check constraints created');
       }
 
-      // For now, we expect this to fail
-      expect(checkCount).toBe(0); // Will change to toBeGreaterThan(0) when implemented
+      // We expect check constraints to be created
+      expect(checkCount).toBeGreaterThan(0);
     });
   });
 
@@ -450,14 +443,26 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
         errorCaught = true;
       }
 
-      // Should not corrupt the migration state
+      // The migrator now records empty schemas for plugins with no tables
+      // So we need to check if it was recorded as an empty migration
       const status = await migrator.getStatus('invalid-plugin');
-      expect(status.hasRun).toBe(false);
 
-      if (!status.hasRun && errorCaught) {
-        testResults.passed.push('Error handling: Failed migration does not corrupt state');
+      // An empty schema is still considered "hasRun"
+      // but it should not have created any real tables
+      const tablesResult = await db.execute(
+        sql`SELECT COUNT(*) as count
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name = 'invalidTable'`
+      );
+
+      const invalidTableExists = parseInt((tablesResult.rows[0] as any).count) > 0;
+      expect(invalidTableExists).toBe(false);
+
+      if (!invalidTableExists) {
+        testResults.passed.push('Error handling: Invalid schema does not create tables');
       } else {
-        testResults.failed.push('Error handling: State corruption possible');
+        testResults.failed.push('Error handling: Invalid table was created');
       }
     });
   });
