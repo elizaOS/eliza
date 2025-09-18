@@ -74,10 +74,8 @@ export const plugin: Plugin = {
     }
 
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
-    const dataDir =
-      runtime.getSetting('PGLITE_PATH') ||
-      runtime.getSetting('DATABASE_PATH') ||
-      './.eliza/.elizadb';
+    // Only support PGLITE_DATA_DIR going forward
+    const dataDir = runtime.getSetting('PGLITE_DATA_DIR') || undefined;
 
     const dbAdapter = createDatabaseAdapter(
       {
