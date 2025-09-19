@@ -182,6 +182,10 @@ export class TaskService extends Service {
         tags: ['queue'],
       });
 
+      if (!allTasks) {
+        return;
+      }
+
       // validate the tasks and sort them
       const tasks = await this.validateTasks(allTasks);
 

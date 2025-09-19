@@ -213,7 +213,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns {Promise<Partial<Agent>[]>} A Promise that resolves to an array of Agent objects.
    */
   async getAgents(): Promise<Partial<Agent>[]> {
-    return this.withDatabase(async () => {
+    const result = await this.withDatabase(async () => {
       const rows = await this.db
         .select({
           id: agentTable.id,
@@ -227,6 +227,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         bio: row.bio === null ? '' : row.bio,
       }));
     });
+    // Guard against null return
+    return result || [];
   }
   /**
    * Asynchronously creates a new agent record in the database.
@@ -2807,7 +2809,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       updatedAt: Date;
     }>
   > {
-    return this.withDatabase(async () => {
+    const result = await this.withDatabase(async () => {
       const results = await this.db.select().from(messageServerTable);
       return results.map((r) => ({
         id: r.id as UUID,
@@ -2819,6 +2821,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         updatedAt: r.updatedAt,
       }));
     });
+    // Guard against null return
+    return result || [];
   }
 
   /**

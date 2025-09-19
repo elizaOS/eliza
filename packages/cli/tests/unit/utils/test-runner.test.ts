@@ -3,19 +3,15 @@ import { TestRunner } from '../../../src/utils/test-runner';
 import type { IAgentRuntime, Plugin, ProjectAgent, Character } from '@elizaos/core';
 
 // Mock the logger
-mock.module('@elizaos/core', async (importOriginal) => {
-  const actual = (await importOriginal()) as any;
-  return {
-    ...actual,
-    logger: {
-      info: mock(),
-      debug: mock(),
-      error: mock(),
-      warn: mock(),
-      success: mock(),
-    },
-  };
-});
+mock.module('@elizaos/core', () => ({
+  logger: {
+    info: mock(),
+    debug: mock(),
+    error: mock(),
+    warn: mock(),
+    success: mock(),
+  },
+}));
 
 describe('TestRunner Plugin Isolation', () => {
   let mockRuntime: IAgentRuntime;

@@ -1,6 +1,5 @@
-import { describe, it, expect, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import { handleError } from '../../../src/utils/handle-error';
-import { logger } from '@elizaos/core';
 
 // Mock logger
 mock.module('@elizaos/core', () => ({
@@ -9,13 +8,24 @@ mock.module('@elizaos/core', () => ({
   },
 }));
 
-// Mock process.exit
-const originalmockExit = process.exit;
-const mockExit = mock((code: number) => {
-  throw new Error(`process.exit called with code ${code}`);
-});
-
 describe('handleError', () => {
+  let originalExit: typeof process.exit;
+  let mockExit: any;
+
+  beforeEach(() => {
+    // Save original process.exit
+    originalExit = process.exit;
+    // Mock process.exit
+    mockExit = mock((code?: number) => {
+      throw new Error(`process.exit called with code ${code}`);
+    });
+    process.exit = mockExit as any;
+  });
+
+  afterEach(() => {
+    // Restore original process.exit
+    process.exit = originalExit;
+  });
   it('should handle Error objects with message', () => {
     const error = new Error('Test error message');
 

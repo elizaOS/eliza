@@ -1,11 +1,11 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS, UUID } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 
 /**
  * Validates and retrieves an agent runtime from the agents map
  */
-export const getRuntime = (agents: Map<UUID, IAgentRuntime>, agentId: UUID) => {
-  const runtime = agents.get(agentId);
+export const getRuntime = (elizaOS: ElizaOS, agentId: UUID) => {
+  const runtime = elizaOS.getAgent(agentId);
   if (!runtime) {
     throw new Error(`Agent not found: ${agentId}`);
   }

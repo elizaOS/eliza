@@ -248,13 +248,8 @@ export function getElizaCharacter(): Character {
     // Bootstrap plugin
     ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
 
-    // Only include Ollama as fallback if no other LLM providers are configured
-    ...(!process.env.ANTHROPIC_API_KEY?.trim() &&
-    !process.env.OPENROUTER_API_KEY?.trim() &&
-    !process.env.OPENAI_API_KEY?.trim() &&
-    !process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
-      ? ['@elizaos/plugin-ollama']
-      : []),
+    // Always include Ollama as universal fallback (last in order)
+    '@elizaos/plugin-ollama',
   ];
 
   return {
