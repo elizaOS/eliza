@@ -154,6 +154,17 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
         }
       }
 
+      // Handle column-level unique constraints
+      // IMPORTANT: Check isUnique, not just uniqueName presence!
+      // Drizzle sets uniqueName for all columns but only unique ones should have constraints
+      if ((column as any).isUnique && (column as any).config?.uniqueName) {
+        uniqueConstraintObject[(column as any).config.uniqueName] = {
+          name: (column as any).config.uniqueName,
+          columns: [name],
+          nullsNotDistinct: (column as any).config?.uniqueType === 'not distinct',
+        };
+      }
+
       columnsObject[name] = columnToSet;
     });
 
@@ -194,6 +205,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       foreignKeysObject[name] = {
         name,
         tableFrom: tableName,
+        schemaFrom: tableSchema, // Add source table schema
         tableTo,
         schemaTo,
         columnsFrom,

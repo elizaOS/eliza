@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, integer } from 'drizzle-orm/pg-core';
 import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDatabase } from '../../types';
 import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
