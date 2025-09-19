@@ -1,5 +1,4 @@
 import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
-import { getModuleLoader } from '@/src/utils/module-loader';
 import { AgentServer, ConfigManager } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
