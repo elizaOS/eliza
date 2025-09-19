@@ -180,7 +180,24 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Phase 1: Generate CREATE TABLE statements for new tables (WITHOUT foreign keys)
+  // Phase 1: Collect unique schemas and create them first
+  const schemasToCreate = new Set<string>();
+  for (const tableName of diff.tables.created) {
+    const table = currentSnapshot.tables[tableName];
+    if (table) {
+      const schema = table.schema || 'public';
+      if (schema !== 'public') {
+        schemasToCreate.add(schema);
+      }
+    }
+  }
+
+  // Create schemas first (following drizzle-kit pattern)
+  for (const schema of schemasToCreate) {
+    statements.push(`CREATE SCHEMA IF NOT EXISTS "${schema}";`);
+  }
+
+  // Phase 2: Generate CREATE TABLE statements for new tables (WITHOUT foreign keys)
   const createTableStatements: string[] = [];
   const foreignKeyStatements: string[] = [];
 
@@ -193,10 +210,10 @@ export async function generateMigrationSQL(
     }
   }
 
-  // Add all CREATE TABLE statements first
+  // Add all CREATE TABLE statements
   statements.push(...createTableStatements);
 
-  // Phase 2: Add all foreign keys AFTER tables are created
+  // Phase 3: Add all foreign keys AFTER tables are created
   // Deduplicate foreign key statements to avoid duplicate constraints
   const uniqueFKs = new Set<string>();
   const dedupedFKStatements: string[] = [];
@@ -217,7 +234,7 @@ export async function generateMigrationSQL(
 
   statements.push(...dedupedFKStatements);
 
-  // Phase 3: Handle table modifications
+  // Phase 4: Handle table modifications
 
   // Generate DROP TABLE statements for deleted tables
   for (const tableName of diff.tables.deleted) {
@@ -329,15 +346,16 @@ export async function generateMigrationSQL(
     // Only add if it's not part of a new table (those were handled above)
     // Check both with and without schema prefix
     const tableFrom = fk.tableFrom || '';
+    const schemaFrom = fk.schemaFrom || 'public';
+
     const isNewTable = diff.tables.created.some((tableName) => {
       // Compare table names, handling schema prefixes
       const [createdSchema, createdTable] = tableName.includes('.')
         ? tableName.split('.')
         : ['public', tableName];
-      const [fkSchema, fkTable] = tableFrom.includes('.')
-        ? tableFrom.split('.')
-        : ['public', tableFrom];
-      return createdTable === fkTable && createdSchema === fkSchema;
+
+      // Compare using the actual schema and table from the FK
+      return createdTable === tableFrom && createdSchema === schemaFrom;
     });
 
     if (!isNewTable) {
@@ -404,14 +422,8 @@ function generateCreateTableSQL(
     }
   }
 
-  let tableSQL = '';
-
-  // Create schema if not public
-  if (schema !== 'public') {
-    tableSQL += `CREATE SCHEMA IF NOT EXISTS "${schema}";\n`;
-  }
-
-  tableSQL += `CREATE TABLE IF NOT EXISTS "${schema}"."${tableName}" (\n  ${columns.join(',\n  ')}\n);`;
+  // Following drizzle-kit pattern: don't create schema here, it's handled separately
+  const tableSQL = `CREATE TABLE IF NOT EXISTS "${schema}"."${tableName}" (\n  ${columns.join(',\n  ')}\n);`;
 
   // Collect foreign keys to be added AFTER all tables are created
   const foreignKeys = table.foreignKeys || {};
@@ -679,18 +691,20 @@ function generateCreateIndexSQL(index: any): string {
     })
     .join(', ');
 
-  // Extract just the index name without schema
+  // Extract index name and table with proper schema handling
   const indexName = index.name.includes('.') ? index.name.split('.')[1] : index.name;
 
-  // Extract just the table name without schema
-  const tableName = index.table
-    ? index.table.includes('.')
-      ? index.table.split('.')[1]
-      : index.table
-    : '';
+  // Keep the full table name with schema if present
+  let tableRef: string;
+  if (index.table && index.table.includes('.')) {
+    const [schema, table] = index.table.split('.');
+    tableRef = `"${schema}"."${table}"`;
+  } else {
+    tableRef = `"${index.table || ''}"`;
+  }
 
-  // Match Drizzle's format exactly - no schema qualification on table
-  return `CREATE ${unique}INDEX "${indexName}" ON "${tableName}" USING ${method} (${columns});`;
+  // Include schema in table reference for correct index creation
+  return `CREATE ${unique}INDEX "${indexName}" ON ${tableRef} USING ${method} (${columns});`;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   type RunStatus,
   type AgentRunCounts,
 } from '@elizaos/core';
+import type { DatabaseMigrationService } from './migration-service';
 import {
   and,
   cosineDistance,
@@ -88,6 +89,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   protected readonly maxDelay: number = 10000;
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected migrationService?: DatabaseMigrationService;
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
   public abstract init(): Promise<void>;
@@ -98,6 +100,37 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   public async initialize(): Promise<void> {
     await this.init();
+  }
+
+  /**
+   * Run plugin schema migrations for all registered plugins
+   * @param plugins Array of plugins with their schemas
+   * @param options Migration options (verbose, force, dryRun, etc.)
+   */
+  public async runPluginMigrations(
+    plugins: Array<{ name: string; schema?: any }>,
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void> {
+    // Initialize migration service if not already done
+    if (!this.migrationService) {
+      const { DatabaseMigrationService } = await import('./migration-service');
+      this.migrationService = new DatabaseMigrationService();
+      await this.migrationService.initializeWithDatabase(this.db);
+    }
+
+    // Register plugin schemas
+    for (const plugin of plugins) {
+      if (plugin.schema) {
+        this.migrationService.registerSchema(plugin.name, plugin.schema);
+      }
+    }
+
+    // Run migrations with options
+    await this.migrationService.runAllPluginMigrations(options);
   }
 
   /**
