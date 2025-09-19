@@ -132,8 +132,8 @@ export async function createScenarioServer(
         const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
           '../../start/actions/agent-start'
         );
-        server.startAgent = (character) => serverStartAgent(character, server!);
-        server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
+        server.startAgent = (character: Character) => serverStartAgent(character, server!);
+        server.stopAgent = (runtime: IAgentRuntime) => serverStopAgent(runtime, server!);
         await server.start(port);
         createdServer = true;
 

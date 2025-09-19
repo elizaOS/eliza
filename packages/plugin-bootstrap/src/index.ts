@@ -712,9 +712,7 @@ const messageReceivedHandler = async ({
             createdAt: Date.now(),
           };
           await runtime.createMemory(ignoreMemory, 'messages');
-          runtime.logger.debug('[Bootstrap] Saved ignore response to memory', {
-            memoryId: ignoreMemory.id,
-          });
+          runtime.logger.debug('[Bootstrap] Saved ignore response to memory', `memoryId: ${ignoreMemory.id}`);
 
           // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
           // await runtime.evaluate(message, state, shouldRespond, callback, []);

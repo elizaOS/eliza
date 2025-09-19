@@ -87,7 +87,20 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     events: overrides.events || new Map(),
     fetch: overrides.fetch || null,
     routes: overrides.routes || [],
-    logger: overrides.logger || console,
+    logger: overrides.logger || {
+      level: 'info',
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+      success: () => {},
+      progress: () => {},
+      log: () => {},
+      clear: () => {},
+      child: () => ({} as any),
+    },
 
     // Database Properties
     db: overrides.db || mockDb,

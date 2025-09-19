@@ -2,7 +2,8 @@ import type { Character } from './agent';
 import type { Action, Evaluator, Provider } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
-import type { Entity, Room, World } from './environment';
+import type { Entity, Room, World, ChannelType } from './environment';
+import type { Logger } from '../logger';
 import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
@@ -30,7 +31,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   events: Map<string, ((params: any) => Promise<void>)[]>;
   fetch?: typeof fetch | null;
   routes: Route[];
-  logger: any;
+  logger: Logger;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -106,7 +107,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     source?: string;
     channelId?: string;
     serverId?: string;
-    type: any;
+    type?: ChannelType | string;
     worldId: UUID;
     userId?: UUID;
     metadata?: Record<string, any>;
