@@ -18,7 +18,6 @@ import {
   type Memory,
   messageHandlerTemplate,
   type MessagePayload,
-  type MessageReceivedHandlerParams,
   ModelType,
   parseKeyValueXml,
   type Plugin,
@@ -351,7 +350,7 @@ export function shouldBypassShouldRespond(
 /**
  * Handles incoming messages and generates responses based on the provided runtime and message information.
  *
- * @param {MessageReceivedHandlerParams} params - The parameters needed for message handling, including runtime, message, and callback.
+ * @param {MessagePayload} payload - The message payload containing runtime, message, and callback.
  * @returns {Promise<void>} - A promise that resolves once the message handling and response generation is complete.
  */
 const messageReceivedHandler = async ({
@@ -359,7 +358,7 @@ const messageReceivedHandler = async ({
   message,
   callback,
   onComplete,
-}: MessageReceivedHandlerParams): Promise<void> => {
+}: MessagePayload): Promise<void> => {
   // Set up timeout monitoring
   const useMultiStep = runtime.getSetting('USE_MULTI_STEP');
   const timeoutDuration = 60 * 60 * 1000; // 1 hour
@@ -627,7 +626,9 @@ const messageReceivedHandler = async ({
                 );
               }
               // without actions there can't be more than one message
-              await callback(responseContent);
+              if (callback) {
+                await callback(responseContent);
+              }
             } else if (mode === 'actions') {
               await runtime.processActions(
                 message,
@@ -636,7 +637,10 @@ const messageReceivedHandler = async ({
                 async (content, files) => {
                   runtime.logger.debug({ content, files }, 'action callback');
                   responseContent!.actionCallbacks = content;
-                  return callback(content, files);
+                  if (callback) {
+                    return callback(content, files);
+                  }
+                  return [];
                 }
               );
             }
@@ -700,7 +704,9 @@ const messageReceivedHandler = async ({
           };
 
           // Call the callback directly with the ignore content
-          await callback(ignoreContent);
+          if (callback) {
+            await callback(ignoreContent);
+          }
 
           // Also save this ignore action/thought to memory
           const ignoreMemory: Memory = {
@@ -733,7 +739,10 @@ const messageReceivedHandler = async ({
             if (responseContent) {
               responseContent.evalCallbacks = content;
             }
-            return callback(content);
+            if (callback) {
+              return callback(content);
+            }
+            return [];
           },
           responseMessages
         );
@@ -993,10 +1002,12 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
     // Check for completion condition
     if (isFinish === 'true' || isFinish === true) {
       runtime.logger.info(`[MultiStep] Task marked as complete at iteration ${iterationCount}`);
-      await callback({
-        text: '',
-        thought: thought ?? '',
-      });
+      if (callback) {
+        await callback({
+          text: '',
+          thought: thought ?? '',
+        });
+      }
       break;
     }
 
@@ -1040,12 +1051,13 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           text: success ? providerResult.text : undefined,
           error: success ? undefined : providerResult?.error,
         });
-
-        await callback({
-          text: `🔎 Provider executed: ${providerName}`,
-          actions: [providerName],
-          thought: thought ?? '',
-        });
+        if (callback) {
+          await callback({
+            text: `🔎 Provider executed: ${providerName}`,
+            actions: [providerName],
+            thought: thought ?? '',
+          });
+        }
       }
 
       if (action) {
@@ -1686,19 +1698,14 @@ const controlMessageHandler = async ({
   }
 };
 
-const events = {
+const events: PluginEvents = {
   [EventType.MESSAGE_RECEIVED]: [
     async (payload: MessagePayload) => {
       if (!payload.callback) {
         payload.runtime.logger.error('No callback provided for message');
         return;
       }
-      await messageReceivedHandler({
-        runtime: payload.runtime,
-        message: payload.message,
-        callback: payload.callback,
-        onComplete: payload.onComplete,
-      });
+      await messageReceivedHandler(payload);
     },
   ],
 
@@ -1708,12 +1715,7 @@ const events = {
         payload.runtime.logger.error('No callback provided for voice message');
         return;
       }
-      await messageReceivedHandler({
-        runtime: payload.runtime,
-        message: payload.message,
-        callback: payload.callback,
-        onComplete: payload.onComplete,
-      });
+      await messageReceivedHandler(payload);
     },
   ],
 
@@ -2009,8 +2011,7 @@ export const bootstrapPlugin: Plugin = {
     actions.updateSettingsAction,
     actions.generateImageAction,
   ],
-  // this is jank, these events are not valid
-  events: events as any as PluginEvents,
+  events: events,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
     providers.evaluatorsProvider,

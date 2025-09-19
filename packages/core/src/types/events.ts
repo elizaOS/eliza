@@ -110,7 +110,6 @@ export interface EntityPayload extends EventPayload {
 export interface MessagePayload extends EventPayload {
   message: Memory;
   callback?: HandlerCallback;
-  onComplete?: () => void;
 }
 
 /**
@@ -196,12 +195,6 @@ export interface EmbeddingGenerationPayload extends EventPayload {
   runId?: UUID;
 }
 
-export type MessageReceivedHandlerParams = {
-  runtime: IAgentRuntime;
-  message: Memory;
-  callback: HandlerCallback;
-  onComplete?: () => void;
-};
 
 /**
  * Maps event types to their corresponding payload types
