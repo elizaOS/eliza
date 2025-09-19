@@ -19,6 +19,20 @@ describe('ElizaOS Start Commands', () => {
   let processManager: TestProcessManager;
   let originalElizaTestMode: string | undefined;
 
+  // Pick an ephemeral free port bound to 127.0.0.1 to avoid TIME_WAIT conflicts on Windows CI
+  const getFreePort = async (): Promise<number> => {
+    const net = await import('node:net');
+    return await new Promise<number>((resolve, reject) => {
+      const server = net.createServer();
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        const port = typeof address === 'object' && address ? address.port : 0;
+        server.close(() => resolve(port));
+      });
+    });
+  };
+
   beforeEach(async () => {
     // Store original working directory
     originalCwd = process.cwd();
@@ -29,8 +43,8 @@ describe('ElizaOS Start Commands', () => {
     // Initialize process manager
     processManager = new TestProcessManager();
 
-    // ---- Ensure port is free.
-    testServerPort = 3000;
+    // ---- Ensure a free port (avoid hardcoding 3000 due to Windows TIME_WAIT)
+    testServerPort = await getFreePort();
     await killProcessOnPort(testServerPort);
     await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
 

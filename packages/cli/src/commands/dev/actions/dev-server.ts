@@ -3,6 +3,7 @@ import { createDevContext, performInitialBuild, performRebuild } from '../utils/
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
 import { findNextAvailablePort } from '@/src/utils';
+import { isPortFree } from '@/src/utils/port-handling';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { logger } from '@elizaos/core';
 import * as path from 'node:path';
@@ -218,6 +219,26 @@ async function stopClientDevServer(): Promise<void> {
 }
 
 /**
+ * Wait until a TCP port is free (unbound) on the given host or until timeout.
+ */
+async function waitForPortToBeFree(
+  port: number,
+  host: string,
+  timeoutMs: number = 15000
+): Promise<void> {
+  const start = Date.now();
+  // Quick short-circuit
+  if (await isPortFree(port, host)) return;
+
+  while (Date.now() - start < timeoutMs) {
+    // Small delay between checks
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    if (await isPortFree(port, host)) return;
+  }
+  // If still not free, proceed; the start step will re-check availability
+}
+
+/**
  * Get the client dev server port (from Vite config or default)
  */
 async function getClientPort(cwd: string): Promise<number | null> {
@@ -376,6 +397,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
       await performRebuild(context);
 
       console.log('✓ Rebuild successful, restarting...');
+
+      // Ensure previous port is free before starting to avoid port bumping
+      await waitForPortToBeFree(serverPort, serverHost);
 
       // Start the server with the args
       await serverManager.start(cliArgs);
