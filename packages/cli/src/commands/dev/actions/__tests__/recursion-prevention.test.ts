@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -20,6 +20,27 @@ describe('Dev Server Recursion Prevention', () => {
         }
     });
 
+    /**
+     * Helper function to check if dev server should be skipped due to recursion
+     */
+    const checkShouldSkipRecursion = (testDir: string): boolean => {
+        const packageJsonPath = join(testDir, 'package.json');
+        if (existsSync(packageJsonPath)) {
+            try {
+                const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+                const devScript = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
+
+                // If the dev script would run elizaos dev, skip to prevent recursion
+                if (devScript && devScript.includes('elizaos dev')) {
+                    return true; // Should skip
+                }
+            } catch (error) {
+                return true; // Should skip on error
+            }
+        }
+        return false;
+    };
+
     it('should detect recursive elizaos dev in dev script', () => {
         // Create package.json with recursive dev script
         const packageJson = {
@@ -30,25 +51,7 @@ describe('Dev Server Recursion Prevention', () => {
         writeFileSync(join(testDir, 'package.json'), JSON.stringify(packageJson, null, 2));
         writeFileSync(join(testDir, 'vite.config.ts'), 'export default {}');
 
-        // Simulate the logic from startClientDevServer
-        const shouldSkip = (() => {
-            const packageJsonPath = join(testDir, 'package.json');
-            if (existsSync(packageJsonPath)) {
-                try {
-                    const pkg = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf-8'));
-                    const devScript = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
-
-                    // If the dev script would run elizaos dev, skip to prevent recursion
-                    if (devScript && devScript.includes('elizaos dev')) {
-                        return true; // Should skip
-                    }
-                } catch (error) {
-                    return true; // Should skip on error
-                }
-            }
-            return false;
-        })();
-
+        const shouldSkip = checkShouldSkipRecursion(testDir);
         expect(shouldSkip).toBe(true);
     });
 
@@ -62,25 +65,7 @@ describe('Dev Server Recursion Prevention', () => {
         writeFileSync(join(testDir, 'package.json'), JSON.stringify(packageJson, null, 2));
         writeFileSync(join(testDir, 'vite.config.ts'), 'export default {}');
 
-        // Simulate the logic from startClientDevServer
-        const shouldSkip = (() => {
-            const packageJsonPath = join(testDir, 'package.json');
-            if (existsSync(packageJsonPath)) {
-                try {
-                    const pkg = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf-8'));
-                    const devScript = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
-
-                    // If the dev script would run elizaos dev, skip to prevent recursion
-                    if (devScript && devScript.includes('elizaos dev')) {
-                        return true; // Should skip
-                    }
-                } catch (error) {
-                    return true; // Should skip on error
-                }
-            }
-            return false;
-        })();
-
+        const shouldSkip = checkShouldSkipRecursion(testDir);
         expect(shouldSkip).toBe(false);
     });
 
@@ -95,25 +80,7 @@ describe('Dev Server Recursion Prevention', () => {
         writeFileSync(join(testDir, 'package.json'), JSON.stringify(packageJson, null, 2));
         writeFileSync(join(testDir, 'vite.config.ts'), 'export default {}');
 
-        // Simulate the logic from startClientDevServer
-        const shouldSkip = (() => {
-            const packageJsonPath = join(testDir, 'package.json');
-            if (existsSync(packageJsonPath)) {
-                try {
-                    const pkg = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf-8'));
-                    const devScript = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
-
-                    // If the dev script would run elizaos dev, skip to prevent recursion
-                    if (devScript && devScript.includes('elizaos dev')) {
-                        return true; // Should skip
-                    }
-                } catch (error) {
-                    return true; // Should skip on error
-                }
-            }
-            return false;
-        })();
-
+        const shouldSkip = checkShouldSkipRecursion(testDir);
         expect(shouldSkip).toBe(false); // Should not skip because dev:client is safe
     });
 
@@ -122,25 +89,7 @@ describe('Dev Server Recursion Prevention', () => {
         writeFileSync(join(testDir, 'package.json'), '{ invalid json }');
         writeFileSync(join(testDir, 'vite.config.ts'), 'export default {}');
 
-        // Simulate the logic from startClientDevServer
-        const shouldSkip = (() => {
-            const packageJsonPath = join(testDir, 'package.json');
-            if (existsSync(packageJsonPath)) {
-                try {
-                    const pkg = JSON.parse(require('fs').readFileSync(packageJsonPath, 'utf-8'));
-                    const devScript = pkg.scripts?.['dev:client'] || pkg.scripts?.['dev'];
-
-                    // If the dev script would run elizaos dev, skip to prevent recursion
-                    if (devScript && devScript.includes('elizaos dev')) {
-                        return true; // Should skip
-                    }
-                } catch (error) {
-                    return true; // Should skip on error
-                }
-            }
-            return false;
-        })();
-
+        const shouldSkip = checkShouldSkipRecursion(testDir);
         expect(shouldSkip).toBe(true); // Should skip due to parse error
     });
 });
