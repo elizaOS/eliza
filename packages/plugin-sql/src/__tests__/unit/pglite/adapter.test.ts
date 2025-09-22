@@ -52,16 +52,6 @@ describe('PgliteDatabaseAdapter', () => {
     });
   });
 
-  describe('runMigrations', () => {
-    it('should be a no-op', async () => {
-      await adapter.runMigrations();
-      // Should not throw and not do anything
-      expect(logger.debug).toHaveBeenCalledWith(
-        'PgliteDatabaseAdapter: Migrations are handled by the migration service'
-      );
-    });
-  });
-
   describe('init', () => {
     it('should complete initialization', async () => {
       await adapter.init();

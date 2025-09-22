@@ -162,10 +162,29 @@ describe('Actual Runtime Scenario - Plugin Loading Simulation', () => {
     console.log('SCENARIO: Shared Migrator Instance');
     console.log('='.repeat(80));
 
-    // Clear previous test data
-    await db.execute(sql`DELETE FROM migrations._migrations`);
-    await db.execute(sql`DELETE FROM migrations._snapshots`);
+    // Clear all existing data from previous test
+    console.log('\n🧹 Cleaning up database from previous test...');
+
+    // Drop polymarket schema if it exists
     await db.execute(sql`DROP SCHEMA IF EXISTS polymarket CASCADE`);
+
+    // Drop all tables in public schema (except the migration tables which we'll handle separately)
+    const tables = await db.execute(sql`
+      SELECT tablename FROM pg_tables 
+      WHERE schemaname = 'public' 
+      AND tablename NOT LIKE 'spatial_ref_sys'
+      AND tablename NOT LIKE 'geography_columns' 
+      AND tablename NOT LIKE 'geometry_columns'
+      AND tablename NOT LIKE 'raster_columns'
+      AND tablename NOT LIKE 'raster_overviews'
+    `);
+
+    for (const table of tables.rows as any[]) {
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS public."${table.tablename}" CASCADE`));
+    }
+
+    // Drop migrations schema entirely (it will be recreated)
+    await db.execute(sql`DROP SCHEMA IF EXISTS migrations CASCADE`);
 
     console.log('\n🔄 Testing with shared migrator instance...');
 
