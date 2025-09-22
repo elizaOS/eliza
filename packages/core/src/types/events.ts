@@ -129,7 +129,6 @@ export interface InvokePayload extends EventPayload {
   userId: string;
   roomId: UUID;
   callback?: HandlerCallback;
-  source: string;
 }
 
 /**
