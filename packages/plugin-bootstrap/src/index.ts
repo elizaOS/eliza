@@ -4,6 +4,7 @@ import {
   ChannelType,
   composePromptFromState,
   type Content,
+  type ControlMessage,
   ContentType,
   createUniqueUuid,
   type EntityPayload,
@@ -1642,14 +1643,7 @@ const controlMessageHandler = async ({
   message,
 }: {
   runtime: IAgentRuntime;
-  message: {
-    type: 'control';
-    payload: {
-      action: 'enable_input' | 'disable_input';
-      target?: string;
-    };
-    roomId: UUID;
-  };
+  message: ControlMessage;
   source: string;
 }) => {
   try {

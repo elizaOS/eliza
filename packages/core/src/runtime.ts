@@ -17,6 +17,7 @@ import {
   ModelType,
   MODEL_SETTINGS,
   type Content,
+  type ControlMessage,
   type MemoryMetadata,
   type Character,
   type Action,
@@ -2521,7 +2522,7 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<void> {
     try {
       const { roomId, action, target } = params;
-      const controlMessage = {
+      const controlMessage: ControlMessage = {
         type: 'control',
         payload: {
           action,
