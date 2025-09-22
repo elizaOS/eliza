@@ -231,11 +231,3 @@ export interface EventPayloadMap {
 export type EventHandler<T extends keyof EventPayloadMap> = (
   payload: EventPayloadMap[T]
 ) => Promise<void>;
-
-/**
- * Defines a more specific type for event handlers, expecting an `Metadata`.
- * This aims to improve upon generic 'any' type handlers, providing a clearer contract
- * for functions that respond to events emitted within the agent runtime (see `emitEvent` in `AgentRuntime`).
- * Handlers can be synchronous or asynchronous.
- */
-export type TypedEventHandler = (data: Metadata) => Promise<void> | void;
