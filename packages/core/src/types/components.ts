@@ -104,13 +104,14 @@ export interface Evaluator {
 }
 
 export interface ProviderResult {
-  values?: {
-    [key: string]: any;
-  };
-  data?: {
-    [key: string]: any;
-  };
+  /** Human-readable text for LLM prompt inclusion */
   text?: string;
+  
+  /** Key-value pairs for template variable substitution */
+  values?: Record<string, unknown>;
+  
+  /** Structured data for programmatic access by other components */
+  data?: Record<string, unknown>;
 }
 
 /**
