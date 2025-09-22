@@ -6,7 +6,7 @@
       "dependencies": {
         "helmet": "^8.1.0",
         "js-yaml": "^4.1.0",
-        "zod": "3.24.2",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -88,7 +88,7 @@
         "tsconfig-paths": "^4.2.0",
         "type-fest": "^4.41.0",
         "yoctocolors": "^2.1.1",
-        "zod": "3.24.2",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@types/bun": "^1.2.21",
@@ -227,7 +227,7 @@
         "pdfjs-dist": "^5.2.133",
         "unique-names-generator": "4.7.1",
         "uuid": "11.1.0",
-        "zod": "^3.24.4",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@types/bun": "^1.2.21",
@@ -286,7 +286,7 @@
       "version": "1.5.11-alpha.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "zod": "^3.24.4",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@elizaos/cli": "workspace:*",
@@ -327,7 +327,7 @@
         "tailwind-merge": "^3.3.1",
         "tailwindcss": "^4.1.10",
         "vite": "^6.3.5",
-        "zod": "3.24.2",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@elizaos/cli": "workspace:*",
@@ -355,7 +355,7 @@
         "react-dom": "^18.3.1",
         "tailwind-merge": "^2.6.0",
         "tailwindcss": "^4.1.10",
-        "zod": "3.24.2",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@types/react": "^18.3.3",
@@ -384,7 +384,7 @@
         "tailwind-merge": "^2.6.0",
         "tailwindcss": "^4.1.10",
         "viem": "2.30.1",
-        "zod": "3.24.2",
+        "zod": "4.1.11",
       },
       "devDependencies": {
         "@types/jsdom": "^21.1.7",
@@ -3810,7 +3810,7 @@
 
     "yoctocolors": ["yoctocolors@2.1.2", "", {}, "sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug=="],
 
-    "zod": ["zod@3.24.2", "", {}, "sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ=="],
+    "zod": ["zod@4.1.11", "", {}, "sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.24.6", "", { "peerDependencies": { "zod": "^3.24.1" } }, "sha512-h/z3PKvcTcTetyjl1fkj79MHNEjm+HpD6NXheWjzOekY7kV+lwDYnHw+ivHkijnCSMz1yJaWBD9vu/Fcmk+vEg=="],
 
@@ -3846,8 +3846,6 @@
 
     "@elizaos/core/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
-    "@elizaos/core/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
-
     "@elizaos/plugin-bootstrap/@types/node": ["@types/node@22.18.6", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-r8uszLPpeIWbNKtvWRt/DbVi5zbqZyj1PTmhRMqBMvDnaz1QpmSKujUtJLrqGZeoM8v72MfYggDceY4K1itzWQ=="],
 
     "@elizaos/plugin-bootstrap/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
@@ -3863,8 +3861,6 @@
     "@elizaos/plugin-quick-starter/dotenv": ["dotenv@16.4.5", "", {}, "sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg=="],
 
     "@elizaos/plugin-quick-starter/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
-
-    "@elizaos/plugin-quick-starter/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@elizaos/plugin-redpill/@elizaos/core": ["@elizaos/core@1.5.10", "", { "dependencies": { "adze": "^2.2.5", "crypto-browserify": "^3.12.0", "dotenv": "16.5.0", "glob": "11.0.3", "handlebars": "^4.7.8", "langchain": "^0.3.15", "pdfjs-dist": "^5.2.133", "unique-names-generator": "4.7.1", "uuid": "11.1.0", "zod": "^3.24.4" } }, "sha512-Ojihe2w9tT2lh9ZaJ0ShxOOtD5GzHrHmUH8WW33GeipUesEZKE4iRxfuKc72c1yXAj3LJtINuw5li4B27BwUiA=="],
 
@@ -3899,6 +3895,8 @@
     "@elizaos/test-utils/dotenv": ["dotenv@16.4.5", "", {}, "sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg=="],
 
     "@elizaos/test-utils/typescript": ["typescript@5.8.2", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-aJn6wq13/afZp/jT9QZmwEjDqqvSGp1VT5GVg+f/t6/oVyrgXM6BY1h9BRh/O5p3PlUPAe+WuiEZOmb/49RqoQ=="],
+
+    "@elizaos/test-utils/zod": ["zod@3.24.2", "", {}, "sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ=="],
 
     "@esbuild-kit/core-utils/esbuild": ["esbuild@0.18.20", "", { "optionalDependencies": { "@esbuild/android-arm": "0.18.20", "@esbuild/android-arm64": "0.18.20", "@esbuild/android-x64": "0.18.20", "@esbuild/darwin-arm64": "0.18.20", "@esbuild/darwin-x64": "0.18.20", "@esbuild/freebsd-arm64": "0.18.20", "@esbuild/freebsd-x64": "0.18.20", "@esbuild/linux-arm": "0.18.20", "@esbuild/linux-arm64": "0.18.20", "@esbuild/linux-ia32": "0.18.20", "@esbuild/linux-loong64": "0.18.20", "@esbuild/linux-mips64el": "0.18.20", "@esbuild/linux-ppc64": "0.18.20", "@esbuild/linux-riscv64": "0.18.20", "@esbuild/linux-s390x": "0.18.20", "@esbuild/linux-x64": "0.18.20", "@esbuild/netbsd-x64": "0.18.20", "@esbuild/openbsd-x64": "0.18.20", "@esbuild/sunos-x64": "0.18.20", "@esbuild/win32-arm64": "0.18.20", "@esbuild/win32-ia32": "0.18.20", "@esbuild/win32-x64": "0.18.20" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-ceqxoedUrcayh7Y7ZX6NdbbDzGROiyVBgC4PriJThBKSVPWnnFHZAkfI1lJT8QFkOwH4qOS2SJkS4wvpGl8BpA=="],
 
