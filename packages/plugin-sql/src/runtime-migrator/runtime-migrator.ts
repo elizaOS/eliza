@@ -110,24 +110,21 @@ export class RuntimeMigrator {
     // Create a hash of the plugin name
     const hash = createHash('sha256').update(pluginName).digest();
 
-    // Take first 8 bytes and convert to a positive bigint
-    // We use the first 8 bytes for a 64-bit integer
+    // Take first 8 bytes for a 64-bit integer
     const buffer = hash.slice(0, 8);
 
-    // Convert to bigint and ensure it's positive
+    // Convert to bigint
     let lockId = BigInt('0x' + buffer.toString('hex'));
 
-    // Ensure the value fits in PostgreSQL's bigint range
-    // PostgreSQL bigint range: -9223372036854775808 to 9223372036854775807
-    // We'll use positive values only for simplicity
-    if (lockId < 0n) {
-      lockId = -lockId;
-    }
+    // Ensure the value fits in PostgreSQL's positive bigint range
+    // Use a mask to keep only 63 bits (ensures positive in signed 64-bit)
+    // This preserves uniqueness better than modulo and avoids collisions
+    const mask63Bits = 0x7fffffffffffffffn; // 63 bits set to 1
+    lockId = lockId & mask63Bits;
 
-    // Ensure it's not too large
-    const maxBigInt = 9223372036854775807n;
-    if (lockId > maxBigInt) {
-      lockId = lockId % maxBigInt;
+    // Ensure non-zero (extremely unlikely but handle it)
+    if (lockId === 0n) {
+      lockId = 1n;
     }
 
     return lockId.toString();
