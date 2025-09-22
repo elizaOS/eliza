@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/api-client",
-  "version": "1.5.11-alpha.4",
+  "version": "1.5.11-alpha.5",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.js",
