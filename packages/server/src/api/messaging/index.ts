@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { createMessagingCoreRouter } from './core';
@@ -10,7 +10,7 @@ import { createSessionsRouter } from './sessions';
  * Creates the messaging router for all communication functionality
  */
 export function messagingRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -26,10 +26,10 @@ export function messagingRouter(
   router.use('/', createServersRouter(serverInstance));
 
   // Mount channel management functionality
-  router.use('/', createChannelsRouter(agents, serverInstance));
+  router.use('/', createChannelsRouter(elizaOS, serverInstance));
 
   // Mount unified sessions API for simplified messaging
-  router.use('/', createSessionsRouter(agents, serverInstance));
+  router.use('/', createSessionsRouter(elizaOS, serverInstance));
 
   return router;
 }

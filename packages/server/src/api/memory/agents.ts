@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID, Memory, MemoryMetadata } from '@elizaos/core';
+import type { ElizaOS, UUID, Memory, MemoryMetadata } from '@elizaos/core';
 import { MemoryType, createUniqueUuid } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
@@ -7,7 +7,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
 /**
  * Agent memory management functionality
  */
-export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
+export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
 
   // Get memories for a specific room
@@ -19,7 +19,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or room ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
@@ -71,7 +71,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
@@ -142,7 +142,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or memory ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
@@ -210,7 +210,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID');
       }
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
@@ -248,7 +248,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
         return sendError(res, 400, 'INVALID_ID', 'Invalid room ID');
       }
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
@@ -282,7 +282,7 @@ export function createAgentMemoryRouter(agents: Map<UUID, IAgentRuntime>): expre
         return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or memory ID format');
       }
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }

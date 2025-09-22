@@ -7,7 +7,6 @@ import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
 import { getElizaCharacter } from '@/src/characters/eliza';
-import { startAgent } from '@/src/commands/start';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 
@@ -126,17 +125,27 @@ export async function runE2eTests(
 
       project = await loadProject(targetPath);
 
-      if (!project || !project.agents || project.agents.length === 0) {
-        throw new Error('No agents found in project configuration');
+      // For plugins, it's OK to have no agents defined (will use default Eliza)
+      // For projects, we need at least one agent
+      if (!project) {
+        throw new Error('Failed to load project');
+      }
+      
+      if (!project.isPlugin && (!project.agents || project.agents.length === 0)) {
+        logger.warn('No agents found in project configuration; falling back to default Eliza character for tests.');
       }
 
-      logger.info(`Found ${project.agents.length} agents`);
+      logger.info(`Found ${project.agents?.length || 0} agents`);
 
-      // Set up server properties
+      // Set up server properties using AgentManager from server
       logger.info('Setting up server properties...');
+      const { AgentManager } = serverModule;
+      const agentManager = new AgentManager(server);
+      
       server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
-        return startAgent(character, server!, undefined, [], { isTestMode: true });
+        const [runtime] = await agentManager.startAgents([character], undefined, [], { isTestMode: true });
+        return runtime;
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
       server.jsonToCharacter = jsonToCharacter;
@@ -172,7 +181,7 @@ export async function runE2eTests(
         // When testing a plugin, import and use the default Eliza character
         // to ensure consistency with the start command
         // For projects, only use default agent if no agents are defined
-        if (project.isPlugin || project.agents.length === 0) {
+        if (project.isPlugin || (project.agents?.length || 0) === 0) {
           // Set environment variable to signal this is a direct plugin test
           // The TestRunner uses this to identify direct plugin tests
           process.env.ELIZA_TESTING_PLUGIN = 'true';
@@ -185,11 +194,10 @@ export async function runE2eTests(
             }
             const defaultElizaCharacter = getElizaCharacter();
 
-            // The startAgent function now handles all dependency resolution,
+            // The AgentManager now handles all dependency resolution,
             // including testDependencies when isTestMode is true.
-            const runtime = await startAgent(
-              defaultElizaCharacter,
-              server,
+            const [runtime] = await agentManager.startAgents(
+              [defaultElizaCharacter],
               undefined, // No custom init for default test setup
               [pluginUnderTest], // Pass the local plugin module directly
               { isTestMode: true }
@@ -219,9 +227,8 @@ export async function runE2eTests(
 
               logger.debug(`Starting agent: ${originalCharacter.name}`);
 
-              const runtime = await startAgent(
-                originalCharacter,
-                server,
+              const [runtime] = await agentManager.startAgents(
+                [originalCharacter],
                 agent.init,
                 agent.plugins || [],
                 { isTestMode: true } // Pass isTestMode for project tests as well

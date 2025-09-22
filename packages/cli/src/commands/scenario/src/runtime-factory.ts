@@ -1,7 +1,5 @@
-import { Character, RuntimeSettings, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
-import { loadEnvironmentVariables } from './env-loader';
-import { setDefaultSecretsFromEnv } from '../../start';
-import { AgentServer } from '@elizaos/server';
+import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
+import { AgentServer, ConfigManager } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
@@ -10,23 +8,8 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
-// Lazy initialization of environment settings
-let envSettings: RuntimeSettings | null = null;
-let envLoaded = false;
-
-function ensureEnvLoaded(): RuntimeSettings {
-  if (!envLoaded) {
-    loadEnvironmentVariables();
-    envSettings = process.env as RuntimeSettings;
-    envLoaded = true;
-  }
-
-  if (!envSettings) {
-    throw new Error('Failed to load environment settings');
-  }
-
-  return envSettings;
-}
+// Note: Environment loading is now handled by ConfigManager.setDefaultSecretsFromEnv
+// which properly filters and manages secrets instead of exposing all env vars
 
 /**
  * Find an available port in the given range
@@ -129,11 +112,7 @@ export async function createScenarioServer(
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
         await server.initialize({ dataDir: uniqueDataDir });
-        const { startAgent: serverStartAgent, stopAgent: serverStopAgent } = await import(
-          '../../start/actions/agent-start'
-        );
-        server.startAgent = (character) => serverStartAgent(character, server!);
-        server.stopAgent = (runtime) => serverStopAgent(runtime, server!);
+        
         await server.start(port);
         createdServer = true;
 
@@ -203,9 +182,8 @@ export async function createScenarioAgent(
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
-      secrets: {
-        ...ensureEnvLoaded(),
-      },
+      // Let ConfigManager populate minimal, file-scoped secrets.
+      secrets: {},
     },
     // Always respond: set system prompt and template to ensure reply
     system:
@@ -219,9 +197,15 @@ export async function createScenarioAgent(
     },
   };
 
-  await setDefaultSecretsFromEnv(character);
-  // Pass raw character; encryption is handled inside startAgent
-  const runtime = await server.startAgent(character);
+  // Use ConfigManager from server to set default secrets
+  const configManager = new ConfigManager();
+  await configManager.setDefaultSecretsFromEnv(character);
+  
+  // Pass raw character; encryption is handled inside startAgents
+  const [runtime] = await server.startAgents([character]);
+  if (!runtime) {
+    throw new Error(`Failed to start agent: ${character.name}`);
+  }
   const agentId = runtime.character.id as UUID;
 
   return { runtime, agentId };
