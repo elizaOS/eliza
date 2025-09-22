@@ -1,4 +1,4 @@
-import { Service, ServiceType } from './service';
+import { Service, ServiceType } from '@elizaos/core';
 
 export interface TranscriptionOptions {
   language?: string;
