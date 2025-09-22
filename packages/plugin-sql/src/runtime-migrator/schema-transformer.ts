@@ -77,20 +77,16 @@ export function deriveSchemaName(pluginName: string): string {
   let schemaName = pluginName
     .replace(/^@[^/]+\//, '') // Remove npm scope like @elizaos/
     .replace(/^plugin-/, '') // Remove plugin- prefix
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_') // Replace non-alphanumeric with underscores
-    .replace(/^_+|_+$/g, ''); // Trim underscores from start/end
+    .toLowerCase();
+
+  // Replace non-alphanumeric characters with underscores (avoid polynomial regex)
+  schemaName = normalizeSchemaName(schemaName);
 
   // Ensure schema name is valid (not empty, not a reserved word)
   const reserved = ['public', 'pg_catalog', 'information_schema', 'migrations'];
   if (!schemaName || reserved.includes(schemaName)) {
     // Fallback to using the full plugin name with safe characters
-    schemaName =
-      'plugin_' +
-      pluginName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
+    schemaName = 'plugin_' + normalizeSchemaName(pluginName.toLowerCase());
   }
 
   // Ensure it starts with a letter (PostgreSQL requirement)
@@ -104,6 +100,46 @@ export function deriveSchemaName(pluginName: string): string {
   }
 
   return schemaName;
+}
+
+/**
+ * Normalize a string to be a valid PostgreSQL identifier
+ * Avoids polynomial regex by using string manipulation instead
+ */
+function normalizeSchemaName(input: string): string {
+  const chars: string[] = [];
+  let prevWasUnderscore = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
+    if (/[a-z0-9]/.test(char)) {
+      chars.push(char);
+      prevWasUnderscore = false;
+    } else if (!prevWasUnderscore) {
+      // Only add underscore if previous char wasn't already an underscore
+      chars.push('_');
+      prevWasUnderscore = true;
+    }
+    // Skip consecutive non-alphanumeric characters
+  }
+
+  // Remove leading and trailing underscores
+  let result = chars.join('');
+
+  // Trim underscores from start and end efficiently
+  let start = 0;
+  let end = result.length;
+
+  while (start < end && result[start] === '_') {
+    start++;
+  }
+
+  while (end > start && result[end - 1] === '_') {
+    end--;
+  }
+
+  return result.slice(start, end);
 }
 
 /**
