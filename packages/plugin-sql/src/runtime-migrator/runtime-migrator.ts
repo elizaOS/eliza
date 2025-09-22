@@ -13,6 +13,7 @@ import {
   type DataLossCheck,
 } from './drizzle-adapters/sql-generator';
 import { deriveSchemaName } from './schema-transformer';
+import { DatabaseIntrospector } from './drizzle-adapters/database-introspector';
 import { createHash } from 'crypto';
 
 export class RuntimeMigrator {
@@ -20,12 +21,14 @@ export class RuntimeMigrator {
   private journalStorage: JournalStorage;
   private snapshotStorage: SnapshotStorage;
   private extensionManager: ExtensionManager;
+  private introspector: DatabaseIntrospector;
 
   constructor(private db: DrizzleDB) {
     this.migrationTracker = new MigrationTracker(db);
     this.journalStorage = new JournalStorage(db);
     this.snapshotStorage = new SnapshotStorage(db);
     this.extensionManager = new ExtensionManager(db);
+    this.introspector = new DatabaseIntrospector(db);
   }
 
   /**
@@ -244,7 +247,49 @@ export class RuntimeMigrator {
       }
 
       // Load previous snapshot
-      const previousSnapshot = await this.snapshotStorage.getLatestSnapshot(pluginName);
+      let previousSnapshot = await this.snapshotStorage.getLatestSnapshot(pluginName);
+
+      // If no snapshot exists but tables exist in database, introspect them
+      if (!previousSnapshot && Object.keys(currentSnapshot.tables).length > 0) {
+        const hasExistingTables = await this.introspector.hasExistingTables(pluginName);
+
+        if (hasExistingTables) {
+          logger.info(
+            `[RuntimeMigrator] No snapshot found for ${pluginName} but tables exist in database. Introspecting...`
+          );
+
+          // Determine the schema name for introspection
+          const schemaName = this.getExpectedSchemaName(pluginName);
+
+          // Introspect the current database state
+          const introspectedSnapshot = await this.introspector.introspectSchema(schemaName);
+
+          // Only use the introspected snapshot if it has tables
+          if (Object.keys(introspectedSnapshot.tables).length > 0) {
+            // Save this as the initial snapshot (idx: 0)
+            await this.snapshotStorage.saveSnapshot(pluginName, 0, introspectedSnapshot);
+
+            // Update journal to record this initial state
+            await this.journalStorage.updateJournal(
+              pluginName,
+              0,
+              `introspected_${Date.now()}`,
+              true
+            );
+
+            // Record this as a migration
+            const introspectedHash = hashSnapshot(introspectedSnapshot);
+            await this.migrationTracker.recordMigration(pluginName, introspectedHash, Date.now());
+
+            logger.info(
+              `[RuntimeMigrator] Created initial snapshot from existing database for ${pluginName}`
+            );
+
+            // Set this as the previous snapshot for comparison
+            previousSnapshot = introspectedSnapshot;
+          }
+        }
+      }
 
       // Check if there are actual changes
       if (!hasChanges(previousSnapshot, currentSnapshot)) {
