@@ -24,9 +24,15 @@
   ],
   "keywords": [],
   "type": "module",
+  "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "scripts": {
     "build": "bun run build.ts",

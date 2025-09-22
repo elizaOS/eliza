@@ -3,9 +3,15 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "./dist",
-    "declaration": true
+    "declarationDir": "./dist",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
   "exclude": [
     "node_modules",
     "dist",
