@@ -66,22 +66,33 @@ const configSchema = z.object({
       }
       if (!val) {
         logger.warn('Warning: Wallet secret salt is not provided');
+        return val;
       }
-      return val;
+      // Trim whitespace to prevent security bypass
+      return val.trim();
     })
     .refine(
       (val) => {
-        if (!val) return true; // Allow undefined in non-test environments
+        if (val === undefined) return true; // Allow undefined in non-test environments
+        // Empty string after trimming is not allowed (reject whitespace-only values)
+        if (!val || val.length === 0) return false;
+        // Check trimmed length for security (val is already trimmed from transform)
         return val.length >= 8;
       },
-      { message: 'Wallet secret salt must be at least 8 characters long for security' }
+      {
+        message:
+          'Wallet secret salt must be at least 8 characters long for security (excluding whitespace)',
+      }
     )
     .refine(
       (val) => {
-        if (!val) return true; // Allow undefined in non-test environments
+        if (val === undefined) return true; // Allow undefined in non-test environments
+        // Empty strings not allowed (already checked in previous refine, but be consistent)
+        if (!val || val.length === 0) return false;
+        // Check trimmed length (val is already trimmed from transform)
         return val.length <= 128;
       },
-      { message: 'Wallet secret salt must not exceed 128 characters' }
+      { message: 'Wallet secret salt must not exceed 128 characters (excluding whitespace)' }
     ),
 });
 
@@ -97,7 +108,8 @@ type TeeServiceConfig = {
  */
 const createTeeServiceConfig = (runtime: IAgentRuntime): TeeServiceConfig => ({
   teeClient: new TappdClient(),
-  secretSalt: process.env.WALLET_SECRET_SALT || 'secret_salt',
+  // Ensure salt is trimmed to match validation behavior
+  secretSalt: (process.env.WALLET_SECRET_SALT || 'secret_salt').trim(),
   runtime,
 });
 
