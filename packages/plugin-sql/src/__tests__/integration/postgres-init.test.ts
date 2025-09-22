@@ -11,8 +11,7 @@ describe('PostgreSQL Initialization Tests', () => {
   beforeEach(() => {
     originalEnv = { ...process.env };
     delete process.env.POSTGRES_URL;
-    delete process.env.PGLITE_PATH;
-    delete process.env.DATABASE_PATH;
+    delete process.env.PGLITE_DATA_DIR;
 
     mockRuntime = {
       agentId: '00000000-0000-0000-0000-000000000000',
@@ -52,11 +51,11 @@ describe('PostgreSQL Initialization Tests', () => {
     expect(mockRuntime.registerDatabaseAdapter).not.toHaveBeenCalled();
   });
 
-  it('should use PGLITE_PATH when provided', async () => {
+  it('should use PGLITE_DATA_DIR when provided', async () => {
     // Use a proper temporary directory that actually exists
     const pglitePath = join(tmpdir(), 'eliza-test-pglite-' + Date.now());
     (mockRuntime.getSetting as any).mockImplementation((key: string) => {
-      if (key === 'PGLITE_PATH') return pglitePath;
+      if (key === 'PGLITE_DATA_DIR') return pglitePath;
       return undefined;
     });
 
@@ -68,13 +67,8 @@ describe('PostgreSQL Initialization Tests', () => {
     expect(adapter.constructor.name).toBe('PgliteDatabaseAdapter');
   });
 
-  it('should use DATABASE_PATH when PGLITE_PATH is not provided', async () => {
-    // Use a proper temporary directory that actually exists
-    const databasePath = join(tmpdir(), 'eliza-test-db-' + Date.now());
-    (mockRuntime.getSetting as any).mockImplementation((key: string) => {
-      if (key === 'DATABASE_PATH') return databasePath;
-      return undefined;
-    });
+  it('should use default path when PGLITE_DATA_DIR is not provided', async () => {
+    (mockRuntime.getSetting as any).mockReturnValue(undefined);
 
     await plugin.init?.({}, mockRuntime);
 
