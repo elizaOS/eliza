@@ -5,7 +5,7 @@
     "outDir": "./dist",
     "declarationDir": "./dist",
     "declaration": true,
-    "emitDeclarationOnly": true,
+    "emitDeclarationOnly": false,
     "declarationMap": false
   },
   "include": [

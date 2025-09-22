@@ -8,15 +8,33 @@
     "esModuleInterop": true,
     "target": "ESNext",
     "paths": {
-      "@/src/*": ["./src/*"],
-      "@elizaos/core": ["../../core/src"],
-      "@elizaos/core/*": ["../../core/src/*"]
+      "@/src/*": [
+        "./src/*"
+      ],
+      "@elizaos/core": [
+        "../../core/src"
+      ],
+      "@elizaos/core/*": [
+        "../../core/src/*"
+      ],
+      "@elizaos/server": [
+        "../../server/dist/index.d.ts"
+      ],
+      "@elizaos/server/*": [
+        "../../server/dist/*"
+      ]
     },
     "rootDir": ".",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
+    "resolvePackageJsonExports": true,
+    "resolvePackageJsonImports": true,
     "outDir": "./dist",
     "jsx": "react",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "skipLibCheck": true,
     "strict": true,
     "incremental": true,
@@ -26,6 +44,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }
