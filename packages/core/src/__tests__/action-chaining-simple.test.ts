@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { AgentRuntime } from '../runtime';
-import { createActionResult } from '../types/components';
+import { createActionResult } from '../utils/components';
 import type { ActionResult } from '../types';
 
 describe('Action Chaining Fixes', () => {
