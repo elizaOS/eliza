@@ -490,11 +490,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           data: {},
         }), // accumulated state
         expect.objectContaining({
-          context: expect.objectContaining({
+          actionContext: expect.objectContaining({
             previousResults: [],
             getPreviousResult: expect.any(Function),
           }),
-        }), // options with context
+        }), // options with actionContext
         expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );

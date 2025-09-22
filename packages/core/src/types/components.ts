@@ -164,7 +164,7 @@ export interface ActionResult {
 
 /**
  * Context provided to actions during execution
- * Allows actions to access previous results and update state
+ * Allows actions to access previous results and execution state
  */
 export interface ActionContext {
   /** Results from previously executed actions in this run */
@@ -180,7 +180,7 @@ export interface ActionContext {
  */
 export interface HandlerOptions {
   /** Context with previous action results and utilities */
-  context?: ActionContext;
+  actionContext?: ActionContext;
   
   /** Multi-step action plan information */
   actionPlan?: {

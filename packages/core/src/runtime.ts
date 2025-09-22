@@ -24,6 +24,7 @@ import {
   type Provider,
   type HandlerCallback,
   type HandlerOptions,
+  type ActionContext,
   type IDatabaseAdapter,
   type Entity,
   type Room,
@@ -51,7 +52,6 @@ import {
   type Component,
   IAgentRuntime,
   type ActionResult,
-  type ActionContext,
 } from './types';
 
 import { BM25 } from './search';
@@ -789,7 +789,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Add plan information to options if multiple actions
           const options: HandlerOptions = {
-            context: actionContext,
+            actionContext: actionContext,
           };
 
           if (actionPlan) {
