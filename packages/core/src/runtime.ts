@@ -821,10 +821,10 @@ export class AgentRuntime implements IAgentRuntime {
             this.logger.error('Failed to create action start message:', String(error));
           }
 
-          let storedCallbackData: { content: Content; files?: any }[] = [];
+          let storedCallbackData: Content[] = [];
 
-          const storageCallback = async (response: Content, files?: any) => {
-            storedCallbackData.push({ content: response, files });
+          const storageCallback = async (response: Content) => {
+            storedCallbackData.push(response);
             return [];
           };
 
@@ -950,8 +950,8 @@ export class AgentRuntime implements IAgentRuntime {
           }
 
           if (callback) {
-            for (const data of storedCallbackData) {
-              await callback(data.content, data.files);
+            for (const content of storedCallbackData) {
+              await callback(content);
             }
           }
 

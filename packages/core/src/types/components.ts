@@ -17,7 +17,7 @@ export interface ActionExample {
 /**
  * Callback function type for handlers
  */
-export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
+export type HandlerCallback = (response: Content) => Promise<Memory[]>;
 
 /**
  * Handler function type for processing messages

@@ -634,11 +634,11 @@ const messageReceivedHandler = async ({
                 message,
                 responseMessages,
                 state,
-                async (content, files) => {
-                  runtime.logger.debug({ content, files }, 'action callback');
+                async (content) => {
+                  runtime.logger.debug({ content }, 'action callback');
                   responseContent!.actionCallbacks = content;
                   if (callback) {
-                    return callback(content, files);
+                    return callback(content);
                   }
                   return [];
                 }
