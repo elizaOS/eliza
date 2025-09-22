@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/test-utils",
   "description": "Utilities and objects for unit testing",
-  "version": "1.5.11-alpha.4",
+  "version": "1.5.11-alpha.5",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
