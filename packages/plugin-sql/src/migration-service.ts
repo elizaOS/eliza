@@ -11,6 +11,10 @@ export class DatabaseMigrationService {
     // No longer extending Service, so no need to call super
   }
 
+  /**
+   * Initialize service with database connection
+   * @param db - Drizzle database instance
+   */
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
     this.db = db;
     this.migrator = new RuntimeMigrator(db);
@@ -18,6 +22,10 @@ export class DatabaseMigrationService {
     logger.info('DatabaseMigrationService initialized with database and runtime migrator');
   }
 
+  /**
+   * Auto-discover and register schemas from plugins
+   * @param plugins - Array of plugins to scan for schemas
+   */
   discoverAndRegisterPluginSchemas(plugins: Plugin[]): void {
     for (const plugin of plugins) {
       if ((plugin as any).schema) {
@@ -30,11 +38,24 @@ export class DatabaseMigrationService {
     );
   }
 
+  /**
+   * Register a schema for a specific plugin
+   * @param pluginName - Plugin identifier
+   * @param schema - Drizzle schema object
+   */
   registerSchema(pluginName: string, schema: any): void {
     this.registeredSchemas.set(pluginName, schema);
     logger.info(`Registered schema for plugin: ${pluginName}`);
   }
 
+  /**
+   * Run migrations for all registered plugins
+   * @param options - Migration options
+   * @param options.verbose - Log detailed output (default: true in dev, false in prod)
+   * @param options.force - Allow destructive migrations
+   * @param options.dryRun - Preview changes without applying
+   * @throws Error if any migration fails or destructive changes blocked
+   */
   async runAllPluginMigrations(options?: {
     verbose?: boolean;
     force?: boolean;
@@ -116,6 +137,7 @@ export class DatabaseMigrationService {
 
   /**
    * Get the runtime migrator instance for advanced operations
+   * @returns RuntimeMigrator instance or null if not initialized
    */
   getMigrator(): RuntimeMigrator | null {
     return this.migrator;

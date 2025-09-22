@@ -135,6 +135,7 @@ export class RuntimeMigrator {
 
   /**
    * Initialize migration system - create necessary tables
+   * @throws Error if table creation fails
    */
   async initialize(): Promise<void> {
     logger.info('[RuntimeMigrator] Initializing migration system...');
@@ -144,6 +145,10 @@ export class RuntimeMigrator {
 
   /**
    * Run migrations for a plugin/schema
+   * @param pluginName - Plugin identifier
+   * @param schema - Drizzle schema object
+   * @param options - Migration options (verbose, force, dryRun, allowDataLoss)
+   * @throws Error if destructive migrations blocked or migration fails
    */
   async migrate(
     pluginName: string,
@@ -467,6 +472,8 @@ export class RuntimeMigrator {
 
   /**
    * Get migration status for a plugin
+   * @param pluginName - Plugin identifier
+   * @returns Migration history and current state
    */
   async getStatus(pluginName: string): Promise<{
     hasRun: boolean;
@@ -488,6 +495,8 @@ export class RuntimeMigrator {
 
   /**
    * Reset migrations for a plugin (dangerous - for development only)
+   * @param pluginName - Plugin identifier
+   * @warning Deletes all migration history - use only in development
    */
   async reset(pluginName: string): Promise<void> {
     logger.warn(`[RuntimeMigrator] Resetting migrations for ${pluginName}`);
@@ -503,7 +512,9 @@ export class RuntimeMigrator {
 
   /**
    * Check if a migration would cause data loss without executing it
-   * Useful for pre-flight checks and confirmation dialogs
+   * @param pluginName - Plugin identifier
+   * @param schema - Drizzle schema to check
+   * @returns Data loss analysis or null if no changes
    */
   async checkMigration(pluginName: string, schema: any): Promise<DataLossCheck | null> {
     try {
