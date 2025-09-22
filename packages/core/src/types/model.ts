@@ -92,24 +92,6 @@ export const MODEL_SETTINGS = {
   MODEL_PRESENCE_PENALTY: 'MODEL_PRESENCE_PENALTY',
 } as const;
 
-/**
- * Helper to get the model-specific setting key for a given model type and parameter.
- * @param modelType The model type (e.g., TEXT_SMALL, TEXT_LARGE)
- * @param param The parameter name (e.g., MAX_TOKENS, TEMPERATURE)
- * @returns The appropriate setting key or null if not a supported model type
- */
-export function getModelSpecificSettingKey(
-  modelType: ModelTypeName,
-  param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY'
-): string | null {
-  const supportedModelTypes = ['TEXT_SMALL', 'TEXT_LARGE', 'OBJECT_SMALL', 'OBJECT_LARGE'];
-
-  if (!supportedModelTypes.includes(modelType)) {
-    return null;
-  }
-
-  return `${modelType}_${param}`;
-}
 
 /**
  * Parameters for generating text using a language model.
