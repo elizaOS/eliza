@@ -26,7 +26,7 @@ export type Handler = (
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
-  options?: { [key: string]: unknown },
+  options?: HandlerOptions,
   callback?: HandlerCallback,
   responses?: Memory[]
 ) => Promise<ActionResult | void | undefined>;
@@ -171,6 +171,35 @@ export interface ActionContext {
 
   /** Get a specific previous result by action name */
   getPreviousResult?: (actionName: string) => ActionResult | undefined;
+}
+
+/**
+ * Options passed to action handlers during execution
+ * Provides context about the current execution and multi-step plans
+ */
+export interface HandlerOptions {
+  /** Context with previous action results and utilities */
+  context?: ActionContext;
+  
+  /** Multi-step action plan information */
+  actionPlan?: {
+    /** Total number of steps in the plan */
+    totalSteps: number;
+    /** Current step being executed (1-based) */
+    currentStep: number;
+    /** Array of action steps with status tracking */
+    steps: Array<{
+      action: string;
+      status: 'pending' | 'completed' | 'failed';
+      result?: ActionResult;
+      error?: string;
+    }>;
+    /** AI's reasoning for this execution plan */
+    thought: string;
+  };
+  
+  /** Allow plugin extensions and custom options */
+  [key: string]: unknown;
 }
 
 /**

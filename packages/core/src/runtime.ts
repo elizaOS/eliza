@@ -23,6 +23,7 @@ import {
   type Evaluator,
   type Provider,
   type HandlerCallback,
+  type HandlerOptions,
   type IDatabaseAdapter,
   type Entity,
   type Room,
@@ -787,7 +788,7 @@ export class AgentRuntime implements IAgentRuntime {
           };
 
           // Add plan information to options if multiple actions
-          const options: { [key: string]: unknown } = {
+          const options: HandlerOptions = {
             context: actionContext,
           };
 
