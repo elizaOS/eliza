@@ -51,12 +51,14 @@ export function validateCreateOptions(options: any): CreateOptions {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const typeError = error.issues.find(
-        (e: any) => e.path.includes('type') && e.code === 'invalid_enum_value'
+        (e: any) => e.path.includes('type') && (e.code === 'invalid_enum_value' || e.code === 'invalid_value')
       );
-      if (typeError && 'received' in typeError) {
+      if (typeError && ('received' in typeError || 'values' in typeError)) {
         const enumError = typeError as any;
+        const receivedValue = enumError.received || 'unknown';
+        const expectedValues = enumError.options || enumError.values || [];
         throw new Error(
-          `Invalid type '${enumError.received}'. Expected: ${enumError.options?.join(', ')}`
+          `Invalid type '${receivedValue}'. Expected: ${expectedValues.join(', ')}`
         );
       }
     }
