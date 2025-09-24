@@ -22,7 +22,7 @@
     },
     "packages/api-client": {
       "name": "@elizaos/api-client",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
       },
@@ -35,7 +35,7 @@
     },
     "packages/app": {
       "name": "@elizaos/app",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/cli": "workspace:*",
@@ -57,7 +57,7 @@
     },
     "packages/cli": {
       "name": "@elizaos/cli",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "bin": {
         "elizaos": "./dist/index.js",
       },
@@ -109,7 +109,7 @@
     },
     "packages/client": {
       "name": "@elizaos/client",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/api-client": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -208,7 +208,7 @@
     },
     "packages/config": {
       "name": "@elizaos/config",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "devDependencies": {
         "prettier": "^3.5.3",
         "typescript": "^5.8.2",
@@ -216,7 +216,7 @@
     },
     "packages/core": {
       "name": "@elizaos/core",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "adze": "^2.2.5",
         "crypto-browserify": "^3.12.0",
@@ -239,7 +239,7 @@
     },
     "packages/elizaos": {
       "name": "elizaos",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "bin": {
         "elizaos": "bin/elizaos.js",
       },
@@ -249,7 +249,7 @@
     },
     "packages/plugin-bootstrap": {
       "name": "@elizaos/plugin-bootstrap",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -268,7 +268,7 @@
     },
     "packages/plugin-dummy-services": {
       "name": "@elizaos/plugin-dummy-services",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "uuid": "^9.0.0",
@@ -283,7 +283,7 @@
     },
     "packages/plugin-quick-starter": {
       "name": "@elizaos/plugin-quick-starter",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "4.1.11",
@@ -297,7 +297,7 @@
     },
     "packages/plugin-sql": {
       "name": "@elizaos/plugin-sql",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@electric-sql/pglite": "^0.3.3",
         "@elizaos/core": "workspace:*",
@@ -319,7 +319,7 @@
     },
     "packages/plugin-starter": {
       "name": "@elizaos/plugin-starter",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@tanstack/react-query": "^5.80.7",
@@ -341,7 +341,7 @@
     },
     "packages/project-starter": {
       "name": "@elizaos/project-starter",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/client": "workspace:*",
@@ -368,7 +368,7 @@
     },
     "packages/project-tee-starter": {
       "name": "@elizaos/project-tee-starter",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/cli": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -400,7 +400,7 @@
     },
     "packages/server": {
       "name": "@elizaos/server",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -428,7 +428,7 @@
     },
     "packages/test-utils": {
       "name": "@elizaos/test-utils",
-      "version": "1.5.11-beta.0",
+      "version": "1.5.11",
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "zod": "3.24.2",
