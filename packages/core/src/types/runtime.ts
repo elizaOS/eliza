@@ -7,7 +7,7 @@ import type { Logger } from '../logger';
 import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
 import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
-import type { Plugin, Route } from './plugin';
+import type { Plugin, PluginEvents, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
@@ -28,7 +28,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   evaluators: Evaluator[];
   plugins: Plugin[];
   services: Map<ServiceTypeName, Service[]>;
-  events: Map<string, ((params: any) => Promise<void>)[]>;
+  events: PluginEvents;
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;
