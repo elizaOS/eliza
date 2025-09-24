@@ -36,6 +36,7 @@ import {
   type ModelResultMap,
   type ModelTypeName,
   type Plugin,
+  type PluginEvents,
   type Route,
   type UUID,
   type Service,
@@ -97,7 +98,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   private isInitialized = false;
-  events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
+  events: PluginEvents = {};
   stateCache = new Map<
     UUID,
     {
@@ -1971,21 +1972,21 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
-    if (!this.events.has(event)) {
-      this.events.set(event, []);
+    if (!this.events[event]) {
+      this.events[event] = [];
     }
-    this.events.get(event)?.push(handler);
+    this.events[event]!.push(handler);
   }
 
   getEvent(event: string): ((params: any) => Promise<void>)[] | undefined {
-    return this.events.get(event);
+    return this.events[event];
   }
 
   // probably should be <T> typed for params
   async emitEvent(event: string | string[], params: any) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
-      const eventHandlers = this.events.get(eventName);
+      const eventHandlers = this.events[eventName];
       if (!eventHandlers) {
         continue;
       }
