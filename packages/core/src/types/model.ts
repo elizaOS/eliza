@@ -120,6 +120,16 @@ export type GenerateTextParams = {
 };
 
 /**
+ * Parameters for text tokenization models
+ */
+export interface TokenizeTextParams {
+  /** The text to tokenize */
+  prompt: string;
+  /** The model type to use for tokenization */
+  modelType: ModelTypeName;
+}
+
+/**
  * Parameters for detokenizing text, i.e., converting a sequence of numerical tokens back into a string.
  * This is the reverse operation of tokenization.
  * This structure is used with `AgentRuntime.useModel` when the `modelType` is `ModelType.TEXT_TOKENIZER_DECODE`.
@@ -163,16 +173,6 @@ export interface TextGenerationParams extends BaseModelParams {
 export interface TextEmbeddingParams extends BaseModelParams {
   /** The text to create embeddings for */
   text: string;
-}
-
-/**
- * Parameters for text tokenization models
- */
-export interface TokenizeTextParams extends BaseModelParams {
-  /** The text to tokenize */
-  prompt: string;
-  /** The model type to use for tokenization */
-  modelType: ModelTypeName;
 }
 
 /**
