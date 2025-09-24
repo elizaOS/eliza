@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -7,7 +7,7 @@ import type { AgentServer } from '../../index';
  * Health monitoring and status endpoints
  */
 export function createHealthRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -31,7 +31,7 @@ export function createHealthRouter(
     res.send(
       JSON.stringify({
         status: 'ok',
-        agentCount: agents.size,
+        agentCount: elizaOS.getAgents().length,
         timestamp: new Date().toISOString(),
       })
     );
@@ -45,7 +45,7 @@ export function createHealthRouter(
       version: process.env.APP_VERSION || 'unknown',
       timestamp: new Date().toISOString(),
       dependencies: {
-        agents: agents.size > 0 ? 'healthy' : 'no_agents',
+        agents: elizaOS.getAgents().length > 0 ? 'healthy' : 'no_agents',
       },
     };
 

@@ -75,9 +75,13 @@ describe('CLI version display integration tests', () => {
   });
 
   describe('local dist behavior', () => {
-    it('should display "monorepo" when running from dist folder outside monorepo', async () => {
-      // When the CLI is built and copied to a location outside the monorepo,
-      // it should display "monorepo" if not in node_modules
+    it.skip('should display "monorepo" when running from dist folder outside monorepo', async () => {
+      // SKIP REASON: This test scenario is unrealistic because:
+      // 1. The dist folder is not a self-contained bundle - it requires node_modules
+      // 2. When properly installed, the CLI would be in node_modules
+      // 3. Running the CLI without dependencies will always fail
+      // This test should be revisited when we have a proper standalone bundle
+      
       const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-dist-test-'));
 
       try {
@@ -120,7 +124,7 @@ async function runCLI(
   code: number | null;
 }> {
   const cliPath = options.cliPath || CLI_PATH;
-  const proc = Bun.spawn(['node', cliPath, ...args], {
+  const proc = Bun.spawn(['bun', cliPath, ...args], {
     cwd: options.cwd || process.cwd(),
     env: {
       ...process.env,

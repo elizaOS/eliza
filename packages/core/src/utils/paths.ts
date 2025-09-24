@@ -4,7 +4,24 @@
  * that can be customized via environment variables.
  */
 
-import path from 'node:path';
+// Browser-safe path utilities
+const pathJoin = (...parts: string[]) => {
+  if (typeof process !== 'undefined' && process.platform) {
+    // Node.js environment - use native path module
+    try {
+      const path = require('node:path');
+      return path.join(...parts);
+    } catch {
+      // Fallback to simple implementation
+    }
+  }
+  // Browser or fallback implementation
+  return parts
+    .filter(part => part)
+    .join('/')
+    .replace(/\/+/g, '/')
+    .replace(/\/$/, '');
+};
 
 /**
  * Interface for ElizaOS paths configuration
@@ -32,7 +49,8 @@ class ElizaPaths {
     const cached = this.cache.get('dataDir');
     if (cached) return cached;
 
-    const dir = process.env.ELIZA_DATA_DIR || path.join(process.cwd(), '.eliza');
+    const dir = (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR) ||
+      (typeof process !== 'undefined' && process.cwd ? pathJoin(process.cwd(), '.eliza') : '.eliza');
     this.cache.set('dataDir', dir);
     return dir;
   }
@@ -45,9 +63,9 @@ class ElizaPaths {
     if (cached) return cached;
 
     const dir =
-      process.env.ELIZA_DATABASE_DIR ||
-      process.env.PGLITE_DATA_DIR ||
-      path.join(this.getDataDir(), '.elizadb');
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATABASE_DIR) ||
+      (typeof process !== 'undefined' && process.env?.PGLITE_DATA_DIR) ||
+      pathJoin(this.getDataDir(), '.elizadb');
     this.cache.set('databaseDir', dir);
     return dir;
   }
@@ -60,7 +78,8 @@ class ElizaPaths {
     if (cached) return cached;
 
     const dir =
-      process.env.ELIZA_DATA_DIR_CHARACTERS || path.join(this.getDataDir(), 'data', 'characters');
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_CHARACTERS) ||
+      pathJoin(this.getDataDir(), 'data', 'characters');
     this.cache.set('charactersDir', dir);
     return dir;
   }
@@ -73,7 +92,8 @@ class ElizaPaths {
     if (cached) return cached;
 
     const dir =
-      process.env.ELIZA_DATA_DIR_GENERATED || path.join(this.getDataDir(), 'data', 'generated');
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_GENERATED) ||
+      pathJoin(this.getDataDir(), 'data', 'generated');
     this.cache.set('generatedDir', dir);
     return dir;
   }
@@ -86,8 +106,8 @@ class ElizaPaths {
     if (cached) return cached;
 
     const dir =
-      process.env.ELIZA_DATA_DIR_UPLOADS_AGENTS ||
-      path.join(this.getDataDir(), 'data', 'uploads', 'agents');
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_UPLOADS_AGENTS) ||
+      pathJoin(this.getDataDir(), 'data', 'uploads', 'agents');
     this.cache.set('uploadsAgentsDir', dir);
     return dir;
   }
@@ -100,8 +120,8 @@ class ElizaPaths {
     if (cached) return cached;
 
     const dir =
-      process.env.ELIZA_DATA_DIR_UPLOADS_CHANNELS ||
-      path.join(this.getDataDir(), 'data', 'uploads', 'channels');
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR_UPLOADS_CHANNELS) ||
+      pathJoin(this.getDataDir(), 'data', 'uploads', 'channels');
     this.cache.set('uploadsChannelsDir', dir);
     return dir;
   }

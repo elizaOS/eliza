@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.5.11-beta.0",
+  "version": "1.5.11-alpha.7",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -82,6 +82,7 @@
     "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-openai": "1.0.11",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/server": "workspace:*",
     "bun": "^1.2.21",
@@ -101,6 +102,6 @@
     "tsconfig-paths": "^4.2.0",
     "type-fest": "^4.41.0",
     "yoctocolors": "^2.1.1",
-    "zod": "3.24.2"
+    "zod": "4.1.11"
   }
 }

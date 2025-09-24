@@ -107,7 +107,7 @@ export const ReportSummaryStatsSchema = z.object({
   median_execution_time: z.number().min(0),
   average_llm_calls: z.number().min(0),
   average_total_tokens: z.number().min(0),
-  capability_success_rates: z.record(z.number().min(0).max(1)),
+  capability_success_rates: z.record(z.string(), z.number().min(0).max(1)),
   overall_success_rate: z.number().min(0).max(1),
 });
 
@@ -129,7 +129,7 @@ export const ReportDataSchema = z.object({
     skipped_files: z.number().int().min(0),
   }),
   summary_stats: ReportSummaryStatsSchema,
-  results_by_parameter: z.record(z.record(ReportSummaryStatsSchema)),
+  results_by_parameter: z.record(z.string(), z.record(z.string(), ReportSummaryStatsSchema)),
   common_trajectories: z.array(CommonTrajectorySchema),
   raw_results: z.array(z.any()), // ScenarioRunResult schema from scenario module
 });

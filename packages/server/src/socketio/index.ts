@@ -1,4 +1,4 @@
-import type { IAgentRuntime } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import {
   logger,
   customLevels,
@@ -14,17 +14,17 @@ import { attachmentsToApiUrls } from '../utils/media-transformer';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 export class SocketIORouter {
-  private agents: Map<UUID, IAgentRuntime>;
+  private elizaOS: ElizaOS;
   private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
   private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
   private serverInstance: AgentServer;
 
-  constructor(agents: Map<UUID, IAgentRuntime>, serverInstance: AgentServer) {
-    this.agents = agents;
+  constructor(elizaOS: ElizaOS, serverInstance: AgentServer) {
+    this.elizaOS = elizaOS;
     this.connections = new Map();
     this.logStreamConnections = new Map();
     this.serverInstance = serverInstance;
-    logger.info(`[SocketIO] Router initialized with ${this.agents.size} agents`);
+    logger.info(`[SocketIO] Router initialized with ${this.elizaOS.getAgents().length} agents`);
   }
 
   setupListeners(io: SocketIOServer) {
@@ -160,7 +160,7 @@ export class SocketIORouter {
       );
 
       // Get the first available runtime (there should typically be one)
-      const runtime = Array.from(this.agents.values())[0];
+      const runtime = this.elizaOS.getAgents()[0];
       if (runtime) {
         runtime.emitEvent(EventType.ENTITY_JOINED as any, {
           entityId: entityId as UUID,
@@ -228,7 +228,7 @@ export class SocketIORouter {
           `[SocketIO] Detected DM channel during message submission, emitting ENTITY_JOINED for proper world setup`
         );
 
-        const runtime = Array.from(this.agents.values())[0];
+        const runtime = this.elizaOS.getAgents()[0];
         if (runtime) {
           runtime.emitEvent(EventType.ENTITY_JOINED as any, {
             entityId: senderId as UUID,

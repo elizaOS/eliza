@@ -37,7 +37,7 @@ import { v4 as uuidv4 } from 'uuid';
 const CONSTANTS = {
   TEXT_WRAP_WIDTH: 80,
   LOG_LEVEL: 'fatal',
-  DEFAULT_PGLITE_PATH: 'memory://',
+  DEFAULT_PGLITE_DATA_DIR: 'memory://',
   CHAT_IDENTIFIERS: {
     WORLD: 'chat-world',
     ROOM: 'chat-room',
@@ -51,7 +51,7 @@ const CONSTANTS = {
 interface AppConfiguration {
   openaiApiKey: string;
   postgresUrl: string;
-  pglitePath: string;
+  pgliteDataDir: string;
 }
 
 interface ChatSession {
@@ -85,7 +85,7 @@ class Configuration {
     return {
       openaiApiKey: process.env.OPENAI_API_KEY!,
       postgresUrl: process.env.POSTGRES_URL || '',
-      pglitePath: process.env.PGLITE_PATH || CONSTANTS.DEFAULT_PGLITE_PATH,
+      pgliteDataDir: process.env.PGLITE_DATA_DIR || CONSTANTS.DEFAULT_PGLITE_DATA_DIR,
     };
   }
 }
@@ -141,13 +141,13 @@ class AgentInitializer {
   }
 
   private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<void> {
-    if (!config.postgresUrl && config.pglitePath !== CONSTANTS.DEFAULT_PGLITE_PATH) {
-      fs.mkdirSync(config.pglitePath, { recursive: true });
+    if (!config.postgresUrl && config.pgliteDataDir !== CONSTANTS.DEFAULT_PGLITE_DATA_DIR) {
+      fs.mkdirSync(config.pgliteDataDir, { recursive: true });
     }
 
     const adapter = createDatabaseAdapter(
       {
-        dataDir: config.pglitePath,
+        dataDir: config.pgliteDataDir,
         postgresUrl: config.postgresUrl || undefined,
       },
       agentId
@@ -171,7 +171,7 @@ class AgentInitializer {
       settings: {
         OPENAI_API_KEY: config.openaiApiKey,
         POSTGRES_URL: config.postgresUrl || undefined,
-        PGLITE_PATH: config.pglitePath,
+        PGLITE_DATA_DIR: config.pgliteDataDir,
       },
     });
   }
@@ -241,7 +241,7 @@ class AgentInitializer {
 // ============================================================================
 
 class MessageProcessor {
-  constructor(private session: ChatSession) {}
+  constructor(private session: ChatSession) { }
 
   private createMessageMemory(userInput: string): Memory {
     return createMessageMemory({
@@ -289,7 +289,7 @@ class ChatInterface {
   constructor(
     private messageProcessor: MessageProcessor,
     private character: Character
-  ) {}
+  ) { }
 
   private displayWelcome(): void {
     clack.intro('🤖 ElizaOS Interactive Chat');

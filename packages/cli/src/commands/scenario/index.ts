@@ -16,7 +16,7 @@ import { MockEngine } from './src/MockEngine';
 import { EvaluationEngine } from './src/EvaluationEngine';
 import { Reporter } from './src/Reporter';
 import { generateRunFilename, generateStepFilename } from './src/file-naming-utils';
-import { PluginParser } from './src/plugin-parser';
+import { parseAndValidate, generateSummary } from './src/plugin-parser';
 import { RunDataAggregator } from './src/data-aggregator';
 import { TrajectoryReconstructor } from './src/TrajectoryReconstructor';
 
@@ -131,20 +131,20 @@ export const scenario = new Command()
           // Parse and validate plugins if specified
           if (scenario.plugins && scenario.plugins.length > 0) {
             logger.info('Parsing and validating plugins...');
-            const pluginResult = await PluginParser.parseAndValidate(scenario.plugins);
+            const pluginResult = await parseAndValidate(scenario.plugins);
 
             if (!pluginResult.valid) {
               logger.error('Plugin validation failed:');
-              pluginResult.errors.forEach((error) => logger.error(`  - ${error}`));
+              pluginResult.errors.forEach((error) => { logger.error(`  - ${error}`); });
               process.exit(1);
             }
 
             if (pluginResult.warnings.length > 0) {
               logger.warn('Plugin warnings:');
-              pluginResult.warnings.forEach((warning) => logger.warn(`  - ${warning}`));
+              pluginResult.warnings.forEach((warning) => { logger.warn(`  - ${warning}`); });
             }
 
-            logger.info(PluginParser.generateSummary(pluginResult));
+            logger.info(generateSummary(pluginResult));
 
             // Store parsed plugins for later use
             (scenario as any).parsedPlugins = pluginResult.plugins;

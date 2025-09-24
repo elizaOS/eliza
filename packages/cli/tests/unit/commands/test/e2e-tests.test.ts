@@ -6,6 +6,12 @@ mock.module('../../../../src/project', () => ({
   loadProject: mock(),
 }));
 
+// Create a mock for AgentManager's startAgent method
+const mockAgentManagerStartAgent = mock().mockResolvedValue({
+  character: { name: 'Eliza' },
+  plugins: [],
+});
+
 mock.module('@elizaos/server', () => ({
   AgentServer: mock().mockImplementation(() => ({
     initialize: mock().mockResolvedValue(undefined),
@@ -14,6 +20,9 @@ mock.module('@elizaos/server', () => ({
     startAgent: mock(),
     loadCharacterTryPath: mock(),
     jsonToCharacter: mock(),
+  })),
+  AgentManager: mock().mockImplementation(() => ({
+    startAgent: mockAgentManagerStartAgent,
   })),
   loadCharacterTryPath: mock(),
   jsonToCharacter: mock(),
@@ -145,6 +154,13 @@ describe('E2E Tests Plugin Isolation', () => {
   let TestRunnerMock: any;
 
   beforeEach(async () => {
+    // Reset the AgentManager mock to ensure clean state
+    mockAgentManagerStartAgent.mockClear();
+    mockAgentManagerStartAgent.mockResolvedValue({
+      character: { name: 'Eliza' },
+      plugins: [],
+    });
+    
     // Save original ELIZA_TESTING_PLUGIN value specifically
     originalElizaTestingPlugin = process.env.ELIZA_TESTING_PLUGIN;
 
@@ -172,8 +188,8 @@ describe('E2E Tests Plugin Isolation', () => {
     loadProject = projectModule.loadProject;
     loadProject.mockClear();
 
-    const startModule = await import('../../../../src/commands/start');
-    startAgentMock = startModule.startAgent;
+    // Use the AgentManager mock we defined at module level
+    startAgentMock = mockAgentManagerStartAgent;
     startAgentMock.mockClear();
 
     const utilsModule = await import('../../../../src/utils');

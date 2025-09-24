@@ -577,10 +577,6 @@ describe('ElizaOS Dev Commands', () => {
       // Ensure elizadb directory exists
       await mkdir(join(testTmpDir, 'elizadb'), { recursive: true });
 
-      // Kill any existing process on port 3000
-      await killProcessOnPort(3000);
-      await new Promise((resolve) => setTimeout(resolve, 500)); // Give it time to release
-
       // Start a dummy server on port 3000 to create a conflict
       let dummyServer;
       try {

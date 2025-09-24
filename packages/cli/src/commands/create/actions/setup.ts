@@ -382,4 +382,10 @@ export async function setupProjectEnvironment(
       await installModelPlugin(embeddingModel, targetDir, 'for embeddings');
     }
   }
+
+  // Always install Ollama plugin as fallback if not already installed
+  // This is required because the default Eliza character always includes it
+  if (aiModel !== 'local' && embeddingModel !== 'local') {
+    await installPluginWithSpinner('ollama', targetDir, 'as universal fallback');
+  }
 }

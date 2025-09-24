@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-tee-starter",
   "description": "Project starter for elizaOS with TEE capabilities",
-  "version": "1.5.11-beta.0",
+  "version": "1.5.11-alpha.7",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -46,7 +46,7 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss": "^4.1.10",
     "viem": "2.30.1",
-    "zod": "3.24.2"
+    "zod": "4.1.11"
   },
   "devDependencies": {
     "@types/jsdom": "^21.1.7",
