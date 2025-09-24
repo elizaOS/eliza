@@ -138,23 +138,6 @@ export interface DetokenizeTextParams {
 }
 
 
-/**
- * Parameters for text generation models
- */
-export interface TextGenerationParams {
-  /** The prompt to generate text from */
-  prompt: string;
-  /** Model temperature (0.0 to 1.0, lower is more deterministic) */
-  temperature?: number;
-  /** Maximum number of tokens to generate */
-  maxTokens?: number;
-  /** Sequences that should stop generation when encountered */
-  stopSequences?: string[];
-  /** Frequency penalty to apply */
-  frequencyPenalty?: number;
-  /** Presence penalty to apply */
-  presencePenalty?: number;
-}
 
 /**
  * Parameters for text embedding models
@@ -264,13 +247,13 @@ export interface ObjectGenerationParams {
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
-  [ModelType.TEXT_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_LARGE]: TextGenerationParams;
+  [ModelType.TEXT_SMALL]: GenerateTextParams;
+  [ModelType.TEXT_LARGE]: GenerateTextParams;
   [ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
   [ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
   [ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
-  [ModelType.TEXT_REASONING_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_REASONING_LARGE]: TextGenerationParams;
+  [ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
+  [ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
   [ModelType.IMAGE]: ImageGenerationParams;
   [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
   [ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
