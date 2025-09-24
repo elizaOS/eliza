@@ -1877,7 +1877,7 @@ export class AgentRuntime implements IAgentRuntime {
       `[useModel] ${modelKey} input: ` +
         JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
-    let paramsWithRuntime: any;
+    let modelParams: ModelParamsMap[T];
     if (
       params === null ||
       params === undefined ||
@@ -1885,24 +1885,20 @@ export class AgentRuntime implements IAgentRuntime {
       Array.isArray(params) ||
       BufferUtils.isBuffer(params)
     ) {
-      paramsWithRuntime = params;
+      modelParams = params;
     } else {
       // Include model settings from character configuration if available
       const modelSettings = this.getModelSettings(modelKey);
 
       if (modelSettings) {
         // Apply model settings if configured
-        paramsWithRuntime = {
+        modelParams = {
           ...modelSettings, // Apply model settings first (includes defaults and model-specific)
           ...params, // Then apply specific params (allowing overrides)
-          runtime: this,
         };
       } else {
         // No model settings configured, use params as-is
-        paramsWithRuntime = {
-          ...params,
-          runtime: this,
-        };
+        modelParams = params;
       }
     }
     const startTime =
@@ -1910,7 +1906,7 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now();
     try {
-      const response = await model(this, paramsWithRuntime);
+      const response = await model(this, modelParams);
       const elapsedTime =
         (typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? performance.now()
