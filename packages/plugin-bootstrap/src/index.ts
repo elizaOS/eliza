@@ -754,7 +754,7 @@ const messageReceivedHandler = async ({
           entityName = (message.metadata as any).entityName;
         }
 
-        const isDM = message.content?.channelType?.toUpperCase() === 'DM';
+        const isDM = message.content?.channelType === ChannelType.DM;
         let roomName = entityName;
         if (!isDM) {
           const roomDatas = await runtime.getRoomsByIds([message.roomId]);
