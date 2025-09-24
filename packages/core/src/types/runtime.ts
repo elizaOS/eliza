@@ -128,7 +128,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any
+    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    provider?: string
   ): Promise<R>;
 
   registerModel(

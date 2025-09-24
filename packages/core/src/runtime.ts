@@ -2187,8 +2187,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   async queueEmbeddingGeneration(
     memory: Memory,
-    priority: 'high' | 'normal' | 'low' = 'normal'
+    priority?: 'high' | 'normal' | 'low'
   ): Promise<void> {
+    // Set default priority if not provided
+    priority = priority || 'normal';
+    
     // Skip if memory is null or undefined
     if (!memory) {
       return;
