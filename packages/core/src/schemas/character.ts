@@ -61,10 +61,14 @@ const styleSchema = z
   .optional();
 
 // Settings schema - flexible object
-const settingsSchema = z.record(z.union([z.string(), z.boolean(), z.number(), z.any()])).optional();
+const settingsSchema = z
+  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.any()]))
+  .optional();
 
 // Secrets schema
-const secretsSchema = z.record(z.union([z.string(), z.boolean(), z.number()])).optional();
+const secretsSchema = z
+  .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
+  .optional();
 
 // Main Character schema
 export const characterSchema = z
@@ -73,7 +77,7 @@ export const characterSchema = z
     name: z.string().min(1, 'Character name is required'),
     username: z.string().optional(),
     system: z.string().optional(),
-    templates: z.record(templateTypeSchema).optional(),
+    templates: z.record(z.string(), templateTypeSchema).optional(),
     bio: z.union([z.string(), z.array(z.string())]),
     messageExamples: z.array(z.array(messageExampleSchema)).optional(),
     postExamples: z.array(z.string()).optional(),

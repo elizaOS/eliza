@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import { validateUuid, logger, ModelType } from '@elizaos/core';
 import express from 'express';
 import { sendError } from '../shared/response-utils';
@@ -7,7 +7,7 @@ import { convertToAudioBuffer } from './audioBuffer';
 /**
  * Text-to-speech synthesis functionality
  */
-export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
+export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
 
   // Text-to-Speech endpoint
@@ -22,7 +22,7 @@ export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express
       return sendError(res, 400, 'INVALID_REQUEST', 'Text is required for speech synthesis');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
@@ -67,7 +67,7 @@ export function createSynthesisRouter(agents: Map<UUID, IAgentRuntime>): express
       return sendError(res, 400, 'INVALID_REQUEST', 'Text is required for speech synthesis');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');

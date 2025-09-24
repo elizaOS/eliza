@@ -50,13 +50,15 @@ export function validateCreateOptions(options: any): CreateOptions {
     return initOptionsSchema.parse(options);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const typeError = error.errors.find(
-        (e) => e.path.includes('type') && e.code === 'invalid_enum_value'
+      const typeError = error.issues.find(
+        (e: any) => e.path.includes('type') && (e.code === 'invalid_enum_value' || e.code === 'invalid_value')
       );
-      if (typeError && 'received' in typeError) {
-        const enumError = typeError as z.ZodInvalidEnumValueIssue;
+      if (typeError && ('received' in typeError || 'values' in typeError)) {
+        const enumError = typeError as any;
+        const receivedValue = enumError.received || 'unknown';
+        const expectedValues = enumError.options || enumError.values || [];
         throw new Error(
-          `Invalid type '${enumError.received}'. Expected: ${enumError.options?.join(', ')}`
+          `Invalid type '${receivedValue}'. Expected: ${expectedValues.join(', ')}`
         );
       }
     }
@@ -79,7 +81,7 @@ export function validateProjectName(name: string): { isValid: boolean; error?: s
     return { isValid: true };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { isValid: false, error: error.errors[0].message };
+      return { isValid: false, error: error.issues[0].message };
     }
     return { isValid: false, error: 'Invalid project name' };
   }
@@ -111,7 +113,7 @@ export function processPluginName(name: string): {
     return { isValid: true, processedName };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { isValid: false, error: error.errors[0].message };
+      return { isValid: false, error: error.issues[0].message };
     }
     return { isValid: false, error: 'Invalid plugin name' };
   }

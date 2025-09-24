@@ -1,4 +1,4 @@
-import type { Agent, Character, IAgentRuntime, UUID } from '@elizaos/core';
+import type { Agent, Character, ElizaOS } from '@elizaos/core';
 import {
   validateUuid,
   logger,
@@ -15,7 +15,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  * Agent CRUD operations
  */
 export function createAgentCrudRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -28,7 +28,7 @@ export function createAgentCrudRouter(
         return sendError(res, 500, 'DB_ERROR', 'Database not available');
       }
       const allAgents = await db.getAgents();
-      const runtimes = Array.from(agents.keys());
+      const runtimes = elizaOS.getAgents().map(a => a.agentId);
 
       // Return only minimal agent data
       const response = allAgents
@@ -79,7 +79,7 @@ export function createAgentCrudRouter(
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       const response = {
         ...agent,
         status: runtime ? 'active' : 'inactive',
@@ -212,13 +212,19 @@ export function createAgentCrudRouter(
 
       const updatedAgent = await db.getAgent(agentId);
 
-      const isActive = !!agents.get(agentId);
-      if (isActive && updatedAgent) {
-        serverInstance?.unregisterAgent(agentId);
-        await serverInstance?.startAgent(updatedAgent);
+      // Check if agent is currently active
+      const activeRuntime = elizaOS.getAgent(agentId);
+      if (activeRuntime && updatedAgent) {
+        // Extract character properties from the Agent (Agent extends Character)
+        const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+
+        // Update the character on the active runtime instead of unregistering/restarting
+        // This preserves database connections and other resources
+        await elizaOS.updateAgent(agentId, characterData as Character);
+        logger.debug(`[AGENT UPDATE] Updated active agent ${agentId} without restart`);
       }
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       const status = runtime ? 'active' : 'inactive';
 
       sendSuccess(res, { ...updatedAgent, status });
@@ -285,11 +291,11 @@ export function createAgentCrudRouter(
 
     while (retryCount <= MAX_RETRIES) {
       try {
-        const runtime = agents.get(agentId);
+        const runtime = elizaOS.getAgent(agentId);
         if (runtime) {
           logger.debug(`[AGENT DELETE] Agent ${agentId} is running, unregistering from server`);
           try {
-            serverInstance?.unregisterAgent(agentId);
+            await serverInstance?.unregisterAgent(agentId);
             logger.debug(`[AGENT DELETE] Agent ${agentId} unregistered successfully`);
           } catch (stopError) {
             logger.error(

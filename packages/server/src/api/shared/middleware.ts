@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS, UUID } from '@elizaos/core';
 import express from 'express';
 import { validateUuid, logger } from '@elizaos/core';
 import { sendError } from './response-utils';
@@ -8,14 +8,14 @@ import rateLimit from 'express-rate-limit';
 /**
  * Middleware to validate that an agent exists
  */
-export const agentExistsMiddleware = (agents: Map<UUID, IAgentRuntime>) => {
+export const agentExistsMiddleware = (elizaOS: ElizaOS) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }

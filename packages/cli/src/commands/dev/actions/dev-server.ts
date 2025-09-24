@@ -65,10 +65,33 @@ async function startClientDevServer(cwd: string): Promise<void> {
         clientDir = installedClientPath;
       }
       // Fallback: if a local Vite config exists (standalone plugin demo UI), treat current dir as client
+      // BUT: prevent recursive execution when running elizaos dev from the same directory
       if (!clientDir) {
         const localViteTs = path.join(cwd, 'vite.config.ts');
         const localViteJs = path.join(cwd, 'vite.config.js');
         if (fs.existsSync(localViteTs) || fs.existsSync(localViteJs)) {
+          // Check if this would cause recursive execution
+          const packageJsonPath = path.join(cwd, 'package.json');
+          if (fs.existsSync(packageJsonPath)) {
+            try {
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+              const devScript = packageJson.scripts?.['dev:client'] || packageJson.scripts?.['dev'];
+
+              // If the dev script would run elizaos dev, skip to prevent recursion
+              if (devScript && devScript.includes('elizaos dev')) {
+                console.warn(
+                  'Detected potential recursive elizaos dev execution in local Vite config. Skipping client dev server to prevent infinite loop.'
+                );
+                return;
+              }
+            } catch (error) {
+              // If we can't parse package.json, err on the side of caution
+              console.warn(
+                'Could not parse package.json for recursive execution check. Skipping client dev server to be safe.'
+              );
+              return;
+            }
+          }
           clientDir = cwd;
         }
       }
