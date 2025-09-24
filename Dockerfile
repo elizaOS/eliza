@@ -15,7 +15,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g bun@1.2.5 turbo@2.3.3
+RUN npm install -g bun@1.2.21 turbo@2.3.3
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
@@ -25,7 +25,15 @@ COPY packages ./packages
 
 RUN SKIP_POSTINSTALL=1 bun install --no-cache
 
-RUN bun run build
+# Add verbose logging and memory monitoring for build diagnostics
+RUN echo "=== Build Environment Info ===" && \
+    echo "Node version: $(node --version)" && \
+    echo "Bun version: $(bun --version)" && \
+    echo "Available memory: $(free -h)" && \
+    echo "CPU info: $(nproc) cores" && \
+    echo "Disk space: $(df -h /)" && \
+    echo "=== Starting Build ===" && \
+    TURBO_CONCURRENCY=2 bun run build --concurrency=2 --verbose || (echo "=== Build Failed - System State ===" && free -h && df -h / && exit 1)
 
 FROM node:23.3.0-slim
 
@@ -41,7 +49,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g bun@1.2.5 turbo@2.3.3
+RUN npm install -g bun@1.2.21 turbo@2.3.3
 
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/turbo.json ./
