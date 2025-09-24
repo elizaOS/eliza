@@ -84,7 +84,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     evaluators: overrides.evaluators || [],
     plugins: overrides.plugins || [],
     services: overrides.services || new Map(),
-    events: overrides.events || new Map(),
+    events: overrides.events || {},
     fetch: overrides.fetch || null,
     routes: overrides.routes || [],
     logger: overrides.logger || {
