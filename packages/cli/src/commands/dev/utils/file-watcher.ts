@@ -33,8 +33,8 @@ const DEFAULT_WATCHER_CONFIG: WatcherConfig = {
   usePolling: false, // Only use polling if necessary
   interval: 1000, // Poll every second
   awaitWriteFinish: {
-    stabilityThreshold: 100,
-    pollInterval: 100,
+    stabilityThreshold: 300,
+    pollInterval: 150,
   },
 };
 
@@ -47,7 +47,7 @@ let readyLogged = false;
 // Shared debounce timer to avoid stale timeouts across re-initializations
 let globalDebounceTimer: NodeJS.Timeout | null = null;
 
-function debounceAndRun(handler: () => void, delay: number = 300) {
+function debounceAndRun(handler: () => void, delay: number = 500) {
   if (globalDebounceTimer) {
     clearTimeout(globalDebounceTimer);
   }
@@ -169,6 +169,8 @@ export async function watchDirectory(
 
     // Create watcher with specific file patterns
     const watcher = chokidar.watch(watchPaths, watchOptions);
+    // Reduce event storms by awaiting write finish and limiting bursting restarts
+    watcher.setMaxListeners(20);
     activeWatcher = watcher;
     activeWatchRoot = absoluteDir;
 

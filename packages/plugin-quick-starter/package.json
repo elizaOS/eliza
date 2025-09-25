@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-quick-starter",
   "description": "Quick backend-only plugin template for ElizaOS",
-  "version": "1.5.9-beta.1",
+  "version": "1.5.11-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -40,7 +40,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "^3.24.4"
+    "zod": "4.1.11"
   },
   "devDependencies": {
     "@elizaos/cli": "workspace:*",
@@ -62,7 +62,7 @@
   },
   "resolutions": {
     "// Note": "langchain 0.3.30 fixes @langchain/core zod/v3 import issues",
-    "zod": "^3.24.4",
+    "zod": "4.1.11",
     "langchain": "0.3.30",
     "@langchain/core": "0.3.30"
   },

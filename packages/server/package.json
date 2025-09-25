@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.5.9-beta.1",
+  "version": "1.5.11-beta.0",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -44,6 +44,7 @@
     "dev": "bun run build.ts --watch"
   },
   "devDependencies": {
+    "@elizaos/client": "workspace:*",
     "@types/node": "^24.0.1",
     "prettier": "3.5.3",
     "tsx": "4.19.4",

@@ -18,11 +18,20 @@ describe('Character Plugin Ordering', () => {
   let originalEnv: Record<string, string | undefined>;
 
   // Helper function to set up test environment
-  const setupTestEnvironment = (config: Record<string, string>) => {
-    Object.keys(originalEnv).forEach((key) => delete process.env[key]);
+  const setupTestEnvironment = (config: Record<string, string | undefined>) => {
+    Object.keys(originalEnv).forEach((key) => { delete process.env[key]; });
     Object.entries(config).forEach(([key, value]) => {
-      process.env[key] = value;
+      if (value !== undefined) {
+        process.env[key] = value;
+      }
     });
+  };
+
+  // Helper function to get character plugins with assertion
+  const getCharacterPlugins = () => {
+    const character = getElizaCharacter();
+    expect(character.plugins).toBeDefined();
+    return character.plugins!;
   };
 
   // Helper function to verify plugin ordering
@@ -69,8 +78,8 @@ describe('Character Plugin Ordering', () => {
 
   describe('Core Plugin Ordering', () => {
     it('should always include SQL plugin first', () => {
-      const character = getElizaCharacter();
-      expect(character.plugins?.[0]).toBe(PLUGINS.SQL);
+      const plugins = getCharacterPlugins();
+      expect(plugins[0]).toBe(PLUGINS.SQL);
     });
 
     it('should include bootstrap plugin by default (not ignored)', () => {
@@ -128,8 +137,9 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
 
       const character = getElizaCharacter();
-      const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
-      const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
+      expect(character.plugins).toBeDefined();
+      const anthropicIndex = character.plugins!.indexOf(PLUGINS.ANTHROPIC);
+      const openaiIndex = character.plugins!.indexOf(PLUGINS.OPENAI);
 
       expect(anthropicIndex).toBeGreaterThan(-1);
       expect(openaiIndex).toBeGreaterThan(-1);
@@ -139,12 +149,12 @@ describe('Character Plugin Ordering', () => {
     it('should always place Ollama last as universal fallback', () => {
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
 
-      const character = getElizaCharacter();
-      const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
-      const ollamaIndex = character.plugins.indexOf(PLUGINS.OLLAMA);
+      const plugins = getCharacterPlugins();
+      const anthropicIndex = plugins.indexOf(PLUGINS.ANTHROPIC);
+      const ollamaIndex = plugins.indexOf(PLUGINS.OLLAMA);
 
       // Ollama should always be included and always be last
-      expect(ollamaIndex).toBe(character.plugins.length - 1);
+      expect(ollamaIndex).toBe(plugins.length - 1);
       expect(ollamaIndex).toBeGreaterThan(anthropicIndex);
     });
 
@@ -152,9 +162,9 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENROUTER_API_KEY = 'openrouter-key';
       process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'google-key';
 
-      const character = getElizaCharacter();
-      const openrouterIndex = character.plugins.indexOf(PLUGINS.OPENROUTER);
-      const googleIndex = character.plugins.indexOf(PLUGINS.GOOGLE_GENAI);
+      const plugins = getCharacterPlugins();
+      const openrouterIndex = plugins.indexOf(PLUGINS.OPENROUTER);
+      const googleIndex = plugins.indexOf(PLUGINS.GOOGLE_GENAI);
 
       expect(openrouterIndex).toBeGreaterThan(-1);
       expect(googleIndex).toBeGreaterThan(-1);
@@ -165,11 +175,11 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
       process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'google-key';
 
-      const character = getElizaCharacter();
-      const bootstrapIndex = character.plugins.indexOf(PLUGINS.BOOTSTRAP);
-      const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
-      const ollamaIndex = character.plugins.indexOf(PLUGINS.OLLAMA);
-      const googleIndex = character.plugins.indexOf(PLUGINS.GOOGLE_GENAI);
+      const plugins = getCharacterPlugins();
+      const bootstrapIndex = plugins.indexOf(PLUGINS.BOOTSTRAP);
+      const openaiIndex = plugins.indexOf(PLUGINS.OPENAI);
+      const ollamaIndex = plugins.indexOf(PLUGINS.OLLAMA);
+      const googleIndex = plugins.indexOf(PLUGINS.GOOGLE_GENAI);
 
       expect(bootstrapIndex).toBeGreaterThan(-1);
       expect(bootstrapIndex).toBeGreaterThan(openaiIndex);
@@ -211,16 +221,16 @@ describe('Character Plugin Ordering', () => {
       process.env.OLLAMA_API_ENDPOINT = 'http://localhost:11434';
       process.env.GOOGLE_GENERATIVE_AI_API_KEY = 'google-key';
 
-      const character = getElizaCharacter();
+      const plugins = getCharacterPlugins();
 
       // Text-only plugins should come first
-      const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
-      const openrouterIndex = character.plugins.indexOf(PLUGINS.OPENROUTER);
+      const anthropicIndex = plugins.indexOf(PLUGINS.ANTHROPIC);
+      const openrouterIndex = plugins.indexOf(PLUGINS.OPENROUTER);
 
       // Embedding plugins should come last
-      const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
-      const ollamaIndex = character.plugins.indexOf(PLUGINS.OLLAMA);
-      const googleIndex = character.plugins.indexOf(PLUGINS.GOOGLE_GENAI);
+      const openaiIndex = plugins.indexOf(PLUGINS.OPENAI);
+      const ollamaIndex = plugins.indexOf(PLUGINS.OLLAMA);
+      const googleIndex = plugins.indexOf(PLUGINS.GOOGLE_GENAI);
 
       expect(anthropicIndex).toBeGreaterThan(-1);
       expect(openrouterIndex).toBeGreaterThan(-1);
@@ -238,13 +248,13 @@ describe('Character Plugin Ordering', () => {
       process.env.DISCORD_API_TOKEN = 'discord-token';
       process.env.TELEGRAM_BOT_TOKEN = 'telegram-token';
 
-      const character = getElizaCharacter();
+      const plugins = getCharacterPlugins();
 
       // Platform plugins should be in the middle
-      const discordIndex = character.plugins.indexOf(PLUGINS.DISCORD);
-      const telegramIndex = character.plugins.indexOf(PLUGINS.TELEGRAM);
-      const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
-      const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
+      const discordIndex = plugins.indexOf(PLUGINS.DISCORD);
+      const telegramIndex = plugins.indexOf(PLUGINS.TELEGRAM);
+      const anthropicIndex = plugins.indexOf(PLUGINS.ANTHROPIC);
+      const openaiIndex = plugins.indexOf(PLUGINS.OPENAI);
 
       expect(discordIndex).toBeGreaterThan(anthropicIndex);
       expect(telegramIndex).toBeGreaterThan(anthropicIndex);
@@ -260,13 +270,13 @@ describe('Character Plugin Ordering', () => {
       process.env.TWITTER_ACCESS_TOKEN = 'twitter-token';
       process.env.TWITTER_ACCESS_TOKEN_SECRET = 'twitter-token-secret';
 
-      const character = getElizaCharacter();
+      const plugins = getCharacterPlugins();
 
-      expect(character.plugins).toContain(PLUGINS.TWITTER);
+      expect(plugins).toContain(PLUGINS.TWITTER);
 
-      const twitterIndex = character.plugins.indexOf(PLUGINS.TWITTER);
-      const anthropicIndex = character.plugins.indexOf(PLUGINS.ANTHROPIC);
-      const openaiIndex = character.plugins.indexOf(PLUGINS.OPENAI);
+      const twitterIndex = plugins.indexOf(PLUGINS.TWITTER);
+      const anthropicIndex = plugins.indexOf(PLUGINS.ANTHROPIC);
+      const openaiIndex = plugins.indexOf(PLUGINS.OPENAI);
 
       expect(twitterIndex).toBeGreaterThan(anthropicIndex);
       expect(twitterIndex).toBeGreaterThan(openaiIndex);
@@ -335,10 +345,10 @@ describe('Character Plugin Ordering', () => {
         GOOGLE_GENERATIVE_AI_API_KEY: 'key',
       });
 
-      const character = getElizaCharacter();
-      const uniquePlugins = [...new Set(character.plugins)];
+      const plugins = getCharacterPlugins();
+      const uniquePlugins = [...new Set(plugins)];
 
-      expect(character.plugins.length).toBe(uniquePlugins.length);
+      expect(plugins.length).toBe(uniquePlugins.length);
     });
 
     it('should maintain performance with large environment variable sets', () => {
@@ -361,10 +371,10 @@ describe('Character Plugin Ordering', () => {
       process.env.OPENAI_API_KEY = 'openai-key';
       process.env.DISCORD_API_TOKEN = 'discord-token';
 
-      const character1 = getElizaCharacter();
-      const character2 = getElizaCharacter();
+      const plugins1 = getCharacterPlugins();
+      const plugins2 = getCharacterPlugins();
 
-      expect(character1.plugins).toEqual(character2.plugins);
+      expect(plugins1).toEqual(plugins2);
     });
 
     it('should ensure SQL is always first and embedding plugins are always at the end', () => {
@@ -387,10 +397,10 @@ describe('Character Plugin Ordering', () => {
           process.env[key] = value;
         });
 
-        const character = getElizaCharacter();
+        const plugins = getCharacterPlugins();
 
         // SQL should always be first
-        expect(character.plugins[0]).toBe(PLUGINS.SQL);
+        expect(plugins[0]).toBe(PLUGINS.SQL);
 
         // Find embedding plugins
         const embeddingPlugins = [PLUGINS.OPENAI, PLUGINS.OLLAMA, PLUGINS.GOOGLE_GENAI];
@@ -399,11 +409,11 @@ describe('Character Plugin Ordering', () => {
 
         // Get indices of embedding and text-only plugins
         const embeddingIndices = embeddingPlugins
-          .map((plugin) => character.plugins.indexOf(plugin))
+          .map((plugin) => plugins.indexOf(plugin))
           .filter((index) => index !== -1);
 
         const textOnlyIndices = textOnlyPlugins
-          .map((plugin) => character.plugins.indexOf(plugin))
+          .map((plugin) => plugins.indexOf(plugin))
           .filter((index) => index !== -1);
 
         // All embedding plugins should come after all text-only plugins
@@ -421,14 +431,14 @@ describe('Character Plugin Ordering', () => {
       // This test ensures alignment between character plugin loading and setup installation
       setupTestEnvironment({ ANTHROPIC_API_KEY: 'test-key' });
 
-      const character = getElizaCharacter();
+      const plugins = getCharacterPlugins();
 
       // Verify that plugins expected to be installed are actually included
-      expect(character.plugins).toContain(PLUGINS.ANTHROPIC);
-      expect(character.plugins).toContain(PLUGINS.OLLAMA); // Should always be fallback
+      expect(plugins).toContain(PLUGINS.ANTHROPIC);
+      expect(plugins).toContain(PLUGINS.OLLAMA); // Should always be fallback
 
       // Verify ordering requirements from PR #5556
-      verifyPluginOrder(character.plugins, PLUGINS.ANTHROPIC, PLUGINS.OLLAMA);
+      verifyPluginOrder(plugins, PLUGINS.ANTHROPIC, PLUGINS.OLLAMA);
     });
 
     it('should ensure Ollama is always included regardless of primary AI provider', () => {
@@ -442,8 +452,8 @@ describe('Character Plugin Ordering', () => {
 
       testConfigs.forEach((config) => {
         setupTestEnvironment(config);
-        const character = getElizaCharacter();
-        expect(character.plugins).toContain(PLUGINS.OLLAMA);
+        const plugins = getCharacterPlugins();
+        expect(plugins).toContain(PLUGINS.OLLAMA);
       });
     });
   });

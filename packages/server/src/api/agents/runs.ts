@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID, Log } from '@elizaos/core';
+import type { ElizaOS, UUID, Log } from '@elizaos/core';
 import { validateUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -6,7 +6,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
 /**
  * Agent runs management
  */
-export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
+export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
 
   // List Agent Runs
@@ -16,7 +16,7 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
@@ -225,7 +225,7 @@ export function createAgentRunsRouter(agents: Map<UUID, IAgentRuntime>): express
       return sendError(res, 400, 'INVALID_ID', 'Invalid room ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }

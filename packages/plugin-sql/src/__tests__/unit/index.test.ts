@@ -22,9 +22,9 @@ describe('SQL Plugin', () => {
     mockRuntime = {
       agentId: '00000000-0000-0000-0000-000000000000',
       getSetting: mock(() => null),
-      registerDatabaseAdapter: mock(() => {}),
-      registerService: mock(() => {}),
-      getService: mock(() => {}),
+      registerDatabaseAdapter: mock(() => { }),
+      registerService: mock(() => { }),
+      getService: mock(() => { }),
       databaseAdapter: undefined,
     } as any;
   });
@@ -86,7 +86,7 @@ describe('SQL Plugin', () => {
       process.env.PGLITE_DATA_DIR = tempDir;
       mockRuntime.getSetting = mock((key) => {
         // Return temp directory for database paths to avoid directory creation issues
-        if (key === 'PGLITE_PATH' || key === 'DATABASE_PATH') {
+        if (key === 'PGLITE_DATA_DIR') {
           return tempDir;
         }
         return null;
@@ -108,10 +108,9 @@ describe('SQL Plugin', () => {
       expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
-    it('should prioritize PGLITE_PATH over DATABASE_PATH', async () => {
+    it('should use PGLITE_DATA_DIR when provided', async () => {
       mockRuntime.getSetting = mock((key) => {
-        if (key === 'PGLITE_PATH') return '/custom/pglite';
-        if (key === 'DATABASE_PATH') return '/custom/database';
+        if (key === 'PGLITE_DATA_DIR') return '/custom/pglite';
         return null;
       });
 
@@ -120,18 +119,15 @@ describe('SQL Plugin', () => {
       expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
-    it('should use DATABASE_PATH if PGLITE_PATH is not set', async () => {
-      mockRuntime.getSetting = mock((key) => {
-        if (key === 'DATABASE_PATH') return '/custom/database';
-        return null;
-      });
+    it('should use default path if PGLITE_DATA_DIR is not set', async () => {
+      mockRuntime.getSetting = mock(() => null);
 
       await plugin.init?.({}, mockRuntime);
 
       expect(mockRuntime.registerDatabaseAdapter).toHaveBeenCalled();
     });
 
-    it('should use default path if neither PGLITE_PATH nor DATABASE_PATH is set', async () => {
+    it('should prefer to use PGLITE_DATA_DIR when environment variable is set', async () => {
       // Set PGLITE_DATA_DIR to temp directory to avoid directory creation issues
       process.env.PGLITE_DATA_DIR = tempDir;
       mockRuntime.getSetting = mock(() => null);

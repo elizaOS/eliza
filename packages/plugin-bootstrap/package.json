@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.5.9-beta.1",
+  "version": "1.5.11-beta.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

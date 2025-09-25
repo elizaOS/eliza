@@ -37,6 +37,9 @@ export * from './settings';
 export * from './services';
 export * from './search';
 
+// Export ElizaOS
+export * from './elizaos';
+
 // Environment detection utilities
 export const isBrowser =
   typeof globalThis !== 'undefined' &&

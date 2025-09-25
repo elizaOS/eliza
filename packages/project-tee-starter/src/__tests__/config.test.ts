@@ -48,7 +48,7 @@ describe('Plugin Configuration', () => {
       // Test with invalid config should fail validation during init
       const invalidConfig = { TEE_MODE: 'INVALID_MODE' };
       await expect(teeStarterPlugin.init(invalidConfig, mockRuntime)).rejects.toThrow(
-        'Invalid plugin configuration'
+        'TEE_MODE must be one of: OFF, LOCAL, DOCKER, PRODUCTION'
       );
     } finally {
       // Restore original environment

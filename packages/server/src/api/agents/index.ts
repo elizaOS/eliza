@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { createAgentCrudRouter } from './crud';
@@ -14,33 +14,33 @@ import { createRoomManagementRouter } from '../memory/rooms';
  * Creates the agents router for agent lifecycle and management operations
  */
 export function agentsRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
 
   // Mount CRUD operations at root level
-  router.use('/', createAgentCrudRouter(agents, serverInstance));
+  router.use('/', createAgentCrudRouter(elizaOS, serverInstance));
 
   // Mount lifecycle operations
-  router.use('/', createAgentLifecycleRouter(agents, serverInstance));
+  router.use('/', createAgentLifecycleRouter(elizaOS, serverInstance));
 
   // Mount world management operations
-  router.use('/', createAgentWorldsRouter(agents));
+  router.use('/', createAgentWorldsRouter(elizaOS));
 
   // Mount panels operations
-  router.use('/', createAgentPanelsRouter(agents));
+  router.use('/', createAgentPanelsRouter(elizaOS));
 
   // Mount logs operations
-  router.use('/', createAgentLogsRouter(agents));
+  router.use('/', createAgentLogsRouter(elizaOS));
 
   // Mount runs operations
-  router.use('/', createAgentRunsRouter(agents));
+  router.use('/', createAgentRunsRouter(elizaOS));
 
   // Mount memory operations
-  router.use('/', createAgentMemoryRouter(agents));
+  router.use('/', createAgentMemoryRouter(elizaOS));
   // Mount room management (list rooms and room details) under agents
-  router.use('/', createRoomManagementRouter(agents));
+  router.use('/', createRoomManagementRouter(elizaOS));
 
   return router;
 }

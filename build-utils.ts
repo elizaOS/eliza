@@ -80,38 +80,38 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
   const nodeExternals =
     target === 'node' || target === 'bun'
       ? [
-          'node:*',
-          'fs',
-          'path',
-          'crypto',
-          'stream',
-          'buffer',
-          'util',
-          'events',
-          'url',
-          'http',
-          'https',
-          'os',
-          'child_process',
-          'worker_threads',
-          'cluster',
-          'zlib',
-          'querystring',
-          'string_decoder',
-          'tls',
-          'net',
-          'dns',
-          'dgram',
-          'readline',
-          'repl',
-          'vm',
-          'assert',
-          'console',
-          'process',
-          'timers',
-          'perf_hooks',
-          'async_hooks',
-        ]
+        'node:*',
+        'fs',
+        'path',
+        'crypto',
+        'stream',
+        'buffer',
+        'util',
+        'events',
+        'url',
+        'http',
+        'https',
+        'os',
+        'child_process',
+        'worker_threads',
+        'cluster',
+        'zlib',
+        'querystring',
+        'string_decoder',
+        'tls',
+        'net',
+        'dns',
+        'dgram',
+        'readline',
+        'repl',
+        'vm',
+        'assert',
+        'console',
+        'process',
+        'timers',
+        'perf_hooks',
+        'async_hooks',
+      ]
       : [];
 
   // ElizaOS workspace packages that should typically be external
@@ -231,7 +231,7 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 /**
  * Generate TypeScript declarations using tsc
  */
-export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = false) {
+export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = true) {
   const timer = getTimer();
   const { $ } = await import('bun');
 
@@ -243,18 +243,17 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
   console.log('Generating TypeScript declarations...');
   try {
     // Use incremental compilation for faster subsequent builds
-    await $`tsc --emitDeclarationOnly --incremental --project ${tsconfigPath}`;
+    await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
     console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
   } catch (error: unknown) {
     console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);
-    console.error("This is usually due to test files or type errors that don't affect the build.");
     console.error('Error details:', error instanceof Error ? error.message : String(error));
 
     if (throwOnError) {
+      // Propagate so calling build fails hard on TS errors
       throw error;
-    } else {
-      console.warn('Continuing build without TypeScript declarations...');
     }
+    console.warn('Continuing build without TypeScript declarations...');
   }
 }
 

@@ -3,6 +3,7 @@ import { createDevContext, performInitialBuild, performRebuild } from '../utils/
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
 import { findNextAvailablePort } from '@/src/utils';
+import { isPortFree } from '@/src/utils/port-handling';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { logger } from '@elizaos/core';
 import * as path from 'node:path';
@@ -64,10 +65,33 @@ async function startClientDevServer(cwd: string): Promise<void> {
         clientDir = installedClientPath;
       }
       // Fallback: if a local Vite config exists (standalone plugin demo UI), treat current dir as client
+      // BUT: prevent recursive execution when running elizaos dev from the same directory
       if (!clientDir) {
         const localViteTs = path.join(cwd, 'vite.config.ts');
         const localViteJs = path.join(cwd, 'vite.config.js');
         if (fs.existsSync(localViteTs) || fs.existsSync(localViteJs)) {
+          // Check if this would cause recursive execution
+          const packageJsonPath = path.join(cwd, 'package.json');
+          if (fs.existsSync(packageJsonPath)) {
+            try {
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+              const devScript = packageJson.scripts?.['dev:client'] || packageJson.scripts?.['dev'];
+
+              // If the dev script would run elizaos dev, skip to prevent recursion
+              if (devScript && devScript.includes('elizaos dev')) {
+                console.warn(
+                  'Detected potential recursive elizaos dev execution in local Vite config. Skipping client dev server to prevent infinite loop.'
+                );
+                return;
+              }
+            } catch (error) {
+              // If we can't parse package.json, err on the side of caution
+              console.warn(
+                'Could not parse package.json for recursive execution check. Skipping client dev server to be safe.'
+              );
+              return;
+            }
+          }
           clientDir = cwd;
         }
       }
@@ -218,6 +242,26 @@ async function stopClientDevServer(): Promise<void> {
 }
 
 /**
+ * Wait until a TCP port is free (unbound) on the given host or until timeout.
+ */
+async function waitForPortToBeFree(
+  port: number,
+  host: string,
+  timeoutMs: number = 15000
+): Promise<void> {
+  const start = Date.now();
+  // Quick short-circuit
+  if (await isPortFree(port, host)) return;
+
+  while (Date.now() - start < timeoutMs) {
+    // Small delay between checks
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    if (await isPortFree(port, host)) return;
+  }
+  // If still not free, proceed; the start step will re-check availability
+}
+
+/**
  * Get the client dev server port (from Vite config or default)
  */
 async function getClientPort(cwd: string): Promise<number | null> {
@@ -354,6 +398,11 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Function to rebuild and restart the server
   const rebuildAndRestart = async () => {
     try {
+      // Guard: if a rebuild is already pending, skip chaining restarts
+      if ((rebuildAndRestart as any)._inFlight) {
+        return;
+      }
+      (rebuildAndRestart as any)._inFlight = true;
       // Ensure the server is stopped first
       await serverManager.stop();
 
@@ -372,6 +421,9 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
       console.log('✓ Rebuild successful, restarting...');
 
+      // Ensure previous port is free before starting to avoid port bumping
+      await waitForPortToBeFree(serverPort, serverHost);
+
       // Start the server with the args
       await serverManager.start(cliArgs);
 
@@ -389,6 +441,8 @@ export async function startDevMode(options: DevOptions): Promise<void> {
         console.info('Attempting to restart server regardless of build failure...');
         await serverManager.start(cliArgs);
       }
+    } finally {
+      (rebuildAndRestart as any)._inFlight = false;
     }
   };
 

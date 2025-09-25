@@ -37,14 +37,37 @@ const run = createBuildRunner({
       // Prepare asset copy tasks
       const copyTasks: Promise<void>[] = [];
       const clientDistPath = join(process.cwd(), '../client/dist');
+      let resolvedClientDist: string | null = null;
 
       // Check if client assets exist and add to copy tasks
       if (existsSync(clientDistPath)) {
+        resolvedClientDist = clientDistPath;
+      } else {
+        // Fallback: try to resolve installed @elizaos/client dist from node_modules
+        try {
+          const clientPkgPath = require.resolve('@elizaos/client/package.json', {
+            paths: [process.cwd()],
+          });
+          const clientPkgDir = clientPkgPath.substring(0, clientPkgPath.lastIndexOf('/'));
+          const installedClientDist = join(clientPkgDir, 'dist');
+          if (existsSync(installedClientDist)) {
+            resolvedClientDist = installedClientDist;
+          }
+        } catch (_) {
+          // ignore resolution errors; no installed client
+        }
+      }
+
+      if (resolvedClientDist) {
         console.log('\nCopying client assets...');
         copyTasks.push(
-          copyAssets([{ from: clientDistPath, to: './dist/client' }]).then(() =>
+          copyAssets([{ from: resolvedClientDist, to: './dist/client' }]).then(() =>
             console.log('✓ Client assets copied')
           )
+        );
+      } else {
+        console.warn(
+          '⚠️  Client assets not found. The web UI will not be bundled into @elizaos/server.'
         );
       }
 

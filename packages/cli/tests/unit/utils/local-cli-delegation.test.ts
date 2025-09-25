@@ -1,21 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
-import { spawn } from 'node:child_process';
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import type { Subprocess } from 'bun';
 
 // Mock dependencies
-const mockSpawn = mock();
+const spawnSpy = spyOn(Bun, 'spawn');
 const mockExistsSync = mock();
 const mockLogger = {
   info: mock(),
   debug: mock(),
   error: mock(),
 };
-
-// Mock modules
-mock.module('node:child_process', () => ({
-  spawn: mockSpawn,
-}));
 
 mock.module('node:fs', () => ({
   existsSync: mockExistsSync,
@@ -32,33 +27,66 @@ import {
   getCliContext,
 } from '../../../src/utils/local-cli-delegation';
 
+// Helper to create a mock subprocess
+function createMockSubprocess(exitCode: number = 0, signal: NodeJS.Signals | null = null, error?: Error) {
+  const mockProcess = {
+    // Required properties
+    stdin: null as any,
+    stdout: null as any,
+    stderr: null as any,
+    stdio: [] as any,
+    exitCode: exitCode as number | null,
+    signalCode: signal,
+    pid: 12345,
+    killed: false,
+    ref() {},
+    unref() {},
+    // Simulate exited promise - resolves after a small delay to trigger process.exit
+    exited: error 
+      ? Promise.reject(error) 
+      : new Promise<number>((resolve) => {
+          setTimeout(() => {
+            resolve(exitCode);
+          }, 10);
+        }),
+    
+    // Kill method
+    kill: mock((sig?: NodeJS.Signals) => {
+      // Cannot modify readonly properties - they're already set correctly
+      return true;
+    }),
+  } as unknown as Subprocess;
+  
+  return mockProcess;
+}
+
 describe('Local CLI Delegation', () => {
   let originalEnv: NodeJS.ProcessEnv;
   let originalArgv: string[];
-  let originalCwd: string;
-  let mockProcess: any;
+  let originalCwd: typeof process.cwd;
+  let originalExit: typeof process.exit;
 
   beforeEach(() => {
-    // Save original environment
+    // Save original environment and process methods
     originalEnv = { ...process.env };
     originalArgv = [...process.argv];
-    originalCwd = process.cwd();
+    originalCwd = process.cwd;
+    originalExit = process.exit;
 
-    // Reset mocks
-    mockSpawn.mockReset();
+    // Reset all mocks
+    spawnSpy.mockReset();
     mockExistsSync.mockReset();
     mockLogger.info.mockReset();
     mockLogger.debug.mockReset();
     mockLogger.error.mockReset();
 
     // Mock process.cwd
-    jest.spyOn(process, 'cwd').mockReturnValue('/test/project');
+    process.cwd = mock(() => '/test/project');
 
-    // Mock process.exit
-    mockProcess = {
-      exit: mock(),
-    };
-    jest.spyOn(process, 'exit').mockImplementation(mockProcess.exit);
+    // Mock process.exit - just track calls, don't throw
+    process.exit = mock((code?: number) => {
+      // In tests, just track the call but don't actually exit
+    }) as any;
 
     // Clear test environment variables
     delete process.env.NODE_ENV;
@@ -67,15 +95,25 @@ describe('Local CLI Delegation', () => {
     delete process.env.VITEST;
     delete process.env.JEST_WORKER_ID;
     delete process.env.npm_lifecycle_event;
+    delete process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION;
+    delete process.env.CI;
+    delete process.env.GITHUB_ACTIONS;
+    delete process.env.GITLAB_CI;
   });
 
   afterEach(() => {
-    // Restore original environment
+    // Restore original environment completely
     process.env = originalEnv;
     process.argv = originalArgv;
+    process.cwd = originalCwd;
+    process.exit = originalExit;
 
-    // Restore mocks
-    jest.restoreAllMocks();
+    // Clear any module cache that might affect other tests
+    spawnSpy.mockClear();
+    mockExistsSync.mockClear();
+    mockLogger.info.mockClear();
+    mockLogger.debug.mockClear();
+    mockLogger.error.mockClear();
   });
 
   describe('Test Environment Detection', () => {
@@ -89,7 +127,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when ELIZA_TEST_MODE is true', async () => {
@@ -102,7 +140,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when BUN_TEST is true', async () => {
@@ -115,7 +153,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when VITEST is true', async () => {
@@ -128,7 +166,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when JEST_WORKER_ID is set', async () => {
@@ -141,7 +179,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when npm_lifecycle_event is test', async () => {
@@ -154,7 +192,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when --test is in process.argv', async () => {
@@ -167,7 +205,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when test is in process.argv', async () => {
@@ -180,7 +218,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when script path includes test', async () => {
@@ -193,7 +231,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when ELIZA_SKIP_LOCAL_CLI_DELEGATION is true', async () => {
@@ -206,7 +244,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when CI is true', async () => {
@@ -219,7 +257,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when GITHUB_ACTIONS is true', async () => {
@@ -232,7 +270,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should skip delegation when GITLAB_CI is true', async () => {
@@ -245,7 +283,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Running in test or CI environment, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -261,7 +299,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Update command detected, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
 
       process.argv = originalArgv;
     });
@@ -277,7 +315,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Update command detected, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
 
       process.argv = originalArgv;
     });
@@ -295,7 +333,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Version command detected, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
 
       process.argv = originalArgv;
     });
@@ -311,7 +349,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'Version command detected, skipping local CLI delegation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
 
       process.argv = originalArgv;
     });
@@ -334,7 +372,7 @@ describe('Local CLI Delegation', () => {
 
       expect(result).toBe(false);
       expect(mockLogger.debug).toHaveBeenCalled();
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should continue when no local CLI is found', async () => {
@@ -347,7 +385,7 @@ describe('Local CLI Delegation', () => {
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'No local CLI found, using global installation'
       );
-      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(spawnSpy).not.toHaveBeenCalled();
     });
 
     it('should delegate when local CLI is found and not running from it', async () => {
@@ -355,33 +393,29 @@ describe('Local CLI Delegation', () => {
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            // Simulate successful exit
-            setTimeout(() => handler(0, null), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
       const result = await tryDelegateToLocalCli();
-
+      
+      // Function returns true when delegation happens
       expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
+
       expect(mockLogger.info).toHaveBeenCalledWith('Using local @elizaos/cli installation');
-      expect(mockSpawn).toHaveBeenCalledWith(
-        process.execPath,
-        ['/test/project/node_modules/@elizaos/cli/dist/index.js', 'start', '--port', '3000'],
+      expect(spawnSpy).toHaveBeenCalledWith(
+        [process.execPath, '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start', '--port', '3000'],
         expect.objectContaining({
-          stdio: 'inherit',
+          stdio: ['inherit', 'inherit', 'inherit'],
           cwd: '/test/project',
           env: expect.objectContaining({
             FORCE_COLOR: '1',
           }),
         })
       );
+      expect(process.exit).toHaveBeenCalledWith(0);
     });
   });
 
@@ -391,26 +425,22 @@ describe('Local CLI Delegation', () => {
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(0, null), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      const spawnCall = mockSpawn.mock.calls[0];
-      const spawnOptions = spawnCall[2];
-      const env = spawnOptions.env;
+      const spawnCall = spawnSpy.mock.calls[0];
+      const spawnOptions = spawnCall?.[1]; // Bun.spawn takes [cmd, ...args] as first arg, options as second
+      const env = spawnOptions?.env;
 
-      expect(env.FORCE_COLOR).toBe('1');
-      expect(env.NODE_PATH).toContain('/test/project/node_modules');
-      expect(env.PATH).toContain('/test/project/node_modules/.bin');
+      expect(env?.FORCE_COLOR).toBe('1');
+      expect(env?.NODE_PATH).toContain('/test/project/node_modules');
+      expect(env?.PATH).toContain('/test/project/node_modules/.bin');
     });
 
     it('should preserve existing NODE_PATH and PATH', async () => {
@@ -420,27 +450,23 @@ describe('Local CLI Delegation', () => {
       mockExistsSync.mockReturnValue(true);
 
       // Mock successful spawn
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(0, null), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      const spawnCall = mockSpawn.mock.calls[0];
-      const spawnOptions = spawnCall[2];
-      const env = spawnOptions.env;
+      const spawnCall = spawnSpy.mock.calls[0];
+      const spawnOptions = spawnCall?.[1]; // Bun.spawn takes [cmd, ...args] as first arg, options as second
+      const env = spawnOptions?.env;
 
-      expect(env.NODE_PATH).toContain('/test/project/node_modules');
-      expect(env.NODE_PATH).toContain('/existing/node/path');
-      expect(env.PATH).toContain('/test/project/node_modules/.bin');
-      expect(env.PATH).toContain('/existing/bin/path');
+      expect(env?.NODE_PATH).toContain('/test/project/node_modules');
+      expect(env?.NODE_PATH).toContain('/existing/node/path');
+      expect(env?.PATH).toContain('/test/project/node_modules/.bin');
+      expect(env?.PATH).toContain('/existing/bin/path');
     });
   });
 
@@ -450,7 +476,7 @@ describe('Local CLI Delegation', () => {
       mockExistsSync.mockReturnValue(true);
 
       const testError = new Error('Spawn failed');
-      mockSpawn.mockImplementation(() => {
+      spawnSpy.mockImplementation(() => {
         throw testError;
       });
 
@@ -459,7 +485,7 @@ describe('Local CLI Delegation', () => {
       expect(result).toBe(false);
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Error during local CLI delegation:',
-        testError
+        testError.message
       );
       expect(mockLogger.info).toHaveBeenCalledWith('Falling back to global CLI installation');
     });
@@ -469,16 +495,8 @@ describe('Local CLI Delegation', () => {
       mockExistsSync.mockReturnValue(true);
 
       const testError = new Error('Process error');
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'error') {
-            setTimeout(() => handler(testError), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0, null, testError);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
       try {
         await tryDelegateToLocalCli();
@@ -486,7 +504,7 @@ describe('Local CLI Delegation', () => {
         expect(error).toBe(testError);
       }
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Failed to start local CLI: Process error');
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to start local CLI:', 'Process error');
     });
   });
 
@@ -531,80 +549,64 @@ describe('Local CLI Delegation', () => {
       process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(42, null), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(42);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(42);
+      expect(process.exit).toHaveBeenCalledWith(42);
     });
 
     it('should exit with appropriate code when killed by signal', async () => {
       process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(null, 'SIGTERM'), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0, 'SIGTERM');
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(143);
+      expect(process.exit).toHaveBeenCalledWith(143);
     });
 
     it('should exit with 130 for SIGINT', async () => {
       process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(null, 'SIGINT'), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0, 'SIGINT');
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(130);
+      expect(process.exit).toHaveBeenCalledWith(130);
     });
 
-    it('should exit with 1 for unknown signal', async () => {
+    it('should exit with 128 for unknown signal', async () => {
       process.argv = ['bun', '/usr/bin/elizaos', 'start'];
       mockExistsSync.mockReturnValue(true);
 
-      const mockChildProcess = {
-        on: mock((event: string, handler: Function) => {
-          if (event === 'exit') {
-            setTimeout(() => handler(null, 'SIGUSR1'), 10);
-          }
-        }),
-        kill: mock(),
-        killed: false,
-      };
-      mockSpawn.mockReturnValue(mockChildProcess);
+      const mockChildProcess = createMockSubprocess(0, 'SIGUSR1' as NodeJS.Signals);
+      spawnSpy.mockReturnValue(mockChildProcess);
 
-      await tryDelegateToLocalCli();
+      const result = await tryDelegateToLocalCli();
+      expect(result).toBe(true);
+      
+      // Wait for the async process.exit to be called
+      await new Promise(resolve => setTimeout(resolve, 20));
 
-      expect(mockProcess.exit).toHaveBeenCalledWith(1);
+      expect(process.exit).toHaveBeenCalledWith(128);
     });
   });
 });

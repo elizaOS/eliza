@@ -7,11 +7,10 @@ import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { Command } from 'commander';
+import dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { startAgents } from './actions/server-start';
 import { StartOptions } from './types';
-import { loadEnvConfig } from './utils/config-utils';
 
 export const start = new Command()
   .name('start')
@@ -25,7 +24,10 @@ export const start = new Command()
   .action(async (options: StartOptions & { character?: string[] }) => {
     try {
       // Load env config first before any character loading
-      await loadEnvConfig();
+      const envPath = path.join(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+      }
 
       // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
       await ensureElizaOSCli();
@@ -45,6 +47,11 @@ export const start = new Command()
         process.env.PATH = `${localBinPath}${path.delimiter}${process.env.PATH}`;
       } else {
         process.env.PATH = localBinPath;
+      }
+
+      // Force Node runtime for PGlite when running the server via CLI
+      if (!process.env.PGLITE_WASM_MODE) {
+        process.env.PGLITE_WASM_MODE = 'node';
       }
 
       // Build the project first (unless it's a monorepo)
@@ -127,17 +134,50 @@ export const start = new Command()
         }
       }
 
-      await startAgents({ ...options, characters, projectAgents });
+      // Use AgentServer from server package
+      const moduleLoader = getModuleLoader();
+      const { AgentServer } = await moduleLoader.load('@elizaos/server');
+      
+      const server = new AgentServer();
+      
+      // Initialize server with database configuration
+      await server.initialize({
+        dataDir: process.env.PGLITE_DATA_DIR,
+        postgresUrl: process.env.POSTGRES_URL,
+      });
+      
+      // Start HTTP server
+      await server.start(options.port || 3000);
+      
+      // Handle project agents with their init functions
+      if (projectAgents && projectAgents.length > 0) {
+        // Batch start all project agents
+        const charactersToStart = projectAgents.map(pa => pa.character);
+        const runtimes = await server.startAgents(charactersToStart);
+        
+        // Run init functions for each agent if provided
+        for (let i = 0; i < projectAgents.length; i++) {
+          const init = projectAgents[i]?.init;
+          const runtime = runtimes[i];
+          if (typeof init === 'function' && runtime) {
+            await init(runtime);
+          }
+        }
+        
+        logger.info(`Started ${runtimes.length} project agents`);
+      }
+      // Handle standalone characters from CLI
+      else if (characters && characters.length > 0) {
+        // Batch start all characters
+        const runtimes = await server.startAgents(characters);
+        logger.info(`Started ${runtimes.length} agents`);
+      }
+      // If no characters or agents specified, server is ready but no agents started
     } catch (e: any) {
       handleError(e);
       process.exit(1);
     }
   });
 
-// Re-export for backward compatibility
-export * from './actions/agent-start';
-export * from './actions/server-start';
+// Export types only
 export * from './types';
-export * from './utils/config-utils';
-export * from './utils/dependency-resolver';
-export * from './utils/plugin-utils';

@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import { logger, ModelType, validateUuid } from '@elizaos/core';
 import express from 'express';
 import { cleanupUploadedFile } from '../shared/file-utils.js';
@@ -22,7 +22,7 @@ interface AudioRequest extends express.Request {
 /**
  * Audio processing functionality - upload and transcription
  */
-export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): express.Router {
+export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
 
   // Apply rate limiting to all audio processing routes
@@ -43,7 +43,7 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       cleanupUploadedFile(audioFile);
@@ -105,7 +105,7 @@ export function createAudioProcessingRouter(agents: Map<UUID, IAgentRuntime>): e
       return sendError(res, 400, 'INVALID_REQUEST', 'No audio file provided');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
 
     if (!runtime) {
       cleanupUploadedFile(audioFile);
