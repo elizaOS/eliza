@@ -465,9 +465,7 @@ const messageReceivedHandler = async ({
         };
 
         await runtime.createMemory(cancelMemory, 'messages');
-        logger.debug('[Bootstrap] Saved cancel response to memory', {
-          memoryId: cancelMemory.id,
-        });
+        logger.debug('[Bootstrap] Saved cancel response to memory', cancelMemory.id);
       }
 
       await runtime.emitEvent(EventType.RUN_ENDED, {
