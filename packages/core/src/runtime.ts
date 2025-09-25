@@ -125,7 +125,7 @@ export class AgentRuntime implements IAgentRuntime {
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
   public initPromise: Promise<void>;
-  private initResolver: ((value?: unknown) => void) | undefined;
+  private initResolver: ((value?: void | PromiseLike<void>) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
