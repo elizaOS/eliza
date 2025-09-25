@@ -97,7 +97,6 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  private isInitialized = false;
   events: PluginEvents = {};
   stateCache = new Map<
     UUID,
@@ -123,11 +122,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   public logger;
   private settings: RuntimeSettings;
-  private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
-  private initResolver: ((value?: unknown) => void) | undefined;
+  private embeddingModelPromise: Promise<void>;
+  private embeddingModelResolver: (() => void) | undefined;
+  private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -158,8 +157,9 @@ export class AgentRuntime implements IAgentRuntime {
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
 
-    this.initPromise = new Promise((resolve) => {
-      this.initResolver = resolve;
+    // Initialize the embedding model promise
+    this.embeddingModelPromise = new Promise((resolve) => {
+      this.embeddingModelResolver = resolve;
     });
 
     // Create the logger with namespace only - level is handled globally from env
@@ -236,13 +236,13 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(`*** registerPlugin: ${errorMsg}`);
     }
 
-    // Check if a plugin with the same name is already registered.
+    // Make registerPlugin idempotent - check if already registered
     const existingPlugin = this.plugins.find((p) => p.name === plugin.name);
     if (existingPlugin) {
-      this.logger.warn(
+      this.logger.debug(
         `${this.character.name}(${this.agentId}) - Plugin ${plugin.name} is already registered. Skipping re-registration.`
       );
-      return; // Do not proceed further with other registration steps
+      return; // Idempotent - safe to call multiple times
     }
 
     // Add the plugin to the runtime's list of active plugins
@@ -324,11 +324,7 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
-        }
+        await this.registerService(service);
       }
     }
   }
@@ -348,10 +344,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      this.logger.warn('Agent already initialized');
-      return;
-    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
@@ -374,7 +366,10 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     try {
-      await this.adapter.init();
+      // Make adapter init idempotent - check if already initialized
+      if (!await this.adapter.isReady()) {
+        await this.adapter.init();
+      }
 
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
@@ -443,17 +438,18 @@ export class AgentRuntime implements IAgentRuntime {
     const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
     if (!embeddingModel) {
       this.logger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
+        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Resolving embedding promise anyway.`
       );
     } else {
       await this.ensureEmbeddingDimension();
     }
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-    this.isInitialized = true;
-    if (this.initResolver) {
-      this.initResolver(); // resolve initPromise
+
+    // Resolve embedding promise after embedding system is fully ready (or confirmed absent)
+    // This allows all waiting services to proceed
+    if (this.embeddingModelResolver) {
+      console.log(`Resolving embedding promise - embedding system is ready`);
+      this.embeddingModelResolver();
+      this.embeddingModelResolver = undefined;
     }
   }
 
@@ -469,12 +465,19 @@ export class AgentRuntime implements IAgentRuntime {
 
     for (const p of pluginsWithSchemas) {
       if (p.schema) {
+        // Make runPluginMigrations idempotent - check if already migrated
+        if (this.migratedPlugins.has(p.name)) {
+          this.logger.debug(`Plugin ${p.name} migrations already run, skipping`);
+          continue;
+        }
+
         this.logger.info(`Running migrations for plugin: ${p.name}`);
         try {
           // You might need a more generic way to run migrations if they are not all Drizzle-based
           // For now, assuming a function on the adapter or a utility function
           if (this.adapter && 'runMigrations' in this.adapter) {
             await (this.adapter as any).runMigrations(p.schema, p.name);
+            this.migratedPlugins.add(p.name); // Mark as migrated
             this.logger.info(`Successfully migrated plugin: ${p.name}`);
           }
         } catch (error) {
@@ -1654,6 +1657,12 @@ export class AgentRuntime implements IAgentRuntime {
     );
 
     try {
+      // ALL services wait for embedding model to be registered by ANY plugin
+      // This handles cross-plugin dependencies regardless of loading order
+      this.logger.debug(`Service ${serviceType} waiting for embedding model...`);
+      await this.embeddingModelPromise;
+      this.logger.debug(`Service ${serviceType} proceeding - embedding model is available`);
+
       const serviceInstance = await serviceDef.start(this);
 
       // Initialize arrays if they don't exist
@@ -1747,6 +1756,14 @@ export class AgentRuntime implements IAgentRuntime {
       }
       return (a.registrationOrder || 0) - (b.registrationOrder || 0);
     });
+
+    // Resolve embedding promise when TEXT_EMBEDDING model is registered
+    // This allows services to start as soon as the model is available
+    if (modelKey === ModelType.TEXT_EMBEDDING && this.embeddingModelResolver) {
+      this.logger.debug(`TEXT_EMBEDDING model registered by ${provider} - resolving embedding promise`);
+      this.embeddingModelResolver();
+      this.embeddingModelResolver = undefined; // Clear the resolver
+    }
   }
 
   getModel(
