@@ -124,8 +124,8 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  private embeddingModelPromise: Promise<void>;
-  private embeddingModelResolver: (() => void) | undefined;
+  public initPromise;
+  private initResolver: ((value?: unknown) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
@@ -157,9 +157,8 @@ export class AgentRuntime implements IAgentRuntime {
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
 
-    // Initialize the embedding model promise
-    this.embeddingModelPromise = new Promise((resolve) => {
-      this.embeddingModelResolver = resolve;
+    this.initPromise = new Promise((resolve) => {
+      this.initResolver = resolve;
     });
 
     // Create the logger with namespace only - level is handled globally from env
@@ -236,13 +235,13 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error(`*** registerPlugin: ${errorMsg}`);
     }
 
-    // Make registerPlugin idempotent - check if already registered
+    // Check if a plugin with the same name is already registered.
     const existingPlugin = this.plugins.find((p) => p.name === plugin.name);
     if (existingPlugin) {
-      this.logger.debug(
+      this.logger.warn(
         `${this.character.name}(${this.agentId}) - Plugin ${plugin.name} is already registered. Skipping re-registration.`
       );
-      return; // Idempotent - safe to call multiple times
+      return; // Do not proceed further with other registration steps
     }
 
     // Add the plugin to the runtime's list of active plugins
@@ -324,7 +323,7 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        await this.registerService(service);
+        this.registerService(service); // Fire and forget - don't block plugin registration
       }
     }
   }
@@ -438,10 +437,16 @@ export class AgentRuntime implements IAgentRuntime {
     const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
     if (!embeddingModel) {
       this.logger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Resolving embedding promise anyway.`
+        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
       );
     } else {
       await this.ensureEmbeddingDimension();
+    }
+    
+    // Resolve init promise to allow services to start
+    if (this.initResolver) {
+      this.initResolver();
+      this.initResolver = undefined;
     }
   }
 
@@ -1636,6 +1641,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async registerService(serviceDef: typeof Service): Promise<void> {
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! [registerService] Registering service', serviceDef.name);
     const serviceType = serviceDef.serviceType as ServiceTypeName;
     if (!serviceType) {
       this.logger.warn(
@@ -1649,11 +1655,11 @@ export class AgentRuntime implements IAgentRuntime {
     );
 
     try {
-      // ALL services wait for embedding model to be registered by ANY plugin
-      // This handles cross-plugin dependencies regardless of loading order
-      this.logger.debug(`Service ${serviceType} waiting for embedding model...`);
-      await this.embeddingModelPromise;
-      this.logger.debug(`Service ${serviceType} proceeding - embedding model is available`);
+      // ALL services wait for initialization to complete
+      // This ensures services start after all plugins are registered and runtime is ready
+      console.log(`Service ${serviceType} waiting for initialization...`);
+      await this.initPromise;
+      console.log(`Service ${serviceType} proceeding - initialization complete`);
 
       const serviceInstance = await serviceDef.start(this);
 
@@ -1730,6 +1736,7 @@ export class AgentRuntime implements IAgentRuntime {
     provider: string,
     priority?: number
   ) {
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! [registerModel] Registering model', modelType, handler, provider, priority);
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     if (!this.models.has(modelKey)) {
       this.models.set(modelKey, []);
@@ -1748,14 +1755,6 @@ export class AgentRuntime implements IAgentRuntime {
       }
       return (a.registrationOrder || 0) - (b.registrationOrder || 0);
     });
-
-    // Resolve embedding promise when TEXT_EMBEDDING model is registered
-    // This allows services to start as soon as the model is available
-    if (modelKey === ModelType.TEXT_EMBEDDING && this.embeddingModelResolver) {
-      this.logger.debug(`TEXT_EMBEDDING model registered by ${provider} - resolving embedding promise`);
-      this.embeddingModelResolver();
-      this.embeddingModelResolver = undefined; // Clear the resolver
-    }
   }
 
   getModel(
