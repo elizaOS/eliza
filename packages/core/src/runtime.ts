@@ -323,7 +323,9 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        this.registerService(service); // Fire and forget - don't block plugin registration
+        this.registerService(service).catch(error => {
+          this.logger.error(`Service registration failed for ${service.serviceType}:`, error);
+        });
       }
     }
   }
