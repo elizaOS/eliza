@@ -97,7 +97,6 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  private isInitialized = false;
   events: PluginEvents = {};
   stateCache = new Map<
     UUID,
@@ -123,11 +122,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   public logger;
   private settings: RuntimeSettings;
-  private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
-  private initResolver: ((value?: unknown) => void) | undefined;
+  public initPromise: Promise<void>;
+  private initResolver: ((value?: void | PromiseLike<void>) => void) | undefined;
+  private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -324,11 +323,9 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
-        }
+        this.registerService(service).catch(error => {
+          this.logger.error(`Service registration failed for ${service.serviceType}:`, error);
+        });
       }
     }
   }
@@ -348,10 +345,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      this.logger.warn('Agent already initialized');
-      return;
-    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
@@ -374,7 +367,10 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     try {
-      await this.adapter.init();
+      // Make adapter init idempotent - check if already initialized
+      if (!await this.adapter.isReady()) {
+        await this.adapter.init();
+      }
 
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
@@ -448,12 +444,11 @@ export class AgentRuntime implements IAgentRuntime {
     } else {
       await this.ensureEmbeddingDimension();
     }
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-    this.isInitialized = true;
+    
+    // Resolve init promise to allow services to start
     if (this.initResolver) {
-      this.initResolver(); // resolve initPromise
+      this.initResolver();
+      this.initResolver = undefined;
     }
   }
 
@@ -469,12 +464,19 @@ export class AgentRuntime implements IAgentRuntime {
 
     for (const p of pluginsWithSchemas) {
       if (p.schema) {
+        // Make runPluginMigrations idempotent - check if already migrated
+        if (this.migratedPlugins.has(p.name)) {
+          this.logger.debug(`Plugin ${p.name} migrations already run, skipping`);
+          continue;
+        }
+
         this.logger.info(`Running migrations for plugin: ${p.name}`);
         try {
           // You might need a more generic way to run migrations if they are not all Drizzle-based
           // For now, assuming a function on the adapter or a utility function
           if (this.adapter && 'runMigrations' in this.adapter) {
             await (this.adapter as any).runMigrations(p.schema, p.name);
+            this.migratedPlugins.add(p.name); // Mark as migrated
             this.logger.info(`Successfully migrated plugin: ${p.name}`);
           }
         } catch (error) {
@@ -1654,6 +1656,12 @@ export class AgentRuntime implements IAgentRuntime {
     );
 
     try {
+      // ALL services wait for initialization to complete
+      // This ensures services start after all plugins are registered and runtime is ready
+      this.logger.debug(`Service ${serviceType} waiting for initialization...`);
+      await this.initPromise;
+      this.logger.debug(`Service ${serviceType} proceeding - initialization complete`);
+
       const serviceInstance = await serviceDef.start(this);
 
       // Initialize arrays if they don't exist
