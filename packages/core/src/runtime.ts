@@ -443,14 +443,6 @@ export class AgentRuntime implements IAgentRuntime {
     } else {
       await this.ensureEmbeddingDimension();
     }
-
-    // Resolve embedding promise after embedding system is fully ready (or confirmed absent)
-    // This allows all waiting services to proceed
-    if (this.embeddingModelResolver) {
-      console.log(`Resolving embedding promise - embedding system is ready`);
-      this.embeddingModelResolver();
-      this.embeddingModelResolver = undefined;
-    }
   }
 
   async runPluginMigrations(): Promise<void> {
