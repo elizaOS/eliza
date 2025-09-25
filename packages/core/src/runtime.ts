@@ -124,7 +124,7 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
+  public initPromise: Promise<void>;
   private initResolver: ((value?: unknown) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
@@ -1641,7 +1641,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async registerService(serviceDef: typeof Service): Promise<void> {
-    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! [registerService] Registering service', serviceDef.name);
     const serviceType = serviceDef.serviceType as ServiceTypeName;
     if (!serviceType) {
       this.logger.warn(
@@ -1736,7 +1735,6 @@ export class AgentRuntime implements IAgentRuntime {
     provider: string,
     priority?: number
   ) {
-    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! [registerModel] Registering model', modelType, handler, provider, priority);
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     if (!this.models.has(modelKey)) {
       this.models.set(modelKey, []);
