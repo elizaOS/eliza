@@ -1656,9 +1656,9 @@ export class AgentRuntime implements IAgentRuntime {
     try {
       // ALL services wait for initialization to complete
       // This ensures services start after all plugins are registered and runtime is ready
-      console.log(`Service ${serviceType} waiting for initialization...`);
+      this.logger.debug(`Service ${serviceType} waiting for initialization...`);
       await this.initPromise;
-      console.log(`Service ${serviceType} proceeding - initialization complete`);
+      this.logger.debug(`Service ${serviceType} proceeding - initialization complete`);
 
       const serviceInstance = await serviceDef.start(this);
 
