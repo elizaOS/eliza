@@ -97,7 +97,6 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  private isInitialized = false;
   events: PluginEvents = {};
   stateCache = new Map<
     UUID,
@@ -123,11 +122,8 @@ export class AgentRuntime implements IAgentRuntime {
 
   public logger;
   private settings: RuntimeSettings;
-  private servicesInitQueue = new Set<typeof Service>();
   private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
-  private initResolver: ((value?: unknown) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -140,6 +136,8 @@ export class AgentRuntime implements IAgentRuntime {
     }>;
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
+  private embeddingModelPromise: Promise<void> | null = null; // Promise for embedding model readiness
+  private completedMigrations = new Set<string>(); // Track completed plugin migrations
 
   constructor(opts: {
     conversationLength?: number;
@@ -157,10 +155,6 @@ export class AgentRuntime implements IAgentRuntime {
       opts?.agentId ??
       stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
     this.character = opts.character as Character;
-
-    this.initPromise = new Promise((resolve) => {
-      this.initResolver = resolve;
-    });
 
     // Create the logger with namespace only - level is handled globally from env
     this.logger = createLogger({
@@ -324,11 +318,8 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
-        }
+        // Register services immediately - they will wait for embedding model internally
+        await this.registerService(service);
       }
     }
   }
@@ -348,10 +339,6 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      this.logger.warn('Agent already initialized');
-      return;
-    }
     const pluginRegistrationPromises: Promise<void>[] = [];
 
     // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
@@ -374,7 +361,10 @@ export class AgentRuntime implements IAgentRuntime {
       );
     }
     try {
-      await this.adapter.init();
+      // Only initialize adapter if it's not already ready
+      if (!(await this.adapter.isReady())) {
+        await this.adapter.init();
+      }
 
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
@@ -440,21 +430,13 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.error(`Failed to add agent as participant: ${errorMsg}`);
       throw error;
     }
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
+    // Start embedding model readiness check in background
+    // Services will wait for this automatically when they register
+    this.ensureEmbeddingModelReady().catch((error) => {
       this.logger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
+        `[AgentRuntime][${this.character.name}] Failed to ensure embedding model readiness: ${error.message}`
       );
-    } else {
-      await this.ensureEmbeddingDimension();
-    }
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-    this.isInitialized = true;
-    if (this.initResolver) {
-      this.initResolver(); // resolve initPromise
-    }
+    });
   }
 
   async runPluginMigrations(): Promise<void> {
@@ -468,13 +450,14 @@ export class AgentRuntime implements IAgentRuntime {
     this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to migrate.`);
 
     for (const p of pluginsWithSchemas) {
-      if (p.schema) {
+      if (p.schema && !this.completedMigrations.has(p.name)) {
         this.logger.info(`Running migrations for plugin: ${p.name}`);
         try {
           // You might need a more generic way to run migrations if they are not all Drizzle-based
           // For now, assuming a function on the adapter or a utility function
           if (this.adapter && 'runMigrations' in this.adapter) {
             await (this.adapter as any).runMigrations(p.schema, p.name);
+            this.completedMigrations.add(p.name); // Mark as completed
             this.logger.info(`Successfully migrated plugin: ${p.name}`);
           }
         } catch (error) {
@@ -484,6 +467,8 @@ export class AgentRuntime implements IAgentRuntime {
           );
           // Decide if you want to throw or continue
         }
+      } else if (this.completedMigrations.has(p.name)) {
+        this.logger.debug(`Plugin ${p.name} migrations already completed, skipping.`);
       }
     }
   }
@@ -1648,12 +1633,23 @@ export class AgentRuntime implements IAgentRuntime {
       );
       return;
     }
+
+    // Skip if already registered
+    if (this.services.has(serviceType) && this.services.get(serviceType)!.length > 0) {
+      this.logger.debug(`Service ${serviceType} already registered, skipping`);
+      return;
+    }
+
     this.logger.debug(
       `${this.character.name}(${this.agentId}) - Registering service:`,
       serviceType
     );
 
     try {
+      // Wait for embedding model to be ready before starting services
+      // This ensures services that depend on embeddings can function properly
+      await this.ensureEmbeddingModelReady();
+
       const serviceInstance = await serviceDef.start(this);
 
       // Initialize arrays if they don't exist
@@ -2001,6 +1997,43 @@ export class AgentRuntime implements IAgentRuntime {
         // throw error; // Re-throw if necessary
       }
     }
+  }
+
+  /**
+   * Ensures the embedding model is ready and dimensions are set up.
+   * This creates a promise that resolves when embedding model is available.
+   */
+  private async ensureEmbeddingModelReady(): Promise<void> {
+    if (this.embeddingModelPromise) {
+      return this.embeddingModelPromise;
+    }
+
+    this.embeddingModelPromise = (async () => {
+      this.logger.debug(`[AgentRuntime][${this.character.name}] Ensuring embedding model is ready`);
+
+      // Wait for embedding model to be available
+      let model = this.getModel(ModelType.TEXT_EMBEDDING);
+      let attempts = 0;
+      const maxAttempts = 50; // Wait up to 5 seconds (50 * 100ms)
+
+      while (!model && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        model = this.getModel(ModelType.TEXT_EMBEDDING);
+        attempts++;
+      }
+
+      if (!model) {
+        this.logger.warn(
+          `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered after waiting. Services may not function properly.`
+        );
+        return;
+      }
+
+      await this.ensureEmbeddingDimension();
+      this.logger.debug(`[AgentRuntime][${this.character.name}] Embedding model is ready`);
+    })();
+
+    return this.embeddingModelPromise;
   }
 
   async ensureEmbeddingDimension() {
