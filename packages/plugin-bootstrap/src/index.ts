@@ -1715,10 +1715,7 @@ const events: PluginEvents = {
 
   [EventType.REACTION_RECEIVED]: [
     async (payload: MessagePayload) => {
-      await reactionReceivedHandler({
-        runtime: payload.runtime,
-        message: payload.message,
-      });
+      await reactionReceivedHandler(payload);
     },
   ],
 
@@ -1736,10 +1733,7 @@ const events: PluginEvents = {
 
   [EventType.MESSAGE_DELETED]: [
     async (payload: MessagePayload) => {
-      await messageDeletedHandler({
-        runtime: payload.runtime,
-        message: payload.message,
-      });
+      await messageDeletedHandler(payload);
     },
   ],
 
