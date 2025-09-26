@@ -252,7 +252,7 @@ const stem = (word: string): string => {
     w[4] === 117 && // u
     w[5] === 110 // n
   )
-    // commun
+    // common
     r1 = 6;
   else {
     // > R1 is the region after the first non-vowel following a vowel,
@@ -845,17 +845,17 @@ class Tokenizer {
       .map((token) => (this.stemming ? this.stemWord(token) : token));
     const stats: TokenizationStats = includeStats
       ? {
-          originalWordCount: originalWords.length,
-          stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
-          stemmedWords: this.stemming ? tokens.length : 0,
-          processingTimeMs: Date.now() - startTime,
-        }
+        originalWordCount: originalWords.length,
+        stopWordsRemoved: originalWords.length - tokens.length, // This might be incorrect if stemming changes token count
+        stemmedWords: this.stemming ? tokens.length : 0,
+        processingTimeMs: Date.now() - startTime,
+      }
       : {
-          originalWordCount: 0,
-          stopWordsRemoved: 0,
-          stemmedWords: 0,
-          processingTimeMs: 0,
-        };
+        originalWordCount: 0,
+        stopWordsRemoved: 0,
+        stemmedWords: 0,
+        processingTimeMs: 0,
+      };
     return { tokens, stats };
   }
 
@@ -1229,9 +1229,9 @@ export class BM25 {
         const denominator =
           tf +
           this.termFrequencySaturation *
-            (1 -
-              this.lengthNormalizationFactor +
-              (this.lengthNormalizationFactor * docLength) / this.averageDocLength);
+          (1 -
+            this.lengthNormalizationFactor +
+            (this.lengthNormalizationFactor * docLength) / this.averageDocLength);
 
         // Add the weighted score (IDF * normalized TF) for this term to the document's total score
         scores[docIndex] += idf * (numerator / denominator);
@@ -1357,9 +1357,9 @@ export class BM25 {
       const denominator =
         tf +
         this.termFrequencySaturation *
-          (1 -
-            this.lengthNormalizationFactor +
-            (this.lengthNormalizationFactor * docLength) / this.averageDocLength);
+        (1 -
+          this.lengthNormalizationFactor +
+          (this.lengthNormalizationFactor * docLength) / this.averageDocLength);
 
       // Add IDF * normalized TF to the total phrase score
       return currentScore + idf * (numerator / denominator);
