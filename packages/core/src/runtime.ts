@@ -2085,27 +2085,33 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error('Agent name is required');
     }
 
-    const agents = await this.adapter.getAgents();
-    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+    try {
+      const agents = await this.adapter.getAgents();
+      const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
 
-    if (existingAgentId) {
-      // Update the agent on restart with the latest character configuration
-      const updatedAgent = {
-        ...agent,
-        id: existingAgentId,
-        updatedAt: Date.now(),
-      };
+      if (existingAgentId) {
+        // Update the agent on restart with the latest character configuration
+        const updatedAgent = {
+          ...agent,
+          id: existingAgentId,
+          updatedAt: Date.now(),
+        };
 
-      await this.adapter.updateAgent(existingAgentId, updatedAgent);
-      const existingAgent = await this.adapter.getAgent(existingAgentId);
+        await this.adapter.updateAgent(existingAgentId, updatedAgent);
+        const existingAgent = await this.adapter.getAgent(existingAgentId);
 
-      if (!existingAgent) {
-        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+        if (!existingAgent) {
+          throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+        }
+
+        this.logger.debug(`Updated existing agent ${agent.name} on restart`);
+        return existingAgent;
       }
 
-      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
-      return existingAgent;
+    } catch (error: any) {
+      this.logger.error('Failed to ensure agent exists:', error);
     }
+    
 
     // Create new agent if it doesn't exist
     const newAgent: Agent = {
