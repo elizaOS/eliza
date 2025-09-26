@@ -1,5 +1,4 @@
-import type { Metadata } from './primitives';
-import { Service } from './service';
+import { Service, type Metadata } from '@elizaos/core';
 import type { TokenBalance } from './token';
 
 /**

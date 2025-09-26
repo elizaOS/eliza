@@ -17,12 +17,15 @@ import {
   ModelType,
   MODEL_SETTINGS,
   type Content,
+  type ControlMessage,
   type MemoryMetadata,
   type Character,
   type Action,
   type Evaluator,
   type Provider,
   type HandlerCallback,
+  type HandlerOptions,
+  type ActionContext,
   type IDatabaseAdapter,
   type Entity,
   type Room,
@@ -33,6 +36,7 @@ import {
   type ModelResultMap,
   type ModelTypeName,
   type Plugin,
+  type PluginEvents,
   type Route,
   type UUID,
   type Service,
@@ -50,7 +54,6 @@ import {
   type Component,
   IAgentRuntime,
   type ActionResult,
-  type ActionContext,
 } from './types';
 
 import { BM25 } from './search';
@@ -95,7 +98,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   private isInitialized = false;
-  events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
+  events: PluginEvents = {};
   stateCache = new Map<
     UUID,
     {
@@ -787,8 +790,8 @@ export class AgentRuntime implements IAgentRuntime {
           };
 
           // Add plan information to options if multiple actions
-          const options: { [key: string]: unknown } = {
-            context: actionContext,
+          const options: HandlerOptions = {
+            actionContext: actionContext,
           };
 
           if (actionPlan) {
@@ -821,10 +824,10 @@ export class AgentRuntime implements IAgentRuntime {
             this.logger.error('Failed to create action start message:', String(error));
           }
 
-          let storedCallbackData: { content: Content; files?: any }[] = [];
+          let storedCallbackData: Content[] = [];
 
-          const storageCallback = async (response: Content, files?: any) => {
-            storedCallbackData.push({ content: response, files });
+          const storageCallback = async (response: Content) => {
+            storedCallbackData.push(response);
             return [];
           };
 
@@ -950,8 +953,8 @@ export class AgentRuntime implements IAgentRuntime {
           }
 
           if (callback) {
-            for (const data of storedCallbackData) {
-              await callback(data.content, data.files);
+            for (const content of storedCallbackData) {
+              await callback(content);
             }
           }
 
@@ -1875,7 +1878,7 @@ export class AgentRuntime implements IAgentRuntime {
       `[useModel] ${modelKey} input: ` +
         JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
-    let paramsWithRuntime: any;
+    let modelParams: ModelParamsMap[T];
     if (
       params === null ||
       params === undefined ||
@@ -1883,24 +1886,20 @@ export class AgentRuntime implements IAgentRuntime {
       Array.isArray(params) ||
       BufferUtils.isBuffer(params)
     ) {
-      paramsWithRuntime = params;
+      modelParams = params;
     } else {
       // Include model settings from character configuration if available
       const modelSettings = this.getModelSettings(modelKey);
 
       if (modelSettings) {
         // Apply model settings if configured
-        paramsWithRuntime = {
+        modelParams = {
           ...modelSettings, // Apply model settings first (includes defaults and model-specific)
           ...params, // Then apply specific params (allowing overrides)
-          runtime: this,
         };
       } else {
         // No model settings configured, use params as-is
-        paramsWithRuntime = {
-          ...params,
-          runtime: this,
-        };
+        modelParams = params;
       }
     }
     const startTime =
@@ -1908,7 +1907,7 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now();
     try {
-      const response = await model(this, paramsWithRuntime);
+      const response = await model(this, modelParams);
       const elapsedTime =
         (typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? performance.now()
@@ -1973,21 +1972,21 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
-    if (!this.events.has(event)) {
-      this.events.set(event, []);
+    if (!this.events[event]) {
+      this.events[event] = [];
     }
-    this.events.get(event)?.push(handler);
+    this.events[event]!.push(handler);
   }
 
   getEvent(event: string): ((params: any) => Promise<void>)[] | undefined {
-    return this.events.get(event);
+    return this.events[event];
   }
 
   // probably should be <T> typed for params
   async emitEvent(event: string | string[], params: any) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
-      const eventHandlers = this.events.get(eventName);
+      const eventHandlers = this.events[eventName];
       if (!eventHandlers) {
         continue;
       }
@@ -2191,8 +2190,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   async queueEmbeddingGeneration(
     memory: Memory,
-    priority: 'high' | 'normal' | 'low' = 'normal'
+    priority?: 'high' | 'normal' | 'low'
   ): Promise<void> {
+    // Set default priority if not provided
+    priority = priority || 'normal';
+    
     // Skip if memory is null or undefined
     if (!memory) {
       return;
@@ -2522,7 +2524,7 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<void> {
     try {
       const { roomId, action, target } = params;
-      const controlMessage = {
+      const controlMessage: ControlMessage = {
         type: 'control',
         payload: {
           action,

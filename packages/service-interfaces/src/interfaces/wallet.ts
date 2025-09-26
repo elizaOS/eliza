@@ -1,4 +1,4 @@
-import { Service, ServiceType } from './service';
+import { Service, ServiceType } from '@elizaos/core';
 import type { TokenBalance } from './token';
 
 /**

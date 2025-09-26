@@ -429,10 +429,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const result = await runtime.useModel(modelType, params);
 
       expect(modelHandler).toHaveBeenCalledTimes(1);
-      // Check that handler was called with runtime and merged params
+      // Check that handler was called with runtime and params (no runtime in params)
       expect(modelHandler).toHaveBeenCalledWith(
         runtime,
-        expect.objectContaining({ ...params, runtime: runtime })
+        expect.objectContaining(params)
       );
       expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
@@ -490,11 +490,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           data: {},
         }), // accumulated state
         expect.objectContaining({
-          context: expect.objectContaining({
+          actionContext: expect.objectContaining({
             previousResults: [],
             getPreviousResult: expect.any(Function),
           }),
-        }), // options with context
+        }), // options with actionContext
         expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );

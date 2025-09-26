@@ -1,5 +1,4 @@
-import { Service, ServiceType } from './service';
-import type { UUID } from './primitives';
+import { Service, ServiceType, type UUID } from '@elizaos/core';
 
 export interface MessageParticipant {
   id: UUID;

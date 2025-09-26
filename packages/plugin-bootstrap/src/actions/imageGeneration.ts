@@ -133,7 +133,7 @@ export const generateImageAction = {
           {
             id: attachmentId,
             url: imageUrl,
-            title: 'Generated Image',
+            title: fileName,
             contentType: ContentType.IMAGE,
           },
         ],
@@ -142,14 +142,7 @@ export const generateImageAction = {
         text: imagePrompt,
       };
 
-      const imageFile = {
-        id: attachmentId,
-        attachment: imageUrl,
-        name: fileName,
-        contentType: ContentType.IMAGE,
-      };
-
-      await callback(responseContent, [imageFile]);
+      await callback(responseContent);
 
       return {
         text: 'Generated image',
