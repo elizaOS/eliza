@@ -250,15 +250,18 @@ export class AgentServer {
     const settings = await this.configManager?.loadEnvConfig();
 
     // Step 1: Add all agents (create them with their plugins)
-    const agentIds = await this.elizaOS.addAgents(preparations.map(p => ({
-      character: p.character,
-      plugins: p.plugins
-    })), settings);
+    const agentIds = await this.elizaOS.addAgents(
+      preparations.map((p) => ({
+        character: p.character,
+        plugins: p.plugins,
+      })),
+      settings,
+    );
     
     // Step 2: Start all agents (initialize them)
     await this.elizaOS.startAgents(agentIds);
     
-    // Step 3: Get the created runtimes
+    // Step 3: Collect started runtimes and register them (settings applied at creation)
     const runtimes: IAgentRuntime[] = [];
     
     for (const id of agentIds) {
