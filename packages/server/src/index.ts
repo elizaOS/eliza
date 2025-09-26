@@ -250,13 +250,14 @@ export class AgentServer {
     const settings = await this.configManager?.loadEnvConfig();
 
     // Step 1: Add all agents (create them with their plugins)
-    const agentIds = await this.elizaOS.addAgents(
-      preparations.map((p) => ({
-        character: p.character,
-        plugins: p.plugins,
-      })),
-      settings,
-    );
+    const agentConfigs = preparations.map((p) => ({
+      character: {
+        ...p.character,
+        settings: { ...((p.character as any)?.settings || {}), ...(settings || {}) },
+      },
+      plugins: p.plugins,
+    }));
+    const agentIds = await this.elizaOS.addAgents(agentConfigs);
     
     // Step 2: Start all agents (initialize them)
     await this.elizaOS.startAgents(agentIds);

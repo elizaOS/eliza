@@ -69,12 +69,12 @@ export class ElizaOS extends EventTarget {
   /**
    * Add multiple agents (batch operation)
    */
-  async addAgents(agents: Array<{ character: Character; plugins?: Plugin[] }>, settings: RuntimeSettings): Promise<UUID[]> {
+  async addAgents(agents: Array<{ character: Character; plugins?: Plugin[] }>, settings?: RuntimeSettings): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
       const runtime = new AgentRuntime({
         character: agent.character,
         plugins: agent.plugins || [],
-        settings
+        ...(settings ? { settings } : {})
       });
 
       this.runtimes.set(runtime.agentId, runtime);
