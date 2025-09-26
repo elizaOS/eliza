@@ -261,7 +261,7 @@ export class AgentServer {
     // Step 2: Start all agents (initialize them)
     await this.elizaOS.startAgents(agentIds);
     
-    // Step 3: Collect started runtimes and register them (settings applied at creation)
+    // Step 3: Collect started runtimes and register them
     const runtimes: IAgentRuntime[] = [];
     
     for (const id of agentIds) {
