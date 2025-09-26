@@ -57,16 +57,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Runs database migrations. For PostgreSQL, migrations should be handled
-   * externally or during deployment, so this is a no-op.
-   * @returns {Promise<void>}
-   */
-  async runMigrations(): Promise<void> {
-    logger.debug('PgDatabaseAdapter: Migrations should be handled externally');
-    // Migrations are handled by the migration service, not the adapter
-  }
-
-  /**
    * Executes the provided operation with a database connection.
    *
    * @template T

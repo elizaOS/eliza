@@ -56,16 +56,6 @@ describe('PgDatabaseAdapter', () => {
     });
   });
 
-  describe('runMigrations', () => {
-    it('should be a no-op', async () => {
-      await adapter.runMigrations();
-      // Should not throw and not do anything
-      expect(logger.debug).toHaveBeenCalledWith(
-        'PgDatabaseAdapter: Migrations should be handled externally'
-      );
-    });
-  });
-
   describe('init', () => {
     it('should complete initialization', async () => {
       await adapter.init();
