@@ -93,38 +93,15 @@ export const MODEL_SETTINGS = {
 } as const;
 
 /**
- * Helper to get the model-specific setting key for a given model type and parameter.
- * @param modelType The model type (e.g., TEXT_SMALL, TEXT_LARGE)
- * @param param The parameter name (e.g., MAX_TOKENS, TEMPERATURE)
- * @returns The appropriate setting key or null if not a supported model type
- */
-export function getModelSpecificSettingKey(
-  modelType: ModelTypeName,
-  param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY'
-): string | null {
-  const supportedModelTypes = ['TEXT_SMALL', 'TEXT_LARGE', 'OBJECT_SMALL', 'OBJECT_LARGE'];
-
-  if (!supportedModelTypes.includes(modelType)) {
-    return null;
-  }
-
-  return `${modelType}_${param}`;
-}
-
-/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
  * `ModelType.TEXT_REASONING_LARGE`, or `ModelType.TEXT_COMPLETION`.
- * It includes essential information like the prompt, model type, and various generation controls.
+ * It includes essential information like the prompt and various generation controls.
  */
 export type GenerateTextParams = {
-  /** The `AgentRuntime` instance, providing access to models and other services. */
-  runtime: IAgentRuntime;
   /** The input string or prompt that the language model will use to generate text. */
   prompt: string;
-  /** Specifies the type of text generation model to use (e.g., TEXT_LARGE, REASONING_SMALL). */
-  modelType: ModelTypeName;
   /** Optional. The maximum number of tokens to generate in the response. */
   maxTokens?: number;
   /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
@@ -136,6 +113,16 @@ export type GenerateTextParams = {
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
 };
+
+/**
+ * Parameters for text tokenization models
+ */
+export interface TokenizeTextParams {
+  /** The text to tokenize */
+  prompt: string;
+  /** The model type to use for tokenization */
+  modelType: ModelTypeName;
+}
 
 /**
  * Parameters for detokenizing text, i.e., converting a sequence of numerical tokens back into a string.
@@ -150,53 +137,17 @@ export interface DetokenizeTextParams {
 }
 
 /**
- * Base parameters common to all model types
- */
-export interface BaseModelParams {
-  /** The agent runtime for accessing services and utilities */
-  runtime: IAgentRuntime;
-}
-
-/**
- * Parameters for text generation models
- */
-export interface TextGenerationParams extends BaseModelParams {
-  /** The prompt to generate text from */
-  prompt: string;
-  /** Model temperature (0.0 to 1.0, lower is more deterministic) */
-  temperature?: number;
-  /** Maximum number of tokens to generate */
-  maxTokens?: number;
-  /** Sequences that should stop generation when encountered */
-  stopSequences?: string[];
-  /** Frequency penalty to apply */
-  frequencyPenalty?: number;
-  /** Presence penalty to apply */
-  presencePenalty?: number;
-}
-
-/**
  * Parameters for text embedding models
  */
-export interface TextEmbeddingParams extends BaseModelParams {
+export interface TextEmbeddingParams {
   /** The text to create embeddings for */
   text: string;
 }
 
 /**
- * Parameters for text tokenization models
- */
-export interface TokenizeTextParams extends BaseModelParams {
-  /** The text to tokenize */
-  prompt: string;
-  /** The model type to use for tokenization */
-  modelType: ModelTypeName;
-}
-
-/**
  * Parameters for image generation models
  */
-export interface ImageGenerationParams extends BaseModelParams {
+export interface ImageGenerationParams {
   /** The prompt describing the image to generate */
   prompt: string;
   /** The dimensions of the image to generate */
@@ -208,7 +159,7 @@ export interface ImageGenerationParams extends BaseModelParams {
 /**
  * Parameters for image description models
  */
-export interface ImageDescriptionParams extends BaseModelParams {
+export interface ImageDescriptionParams {
   /** The URL or path of the image to describe */
   imageUrl: string;
   /** Optional prompt to guide the description */
@@ -218,7 +169,7 @@ export interface ImageDescriptionParams extends BaseModelParams {
 /**
  * Parameters for transcription models
  */
-export interface TranscriptionParams extends BaseModelParams {
+export interface TranscriptionParams {
   /** The URL or path of the audio file to transcribe */
   audioUrl: string;
   /** Optional prompt to guide transcription */
@@ -228,7 +179,7 @@ export interface TranscriptionParams extends BaseModelParams {
 /**
  * Parameters for text-to-speech models
  */
-export interface TextToSpeechParams extends BaseModelParams {
+export interface TextToSpeechParams {
   /** The text to convert to speech */
   text: string;
   /** The voice to use */
@@ -240,7 +191,7 @@ export interface TextToSpeechParams extends BaseModelParams {
 /**
  * Parameters for audio processing models
  */
-export interface AudioProcessingParams extends BaseModelParams {
+export interface AudioProcessingParams {
   /** The URL or path of the audio file to process */
   audioUrl: string;
   /** The type of audio processing to perform */
@@ -250,7 +201,7 @@ export interface AudioProcessingParams extends BaseModelParams {
 /**
  * Parameters for video processing models
  */
-export interface VideoProcessingParams extends BaseModelParams {
+export interface VideoProcessingParams {
   /** The URL or path of the video file to process */
   videoUrl: string;
   /** The type of video processing to perform */
@@ -272,7 +223,7 @@ export type JSONSchema = {
  * Parameters for object generation models
  * @template T - The expected return type, inferred from schema if provided
  */
-export interface ObjectGenerationParams extends BaseModelParams {
+export interface ObjectGenerationParams {
   /** The prompt describing the object to generate */
   prompt: string;
   /** Optional JSON schema for validation */
@@ -293,13 +244,13 @@ export interface ObjectGenerationParams extends BaseModelParams {
  * Map of model types to their parameter types
  */
 export interface ModelParamsMap {
-  [ModelType.TEXT_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_LARGE]: TextGenerationParams;
+  [ModelType.TEXT_SMALL]: GenerateTextParams;
+  [ModelType.TEXT_LARGE]: GenerateTextParams;
   [ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null;
   [ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams;
   [ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams;
-  [ModelType.TEXT_REASONING_SMALL]: TextGenerationParams;
-  [ModelType.TEXT_REASONING_LARGE]: TextGenerationParams;
+  [ModelType.TEXT_REASONING_SMALL]: GenerateTextParams;
+  [ModelType.TEXT_REASONING_LARGE]: GenerateTextParams;
   [ModelType.IMAGE]: ImageGenerationParams;
   [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string;
   [ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string;
@@ -309,7 +260,7 @@ export interface ModelParamsMap {
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
   // Allow string index for custom model types
-  [key: string]: BaseModelParams | any;
+  [key: string]: any;
 }
 
 /**

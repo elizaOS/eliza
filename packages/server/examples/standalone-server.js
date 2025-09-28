@@ -26,13 +26,13 @@ const exampleCharacter = {
   messageExamples: [
     [
       {
-        user: '{{user1}}',
+        name: '{{user1}}',
         content: {
           text: 'Hello! How can you help me today?',
         },
       },
       {
-        user: 'Assistant',
+        name: 'Assistant',
         content: {
           text: "Hello! I'm here to help you with any questions or tasks you might have. Feel free to ask me anything!",
         },

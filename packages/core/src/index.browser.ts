@@ -17,19 +17,21 @@ export * from './schemas/character';
 // Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
-// Note: Excluding server-health as it's Node-specific
+// Note: Excluding server-health and paths as they're Node-specific
 
 // Export core modules (all browser-compatible after refactoring)
 export * from './actions';
 export * from './database';
 export * from './entities';
 export * from './logger';
+export * from './memory';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
 export * from './settings';
 export * from './services';
 export * from './search';
+export * from './elizaos';
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;

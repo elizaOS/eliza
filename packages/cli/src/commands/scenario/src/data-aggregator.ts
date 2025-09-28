@@ -85,7 +85,9 @@ export class RunDataAggregator {
    */
   public recordMetrics(newMetrics: Partial<ScenarioRunMetrics>): void {
     this.metrics = { ...this.metrics, ...newMetrics };
-    this.runtime.logger.debug(`[RunDataAggregator] Recorded metrics:`, newMetrics);
+    this.runtime.logger.debug(
+      `[RunDataAggregator] Recorded metrics: ${JSON.stringify(newMetrics)}`
+    );
   }
 
   /**
@@ -163,7 +165,9 @@ export class RunDataAggregator {
       ScenarioRunResultSchema.parse(result);
       this.runtime.logger.debug(`[RunDataAggregator] Result validation successful`);
     } catch (validationError) {
-      this.runtime.logger.error(`[RunDataAggregator] Result validation failed:`, validationError);
+      this.runtime.logger.error(
+        `[RunDataAggregator] Result validation failed: ${validationError instanceof Error ? validationError.message : String(validationError)}`
+      );
       // Still return the result, but log the validation issue
     }
 

@@ -1,4 +1,11 @@
-import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from '@elizaos/core';
+import {
+  logger,
+  validateUuid,
+  type UUID,
+  type ElizaOS,
+  type IAgentRuntime,
+  ChannelType,
+} from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
@@ -511,10 +518,7 @@ function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
  * @param serverInstance - The server instance for message handling
  * @returns Router with cleanup method to prevent memory leaks
  */
-export function createSessionsRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): SessionRouter {
+export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): SessionRouter {
   const router = express.Router();
 
   /**
@@ -579,7 +583,7 @@ export function createSessionsRouter(
       }
 
       // Check if agent exists
-      const agent = agents.get(body.agentId as UUID);
+      const agent = elizaOS.getAgent(body.agentId as UUID);
       if (!agent) {
         throw new AgentNotFoundError(body.agentId);
       }
@@ -1069,7 +1073,7 @@ export function createSessionsRouter(
       }
 
       // Merge the new config with existing
-      const agent = agents.get(session.agentId);
+      const agent = elizaOS.getAgent(session.agentId);
       const agentConfig = agent ? getAgentTimeoutConfig(agent) : undefined;
       session.timeoutConfig = mergeTimeoutConfigs(newConfig, agentConfig);
 

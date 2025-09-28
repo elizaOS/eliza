@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -8,7 +8,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  * Agent lifecycle operations (start, stop, status)
  */
 export function createAgentLifecycleRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -32,7 +32,7 @@ export function createAgentLifecycleRouter(
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
-      const isActive = !!agents.get(agentId);
+      const isActive = !!elizaOS.getAgent(agentId);
 
       if (isActive) {
         logger.debug(`[AGENT START] Agent ${agentId} is already running`);
@@ -43,9 +43,10 @@ export function createAgentLifecycleRouter(
         });
       }
 
-      await serverInstance?.startAgent(agent);
+      // Use batch method even for single agent
+      await serverInstance?.startAgents([agent]);
 
-      const runtime = agents.get(agentId);
+      const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {
         throw new Error('Failed to start agent');
       }
@@ -79,12 +80,12 @@ export function createAgentLifecycleRouter(
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
     }
 
-    const runtime = agents.get(agentId);
+    const runtime = elizaOS.getAgent(agentId);
     if (!runtime) {
       return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
     }
 
-    serverInstance?.unregisterAgent(agentId);
+    await serverInstance?.unregisterAgent(agentId);
 
     logger.debug(`[AGENT STOP] Successfully stopped agent: ${runtime.character.name} (${agentId})`);
 

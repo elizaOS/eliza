@@ -1,3 +1,5 @@
+import type { ChannelType } from './environment';
+
 /**
  * Defines a custom type UUID representing a universally unique identifier
  */
@@ -47,7 +49,7 @@ export interface Content {
   attachments?: Media[];
 
   /** room type */
-  channelType?: string;
+  channelType?: ChannelType;
 
   /**
    * Additional dynamic properties
