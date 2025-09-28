@@ -59,7 +59,7 @@ export function displayAgent(data: Partial<Agent>, title = 'Agent Review'): void
     console.log(`\n${colors.cyan('Message Examples:')}`);
     console.log(
       data.messageExamples
-        .map((conversation, i) => {
+        .map((conversation: MessageExample[], i: number) => {
           const messages = formatConversation(conversation);
           return `\nConversation ${i + 1}:\n${messages}`;
         })

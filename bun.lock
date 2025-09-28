@@ -59,7 +59,7 @@
       "name": "@elizaos/cli",
       "version": "1.5.13-alpha.3",
       "bin": {
-        "elizaos": "./dist/index.js",
+        "elizaos": "./dist/index.js"
       },
       "dependencies": {
         "@anthropic-ai/claude-code": "^1.0.35",
@@ -241,7 +241,7 @@
       "name": "elizaos",
       "version": "1.5.13-alpha.3",
       "bin": {
-        "elizaos": "bin/elizaos.js",
+        "elizaos": "bin/elizaos.js"
       },
       "dependencies": {
         "@elizaos/cli": "workspace:*",
@@ -426,6 +426,21 @@
         "ws": "^8.18.0",
       },
     },
+    "packages/service-interfaces": {
+      "name": "@elizaos/service-interfaces",
+      "version": "1.5.11-alpha.1",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.2.21",
+        "prettier": "^3.4.2",
+        "typescript": "^5.7.3",
+      },
+      "peerDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/test-utils": {
       "name": "@elizaos/test-utils",
       "version": "1.5.13-alpha.3",
@@ -449,12 +464,9 @@
     "bufferutil",
   ],
   "overrides": {
-    "@nrwl/devkit": "19.8.4",
-    "@nrwl/tao": "19.8.4",
     "color-convert": "2.0.1",
-    "color-name": "1.1.4",
     "error-ex": "1.3.2",
-    "has-ansi": "6.0.2",
+    "color-name": "1.1.4",
     "is-core-module": "2.13.1",
   },
   "packages": {
@@ -583,6 +595,8 @@
     "@elizaos/project-tee-starter": ["@elizaos/project-tee-starter@workspace:packages/project-tee-starter"],
 
     "@elizaos/server": ["@elizaos/server@workspace:packages/server"],
+
+    "@elizaos/service-interfaces": ["@elizaos/service-interfaces@workspace:packages/service-interfaces"],
 
     "@elizaos/test-utils": ["@elizaos/test-utils@workspace:packages/test-utils"],
 

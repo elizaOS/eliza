@@ -112,7 +112,6 @@ export async function createScenarioServer(
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
         await server.initialize({ dataDir: uniqueDataDir });
-        
         await server.start(port);
         createdServer = true;
 
