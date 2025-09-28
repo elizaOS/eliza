@@ -34,7 +34,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   init: mock().mockResolvedValue(undefined),
   initialize: mock().mockResolvedValue(undefined),
   runMigrations: mock().mockResolvedValue(undefined),
-  isReady: mock().mockResolvedValue(true),
+  isReady: mock().mockResolvedValue(false),
   close: mock().mockResolvedValue(undefined),
   getConnection: mock().mockResolvedValue({}),
   getEntitiesByIds: mock().mockResolvedValue([]),
