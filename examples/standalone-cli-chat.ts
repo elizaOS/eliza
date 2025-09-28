@@ -241,7 +241,7 @@ class AgentInitializer {
 // ============================================================================
 
 class MessageProcessor {
-  constructor(private session: ChatSession) { }
+  constructor(private session: ChatSession) {}
 
   private createMessageMemory(userInput: string): Memory {
     return createMessageMemory({
@@ -289,7 +289,7 @@ class ChatInterface {
   constructor(
     private messageProcessor: MessageProcessor,
     private character: Character
-  ) { }
+  ) {}
 
   private displayWelcome(): void {
     clack.intro('🤖 ElizaOS Interactive Chat');

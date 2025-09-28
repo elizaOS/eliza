@@ -64,7 +64,7 @@ describe('Database Operations Integration Tests', () => {
     // Stop all agents first to prevent MessageBusService connection errors
     if (isServerStarted && agentServer) {
       const allAgents = agentServer.getAllAgents();
-      const agentIds = allAgents.map(agent => agent.agentId);
+      const agentIds = allAgents.map((agent) => agent.agentId);
       if (agentIds.length > 0) {
         await agentServer.stopAgents(agentIds);
         // Give agents time to clean up their connections
@@ -280,7 +280,7 @@ describe('Database Operations Integration Tests', () => {
         plugins: [],
         settings: {
           secrets: {},
-        }
+        },
       } as Character;
 
       // Start the agent to ensure it exists in database
@@ -359,20 +359,23 @@ describe('Database Operations Integration Tests', () => {
           topics: [],
           clients: [],
           plugins: [],
-          settings: { secrets: {} }
+          settings: { secrets: {} },
         } as Character;
         const [runtime] = await agentServer.startAgents([testAgent]);
         participantAgentId = runtime.agentId;
       }
 
       // Create channel with the agent as participant
-      await agentServer.createChannel({
-        id: channelId,
-        name: 'Bulk Test Channel',
-        type: ChannelType.GROUP,
-        messageServerId: serverId,
-        metadata: {},
-      }, [participantAgentId]);
+      await agentServer.createChannel(
+        {
+          id: channelId,
+          name: 'Bulk Test Channel',
+          type: ChannelType.GROUP,
+          messageServerId: serverId,
+          metadata: {},
+        },
+        [participantAgentId]
+      );
 
       const startTime = Date.now();
 

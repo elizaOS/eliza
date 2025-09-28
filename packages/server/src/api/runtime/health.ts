@@ -6,10 +6,7 @@ import type { AgentServer } from '../../index';
 /**
  * Health monitoring and status endpoints
  */
-export function createHealthRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): express.Router {
+export function createHealthRouter(elizaOS: ElizaOS, serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Health check

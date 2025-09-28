@@ -98,7 +98,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     // Stop all agents first to prevent MessageBusService connection errors
     if (agentServer) {
       const allAgents = agentServer.getAllAgents();
-      const agentIds = allAgents.map(agent => agent.agentId);
+      const agentIds = allAgents.map((agent) => agent.agentId);
       if (agentIds.length > 0) {
         await agentServer.stopAgents(agentIds);
         // Give agents time to clean up their connections

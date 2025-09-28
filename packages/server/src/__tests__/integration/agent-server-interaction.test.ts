@@ -62,7 +62,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
     // Stop all agents first to prevent MessageBusService connection errors
     if (agentServer) {
       const allAgents = agentServer.getAllAgents();
-      const agentIds = allAgents.map(agent => agent.agentId);
+      const agentIds = allAgents.map((agent) => agent.agentId);
       if (agentIds.length > 0) {
         await agentServer.stopAgents(agentIds);
         // Give agents time to clean up their connections
@@ -352,7 +352,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       // Retrieve messages
       const messages = await agentServer.getMessagesForChannel(channelId, 10);
       expect(messages.length).toBeGreaterThanOrEqual(2);
-      const contents = messages.map(m => m.content);
+      const contents = messages.map((m) => m.content);
       expect(contents).toContain('Hello, world!');
       expect(contents).toContain('Hi there!');
     });
@@ -396,7 +396,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       await agentServer.deleteMessage(message.id);
 
       const messages = await agentServer.getMessagesForChannel(channelId);
-      const deleted = messages.find(m => m.id === message.id);
+      const deleted = messages.find((m) => m.id === message.id);
       expect(deleted).toBeUndefined();
     });
 
@@ -552,7 +552,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         // After unregisterAgent, the database is closed, so we can't query it
         // Instead, verify the agent is no longer in the active agents list
         const allAgents = isolatedServer.getAllAgents();
-        const agentStillExists = allAgents.some(a => a.agentId === agentId);
+        const agentStillExists = allAgents.some((a) => a.agentId === agentId);
         expect(agentStillExists).toBe(false);
       } finally {
         // Clean up the isolated server

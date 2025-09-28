@@ -149,24 +149,24 @@ export const start = new Command()
       // Use AgentServer from server package
       const moduleLoader = getModuleLoader();
       const { AgentServer } = await moduleLoader.load('@elizaos/server');
-      
+
       const server = new AgentServer();
-      
+
       // Initialize server with database configuration
       await server.initialize({
         dataDir: process.env.PGLITE_DATA_DIR,
         postgresUrl: process.env.POSTGRES_URL,
       });
-      
+
       // Start HTTP server
       await server.start(options.port || 3000);
-      
+
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
         // Batch start all project agents
-        const charactersToStart = projectAgents.map(pa => pa.character);
+        const charactersToStart = projectAgents.map((pa) => pa.character);
         const runtimes = await server.startAgents(charactersToStart);
-        
+
         // Run init functions for each agent if provided
         for (let i = 0; i < projectAgents.length; i++) {
           const init = projectAgents[i]?.init;
@@ -175,7 +175,7 @@ export const start = new Command()
             await init(runtime);
           }
         }
-        
+
         logger.info(`Started ${runtimes.length} project agents`);
       }
       // Handle standalone characters from CLI

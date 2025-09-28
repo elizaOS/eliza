@@ -135,13 +135,17 @@ export const scenario = new Command()
 
             if (!pluginResult.valid) {
               logger.error('Plugin validation failed:');
-              pluginResult.errors.forEach((error) => { logger.error(`  - ${error}`); });
+              pluginResult.errors.forEach((error) => {
+                logger.error(`  - ${error}`);
+              });
               process.exit(1);
             }
 
             if (pluginResult.warnings.length > 0) {
               logger.warn('Plugin warnings:');
-              pluginResult.warnings.forEach((warning) => { logger.warn(`  - ${warning}`); });
+              pluginResult.warnings.forEach((warning) => {
+                logger.warn(`  - ${warning}`);
+              });
             }
 
             logger.info(generateSummary(pluginResult));

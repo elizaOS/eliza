@@ -1,4 +1,11 @@
-import { logger, validateUuid, type UUID, type ElizaOS, type IAgentRuntime, ChannelType } from '@elizaos/core';
+import {
+  logger,
+  validateUuid,
+  type UUID,
+  type ElizaOS,
+  type IAgentRuntime,
+  ChannelType,
+} from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
@@ -511,10 +518,7 @@ function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
  * @param serverInstance - The server instance for message handling
  * @returns Router with cleanup method to prevent memory leaks
  */
-export function createSessionsRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): SessionRouter {
+export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): SessionRouter {
   const router = express.Router();
 
   /**

@@ -44,8 +44,7 @@ export class ConfigManager {
    */
   hasCharacterSecrets(character: Character): boolean {
     return Boolean(
-      character?.settings?.secrets &&
-      Object.keys(character.settings.secrets).length > 0
+      character?.settings?.secrets && Object.keys(character.settings.secrets).length > 0
     );
   }
 
@@ -64,7 +63,7 @@ export class ConfigManager {
   async loadLocalEnvSecrets(): Promise<Record<string, string> | null> {
     const envPath = this.findEnvFile();
     if (!envPath) return null;
-    
+
     try {
       const buf = fs.readFileSync(envPath);
       return dotenv.parse(buf);

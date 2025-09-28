@@ -99,7 +99,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       progress: () => {},
       log: () => {},
       clear: () => {},
-      child: () => ({} as any),
+      child: () => ({}) as any,
     },
 
     // Database Properties

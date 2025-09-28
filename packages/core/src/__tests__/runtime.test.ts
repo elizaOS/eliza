@@ -391,7 +391,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
-      runtimeWithoutAdapter.initPromise.catch(() => { });
+      runtimeWithoutAdapter.initPromise.catch(() => {});
 
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
@@ -469,10 +469,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(modelHandler).toHaveBeenCalledTimes(1);
       // Check that handler was called with runtime and params (no runtime in params)
-      expect(modelHandler).toHaveBeenCalledWith(
-        runtime,
-        expect.objectContaining(params)
-      );
+      expect(modelHandler).toHaveBeenCalledWith(runtime, expect.objectContaining(params));
       expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(

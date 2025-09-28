@@ -92,7 +92,6 @@ export const MODEL_SETTINGS = {
   MODEL_PRESENCE_PENALTY: 'MODEL_PRESENCE_PENALTY',
 } as const;
 
-
 /**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
@@ -136,8 +135,6 @@ export interface DetokenizeTextParams {
   /** The model type used for detokenization, ensuring consistency with the original tokenization. */
   modelType: ModelTypeName;
 }
-
-
 
 /**
  * Parameters for text embedding models

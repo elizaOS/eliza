@@ -194,7 +194,6 @@ export interface EmbeddingGenerationPayload extends EventPayload {
   runId?: UUID;
 }
 
-
 /**
  * Maps event types to their corresponding payload types
  */

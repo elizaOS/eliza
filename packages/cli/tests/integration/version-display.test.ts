@@ -81,7 +81,7 @@ describe('CLI version display integration tests', () => {
       // 2. When properly installed, the CLI would be in node_modules
       // 3. Running the CLI without dependencies will always fail
       // This test should be revisited when we have a proper standalone bundle
-      
+
       const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'eliza-cli-dist-test-'));
 
       try {

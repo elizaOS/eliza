@@ -15,13 +15,13 @@ describe('AgentServer Lifecycle Tests', () => {
   it('should track initialization state', () => {
     const server = new AgentServer();
     expect(server.isInitialized).toBe(false);
-    // We can't test actual initialization without mocks, 
+    // We can't test actual initialization without mocks,
     // but we can verify the property exists
   });
 
   it('should have required lifecycle methods', () => {
     const server = new AgentServer();
-    
+
     // Check all lifecycle methods exist
     expect(typeof server.initialize).toBe('function');
     expect(typeof server.stop).toBe('function');
