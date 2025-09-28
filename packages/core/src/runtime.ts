@@ -329,10 +329,12 @@ export class AgentRuntime implements IAgentRuntime {
         // Track service registration status
         this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'pending');
 
-        // Register service asynchronously but don't silently catch errors
-        // Let the service registration errors bubble up to the plugin registration
+        // Register service asynchronously; handle errors without rethrowing since
+        // we are not awaiting this promise here (to avoid unhandled rejections)
         this.registerService(service).catch(error => {
-          this.logger.error(`Service registration failed for ${service.serviceType}:`, error);
+          this.logger.error(
+            `Service registration failed for ${service.serviceType}: ${error instanceof Error ? error.message : String(error)}`
+          );
           // Reject the service promise so waiting consumers know about the failure
           const handler = this.servicePromiseHandlers.get(service.serviceType as ServiceTypeName);
           if (handler) {
@@ -344,8 +346,7 @@ export class AgentRuntime implements IAgentRuntime {
           }
           // Update service status
           this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'failed');
-          // Re-throw the error so it's not silently swallowed
-          throw error;
+          // Do not rethrow; error is propagated via promise rejection and status update
         });
       }
     }
