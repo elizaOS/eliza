@@ -100,11 +100,7 @@ export class AgentRuntime implements IAgentRuntime {
   events: PluginEvents = {};
   stateCache = new Map<
     UUID,
-    {
-      values: { [key: string]: any };
-      data: { [key: string]: any };
-      text: string;
-    }
+    State
   >();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
@@ -148,7 +144,6 @@ export class AgentRuntime implements IAgentRuntime {
     fetch?: typeof fetch;
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
-    events?: { [key: string]: ((params: any) => void)[] };
     allAvailablePlugins?: Plugin[];
   }) {
     this.agentId =
