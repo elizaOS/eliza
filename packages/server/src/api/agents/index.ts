@@ -13,10 +13,7 @@ import { createRoomManagementRouter } from '../memory/rooms';
 /**
  * Creates the agents router for agent lifecycle and management operations
  */
-export function agentsRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): express.Router {
+export function agentsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Mount CRUD operations at root level

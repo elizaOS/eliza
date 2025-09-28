@@ -106,10 +106,10 @@ export interface Evaluator {
 export interface ProviderResult {
   /** Human-readable text for LLM prompt inclusion */
   text?: string;
-  
+
   /** Key-value pairs for template variable substitution */
   values?: Record<string, unknown>;
-  
+
   /** Structured data for programmatic access by other components */
   data?: Record<string, unknown>;
 }
@@ -181,7 +181,7 @@ export interface ActionContext {
 export interface HandlerOptions {
   /** Context with previous action results and utilities */
   actionContext?: ActionContext;
-  
+
   /** Multi-step action plan information */
   actionPlan?: {
     /** Total number of steps in the plan */
@@ -198,8 +198,7 @@ export interface HandlerOptions {
     /** AI's reasoning for this execution plan */
     thought: string;
   };
-  
+
   /** Allow plugin extensions and custom options */
   [key: string]: unknown;
 }
-

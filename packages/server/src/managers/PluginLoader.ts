@@ -5,7 +5,6 @@ import { pluginInstaller } from './PluginInstaller';
  * Manages plugin loading and dependency resolution
  */
 export class PluginLoader {
-
   /**
    * Check if an object has a valid plugin shape
    */
@@ -55,8 +54,8 @@ export class PluginLoader {
         errors.push('Plugin services must be an array');
       } else {
         // Check if services contain non-objects/non-constructors
-        const invalidServices = plugin.services.filter((s: any) =>
-          typeof s !== 'function' && (typeof s !== 'object' || !s)
+        const invalidServices = plugin.services.filter(
+          (s: any) => typeof s !== 'function' && (typeof s !== 'object' || !s)
         );
         if (invalidServices.length > 0) {
           errors.push('Plugin services must be an array of service classes or objects');
@@ -74,7 +73,7 @@ export class PluginLoader {
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -149,7 +148,6 @@ export class PluginLoader {
     }
   }
 
-
   /**
    * Resolve plugin dependencies with circular dependency detection
    *
@@ -204,5 +202,4 @@ export class PluginLoader {
 
     return finalPlugins;
   }
-
 }

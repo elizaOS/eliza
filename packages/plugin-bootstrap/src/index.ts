@@ -631,19 +631,14 @@ const messageReceivedHandler = async ({
                 await callback(responseContent);
               }
             } else if (mode === 'actions') {
-              await runtime.processActions(
-                message,
-                responseMessages,
-                state,
-                async (content) => {
-                  runtime.logger.debug({ content }, 'action callback');
-                  responseContent!.actionCallbacks = content;
-                  if (callback) {
-                    return callback(content);
-                  }
-                  return [];
+              await runtime.processActions(message, responseMessages, state, async (content) => {
+                runtime.logger.debug({ content }, 'action callback');
+                responseContent!.actionCallbacks = content;
+                if (callback) {
+                  return callback(content);
                 }
-              );
+                return [];
+              });
             }
           }
         } else {
@@ -719,7 +714,10 @@ const messageReceivedHandler = async ({
             createdAt: Date.now(),
           };
           await runtime.createMemory(ignoreMemory, 'messages');
-          runtime.logger.debug('[Bootstrap] Saved ignore response to memory', `memoryId: ${ignoreMemory.id}`);
+          runtime.logger.debug(
+            '[Bootstrap] Saved ignore response to memory',
+            `memoryId: ${ignoreMemory.id}`
+          );
 
           // Optionally, evaluate the decision to ignore (if relevant evaluators exist)
           // await runtime.evaluate(message, state, shouldRespond, callback, []);

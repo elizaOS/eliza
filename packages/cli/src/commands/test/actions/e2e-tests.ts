@@ -130,9 +130,11 @@ export async function runE2eTests(
       if (!project) {
         throw new Error('Failed to load project');
       }
-      
+
       if (!project.isPlugin && (!project.agents || project.agents.length === 0)) {
-        logger.warn('No agents found in project configuration; falling back to default Eliza character for tests.');
+        logger.warn(
+          'No agents found in project configuration; falling back to default Eliza character for tests.'
+        );
       }
 
       logger.info(`Found ${project.agents?.length || 0} agents`);
@@ -141,10 +143,12 @@ export async function runE2eTests(
       logger.info('Setting up server properties...');
       const { AgentManager } = serverModule;
       const agentManager = new AgentManager(server);
-      
+
       server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
-        const [runtime] = await agentManager.startAgents([character], undefined, [], { isTestMode: true });
+        const [runtime] = await agentManager.startAgents([character], undefined, [], {
+          isTestMode: true,
+        });
         return runtime;
       };
       server.loadCharacterTryPath = loadCharacterTryPath;

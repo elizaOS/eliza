@@ -103,10 +103,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   events: PluginEvents = {};
-  stateCache = new Map<
-    UUID,
-    State
-  >();
+  stateCache = new Map<UUID, State>();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
@@ -125,7 +122,10 @@ export class AgentRuntime implements IAgentRuntime {
   private settings: RuntimeSettings;
   private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  private serviceRegistrationStatus = new Map<ServiceTypeName, 'pending' | 'registering' | 'registered' | 'failed'>(); // status tracking
+  private serviceRegistrationStatus = new Map<
+    ServiceTypeName,
+    'pending' | 'registering' | 'registered' | 'failed'
+  >(); // status tracking
   public initPromise: Promise<void>;
   private initResolver: ((value?: void | PromiseLike<void>) => void) | undefined;
   private initRejecter: ((reason?: any) => void) | undefined;
@@ -331,14 +331,16 @@ export class AgentRuntime implements IAgentRuntime {
 
         // Register service asynchronously; handle errors without rethrowing since
         // we are not awaiting this promise here (to avoid unhandled rejections)
-        this.registerService(service).catch(error => {
+        this.registerService(service).catch((error) => {
           this.logger.error(
             `Service registration failed for ${service.serviceType}: ${error instanceof Error ? error.message : String(error)}`
           );
           // Reject the service promise so waiting consumers know about the failure
           const handler = this.servicePromiseHandlers.get(service.serviceType as ServiceTypeName);
           if (handler) {
-            const serviceError = new Error(`Service ${service.serviceType} failed to register: ${error instanceof Error ? error.message : String(error)}`);
+            const serviceError = new Error(
+              `Service ${service.serviceType} failed to register: ${error instanceof Error ? error.message : String(error)}`
+            );
             handler.reject(serviceError);
             // Clean up the promise handles
             this.servicePromiseHandlers.delete(service.serviceType as ServiceTypeName);
@@ -382,7 +384,8 @@ export class AgentRuntime implements IAgentRuntime {
       await Promise.all(pluginRegistrationPromises);
 
       if (!this.adapter) {
-        const errorMsg = 'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.';
+        const errorMsg =
+          'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.';
         this.logger.error(errorMsg);
         throw new Error(
           'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
@@ -390,7 +393,7 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Make adapter init idempotent - check if already initialized
-      if (!await this.adapter.isReady()) {
+      if (!(await this.adapter.isReady())) {
         await this.adapter.init();
       }
 
@@ -477,7 +480,9 @@ export class AgentRuntime implements IAgentRuntime {
       for (const [serviceType, promise] of this.servicePromises) {
         const handler = this.servicePromiseHandlers.get(serviceType);
         if (handler) {
-          const serviceError = new Error(`Service ${serviceType} failed to start due to runtime initialization failure: ${errorMsg}`);
+          const serviceError = new Error(
+            `Service ${serviceType} failed to start due to runtime initialization failure: ${errorMsg}`
+          );
           handler.reject(serviceError);
           // Clean up the maps to prevent future hangs
           this.servicePromiseHandlers.delete(serviceType);
@@ -1686,7 +1691,9 @@ export class AgentRuntime implements IAgentRuntime {
    * @param serviceType - The service type to check
    * @returns the current registration status
    */
-  getServiceRegistrationStatus(serviceType: ServiceTypeName | string): 'pending' | 'registering' | 'registered' | 'failed' | 'unknown' {
+  getServiceRegistrationStatus(
+    serviceType: ServiceTypeName | string
+  ): 'pending' | 'registering' | 'registered' | 'failed' | 'unknown' {
     return this.serviceRegistrationStatus.get(serviceType as ServiceTypeName) || 'unknown';
   }
 
@@ -1694,16 +1701,22 @@ export class AgentRuntime implements IAgentRuntime {
    * Get service health information
    * @returns Object containing service health status
    */
-  getServiceHealth(): Record<string, {
-    status: 'pending' | 'registering' | 'registered' | 'failed' | 'unknown';
-    instances: number;
-    hasPromise: boolean;
-  }> {
-    const health: Record<string, {
+  getServiceHealth(): Record<
+    string,
+    {
       status: 'pending' | 'registering' | 'registered' | 'failed' | 'unknown';
       instances: number;
       hasPromise: boolean;
-    }> = {};
+    }
+  > {
+    const health: Record<
+      string,
+      {
+        status: 'pending' | 'registering' | 'registered' | 'failed' | 'unknown';
+        instances: number;
+        hasPromise: boolean;
+      }
+    > = {};
 
     // Check all registered services
     for (const [serviceType, instances] of this.services) {
@@ -1752,7 +1765,11 @@ export class AgentRuntime implements IAgentRuntime {
       // Add timeout protection to prevent indefinite hangs
       const initTimeout = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          reject(new Error(`Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`));
+          reject(
+            new Error(
+              `Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`
+            )
+          );
         }, 30000); // 30 second timeout
       });
 
@@ -1803,9 +1820,16 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Provide additional context about the failure
       if (error?.message?.includes('timed out waiting for runtime initialization')) {
-        this.logger.error(`Service ${serviceType} failed due to runtime initialization timeout. Check if runtime.initialize() is being called and completing successfully.`);
-      } else if (error?.message?.includes('Service') && error?.message?.includes('failed to start')) {
-        this.logger.error(`Service ${serviceType} failed to start. Check service implementation and dependencies.`);
+        this.logger.error(
+          `Service ${serviceType} failed due to runtime initialization timeout. Check if runtime.initialize() is being called and completing successfully.`
+        );
+      } else if (
+        error?.message?.includes('Service') &&
+        error?.message?.includes('failed to start')
+      ) {
+        this.logger.error(
+          `Service ${serviceType} failed to start. Check service implementation and dependencies.`
+        );
       }
 
       // Update service status to failed
@@ -2011,7 +2035,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Log input parameters (keep debug log if useful)
     this.logger.debug(
       `[useModel] ${modelKey} input: ` +
-      JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
     let modelParams: ModelParamsMap[T];
     if (
@@ -2052,8 +2076,9 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
-          } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
+              response.length
+            } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -2087,9 +2112,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')

@@ -199,7 +199,7 @@ export async function createScenarioAgent(
   // Use ConfigManager from server to set default secrets
   const configManager = new ConfigManager();
   await configManager.setDefaultSecretsFromEnv(character);
-  
+
   // Pass raw character; encryption is handled inside startAgents
   const [runtime] = await server.startAgents([character]);
   if (!runtime) {

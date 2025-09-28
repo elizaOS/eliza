@@ -17,7 +17,7 @@ const pathJoin = (...parts: string[]) => {
   }
   // Browser or fallback implementation
   return parts
-    .filter(part => part)
+    .filter((part) => part)
     .join('/')
     .replace(/\/+/g, '/')
     .replace(/\/$/, '');
@@ -49,8 +49,11 @@ class ElizaPaths {
     const cached = this.cache.get('dataDir');
     if (cached) return cached;
 
-    const dir = (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR) ||
-      (typeof process !== 'undefined' && process.cwd ? pathJoin(process.cwd(), '.eliza') : '.eliza');
+    const dir =
+      (typeof process !== 'undefined' && process.env?.ELIZA_DATA_DIR) ||
+      (typeof process !== 'undefined' && process.cwd
+        ? pathJoin(process.cwd(), '.eliza')
+        : '.eliza');
     this.cache.set('dataDir', dir);
     return dir;
   }

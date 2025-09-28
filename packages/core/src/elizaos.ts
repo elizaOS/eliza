@@ -64,27 +64,27 @@ export class ElizaOS extends EventTarget {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
   private editableMode = false;
 
-
-
   /**
    * Add multiple agents (batch operation)
    */
-  async addAgents(agents: Array<{ character: Character; plugins?: Plugin[], settings?: RuntimeSettings }>): Promise<UUID[]> {
+  async addAgents(
+    agents: Array<{ character: Character; plugins?: Plugin[]; settings?: RuntimeSettings }>
+  ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
       const runtime = new AgentRuntime({
         character: agent.character,
         plugins: agent.plugins || [],
-        settings: agent.settings || {}
+        settings: agent.settings || {},
       });
 
       this.runtimes.set(runtime.agentId, runtime);
-      
+
       this.dispatchEvent(
         new CustomEvent('agent:added', {
           detail: { agentId: runtime.agentId, character: agent.character },
         })
       );
-      
+
       return runtime.agentId;
     });
 
@@ -99,9 +99,6 @@ export class ElizaOS extends EventTarget {
     return ids;
   }
 
-
-
-
   /**
    * Register an existing runtime
    */
@@ -111,7 +108,7 @@ export class ElizaOS extends EventTarget {
     }
 
     this.runtimes.set(runtime.agentId, runtime);
-    
+
     this.dispatchEvent(
       new CustomEvent('agent:registered', {
         detail: { agentId: runtime.agentId, runtime },
@@ -147,7 +144,7 @@ export class ElizaOS extends EventTarget {
    */
   async deleteAgents(agentIds: UUID[]): Promise<void> {
     await this.stopAgents(agentIds);
-    
+
     for (const id of agentIds) {
       this.runtimes.delete(id);
     }
@@ -159,26 +156,27 @@ export class ElizaOS extends EventTarget {
     );
   }
 
-
   /**
    * Start multiple agents
    */
   async startAgents(agentIds?: UUID[]): Promise<void> {
     const ids = agentIds || Array.from(this.runtimes.keys());
-    
-    await Promise.all(ids.map(async (id) => {
-      const runtime = this.runtimes.get(id);
-      if (!runtime) {
-        throw new Error(`Agent ${id} not found`);
-      }
-      await runtime.initialize();
-      
-      this.dispatchEvent(
-        new CustomEvent('agent:started', {
-          detail: { agentId: id },
-        })
-      );
-    }));
+
+    await Promise.all(
+      ids.map(async (id) => {
+        const runtime = this.runtimes.get(id);
+        if (!runtime) {
+          throw new Error(`Agent ${id} not found`);
+        }
+        await runtime.initialize();
+
+        this.dispatchEvent(
+          new CustomEvent('agent:started', {
+            detail: { agentId: id },
+          })
+        );
+      })
+    );
 
     this.dispatchEvent(
       new CustomEvent('agents:started', {
@@ -193,12 +191,14 @@ export class ElizaOS extends EventTarget {
   async stopAgents(agentIds?: UUID[]): Promise<void> {
     const ids = agentIds || Array.from(this.runtimes.keys());
 
-    await Promise.all(ids.map(async (id) => {
-      const runtime = this.runtimes.get(id);
-      if (runtime) {
-        await runtime.stop();
-      }
-    }));
+    await Promise.all(
+      ids.map(async (id) => {
+        const runtime = this.runtimes.get(id);
+        if (runtime) {
+          await runtime.stop();
+        }
+      })
+    );
 
     this.dispatchEvent(
       new CustomEvent('agents:stopped', {
@@ -235,9 +235,7 @@ export class ElizaOS extends EventTarget {
    */
   getAgentsByNames(names: string[]): IAgentRuntime[] {
     const nameSet = new Set(names.map((n) => n.toLowerCase()));
-    return this.getAgents().filter((runtime) =>
-      nameSet.has(runtime.character.name.toLowerCase())
-    );
+    return this.getAgents().filter((runtime) => nameSet.has(runtime.character.name.toLowerCase()));
   }
 
   /**
@@ -268,9 +266,7 @@ export class ElizaOS extends EventTarget {
    * Get agent by character ID
    */
   getAgentByCharacterId(characterId: UUID): IAgentRuntime | undefined {
-    return this.getAgents().find(
-      (runtime) => runtime.character.id === characterId
-    );
+    return this.getAgents().find((runtime) => runtime.character.id === characterId);
   }
 
   /**
@@ -292,28 +288,29 @@ export class ElizaOS extends EventTarget {
     }
 
     // Convert string to Memory if needed
-    const memory: Memory = typeof message === 'string' 
-      ? {
-          id: uuidv4() as UUID,
-          entityId: options?.userId || ('system' as UUID),
-          agentId,
-          roomId: options?.roomId || agentId, // Default to agent's ID as room
-          content: { text: message },
-          createdAt: Date.now(),
-          metadata: options?.metadata
-        } as Memory
-      : message;
+    const memory: Memory =
+      typeof message === 'string'
+        ? ({
+            id: uuidv4() as UUID,
+            entityId: options?.userId || ('system' as UUID),
+            agentId,
+            roomId: options?.roomId || agentId, // Default to agent's ID as room
+            content: { text: message },
+            createdAt: Date.now(),
+            metadata: options?.metadata,
+          } as Memory)
+        : message;
 
     // Process directly with runtime
     const responses: Memory[] = [];
     await runtime.processActions(memory, responses);
-    
+
     this.dispatchEvent(
       new CustomEvent('message:sent', {
         detail: { agentId, message: memory, responses },
       })
     );
-    
+
     return responses;
   }
 
@@ -331,31 +328,30 @@ export class ElizaOS extends EventTarget {
         metadata?: Record<string, any>;
       };
     }>
-  ): Promise<Array<{agentId: UUID; responses: Memory[]; error?: Error}>> {
+  ): Promise<Array<{ agentId: UUID; responses: Memory[]; error?: Error }>> {
     const results = await Promise.all(
-      messages.map(async ({agentId, message, options}) => {
+      messages.map(async ({ agentId, message, options }) => {
         try {
           const responses = await this.sendMessage(agentId, message, options);
           return { agentId, responses };
         } catch (error) {
-          return { 
-            agentId, 
-            responses: [], 
-            error: error instanceof Error ? error : new Error(String(error))
+          return {
+            agentId,
+            responses: [],
+            error: error instanceof Error ? error : new Error(String(error)),
           };
         }
       })
     );
-    
+
     this.dispatchEvent(
       new CustomEvent('messages:sent', {
         detail: { results, count: messages.length },
       })
     );
-    
+
     return results;
   }
-
 
   /**
    * Validate API keys for agents
@@ -369,8 +365,7 @@ export class ElizaOS extends EventTarget {
       if (runtime) {
         // Check if runtime has required API keys
         const hasKeys = !!(
-          runtime.getSetting('OPENAI_API_KEY') ||
-          runtime.getSetting('ANTHROPIC_API_KEY')
+          runtime.getSetting('OPENAI_API_KEY') || runtime.getSetting('ANTHROPIC_API_KEY')
         );
         results.set(id, hasKeys);
       }
@@ -405,7 +400,6 @@ export class ElizaOS extends EventTarget {
     return results;
   }
 
-
   /**
    * Get a read-only runtime accessor
    */
@@ -416,7 +410,7 @@ export class ElizaOS extends EventTarget {
       getState: (agentId: UUID) => {
         const agent = this.getAgent(agentId);
         if (!agent) return undefined;
-        
+
         // Access the most recent state from the runtime's state cache
         // Note: This returns the cached state for the most recent message
         const agentRuntime = agent as any;

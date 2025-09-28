@@ -47,20 +47,18 @@ describe('Ollama Plugin Installation', () => {
 
   it('should install Ollama plugin as fallback when using OpenAI', async () => {
     const targetDir = '/test/project';
-    
+
     await setupProjectEnvironment(
       targetDir,
-      'pglite',    // database
-      'openai',    // aiModel
-      undefined,   // embeddingModel
-      true         // isNonInteractive
+      'pglite', // database
+      'openai', // aiModel
+      undefined, // embeddingModel
+      true // isNonInteractive
     );
 
     // Check that Ollama was installed as fallback
-    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find(
-      call => call[0] === 'ollama'
-    );
-    
+    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find((call) => call[0] === 'ollama');
+
     expect(ollamaCall).toBeDefined();
     expect(ollamaCall[1]).toBe(targetDir);
     expect(ollamaCall[2]).toBe('as universal fallback');
@@ -68,76 +66,66 @@ describe('Ollama Plugin Installation', () => {
 
   it('should install Ollama plugin as fallback when using Claude', async () => {
     const targetDir = '/test/project';
-    
+
     await setupProjectEnvironment(
       targetDir,
       'pglite',
-      'claude',    // aiModel
+      'claude', // aiModel
       undefined,
       true
     );
 
-    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find(
-      call => call[0] === 'ollama'
-    );
-    
+    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find((call) => call[0] === 'ollama');
+
     expect(ollamaCall).toBeDefined();
     expect(ollamaCall[2]).toBe('as universal fallback');
   });
 
   it('should NOT install Ollama plugin when local is selected as AI model', async () => {
     const targetDir = '/test/project';
-    
+
     await setupProjectEnvironment(
       targetDir,
       'pglite',
-      'local',     // aiModel (which is Ollama)
+      'local', // aiModel (which is Ollama)
       undefined,
       true
     );
 
     // Ollama should be installed but NOT as fallback
     const ollamaFallbackCall = mockInstallPluginWithSpinner.mock.calls.find(
-      call => call[0] === 'ollama' && call[2] === 'as universal fallback'
+      (call) => call[0] === 'ollama' && call[2] === 'as universal fallback'
     );
-    
+
     expect(ollamaFallbackCall).toBeUndefined();
   });
 
   it('should NOT install Ollama plugin when local is selected as embedding model', async () => {
     const targetDir = '/test/project';
-    
+
     await setupProjectEnvironment(
       targetDir,
       'pglite',
       'openai',
-      'local',     // embeddingModel (which is Ollama)
+      'local', // embeddingModel (which is Ollama)
       true
     );
 
     // Ollama should be installed for embeddings but NOT as fallback
     const ollamaFallbackCall = mockInstallPluginWithSpinner.mock.calls.find(
-      call => call[0] === 'ollama' && call[2] === 'as universal fallback'
+      (call) => call[0] === 'ollama' && call[2] === 'as universal fallback'
     );
-    
+
     expect(ollamaFallbackCall).toBeUndefined();
   });
 
   it('should install Ollama when using OpenRouter and OpenAI embeddings', async () => {
     const targetDir = '/test/project';
-    
-    await setupProjectEnvironment(
-      targetDir,
-      'postgres',
-      'openrouter',
-      'openai',
-      true
-    );
 
-    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find(
-      call => call[0] === 'ollama'
-    );
-    
+    await setupProjectEnvironment(targetDir, 'postgres', 'openrouter', 'openai', true);
+
+    const ollamaCall = mockInstallPluginWithSpinner.mock.calls.find((call) => call[0] === 'ollama');
+
     expect(ollamaCall).toBeDefined();
     expect(ollamaCall[2]).toBe('as universal fallback');
   });

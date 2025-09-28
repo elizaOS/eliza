@@ -22,9 +22,9 @@ describe('SQL Plugin', () => {
     mockRuntime = {
       agentId: '00000000-0000-0000-0000-000000000000',
       getSetting: mock(() => null),
-      registerDatabaseAdapter: mock(() => { }),
-      registerService: mock(() => { }),
-      getService: mock(() => { }),
+      registerDatabaseAdapter: mock(() => {}),
+      registerService: mock(() => {}),
+      getService: mock(() => {}),
       databaseAdapter: undefined,
     } as any;
   });
