@@ -28,14 +28,21 @@ mock.module('../src/utils', () => ({
 const mockSafeReplacer = mock((_key, value) => value); // Simple replacer mock
 // Don't mock the entire index module to avoid interfering with other tests
 
+// Track adapter readiness across init/close to properly test idempotent initialization
+let adapterReady = false;
+
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
-  init: mock().mockResolvedValue(undefined),
+  init: mock().mockImplementation(async () => {
+    adapterReady = true;
+  }),
   initialize: mock().mockResolvedValue(undefined),
   runMigrations: mock().mockResolvedValue(undefined),
-  isReady: mock().mockResolvedValue(false),
-  close: mock().mockResolvedValue(undefined),
+  isReady: mock().mockImplementation(async () => adapterReady),
+  close: mock().mockImplementation(async () => {
+    adapterReady = false;
+  }),
   getConnection: mock().mockResolvedValue({}),
   getEntitiesByIds: mock().mockResolvedValue([]),
   createEntities: mock().mockResolvedValue(true),
@@ -178,6 +185,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         mockFn.mockClear();
       }
     });
+
+    // Reset readiness state between tests
+    adapterReady = false;
 
     agentId = mockCharacter.id!; // Use character's ID
 
@@ -346,6 +356,31 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
       expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
+    });
+
+    it('should skip adapter.init when adapter is already ready (idempotent initialize)', async () => {
+      // Simulate adapter already initialized
+      adapterReady = true;
+
+      await runtime.initialize();
+
+      expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.init).not.toHaveBeenCalled();
+      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
+      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
+    });
+
+    it('should call adapter.init only once across multiple initialize calls', async () => {
+      // First initialize: adapterReady is false; init should be called
+      await runtime.initialize();
+      // Second initialize: adapterReady should now be true; init should be skipped
+      await runtime.initialize();
+
+      expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
     });
 
     it('should throw if adapter is not available during initialize', async () => {
