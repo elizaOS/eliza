@@ -389,6 +389,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         character: mockCharacter,
         agentId: agentId,
       });
+
+      // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
+      runtimeWithoutAdapter.initPromise.catch(() => { });
+
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
       );
