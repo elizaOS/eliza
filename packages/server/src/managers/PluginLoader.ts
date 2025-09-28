@@ -90,7 +90,7 @@ export class PluginLoader {
         // Attempt to dynamically import the plugin
         pluginModule = await import(pluginName);
       } catch (error) {
-        logger.error(`Failed to load plugin ${pluginName}: ${error}`);
+        logger.warn(`Failed to load plugin ${pluginName}: ${error}`);
         // Attempt auto-install if allowed and not already attempted
         const attempted = await pluginInstaller.tryInstall(pluginName);
         if (!attempted) {
