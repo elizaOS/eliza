@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { StartOptions } from './types';
+import { UserEnvironment } from '@/src/utils/user-environment';
 
 export const start = new Command()
   .name('start')
@@ -24,9 +25,20 @@ export const start = new Command()
   .action(async (options: StartOptions & { character?: string[] }) => {
     try {
       // Load env config first before any character loading
-      const envPath = path.join(process.cwd(), '.env');
-      if (fs.existsSync(envPath)) {
-        dotenv.config({ path: envPath });
+      // Use monorepo-aware resolver so root .env is found when running via turbo
+      try {
+        const userEnv = UserEnvironment.getInstance();
+        const { envFilePath } = await userEnv.getPathInfo();
+        const candidateEnv = envFilePath || path.join(process.cwd(), '.env');
+        if (fs.existsSync(candidateEnv)) {
+          dotenv.config({ path: candidateEnv });
+        }
+      } catch {
+        // Fallback to CWD-based .env if resolution fails
+        const envPath = path.join(process.cwd(), '.env');
+        if (fs.existsSync(envPath)) {
+          dotenv.config({ path: envPath });
+        }
       }
 
       // Auto-install @elizaos/cli as dev dependency using bun (for non-monorepo projects)
