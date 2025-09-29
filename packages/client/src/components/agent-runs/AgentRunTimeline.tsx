@@ -138,93 +138,96 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
   );
 
   // Process run data into hierarchical structure
-  const processedRun = useMemo((): ProcessedRun | null => {
-    if (!runDetailQuery.data) {
-      return null;
+  const processedRuns = useMemo((): ProcessedRun[] => {
+    if (runs.length === 0) {
+      return [];
     }
 
-    const { summary, events } = runDetailQuery.data;
+    return runs.map(runSummary => {
+      // For now, create a processed run from the summary data
+      // We'll only show detailed events for the selected run
+      const isSelected = runSummary.runId === selectedRunId;
+      const runDetail = isSelected ? runDetailQuery.data : null;
 
-    // Process events into hierarchical structure
-    const processedEvents: ProcessedEvent[] = [];
-    const eventGroups = new Map<string, ProcessedEvent[]>();
+      let processedEvents: ProcessedEvent[] = [];
 
-    // Group events by type and process them
-    events.forEach((event, index) => {
-      let processedEvent: ProcessedEvent | null = null;
+      if (runDetail && runDetail.events) {
+        runDetail.events.forEach((event, index) => {
+          let processedEvent: ProcessedEvent | null = null;
 
-      switch (event.type) {
-        case 'ACTION_STARTED':
-        case 'ACTION_COMPLETED': {
-          const actionName = (event.data.actionName as string) || (event.data.actionId as string) || `Action ${index}`;
-          processedEvent = {
-            id: `action-${event.data.actionId || index}`,
-            name: actionName,
-            type: 'action',
-            status: event.type === 'ACTION_COMPLETED' ? (event.data.success !== false ? 'completed' : 'failed') : 'running',
-            startTime: event.timestamp,
-            duration: event.data.executionTime as number,
-            icon: Activity,
-          };
-          break;
-        }
-        case 'MODEL_USED': {
-          const modelType = (event.data.modelType as string) || 'Model Call';
-          processedEvent = {
-            id: `model-${index}`,
-            name: modelType,
-            type: 'model',
-            status: 'completed',
-            startTime: event.timestamp,
-            duration: event.data.executionTime as number,
-            icon: Eye,
-          };
-          break;
-        }
-        case 'EVALUATOR_COMPLETED': {
-          const evaluatorName = (event.data.evaluatorName as string) || `Evaluator ${index}`;
-          processedEvent = {
-            id: `evaluator-${index}`,
-            name: evaluatorName,
-            type: 'evaluator',
-            status: 'completed',
-            startTime: event.timestamp,
-            icon: Database,
-          };
-          break;
-        }
-        case 'EMBEDDING_EVENT': {
-          const status = (event.data.status as string) || 'completed';
-          processedEvent = {
-            id: `embedding-${index}`,
-            name: `Embedding ${status}`,
-            type: 'embedding',
-            status: status === 'failed' ? 'failed' : 'completed',
-            startTime: event.timestamp,
-            duration: event.data.durationMs as number,
-            icon: Zap,
-          };
-          break;
-        }
+          switch (event.type) {
+            case 'ACTION_STARTED':
+            case 'ACTION_COMPLETED': {
+              const actionName = (event.data.actionName as string) || (event.data.actionId as string) || `Action ${index}`;
+              processedEvent = {
+                id: `action-${event.data.actionId || index}`,
+                name: actionName,
+                type: 'action',
+                status: event.type === 'ACTION_COMPLETED' ? (event.data.success !== false ? 'completed' : 'failed') : 'running',
+                startTime: event.timestamp,
+                duration: event.data.executionTime as number,
+                icon: Activity,
+              };
+              break;
+            }
+            case 'MODEL_USED': {
+              const modelType = (event.data.modelType as string) || 'Model Call';
+              processedEvent = {
+                id: `model-${index}`,
+                name: modelType,
+                type: 'model',
+                status: 'completed',
+                startTime: event.timestamp,
+                duration: event.data.executionTime as number,
+                icon: Eye,
+              };
+              break;
+            }
+            case 'EVALUATOR_COMPLETED': {
+              const evaluatorName = (event.data.evaluatorName as string) || `Evaluator ${index}`;
+              processedEvent = {
+                id: `evaluator-${index}`,
+                name: evaluatorName,
+                type: 'evaluator',
+                status: 'completed',
+                startTime: event.timestamp,
+                icon: Database,
+              };
+              break;
+            }
+            case 'EMBEDDING_EVENT': {
+              const status = (event.data.status as string) || 'completed';
+              processedEvent = {
+                id: `embedding-${index}`,
+                name: `Embedding ${status}`,
+                type: 'embedding',
+                status: status === 'failed' ? 'failed' : 'completed',
+                startTime: event.timestamp,
+                duration: event.data.durationMs as number,
+                icon: Zap,
+              };
+              break;
+            }
+          }
+
+          if (processedEvent) {
+            processedEvents.push(processedEvent);
+          }
+        });
       }
 
-      if (processedEvent) {
-        processedEvents.push(processedEvent);
-      }
+      return {
+        id: runSummary.runId,
+        name: `Run ${formatTime(runSummary.startedAt || Date.now())}`,
+        status: runSummary.status as RunStatus,
+        startTime: runSummary.startedAt || Date.now(),
+        endTime: runSummary.endedAt || undefined,
+        duration: runSummary.durationMs || (runSummary.endedAt && runSummary.startedAt ? runSummary.endedAt - runSummary.startedAt : undefined),
+        children: processedEvents.sort((a, b) => a.startTime - b.startTime),
+        counts: runSummary.counts || { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 },
+      };
     });
-
-    // Return the processed run
-    return {
-      id: summary.runId,
-      name: `Run ${formatTime(summary.startedAt || Date.now())}`,
-      status: summary.status as RunStatus,
-      startTime: summary.startedAt || Date.now(),
-      endTime: summary.endedAt || undefined,
-      duration: summary.durationMs || (summary.endedAt && summary.startedAt ? summary.endedAt - summary.startedAt : undefined),
-      children: processedEvents.sort((a, b) => a.startTime - b.startTime),
-      counts: summary.counts || { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 },
-    };
-  }, [runDetailQuery.data]);
+  }, [runs, runDetailQuery.data, selectedRunId]);
 
   // Toggle expansion of runs
   const toggleRunExpansion = (runId: string) => {
@@ -270,14 +273,25 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
         <div className="px-4 py-8 text-sm text-muted-foreground">No runs available yet.</div>
       )}
 
-      {processedRun && (
-        <div className="bg-card rounded-lg border">
-          <RunItem
-            run={processedRun}
-            isExpanded={expandedRuns.has(processedRun.id)}
-            onToggle={() => toggleRunExpansion(processedRun.id)}
-            level={0}
-          />
+      {processedRuns.length > 0 && (
+        <div className="space-y-2">
+          {processedRuns.map((run) => (
+            <div key={run.id} className="bg-card rounded-lg border">
+              <RunItem
+                run={run}
+                isExpanded={expandedRuns.has(run.id)}
+                isSelected={selectedRunId === run.id}
+                onToggle={() => {
+                  toggleRunExpansion(run.id);
+                  // Also set this as the selected run when expanded
+                  if (!expandedRuns.has(run.id)) {
+                    setSelectedRunId(run.id as UUID);
+                  }
+                }}
+                level={0}
+              />
+            </div>
+          ))}
         </div>
       )}
 
@@ -291,9 +305,10 @@ interface RunItemProps {
   isExpanded: boolean;
   onToggle: () => void;
   level: number;
+  isSelected?: boolean;
 }
 
-const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level }) => {
+const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isSelected }) => {
   const StatusIcon = getStatusIcon(run.status);
   const indent = level * 24;
 
@@ -307,7 +322,8 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level }) =
       <div
         className={cn(
           "flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors",
-          level > 0 && "border-l border-border ml-4"
+          level > 0 && "border-l border-border ml-4",
+          isSelected && "bg-primary/10 border-primary"
         )}
         style={{ paddingLeft: `${12 + indent}px` }}
         onClick={onToggle}
