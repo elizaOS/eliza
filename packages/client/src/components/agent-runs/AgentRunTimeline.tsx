@@ -229,6 +229,35 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     });
   }, [runs, runDetailQuery.data, selectedRunId]);
 
+  // Calculate timeline bounds for proportional visualization
+  const timelineBounds = useMemo(() => {
+    if (processedRuns.length === 0) {
+      return { startTime: 0, endTime: 0, totalDuration: 0 };
+    }
+
+    let earliestStart = Number.MAX_SAFE_INTEGER;
+    let latestEnd = 0;
+
+    processedRuns.forEach(run => {
+      earliestStart = Math.min(earliestStart, run.startTime);
+      const runEnd = run.endTime || (run.startTime + (run.duration || 0));
+      latestEnd = Math.max(latestEnd, runEnd);
+
+      // Also consider child events for more accurate timeline bounds
+      run.children.forEach(child => {
+        earliestStart = Math.min(earliestStart, child.startTime);
+        const childEnd = child.startTime + (child.duration || 0);
+        latestEnd = Math.max(latestEnd, childEnd);
+      });
+    });
+
+    return {
+      startTime: earliestStart,
+      endTime: latestEnd,
+      totalDuration: latestEnd - earliestStart,
+    };
+  }, [processedRuns]);
+
   // Toggle expansion of runs
   const toggleRunExpansion = (runId: string) => {
     const newExpanded = new Set(expandedRuns);
@@ -289,6 +318,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
                   }
                 }}
                 level={0}
+                timelineBounds={timelineBounds}
               />
             </div>
           ))}
@@ -306,15 +336,22 @@ interface RunItemProps {
   onToggle: () => void;
   level: number;
   isSelected?: boolean;
+  timelineBounds: {
+    startTime: number;
+    endTime: number;
+    totalDuration: number;
+  };
 }
 
-const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isSelected }) => {
+const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isSelected, timelineBounds }) => {
   const StatusIcon = getStatusIcon(run.status);
   const indent = level * 24;
 
-  // Calculate timing bar parameters
-  const totalDuration = run.duration || 1000; // fallback for visualization
-  const startOffset = 0;
+  // Calculate timing bar parameters based on timeline bounds
+  const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
+  const runDuration = run.duration || 0;
+  const startOffset = timelineTotal > 0 ? ((run.startTime - timelineStart) / timelineTotal) * 100 : 0;
+  const widthPercent = timelineTotal > 0 ? (runDuration / timelineTotal) * 100 : 0;
 
   return (
     <div className="border-l-2 border-transparent">
@@ -364,14 +401,14 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
           <div
             className={cn(
               "absolute top-0 bottom-0 rounded-sm transition-all",
-              run.status === 'completed' ? "bg-green-500 dark:bg-green-600" :
-                run.status === 'error' ? "bg-red-500 dark:bg-red-600" :
-                  run.status === 'timeout' ? "bg-yellow-500 dark:bg-yellow-600" :
+              run.status === 'completed' ? "bg-blue-500 dark:bg-blue-600" :
+                run.status === 'error' ? "bg-blue-700 dark:bg-blue-800" :
+                  run.status === 'timeout' ? "bg-blue-400 dark:bg-blue-500" :
                     "bg-blue-500 dark:bg-blue-600"
             )}
             style={{
-              left: `${startOffset}%`,
-              width: `${Math.max(2, 100)}%`
+              left: `${Math.max(0, Math.min(startOffset, 98))}%`,
+              width: `${Math.max(2, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`
             }}
           />
           <div className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white mix-blend-difference">
@@ -384,7 +421,7 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
       {isExpanded && run.children.length > 0 && (
         <div className="border-l border-border ml-4">
           {run.children.map((child) => (
-            <EventItem key={child.id} event={child} level={level + 1} />
+            <EventItem key={child.id} event={child} level={level + 1} timelineBounds={timelineBounds} />
           ))}
         </div>
       )}
@@ -396,12 +433,23 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
 interface EventItemProps {
   event: ProcessedEvent;
   level: number;
+  timelineBounds: {
+    startTime: number;
+    endTime: number;
+    totalDuration: number;
+  };
 }
 
-const EventItem: React.FC<EventItemProps> = ({ event, level }) => {
+const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) => {
   const IconComponent = event.icon;
   const StatusIcon = getStatusIcon(event.status);
   const indent = level * 24;
+
+  // Calculate timing bar parameters based on timeline bounds  
+  const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
+  const eventDuration = event.duration || 0;
+  const startOffset = timelineTotal > 0 ? ((event.startTime - timelineStart) / timelineTotal) * 100 : 0;
+  const widthPercent = timelineTotal > 0 ? (eventDuration / timelineTotal) * 100 : 0;
 
   return (
     <div
@@ -435,12 +483,15 @@ const EventItem: React.FC<EventItemProps> = ({ event, level }) => {
       <div className="flex-shrink-0 w-16 h-2 bg-muted rounded-sm overflow-hidden">
         <div
           className={cn(
-            "h-full transition-all",
-            event.status === 'completed' ? "bg-green-400 dark:bg-green-500" :
-              event.status === 'failed' ? "bg-red-400 dark:bg-red-500" :
+            "absolute h-full transition-all",
+            event.status === 'completed' ? "bg-blue-400 dark:bg-blue-500" :
+              event.status === 'failed' ? "bg-blue-600 dark:bg-blue-700" :
                 "bg-blue-400 dark:bg-blue-500"
           )}
-          style={{ width: '100%' }}
+          style={{
+            left: `${Math.max(0, Math.min(startOffset, 98))}%`,
+            width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`
+          }}
         />
       </div>
     </div>
