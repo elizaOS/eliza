@@ -32,13 +32,77 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const fromTime = from ? Number(from) : undefined;
       const toTime = to ? Number(to) : undefined;
 
-      // Get run_event logs to build the runs list
-      const runEventLogs = await runtime.getLogs({
-        entityId: agentId,
-        roomId: roomId ? (roomId as UUID) : undefined,
-        type: 'run_event',
-        count: limitNum * 3, // Get more to account for multiple events per run
-      });
+      // Aggregate run_event logs for this agent from multiple sources
+      const runEventLogs: Log[] = [];
+
+      // 1) Direct agent-scoped run events (in case plugin logs under agent)
+      try {
+        const directAgentRunEvents = await runtime.getLogs({
+          entityId: agentId,
+          roomId: roomId ? (roomId as UUID) : undefined,
+          type: 'run_event',
+          count: 2000,
+        });
+        runEventLogs.push(...directAgentRunEvents);
+      } catch { }
+
+      // 2) Recent message authors in the scoped room(s)
+      try {
+        const recentMessages = await runtime.getMemories({
+          tableName: 'messages',
+          roomId: roomId ? (roomId as UUID) : undefined,
+          count: 500,
+        });
+        const authorIds = Array.from(
+          new Set(
+            recentMessages
+              .map((m) => m.entityId)
+              .filter((eid): eid is UUID => Boolean(eid) && (eid as UUID) !== agentId)
+          )
+        );
+        for (const authorId of authorIds) {
+          try {
+            const logs = await runtime.getLogs({
+              entityId: authorId,
+              roomId: roomId ? (roomId as UUID) : undefined,
+              type: 'run_event',
+              count: 2000,
+            });
+            runEventLogs.push(...logs);
+          } catch { }
+        }
+      } catch { }
+
+      // 3) Participants across all agent rooms (broader catch-all)
+      try {
+        const roomsToScan: UUID[] = roomId ? [roomId as UUID] : [];
+        if (!roomId) {
+          try {
+            const worlds = await runtime.getAllWorlds();
+            for (const w of worlds) {
+              const rooms = await runtime.getRooms(w.id);
+              roomsToScan.push(...rooms.map((r) => r.id));
+            }
+          } catch { }
+        }
+        for (const rId of roomsToScan) {
+          try {
+            const participants: UUID[] = await runtime.getParticipantsForRoom(rId);
+            for (const participantId of participants) {
+              if (participantId === agentId) continue;
+              try {
+                const logs = await runtime.getLogs({
+                  entityId: participantId,
+                  roomId: rId,
+                  type: 'run_event',
+                  count: 2000,
+                });
+                runEventLogs.push(...logs);
+              } catch { }
+            }
+          } catch { }
+        }
+      } catch { }
 
       // Group by runId and build run summaries
       type RunListItem = {
@@ -231,14 +295,44 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      // Fetch logs and filter by runId
+      // Fetch agent-side logs (actions, evaluators, model usage)
       const logs: Log[] = await runtime.getLogs({
         entityId: agentId,
         roomId: roomId ? (roomId as UUID) : undefined,
         count: 2000,
       });
 
-      const related = logs.filter((l) => (l.body as { runId?: UUID }).runId === runId);
+      // Also fetch run_event logs emitted under recent message authors' entity IDs for this agent
+      const recentForDetail = await runtime.getMemories({
+        tableName: 'messages',
+        roomId: roomId ? (roomId as UUID) : undefined,
+        count: 300,
+      });
+      const detailAuthorIds = Array.from(
+        new Set(
+          recentForDetail
+            .map((m) => m.entityId)
+            .filter((eid): eid is UUID => Boolean(eid) && (eid as UUID) !== agentId)
+        )
+      );
+      const participantRunEvents: Log[] = [];
+      for (const authorId of detailAuthorIds) {
+        try {
+          const rLogs = await runtime.getLogs({
+            entityId: authorId,
+            roomId: roomId ? (roomId as UUID) : undefined,
+            type: 'run_event',
+            count: 2000,
+          });
+          participantRunEvents.push(...rLogs);
+        } catch {
+          // continue
+        }
+      }
+
+      const related = logs
+        .concat(participantRunEvents)
+        .filter((l) => (l.body as { runId?: UUID }).runId === runId);
 
       const runEvents = related
         .filter((l) => l.type === 'run_event')
