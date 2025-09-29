@@ -10,8 +10,6 @@ import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
 
 type AgentRunTimelineProps = {
   agentId: UUID;
-  roomId?: UUID;
-  limit?: number;
 };
 
 type TimelineItem = {
@@ -74,16 +72,12 @@ const timelineOptions: TimelineOptions = {
   orientation: 'top',
 };
 
-export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
-  agentId,
-  roomId,
-  limit = 20,
-}) => {
+export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) => {
   const [selectedRunId, setSelectedRunId] = useState<UUID | null>(null);
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<Timeline | null>(null);
 
-  const runsQuery = useAgentRuns(agentId, { roomId, limit });
+  const runsQuery = useAgentRuns(agentId);
   const runs = runsQuery.data?.runs ?? [];
 
   useEffect(() => {
@@ -98,7 +92,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
     }
   }, [runs, selectedRunId]);
 
-  const runDetailQuery = useAgentRunDetail(agentId, selectedRunId, roomId);
+  const runDetailQuery = useAgentRunDetail(agentId, selectedRunId);
 
   const selectedRunSummary = useMemo(
     () => runs.find((run) => run.runId === selectedRunId) ?? runs[0] ?? null,
@@ -279,6 +273,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
   }, [timelineData]);
 
   const isLoading = runsQuery.isLoading || runDetailQuery.isLoading;
+  const errorMessage = runsQuery.error ? (runsQuery.error as Error).message : undefined;
   const hasRuns = runs.length > 0;
 
   return (
@@ -312,7 +307,12 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({
         <div className="border-b px-4 py-2 text-sm font-medium">Timeline</div>
         <div className="relative px-2 py-4">
           {isLoading && <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>}
-          {!isLoading && !hasRuns && (
+          {!isLoading && errorMessage && (
+            <div className="px-4 py-8 text-sm text-red-500">
+              Failed to load runs: {errorMessage}
+            </div>
+          )}
+          {!isLoading && !errorMessage && !hasRuns && (
             <div className="px-4 py-8 text-sm text-muted-foreground">No runs available yet.</div>
           )}
           <div

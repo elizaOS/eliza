@@ -127,7 +127,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
       >
         {detailsTab === 'timeline' && agentId && (
           <div className="w-full max-w-full p-4">
-            <AgentRunTimeline agentId={agentId} roomId={channelId} />
+            <AgentRunTimeline agentId={agentId} />
           </div>
         )}
         {detailsTab === 'timeline' && !agentId && (

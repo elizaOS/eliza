@@ -191,13 +191,18 @@ export function useAgentRuns(
   options: Partial<UseQueryOptions<RunsListResponse, Error, RunsListResponse>> = {}
 ) {
   const network = useNetworkStatus();
-  const serializedParams = params ? JSON.stringify(params) : 'default';
+  const sanitizedParams = params
+    ? Object.fromEntries(
+        Object.entries(params).filter(([key, value]) => value !== undefined && key !== 'roomId')
+      )
+    : undefined;
+  const serializedParams = sanitizedParams ? JSON.stringify(sanitizedParams) : 'default';
 
   return useQuery<RunsListResponse>({
     queryKey: ['agent', agentId, 'runs', serializedParams],
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID is required');
-      return elizaClient.runs.listRuns(agentId, params);
+      return elizaClient.runs.listRuns(agentId, sanitizedParams as ListRunsParams | undefined);
     },
     enabled: Boolean(agentId),
     staleTime: STALE_TIMES.FREQUENT,
