@@ -376,10 +376,10 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     run.children.forEach(scanEvent);
 
     const totalDuration = latestEnd - earliestStart;
-    
+
     // Ensure we have at least a minimal duration for visualization
     const minDuration = 100; // 100ms minimum for visualization
-    
+
     return {
       startTime: earliestStart,
       endTime: latestEnd,
@@ -437,7 +437,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
                   }
                 }}
                 level={0}
-                timelineBounds={timelineBounds}
+                timelineBounds={calculateRunTimelineBounds(run)}
               />
             </div>
           ))}
@@ -473,11 +473,16 @@ const RunItem: React.FC<RunItemProps> = ({
   const indent = level * 24;
 
   // Calculate timing bar parameters based on timeline bounds
+  // For the run itself, we want the bar to span the full width since it represents the entire timeline
   const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
   const runDuration = run.duration || 0;
-  const startOffset =
-    timelineTotal > 0 ? ((run.startTime - timelineStart) / timelineTotal) * 100 : 0;
-  const widthPercent = timelineTotal > 0 ? (runDuration / timelineTotal) * 100 : 0;
+
+  // For a run at the top level, the bar should show the full duration
+  const isRootRun = level === 0;
+  const startOffset = isRootRun ? 0 :
+    (timelineTotal > 0 ? ((run.startTime - timelineStart) / timelineTotal) * 100 : 0);
+  const widthPercent = isRootRun ? 100 :
+    (timelineTotal > 0 ? (runDuration / timelineTotal) * 100 : 0);
 
   return (
     <div className="border-l-2 border-transparent">
