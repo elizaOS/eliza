@@ -27,6 +27,34 @@ export interface Log {
   createdAt: Date;
 }
 
+export type RunStatus = 'started' | 'completed' | 'timeout' | 'error';
+
+export interface AgentRunCounts {
+  actions: number;
+  modelCalls: number;
+  errors: number;
+  evaluators: number;
+}
+
+export interface AgentRunSummary {
+  runId: string;
+  status: RunStatus;
+  startedAt: number | null;
+  endedAt: number | null;
+  durationMs: number | null;
+  messageId?: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  metadata?: Record<string, unknown>;
+  counts?: AgentRunCounts;
+}
+
+export interface AgentRunSummaryResult {
+  runs: AgentRunSummary[];
+  total: number;
+  hasMore: boolean;
+}
+
 /**
  * Interface for database operations
  */
@@ -144,6 +172,14 @@ export interface IDatabaseAdapter {
   }): Promise<Log[]>;
 
   deleteLog(logId: UUID): Promise<void>;
+
+  getAgentRunSummaries?(params: {
+    limit?: number;
+    roomId?: UUID;
+    status?: RunStatus | 'all';
+    from?: number;
+    to?: number;
+  }): Promise<AgentRunSummaryResult>;
 
   searchMemories(params: {
     embedding: number[];

@@ -132,6 +132,30 @@
   background-color: rgb(107, 114, 128);
 }
 
+.vis-item.timeline-item-success {
+  background-color: rgba(34, 197, 94, 0.2);
+  border-color: rgb(34, 197, 94);
+  color: rgb(22, 101, 52);
+}
+
+.vis-item.timeline-item-error {
+  background-color: rgba(248, 113, 113, 0.2);
+  border-color: rgb(220, 38, 38);
+  color: rgb(185, 28, 28);
+}
+
+.vis-item.timeline-item-warning {
+  background-color: rgba(251, 191, 36, 0.2);
+  border-color: rgb(217, 119, 6);
+  color: rgb(146, 64, 14);
+}
+
+.vis-item.timeline-item-neutral {
+  background-color: rgba(148, 163, 184, 0.2);
+  border-color: rgb(148, 163, 184);
+  color: rgb(30, 41, 59);
+}
+
 @utility container {
   margin-inline: auto;
 }
