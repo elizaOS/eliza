@@ -171,14 +171,14 @@ export class RuntimeMigrator {
         postgresUrl &&
         !postgresUrl.includes(':memory:') &&
         !postgresUrl.includes('pglite') &&
-        postgresUrl.includes('postgres');
+        (postgresUrl.includes('postgres://') || postgresUrl.includes('postgresql://'));
 
       if (isRealPostgres) {
         try {
           logger.debug(`[RuntimeMigrator] Using PostgreSQL advisory locks for ${pluginName}`);
 
           const lockResult = await this.db.execute(
-            sql.raw(`SELECT pg_try_advisory_lock(${lockId}) as acquired`)
+            sql`SELECT pg_try_advisory_lock(${lockId}::bigint) as acquired`
           );
 
           lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
@@ -189,7 +189,7 @@ export class RuntimeMigrator {
             );
 
             // Wait for the lock (blocking call)
-            await this.db.execute(sql.raw(`SELECT pg_advisory_lock(${lockId})`));
+            await this.db.execute(sql`SELECT pg_advisory_lock(${lockId}::bigint)`);
             lockAcquired = true;
 
             logger.info(`[RuntimeMigrator] Lock acquired for ${pluginName}`);
@@ -422,11 +422,11 @@ export class RuntimeMigrator {
         postgresUrl &&
         !postgresUrl.includes(':memory:') &&
         !postgresUrl.includes('pglite') &&
-        postgresUrl.includes('postgres');
+        (postgresUrl.includes('postgres://') || postgresUrl.includes('postgresql://'));
 
       if (lockAcquired && isRealPostgres) {
         try {
-          await this.db.execute(sql.raw(`SELECT pg_advisory_unlock(${lockId})`));
+          await this.db.execute(sql`SELECT pg_advisory_unlock(${lockId}::bigint)`);
           logger.debug(`[RuntimeMigrator] Advisory lock released for ${pluginName}`);
         } catch (unlockError) {
           logger.warn(
