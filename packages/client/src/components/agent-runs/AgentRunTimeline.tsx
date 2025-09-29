@@ -25,13 +25,13 @@ type RunStatus = 'completed' | 'started' | 'timeout' | 'error';
 interface TimelineEvent {
   id: string;
   type:
-    | 'RUN_STARTED'
-    | 'RUN_ENDED'
-    | 'ACTION_STARTED'
-    | 'ACTION_COMPLETED'
-    | 'MODEL_USED'
-    | 'EVALUATOR_COMPLETED'
-    | 'EMBEDDING_EVENT';
+  | 'RUN_STARTED'
+  | 'RUN_ENDED'
+  | 'ACTION_STARTED'
+  | 'ACTION_COMPLETED'
+  | 'MODEL_USED'
+  | 'EVALUATOR_COMPLETED'
+  | 'EMBEDDING_EVENT';
   timestamp: number;
   duration?: number;
   data: Record<string, unknown>;
