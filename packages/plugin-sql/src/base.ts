@@ -16,6 +16,10 @@ import {
   TaskMetadata,
   type UUID,
   type World,
+  type AgentRunSummary,
+  type AgentRunSummaryResult,
+  type RunStatus,
+  type AgentRunCounts,
 } from '@elizaos/core';
 import {
   and,
@@ -1366,6 +1370,238 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       if (logs.length === 0) return [];
 
       return logs;
+    });
+  }
+
+  async getAgentRunSummaries(
+    params: {
+      limit?: number;
+      roomId?: UUID;
+      status?: RunStatus | 'all';
+      from?: number;
+      to?: number;
+    } = {}
+  ): Promise<AgentRunSummaryResult> {
+    const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
+    const fromDate = typeof params.from === 'number' ? new Date(params.from) : undefined;
+    const toDate = typeof params.to === 'number' ? new Date(params.to) : undefined;
+
+    return this.withDatabase(async () => {
+      const runMap = new Map<string, AgentRunSummary>();
+
+      const conditions: SQL<unknown>[] = [
+        eq(logTable.type, 'run_event'),
+        sql`${logTable.body} ? 'runId'`,
+        eq(roomTable.agentId, this.agentId),
+      ];
+
+      if (params.roomId) {
+        conditions.push(eq(logTable.roomId, params.roomId));
+      }
+      if (fromDate) {
+        conditions.push(gte(logTable.createdAt, fromDate));
+      }
+      if (toDate) {
+        conditions.push(lte(logTable.createdAt, toDate));
+      }
+
+      const whereClause = and(...conditions);
+
+      const eventLimit = Math.max(limit * 20, 200);
+
+      const runEventRows = await this.db
+        .select({
+          runId: sql<string>`(${logTable.body} ->> 'runId')`,
+          status: sql<string | null>`(${logTable.body} ->> 'status')`,
+          messageId: sql<string | null>`(${logTable.body} ->> 'messageId')`,
+          rawBody: logTable.body,
+          createdAt: logTable.createdAt,
+          roomId: logTable.roomId,
+          entityId: logTable.entityId,
+        })
+        .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+        .where(whereClause)
+        .orderBy(desc(logTable.createdAt))
+        .limit(eventLimit);
+
+      for (const row of runEventRows) {
+        const runId = row.runId;
+        if (!runId) continue;
+
+        const summary: AgentRunSummary = runMap.get(runId) ?? {
+          runId,
+          status: 'started',
+          startedAt: null,
+          endedAt: null,
+          durationMs: null,
+          messageId: undefined,
+          roomId: undefined,
+          entityId: undefined,
+          metadata: {},
+        };
+
+        if (!summary.messageId && row.messageId) {
+          summary.messageId = row.messageId as UUID;
+        }
+        if (!summary.roomId && row.roomId) {
+          summary.roomId = row.roomId as UUID;
+        }
+        if (!summary.entityId && row.entityId) {
+          summary.entityId = row.entityId as UUID;
+        }
+
+        const body = row.rawBody as Record<string, unknown> | undefined;
+        if (body && typeof body === 'object') {
+          if (!summary.roomId && typeof body.roomId === 'string') {
+            summary.roomId = body.roomId as UUID;
+          }
+          if (!summary.entityId && typeof body.entityId === 'string') {
+            summary.entityId = body.entityId as UUID;
+          }
+          if (!summary.messageId && typeof body.messageId === 'string') {
+            summary.messageId = body.messageId as UUID;
+          }
+          if (!summary.metadata || Object.keys(summary.metadata).length === 0) {
+            const metadata = (body.metadata as Record<string, unknown> | undefined) ?? undefined;
+            summary.metadata = metadata ? { ...metadata } : {};
+          }
+        }
+
+        const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
+        const timestamp = createdAt.getTime();
+        const eventStatus =
+          (row.status as RunStatus | undefined) ?? (body?.status as RunStatus | undefined);
+
+        if (eventStatus === 'started') {
+          summary.startedAt =
+            summary.startedAt === null ? timestamp : Math.min(summary.startedAt, timestamp);
+        } else if (
+          eventStatus === 'completed' ||
+          eventStatus === 'timeout' ||
+          eventStatus === 'error'
+        ) {
+          summary.status = eventStatus;
+          summary.endedAt = timestamp;
+          if (summary.startedAt !== null) {
+            summary.durationMs = Math.max(timestamp - summary.startedAt, 0);
+          }
+        }
+
+        runMap.set(runId, summary);
+      }
+
+      let runs = Array.from(runMap.values());
+      if (params.status && params.status !== 'all') {
+        runs = runs.filter((run) => run.status === params.status);
+      }
+
+      runs.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+
+      const total = runs.length;
+      const limitedRuns = runs.slice(0, limit);
+      const hasMore = total > limit;
+
+      const runCounts = new Map<string, AgentRunCounts>();
+      for (const run of limitedRuns) {
+        runCounts.set(run.runId, { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 });
+      }
+
+      const runIds = limitedRuns.map((run) => run.runId).filter(Boolean);
+
+      if (runIds.length > 0) {
+        const runIdArray = sql`array[${sql.join(
+          runIds.map((id) => sql`${id}`),
+          sql`, `
+        )}]::text[]`;
+
+        const actionSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*)::int as "actions",
+            SUM(CASE WHEN COALESCE(body->'result'->>'success', 'true') = 'false' THEN 1 ELSE 0 END)::int as "errors",
+            SUM(COALESCE((body->>'promptCount')::int, 0))::int as "modelCalls"
+          FROM ${logTable}
+          WHERE type = 'action'
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const actionRows = (actionSummary.rows ?? []) as Array<{
+          runId: string;
+          actions: number | string;
+          errors: number | string;
+          modelCalls: number | string;
+        }>;
+
+        for (const row of actionRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.actions += Number(row.actions ?? 0);
+          counts.errors += Number(row.errors ?? 0);
+          counts.modelCalls += Number(row.modelCalls ?? 0);
+        }
+
+        const evaluatorSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*)::int as "evaluators"
+          FROM ${logTable}
+          WHERE type = 'evaluator'
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const evaluatorRows = (evaluatorSummary.rows ?? []) as Array<{
+          runId: string;
+          evaluators: number | string;
+        }>;
+
+        for (const row of evaluatorRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.evaluators += Number(row.evaluators ?? 0);
+        }
+
+        const genericSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*) FILTER (WHERE type LIKE 'useModel:%')::int as "modelLogs",
+            COUNT(*) FILTER (WHERE type = 'embedding_event' AND body->>'status' = 'failed')::int as "embeddingErrors"
+          FROM ${logTable}
+          WHERE (type LIKE 'useModel:%' OR type = 'embedding_event')
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const genericRows = (genericSummary.rows ?? []) as Array<{
+          runId: string;
+          modelLogs: number | string;
+          embeddingErrors: number | string;
+        }>;
+
+        for (const row of genericRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.modelCalls += Number(row.modelLogs ?? 0);
+          counts.errors += Number(row.embeddingErrors ?? 0);
+        }
+      }
+
+      for (const run of limitedRuns) {
+        run.counts = runCounts.get(run.runId) ?? {
+          actions: 0,
+          modelCalls: 0,
+          errors: 0,
+          evaluators: 0,
+        };
+      }
+
+      return {
+        runs: limitedRuns,
+        total,
+        hasMore,
+      } satisfies AgentRunSummaryResult;
     });
   }
 

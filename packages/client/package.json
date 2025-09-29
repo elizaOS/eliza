@@ -108,7 +108,9 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
-    "vite-plugin-compression": "^0.5.1"
+    "vite-plugin-compression": "^0.5.1",
+    "vis-data": "^8.0.3",
+    "vis-timeline": "^8.3.1"
   },
   "devDependencies": {
     "@cypress/react": "^9.0.1",
