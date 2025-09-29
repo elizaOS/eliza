@@ -67,8 +67,8 @@ interface ProcessedEvent {
 
 function formatDuration(durationMs?: number | null): string {
   if (!durationMs || durationMs < 0) return '—';
-  if (durationMs < 1000) return `${durationMs}ms`;
-  const seconds = (durationMs / 1000).toFixed(1);
+  if (durationMs < 1000) return `${durationMs.toFixed(2)}ms`;
+  const seconds = (durationMs / 1000).toFixed(2);
   return `${seconds}s`;
 }
 
@@ -309,19 +309,9 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
             Hierarchical view of agent execution with timing details.
           </p>
         </div>
-        {hasRuns && (
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Errors only</span>
-            <button className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-              ⚪
-            </button>
-          </div>
-        )}
+
       </div>
 
-      {isLoading && (
-        <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>
-      )}
       {!isLoading && errorMessage && (
         <div className="px-4 py-8 text-sm text-red-500">Failed to load runs: {errorMessage}</div>
       )}
@@ -448,7 +438,7 @@ const RunItem: React.FC<RunItemProps> = ({
         <div className="flex-shrink-0 w-32 h-6 relative bg-muted rounded-sm overflow-hidden">
           <div
             className={cn(
-              'absolute top-0 bottom-0 rounded-sm transition-all',
+              'absolute top-0 bottom-0 transition-all',
               run.status === 'completed'
                 ? 'bg-blue-500 dark:bg-blue-600'
                 : run.status === 'error'
@@ -460,11 +450,9 @@ const RunItem: React.FC<RunItemProps> = ({
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
               width: `${Math.max(2, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
+              borderRadius: 'inherit',
             }}
           />
-          <div className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white mix-blend-difference">
-            {formatDuration(run.duration)}
-          </div>
         </div>
       </div>
 
@@ -557,6 +545,7 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
           style={{
             left: `${Math.max(0, Math.min(startOffset, 98))}%`,
             width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
+            borderRadius: 'inherit',
           }}
         />
       </div>
