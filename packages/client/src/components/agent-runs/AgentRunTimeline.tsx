@@ -1,93 +1,131 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { UUID } from '@elizaos/core';
 import {
   useAgentRuns,
   useAgentRunDetail,
 } from '@/hooks/use-query-hooks';
-import type { RunSummary } from '@elizaos/api-client';
-import { Timeline, type TimelineOptions } from 'vis-timeline/standalone';
-import 'vis-timeline/styles/vis-timeline-graph2d.min.css';
+import type { RunSummary, RunEvent } from '@elizaos/api-client';
+import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, AlertCircle, Activity, Eye, Database, Zap } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type AgentRunTimelineProps = {
   agentId: UUID;
 };
 
-type TimelineItem = {
+type RunStatus = 'completed' | 'started' | 'timeout' | 'error';
+
+interface TimelineEvent {
   id: string;
-  content: string;
-  start: Date;
-  end?: Date;
-  group?: string;
-  type?: 'box' | 'point' | 'range';
-  className?: string;
-  title?: string;
-};
+  type: 'RUN_STARTED' | 'RUN_ENDED' | 'ACTION_STARTED' | 'ACTION_COMPLETED' | 'MODEL_USED' | 'EVALUATOR_COMPLETED' | 'EMBEDDING_EVENT';
+  timestamp: number;
+  duration?: number;
+  data: Record<string, unknown>;
+  parentId?: string;
+}
 
-type TimelineGroup = { id: string; content: string };
+interface ProcessedRun {
+  id: string;
+  name: string;
+  status: RunStatus;
+  startTime: number;
+  endTime?: number;
+  duration?: number;
+  children: ProcessedEvent[];
+  counts: {
+    actions: number;
+    modelCalls: number;
+    errors: number;
+    evaluators: number;
+  };
+}
 
-const RUN_GROUP_ID = 'run';
-const ACTION_GROUP_ID = 'actions';
-const MODEL_GROUP_ID = 'models';
-const EVALUATOR_GROUP_ID = 'evaluators';
-const EMBEDDING_GROUP_ID = 'embeddings';
-
-const statusToClassName: Record<string, string> = {
-  completed: 'timeline-item-success',
-  started: 'timeline-item-neutral',
-  timeout: 'timeline-item-warning',
-  error: 'timeline-item-error',
-};
-
-const formatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'short',
-  timeStyle: 'medium',
-});
+interface ProcessedEvent {
+  id: string;
+  name: string;
+  type: 'action' | 'model' | 'evaluator' | 'embedding';
+  status: 'completed' | 'failed' | 'running';
+  startTime: number;
+  duration?: number;
+  icon: React.ComponentType<{ className?: string }>;
+  attempts?: ProcessedEvent[];
+}
 
 function formatDuration(durationMs?: number | null): string {
   if (!durationMs || durationMs < 0) return '—';
-  const seconds = Math.floor((durationMs / 1000) % 60);
-  const minutes = Math.floor((durationMs / (1000 * 60)) % 60);
-  const hours = Math.floor(durationMs / (1000 * 60 * 60));
-  const parts = [] as string[];
-  if (hours) parts.push(`${hours}h`);
-  if (minutes) parts.push(`${minutes}m`);
-  parts.push(`${seconds}s`);
-  return parts.join(' ');
+  if (durationMs < 1000) return `${durationMs}ms`;
+  const seconds = (durationMs / 1000).toFixed(1);
+  return `${seconds}s`;
 }
 
-function formatRunLabel(run: RunSummary, index: number): string {
-  const labelBase = run.metadata?.name ? String(run.metadata.name) : `Run ${index + 1}`;
-  return `${labelBase}`;
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3
+  });
 }
 
-const timelineOptions: TimelineOptions = {
-  stack: true,
-  maxHeight: 420,
-  minHeight: 320,
-  horizontalScroll: true,
-  zoomKey: 'ctrlKey',
-  showCurrentTime: true,
-  margin: { item: 10, axis: 10 },
-  groupHeightMode: 'fitItems',
-  orientation: 'top',
-};
+function getStatusIcon(status: string) {
+  switch (status) {
+    case 'completed':
+      return CheckCircle;
+    case 'error':
+    case 'failed':
+      return XCircle;
+    case 'timeout':
+      return AlertCircle;
+    case 'running':
+    case 'started':
+      return Clock;
+    default:
+      return Activity;
+  }
+}
+
+function getStatusColor(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'text-green-700 bg-green-100 border-green-300 dark:text-green-400 dark:bg-green-900/30 dark:border-green-800';
+    case 'error':
+    case 'failed':
+      return 'text-red-700 bg-red-100 border-red-300 dark:text-red-400 dark:bg-red-900/30 dark:border-red-800';
+    case 'timeout':
+      return 'text-yellow-700 bg-yellow-100 border-yellow-300 dark:text-yellow-400 dark:bg-yellow-900/30 dark:border-yellow-800';
+    case 'running':
+    case 'started':
+      return 'text-blue-700 bg-blue-100 border-blue-300 dark:text-blue-400 dark:bg-blue-900/30 dark:border-blue-800';
+    default:
+      return 'text-muted-foreground bg-muted border-border';
+  }
+}
+
+function getEventIcon(type: string) {
+  switch (type) {
+    case 'action':
+      return Activity;
+    case 'model':
+      return Eye;
+    case 'evaluator':
+      return Database;
+    case 'embedding':
+      return Zap;
+    default:
+      return Activity;
+  }
+}
 
 export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) => {
   const [selectedRunId, setSelectedRunId] = useState<UUID | null>(null);
-  const timelineContainerRef = useRef<HTMLDivElement | null>(null);
-  const timelineRef = useRef<Timeline | null>(null);
+  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
   const runsQuery = useAgentRuns(agentId);
   const runs = runsQuery.data?.runs ?? [];
 
-  useEffect(() => {
+  // Auto-select first run
+  React.useEffect(() => {
     if (!selectedRunId && runs.length > 0) {
-      setSelectedRunId(runs[0].runId);
-    } else if (
-      selectedRunId &&
-      runs.length > 0 &&
-      !runs.some((run) => run.runId === selectedRunId)
-    ) {
       setSelectedRunId(runs[0].runId);
     }
   }, [runs, selectedRunId]);
@@ -99,178 +137,105 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     [runs, selectedRunId]
   );
 
-  const timelineData = useMemo(() => {
+  // Process run data into hierarchical structure
+  const processedRun = useMemo((): ProcessedRun | null => {
     if (!runDetailQuery.data) {
-      return { items: [] as TimelineItem[], groups: [] as TimelineGroup[] };
+      return null;
     }
 
     const { summary, events } = runDetailQuery.data;
-    const items: TimelineItem[] = [];
-    const groups: TimelineGroup[] = [];
 
-    if (summary.startedAt) {
-      groups.push({ id: RUN_GROUP_ID, content: 'Run' });
-      items.push({
-        id: `run-${summary.runId}`,
-        content: `Run (${summary.status})`,
-        start: new Date(summary.startedAt),
-        end: summary.endedAt ? new Date(summary.endedAt) : undefined,
-        group: RUN_GROUP_ID,
-        type: summary.endedAt ? 'range' : 'box',
-        className: statusToClassName[summary.status] ?? 'timeline-item-neutral',
-        title: `Started: ${formatter.format(new Date(summary.startedAt))}` +
-          (summary.endedAt
-            ? `\nEnded: ${formatter.format(new Date(summary.endedAt))}\nDuration: ${formatDuration(summary.durationMs)}`
-            : ''),
-      });
-    }
+    // Process events into hierarchical structure
+    const processedEvents: ProcessedEvent[] = [];
+    const eventGroups = new Map<string, ProcessedEvent[]>();
 
-    const actionItems = new Map<string, TimelineItem>();
-    let hasActions = false;
-    let hasModels = false;
-    let hasEvaluators = false;
-    let hasEmbeddings = false;
-
+    // Group events by type and process them
     events.forEach((event, index) => {
-      const timestamp = new Date(event.timestamp);
+      let processedEvent: ProcessedEvent | null = null;
+
       switch (event.type) {
-        case 'ACTION_STARTED': {
-          hasActions = true;
-          const actionId = String(event.data.actionId ?? `action-${index}`);
-          const actionName = (event.data.actionName as string | undefined) ?? 'Action started';
-          const item: TimelineItem = {
-            id: `action-start-${actionId}`,
-            content: actionName,
-            start: timestamp,
-            group: ACTION_GROUP_ID,
-            type: 'range',
-            className: 'timeline-item-neutral',
-            title: `Started: ${formatter.format(timestamp)}`,
-          };
-          actionItems.set(actionId, item);
-          items.push(item);
-          break;
-        }
+        case 'ACTION_STARTED':
         case 'ACTION_COMPLETED': {
-          hasActions = true;
-          const actionId = String(event.data.actionId ?? `action-${index}`);
-          const success = event.data.success !== false;
-          const actionName = (event.data.actionName as string | undefined) ?? 'Action completed';
-          const existing = actionItems.get(actionId);
-          const itemTitleParts = [`Completed: ${formatter.format(timestamp)}`];
-          if (typeof event.data.promptCount === 'number') {
-            itemTitleParts.push(`Prompt calls: ${event.data.promptCount}`);
-          }
-          if (existing) {
-            existing.end = timestamp;
-            existing.className = success ? 'timeline-item-success' : 'timeline-item-error';
-            existing.title = `${existing.title ?? ''}\n${itemTitleParts.join('\n')}`.trim();
-          } else {
-            items.push({
-              id: `action-complete-${actionId}-${index}`,
-              content: actionName,
-              start: timestamp,
-              group: ACTION_GROUP_ID,
-              type: 'box',
-              className: success ? 'timeline-item-success' : 'timeline-item-error',
-              title: itemTitleParts.join('\n'),
-            });
-          }
+          const actionName = (event.data.actionName as string) || (event.data.actionId as string) || `Action ${index}`;
+          processedEvent = {
+            id: `action-${event.data.actionId || index}`,
+            name: actionName,
+            type: 'action',
+            status: event.type === 'ACTION_COMPLETED' ? (event.data.success !== false ? 'completed' : 'failed') : 'running',
+            startTime: event.timestamp,
+            duration: event.data.executionTime as number,
+            icon: Activity,
+          };
           break;
         }
         case 'MODEL_USED': {
-          hasModels = true;
-          const modelType = (event.data.modelType as string | undefined) ?? 'Model call';
-          items.push({
+          const modelType = (event.data.modelType as string) || 'Model Call';
+          processedEvent = {
             id: `model-${index}`,
-            content: modelType,
-            start: timestamp,
-            group: MODEL_GROUP_ID,
-            type: 'box',
-            className: 'timeline-item-neutral',
-            title: `Provider: ${(event.data.provider as string | undefined) ?? 'Unknown'}\n` +
-              (event.data.executionTime ? `Duration: ${formatDuration(Number(event.data.executionTime))}` : ''),
-          });
+            name: modelType,
+            type: 'model',
+            status: 'completed',
+            startTime: event.timestamp,
+            duration: event.data.executionTime as number,
+            icon: Eye,
+          };
           break;
         }
         case 'EVALUATOR_COMPLETED': {
-          hasEvaluators = true;
-          const evaluatorName = (event.data.evaluatorName as string | undefined) ?? 'Evaluator';
-          items.push({
+          const evaluatorName = (event.data.evaluatorName as string) || `Evaluator ${index}`;
+          processedEvent = {
             id: `evaluator-${index}`,
-            content: evaluatorName,
-            start: timestamp,
-            group: EVALUATOR_GROUP_ID,
-            type: 'box',
-            className: 'timeline-item-neutral',
-            title: `Completed: ${formatter.format(timestamp)}`,
-          });
+            name: evaluatorName,
+            type: 'evaluator',
+            status: 'completed',
+            startTime: event.timestamp,
+            icon: Database,
+          };
           break;
         }
         case 'EMBEDDING_EVENT': {
-          hasEmbeddings = true;
-          const status = (event.data.status as string | undefined) ?? 'embedding';
-          items.push({
+          const status = (event.data.status as string) || 'completed';
+          processedEvent = {
             id: `embedding-${index}`,
-            content: `Embedding ${status}`,
-            start: timestamp,
-            group: EMBEDDING_GROUP_ID,
-            type: 'box',
-            className:
-              status === 'failed' ? 'timeline-item-error' : 'timeline-item-neutral',
-            title: `Status: ${status}\n${formatter.format(timestamp)}`,
-          });
+            name: `Embedding ${status}`,
+            type: 'embedding',
+            status: status === 'failed' ? 'failed' : 'completed',
+            startTime: event.timestamp,
+            duration: event.data.durationMs as number,
+            icon: Zap,
+          };
           break;
         }
-        default:
-          break;
+      }
+
+      if (processedEvent) {
+        processedEvents.push(processedEvent);
       }
     });
 
-    if (hasActions) groups.push({ id: ACTION_GROUP_ID, content: 'Actions' });
-    if (hasModels) groups.push({ id: MODEL_GROUP_ID, content: 'Model Calls' });
-    if (hasEvaluators) groups.push({ id: EVALUATOR_GROUP_ID, content: 'Evaluators' });
-    if (hasEmbeddings) groups.push({ id: EMBEDDING_GROUP_ID, content: 'Embeddings' });
-
-    return { items, groups };
+    // Return the processed run
+    return {
+      id: summary.runId,
+      name: `Run ${formatTime(summary.startedAt || Date.now())}`,
+      status: summary.status as RunStatus,
+      startTime: summary.startedAt || Date.now(),
+      endTime: summary.endedAt || undefined,
+      duration: summary.durationMs || (summary.endedAt && summary.startedAt ? summary.endedAt - summary.startedAt : undefined),
+      children: processedEvents.sort((a, b) => a.startTime - b.startTime),
+      counts: summary.counts || { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 },
+    };
   }, [runDetailQuery.data]);
 
-  useEffect(() => {
-    if (!timelineContainerRef.current) return;
-    if (!timelineRef.current) {
-      timelineRef.current = new Timeline(
-        timelineContainerRef.current,
-        timelineData.items,
-        timelineData.groups,
-        timelineOptions
-      );
+  // Toggle expansion of runs
+  const toggleRunExpansion = (runId: string) => {
+    const newExpanded = new Set(expandedRuns);
+    if (newExpanded.has(runId)) {
+      newExpanded.delete(runId);
+    } else {
+      newExpanded.add(runId);
     }
-
-    return () => {
-      timelineRef.current?.destroy();
-      timelineRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!timelineRef.current) return;
-
-    timelineRef.current.setGroups(timelineData.groups);
-    timelineRef.current.setItems(timelineData.items);
-
-    const timestamps: number[] = [];
-    timelineData.items.forEach((item) => {
-      timestamps.push(item.start.getTime());
-      if (item.end) timestamps.push(item.end.getTime());
-    });
-    if (timestamps.length > 0) {
-      const min = Math.min(...timestamps);
-      const max = Math.max(...timestamps);
-      timelineRef.current.setWindow(new Date(min), new Date(max + 1000), {
-        animation: false,
-      });
-    }
-  }, [timelineData]);
+    setExpandedRuns(newExpanded);
+  };
 
   const isLoading = runsQuery.isLoading || runDetailQuery.isLoading;
   const errorMessage = runsQuery.error ? (runsQuery.error as Error).message : undefined;
@@ -280,104 +245,188 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Run Timeline</h2>
+          <h2 className="text-lg font-semibold">Agent Runs</h2>
           <p className="text-sm text-muted-foreground">
-            Visualize agent runs alongside actions and model activity.
+            Hierarchical view of agent execution with timing details.
           </p>
         </div>
         {hasRuns && (
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Run</span>
-            <select
-              className="rounded-md border bg-background px-3 py-1 text-sm"
-              value={selectedRunId ?? ''}
-              onChange={(event) => setSelectedRunId(event.target.value as UUID)}
-            >
-              {runs.map((run, index) => (
-                <option key={run.runId} value={run.runId}>
-                  {formatRunLabel(run, index)} — {run.status}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Errors only</span>
+            <button className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+              ⚪
+            </button>
+          </div>
         )}
       </div>
 
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-2 text-sm font-medium">Timeline</div>
-        <div className="relative px-2 py-4">
-          {isLoading && <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>}
-          {!isLoading && errorMessage && (
-            <div className="px-4 py-8 text-sm text-red-500">
-              Failed to load runs: {errorMessage}
-            </div>
-          )}
-          {!isLoading && !errorMessage && !hasRuns && (
-            <div className="px-4 py-8 text-sm text-muted-foreground">No runs available yet.</div>
-          )}
-          <div
-            ref={timelineContainerRef}
-            className="h-80 w-full"
-            style={{ visibility: hasRuns ? 'visible' : 'hidden' }}
+      {isLoading && <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>}
+      {!isLoading && errorMessage && (
+        <div className="px-4 py-8 text-sm text-red-500">
+          Failed to load runs: {errorMessage}
+        </div>
+      )}
+      {!isLoading && !errorMessage && !hasRuns && (
+        <div className="px-4 py-8 text-sm text-muted-foreground">No runs available yet.</div>
+      )}
+
+      {processedRun && (
+        <div className="bg-card rounded-lg border">
+          <RunItem
+            run={processedRun}
+            isExpanded={expandedRuns.has(processedRun.id)}
+            onToggle={() => toggleRunExpansion(processedRun.id)}
+            level={0}
           />
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+// RunItem component for hierarchical display
+interface RunItemProps {
+  run: ProcessedRun;
+  isExpanded: boolean;
+  onToggle: () => void;
+  level: number;
+}
+
+const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level }) => {
+  const StatusIcon = getStatusIcon(run.status);
+  const indent = level * 24;
+
+  // Calculate timing bar parameters
+  const totalDuration = run.duration || 1000; // fallback for visualization
+  const startOffset = 0;
+
+  return (
+    <div className="border-l-2 border-transparent">
+      {/* Main run row */}
+      <div
+        className={cn(
+          "flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors",
+          level > 0 && "border-l border-border ml-4"
+        )}
+        style={{ paddingLeft: `${12 + indent}px` }}
+        onClick={onToggle}
+      >
+        {/* Expand/collapse button */}
+        <button className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+          {run.children.length > 0 && (
+            isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
+          )}
+        </button>
+
+        {/* Status icon */}
+        <div className={cn("flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs", getStatusColor(run.status))}>
+          <StatusIcon className="w-3 h-3" />
+        </div>
+
+        {/* Task name and details */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm">{run.name}</span>
+            <span className={cn("px-1.5 py-0.5 text-xs rounded-full border", getStatusColor(run.status))}>
+              {run.status === 'completed' ? '✓' : run.status === 'error' ? '✗' : '○'}
+            </span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            {run.counts.actions} actions • {run.counts.modelCalls} model calls • {run.counts.errors} errors
+          </div>
+        </div>
+
+        {/* Timing information */}
+        <div className="flex-shrink-0 text-right">
+          <div className="text-xs text-muted-foreground">{formatTime(run.startTime)}</div>
+          <div className="text-xs font-mono">{formatDuration(run.duration)}</div>
+        </div>
+
+        {/* Timing bar */}
+        <div className="flex-shrink-0 w-32 h-6 relative bg-muted rounded-sm overflow-hidden">
+          <div
+            className={cn(
+              "absolute top-0 bottom-0 rounded-sm transition-all",
+              run.status === 'completed' ? "bg-green-500 dark:bg-green-600" :
+                run.status === 'error' ? "bg-red-500 dark:bg-red-600" :
+                  run.status === 'timeout' ? "bg-yellow-500 dark:bg-yellow-600" :
+                    "bg-blue-500 dark:bg-blue-600"
+            )}
+            style={{
+              left: `${startOffset}%`,
+              width: `${Math.max(2, 100)}%`
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white mix-blend-difference">
+            {formatDuration(run.duration)}
+          </div>
         </div>
       </div>
 
-      {selectedRunSummary && (
-        <div className="rounded-lg border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h3 className="text-base font-semibold">
-                {formatRunLabel(selectedRunSummary, runs.findIndex((r) => r.runId === selectedRunSummary.runId))}
-              </h3>
-              <p className="text-sm text-muted-foreground">ID: {selectedRunSummary.runId}</p>
-            </div>
-            <span
-              className={`rounded-full px-3 py-1 text-sm font-medium ${
-                selectedRunSummary.status === 'completed'
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : selectedRunSummary.status === 'error'
-                    ? 'bg-red-100 text-red-700'
-                    : selectedRunSummary.status === 'timeout'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-slate-100 text-slate-700'
-              }`}
-            >
-              {selectedRunSummary.status}
-            </span>
-          </div>
-          <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-4">
-            <div>
-              <dt className="text-muted-foreground">Started</dt>
-              <dd>{selectedRunSummary.startedAt ? formatter.format(new Date(selectedRunSummary.startedAt)) : '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Ended</dt>
-              <dd>{selectedRunSummary.endedAt ? formatter.format(new Date(selectedRunSummary.endedAt)) : '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Duration</dt>
-              <dd>{formatDuration(selectedRunSummary.durationMs)}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Actions / Errors</dt>
-              <dd>
-                {selectedRunSummary.counts
-                  ? `${selectedRunSummary.counts.actions} / ${selectedRunSummary.counts.errors}`
-                  : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Model Calls</dt>
-              <dd>{selectedRunSummary.counts ? selectedRunSummary.counts.modelCalls : '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Evaluators</dt>
-              <dd>{selectedRunSummary.counts ? selectedRunSummary.counts.evaluators : '—'}</dd>
-            </div>
-          </dl>
+      {/* Children */}
+      {isExpanded && run.children.length > 0 && (
+        <div className="border-l border-border ml-4">
+          {run.children.map((child) => (
+            <EventItem key={child.id} event={child} level={level + 1} />
+          ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// EventItem component for individual events
+interface EventItemProps {
+  event: ProcessedEvent;
+  level: number;
+}
+
+const EventItem: React.FC<EventItemProps> = ({ event, level }) => {
+  const IconComponent = event.icon;
+  const StatusIcon = getStatusIcon(event.status);
+  const indent = level * 24;
+
+  return (
+    <div
+      className="flex items-center gap-3 p-2 text-sm hover:bg-muted/30"
+      style={{ paddingLeft: `${12 + indent}px` }}
+    >
+      {/* Spacer for alignment */}
+      <div className="w-4" />
+
+      {/* Event icon */}
+      <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+        <IconComponent className="w-3 h-3 text-muted-foreground" />
+      </div>
+
+      {/* Status icon */}
+      <div className={cn("flex-shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-xs", getStatusColor(event.status))}>
+        <StatusIcon className="w-2.5 h-2.5" />
+      </div>
+
+      {/* Event name */}
+      <div className="flex-1 min-w-0">
+        <span className="text-sm">{event.name}</span>
+      </div>
+
+      {/* Timing */}
+      <div className="flex-shrink-0 text-right">
+        <div className="text-xs font-mono text-muted-foreground">{formatDuration(event.duration)}</div>
+      </div>
+
+      {/* Mini timing bar */}
+      <div className="flex-shrink-0 w-16 h-2 bg-muted rounded-sm overflow-hidden">
+        <div
+          className={cn(
+            "h-full transition-all",
+            event.status === 'completed' ? "bg-green-400 dark:bg-green-500" :
+              event.status === 'failed' ? "bg-red-400 dark:bg-red-500" :
+                "bg-blue-400 dark:bg-blue-500"
+          )}
+          style={{ width: '100%' }}
+        />
+      </div>
     </div>
   );
 };
