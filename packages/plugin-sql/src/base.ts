@@ -1390,7 +1390,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const conditions: SQL<unknown>[] = [
         eq(logTable.type, 'run_event'),
         sql`${logTable.body} ? 'runId'`,
-        or(eq(logTable.entityId, this.agentId), eq(participantTable.agentId, this.agentId)),
+        eq(roomTable.agentId, this.agentId),
       ];
 
       if (params.roomId) {
@@ -1403,7 +1403,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         conditions.push(lte(logTable.createdAt, toDate));
       }
 
-      const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+      const whereClause = and(...conditions);
 
       const eventLimit = Math.max(limit * 20, 200);
 
@@ -1418,7 +1418,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           entityId: logTable.entityId,
         })
         .from(logTable)
-        .leftJoin(participantTable, eq(participantTable.entityId, logTable.entityId))
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
         .where(whereClause)
         .orderBy(desc(logTable.createdAt))
         .limit(eventLimit);
@@ -1504,12 +1504,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       if (runIds.length > 0) {
         const runIdArray = sql`array[${sql.join(runIds.map((id) => sql`${id}`), sql`, `)}]::text[]`;
 
-        const actionSummary = await this.db.execute<{
-          runId: string;
-          actions: number | string;
-          errors: number | string;
-          modelCalls: number | string;
-        }>(sql`
+        const actionSummary = await this.db.execute(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*)::int as "actions",
@@ -1521,7 +1516,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           GROUP BY body->>'runId'
         `);
 
-        for (const row of actionSummary.rows ?? []) {
+        const actionRows = (actionSummary.rows ?? []) as Array<{
+          runId: string;
+          actions: number | string;
+          errors: number | string;
+          modelCalls: number | string;
+        }>;
+
+        for (const row of actionRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
           counts.actions += Number(row.actions ?? 0);
@@ -1529,10 +1531,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           counts.modelCalls += Number(row.modelCalls ?? 0);
         }
 
-        const evaluatorSummary = await this.db.execute<{
-          runId: string;
-          evaluators: number | string;
-        }>(sql`
+        const evaluatorSummary = await this.db.execute(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*)::int as "evaluators"
@@ -1542,17 +1541,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           GROUP BY body->>'runId'
         `);
 
-        for (const row of evaluatorSummary.rows ?? []) {
+        const evaluatorRows = (evaluatorSummary.rows ?? []) as Array<{
+          runId: string;
+          evaluators: number | string;
+        }>;
+
+        for (const row of evaluatorRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
           counts.evaluators += Number(row.evaluators ?? 0);
         }
 
-        const genericSummary = await this.db.execute<{
-          runId: string;
-          modelLogs: number | string;
-          embeddingErrors: number | string;
-        }>(sql`
+        const genericSummary = await this.db.execute(sql`
           SELECT
             body->>'runId' as "runId",
             COUNT(*) FILTER (WHERE type LIKE 'useModel:%')::int as "modelLogs",
@@ -1563,7 +1563,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           GROUP BY body->>'runId'
         `);
 
-        for (const row of genericSummary.rows ?? []) {
+        const genericRows = (genericSummary.rows ?? []) as Array<{
+          runId: string;
+          modelLogs: number | string;
+          embeddingErrors: number | string;
+        }>;
+
+        for (const row of genericRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
           counts.modelCalls += Number(row.modelLogs ?? 0);
