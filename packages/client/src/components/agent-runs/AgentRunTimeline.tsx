@@ -424,7 +424,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
       {processedRuns.length > 0 && (
         <div className="space-y-2">
           {processedRuns.map((run) => (
-            <div key={run.id} className="bg-card rounded-lg border">
+            <div key={run.id}>
               <RunItem
                 run={run}
                 isExpanded={expandedRuns.has(run.id)}
@@ -485,13 +485,13 @@ const RunItem: React.FC<RunItemProps> = ({
     (timelineTotal > 0 ? (runDuration / timelineTotal) * 100 : 0);
 
   return (
-    <div className="border-l-2 border-transparent">
+    <div>
       {/* Main run row */}
       <div
         className={cn(
           'flex items-center gap-3 p-3 cursor-pointer transition-colors',
-          level > 0,
-          isSelected && 'bg-primary/10 border-primary'
+          isRootRun ? 'bg-card border rounded-lg' : '',
+          isSelected && !isRootRun && 'bg-primary/10'
         )}
         style={{ paddingLeft: `${12 + indent}px` }}
         onClick={onToggle}
@@ -573,7 +573,10 @@ const RunItem: React.FC<RunItemProps> = ({
 
       {/* Children */}
       {isExpanded && run.children.length > 0 && (
-        <div className="border-l border-border ml-4">
+        <div className={cn(
+          "border-l border-border ml-4",
+          isRootRun ? "mt-2 pt-2" : ""
+        )}>
           {run.children.map((child) => (
             <EventItem
               key={child.id}
