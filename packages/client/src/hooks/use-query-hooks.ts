@@ -143,8 +143,8 @@ export function useAgents(options = {}) {
     // Configure based on network conditions
     ...(!network.isOffline &&
       network.effectiveType === 'slow-2g' && {
-        refetchInterval: STALE_TIMES.STANDARD, // Poll less frequently on slow connections
-      }),
+      refetchInterval: STALE_TIMES.STANDARD, // Poll less frequently on slow connections
+    }),
     // Allow overriding any options
     ...options,
   });
@@ -176,8 +176,8 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
     // Configure based on network conditions
     ...(!network.isOffline &&
       network.effectiveType === 'slow-2g' && {
-        refetchInterval: STALE_TIMES.STANDARD, // Poll less frequently on slow connections
-      }),
+      refetchInterval: STALE_TIMES.STANDARD, // Poll less frequently on slow connections
+    }),
     // Allow overriding any options
     ...options,
   });
@@ -192,9 +192,7 @@ export function useAgentRuns(
 ) {
   const network = useNetworkStatus();
   const sanitizedParams = params
-    ? Object.fromEntries(
-        Object.entries(params).filter(([key, value]) => value !== undefined && key !== 'roomId')
-      )
+    ? Object.fromEntries(Object.entries(params).filter(([_, value]) => value !== undefined))
     : undefined;
   const serializedParams = sanitizedParams ? JSON.stringify(sanitizedParams) : 'default';
 
@@ -210,8 +208,8 @@ export function useAgentRuns(
     refetchIntervalInBackground: false,
     ...(!network.isOffline &&
       network.effectiveType === 'slow-2g' && {
-        refetchInterval: STALE_TIMES.STANDARD,
-      }),
+      refetchInterval: STALE_TIMES.STANDARD,
+    }),
     ...options,
   });
 }
@@ -232,13 +230,12 @@ export function useAgentRunDetail(
     },
     enabled: Boolean(agentId && runId),
     staleTime: STALE_TIMES.FREQUENT,
-    refetchInterval:
-      !network.isOffline && Boolean(agentId && runId) ? STALE_TIMES.FREQUENT : false,
+    refetchInterval: !network.isOffline && Boolean(agentId && runId) ? STALE_TIMES.FREQUENT : false,
     refetchIntervalInBackground: false,
     ...(!network.isOffline &&
       network.effectiveType === 'slow-2g' && {
-        refetchInterval: STALE_TIMES.STANDARD,
-      }),
+      refetchInterval: STALE_TIMES.STANDARD,
+    }),
     ...options,
   });
 }
@@ -444,9 +441,9 @@ export function useChannelMessages(
         text: sm.content,
         name: isAgent
           ? sm.metadata?.agentName ||
-            sm.metadata?.authorDisplayName ||
-            sm.authorDisplayName ||
-            'Agent'
+          sm.metadata?.authorDisplayName ||
+          sm.authorDisplayName ||
+          'Agent'
           : USER_NAME,
         senderId: sm.authorId,
         isAgent: isAgent,
@@ -917,8 +914,8 @@ export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
     refetchIntervalInBackground: false,
     ...(!network.isOffline &&
       network.effectiveType === 'slow-2g' && {
-        refetchInterval: STALE_TIMES.NEVER, // Or even disable for slow connections
-      }),
+      refetchInterval: STALE_TIMES.NEVER, // Or even disable for slow connections
+    }),
     ...options,
   });
 }
@@ -962,8 +959,8 @@ export function useAgentsWithDetails(): AgentsWithDetailsResult {
       refetchIntervalInBackground: false,
       ...(!network.isOffline &&
         network.effectiveType === 'slow-2g' && {
-          refetchInterval: STALE_TIMES.STANDARD,
-        }),
+        refetchInterval: STALE_TIMES.STANDARD,
+      }),
     })),
   });
 

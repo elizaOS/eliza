@@ -1373,13 +1373,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     });
   }
 
-  async getAgentRunSummaries(params: {
-    limit?: number;
-    roomId?: UUID;
-    status?: RunStatus | 'all';
-    from?: number;
-    to?: number;
-  } = {}): Promise<AgentRunSummaryResult> {
+  async getAgentRunSummaries(
+    params: {
+      limit?: number;
+      roomId?: UUID;
+      status?: RunStatus | 'all';
+      from?: number;
+      to?: number;
+    } = {}
+  ): Promise<AgentRunSummaryResult> {
     const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
     const fromDate = typeof params.from === 'number' ? new Date(params.from) : undefined;
     const toDate = typeof params.to === 'number' ? new Date(params.to) : undefined;
@@ -1468,11 +1470,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
         const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
         const timestamp = createdAt.getTime();
-        const eventStatus = (row.status as RunStatus | undefined) ?? (body?.status as RunStatus | undefined);
+        const eventStatus =
+          (row.status as RunStatus | undefined) ?? (body?.status as RunStatus | undefined);
 
         if (eventStatus === 'started') {
-          summary.startedAt = summary.startedAt === null ? timestamp : Math.min(summary.startedAt, timestamp);
-        } else if (eventStatus === 'completed' || eventStatus === 'timeout' || eventStatus === 'error') {
+          summary.startedAt =
+            summary.startedAt === null ? timestamp : Math.min(summary.startedAt, timestamp);
+        } else if (
+          eventStatus === 'completed' ||
+          eventStatus === 'timeout' ||
+          eventStatus === 'error'
+        ) {
           summary.status = eventStatus;
           summary.endedAt = timestamp;
           if (summary.startedAt !== null) {
@@ -1502,7 +1510,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const runIds = limitedRuns.map((run) => run.runId).filter(Boolean);
 
       if (runIds.length > 0) {
-        const runIdArray = sql`array[${sql.join(runIds.map((id) => sql`${id}`), sql`, `)}]::text[]`;
+        const runIdArray = sql`array[${sql.join(
+          runIds.map((id) => sql`${id}`),
+          sql`, `
+        )}]::text[]`;
 
         const actionSummary = await this.db.execute(sql`
           SELECT

@@ -53,9 +53,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       // Try cache for the common polling path (no explicit time filters)
       const cacheKey =
-        !fromTime && !toTime
-          ? buildCacheKey(agentId, { roomId, status, limit: limitNum })
-          : null;
+        !fromTime && !toTime ? buildCacheKey(agentId, { roomId, status, limit: limitNum }) : null;
       if (cacheKey) {
         const cached = runsCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
@@ -64,7 +62,13 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       }
 
       const adapter = (runtime as unknown as { adapter?: IDatabaseAdapter }).adapter;
-      const allowedStatuses: Array<RunStatus | 'all'> = ['started', 'completed', 'timeout', 'error', 'all'];
+      const allowedStatuses: Array<RunStatus | 'all'> = [
+        'started',
+        'completed',
+        'timeout',
+        'error',
+        'all',
+      ];
       const statusFilter =
         typeof status === 'string' && allowedStatuses.includes(status as RunStatus | 'all')
           ? (status as RunStatus | 'all')
