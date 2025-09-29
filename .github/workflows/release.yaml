@@ -423,37 +423,6 @@ jobs:
 
           echo "✅ Successfully published to NPM with dist-tag: ${DIST_TAG}"
 
-      # Fallback: attempt to publish any still-unpublished packages individually
-      - name: Fallback publish unpublished packages
-        if: failure()
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          DIST_TAG="${{ steps.release_type.outputs.dist_tag }}"
-          echo "Running fallback publisher for unpublished packages..."
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-
-          # Get all packages and check which versions are missing on npm
-          PACKAGES_JSON=$(bunx lerna ls --json)
-          PUBLISHED_COUNT=0
-          UNPUBLISHED_COUNT=0
-
-          echo "$PACKAGES_JSON" | jq -r '.[] | "\(.name)|\(.location)"' | while IFS='|' read -r NAME LOCATION; do
-            VERSION=$(node -p "require('$LOCATION/package.json').version")
-            if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
-              echo "$NAME@$VERSION already published."
-              PUBLISHED_COUNT=$((PUBLISHED_COUNT+1))
-            else
-              echo "Publishing new package: $NAME@$VERSION (dist-tag: ${DIST_TAG})"
-              (cd "$LOCATION" && npm publish --access public --tag "${DIST_TAG}")
-              UNPUBLISHED_COUNT=$((UNPUBLISHED_COUNT+1))
-            fi
-          done
-
-          echo "Fallback results: published $UNPUBLISHED_COUNT new packages; $PUBLISHED_COUNT already on npm."
-          # Do not fail the job here; subsequent steps will report summary and/or create issue if needed
-
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
