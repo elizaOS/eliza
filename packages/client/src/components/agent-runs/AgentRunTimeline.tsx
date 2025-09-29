@@ -541,12 +541,12 @@ const RunItem: React.FC<RunItemProps> = ({
             className={cn(
               'absolute top-0 bottom-0 transition-all flex items-center justify-center',
               run.status === 'completed'
-                ? 'bg-blue-500 dark:bg-blue-600'
+                ? 'bg-primary'
                 : run.status === 'error'
-                  ? 'bg-blue-700 dark:bg-blue-800'
+                  ? 'bg-destructive'
                   : run.status === 'timeout'
-                    ? 'bg-blue-400 dark:bg-blue-500'
-                    : 'bg-blue-500 dark:bg-blue-600'
+                    ? 'bg-yellow-500 dark:bg-yellow-600'
+                    : 'bg-primary/70'
             )}
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
@@ -555,7 +555,7 @@ const RunItem: React.FC<RunItemProps> = ({
           >
             {/* Show duration on the bar for parent runs */}
             {isRootRun && (
-              <span className="text-xs font-mono text-white px-1 truncate">
+              <span className="text-xs font-mono text-primary-foreground px-1 truncate">
                 {formatDuration(run.duration)}
               </span>
             )}
@@ -662,10 +662,10 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
             className={cn(
               'absolute h-full transition-all',
               event.status === 'completed'
-                ? 'bg-blue-400 dark:bg-blue-500'
+                ? 'bg-primary/80'
                 : event.status === 'failed'
-                  ? 'bg-blue-600 dark:bg-blue-700'
-                  : 'bg-blue-400 dark:bg-blue-500'
+                  ? 'bg-destructive/80'
+                  : 'bg-primary/60'
             )}
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
