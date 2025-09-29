@@ -1,20 +1,19 @@
-import React, { useMemo, useState } from 'react';
+import { useAgentRunDetail, useAgentRuns } from '@/hooks/use-query-hooks';
+import { cn } from '@/lib/utils';
 import type { UUID } from '@elizaos/core';
-import { useAgentRuns, useAgentRunDetail } from '@/hooks/use-query-hooks';
-import type { RunSummary, RunEvent } from '@elizaos/api-client';
 import {
+  Activity,
+  AlertCircle,
+  CheckCircle,
   ChevronDown,
   ChevronRight,
   Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Activity,
-  Eye,
   Database,
+  Eye,
+  XCircle,
   Zap,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import React, { useMemo, useState } from 'react';
 
 type AgentRunTimelineProps = {
   agentId: UUID;
@@ -57,12 +56,13 @@ interface ProcessedRun {
 interface ProcessedEvent {
   id: string;
   name: string;
-  type: 'action' | 'model' | 'evaluator' | 'embedding';
+  type: 'action' | 'attempt' | 'model' | 'evaluator' | 'embedding';
   status: 'completed' | 'failed' | 'running';
   startTime: number;
   duration?: number;
   icon: React.ComponentType<{ className?: string }>;
   attempts?: ProcessedEvent[];
+  children?: ProcessedEvent[];
 }
 
 function formatDuration(durationMs?: number | null): string {
@@ -120,6 +120,8 @@ function getEventIcon(type: string) {
   switch (type) {
     case 'action':
       return Activity;
+    case 'attempt':
+      return Clock;
     case 'model':
       return Eye;
     case 'evaluator':
@@ -130,6 +132,8 @@ function getEventIcon(type: string) {
       return Activity;
   }
 }
+
+// Removed page-level time scale to avoid confusing global durations across runs
 
 export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) => {
   const [selectedRunId, setSelectedRunId] = useState<UUID | null>(null);
@@ -167,76 +171,176 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
       let processedEvents: ProcessedEvent[] = [];
 
       if (runDetail && runDetail.events) {
-        runDetail.events.forEach((event, index) => {
-          let processedEvent: ProcessedEvent | null = null;
+        // Build grouped actions with attempts and nested events
+        const orderedEvents: ProcessedEvent[] = [];
+        const actionMap = new Map<string, ProcessedEvent>();
+        const inFlightAttempt = new Map<string, ProcessedEvent>();
 
+        const eventsSorted = [...runDetail.events].sort((a, b) => a.timestamp - b.timestamp);
+
+        eventsSorted.forEach((event, index) => {
           switch (event.type) {
-            case 'ACTION_STARTED':
+            case 'ACTION_STARTED': {
+              const actionName =
+                (event.data.actionName as string) ||
+                (event.data.actionId as string) ||
+                `Action ${index}`;
+              const actionKey = (event.data.actionId as string) || actionName;
+
+              let actionEvent = actionMap.get(actionKey);
+              if (!actionEvent) {
+                actionEvent = {
+                  id: `action-${actionKey}`,
+                  name: actionName,
+                  type: 'action',
+                  status: 'running',
+                  startTime: event.timestamp,
+                  icon: Activity,
+                  attempts: [],
+                };
+                actionMap.set(actionKey, actionEvent);
+                orderedEvents.push(actionEvent);
+              } else {
+                // For multiple attempts, keep earliest start
+                actionEvent.startTime = Math.min(actionEvent.startTime, event.timestamp);
+                actionEvent.status = 'running';
+              }
+
+              const attemptIndex = (actionEvent.attempts?.length || 0) + 1;
+              const attemptEvent: ProcessedEvent = {
+                id: `attempt-${actionKey}-${attemptIndex}`,
+                name: `Attempt ${attemptIndex}`,
+                type: 'attempt',
+                status: 'running',
+                startTime: event.timestamp,
+                icon: Clock,
+                attempts: [], // will hold nested child events like model calls
+              };
+              actionEvent.attempts = [...(actionEvent.attempts || []), attemptEvent];
+              inFlightAttempt.set(actionKey, attemptEvent);
+              break;
+            }
             case 'ACTION_COMPLETED': {
               const actionName =
                 (event.data.actionName as string) ||
                 (event.data.actionId as string) ||
                 `Action ${index}`;
-              processedEvent = {
-                id: `action-${event.data.actionId || index}`,
-                name: actionName,
-                type: 'action',
-                status:
-                  event.type === 'ACTION_COMPLETED'
-                    ? event.data.success !== false
-                      ? 'completed'
-                      : 'failed'
-                    : 'running',
-                startTime: event.timestamp,
-                duration: event.data.executionTime as number,
-                icon: Activity,
-              };
+              const actionKey = (event.data.actionId as string) || actionName;
+              let actionEvent = actionMap.get(actionKey);
+              if (!actionEvent) {
+                // If we missed the start, create a placeholder action with a single attempt
+                actionEvent = {
+                  id: `action-${actionKey}`,
+                  name: actionName,
+                  type: 'action',
+                  status: 'running',
+                  startTime: event.timestamp,
+                  icon: Activity,
+                  attempts: [],
+                };
+                actionMap.set(actionKey, actionEvent);
+                orderedEvents.push(actionEvent);
+              }
+
+              let attempt = inFlightAttempt.get(actionKey);
+              if (!attempt) {
+                // Missing start; synthesize an attempt starting at completion time
+                attempt = {
+                  id: `attempt-${actionKey}-1`,
+                  name: 'Attempt 1',
+                  type: 'attempt',
+                  status: 'running',
+                  startTime: event.timestamp,
+                  icon: Clock,
+                  attempts: [],
+                };
+                actionEvent.attempts = [...(actionEvent.attempts || []), attempt];
+              }
+
+              const success = (event.data.success as boolean | undefined) !== false;
+              attempt.duration = Math.max(0, event.timestamp - attempt.startTime);
+              attempt.status = success ? 'completed' : 'failed';
+              inFlightAttempt.delete(actionKey);
+
+              actionEvent.status = success ? 'completed' : 'failed';
+              const firstAttemptStart = (actionEvent.attempts || [attempt])[0].startTime;
+              actionEvent.duration = Math.max(0, event.timestamp - firstAttemptStart);
               break;
             }
             case 'MODEL_USED': {
               const modelType = (event.data.modelType as string) || 'Model Call';
-              processedEvent = {
+              const modelEvent: ProcessedEvent = {
                 id: `model-${index}`,
                 name: modelType,
                 type: 'model',
                 status: 'completed',
                 startTime: event.timestamp,
-                duration: event.data.executionTime as number,
+                duration: (event.data.executionTime as number) || undefined,
                 icon: Eye,
               };
+              const actionContext = (event.data.actionContext as string | undefined) || undefined;
+              const targetKey = actionContext || Array.from(inFlightAttempt.keys()).pop();
+              if (targetKey) {
+                const attempt = inFlightAttempt.get(targetKey);
+                if (attempt) {
+                  attempt.attempts = [...(attempt.attempts || []), modelEvent];
+                } else {
+                  // If no running attempt, attach to the last attempt of the action
+                  const actionEvent = actionMap.get(targetKey);
+                  const lastAttempt = actionEvent?.attempts && actionEvent.attempts[actionEvent.attempts.length - 1];
+                  if (lastAttempt) {
+                    lastAttempt.attempts = [...(lastAttempt.attempts || []), modelEvent];
+                  } else {
+                    orderedEvents.push(modelEvent);
+                  }
+                }
+              } else {
+                orderedEvents.push(modelEvent);
+              }
               break;
             }
             case 'EVALUATOR_COMPLETED': {
               const evaluatorName = (event.data.evaluatorName as string) || `Evaluator ${index}`;
-              processedEvent = {
+              orderedEvents.push({
                 id: `evaluator-${index}`,
                 name: evaluatorName,
                 type: 'evaluator',
                 status: 'completed',
                 startTime: event.timestamp,
                 icon: Database,
-              };
+              });
               break;
             }
             case 'EMBEDDING_EVENT': {
               const status = (event.data.status as string) || 'completed';
-              processedEvent = {
+              const embeddingEvent: ProcessedEvent = {
                 id: `embedding-${index}`,
                 name: `Embedding ${status}`,
                 type: 'embedding',
                 status: status === 'failed' ? 'failed' : 'completed',
                 startTime: event.timestamp,
-                duration: event.data.durationMs as number,
+                duration: (event.data.durationMs as number) || undefined,
                 icon: Zap,
               };
+              const key = Array.from(inFlightAttempt.keys()).pop();
+              if (key) {
+                const attempt = inFlightAttempt.get(key);
+                if (attempt) {
+                  attempt.attempts = [...(attempt.attempts || []), embeddingEvent];
+                } else {
+                  orderedEvents.push(embeddingEvent);
+                }
+              } else {
+                orderedEvents.push(embeddingEvent);
+              }
               break;
             }
-          }
-
-          if (processedEvent) {
-            processedEvents.push(processedEvent);
+            default:
+              break;
           }
         });
+
+        processedEvents = orderedEvents;
       }
 
       return {
@@ -256,34 +360,32 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     });
   }, [runs, runDetailQuery.data, selectedRunId]);
 
-  // Calculate timeline bounds for proportional visualization
-  const timelineBounds = useMemo(() => {
-    if (processedRuns.length === 0) {
-      return { startTime: 0, endTime: 0, totalDuration: 0 };
-    }
+  // Helper function to calculate timeline bounds for a single run
+  const calculateRunTimelineBounds = (run: ProcessedRun) => {
+    let earliestStart = run.startTime;
+    let latestEnd = run.endTime || run.startTime + (run.duration || 0);
 
-    let earliestStart = Number.MAX_SAFE_INTEGER;
-    let latestEnd = 0;
+    const scanEvent = (ev: ProcessedEvent) => {
+      earliestStart = Math.min(earliestStart, ev.startTime);
+      const end = ev.startTime + (ev.duration || 0);
+      latestEnd = Math.max(latestEnd, end);
+      (ev.attempts || []).forEach(scanEvent);
+      (ev.children || []).forEach(scanEvent);
+    };
 
-    processedRuns.forEach((run) => {
-      earliestStart = Math.min(earliestStart, run.startTime);
-      const runEnd = run.endTime || run.startTime + (run.duration || 0);
-      latestEnd = Math.max(latestEnd, runEnd);
+    run.children.forEach(scanEvent);
 
-      // Also consider child events for more accurate timeline bounds
-      run.children.forEach((child) => {
-        earliestStart = Math.min(earliestStart, child.startTime);
-        const childEnd = child.startTime + (child.duration || 0);
-        latestEnd = Math.max(latestEnd, childEnd);
-      });
-    });
-
+    const totalDuration = latestEnd - earliestStart;
+    
+    // Ensure we have at least a minimal duration for visualization
+    const minDuration = 100; // 100ms minimum for visualization
+    
     return {
       startTime: earliestStart,
       endTime: latestEnd,
-      totalDuration: latestEnd - earliestStart,
+      totalDuration: Math.max(totalDuration, minDuration),
     };
-  }, [processedRuns]);
+  };
 
   // Toggle expansion of runs
   const toggleRunExpansion = (runId: string) => {
@@ -309,7 +411,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
             Hierarchical view of agent execution with timing details.
           </p>
         </div>
-
+        {/* Intentionally no global time scale; each row shows its own proportional bar */}
       </div>
 
       {!isLoading && errorMessage && (
@@ -382,8 +484,8 @@ const RunItem: React.FC<RunItemProps> = ({
       {/* Main run row */}
       <div
         className={cn(
-          'flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors',
-          level > 0 && 'border-l border-border ml-4',
+          'flex items-center gap-3 p-3 cursor-pointer transition-colors',
+          level > 0,
           isSelected && 'bg-primary/10 border-primary'
         )}
         style={{ paddingLeft: `${12 + indent}px` }}
@@ -488,6 +590,8 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
   const IconComponent = event.icon;
   const StatusIcon = getStatusIcon(event.status);
   const indent = level * 24;
+  const [expanded, setExpanded] = React.useState(true);
+  const hasNested = (event.attempts && event.attempts.length > 0) || (event.children && event.children.length > 0);
 
   // Calculate timing bar parameters based on timeline bounds
   const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
@@ -497,58 +601,74 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
   const widthPercent = timelineTotal > 0 ? (eventDuration / timelineTotal) * 100 : 0;
 
   return (
-    <div
-      className="flex items-center gap-3 p-2 text-sm hover:bg-muted/30"
-      style={{ paddingLeft: `${12 + indent}px` }}
-    >
-      {/* Spacer for alignment */}
-      <div className="w-4" />
-
-      {/* Event icon */}
-      <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-        <IconComponent className="w-3 h-3 text-muted-foreground" />
-      </div>
-
-      {/* Status icon */}
+    <div>
       <div
-        className={cn(
-          'flex-shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-xs',
-          getStatusColor(event.status)
-        )}
+        className="flex items-center gap-3 p-2 text-sm hover:bg-muted/30"
+        style={{ paddingLeft: `${12 + indent}px` }}
       >
-        <StatusIcon className="w-2.5 h-2.5" />
-      </div>
+        {/* Expand/collapse if nested */}
+        <button className="w-4 h-4 flex items-center justify-center" onClick={() => hasNested && setExpanded(!expanded)}>
+          {hasNested ? (expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />) : null}
+        </button>
 
-      {/* Event name */}
-      <div className="flex-1 min-w-0">
-        <span className="text-sm">{event.name}</span>
-      </div>
+        {/* Event icon */}
+        <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
+          <IconComponent className="w-3 h-3 text-muted-foreground" />
+        </div>
 
-      {/* Timing */}
-      <div className="flex-shrink-0 text-right">
-        <div className="text-xs font-mono text-muted-foreground">
-          {formatDuration(event.duration)}
+        {/* Status icon */}
+        <div
+          className={cn(
+            'flex-shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-xs',
+            getStatusColor(event.status)
+          )}
+        >
+          <StatusIcon className="w-2.5 h-2.5" />
+        </div>
+
+        {/* Event name */}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm">{event.name}</span>
+        </div>
+
+        {/* Timing */}
+        <div className="flex-shrink-0 text-right">
+          <div className="text-xs font-mono text-muted-foreground">
+            {formatDuration(event.duration)}
+          </div>
+        </div>
+
+        {/* Mini timing bar */}
+        <div className="flex-shrink-0 w-16 h-2 relative bg-muted rounded-sm overflow-hidden">
+          <div
+            className={cn(
+              'absolute h-full transition-all',
+              event.status === 'completed'
+                ? 'bg-blue-400 dark:bg-blue-500'
+                : event.status === 'failed'
+                  ? 'bg-blue-600 dark:bg-blue-700'
+                  : 'bg-blue-400 dark:bg-blue-500'
+            )}
+            style={{
+              left: `${Math.max(0, Math.min(startOffset, 98))}%`,
+              width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
+              borderRadius: 'inherit',
+            }}
+          />
         </div>
       </div>
 
-      {/* Mini timing bar */}
-      <div className="flex-shrink-0 w-16 h-2 relative bg-muted rounded-sm overflow-hidden">
-        <div
-          className={cn(
-            'absolute h-full transition-all',
-            event.status === 'completed'
-              ? 'bg-blue-400 dark:bg-blue-500'
-              : event.status === 'failed'
-                ? 'bg-blue-600 dark:bg-blue-700'
-                : 'bg-blue-400 dark:bg-blue-500'
-          )}
-          style={{
-            left: `${Math.max(0, Math.min(startOffset, 98))}%`,
-            width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
-            borderRadius: 'inherit',
-          }}
-        />
-      </div>
+      {/* Nested attempts or children */}
+      {hasNested && expanded && (
+        <div className="border-l border-border ml-4">
+          {(event.attempts || []).map((child) => (
+            <EventItem key={child.id} event={child} level={level + 1} timelineBounds={timelineBounds} />
+          ))}
+          {(event.children || []).map((child) => (
+            <EventItem key={child.id} event={child} level={level + 1} timelineBounds={timelineBounds} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
