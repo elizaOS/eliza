@@ -48,44 +48,63 @@ describe('Production Migration Scenarios', () => {
       // These would have been created by previous versions of ElizaOS
 
       // Create the tables as they exist in production (simplified versions)
+      // Note: Using correct table name 'memories' and camelCase columns to match the schema
       await db.execute(sql`
-        CREATE TABLE IF NOT EXISTS memory (
+        CREATE TABLE IF NOT EXISTS memories (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          agent_id UUID NOT NULL,
-          room_id UUID NOT NULL,
-          user_id UUID,
-          content TEXT NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW(),
-          is_deleted BOOLEAN DEFAULT FALSE,
-          relevance NUMERIC,
-          similarity NUMERIC
+          "agentId" UUID NOT NULL,
+          "roomId" UUID,
+          "entityId" UUID,
+          content JSONB NOT NULL,
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          type TEXT NOT NULL DEFAULT 'message',
+          "unique" BOOLEAN DEFAULT TRUE,
+          metadata JSONB DEFAULT '{}',
+          "worldId" UUID
         )
       `);
 
       await db.execute(sql`
-        CREATE INDEX IF NOT EXISTS idx_memory_agent_id ON memory(agent_id)
+        CREATE INDEX IF NOT EXISTS idx_memories_type_room ON memories(type, "roomId")
       `);
 
       await db.execute(sql`
-        CREATE INDEX IF NOT EXISTS idx_memory_room_id ON memory(room_id)
+        CREATE INDEX IF NOT EXISTS idx_memories_world_id ON memories("worldId")
       `);
 
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS agents (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           name TEXT NOT NULL,
-          settings JSONB,
-          created_at TIMESTAMP DEFAULT NOW()
+          settings JSONB DEFAULT '{}'::jsonb,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+          enabled BOOLEAN DEFAULT TRUE,
+          username TEXT,
+          system TEXT DEFAULT '',
+          bio JSONB DEFAULT '[]'::jsonb,
+          message_examples JSONB DEFAULT '[]'::jsonb,
+          post_examples JSONB DEFAULT '[]'::jsonb,
+          topics JSONB DEFAULT '[]'::jsonb,
+          adjectives JSONB DEFAULT '[]'::jsonb,
+          knowledge JSONB DEFAULT '[]'::jsonb,
+          plugins JSONB DEFAULT '[]'::jsonb,
+          style JSONB DEFAULT '{}'::jsonb
         )
       `);
 
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS rooms (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          agent_id UUID NOT NULL,
+          "agentId" UUID,
           name TEXT,
-          created_at TIMESTAMP DEFAULT NOW()
+          source TEXT NOT NULL DEFAULT 'unknown',
+          type TEXT NOT NULL DEFAULT 'general',
+          "createdAt" TIMESTAMP DEFAULT NOW(),
+          "worldId" UUID,
+          "serverId" TEXT,
+          metadata JSONB,
+          "channelId" TEXT
         )
       `);
 
@@ -99,16 +118,16 @@ describe('Production Migration Scenarios', () => {
       `);
 
       await db.execute(sql`
-        INSERT INTO rooms (id, agent_id, name) 
-        VALUES (${roomId}::uuid, ${agentId}::uuid, 'Main Room')
+        INSERT INTO rooms (id, "agentId", name, source, type) 
+        VALUES (${roomId}::uuid, ${agentId}::uuid, 'Main Room', 'test', 'general')
       `);
 
       await db.execute(sql`
-        INSERT INTO memory (agent_id, room_id, user_id, content, relevance, similarity) 
+        INSERT INTO memories ("agentId", "roomId", "entityId", content, type) 
         VALUES 
-        (${agentId}::uuid, ${roomId}::uuid, null, 'System initialized', 1.0, 1.0),
-        (${agentId}::uuid, ${roomId}::uuid, null, 'User preferences loaded', 0.8, 0.9),
-        (${agentId}::uuid, ${roomId}::uuid, null, 'Context established', 0.7, 0.85)
+        (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "System initialized"}'::jsonb, 'message'),
+        (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "User preferences loaded"}'::jsonb, 'message'),
+        (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "Context established"}'::jsonb, 'message')
       `);
 
       // Now run the migration with the actual core schema
@@ -116,7 +135,7 @@ describe('Production Migration Scenarios', () => {
       await migrator.migrate('@elizaos/plugin-sql', coreSchema, { verbose: false });
 
       // Verify data is preserved
-      const memories = await db.execute(sql`SELECT COUNT(*) as count FROM memory`);
+      const memories = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
       expect(Number(memories.rows[0].count)).toBe(3);
 
       const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
@@ -127,7 +146,7 @@ describe('Production Migration Scenarios', () => {
       const memoryColumns = await db.execute(sql`
         SELECT column_name 
         FROM information_schema.columns 
-        WHERE table_name = 'memory'
+        WHERE table_name = 'memories'
         ORDER BY column_name
       `);
 
@@ -135,9 +154,10 @@ describe('Production Migration Scenarios', () => {
 
       // Should have all original columns plus any new ones from the schema
       expect(columnNames).toContain('id');
-      expect(columnNames).toContain('agent_id');
-      expect(columnNames).toContain('room_id');
+      expect(columnNames).toContain('agentId');
+      expect(columnNames).toContain('roomId');
       expect(columnNames).toContain('content');
+      expect(columnNames).toContain('type');
     });
 
     it('should handle version mismatch between DB and code schema', async () => {

@@ -110,10 +110,72 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
 }
 
 /**
+ * Normalize SQL types for comparison
+ * Handles equivalent type variations between introspected DB and schema definitions
+ */
+function normalizeType(type: string | undefined): string {
+  if (!type) return '';
+
+  const normalized = type.toLowerCase().trim();
+
+  // Handle timestamp variations - all are equivalent
+  if (
+    normalized === 'timestamp without time zone' ||
+    normalized === 'timestamp with time zone' ||
+    normalized === 'timestamptz'
+  ) {
+    return 'timestamp';
+  }
+
+  // Handle serial vs integer with identity
+  // serial is essentially integer with auto-increment
+  if (normalized === 'serial') {
+    return 'integer';
+  }
+  if (normalized === 'bigserial') {
+    return 'bigint';
+  }
+  if (normalized === 'smallserial') {
+    return 'smallint';
+  }
+
+  // Handle numeric/decimal equivalence
+  if (normalized.startsWith('numeric') || normalized.startsWith('decimal')) {
+    // Extract precision and scale if present
+    const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
+    if (match) {
+      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ''})`;
+    }
+    return 'numeric';
+  }
+
+  // Handle varchar/character varying
+  if (normalized.startsWith('character varying')) {
+    return normalized.replace('character varying', 'varchar');
+  }
+
+  // Handle text array variations
+  if (normalized === 'text[]' || normalized === '_text') {
+    return 'text[]';
+  }
+
+  return normalized;
+}
+
+/**
  * Check if a type change is destructive
  * Based on PostgreSQL's type casting rules
  */
 function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boolean {
+  // First normalize the types to handle equivalent variations
+  const normalizedFrom = normalizeType(fromType);
+  const normalizedTo = normalizeType(toType);
+
+  // If normalized types match, it's not destructive
+  if (normalizedFrom === normalizedTo) {
+    return false;
+  }
+
   // Safe conversions (PostgreSQL) - based on Drizzle's logic
   const safeConversions: Record<string, string[]> = {
     smallint: ['integer', 'bigint', 'numeric', 'real', 'double precision'],
@@ -126,16 +188,15 @@ function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boole
     text: ['citext'],
     // UUID to text is safe
     uuid: ['text', 'varchar'],
-    // Timestamp variations are generally safe
-    timestamp: ['timestamptz', 'timestamp with time zone', 'timestamp without time zone'],
-    timestamptz: ['timestamp', 'timestamp with time zone', 'timestamp without time zone'],
+    // Timestamp variations are generally safe (now handled by normalization)
+    timestamp: ['timestamp'], // Simplified since normalization handles variations
     // Date/time conversions
-    date: ['timestamp', 'timestamptz'],
+    date: ['timestamp'],
     time: ['timetz'],
   };
 
-  const fromBase = fromType.split('(')[0].toLowerCase();
-  const toBase = toType.split('(')[0].toLowerCase();
+  const fromBase = normalizedFrom.split('(')[0];
+  const toBase = normalizedTo.split('(')[0];
 
   // Same type is always safe
   if (fromBase === toBase) {
