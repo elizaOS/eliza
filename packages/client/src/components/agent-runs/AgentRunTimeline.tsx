@@ -1,11 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import type { UUID } from '@elizaos/core';
-import {
-  useAgentRuns,
-  useAgentRunDetail,
-} from '@/hooks/use-query-hooks';
+import { useAgentRuns, useAgentRunDetail } from '@/hooks/use-query-hooks';
 import type { RunSummary, RunEvent } from '@elizaos/api-client';
-import { ChevronDown, ChevronRight, Clock, CheckCircle, XCircle, AlertCircle, Activity, Eye, Database, Zap } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Activity,
+  Eye,
+  Database,
+  Zap,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type AgentRunTimelineProps = {
@@ -16,7 +24,14 @@ type RunStatus = 'completed' | 'started' | 'timeout' | 'error';
 
 interface TimelineEvent {
   id: string;
-  type: 'RUN_STARTED' | 'RUN_ENDED' | 'ACTION_STARTED' | 'ACTION_COMPLETED' | 'MODEL_USED' | 'EVALUATOR_COMPLETED' | 'EMBEDDING_EVENT';
+  type:
+    | 'RUN_STARTED'
+    | 'RUN_ENDED'
+    | 'ACTION_STARTED'
+    | 'ACTION_COMPLETED'
+    | 'MODEL_USED'
+    | 'EVALUATOR_COMPLETED'
+    | 'EMBEDDING_EVENT';
   timestamp: number;
   duration?: number;
   data: Record<string, unknown>;
@@ -63,7 +78,7 @@ function formatTime(timestamp: number): string {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    fractionalSecondDigits: 3
+    fractionalSecondDigits: 3,
   });
 }
 
@@ -143,7 +158,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
       return [];
     }
 
-    return runs.map(runSummary => {
+    return runs.map((runSummary) => {
       // For now, create a processed run from the summary data
       // We'll only show detailed events for the selected run
       const isSelected = runSummary.runId === selectedRunId;
@@ -158,12 +173,20 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
           switch (event.type) {
             case 'ACTION_STARTED':
             case 'ACTION_COMPLETED': {
-              const actionName = (event.data.actionName as string) || (event.data.actionId as string) || `Action ${index}`;
+              const actionName =
+                (event.data.actionName as string) ||
+                (event.data.actionId as string) ||
+                `Action ${index}`;
               processedEvent = {
                 id: `action-${event.data.actionId || index}`,
                 name: actionName,
                 type: 'action',
-                status: event.type === 'ACTION_COMPLETED' ? (event.data.success !== false ? 'completed' : 'failed') : 'running',
+                status:
+                  event.type === 'ACTION_COMPLETED'
+                    ? event.data.success !== false
+                      ? 'completed'
+                      : 'failed'
+                    : 'running',
                 startTime: event.timestamp,
                 duration: event.data.executionTime as number,
                 icon: Activity,
@@ -222,7 +245,11 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
         status: runSummary.status as RunStatus,
         startTime: runSummary.startedAt || Date.now(),
         endTime: runSummary.endedAt || undefined,
-        duration: runSummary.durationMs || (runSummary.endedAt && runSummary.startedAt ? runSummary.endedAt - runSummary.startedAt : undefined),
+        duration:
+          runSummary.durationMs ??
+          (runSummary.endedAt != null && runSummary.startedAt != null
+            ? runSummary.endedAt - runSummary.startedAt
+            : undefined),
         children: processedEvents.sort((a, b) => a.startTime - b.startTime),
         counts: runSummary.counts || { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 },
       };
@@ -238,13 +265,13 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
     let earliestStart = Number.MAX_SAFE_INTEGER;
     let latestEnd = 0;
 
-    processedRuns.forEach(run => {
+    processedRuns.forEach((run) => {
       earliestStart = Math.min(earliestStart, run.startTime);
-      const runEnd = run.endTime || (run.startTime + (run.duration || 0));
+      const runEnd = run.endTime || run.startTime + (run.duration || 0);
       latestEnd = Math.max(latestEnd, runEnd);
 
       // Also consider child events for more accurate timeline bounds
-      run.children.forEach(child => {
+      run.children.forEach((child) => {
         earliestStart = Math.min(earliestStart, child.startTime);
         const childEnd = child.startTime + (child.duration || 0);
         latestEnd = Math.max(latestEnd, childEnd);
@@ -292,11 +319,11 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
         )}
       </div>
 
-      {isLoading && <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>}
+      {isLoading && (
+        <div className="px-4 py-8 text-sm text-muted-foreground">Loading run data…</div>
+      )}
       {!isLoading && errorMessage && (
-        <div className="px-4 py-8 text-sm text-red-500">
-          Failed to load runs: {errorMessage}
-        </div>
+        <div className="px-4 py-8 text-sm text-red-500">Failed to load runs: {errorMessage}</div>
       )}
       {!isLoading && !errorMessage && !hasRuns && (
         <div className="px-4 py-8 text-sm text-muted-foreground">No runs available yet.</div>
@@ -324,7 +351,6 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
           ))}
         </div>
       )}
-
     </div>
   );
 };
@@ -343,14 +369,22 @@ interface RunItemProps {
   };
 }
 
-const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isSelected, timelineBounds }) => {
+const RunItem: React.FC<RunItemProps> = ({
+  run,
+  isExpanded,
+  onToggle,
+  level,
+  isSelected,
+  timelineBounds,
+}) => {
   const StatusIcon = getStatusIcon(run.status);
   const indent = level * 24;
 
   // Calculate timing bar parameters based on timeline bounds
   const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
   const runDuration = run.duration || 0;
-  const startOffset = timelineTotal > 0 ? ((run.startTime - timelineStart) / timelineTotal) * 100 : 0;
+  const startOffset =
+    timelineTotal > 0 ? ((run.startTime - timelineStart) / timelineTotal) * 100 : 0;
   const widthPercent = timelineTotal > 0 ? (runDuration / timelineTotal) * 100 : 0;
 
   return (
@@ -358,22 +392,30 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
       {/* Main run row */}
       <div
         className={cn(
-          "flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors",
-          level > 0 && "border-l border-border ml-4",
-          isSelected && "bg-primary/10 border-primary"
+          'flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer transition-colors',
+          level > 0 && 'border-l border-border ml-4',
+          isSelected && 'bg-primary/10 border-primary'
         )}
         style={{ paddingLeft: `${12 + indent}px` }}
         onClick={onToggle}
       >
         {/* Expand/collapse button */}
         <button className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
-          {run.children.length > 0 && (
-            isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />
-          )}
+          {run.children.length > 0 &&
+            (isExpanded ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            ))}
         </button>
 
         {/* Status icon */}
-        <div className={cn("flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs", getStatusColor(run.status))}>
+        <div
+          className={cn(
+            'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs',
+            getStatusColor(run.status)
+          )}
+        >
           <StatusIcon className="w-3 h-3" />
         </div>
 
@@ -381,12 +423,18 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm">{run.name}</span>
-            <span className={cn("px-1.5 py-0.5 text-xs rounded-full border", getStatusColor(run.status))}>
+            <span
+              className={cn(
+                'px-1.5 py-0.5 text-xs rounded-full border',
+                getStatusColor(run.status)
+              )}
+            >
               {run.status === 'completed' ? '✓' : run.status === 'error' ? '✗' : '○'}
             </span>
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            {run.counts.actions} actions • {run.counts.modelCalls} model calls • {run.counts.errors} errors
+            {run.counts.actions} actions • {run.counts.modelCalls} model calls • {run.counts.errors}{' '}
+            errors
           </div>
         </div>
 
@@ -400,15 +448,18 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
         <div className="flex-shrink-0 w-32 h-6 relative bg-muted rounded-sm overflow-hidden">
           <div
             className={cn(
-              "absolute top-0 bottom-0 rounded-sm transition-all",
-              run.status === 'completed' ? "bg-blue-500 dark:bg-blue-600" :
-                run.status === 'error' ? "bg-blue-700 dark:bg-blue-800" :
-                  run.status === 'timeout' ? "bg-blue-400 dark:bg-blue-500" :
-                    "bg-blue-500 dark:bg-blue-600"
+              'absolute top-0 bottom-0 rounded-sm transition-all',
+              run.status === 'completed'
+                ? 'bg-blue-500 dark:bg-blue-600'
+                : run.status === 'error'
+                  ? 'bg-blue-700 dark:bg-blue-800'
+                  : run.status === 'timeout'
+                    ? 'bg-blue-400 dark:bg-blue-500'
+                    : 'bg-blue-500 dark:bg-blue-600'
             )}
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
-              width: `${Math.max(2, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`
+              width: `${Math.max(2, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
             }}
           />
           <div className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white mix-blend-difference">
@@ -421,7 +472,12 @@ const RunItem: React.FC<RunItemProps> = ({ run, isExpanded, onToggle, level, isS
       {isExpanded && run.children.length > 0 && (
         <div className="border-l border-border ml-4">
           {run.children.map((child) => (
-            <EventItem key={child.id} event={child} level={level + 1} timelineBounds={timelineBounds} />
+            <EventItem
+              key={child.id}
+              event={child}
+              level={level + 1}
+              timelineBounds={timelineBounds}
+            />
           ))}
         </div>
       )}
@@ -445,10 +501,11 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
   const StatusIcon = getStatusIcon(event.status);
   const indent = level * 24;
 
-  // Calculate timing bar parameters based on timeline bounds  
+  // Calculate timing bar parameters based on timeline bounds
   const { startTime: timelineStart, totalDuration: timelineTotal } = timelineBounds;
   const eventDuration = event.duration || 0;
-  const startOffset = timelineTotal > 0 ? ((event.startTime - timelineStart) / timelineTotal) * 100 : 0;
+  const startOffset =
+    timelineTotal > 0 ? ((event.startTime - timelineStart) / timelineTotal) * 100 : 0;
   const widthPercent = timelineTotal > 0 ? (eventDuration / timelineTotal) * 100 : 0;
 
   return (
@@ -465,7 +522,12 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
       </div>
 
       {/* Status icon */}
-      <div className={cn("flex-shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-xs", getStatusColor(event.status))}>
+      <div
+        className={cn(
+          'flex-shrink-0 w-4 h-4 rounded-sm flex items-center justify-center text-xs',
+          getStatusColor(event.status)
+        )}
+      >
         <StatusIcon className="w-2.5 h-2.5" />
       </div>
 
@@ -476,21 +538,25 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
 
       {/* Timing */}
       <div className="flex-shrink-0 text-right">
-        <div className="text-xs font-mono text-muted-foreground">{formatDuration(event.duration)}</div>
+        <div className="text-xs font-mono text-muted-foreground">
+          {formatDuration(event.duration)}
+        </div>
       </div>
 
       {/* Mini timing bar */}
-      <div className="flex-shrink-0 w-16 h-2 bg-muted rounded-sm overflow-hidden">
+      <div className="flex-shrink-0 w-16 h-2 relative bg-muted rounded-sm overflow-hidden">
         <div
           className={cn(
-            "absolute h-full transition-all",
-            event.status === 'completed' ? "bg-blue-400 dark:bg-blue-500" :
-              event.status === 'failed' ? "bg-blue-600 dark:bg-blue-700" :
-                "bg-blue-400 dark:bg-blue-500"
+            'absolute h-full transition-all',
+            event.status === 'completed'
+              ? 'bg-blue-400 dark:bg-blue-500'
+              : event.status === 'failed'
+                ? 'bg-blue-600 dark:bg-blue-700'
+                : 'bg-blue-400 dark:bg-blue-500'
           )}
           style={{
             left: `${Math.max(0, Math.min(startOffset, 98))}%`,
-            width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`
+            width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
           }}
         />
       </div>
