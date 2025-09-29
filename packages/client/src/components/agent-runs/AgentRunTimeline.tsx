@@ -535,17 +535,11 @@ const RunItem: React.FC<RunItemProps> = ({
           </div>
         </div>
 
-        {/* Timing information */}
-        <div className="flex-shrink-0 text-right">
-          <div className="text-xs text-muted-foreground">{formatTime(run.startTime)}</div>
-          <div className="text-xs font-mono">{formatDuration(run.duration)}</div>
-        </div>
-
-        {/* Timing bar */}
-        <div className="flex-shrink-0 w-32 h-6 relative bg-muted rounded-sm overflow-hidden">
+        {/* Timing bar with integrated duration display */}
+        <div className="flex-shrink-0 w-40 h-5 relative bg-muted rounded-none overflow-hidden">
           <div
             className={cn(
-              'absolute top-0 bottom-0 transition-all',
+              'absolute top-0 bottom-0 transition-all flex items-center justify-center',
               run.status === 'completed'
                 ? 'bg-blue-500 dark:bg-blue-600'
                 : run.status === 'error'
@@ -557,9 +551,23 @@ const RunItem: React.FC<RunItemProps> = ({
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
               width: `${Math.max(2, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
-              borderRadius: 'inherit',
             }}
-          />
+          >
+            {/* Show duration on the bar for parent runs */}
+            {isRootRun && (
+              <span className="text-xs font-mono text-white px-1 truncate">
+                {formatDuration(run.duration)}
+              </span>
+            )}
+          </div>
+          {/* Show duration outside for child runs */}
+          {!isRootRun && (
+            <div className="absolute right-1 top-0 bottom-0 flex items-center">
+              <span className="text-xs font-mono text-muted-foreground">
+                {formatDuration(run.duration)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -603,7 +611,19 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
   const eventDuration = event.duration || 0;
   const startOffset =
     timelineTotal > 0 ? ((event.startTime - timelineStart) / timelineTotal) * 100 : 0;
-  const widthPercent = timelineTotal > 0 ? (eventDuration / timelineTotal) * 100 : 0;
+
+  // Calculate width with a minimum visible size
+  // Use logarithmic scaling for very small durations to maintain visibility
+  let widthPercent = 0;
+  if (timelineTotal > 0 && eventDuration > 0) {
+    const rawPercent = (eventDuration / timelineTotal) * 100;
+    // Ensure minimum visibility of 5% for any event with duration
+    widthPercent = Math.max(5, rawPercent);
+    // For very small events (< 2%), apply scaling to make them more visible
+    if (rawPercent < 2) {
+      widthPercent = 3 + (rawPercent * 2); // Scale up small events
+    }
+  }
 
   return (
     <div>
@@ -636,15 +656,8 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
           <span className="text-sm">{event.name}</span>
         </div>
 
-        {/* Timing */}
-        <div className="flex-shrink-0 text-right">
-          <div className="text-xs font-mono text-muted-foreground">
-            {formatDuration(event.duration)}
-          </div>
-        </div>
-
-        {/* Mini timing bar */}
-        <div className="flex-shrink-0 w-16 h-2 relative bg-muted rounded-sm overflow-hidden">
+        {/* Mini timing bar with duration */}
+        <div className="flex-shrink-0 w-40 h-3 relative bg-muted rounded-none overflow-hidden flex items-center">
           <div
             className={cn(
               'absolute h-full transition-all',
@@ -656,10 +669,13 @@ const EventItem: React.FC<EventItemProps> = ({ event, level, timelineBounds }) =
             )}
             style={{
               left: `${Math.max(0, Math.min(startOffset, 98))}%`,
-              width: `${Math.max(1, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
-              borderRadius: 'inherit',
+              width: `${Math.max(3, Math.min(widthPercent, 100 - Math.max(0, Math.min(startOffset, 98))))}%`,
             }}
           />
+          {/* Duration text overlay */}
+          <div className="absolute right-1 text-xs font-mono text-muted-foreground z-10">
+            {formatDuration(event.duration)}
+          </div>
         </div>
       </div>
 
