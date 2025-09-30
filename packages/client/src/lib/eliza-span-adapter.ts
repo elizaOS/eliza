@@ -312,16 +312,24 @@ export class ElizaSpanAdapter {
             const response = data.response as Record<string, unknown>;
             if (response.usage && typeof response.usage === 'object') {
                 const usage = response.usage as Record<string, unknown>;
-                total = (usage.total_tokens as number) ||
-                    ((usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0));
+                // Check if total_tokens is a number (including 0)
+                if (typeof usage.total_tokens === 'number') {
+                    total = usage.total_tokens;
+                } else {
+                    total = (usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0);
+                }
             }
         }
 
         // Try top-level usage object
         if (!total && data.usage && typeof data.usage === 'object') {
             const usage = data.usage as Record<string, unknown>;
-            total = (usage.total_tokens as number) ||
-                ((usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0));
+            // Check if total_tokens is a number (including 0)
+            if (typeof usage.total_tokens === 'number') {
+                total = usage.total_tokens;
+            } else {
+                total = (usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0);
+            }
         }
 
         return total > 0 ? total : undefined;
