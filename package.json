@@ -50,11 +50,11 @@
   "devDependencies": {
     "@types/bun": "latest",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.3.1",
-    "@types/uuid": "^10.0.0",
+    "@types/node": "^24.6.0",
+    "@types/uuid": "^11.0.0",
     "bun": "^1.2.21",
     "husky": "^9.1.7",
-    "lerna": "8.2.3",
+    "lerna": "9.0.0",
     "turbo": "^2.5.5",
     "typescript": "5.9.2"
   },
