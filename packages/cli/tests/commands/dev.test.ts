@@ -673,15 +673,9 @@ describe('ElizaOS Dev Commands', () => {
   );
 
   // Test plugin loading in plugin directory
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+  it(
     'dev command loads plugin when run in plugin directory',
     async () => {
-      // Skip in CI due to long duration (git clone + build + dev mode)
-      if (process.env.CI) {
-        console.log('[PLUGIN DEV TEST] Skipping plugin dev test in CI environment');
-        return;
-      }
-
       // Clone and setup the plugin
       const { pluginDir, cleanup } = await cloneAndSetupPlugin(
         'https://github.com/elizaOS-plugins/plugin-openai.git',
@@ -708,15 +702,16 @@ describe('ElizaOS Dev Commands', () => {
         );
 
         try {
-          // Wait for dev process to build and start
+          // Wait for dev process to build and start with extended timeout for CI
           console.log('[PLUGIN DEV TEST] Waiting for build and server startup...');
-          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SERVER_STARTUP));
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SERVER_STARTUP * 2));
 
           // Check if process is still running
           if (devProcess.exitCode !== null) {
             throw new Error(`Dev process exited with code ${devProcess.exitCode}`);
           }
 
+          console.log('[PLUGIN DEV TEST] Checking if server is ready...');
           // Try to connect to the server (dev spawns start which runs the server)
           let serverReady = false;
           for (let i = 0; i < 10; i++) {

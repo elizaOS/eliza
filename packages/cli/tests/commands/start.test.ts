@@ -483,15 +483,9 @@ describe('ElizaOS Start Commands', () => {
   // in a separate test file if the build behavior needs to be tested.
 
   // Test plugin loading in plugin directory
-  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+  it(
     'start command loads plugin when run in plugin directory',
     async () => {
-      // Skip in CI due to long duration (git clone + build + server startup)
-      if (process.env.CI) {
-        console.log('[PLUGIN TEST] Skipping plugin test in CI environment');
-        return;
-      }
-
       // Clone and setup the plugin
       const { pluginDir, cleanup } = await cloneAndSetupPlugin(
         'https://github.com/elizaOS-plugins/plugin-openai.git',
@@ -526,9 +520,11 @@ describe('ElizaOS Start Commands', () => {
         );
 
         try {
-          // Wait for server to be ready
-          await waitForServerReady(testServerPort, TEST_TIMEOUTS.SERVER_STARTUP);
+          console.log('[PLUGIN TEST] Waiting for server to become ready...');
+          // Wait for server to be ready with extended timeout for CI
+          await waitForServerReady(testServerPort, TEST_TIMEOUTS.SERVER_STARTUP * 2);
 
+          console.log('[PLUGIN TEST] Server ready, waiting for plugin initialization...');
           // Wait a bit more for plugin initialization
           await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.LONG_WAIT));
 
@@ -583,6 +579,6 @@ describe('ElizaOS Start Commands', () => {
         await cleanup();
       }
     },
-    TEST_TIMEOUTS.INDIVIDUAL_TEST * 3 // Triple timeout for git clone and build
+    TEST_TIMEOUTS.INDIVIDUAL_TEST * 4 // Quadruple timeout for git clone, build, and server startup
   );
 });
