@@ -163,10 +163,28 @@ export class RuntimeMigrator {
       return false;
     }
 
-    const url = connectionUrl.toLowerCase();
-    const originalUrl = connectionUrl.trim(); // Preserve case for pattern matching
+    // Trim and then convert to lowercase for consistent pattern matching
+    const trimmedUrl = connectionUrl.trim();
+    const url = trimmedUrl.toLowerCase();
+    const originalUrl = trimmedUrl; // Preserve case for pattern matching
 
-    // First, check for definitive non-PostgreSQL patterns
+    // First, explicitly reject other database schemes
+    // These are non-PostgreSQL databases that should be rejected immediately
+    const nonPostgresSchemes = [
+      'mysql://',
+      'mysqli://',
+      'mariadb://',
+      'mongodb://',
+      'mongodb+srv://',
+    ];
+
+    for (const scheme of nonPostgresSchemes) {
+      if (url.startsWith(scheme)) {
+        return false;
+      }
+    }
+
+    // Second, check for definitive non-PostgreSQL patterns
     // These patterns indicate PGLite, in-memory, or SQLite databases
     const excludePatterns = [
       ':memory:', // In-memory database
