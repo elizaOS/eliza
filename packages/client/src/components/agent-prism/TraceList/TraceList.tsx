@@ -62,7 +62,7 @@ export const TraceList = ({
         <ul className="flex flex-col items-center overflow-hidden rounded border border-border ">
           {traces.map((trace) => (
             <li
-              className="w-full list-none border-b-gray-200 dark:border-b-gray-900 [&:not(:last-child)]:border-b"
+              className="w-full list-none border-b-border [&:not(:last-child)]:border-b"
               key={trace.id}
             >
               <TraceListItem

@@ -84,7 +84,7 @@ const IOSection = ({
   content,
   parsedContent,
 }: IOSectionProps): ReactElement => {
-  const [tab, setTab] = useState<IOTab>(parsedContent ? "json" : "plain");
+  const [tab, setTab] = useState<IOTab>("plain");
   const [open, setOpen] = useState(true);
 
   const tabItems: TabItem<IOTab>[] = [
@@ -108,7 +108,7 @@ const IOSection = ({
         open ? (
           <Tabs<IOTab>
             items={tabItems}
-            defaultValue={parsedContent ? "json" : "plain"}
+            defaultValue="plain"
             value={tab}
             onValueChange={setTab}
             theme="pill"
@@ -155,17 +155,17 @@ const IOContent = ({
         <>
           {parsedContent ? (
             <JSONPretty
-              booleanStyle={`color: ${colors.blue[400]};`}
+              booleanStyle="color: hsl(var(--primary));"
               className="overflow-x-auto rounded-xl p-4 text-left"
               data={parsedContent}
               id={`json-pretty-${section}`}
-              keyStyle={`color: ${colors.blue[400]};`}
-              mainStyle={`color: ${colors.gray[400]}; font-size: 12px;`}
-              stringStyle={`color: ${colors.red[600]};`}
-              valueStyle={`color: ${colors.red[600]};`}
+              keyStyle="color: hsl(var(--primary));"
+              mainStyle="color: hsl(var(--muted-foreground)); font-size: 12px;"
+              stringStyle="color: hsl(var(--chart-2));"
+              valueStyle="color: hsl(var(--chart-1));"
             />
           ) : (
-            <div className="p-4 text-sm text-muted-foreground ">
+            <div className="p-4 text-sm text-muted-foreground">
               Invalid JSON format
             </div>
           )}
@@ -173,8 +173,8 @@ const IOContent = ({
       )}
 
       {tab === "plain" && (
-        <div className="rounded-lg bg-accent p-4 dark:bg-gray-900">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-left font-mono text-xs text-gray-800 ">
+        <div className="rounded-lg bg-muted/50 p-4">
+          <pre className="overflow-x-auto whitespace-pre-wrap text-left font-mono text-xs text-foreground">
             {content}
           </pre>
         </div>
