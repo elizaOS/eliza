@@ -689,7 +689,8 @@ describe('ElizaOS Dev Commands', () => {
 
         console.log('[PLUGIN DEV TEST] Starting dev server in plugin directory...');
         // Start dev server in plugin directory
-        const devProcess = spawnDevProcess(
+        // NOTE: Using Bun.spawn directly instead of spawnDevProcess to avoid 30s timeout
+        const devProcess = Bun.spawn(
           ['elizaos', 'dev', '--port', testServerPort.toString()],
           {
             cwd: pluginDir,
@@ -703,7 +704,11 @@ describe('ElizaOS Dev Commands', () => {
               BUN_TEST: 'true',
               ELIZA_CLI_TEST_MODE: 'true',
               NODE_OPTIONS: '--max-old-space-size=2048',
+              ELIZA_NONINTERACTIVE: 'true',
             },
+            stdout: 'pipe',
+            stderr: 'pipe',
+            stdin: 'ignore',
           }
         );
 
