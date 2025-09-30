@@ -694,9 +694,15 @@ describe('ElizaOS Dev Commands', () => {
           {
             cwd: pluginDir,
             env: {
+              ...process.env,
               LOG_LEVEL: 'info',
               PGLITE_DATA_DIR: pluginDbDir,
               SERVER_PORT: testServerPort.toString(),
+              NODE_ENV: 'test',
+              ELIZA_TEST_MODE: 'true',
+              BUN_TEST: 'true',
+              ELIZA_CLI_TEST_MODE: 'true',
+              NODE_OPTIONS: '--max-old-space-size=2048',
             },
           }
         );
