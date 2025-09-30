@@ -352,9 +352,11 @@ export class ElizaSpanAdapter {
      * Convert RunSummary to TraceRecord for TraceList component
      */
     convertRunSummaryToTraceRecord(summary: RunSummary): TraceRecord {
+        // Use first 8 characters of runId for compact display
+        const shortId = summary.runId.slice(0, 8);
         return {
             id: summary.runId,
-            name: `Run ${new Date(summary.startedAt || Date.now()).toLocaleTimeString()}`,
+            name: `Run ${shortId}`,
             spansCount: Object.values(summary.counts || {}).reduce((a, b) => a + b, 0),
             durationMs: summary.durationMs || 0,
             agentDescription: `Status: ${summary.status}`,

@@ -1,5 +1,6 @@
 import {
   flattenSpans,
+  formatDuration,
 } from "@evilmartians/agent-prism-data";
 import {
   type TraceRecord,
@@ -23,6 +24,17 @@ import { SearchInput } from "./SearchInput";
 import { TraceList } from "./TraceList/TraceList";
 import { TraceListItemHeader } from "./TraceList/TraceListItemHeader";
 import { TreeView } from "./TreeView";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "./Badge";
+import { PriceBadge } from "./PriceBadge";
+import { TimestampBadge } from "./TimestampBadge";
+import { TokensBadge } from "./TokensBadge";
 
 export interface TraceViewerData {
   traceRecord: TraceRecord;
@@ -173,25 +185,67 @@ const DesktopLayout = ({
   handleTraceSelect,
 }: LayoutProps) => {
   return (
-    <div
-      className={cn(
-        "grid gap-4",
-        traceListExpanded
-          ? "grid-cols-[20%_1fr_30%]"
-          : "grid-cols-[min-content_1fr_30%]",
-      )}
-    >
-      <TraceList
-        traces={traceRecords}
-        expanded={traceListExpanded}
-        onExpandStateChange={setTraceListExpanded}
-        onTraceSelect={handleTraceSelect}
-        selectedTrace={selectedTrace}
-      />
-
+    <div className="flex flex-col gap-4">
       {selectedTrace ? (
         <div className="flex flex-col gap-4">
-          <TraceListItemHeader trace={selectedTrace} />
+          {/* Trace Selector Dropdown */}
+          <Select
+            value={selectedTrace.id}
+            onValueChange={(value) => {
+              const trace = traceRecords.find((t) => t.id === value);
+              if (trace) handleTraceSelect(trace);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue>
+                <div className="flex items-center gap-3 w-full">
+                  <span className="font-medium text-sm">{selectedTrace.name}</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <Badge
+                      size="4"
+                      theme="gray"
+                      variant="outline"
+                      label={`${selectedTrace.spansCount} span${selectedTrace.spansCount === 1 ? '' : 's'}`}
+                    />
+                    <Badge
+                      size="4"
+                      theme="gray"
+                      variant="outline"
+                      label={formatDuration(selectedTrace.durationMs)}
+                    />
+                  </div>
+                </div>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="w-full max-w-2xl max-h-[400px]">
+              {traceRecords.map((trace) => (
+                <SelectItem key={trace.id} value={trace.id} className="py-1.5 px-3 cursor-pointer">
+                  <div className="flex items-center gap-3 w-full pr-6">
+                    <span className="font-medium text-sm flex-shrink-0">{trace.name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+                      <Badge
+                        size="4"
+                        theme="gray"
+                        variant="outline"
+                        label={`${trace.spansCount} span${trace.spansCount === 1 ? '' : 's'}`}
+                      />
+                      <Badge
+                        size="4"
+                        theme="gray"
+                        variant="outline"
+                        label={formatDuration(trace.durationMs)}
+                      />
+                      {typeof trace.startTime === "number" && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(trace.startTime).toLocaleTimeString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <div className="rounded border border-border bg-card">
             <div className="flex items-center justify-between gap-2 border-b border-border p-3">
@@ -227,15 +281,56 @@ const DesktopLayout = ({
               />
             )}
           </div>
+
+          {selectedSpan ? (
+            <DetailsView data={selectedSpan} />
+          ) : (
+            <Placeholder title="Select a span to see the details" />
+          )}
         </div>
       ) : (
-        <Placeholder title="Select a trace to see the details" />
-      )}
-
-      {selectedSpan ? (
-        <DetailsView data={selectedSpan} />
-      ) : (
-        <Placeholder title="Select a span to see the details" />
+        <div className="flex flex-col gap-4">
+          <Select
+            value=""
+            onValueChange={(value) => {
+              const trace = traceRecords.find((t) => t.id === value);
+              if (trace) handleTraceSelect(trace);
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select a trace to view details..." />
+            </SelectTrigger>
+            <SelectContent className="w-full max-w-2xl max-h-[400px]">
+              {traceRecords.map((trace) => (
+                <SelectItem key={trace.id} value={trace.id} className="py-1.5 px-3 cursor-pointer">
+                  <div className="flex items-center gap-3 w-full pr-6">
+                    <span className="font-medium text-sm flex-shrink-0">{trace.name}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+                      <Badge
+                        size="4"
+                        theme="gray"
+                        variant="outline"
+                        label={`${trace.spansCount} span${trace.spansCount === 1 ? '' : 's'}`}
+                      />
+                      <Badge
+                        size="4"
+                        theme="gray"
+                        variant="outline"
+                        label={formatDuration(trace.durationMs)}
+                      />
+                      {typeof trace.startTime === "number" && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(trace.startTime).toLocaleTimeString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Placeholder title="Select a trace to see the details" />
+        </div>
       )}
     </div>
   );
