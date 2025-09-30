@@ -162,7 +162,6 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Database Adapter Methods - Agent Management
     init: mock().mockResolvedValue(undefined),
     isReady: mock().mockResolvedValue(true),
-    runMigrations: mock().mockResolvedValue(undefined),
     close: mock().mockResolvedValue(undefined),
     getAgent: mock().mockResolvedValue(null),
     getAgents: mock().mockResolvedValue([]),
