@@ -8,6 +8,7 @@ import {
   safeChangeDirectory,
   TestProcessManager,
   waitForServerReady,
+  cloneAndSetupPlugin,
 } from './test-utils';
 import { bunExecSimple } from '../../src/utils/bun-exec';
 
@@ -480,4 +481,102 @@ describe('ElizaOS Start Commands', () => {
   // Note: Auto-build functionality tests have been removed as they relied on mocking,
   // which is inappropriate for e2e tests. These tests should be implemented as unit tests
   // in a separate test file if the build behavior needs to be tested.
+
+  // Test plugin loading in plugin directory
+  it(
+    'start command loads plugin when run in plugin directory',
+    async () => {
+      // Clone and setup the plugin
+      const { pluginDir, cleanup } = await cloneAndSetupPlugin(
+        'https://github.com/elizaOS-plugins/plugin-defillama.git',
+        '1.x'
+      );
+
+      try {
+        // Create a test database directory
+        const pluginDbDir = join(testTmpDir, 'plugindb');
+        await mkdir(pluginDbDir, { recursive: true });
+
+        console.log('[PLUGIN TEST] Starting server in plugin directory...');
+        // Start server in plugin directory
+        const serverProcess = processManager.spawn(
+          'bun',
+          [join(__dirname, '..', '../dist/index.js'), 'start', '-p', testServerPort.toString()],
+          {
+            env: {
+              ...process.env,
+              LOG_LEVEL: 'info',
+              PGLITE_DATA_DIR: pluginDbDir,
+              SERVER_PORT: testServerPort.toString(),
+              NODE_ENV: 'test',
+              ELIZA_TEST_MODE: 'true',
+              BUN_TEST: 'true',
+              ELIZA_CLI_TEST_MODE: 'true',
+              NODE_OPTIONS: '--max-old-space-size=2048',
+            },
+            cwd: pluginDir,
+            allowOutput: true,
+          }
+        );
+
+        try {
+          // Wait for server to be ready
+          await waitForServerReady(testServerPort, TEST_TIMEOUTS.SERVER_STARTUP);
+
+          // Wait a bit more for plugin initialization
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.LONG_WAIT));
+
+          // Check if process is still running
+          if (serverProcess.exitCode !== null) {
+            throw new Error(`Server process exited with code ${serverProcess.exitCode}`);
+          }
+
+          // Verify server is running
+          const healthResponse = await fetch(`http://localhost:${testServerPort}/health`);
+          expect(healthResponse.ok).toBe(true);
+
+          // Get agents to verify plugin was loaded
+          const agentsResponse = await fetch(`http://localhost:${testServerPort}/api/agents`);
+          expect(agentsResponse.ok).toBe(true);
+
+          const agents = await agentsResponse.json();
+          console.log('[PLUGIN TEST] Agents:', JSON.stringify(agents, null, 2));
+
+          // Verify that an agent was created (should be "Eliza (Test Mode)")
+          expect(agents).toBeDefined();
+          expect(Array.isArray(agents)).toBe(true);
+          expect(agents.length).toBeGreaterThan(0);
+
+          // Check if the test character was created
+          const testAgent = agents.find((a: any) =>
+            a.name?.toLowerCase().includes('test') ||
+            a.name?.toLowerCase().includes('eliza')
+          );
+          expect(testAgent).toBeDefined();
+
+          console.log('[PLUGIN TEST] Test passed - plugin loaded successfully');
+        } finally {
+          // Cleanup server
+          if (serverProcess.exitCode === null) {
+            serverProcess.kill('SIGTERM');
+            try {
+              await Promise.race([
+                serverProcess.exited,
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('Graceful shutdown timeout')), 5000)
+                ),
+              ]);
+            } catch {
+              serverProcess.kill('SIGKILL');
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SHORT_WAIT));
+        }
+      } finally {
+        // Cleanup cloned plugin directory
+        await cleanup();
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST * 3 // Triple timeout for git clone and build
+  );
 });

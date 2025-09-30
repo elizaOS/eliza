@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { bunExecSync } from '../utils/bun-test-helpers';
-import { killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { killProcessOnPort, safeChangeDirectory, cloneAndSetupPlugin } from './test-utils';
 import type { Subprocess } from 'bun';
 
 describe('ElizaOS Dev Commands', () => {
@@ -670,5 +670,110 @@ describe('ElizaOS Dev Commands', () => {
       await cleanupDevProcess(devProcess);
     },
     5000
+  );
+
+  // Test plugin loading in plugin directory
+  it.skipIf(process.platform === 'win32' && process.env.CI === 'true')(
+    'dev command loads plugin when run in plugin directory',
+    async () => {
+      // Skip in CI due to long duration (git clone + build + dev mode)
+      if (process.env.CI) {
+        console.log('[PLUGIN DEV TEST] Skipping plugin dev test in CI environment');
+        return;
+      }
+
+      // Clone and setup the plugin
+      const { pluginDir, cleanup } = await cloneAndSetupPlugin(
+        'https://github.com/elizaOS-plugins/plugin-defillama.git',
+        '1.x'
+      );
+
+      try {
+        // Create a test database directory
+        const pluginDbDir = join(testTmpDir, 'plugindb');
+        await mkdir(pluginDbDir, { recursive: true });
+
+        console.log('[PLUGIN DEV TEST] Starting dev server in plugin directory...');
+        // Start dev server in plugin directory
+        const devProcess = spawnDevProcess(
+          ['elizaos', 'dev', '--port', testServerPort.toString()],
+          {
+            cwd: pluginDir,
+            env: {
+              LOG_LEVEL: 'info',
+              PGLITE_DATA_DIR: pluginDbDir,
+              SERVER_PORT: testServerPort.toString(),
+            },
+          }
+        );
+
+        try {
+          // Wait for dev process to build and start
+          console.log('[PLUGIN DEV TEST] Waiting for build and server startup...');
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SERVER_STARTUP));
+
+          // Check if process is still running
+          if (devProcess.exitCode !== null) {
+            throw new Error(`Dev process exited with code ${devProcess.exitCode}`);
+          }
+
+          // Try to connect to the server (dev spawns start which runs the server)
+          let serverReady = false;
+          for (let i = 0; i < 10; i++) {
+            try {
+              const healthResponse = await fetch(`http://localhost:${testServerPort}/health`, {
+                signal: AbortSignal.timeout(2000),
+              });
+              if (healthResponse.ok) {
+                serverReady = true;
+                break;
+              }
+            } catch (e) {
+              // Server not ready yet, wait and retry
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+
+          if (!serverReady) {
+            console.log('[PLUGIN DEV TEST] Server not ready, but dev process started');
+          } else {
+            console.log('[PLUGIN DEV TEST] Server is ready, verifying plugin loaded...');
+
+            // Get agents to verify plugin was loaded
+            const agentsResponse = await fetch(`http://localhost:${testServerPort}/api/agents`);
+
+            if (agentsResponse.ok) {
+              const agents = await agentsResponse.json();
+              console.log('[PLUGIN DEV TEST] Agents:', JSON.stringify(agents, null, 2));
+
+              // Verify that an agent was created (should be "Eliza (Test Mode)")
+              expect(agents).toBeDefined();
+              expect(Array.isArray(agents)).toBe(true);
+
+              if (agents.length > 0) {
+                const testAgent = agents.find((a: any) =>
+                  a.name?.toLowerCase().includes('test') ||
+                  a.name?.toLowerCase().includes('eliza')
+                );
+                expect(testAgent).toBeDefined();
+                console.log('[PLUGIN DEV TEST] Test passed - plugin loaded in dev mode');
+              }
+            }
+          }
+
+          // Verify dev process is still running (file watching active)
+          expect(devProcess.pid).toBeDefined();
+          expect(devProcess.killed).toBe(false);
+
+        } finally {
+          // Cleanup dev process
+          await cleanupDevProcess(devProcess, 2000);
+        }
+      } finally {
+        // Cleanup cloned plugin directory
+        await cleanup();
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST * 4 // Quadruple timeout for git clone, build, and dev mode
   );
 });

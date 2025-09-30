@@ -618,3 +618,60 @@ export class TestProcessManager {
     return this.processes.size;
   }
 }
+
+/**
+ * Clone and setup a plugin for testing
+ * @param pluginRepoUrl - Git repository URL
+ * @param branch - Git branch to clone
+ * @returns Object with plugin directory path and cleanup function
+ */
+export async function cloneAndSetupPlugin(
+  pluginRepoUrl: string,
+  branch: string = '1.x'
+): Promise<{ pluginDir: string; cleanup: () => Promise<void> }> {
+  // Create a temp directory for cloning the plugin
+  const pluginTestDir = await mkdtemp(join(tmpdir(), 'eliza-plugin-test-'));
+
+  console.log(`[PLUGIN SETUP] Cloning ${pluginRepoUrl}...`);
+
+  // Clone the plugin repository
+  const { execSync } = await import('child_process');
+  execSync(`git clone --depth 1 --branch ${branch} ${pluginRepoUrl}`, {
+    cwd: pluginTestDir,
+    stdio: 'pipe',
+  });
+
+  // Extract plugin name from URL
+  const pluginName = pluginRepoUrl.split('/').pop()?.replace('.git', '') || 'plugin';
+  const pluginDir = join(pluginTestDir, pluginName);
+
+  console.log(`[PLUGIN SETUP] Installing plugin dependencies...`);
+  // Install dependencies
+  execSync('bun install', {
+    cwd: pluginDir,
+    stdio: 'pipe',
+  });
+
+  console.log(`[PLUGIN SETUP] Building plugin...`);
+  // Build the plugin
+  execSync('bun run build', {
+    cwd: pluginDir,
+    stdio: 'pipe',
+  });
+
+  console.log(`[PLUGIN SETUP] Plugin ready at ${pluginDir}`);
+
+  // Return cleanup function
+  const cleanup = async () => {
+    if (pluginTestDir && pluginTestDir.includes('eliza-plugin-test-')) {
+      try {
+        await rm(pluginTestDir, { recursive: true, force: true });
+        console.log(`[PLUGIN CLEANUP] Removed ${pluginTestDir}`);
+      } catch (e) {
+        console.log(`[PLUGIN CLEANUP] Failed to clean up plugin directory:`, e);
+      }
+    }
+  };
+
+  return { pluginDir, cleanup };
+}
