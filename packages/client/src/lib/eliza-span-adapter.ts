@@ -299,40 +299,60 @@ export class ElizaSpanAdapter {
     }
 
     /**
+     * Safely coerce a possibly numeric value (number or numeric string) to number
+     */
+    private coerceToNumber(value: unknown): number | undefined {
+        if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : undefined;
+        }
+        if (typeof value === 'string') {
+            const parsed = Number(value);
+            return Number.isFinite(parsed) ? parsed : undefined;
+        }
+        return undefined;
+    }
+
+    /**
      * Extract tokens count from event data
      */
     private extractTokensCount(data: Record<string, unknown>): number | undefined {
-        // Try direct token fields
-        const inputTokens = (data.inputTokens as number) || 0;
-        const outputTokens = (data.outputTokens as number) || 0;
-        let total = inputTokens + outputTokens;
+        // Prefer explicit direct fields if present, even if they sum to 0
+        const hasInputTokens = Object.prototype.hasOwnProperty.call(data, 'inputTokens');
+        const hasOutputTokens = Object.prototype.hasOwnProperty.call(data, 'outputTokens');
+        if (hasInputTokens || hasOutputTokens) {
+            const input = this.coerceToNumber((data as Record<string, unknown>)['inputTokens']) ?? 0;
+            const output = this.coerceToNumber((data as Record<string, unknown>)['outputTokens']) ?? 0;
+            return input + output;
+        }
+
+        // Helper to extract from a usage-like object
+        const extractFromUsage = (usageContainer: unknown): number | undefined => {
+            if (!usageContainer || typeof usageContainer !== 'object') return undefined;
+            const container = usageContainer as Record<string, unknown>;
+            const totalTokens = this.coerceToNumber(container['total_tokens']);
+            if (totalTokens !== undefined) return totalTokens;
+            const hasPrompt = Object.prototype.hasOwnProperty.call(container, 'prompt_tokens');
+            const hasCompletion = Object.prototype.hasOwnProperty.call(container, 'completion_tokens');
+            if (hasPrompt || hasCompletion) {
+                const prompt = this.coerceToNumber(container['prompt_tokens']) ?? 0;
+                const completion = this.coerceToNumber(container['completion_tokens']) ?? 0;
+                return prompt + completion;
+            }
+            return undefined;
+        };
 
         // Try response.usage object (common in LLM responses)
-        if (!total && data.response && typeof data.response === 'object') {
+        if (data.response && typeof data.response === 'object') {
             const response = data.response as Record<string, unknown>;
-            if (response.usage && typeof response.usage === 'object') {
-                const usage = response.usage as Record<string, unknown>;
-                // Check if total_tokens is a number (including 0)
-                if (typeof usage.total_tokens === 'number') {
-                    total = usage.total_tokens;
-                } else {
-                    total = (usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0);
-                }
-            }
+            const fromResponseUsage = extractFromUsage(response['usage']);
+            if (fromResponseUsage !== undefined) return fromResponseUsage;
         }
 
         // Try top-level usage object
-        if (!total && data.usage && typeof data.usage === 'object') {
-            const usage = data.usage as Record<string, unknown>;
-            // Check if total_tokens is a number (including 0)
-            if (typeof usage.total_tokens === 'number') {
-                total = usage.total_tokens;
-            } else {
-                total = (usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0);
-            }
-        }
+        const fromTopLevelUsage = extractFromUsage(data['usage']);
+        if (fromTopLevelUsage !== undefined) return fromTopLevelUsage;
 
-        return total > 0 ? total : undefined;
+        return undefined;
     }
 
     /**
