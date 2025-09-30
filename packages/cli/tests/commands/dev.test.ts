@@ -684,7 +684,7 @@ describe('ElizaOS Dev Commands', () => {
 
       // Clone and setup the plugin
       const { pluginDir, cleanup } = await cloneAndSetupPlugin(
-        'https://github.com/elizaOS-plugins/plugin-defillama.git',
+        'https://github.com/elizaOS-plugins/plugin-openai.git',
         '1.x'
       );
 
