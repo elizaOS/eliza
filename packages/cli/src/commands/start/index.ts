@@ -163,25 +163,66 @@ export const start = new Command()
 
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
-        // Start each agent individually with its specific plugins
+        // Phase 1: Start all agents first (collect runtimes)
         const runtimes: IAgentRuntime[] = [];
+        const agentRuntimeMap = new Map<ProjectAgent, IAgentRuntime>();
 
         for (const projectAgent of projectAgents) {
-          // Pass the agent's specific plugins to server.startAgents
-          const agentPlugins = projectAgent.plugins || [];
-          const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
+          try {
+            // Pass the agent's specific plugins to server.startAgents
+            const agentPlugins = projectAgent.plugins || [];
+            const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
 
-          if (runtime) {
-            runtimes.push(runtime);
+            if (runtime) {
+              runtimes.push(runtime);
+              agentRuntimeMap.set(projectAgent, runtime);
+              logger.info(
+                `Started agent: ${projectAgent.character.name || 'Unnamed'} (${runtime.agentId})`
+              );
+            } else {
+              logger.error(
+                `Failed to start agent: ${projectAgent.character.name || 'Unnamed'} - runtime is undefined`
+              );
+            }
+          } catch (error) {
+            logger.error(
+              {
+                error,
+                characterName: projectAgent.character.name || 'Unnamed',
+              },
+              'Failed to start project agent'
+            );
+            // Continue with other agents even if one fails
+          }
+        }
 
-            // Run init function if provided
-            if (typeof projectAgent.init === 'function') {
+        logger.info(`Started ${runtimes.length}/${projectAgents.length} project agents`);
+
+        // Phase 2: Run all init functions after all agents have started
+        // This ensures init functions can discover/communicate with all other agents
+        for (const projectAgent of projectAgents) {
+          const runtime = agentRuntimeMap.get(projectAgent);
+          if (runtime && typeof projectAgent.init === 'function') {
+            try {
+              logger.info(
+                `Running init function for agent: ${projectAgent.character.name || 'Unnamed'}`
+              );
               await projectAgent.init(runtime);
+            } catch (error) {
+              logger.error(
+                {
+                  error,
+                  characterName: projectAgent.character.name || 'Unnamed',
+                  agentId: runtime.agentId,
+                },
+                'Agent init function failed'
+              );
+              // Continue with other init functions even if one fails
             }
           }
         }
 
-        logger.info(`Started ${runtimes.length} project agents`);
+        logger.info('All agent init functions completed');
       }
       // Handle standalone characters from CLI
       else if (characters && characters.length > 0) {

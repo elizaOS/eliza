@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
 import { parseCommand } from '../utils/bun-test-helpers';
@@ -653,11 +653,46 @@ export async function cloneAndSetupPlugin(
   });
 
   console.log(`[PLUGIN SETUP] Building plugin...`);
-  // Build the plugin
-  execSync('bun run build', {
-    cwd: pluginDir,
-    stdio: 'pipe',
-  });
+  // Build the plugin (skip type checking to avoid external plugin TS errors)
+  try {
+    execSync('bun run build', {
+      cwd: pluginDir,
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        // Skip TypeScript type checking during test builds
+        SKIP_TYPE_CHECK: 'true',
+      },
+    });
+  } catch (buildError) {
+    // If build fails, try without type checking by modifying build.ts temporarily
+    console.log(`[PLUGIN SETUP] Build failed, retrying with skipNodeModulesBundle...`);
+    const buildTsPath = join(pluginDir, 'build.ts');
+
+    if (existsSync(buildTsPath)) {
+      const originalBuild = readFileSync(buildTsPath, 'utf-8');
+
+      // Modify build.ts to skip DTS generation
+      const modifiedBuild = originalBuild.replace(
+        /dts:\s*{[^}]*}/g,
+        'dts: false'
+      );
+
+      writeFileSync(buildTsPath, modifiedBuild, 'utf-8');
+
+      try {
+        execSync('bun run build', {
+          cwd: pluginDir,
+          stdio: 'pipe',
+        });
+      } finally {
+        // Restore original build.ts
+        writeFileSync(buildTsPath, originalBuild, 'utf-8');
+      }
+    } else {
+      throw buildError;
+    }
+  }
 
   console.log(`[PLUGIN SETUP] Plugin ready at ${pluginDir}`);
 
