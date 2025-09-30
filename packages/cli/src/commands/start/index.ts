@@ -169,8 +169,11 @@ export const start = new Command()
 
         for (const projectAgent of projectAgents) {
           try {
-            // Pass the agent's specific plugins to server.startAgents
-            const agentPlugins = projectAgent.plugins || [];
+            // Validate and safely access the agent's plugins array
+            const agentPlugins = Array.isArray(projectAgent.plugins)
+              ? projectAgent.plugins
+              : [];
+
             const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
 
             if (runtime) {
