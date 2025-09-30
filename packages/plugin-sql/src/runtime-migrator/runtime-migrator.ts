@@ -109,7 +109,7 @@ export class RuntimeMigrator {
    * PostgreSQL advisory locks use bigint, so we need to hash the plugin name
    * and convert to a stable bigint value
    */
-  private getAdvisoryLockId(pluginName: string): string {
+  private getAdvisoryLockId(pluginName: string): bigint {
     // Create a hash of the plugin name
     const hash = createHash('sha256').update(pluginName).digest();
 
@@ -130,7 +130,17 @@ export class RuntimeMigrator {
       lockId = 1n;
     }
 
-    return lockId.toString();
+    return lockId;
+  }
+
+  /**
+   * Validate that a value is a valid PostgreSQL bigint
+   * PostgreSQL bigint range: -9223372036854775808 to 9223372036854775807
+   */
+  private validateBigInt(value: bigint): boolean {
+    const MIN_BIGINT = -9223372036854775808n;
+    const MAX_BIGINT = 9223372036854775807n;
+    return value >= MIN_BIGINT && value <= MAX_BIGINT;
   }
 
   /**
@@ -156,6 +166,12 @@ export class RuntimeMigrator {
     options: RuntimeMigrationOptions = {}
   ): Promise<void> {
     const lockId = this.getAdvisoryLockId(pluginName);
+
+    // Validate lockId is within PostgreSQL bigint range
+    if (!this.validateBigInt(lockId)) {
+      throw new Error(`Invalid advisory lock ID generated for plugin ${pluginName}`);
+    }
+
     let lockAcquired = false;
 
     try {
@@ -177,8 +193,12 @@ export class RuntimeMigrator {
         try {
           logger.debug(`[RuntimeMigrator] Using PostgreSQL advisory locks for ${pluginName}`);
 
+          // Convert bigint to string for SQL query
+          // The sql tagged template will properly parameterize this value
+          const lockIdStr = lockId.toString();
+
           const lockResult = await this.db.execute(
-            sql`SELECT pg_try_advisory_lock(${lockId}::bigint) as acquired`
+            sql`SELECT pg_try_advisory_lock(CAST(${lockIdStr} AS bigint)) as acquired`
           );
 
           lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
@@ -189,13 +209,13 @@ export class RuntimeMigrator {
             );
 
             // Wait for the lock (blocking call)
-            await this.db.execute(sql`SELECT pg_advisory_lock(${lockId}::bigint)`);
+            await this.db.execute(sql`SELECT pg_advisory_lock(CAST(${lockIdStr} AS bigint))`);
             lockAcquired = true;
 
             logger.info(`[RuntimeMigrator] Lock acquired for ${pluginName}`);
           } else {
             logger.debug(
-              `[RuntimeMigrator] Advisory lock acquired for ${pluginName} (lock ID: ${lockId})`
+              `[RuntimeMigrator] Advisory lock acquired for ${pluginName} (lock ID: ${lockIdStr})`
             );
           }
         } catch (lockError) {
@@ -426,7 +446,9 @@ export class RuntimeMigrator {
 
       if (lockAcquired && isRealPostgres) {
         try {
-          await this.db.execute(sql`SELECT pg_advisory_unlock(${lockId}::bigint)`);
+          // Convert bigint to string for SQL query (same as when acquiring)
+          const lockIdStr = lockId.toString();
+          await this.db.execute(sql`SELECT pg_advisory_unlock(CAST(${lockIdStr} AS bigint))`);
           logger.debug(`[RuntimeMigrator] Advisory lock released for ${pluginName}`);
         } catch (unlockError) {
           logger.warn(

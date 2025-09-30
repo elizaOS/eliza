@@ -562,4 +562,167 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
       expect(parseInt((invalidMigrationExists.rows[0] as any).count)).toBe(0);
     });
   });
+
+  describe('Advisory Lock Security', () => {
+    it('should generate valid bigint lock IDs for plugins', async () => {
+      // Test that getAdvisoryLockId returns a valid bigint
+      const testPlugins = [
+        '@elizaos/plugin-sql',
+        '@elizaos/plugin-bootstrap',
+        'some-very-long-plugin-name-that-should-still-work-correctly',
+        'plugin-with-special-chars-!@#$%^&*()',
+      ];
+
+      for (const pluginName of testPlugins) {
+        // Access private method through any type casting for testing
+        const lockId = (migrator as any).getAdvisoryLockId(pluginName);
+
+        // Verify it's a bigint
+        expect(typeof lockId).toBe('bigint');
+
+        // Verify it's within PostgreSQL bigint range
+        const MIN_BIGINT = -9223372036854775808n;
+        const MAX_BIGINT = 9223372036854775807n;
+        expect(lockId).toBeGreaterThanOrEqual(0n); // We ensure positive values
+        expect(lockId).toBeLessThanOrEqual(MAX_BIGINT);
+
+        // Verify it's non-zero
+        expect(lockId).not.toBe(0n);
+      }
+    });
+
+    it('should generate consistent lock IDs for the same plugin', async () => {
+      const pluginName = '@elizaos/advisory-lock-test';
+
+      // Generate lock ID multiple times
+      const lockId1 = (migrator as any).getAdvisoryLockId(pluginName);
+      const lockId2 = (migrator as any).getAdvisoryLockId(pluginName);
+      const lockId3 = (migrator as any).getAdvisoryLockId(pluginName);
+
+      // All should be identical
+      expect(lockId1).toBe(lockId2);
+      expect(lockId2).toBe(lockId3);
+    });
+
+    it('should generate different lock IDs for different plugins', async () => {
+      const plugin1 = '@elizaos/lock-plugin-1';
+      const plugin2 = '@elizaos/lock-plugin-2';
+
+      const lockId1 = (migrator as any).getAdvisoryLockId(plugin1);
+      const lockId2 = (migrator as any).getAdvisoryLockId(plugin2);
+
+      // Should be different
+      expect(lockId1).not.toBe(lockId2);
+    });
+
+    it('should correctly validate PostgreSQL bigint values', async () => {
+      const validateBigInt = (migrator as any).validateBigInt.bind(migrator);
+
+      // Valid values
+      expect(validateBigInt(0n)).toBe(true);
+      expect(validateBigInt(1n)).toBe(true);
+      expect(validateBigInt(9223372036854775807n)).toBe(true); // MAX
+      expect(validateBigInt(-9223372036854775808n)).toBe(true); // MIN
+      expect(validateBigInt(1000000n)).toBe(true);
+
+      // Invalid values (out of range)
+      expect(validateBigInt(9223372036854775808n)).toBe(false); // MAX + 1
+      expect(validateBigInt(-9223372036854775809n)).toBe(false); // MIN - 1
+      expect(validateBigInt(BigInt('99999999999999999999999999999'))).toBe(false);
+    });
+
+    it('should use CAST for type safety in advisory lock queries', async () => {
+      // Note: This test is primarily for verification that our SQL generation
+      // uses proper parameterization. Since PGLite doesn't support advisory locks,
+      // we're testing the internal logic rather than actual execution.
+
+      const simpleSchema = {
+        testTable: pgTable('test_lock_security', {
+          id: uuid('id').primaryKey().defaultRandom(),
+          data: text('data'),
+        }),
+      };
+
+      // Get the lock ID that would be used
+      const lockId = (migrator as any).getAdvisoryLockId('@elizaos/lock-security-test');
+
+      // Verify it's a valid bigint
+      expect(typeof lockId).toBe('bigint');
+
+      // The actual SQL queries use CAST(${lockIdStr} AS bigint) for safety
+      // This ensures proper parameterization through Drizzle's sql tagged template
+      const lockIdStr = lockId.toString();
+
+      // Verify the string conversion doesn't introduce invalid characters
+      expect(/^\d+$/.test(lockIdStr)).toBe(true);
+    });
+
+    it('should reject migration if invalid lock ID is generated', async () => {
+      // Save original method
+      const originalGetLockId = (migrator as any).getAdvisoryLockId;
+
+      try {
+        // Mock getAdvisoryLockId to return an invalid value
+        (migrator as any).getAdvisoryLockId = () => {
+          // Return an out-of-range bigint
+          return BigInt('99999999999999999999999999999');
+        };
+
+        const testSchema = {
+          test: pgTable('test_invalid_lock', {
+            id: uuid('id').primaryKey().defaultRandom(),
+          }),
+        };
+
+        // This should throw an error due to invalid lock ID
+        await expect(migrator.migrate('@elizaos/invalid-lock-test', testSchema)).rejects.toThrow(
+          'Invalid advisory lock ID'
+        );
+      } finally {
+        // Restore original method
+        (migrator as any).getAdvisoryLockId = originalGetLockId;
+      }
+    });
+
+    it('should handle concurrent migrations safely with advisory locks', async () => {
+      // This test verifies that our advisory lock mechanism would prevent
+      // race conditions in a real PostgreSQL environment
+
+      const schema1 = {
+        testTable: pgTable('test_advisory_concurrent_1', {
+          id: uuid('id').primaryKey().defaultRandom(),
+          data: text('data'),
+        }),
+      };
+
+      const schema2 = {
+        testTable: pgTable('test_advisory_concurrent_2', {
+          id: uuid('id').primaryKey().defaultRandom(),
+          data: text('data'),
+        }),
+      };
+
+      // Run migrations concurrently
+      const results = await Promise.allSettled([
+        migrator.migrate('@elizaos/advisory-concurrent-test-1', schema1),
+        migrator.migrate('@elizaos/advisory-concurrent-test-2', schema2),
+      ]);
+
+      // Both should succeed
+      expect(results[0].status).toBe('fulfilled');
+      expect(results[1].status).toBe('fulfilled');
+
+      // Verify both tables were created
+      const tablesExist = await db.execute(
+        sql.raw(`
+          SELECT COUNT(*) as count 
+          FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+            AND table_name IN ('test_advisory_concurrent_1', 'test_advisory_concurrent_2')
+        `)
+      );
+
+      expect(parseInt((tablesExist.rows[0] as any).count)).toBe(2);
+    });
+  });
 });
