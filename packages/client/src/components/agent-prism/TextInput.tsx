@@ -53,7 +53,7 @@ export type TextInputProps = ComponentPropsWithRef<"input"> & {
 };
 
 const iconBaseClassName =
-  "absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-foreground dark:text-muted-foreground";
+  "absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-foreground";
 
 export const TextInput = ({
   className,
@@ -116,7 +116,7 @@ export const TextInput = ({
             !!startIcon && "pl-8",
             !!onClear && "pr-8",
             "rounded border border-border bg-transparent ",
-            "text-foreground placeholder:text-muted-foreground  dark:placeholder:text-muted-foreground",
+            "text-foreground placeholder:text-muted-foreground ",
             "hover:border-border dark:hover:border-gray-700",
           )}
           {...rest}

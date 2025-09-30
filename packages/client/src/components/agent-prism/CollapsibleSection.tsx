@@ -87,7 +87,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
           tabIndex={0}
           role="button"
           className={cn(
-            "mb-1 flex w-full items-center justify-between gap-2 rounded-lg px-1 py-3 text-left text-sm font-medium text-foreground dark:text-white",
+            "mb-1 flex w-full items-center justify-between gap-2 rounded-lg px-1 py-3 text-left text-sm font-medium text-foreground",
             triggerClassName,
           )}
           onKeyDown={handleKeyDown}
