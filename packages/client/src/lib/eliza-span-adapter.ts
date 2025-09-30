@@ -93,11 +93,17 @@ export class ElizaSpanAdapter {
                     const actionSpan = actionMap.get(actionKey);
                     const attemptSpan = attemptMap.get(actionKey);
 
+                    // Extract input/output if available
+                    const prompt = this.extractPrompt(event.data);
+                    const response = this.extractResponse(event.data);
+
                     if (attemptSpan) {
                         const success = (event.data.success as boolean | undefined) !== false;
                         attemptSpan.status = success ? 'success' : 'error';
                         attemptSpan.endTime = new Date(event.timestamp);
                         attemptSpan.duration = event.timestamp - attemptSpan.startTime.getTime();
+                        if (prompt) attemptSpan.input = prompt;
+                        if (response) attemptSpan.output = response;
                         attemptMap.delete(actionKey);
                     }
 
@@ -107,6 +113,8 @@ export class ElizaSpanAdapter {
                         actionSpan.endTime = new Date(event.timestamp);
                         actionSpan.duration =
                             event.timestamp - actionSpan.startTime.getTime();
+                        if (prompt && !actionSpan.input) actionSpan.input = prompt;
+                        if (response && !actionSpan.output) actionSpan.output = response;
                     }
                     break;
                 }
@@ -294,9 +302,28 @@ export class ElizaSpanAdapter {
      * Extract tokens count from event data
      */
     private extractTokensCount(data: Record<string, unknown>): number | undefined {
+        // Try direct token fields
         const inputTokens = (data.inputTokens as number) || 0;
         const outputTokens = (data.outputTokens as number) || 0;
-        const total = inputTokens + outputTokens;
+        let total = inputTokens + outputTokens;
+
+        // Try response.usage object (common in LLM responses)
+        if (!total && data.response && typeof data.response === 'object') {
+            const response = data.response as Record<string, unknown>;
+            if (response.usage && typeof response.usage === 'object') {
+                const usage = response.usage as Record<string, unknown>;
+                total = (usage.total_tokens as number) ||
+                    ((usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0));
+            }
+        }
+
+        // Try top-level usage object
+        if (!total && data.usage && typeof data.usage === 'object') {
+            const usage = data.usage as Record<string, unknown>;
+            total = (usage.total_tokens as number) ||
+                ((usage.prompt_tokens as number || 0) + (usage.completion_tokens as number || 0));
+        }
+
         return total > 0 ? total : undefined;
     }
 
@@ -304,30 +331,62 @@ export class ElizaSpanAdapter {
      * Extract cost from event data
      */
     private extractCost(data: Record<string, unknown>): number | undefined {
-        return (data.cost as number) || undefined;
+        // Try direct cost field
+        if (data.cost && typeof data.cost === 'number') {
+            return data.cost;
+        }
+
+        // Try response.cost
+        if (data.response && typeof data.response === 'object') {
+            const response = data.response as Record<string, unknown>;
+            if (response.cost && typeof response.cost === 'number') {
+                return response.cost;
+            }
+        }
+
+        return undefined;
     }
 
     /**
      * Extract prompt/input from event data
      */
     private extractPrompt(data: Record<string, unknown>): string | undefined {
-        // Try various keys where prompt might be stored
+        // Handle multiple prompts array (from actions)
+        if (data.prompts && Array.isArray(data.prompts)) {
+            const prompts = data.prompts as Array<{ prompt?: string; modelType?: string }>;
+            if (prompts.length > 0) {
+                return prompts
+                    .map((p, idx) => {
+                        const header = prompts.length > 1 ? `[Prompt ${idx + 1}${p.modelType ? ` - ${p.modelType}` : ''}]\n` : '';
+                        return header + (p.prompt || '');
+                    })
+                    .join('\n\n---\n\n');
+            }
+        }
+
+        // Try direct prompt field
         if (data.prompt && typeof data.prompt === 'string') {
             return data.prompt;
         }
+
+        // Try params.prompt
         if (data.params && typeof data.params === 'object') {
             const params = data.params as Record<string, unknown>;
             if (params.prompt && typeof params.prompt === 'string') {
                 return params.prompt;
             }
+            // Return formatted params if no specific prompt
+            const { prompt: _, ...otherParams } = params;
+            if (Object.keys(otherParams).length > 0) {
+                return JSON.stringify(otherParams, null, 2);
+            }
         }
+
+        // Try input field
         if (data.input && typeof data.input === 'string') {
             return data.input;
         }
-        // Try to extract from params object if it exists
-        if (data.params && typeof data.params === 'object') {
-            return JSON.stringify(data.params, null, 2);
-        }
+
         return undefined;
     }
 
@@ -335,16 +394,47 @@ export class ElizaSpanAdapter {
      * Extract response/output from event data
      */
     private extractResponse(data: Record<string, unknown>): string | undefined {
-        // Try various keys where response might be stored
+        // Handle response object
         if (data.response) {
             if (typeof data.response === 'string') {
                 return data.response;
             }
-            return JSON.stringify(data.response, null, 2);
+            if (typeof data.response === 'object') {
+                const response = data.response as Record<string, unknown>;
+
+                // Extract text content from common response structures
+                if (response.content && typeof response.content === 'string') {
+                    return response.content;
+                }
+                if (response.text && typeof response.text === 'string') {
+                    return response.text;
+                }
+                if (response.message && typeof response.message === 'string') {
+                    return response.message;
+                }
+
+                // Format the full response
+                return JSON.stringify(response, null, 2);
+            }
+            return String(data.response);
         }
-        if (data.output && typeof data.output === 'string') {
-            return data.output;
+
+        // Try output field
+        if (data.output) {
+            if (typeof data.output === 'string') {
+                return data.output;
+            }
+            return JSON.stringify(data.output, null, 2);
         }
+
+        // Try result field (for action results)
+        if (data.result) {
+            if (typeof data.result === 'string') {
+                return data.result;
+            }
+            return JSON.stringify(data.result, null, 2);
+        }
+
         return undefined;
     }
 
