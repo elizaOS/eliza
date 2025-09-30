@@ -725,4 +725,89 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
       expect(parseInt((tablesExist.rows[0] as any).count)).toBe(2);
     });
   });
+
+  describe('Race Condition Prevention', () => {
+    // Check if we're using real PostgreSQL (not PGLite)
+    const postgresUrl = process.env.POSTGRES_URL || '';
+    const isRealPostgres =
+      postgresUrl &&
+      !postgresUrl.includes(':memory:') &&
+      !postgresUrl.includes('pglite') &&
+      postgresUrl.includes('postgres');
+
+    // Skip this test for PGLite since it doesn't support advisory locks
+    const testOrSkip = isRealPostgres ? it : it.skip;
+
+    testOrSkip('should handle race condition when lastMigration is initially null', async () => {
+      // This test verifies the fix for the race condition where:
+      // 1. Process A checks and finds lastMigration = null
+      // 2. Process B completes a migration while A waits for lock
+      // 3. Process A must detect the completion via double-check
+      // Note: This only works with real PostgreSQL (advisory locks required)
+
+      const pluginName = '@elizaos/test-race-condition-null-initial';
+
+      const schema1 = {
+        testTable: pgTable('test_race_null_initial', {
+          id: uuid('id').primaryKey().defaultRandom(),
+          data: text('data'),
+          version: integer('version').default(1),
+        }),
+      };
+
+      const schema2 = {
+        testTable: pgTable('test_race_null_initial', {
+          id: uuid('id').primaryKey().defaultRandom(),
+          data: text('data'),
+          version: integer('version').default(1), // Same version, should be idempotent
+        }),
+      };
+
+      // Clean up any existing migration records for this test
+      await db.execute(
+        sql.raw(`DELETE FROM migrations._migrations WHERE plugin_name = '${pluginName}'`)
+      );
+      await db.execute(
+        sql.raw(`DELETE FROM migrations._snapshots WHERE plugin_name = '${pluginName}'`)
+      );
+
+      // Drop the table if it exists
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS test_race_null_initial`));
+
+      // Create two migrators to simulate two processes
+      const migrator1 = new RuntimeMigrator(db);
+      const migrator2 = new RuntimeMigrator(db);
+
+      // Run migrations concurrently - both should see no initial migration
+      // and both will try to acquire the lock
+      const [result1, result2] = await Promise.allSettled([
+        migrator1.migrate(pluginName, schema1),
+        migrator2.migrate(pluginName, schema2),
+      ]);
+
+      // Both should succeed (one creates, one is skipped by double-check)
+      expect(result1.status).toBe('fulfilled');
+      expect(result2.status).toBe('fulfilled');
+
+      // Should have exactly one migration record
+      const migrationCount = await db.execute(
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
+                 WHERE plugin_name = '${pluginName}'`)
+      );
+      expect(parseInt((migrationCount.rows[0] as any).count)).toBe(1);
+
+      // Table should exist
+      const tableExists = await db.execute(
+        sql.raw(`SELECT EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'test_race_null_initial'
+        )`)
+      );
+      expect(tableExists.rows[0]?.exists).toBe(true);
+
+      // Verify the double-check logic worked by checking logs
+      // (In a real scenario, we'd check that one process logged
+      // "Migration completed by another process")
+    });
+  });
 });

@@ -355,13 +355,12 @@ export class RuntimeMigrator {
 
       // Double-check: Another process might have completed the migration while we were waiting for the lock
       // This is especially important when not using advisory locks (e.g., in PGLite)
-      if (lastMigration) {
-        // Re-check with the latest data
-        const recheckMigration = await this.migrationTracker.getLastMigration(pluginName);
-        if (recheckMigration && recheckMigration.hash === currentHash) {
-          logger.info(`[RuntimeMigrator] Migration completed by another process for ${pluginName}`);
-          return;
-        }
+      // ALWAYS re-check, even if lastMigration was initially null - another process could have
+      // completed the migration while we were waiting for the lock
+      const recheckMigration = await this.migrationTracker.getLastMigration(pluginName);
+      if (recheckMigration && recheckMigration.hash === currentHash) {
+        logger.info(`[RuntimeMigrator] Migration completed by another process for ${pluginName}`);
+        return;
       }
 
       // Load previous snapshot
