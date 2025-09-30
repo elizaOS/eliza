@@ -535,11 +535,7 @@ export class RuntimeMigrator {
     } finally {
       // Always release the advisory lock if we acquired it (only for real PostgreSQL)
       const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || '';
-      const isRealPostgres =
-        postgresUrl &&
-        !postgresUrl.includes(':memory:') &&
-        !postgresUrl.includes('pglite') &&
-        (postgresUrl.includes('postgres://') || postgresUrl.includes('postgresql://'));
+      const isRealPostgres = this.isRealPostgresDatabase(postgresUrl);
 
       if (lockAcquired && isRealPostgres) {
         try {
