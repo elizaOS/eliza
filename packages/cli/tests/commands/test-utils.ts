@@ -672,6 +672,15 @@ export async function cloneAndSetupPlugin(
     cwd: pluginDir,
   });
 
+  console.log(`[PLUGIN SETUP] Linking @elizaos/core and @elizaos/server in plugin...`);
+  // Link globally installed packages so the plugin can find them
+  await spawnCommand('bun', ['link', '@elizaos/core'], {
+    cwd: pluginDir,
+  });
+  await spawnCommand('bun', ['link', '@elizaos/server'], {
+    cwd: pluginDir,
+  });
+
   console.log(`[PLUGIN SETUP] Building plugin...`);
   // Build the plugin (skip type checking to avoid external plugin TS errors)
   try {
