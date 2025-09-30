@@ -147,6 +147,13 @@ export class RuntimeMigrator {
    * Detect if a connection string represents a real PostgreSQL database
    * (not PGLite, in-memory, or other non-PostgreSQL databases)
    *
+   * This method handles various connection string formats including:
+   * - Standard postgres:// and postgresql:// URLs
+   * - Cloud provider URLs (AWS, Azure, GCP, Supabase, Neon, etc.)
+   * - Connection strings with query parameters
+   * - Non-standard schemes (pgbouncer://, etc.)
+   * - IP addresses with ports
+   *
    * @param connectionUrl - Database connection string to check
    * @returns true if this is a real PostgreSQL database connection
    */
@@ -157,10 +164,10 @@ export class RuntimeMigrator {
     }
 
     const url = connectionUrl.toLowerCase();
+    const originalUrl = connectionUrl.trim(); // Preserve case for pattern matching
 
     // First, check for definitive non-PostgreSQL patterns
     // These patterns indicate PGLite, in-memory, or SQLite databases
-    // Be careful with patterns to avoid false positives
     const excludePatterns = [
       ':memory:', // In-memory database
       'pglite://', // PGLite with scheme
@@ -170,78 +177,230 @@ export class RuntimeMigrator {
       '.sqlite', // SQLite file extension
       '.sqlite3', // SQLite3 file extension
       'file::memory:', // SQLite in-memory with file scheme
+      'file:', // File-based database (when not followed by // for URL schemes)
     ];
 
-    // Also check for file extensions at the end of the URL
-    // This avoids false positives like 'file_storage' database name
-    if (url.endsWith('.db') || url.endsWith('.sqlite') || url.endsWith('.sqlite3')) {
+    // Check for file extensions at the end of the URL (before query params)
+    const urlWithoutQuery = url.split('?')[0];
+    if (
+      urlWithoutQuery.endsWith('.db') ||
+      urlWithoutQuery.endsWith('.sqlite') ||
+      urlWithoutQuery.endsWith('.sqlite3')
+    ) {
       return false;
     }
 
     for (const pattern of excludePatterns) {
       if (url.includes(pattern)) {
+        // Special case: file:// can be part of a valid postgres URL in some contexts
+        if (pattern === 'file:' && url.includes('postgres')) {
+          continue;
+        }
         return false;
       }
     }
 
-    // Check for PostgreSQL indicators
-    // Accept various connection string formats:
-    // - postgres://... or postgresql://... (standard URL format)
-    // - Strings containing common PostgreSQL ports (5432, 5433, etc.)
-    // - Strings containing '@' which indicates user@host format
-    // - Strings containing 'host=' or 'dbname=' (connection string parameters)
-    const postgresIndicators = [
+    // Check for PostgreSQL URL schemes (including variations and proxies)
+    const postgresSchemes = [
       'postgres://', // Standard PostgreSQL URL scheme
       'postgresql://', // Alternative PostgreSQL URL scheme
-      'postgres@', // User@host format
-      'postgresql@', // Alternative user@host format
-      ':5432', // Default PostgreSQL port
-      ':5433', // Common alternative PostgreSQL port
-      ':25060', // DigitalOcean default port
-      ':26257', // CockroachDB default port
-      'host=', // PostgreSQL connection parameter
-      'dbname=', // PostgreSQL connection parameter
-      'sslmode=', // PostgreSQL SSL parameter
-      'connect_timeout=', // PostgreSQL connection parameter
-      'application_name=', // PostgreSQL connection parameter
-      'pooler.', // Pooler connections (Supabase, etc.)
-      '.pooler.', // Pooler connections
-      'amazonaws.com', // AWS RDS
-      'azure.com', // Azure Database
-      'googleusercontent', // Google Cloud SQL
-      'supabase', // Supabase
-      'neon.tech', // Neon
-      'timescale', // TimescaleDB
-      'cockroachlabs', // CockroachDB (PostgreSQL compatible)
-      'digitalocean.com', // DigitalOcean Managed Databases
-      'aiven', // Aiven (could be aiven.io or aivencloud.com)
-      'do-user-', // DigitalOcean pattern
-      'db.ondigitalocean', // DigitalOcean specific
-      'aivencloud', // Aiven cloud
+      'postgis://', // PostGIS (PostgreSQL with GIS extension)
+      'pgbouncer://', // PgBouncer connection pooler
+      'pgpool://', // PgPool connection pooler
+      'cockroach://', // CockroachDB (PostgreSQL compatible)
+      'cockroachdb://', // CockroachDB alternative scheme
+      'redshift://', // AWS Redshift (PostgreSQL compatible)
+      'timescaledb://', // TimescaleDB (PostgreSQL with time-series)
+      'yugabyte://', // YugabyteDB (PostgreSQL compatible)
     ];
 
-    for (const indicator of postgresIndicators) {
-      if (url.includes(indicator)) {
+    for (const scheme of postgresSchemes) {
+      if (url.startsWith(scheme)) {
         return true;
       }
     }
 
-    // Check if it looks like a host:port/database format (without explicit scheme)
-    // This pattern matches strings like "localhost:5432/mydb" or "192.168.1.1:5432/testdb"
-    // Make the pattern more flexible to catch various formats
-    const hostPortDbPattern = /^[a-z0-9.-]+:\d{1,5}\/[a-z0-9_-]+/i;
-    if (hostPortDbPattern.test(connectionUrl.trim())) {
+    // Check for PostgreSQL connection string parameters
+    // These indicate libpq-style connection strings
+    const connectionParams = [
+      'host=',
+      'dbname=',
+      'sslmode=',
+      'connect_timeout=',
+      'application_name=',
+      'user=',
+      'password=',
+      'port=',
+      'options=',
+      'sslcert=',
+      'sslkey=',
+      'sslrootcert=',
+    ];
+
+    for (const param of connectionParams) {
+      if (url.includes(param)) {
+        return true;
+      }
+    }
+
+    // Check for user@host format (common in PostgreSQL connection strings)
+    if (url.includes('@') && (url.includes('postgres') || /:\d{4,5}/.test(url))) {
       return true;
     }
 
-    // Check for IP address with port (common for cloud databases)
-    const ipPortPattern = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}/;
-    if (ipPortPattern.test(url)) {
+    // Check for common PostgreSQL ports
+    const postgresPorts = [
+      ':5432', // Default PostgreSQL port
+      ':5433', // Common alternative PostgreSQL port
+      ':5434', // Another common alternative
+      ':25060', // DigitalOcean Managed Databases default port
+      ':26257', // CockroachDB default port
+      ':6432', // PgBouncer default port
+      ':9999', // PgPool default port
+      ':8432', // Supabase Pooler port
+    ];
+
+    for (const port of postgresPorts) {
+      if (url.includes(port)) {
+        return true;
+      }
+    }
+
+    // Check for cloud provider hostnames and patterns
+    const cloudProviderPatterns = [
+      // AWS
+      'amazonaws.com',
+      'rds.amazonaws.com',
+      '.rds.',
+      'redshift.amazonaws.com',
+      // Azure
+      'azure.com',
+      'database.azure.com',
+      'postgres.database.azure.com',
+      // Google Cloud
+      'googleusercontent',
+      'cloudsql',
+      'cloud.google.com',
+      // Supabase
+      'supabase',
+      '.supabase.co',
+      '.supabase.com',
+      'pooler.supabase',
+      // Neon
+      'neon.tech',
+      '.neon.tech',
+      'neon.build',
+      // Railway
+      'railway.app',
+      '.railway.app',
+      'railway.internal',
+      // Render
+      'render.com',
+      '.render.com',
+      'onrender.com',
+      // Heroku
+      'heroku.com',
+      'herokuapp.com',
+      '.heroku.com',
+      // TimescaleDB
+      'timescale',
+      'timescaledb',
+      '.tsdb.cloud',
+      // CockroachDB
+      'cockroachlabs',
+      'cockroachdb.cloud',
+      '.crdb.io',
+      // DigitalOcean
+      'digitalocean.com',
+      'db.ondigitalocean',
+      'do-user-',
+      '.db.ondigitalocean.com',
+      // Aiven
+      'aiven',
+      'aivencloud',
+      '.aiven.io',
+      '.aivencloud.com',
+      // Crunchy Data
+      'crunchydata',
+      '.crunchydata.com',
+      // ElephantSQL
+      'elephantsql',
+      '.elephantsql.com',
+      // YugabyteDB
+      'yugabyte',
+      '.yugabyte.cloud',
+      // Scaleway
+      'scaleway',
+      '.rdb.fr-par.scw.cloud',
+      // Vercel Postgres
+      'vercel-storage',
+      '.postgres.vercel-storage.com',
+      // PlanetScale (supports PostgreSQL wire protocol)
+      'psdb.cloud',
+      '.psdb.cloud',
+      // Xata
+      'xata.sh',
+      '.xata.sh',
+      // Fly.io
+      'fly.dev',
+      '.fly.dev',
+      'fly.io',
+    ];
+
+    for (const pattern of cloudProviderPatterns) {
+      if (url.includes(pattern)) {
+        return true;
+      }
+    }
+
+    // Check for IP address with port (common for self-hosted or cloud databases)
+    // Match IPv4: xxx.xxx.xxx.xxx:port
+    const ipv4PortPattern = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\b/;
+    if (ipv4PortPattern.test(originalUrl)) {
       return true;
+    }
+
+    // Check for IPv6 addresses (common in cloud environments)
+    // Match [xxxx:xxxx:...:xxxx]:port or similar formats
+    const ipv6Pattern = /\[[0-9a-f:]+\](:\d{1,5})?/i;
+    if (ipv6Pattern.test(originalUrl)) {
+      return true;
+    }
+
+    // Check for host:port/database format (without explicit scheme)
+    // This pattern matches: "hostname:5432/mydb" or "subdomain.example.com:5432/testdb"
+    const hostPortDbPattern = /^[a-z0-9.-]+:\d{1,5}\/[a-z0-9_-]+/i;
+    if (hostPortDbPattern.test(originalUrl)) {
+      return true;
+    }
+
+    // Check for connection strings with query parameters that indicate PostgreSQL
+    if (url.includes('?') || url.includes('&')) {
+      const postgresQueryParams = [
+        'sslmode=',
+        'sslcert=',
+        'sslkey=',
+        'sslrootcert=',
+        'connect_timeout=',
+        'application_name=',
+        'options=',
+        'fallback_application_name=',
+        'keepalives=',
+        'target_session_attrs=',
+      ];
+
+      for (const param of postgresQueryParams) {
+        if (url.includes(param)) {
+          return true;
+        }
+      }
     }
 
     // If none of the patterns matched, assume it's not a real PostgreSQL database
     // This is a conservative approach to avoid using advisory locks on unknown databases
+    logger.debug(
+      `[RuntimeMigrator] Connection string did not match any PostgreSQL patterns: ${url.substring(0, 50)}...`
+    );
     return false;
   }
 
@@ -347,19 +506,14 @@ export class RuntimeMigrator {
 
       // Check if we've already run this exact migration
       // This check happens AFTER acquiring the lock to handle concurrent scenarios
+      // This is critical: if we had to wait for the lock (lockAcquired was initially false),
+      // another process may have completed the migration while we were waiting
+      // We MUST check regardless of whether lastMigration existed before
       const lastMigration = await this.migrationTracker.getLastMigration(pluginName);
       if (lastMigration && lastMigration.hash === currentHash) {
-        logger.info(`[RuntimeMigrator] No changes detected for ${pluginName}, skipping migration`);
-        return;
-      }
-
-      // Double-check: Another process might have completed the migration while we were waiting for the lock
-      // This is especially important when not using advisory locks (e.g., in PGLite)
-      // ALWAYS re-check, even if lastMigration was initially null - another process could have
-      // completed the migration while we were waiting for the lock
-      const recheckMigration = await this.migrationTracker.getLastMigration(pluginName);
-      if (recheckMigration && recheckMigration.hash === currentHash) {
-        logger.info(`[RuntimeMigrator] Migration completed by another process for ${pluginName}`);
+        logger.info(
+          `[RuntimeMigrator] No changes detected for ${pluginName}, skipping migration (hash: ${currentHash})`
+        );
         return;
       }
 
