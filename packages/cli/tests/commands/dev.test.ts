@@ -739,8 +739,11 @@ describe('ElizaOS Dev Commands', () => {
 
             if (agentsResponse.ok) {
               const agentsData = await agentsResponse.json();
-              const agents = agentsData.agents || agentsData;
-              console.log('[PLUGIN DEV TEST] Agents:', JSON.stringify(agents, null, 2));
+              console.log('[PLUGIN DEV TEST] Full response:', JSON.stringify(agentsData, null, 2));
+
+              // Handle nested response structure: { success: true, data: { agents: [...] } }
+              const agents = agentsData.data?.agents || agentsData.agents || agentsData;
+              console.log('[PLUGIN DEV TEST] Agents array:', JSON.stringify(agents, null, 2));
 
               // Verify that an agent was created
               expect(agents).toBeDefined();
@@ -757,8 +760,11 @@ describe('ElizaOS Dev Commands', () => {
                 );
 
                 if (agentDetailsResponse.ok) {
-                  const agentDetails = await agentDetailsResponse.json();
-                  console.log('[PLUGIN DEV TEST] Agent details:', JSON.stringify(agentDetails, null, 2));
+                  const agentDetailsData = await agentDetailsResponse.json();
+                  console.log('[PLUGIN DEV TEST] Agent details response:', JSON.stringify(agentDetailsData, null, 2));
+
+                  // Handle nested response structure
+                  const agentDetails = agentDetailsData.data || agentDetailsData;
 
                   // Verify the plugin was loaded
                   expect(agentDetails.plugins).toBeDefined();
