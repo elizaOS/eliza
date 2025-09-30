@@ -87,6 +87,7 @@ export class DatabaseMigrationService {
 
     let successCount = 0;
     let failureCount = 0;
+    const errors: Array<{ pluginName: string; error: Error }> = [];
 
     for (const [pluginName, schema] of this.registeredSchemas) {
       try {
@@ -97,13 +98,20 @@ export class DatabaseMigrationService {
         failureCount++;
         const errorMessage = (error as Error).message;
 
+        // Store the error for later
+        errors.push({ pluginName, error: error as Error });
+
         if (errorMessage.includes('Destructive migration blocked')) {
           // Destructive migration was blocked - this is expected behavior
           logger.error(
             `[DatabaseMigrationService] ❌ Blocked: ${pluginName} (destructive changes detected)`
           );
 
-          if (!migrationOptions.force && !process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS) {
+          // Check environment variable consistently with runtime-migrator.ts
+          if (
+            !migrationOptions.force &&
+            process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS !== 'true'
+          ) {
             logger.error('[DatabaseMigrationService] To allow destructive migrations:');
             logger.error(
               '[DatabaseMigrationService]   - Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true'
@@ -117,9 +125,6 @@ export class DatabaseMigrationService {
             JSON.stringify(error)
           );
         }
-
-        // Re-throw to maintain existing behavior
-        throw error;
       }
     }
 
@@ -132,6 +137,10 @@ export class DatabaseMigrationService {
       logger.error(
         `[DatabaseMigrationService] Migrations failed: ${failureCount} failed, ${successCount} succeeded`
       );
+
+      // Throw a consolidated error with details about all failures
+      const errorSummary = errors.map((e) => `${e.pluginName}: ${e.error.message}`).join('\n  ');
+      throw new Error(`${failureCount} migration(s) failed:\n  ${errorSummary}`);
     }
   }
 
