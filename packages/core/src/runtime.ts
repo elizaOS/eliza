@@ -497,40 +497,52 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async runPluginMigrations(): Promise<void> {
-    const drizzle = (this.adapter as any)?.db;
-    if (!drizzle) {
-      this.logger.warn('Drizzle instance not found on adapter, skipping plugin migrations.');
+    // Check if adapter supports plugin migrations
+    if (!this.adapter) {
+      this.logger.warn('Database adapter not found, skipping plugin migrations.');
       return;
     }
 
-    const pluginsWithSchemas = this.plugins.filter((p) => p.schema);
+    // Check if the adapter implements the plugin migration interface
+    if (typeof this.adapter.runPluginMigrations !== 'function') {
+      this.logger.warn('Database adapter does not support plugin migrations.');
+      return;
+    }
+
+    // Collect plugins with schemas
+    const pluginsWithSchemas = this.plugins
+      .filter((p) => p.schema)
+      .map((p) => ({ name: p.name, schema: p.schema }));
+
+    if (pluginsWithSchemas.length === 0) {
+      this.logger.info('No plugins with schemas found, skipping migrations.');
+      return;
+    }
+
     this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to migrate.`);
 
-    for (const p of pluginsWithSchemas) {
-      if (p.schema) {
-        // Make runPluginMigrations idempotent - check if already migrated
-        if (this.migratedPlugins.has(p.name)) {
-          this.logger.debug(`Plugin ${p.name} migrations already run, skipping`);
-          continue;
-        }
+    try {
+      // Determine migration options based on environment
+      const isProduction = process.env.NODE_ENV === 'production';
+      const forceDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === 'true';
 
-        this.logger.info(`Running migrations for plugin: ${p.name}`);
-        try {
-          // You might need a more generic way to run migrations if they are not all Drizzle-based
-          // For now, assuming a function on the adapter or a utility function
-          if (this.adapter && 'runMigrations' in this.adapter) {
-            await (this.adapter as any).runMigrations(p.schema, p.name);
-            this.migratedPlugins.add(p.name); // Mark as migrated
-            this.logger.info(`Successfully migrated plugin: ${p.name}`);
-          }
-        } catch (error) {
-          this.logger.error(
-            error instanceof Error ? error : new Error(String(error)),
-            `Failed to migrate plugin ${p.name}`
-          );
-          // Decide if you want to throw or continue
-        }
-      }
+      const options = {
+        verbose: !isProduction,
+        force: forceDestructive,
+        dryRun: false,
+      };
+
+      // Run all plugin migrations through the adapter
+      await this.adapter.runPluginMigrations(pluginsWithSchemas, options);
+
+      this.logger.info('Plugin migrations completed successfully.');
+    } catch (error) {
+      this.logger.error(
+        error instanceof Error ? error : new Error(String(error)),
+        'Failed to run plugin migrations'
+      );
+      // Re-throw to prevent agent from starting with incomplete migrations
+      throw error;
     }
   }
 
