@@ -28,24 +28,23 @@ const sizeClasses = {
 };
 
 const filledThemeClasses: Record<ColorVariant, string> = {
-  gray: "text-gray-900 bg-gray-100 dark:bg-gray-600 dark:text-gray-200",
-  purple: "text-gray-900 bg-purple-100 dark:bg-purple-600 dark:text-gray-200",
-  indigo: "text-gray-900 bg-indigo-100 dark:bg-indigo-600 dark:text-gray-200",
-  orange: "text-gray-900 bg-orange-100 dark:bg-orange-600 dark:text-gray-200",
-  teal: "text-gray-900 bg-teal-100 dark:bg-teal-600 dark:text-gray-200",
-  cyan: "text-gray-900 bg-cyan-100 dark:bg-cyan-600 dark:text-gray-200",
-  sky: "text-gray-900 bg-sky-100 dark:bg-sky-600 dark:text-gray-200",
-  yellow: "text-gray-900 bg-yellow-100 dark:bg-yellow-600 dark:text-gray-200",
-  emerald:
-    "text-gray-900 bg-emerald-100 dark:bg-emerald-600 dark:text-gray-200",
-  red: "text-gray-900 bg-red-100 dark:bg-red-600 dark:text-gray-200",
+  gray: "bg-muted text-muted-foreground",
+  purple: "bg-primary text-primary-foreground",
+  indigo: "bg-primary text-primary-foreground",
+  orange: "bg-chart-1 text-primary-foreground",
+  teal: "bg-chart-2 text-primary-foreground",
+  cyan: "bg-chart-3 text-primary-foreground",
+  sky: "bg-chart-4 text-primary-foreground",
+  yellow: "bg-chart-5 text-primary-foreground",
+  emerald: "bg-accent text-accent-foreground",
+  red: "bg-destructive text-destructive-foreground",
 };
 
 const variantClasses = {
   filled: "",
   outlined:
-    "border border-2 bg-transparent text-gray-600 dark:text-gray-300 border-border ",
-  ghost: "bg-transparent text-gray-600 dark:text-gray-300",
+    "border border-2 bg-transparent text-foreground border-border",
+  ghost: "bg-transparent text-muted-foreground",
 };
 
 export type ButtonProps = ComponentPropsWithRef<"button"> & {

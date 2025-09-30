@@ -46,7 +46,7 @@ export const DetailsViewHeader = ({
       <div className="flex items-center gap-1.5">
         {avatar && <Avatar size="4" {...avatar} />}
 
-        <span className="text-base tracking-wide text-gray-900 dark:text-gray-200">
+        <span className="text-base tracking-wide text-foreground ">
           {data.title}
         </span>
 
@@ -63,9 +63,9 @@ export const DetailsViewHeader = ({
             onClick={handleCopy}
           >
             {hasCopied ? (
-              <Check className="size-3 text-gray-500" />
+              <Check className="size-3 text-muted-foreground" />
             ) : (
-              <Copy className="size-3 text-gray-500" />
+              <Copy className="size-3 text-muted-foreground" />
             )}
           </IconButton>
         )}

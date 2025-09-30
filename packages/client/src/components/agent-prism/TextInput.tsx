@@ -53,7 +53,7 @@ export type TextInputProps = ComponentPropsWithRef<"input"> & {
 };
 
 const iconBaseClassName =
-  "absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-700 dark:text-gray-500";
+  "absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-foreground dark:text-muted-foreground";
 
 export const TextInput = ({
   className,
@@ -92,7 +92,7 @@ export const TextInput = ({
         <label
           htmlFor={id}
           className={cn(
-            "block text-sm font-medium text-gray-700 dark:text-gray-200",
+            "block text-sm font-medium text-foreground ",
             hideLabel && "sr-only",
           )}
         >
@@ -116,7 +116,7 @@ export const TextInput = ({
             !!startIcon && "pl-8",
             !!onClear && "pr-8",
             "rounded border border-border bg-transparent ",
-            "text-gray-700 placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-600",
+            "text-foreground placeholder:text-muted-foreground  dark:placeholder:text-muted-foreground",
             "hover:border-border dark:hover:border-gray-700",
           )}
           {...rest}

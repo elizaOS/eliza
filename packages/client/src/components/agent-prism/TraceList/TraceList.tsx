@@ -41,7 +41,7 @@ export const TraceList = ({
         <div className="flex items-center gap-2">
           <h2
             className={cn(
-              "font-regular text-base text-gray-950 dark:text-gray-200",
+              "font-regular text-base text-gray-950 ",
               !expanded && "hidden",
             )}
           >

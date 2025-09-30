@@ -82,7 +82,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
   }
 
   return (
-    <div className="h-full w-full -m-4">
+    <div className="h-full w-full">
       <TraceViewer data={traceViewerData} />
     </div>
   );

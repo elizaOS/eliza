@@ -37,7 +37,7 @@ export const DetailsViewMetrics = ({ data }: DetailsViewMetricsProps) => {
 
       <Badge theme="gray" size="4" label={`$ ${data.cost}`} />
 
-      <span className="text-xs text-gray-500 dark:text-gray-600">
+      <span className="text-xs text-muted-foreground dark:text-muted-foreground">
         LATENCY: {formatDuration(durationMs)}
       </span>
 

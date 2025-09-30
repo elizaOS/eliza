@@ -47,16 +47,16 @@ const textSizeClasses: Record<AvatarSize, string> = {
 };
 
 const bgColorClasses: Record<ColorVariant, string> = {
-  gray: "bg-gray-600 dark:bg-gray-500",
-  red: "bg-red-600 dark:bg-red-500",
-  orange: "bg-orange-600 dark:bg-orange-500",
-  yellow: "bg-yellow-600 dark:bg-yellow-500",
-  teal: "bg-teal-600 dark:bg-teal-500",
-  indigo: "bg-indigo-600 dark:bg-indigo-500",
-  purple: "bg-purple-600 dark:bg-purple-500",
-  sky: "bg-sky-600 dark:bg-sky-500",
-  cyan: "bg-cyan-600 dark:bg-cyan-500",
-  emerald: "bg-emerald-600 dark:bg-emerald-500",
+  gray: "bg-muted-foreground",
+  red: "bg-destructive",
+  orange: "bg-chart-1",
+  yellow: "bg-chart-5",
+  teal: "bg-chart-2",
+  indigo: "bg-primary",
+  purple: "bg-primary",
+  sky: "bg-chart-4",
+  cyan: "bg-chart-3",
+  emerald: "bg-accent",
 };
 
 export type AvatarProps = ComponentPropsWithRef<"div"> & {
@@ -120,8 +120,8 @@ export const Avatar = ({
     <div
       className={cn(
         "flex items-center justify-center overflow-hidden",
-        "bg-gray-200 dark:bg-gray-700",
-        error && "border border-border ",
+        "bg-muted",
+        error && "border border-border",
         sizeClasses[size],
         textSizeClasses[size],
         ROUNDED_CLASSES[rounded],
@@ -133,7 +133,7 @@ export const Avatar = ({
         <User
           className={cn(
             iconSizeClasses[size],
-            "text-gray-600 dark:text-gray-400",
+            "text-muted-foreground",
           )}
         />
       ) : (

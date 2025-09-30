@@ -23,9 +23,9 @@ export const SpanCardToggle = ({
       type="button"
     >
       {isExpanded ? (
-        <ChevronDown aria-hidden="true" className="size-3 text-gray-500" />
+        <ChevronDown aria-hidden="true" className="size-3 text-muted-foreground" />
       ) : (
-        <ChevronRight aria-hidden="true" className="size-3 text-gray-500" />
+        <ChevronRight aria-hidden="true" className="size-3 text-muted-foreground" />
       )}
     </button>
   </Collapsible.Trigger>

@@ -12,7 +12,7 @@ export const DetailsViewAttributesTab = ({ data }: AttributesTabProps) => (
     {!data.attributes ||
       (data.attributes.length === 0 && (
         <div className="p-6 text-center">
-          <p className="text-gray-500 dark:text-gray-400">
+          <p className="text-muted-foreground ">
             No attributes available for this span.
           </p>
         </div>

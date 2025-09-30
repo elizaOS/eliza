@@ -26,7 +26,7 @@ export const DetailsViewInputOutputTab = ({
   if (!hasInput && !hasOutput) {
     return (
       <div className="p-6 text-center">
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className="text-muted-foreground ">
           No input or output data available for this span.
         </p>
       </div>
@@ -141,7 +141,7 @@ const IOContent = ({
 }: IOContentProps): ReactElement => {
   if (!content) {
     return (
-      <p className="p-3 text-sm italic text-gray-500 dark:text-gray-400">
+      <p className="p-3 text-sm italic text-muted-foreground ">
         No data available
       </p>
     );
@@ -165,7 +165,7 @@ const IOContent = ({
               valueStyle={`color: ${colors.red[600]};`}
             />
           ) : (
-            <div className="p-4 text-sm text-gray-500 dark:text-gray-400">
+            <div className="p-4 text-sm text-muted-foreground ">
               Invalid JSON format
             </div>
           )}
@@ -173,8 +173,8 @@ const IOContent = ({
       )}
 
       {tab === "plain" && (
-        <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-900">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-left font-mono text-xs text-gray-800 dark:text-gray-200">
+        <div className="rounded-lg bg-accent p-4 dark:bg-gray-900">
+          <pre className="overflow-x-auto whitespace-pre-wrap text-left font-mono text-xs text-gray-800 ">
             {content}
           </pre>
         </div>

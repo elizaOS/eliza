@@ -56,7 +56,7 @@ export const TraceListItem = ({
       <TraceListItemHeader trace={trace} avatar={avatar} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-4 max-w-full truncate text-sm text-gray-600 dark:text-gray-400">
+        <span className="mr-4 max-w-full truncate text-sm text-muted-foreground ">
           {agentDescription}
         </span>
 

@@ -230,33 +230,33 @@ const SpanCardChildren: FC<{
   onExpandSpansIdsChange,
   viewOptions = DEFAULT_VIEW_OPTIONS,
 }) => {
-  if (!data.children?.length) return null;
+    if (!data.children?.length) return null;
 
-  return (
-    <div className="relative">
-      <Collapsible.Content>
-        <ul role="group">
-          {data.children.map((child, idx) => (
-            <SpanCard
-              viewOptions={viewOptions}
-              key={child.id}
-              data={child}
-              minStart={minStart}
-              maxEnd={maxEnd}
-              level={level + 1}
-              selectedSpan={selectedSpan}
-              onSpanSelect={onSpanSelect}
-              isLastChild={idx === (data.children || []).length - 1}
-              prevLevelConnectors={prevLevelConnectors}
-              expandedSpansIds={expandedSpansIds}
-              onExpandSpansIdsChange={onExpandSpansIdsChange}
-            />
-          ))}
-        </ul>
-      </Collapsible.Content>
-    </div>
-  );
-};
+    return (
+      <div className="relative">
+        <Collapsible.Content>
+          <ul role="group">
+            {data.children.map((child, idx) => (
+              <SpanCard
+                viewOptions={viewOptions}
+                key={child.id}
+                data={child}
+                minStart={minStart}
+                maxEnd={maxEnd}
+                level={level + 1}
+                selectedSpan={selectedSpan}
+                onSpanSelect={onSpanSelect}
+                isLastChild={idx === (data.children || []).length - 1}
+                prevLevelConnectors={prevLevelConnectors}
+                expandedSpansIds={expandedSpansIds}
+                onExpandSpansIdsChange={onExpandSpansIdsChange}
+              />
+            ))}
+          </ul>
+        </Collapsible.Content>
+      </div>
+    );
+  };
 
 export const SpanCard: FC<SpanCardProps> = ({
   data,
@@ -349,9 +349,9 @@ export const SpanCard: FC<SpanCardProps> = ({
           className={cn(
             "relative grid w-full",
             state.isSelected &&
-              "before:absolute before:-top-2 before:h-2 before:w-full before:bg-gray-100/75 before:dark:bg-gray-900/75",
+            "before:absolute before:-top-2 before:h-2 before:w-full before:bg-muted/75 before:dark:bg-gray-900/75",
             state.isSelected &&
-              "bg-gradient-to-b from-gray-100/75 to-gray-100/75 dark:from-gray-900/75 dark:to-gray-900/75",
+            "bg-gradient-to-b from-gray-100/75 to-gray-100/75 dark:from-gray-900/75 dark:to-gray-900/75",
           )}
           style={{
             gridTemplateColumns,
@@ -387,14 +387,14 @@ export const SpanCard: FC<SpanCardProps> = ({
           </div>
           <div
             className={cn(
-              "flex flex-wrap items-start gap-x-2 gap-y-1",
+              "flex flex-nowrap items-start gap-x-2 gap-y-1",
               "mb-3 min-h-5 w-full cursor-pointer",
               level !== 0 && !hasExpandButtonAsFirstChild && "pl-2",
               level !== 0 && hasExpandButtonAsFirstChild && "pl-1",
             )}
           >
             <div
-              className="relative flex min-h-4 shrink-0 grow flex-wrap items-start gap-1"
+              className="relative flex min-h-4 flex-shrink-0 flex-grow-0 flex-wrap items-start gap-1"
               style={{
                 width: `min(${contentWidth}px, 100%)`,
                 minWidth: 140,
@@ -403,7 +403,7 @@ export const SpanCard: FC<SpanCardProps> = ({
               {avatar && <Avatar size="4" {...avatar} />}
 
               <h3
-                className="mr-1 h-4 max-w-32 truncate text-sm leading-[14px] text-gray-900 dark:text-gray-200"
+                className="mr-1 h-4 max-w-32 truncate text-sm leading-[14px] text-foreground "
                 title={data.title}
               >
                 {data.title}
@@ -412,9 +412,9 @@ export const SpanCard: FC<SpanCardProps> = ({
               <SpanCardBadges data={data} />
             </div>
 
-            <div className="shrink-1 flex grow flex-wrap items-center justify-end gap-1">
+            <div className="flex flex-shrink flex-grow flex-nowrap items-center justify-end gap-1 min-w-0">
               {expandButton === "outside" && withStatus && (
-                <div>
+                <div className="flex-shrink-0">
                   <SpanStatus status={data.status} />
                 </div>
               )}
@@ -424,11 +424,11 @@ export const SpanCard: FC<SpanCardProps> = ({
                 minStart={minStart}
                 maxEnd={maxEnd}
                 spanCard={data}
-                className="max-w-48"
+                className="max-w-48 flex-shrink"
               />
 
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-14 flex-1 shrink-0 whitespace-nowrap px-1 text-right text-xs text-black dark:text-white">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="inline-block w-14 whitespace-nowrap px-1 text-right text-xs text-black dark:text-white">
                   {formatDuration(durationMs)}
                 </span>
 

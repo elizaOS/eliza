@@ -64,7 +64,7 @@ export const IconButton = ({
         "inline-flex aspect-square shrink-0 items-center justify-center",
         "rounded-md",
         variantClasses[variant],
-        "text-gray-500 dark:text-gray-400",
+        "text-muted-foreground ",
         "hover:bg-gray-200 dark:hover:bg-gray-800",
       )}
       {...rest}

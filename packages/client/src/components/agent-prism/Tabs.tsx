@@ -20,18 +20,18 @@ const THEMES = {
   underline: {
     list: "h-9 flex border-b border-border ",
     trigger: `w-full justify-center px-3 ${BASE_TRIGGER} 
-      text-gray-600 hover:text-gray-900 data-[state=active]:text-gray-900
-      dark:text-gray-400 dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
-      border-b-2 border-transparent data-[state=active]:border-gray-900 
-      dark:data-[state=active]:border-gray-300 -mb-[2px]
-      hover:border-gray-300 dark:hover:border-gray-600`,
+      text-muted-foreground hover:text-foreground data-[state=active]:text-foreground
+       dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
+      border-b-2 border-transparent data-[state=active]:border-primary 
+      dark:data-[state=active]:border-muted -mb-[2px]
+      hover:border-muted `,
   },
   pill: {
     list: "h-9 inline-flex gap-1 p-1 bg-muted rounded-lg",
     trigger: `px-3 ${BASE_TRIGGER} rounded-md
-      text-gray-600 hover:text-gray-900 data-[state=active]:text-gray-900
-      dark:text-gray-400 dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
-      hover:bg-gray-50 data-[state=active]:bg-white data-[state=active]:shadow-sm
+      text-muted-foreground hover:text-foreground data-[state=active]:text-foreground
+       dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
+      hover:bg-accent data-[state=active]:bg-card data-[state=active]:shadow-sm
       dark:hover:bg-gray-700 dark:data-[state=active]:bg-gray-600 dark:data-[state=active]:shadow-none`,
   },
 } as const;
@@ -128,7 +128,7 @@ export const Tabs = <T extends string = string>({
             )}
           >
             {item.icon && (
-              <span className="mr-2 text-gray-500 group-data-[state=active]:text-current dark:text-gray-400">
+              <span className="mr-2 text-muted-foreground group-data-[state=active]:text-current ">
                 {item.icon}
               </span>
             )}
