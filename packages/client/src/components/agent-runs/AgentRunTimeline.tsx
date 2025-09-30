@@ -30,18 +30,23 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
 
   // Convert ElizaOS runs to Agent Prism format
   const traceViewerData: TraceViewerData[] = useMemo(() => {
-    return runs
-      .map((run, index) => {
-        const detailQuery = runDetailQueries[index];
-        if (!detailQuery?.data) return null;
+    // Only process runs that have loaded detail data
+    const result: TraceViewerData[] = [];
 
-        return {
+    for (let i = 0; i < runs.length; i++) {
+      const run = runs[i];
+      const detailQuery = runDetailQueries[i];
+
+      if (detailQuery?.data) {
+        result.push({
           traceRecord: elizaSpanAdapter.convertRunSummaryToTraceRecord(run),
           spans: elizaSpanAdapter.convertRunDetailToTraceSpans(detailQuery.data as RunDetail),
-        };
-      })
-      .filter((item): item is TraceViewerData => item !== null);
-  }, [runs, ...runDetailQueries.map(q => q.data)]);
+        });
+      }
+    }
+
+    return result;
+  }, [runs, runDetailQueries]);
 
   const isLoading = runsQuery.isLoading;
   const errorMessage = runsQuery.error ? (runsQuery.error as Error).message : undefined;
