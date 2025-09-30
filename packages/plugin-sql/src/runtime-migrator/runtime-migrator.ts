@@ -144,6 +144,108 @@ export class RuntimeMigrator {
   }
 
   /**
+   * Detect if a connection string represents a real PostgreSQL database
+   * (not PGLite, in-memory, or other non-PostgreSQL databases)
+   *
+   * @param connectionUrl - Database connection string to check
+   * @returns true if this is a real PostgreSQL database connection
+   */
+  private isRealPostgresDatabase(connectionUrl: string): boolean {
+    // Empty or undefined URL means not PostgreSQL
+    if (!connectionUrl || connectionUrl.trim() === '') {
+      return false;
+    }
+
+    const url = connectionUrl.toLowerCase();
+
+    // First, check for definitive non-PostgreSQL patterns
+    // These patterns indicate PGLite, in-memory, or SQLite databases
+    // Be careful with patterns to avoid false positives
+    const excludePatterns = [
+      ':memory:', // In-memory database
+      'pglite://', // PGLite with scheme
+      '/pglite', // PGLite path
+      'sqlite://', // SQLite with scheme
+      'sqlite3://', // SQLite3 with scheme
+      '.sqlite', // SQLite file extension
+      '.sqlite3', // SQLite3 file extension
+      'file::memory:', // SQLite in-memory with file scheme
+    ];
+
+    // Also check for file extensions at the end of the URL
+    // This avoids false positives like 'file_storage' database name
+    if (url.endsWith('.db') || url.endsWith('.sqlite') || url.endsWith('.sqlite3')) {
+      return false;
+    }
+
+    for (const pattern of excludePatterns) {
+      if (url.includes(pattern)) {
+        return false;
+      }
+    }
+
+    // Check for PostgreSQL indicators
+    // Accept various connection string formats:
+    // - postgres://... or postgresql://... (standard URL format)
+    // - Strings containing common PostgreSQL ports (5432, 5433, etc.)
+    // - Strings containing '@' which indicates user@host format
+    // - Strings containing 'host=' or 'dbname=' (connection string parameters)
+    const postgresIndicators = [
+      'postgres://', // Standard PostgreSQL URL scheme
+      'postgresql://', // Alternative PostgreSQL URL scheme
+      'postgres@', // User@host format
+      'postgresql@', // Alternative user@host format
+      ':5432', // Default PostgreSQL port
+      ':5433', // Common alternative PostgreSQL port
+      ':25060', // DigitalOcean default port
+      ':26257', // CockroachDB default port
+      'host=', // PostgreSQL connection parameter
+      'dbname=', // PostgreSQL connection parameter
+      'sslmode=', // PostgreSQL SSL parameter
+      'connect_timeout=', // PostgreSQL connection parameter
+      'application_name=', // PostgreSQL connection parameter
+      'pooler.', // Pooler connections (Supabase, etc.)
+      '.pooler.', // Pooler connections
+      'amazonaws.com', // AWS RDS
+      'azure.com', // Azure Database
+      'googleusercontent', // Google Cloud SQL
+      'supabase', // Supabase
+      'neon.tech', // Neon
+      'timescale', // TimescaleDB
+      'cockroachlabs', // CockroachDB (PostgreSQL compatible)
+      'digitalocean.com', // DigitalOcean Managed Databases
+      'aiven', // Aiven (could be aiven.io or aivencloud.com)
+      'do-user-', // DigitalOcean pattern
+      'db.ondigitalocean', // DigitalOcean specific
+      'aivencloud', // Aiven cloud
+    ];
+
+    for (const indicator of postgresIndicators) {
+      if (url.includes(indicator)) {
+        return true;
+      }
+    }
+
+    // Check if it looks like a host:port/database format (without explicit scheme)
+    // This pattern matches strings like "localhost:5432/mydb" or "192.168.1.1:5432/testdb"
+    // Make the pattern more flexible to catch various formats
+    const hostPortDbPattern = /^[a-z0-9.-]+:\d{1,5}\/[a-z0-9_-]+/i;
+    if (hostPortDbPattern.test(connectionUrl.trim())) {
+      return true;
+    }
+
+    // Check for IP address with port (common for cloud databases)
+    const ipPortPattern = /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}/;
+    if (ipPortPattern.test(url)) {
+      return true;
+    }
+
+    // If none of the patterns matched, assume it's not a real PostgreSQL database
+    // This is a conservative approach to avoid using advisory locks on unknown databases
+    return false;
+  }
+
+  /**
    * Initialize migration system - create necessary tables
    * @throws Error if table creation fails
    */
@@ -183,11 +285,7 @@ export class RuntimeMigrator {
       // Only use advisory locks for real PostgreSQL databases
       // Skip for PGLite or development databases
       const postgresUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || '';
-      const isRealPostgres =
-        postgresUrl &&
-        !postgresUrl.includes(':memory:') &&
-        !postgresUrl.includes('pglite') &&
-        (postgresUrl.includes('postgres://') || postgresUrl.includes('postgresql://'));
+      const isRealPostgres = this.isRealPostgresDatabase(postgresUrl);
 
       if (isRealPostgres) {
         try {
