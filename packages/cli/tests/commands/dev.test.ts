@@ -738,20 +738,40 @@ describe('ElizaOS Dev Commands', () => {
             const agentsResponse = await fetch(`http://localhost:${testServerPort}/api/agents`);
 
             if (agentsResponse.ok) {
-              const agents = await agentsResponse.json();
+              const agentsData = await agentsResponse.json();
+              const agents = agentsData.agents || agentsData;
               console.log('[PLUGIN DEV TEST] Agents:', JSON.stringify(agents, null, 2));
 
-              // Verify that an agent was created (should be "Eliza (Test Mode)")
+              // Verify that an agent was created
               expect(agents).toBeDefined();
               expect(Array.isArray(agents)).toBe(true);
 
               if (agents.length > 0) {
-                const testAgent = agents.find((a: any) =>
-                  a.name?.toLowerCase().includes('test') ||
-                  a.name?.toLowerCase().includes('eliza')
+                // Get the first agent and check its details including plugins
+                const firstAgent = agents[0];
+                console.log('[PLUGIN DEV TEST] First agent ID:', firstAgent.id);
+
+                // Fetch detailed agent info to check plugins
+                const agentDetailsResponse = await fetch(
+                  `http://localhost:${testServerPort}/api/agents/${firstAgent.id}`
                 );
-                expect(testAgent).toBeDefined();
-                console.log('[PLUGIN DEV TEST] Test passed - plugin loaded in dev mode');
+
+                if (agentDetailsResponse.ok) {
+                  const agentDetails = await agentDetailsResponse.json();
+                  console.log('[PLUGIN DEV TEST] Agent details:', JSON.stringify(agentDetails, null, 2));
+
+                  // Verify the plugin was loaded
+                  expect(agentDetails.plugins).toBeDefined();
+                  expect(Array.isArray(agentDetails.plugins)).toBe(true);
+
+                  // Check if plugin-openai is in the plugins list
+                  const hasOpenAIPlugin = agentDetails.plugins.some((p: string) =>
+                    p.includes('openai') || p.includes('plugin-openai')
+                  );
+                  expect(hasOpenAIPlugin).toBe(true);
+
+                  console.log('[PLUGIN DEV TEST] Test passed - plugin-openai loaded in dev mode');
+                }
               }
             }
           }

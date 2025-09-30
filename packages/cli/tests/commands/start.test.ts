@@ -541,22 +541,39 @@ describe('ElizaOS Start Commands', () => {
           const agentsResponse = await fetch(`http://localhost:${testServerPort}/api/agents`);
           expect(agentsResponse.ok).toBe(true);
 
-          const agents = await agentsResponse.json();
+          const agentsData = await agentsResponse.json();
+          const agents = agentsData.agents || agentsData;
           console.log('[PLUGIN TEST] Agents:', JSON.stringify(agents, null, 2));
 
-          // Verify that an agent was created (should be "Eliza (Test Mode)")
+          // Verify that an agent was created
           expect(agents).toBeDefined();
           expect(Array.isArray(agents)).toBe(true);
           expect(agents.length).toBeGreaterThan(0);
 
-          // Check if the test character was created
-          const testAgent = agents.find((a: any) =>
-            a.name?.toLowerCase().includes('test') ||
-            a.name?.toLowerCase().includes('eliza')
-          );
-          expect(testAgent).toBeDefined();
+          // Get the first agent and check its details including plugins
+          const firstAgent = agents[0];
+          console.log('[PLUGIN TEST] First agent ID:', firstAgent.id);
 
-          console.log('[PLUGIN TEST] Test passed - plugin loaded successfully');
+          // Fetch detailed agent info to check plugins
+          const agentDetailsResponse = await fetch(
+            `http://localhost:${testServerPort}/api/agents/${firstAgent.id}`
+          );
+          expect(agentDetailsResponse.ok).toBe(true);
+
+          const agentDetails = await agentDetailsResponse.json();
+          console.log('[PLUGIN TEST] Agent details:', JSON.stringify(agentDetails, null, 2));
+
+          // Verify the plugin was loaded
+          expect(agentDetails.plugins).toBeDefined();
+          expect(Array.isArray(agentDetails.plugins)).toBe(true);
+
+          // Check if plugin-openai is in the plugins list
+          const hasOpenAIPlugin = agentDetails.plugins.some((p: string) =>
+            p.includes('openai') || p.includes('plugin-openai')
+          );
+          expect(hasOpenAIPlugin).toBe(true);
+
+          console.log('[PLUGIN TEST] Test passed - plugin-openai loaded successfully');
         } finally {
           // Cleanup server
           if (serverProcess.exitCode === null) {
