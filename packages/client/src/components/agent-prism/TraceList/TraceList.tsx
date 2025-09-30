@@ -41,7 +41,7 @@ export const TraceList = ({
         <div className="flex items-center gap-2">
           <h2
             className={cn(
-              "font-regular text-base text-gray-950 ",
+              "font-semibold text-lg text-foreground",
               !expanded && "hidden",
             )}
           >
@@ -50,24 +50,12 @@ export const TraceList = ({
 
           <Badge
             size="5"
-            theme="gray"
+            theme="teal"
             aria-label={`Total number of traces: ${traces.length}`}
             label={traces.length}
           />
         </div>
 
-        <IconButton
-          aria-label={expanded ? "Collapse Trace List" : "Expand Trace List"}
-          onClick={() => onExpandStateChange(!expanded)}
-          className="lg:hidden"
-        >
-          <ArrowLeft
-            className={cn(
-              "size-3 transition-transform",
-              expanded ? "" : "rotate-180",
-            )}
-          />
-        </IconButton>
       </header>
 
       {expanded && (

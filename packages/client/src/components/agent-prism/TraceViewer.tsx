@@ -196,11 +196,16 @@ const DesktopLayout = ({
               if (trace) handleTraceSelect(trace);
             }}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full h-auto py-3">
               <SelectValue>
-                <div className="flex items-center gap-3 w-full">
-                  <span className="font-medium text-sm">{selectedTrace.name}</span>
+                <div className="flex items-center gap-4 w-full">
+                  <span className="font-semibold text-base">{selectedTrace.name}</span>
                   <div className="flex items-center gap-2 ml-auto">
+                    {typeof selectedTrace.startTime === "number" && (
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {new Date(selectedTrace.startTime).toLocaleTimeString()}
+                      </span>
+                    )}
                     <Badge
                       size="4"
                       theme="gray"
@@ -219,10 +224,22 @@ const DesktopLayout = ({
             </SelectTrigger>
             <SelectContent className="w-full max-w-2xl max-h-[400px]">
               {traceRecords.map((trace) => (
-                <SelectItem key={trace.id} value={trace.id} className="py-1.5 px-3 cursor-pointer">
-                  <div className="flex items-center gap-3 w-full pr-6">
-                    <span className="font-medium text-sm flex-shrink-0">{trace.name}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+                <SelectItem key={trace.id} value={trace.id} className="py-2.5 px-4 cursor-pointer">
+                  <div className="flex items-center justify-between gap-4 w-full pr-6">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="font-semibold text-base text-foreground">{trace.name}</span>
+                      {trace.agentDescription && (
+                        <span className="text-xs text-muted-foreground">
+                          {trace.agentDescription}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {typeof trace.startTime === "number" && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {new Date(trace.startTime).toLocaleTimeString()}
+                        </span>
+                      )}
                       <Badge
                         size="4"
                         theme="gray"
@@ -235,11 +252,6 @@ const DesktopLayout = ({
                         variant="outline"
                         label={formatDuration(trace.durationMs)}
                       />
-                      {typeof trace.startTime === "number" && (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(trace.startTime).toLocaleTimeString()}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </SelectItem>
@@ -247,8 +259,8 @@ const DesktopLayout = ({
             </SelectContent>
           </Select>
 
-          <div className="rounded border border-border bg-card">
-            <div className="flex items-center justify-between gap-2 border-b border-border p-3">
+          <div className="rounded-lg border border-border bg-card shadow-sm">
+            <div className="flex items-center justify-between gap-2 border-b border-border p-4">
               <SearchInput
                 id="span-search-desktop"
                 name="search"
@@ -302,10 +314,22 @@ const DesktopLayout = ({
             </SelectTrigger>
             <SelectContent className="w-full max-w-2xl max-h-[400px]">
               {traceRecords.map((trace) => (
-                <SelectItem key={trace.id} value={trace.id} className="py-1.5 px-3 cursor-pointer">
-                  <div className="flex items-center gap-3 w-full pr-6">
-                    <span className="font-medium text-sm flex-shrink-0">{trace.name}</span>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+                <SelectItem key={trace.id} value={trace.id} className="py-2.5 px-4 cursor-pointer">
+                  <div className="flex items-center justify-between gap-4 w-full pr-6">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="font-semibold text-base text-foreground">{trace.name}</span>
+                      {trace.agentDescription && (
+                        <span className="text-xs text-muted-foreground">
+                          {trace.agentDescription}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {typeof trace.startTime === "number" && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {new Date(trace.startTime).toLocaleTimeString()}
+                        </span>
+                      )}
                       <Badge
                         size="4"
                         theme="gray"
@@ -318,11 +342,6 @@ const DesktopLayout = ({
                         variant="outline"
                         label={formatDuration(trace.durationMs)}
                       />
-                      {typeof trace.startTime === "number" && (
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(trace.startTime).toLocaleTimeString()}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </SelectItem>

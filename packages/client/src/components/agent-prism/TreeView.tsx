@@ -30,9 +30,9 @@ export const TreeView: FC<TreeViewProps> = ({
   const { minStart, maxEnd } = findTimeRange(allCards);
 
   return (
-    <div className="w-full min-w-0 p-2">
+    <div className="w-full min-w-0 p-4">
       <ul
-        className={cn(className, "overflow-x-auto pt-4")}
+        className={cn(className, "overflow-x-auto space-y-1")}
         role="tree"
         aria-label="Hierarchical card list"
       >

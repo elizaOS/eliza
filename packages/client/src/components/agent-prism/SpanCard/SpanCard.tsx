@@ -339,7 +339,7 @@ export const SpanCard: FC<SpanCardProps> = ({
     <li
       role="treeitem"
       aria-expanded={state.hasChildren ? state.isExpanded : undefined}
-      className="list-none mb-2"
+      className="list-none"
     >
       <Collapsible.Root
         open={state.isExpanded}
@@ -347,11 +347,10 @@ export const SpanCard: FC<SpanCardProps> = ({
       >
         <div
           className={cn(
-            "relative grid w-full",
-            state.isSelected &&
-            "before:absolute before:-top-2 before:h-2 before:w-full before:bg-muted/75 before:dark:bg-gray-900/75",
-            state.isSelected &&
-            "bg-muted/75 dark:bg-gray-900/75",
+            "relative grid w-full rounded-md transition-colors",
+            state.isSelected
+              ? "bg-accent/50 border border-accent"
+              : "hover:bg-muted/30",
           )}
           style={{
             gridTemplateColumns,
@@ -384,8 +383,8 @@ export const SpanCard: FC<SpanCardProps> = ({
           </div>
           <div
             className={cn(
-              "flex flex-nowrap items-start gap-x-2 gap-y-1",
-              "mb-1 min-h-5 w-full cursor-pointer",
+              "flex flex-nowrap items-center align-middle gap-x-3 gap py-3 px-2",
+              "min-h-5 w-full cursor-pointer",
               level !== 0 && !hasExpandButtonAsFirstChild && "pl-2",
               level !== 0 && hasExpandButtonAsFirstChild && "pl-1",
             )}
