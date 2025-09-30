@@ -1,4 +1,4 @@
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { User } from "lucide-react";
 import { useState, type ComponentPropsWithRef, type ReactElement } from "react";
 
@@ -121,7 +121,7 @@ export const Avatar = ({
       className={cn(
         "flex items-center justify-center overflow-hidden",
         "bg-gray-200 dark:bg-gray-700",
-        error && "border border-gray-200 dark:border-gray-800",
+        error && "border border-border ",
         sizeClasses[size],
         textSizeClasses[size],
         ROUNDED_CLASSES[rounded],

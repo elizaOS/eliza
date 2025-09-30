@@ -6,7 +6,7 @@ import {
   type TraceSpan,
 } from "@evilmartians/agent-prism-types";
 import { filterSpansRecursively } from "@/lib/agent-prism-utils";
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -193,8 +193,8 @@ const DesktopLayout = ({
         <div className="flex flex-col gap-4">
           <TraceListItemHeader trace={selectedTrace} />
 
-          <div className="rounded border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
-            <div className="flex items-center justify-between gap-2 border-b border-gray-200 p-3 dark:border-gray-800">
+          <div className="rounded border border-border bg-card">
+            <div className="flex items-center justify-between gap-2 border-b border-border p-3">
               <SearchInput
                 id="span-search-desktop"
                 name="search"
@@ -213,7 +213,7 @@ const DesktopLayout = ({
             </div>
 
             {filteredSpans.length === 0 ? (
-              <div className="p-3 text-center text-gray-600 dark:text-gray-200">
+              <div className="p-3 text-center text-muted-foreground">
                 No spans found
               </div>
             ) : (
@@ -289,8 +289,8 @@ const MobileLayout = ({
 
         <TraceListItemHeader trace={selectedTrace} />
 
-        <div className="rounded border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
-          <div className="flex items-center justify-between gap-2 border-b border-gray-200 p-3 dark:border-gray-800">
+        <div className="rounded border border-border bg-card">
+          <div className="flex items-center justify-between gap-2 border-b border-border p-3">
             <SearchInput
               id="span-search-mobile"
               name="search"
@@ -309,7 +309,7 @@ const MobileLayout = ({
           </div>
 
           {filteredSpans.length === 0 ? (
-            <div className="p-3 text-center text-gray-600 dark:text-gray-200">
+            <div className="p-3 text-center text-muted-foreground">
               No spans found
             </div>
           ) : (
@@ -355,7 +355,7 @@ interface PlaceholderProps {
 
 const Placeholder = ({ title }: PlaceholderProps) => {
   return (
-    <p className="hidden items-center justify-center rounded-lg bg-gray-100 p-4 text-center text-gray-600 lg:flex dark:bg-gray-900 dark:text-gray-200">
+    <p className="hidden items-center justify-center rounded-lg bg-muted p-4 text-center text-muted-foreground lg:flex">
       {title}
     </p>
   );

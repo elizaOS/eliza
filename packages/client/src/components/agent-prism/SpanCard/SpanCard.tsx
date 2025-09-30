@@ -5,7 +5,7 @@ import {
   getTimelineData,
 } from "@evilmartians/agent-prism-data";
 import * as Collapsible from "@radix-ui/react-collapsible";
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import {
   type FC,
   useCallback,

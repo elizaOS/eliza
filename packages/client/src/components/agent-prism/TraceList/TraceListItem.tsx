@@ -1,6 +1,6 @@
 import type { TraceRecord } from "@evilmartians/agent-prism-types";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { useCallback, type KeyboardEvent } from "react";
 
 import { type AvatarProps } from "../Avatar.tsx";
@@ -44,8 +44,8 @@ export const TraceListItem = ({
         "flex flex-col gap-2.5 p-4",
         "cursor-pointer",
         isSelected
-          ? "bg-gray-100 dark:bg-gray-900"
-          : "bg-white dark:bg-gray-950",
+          ? "bg-muted"
+          : "bg-card",
       )}
       role="button"
       tabIndex={0}

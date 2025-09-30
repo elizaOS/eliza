@@ -1,7 +1,7 @@
 import type { TraceSpan } from "@evilmartians/agent-prism-types";
 
 import { getTimelineData } from "@evilmartians/agent-prism-data";
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 
 import type { ColorVariant } from "../shared.ts";
 

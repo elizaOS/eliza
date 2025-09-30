@@ -1,6 +1,6 @@
 import type { TraceRecord } from "@evilmartians/agent-prism-types";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { ArrowLeft } from "lucide-react";
 
 import { Badge, type BadgeProps } from "../Badge.tsx";
@@ -71,7 +71,7 @@ export const TraceList = ({
       </header>
 
       {expanded && (
-        <ul className="flex flex-col items-center overflow-hidden rounded border border-gray-200 dark:border-gray-800">
+        <ul className="flex flex-col items-center overflow-hidden rounded border border-border ">
           {traces.map((trace) => (
             <li
               className="w-full list-none border-b-gray-200 dark:border-b-gray-900 [&:not(:last-child)]:border-b"

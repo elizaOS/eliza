@@ -1,6 +1,6 @@
 import type { ComponentPropsWithRef } from "react";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 
 import type { ComponentSize } from "./shared";
 
@@ -40,7 +40,7 @@ const sizeClasses: Record<IconButtonSize, string> = {
 };
 
 const variantClasses: Record<IconButtonVariant, string> = {
-  default: "border border-gray-200 bg-transparent dark:border-gray-800",
+  default: "border border-border bg-transparent ",
   ghost: "bg-transparent",
 };
 

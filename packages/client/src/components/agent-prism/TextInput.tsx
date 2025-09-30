@@ -1,4 +1,4 @@
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 import {
   useRef,
@@ -115,9 +115,9 @@ export const TextInput = ({
             "w-full px-2",
             !!startIcon && "pl-8",
             !!onClear && "pr-8",
-            "rounded border border-gray-200 bg-transparent dark:border-gray-800",
+            "rounded border border-border bg-transparent ",
             "text-gray-700 placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-600",
-            "hover:border-gray-200 dark:hover:border-gray-700",
+            "hover:border-border dark:hover:border-gray-700",
           )}
           {...rest}
         />

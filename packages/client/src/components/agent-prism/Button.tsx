@@ -1,6 +1,6 @@
 import type { ComponentPropsWithRef, ReactElement } from "react";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 
 import {
   ROUNDED_CLASSES,
@@ -44,7 +44,7 @@ const filledThemeClasses: Record<ColorVariant, string> = {
 const variantClasses = {
   filled: "",
   outlined:
-    "border border-2 bg-transparent text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800",
+    "border border-2 bg-transparent text-gray-600 dark:text-gray-300 border-border ",
   ghost: "bg-transparent text-gray-600 dark:text-gray-300",
 };
 

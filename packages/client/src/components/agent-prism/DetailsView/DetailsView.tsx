@@ -1,6 +1,6 @@
 import type { TraceSpan } from "@evilmartians/agent-prism-types";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { SquareTerminal, Tags, ArrowRightLeft } from "lucide-react";
 import { useState, type ReactElement, type ReactNode } from "react";
 
@@ -117,7 +117,7 @@ export const DetailsView = ({
   return (
     <div
       className={cn(
-        "min-w-0 rounded border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950",
+        "min-w-0 rounded border border-border bg-white p-4  dark:bg-gray-950",
         className,
       )}
     >

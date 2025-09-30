@@ -148,7 +148,7 @@ const IOContent = ({
   }
 
   return (
-    <div className="relative rounded-lg border border-gray-200 dark:border-gray-800">
+    <div className="relative rounded-lg border border-border ">
       <CopyButton section={section} content={content} />
 
       {tab === "json" && (

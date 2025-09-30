@@ -1,7 +1,7 @@
 import type { TraceSpanStatus } from "@evilmartians/agent-prism-types";
 import type { ComponentPropsWithRef } from "react";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { Check, Ellipsis, Info, TriangleAlert } from "lucide-react";
 
 type StatusVariant = "dot" | "badge";

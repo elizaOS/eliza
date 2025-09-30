@@ -1,7 +1,7 @@
 import type { TraceSpan } from "@evilmartians/agent-prism-types";
 
 import { findTimeRange, flattenSpans } from "@evilmartians/agent-prism-data";
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 import { type FC } from "react";
 
 import { SpanCard, type SpanCardViewOptions } from "./SpanCard/SpanCard";

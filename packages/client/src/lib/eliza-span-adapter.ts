@@ -113,6 +113,11 @@ export class ElizaSpanAdapter {
 
                 case 'MODEL_USED': {
                     const modelType = (event.data.modelType as string) || 'Model Call';
+
+                    // Extract prompt and response from event data
+                    const prompt = this.extractPrompt(event.data);
+                    const response = this.extractResponse(event.data);
+
                     const modelSpan: TraceSpan = {
                         id: `model-${index}`,
                         title: modelType,
@@ -125,8 +130,8 @@ export class ElizaSpanAdapter {
                         duration: (event.data.executionTime as number) || 0,
                         raw: JSON.stringify(event, null, 2),
                         attributes: this.convertEventDataToAttributes(event.data),
-                        input: (event.data.input as string) || undefined,
-                        output: (event.data.output as string) || undefined,
+                        input: prompt,
+                        output: response,
                         tokensCount: this.extractTokensCount(event.data),
                         cost: this.extractCost(event.data),
                     };
@@ -300,6 +305,47 @@ export class ElizaSpanAdapter {
      */
     private extractCost(data: Record<string, unknown>): number | undefined {
         return (data.cost as number) || undefined;
+    }
+
+    /**
+     * Extract prompt/input from event data
+     */
+    private extractPrompt(data: Record<string, unknown>): string | undefined {
+        // Try various keys where prompt might be stored
+        if (data.prompt && typeof data.prompt === 'string') {
+            return data.prompt;
+        }
+        if (data.params && typeof data.params === 'object') {
+            const params = data.params as Record<string, unknown>;
+            if (params.prompt && typeof params.prompt === 'string') {
+                return params.prompt;
+            }
+        }
+        if (data.input && typeof data.input === 'string') {
+            return data.input;
+        }
+        // Try to extract from params object if it exists
+        if (data.params && typeof data.params === 'object') {
+            return JSON.stringify(data.params, null, 2);
+        }
+        return undefined;
+    }
+
+    /**
+     * Extract response/output from event data
+     */
+    private extractResponse(data: Record<string, unknown>): string | undefined {
+        // Try various keys where response might be stored
+        if (data.response) {
+            if (typeof data.response === 'string') {
+                return data.response;
+            }
+            return JSON.stringify(data.response, null, 2);
+        }
+        if (data.output && typeof data.output === 'string') {
+            return data.output;
+        }
+        return undefined;
     }
 
     /**

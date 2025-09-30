@@ -1,6 +1,6 @@
 import type { ComponentPropsWithRef, ReactElement, ReactNode } from "react";
 
-import cn from "classnames";
+import { cn } from "@/lib/utils";
 
 import {
   COLOR_THEME_CLASSES,
