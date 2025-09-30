@@ -94,8 +94,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           return sendSuccess(res, fastResult);
         } catch (error) {
           runtime.logger?.warn?.(
-            `Optimized run summary query failed, falling back to log aggregation: ${
-              error instanceof Error ? error.message : String(error)
+            `Optimized run summary query failed, falling back to log aggregation: ${error instanceof Error ? error.message : String(error)
             }`
           );
         }
@@ -550,6 +549,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           action?: string;
           result?: { success?: boolean };
           promptCount?: number;
+          prompts?: Array<{ prompt?: string; modelType?: string }>;
+          params?: Record<string, unknown>;
+          response?: unknown;
         };
         events.push({
           type: 'ACTION_COMPLETED',
@@ -560,6 +562,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             success: body.result?.success !== false,
             result: body.result as Record<string, unknown> | undefined,
             promptCount: body.promptCount,
+            prompts: body.prompts,
+            params: body.params,
+            response: body.response,
           },
         });
       }
@@ -570,6 +575,14 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           provider?: string;
           executionTime?: number;
           actionContext?: string;
+          params?: Record<string, unknown>;
+          response?: unknown;
+          usage?: Record<string, unknown>;
+          prompts?: Array<{ prompt?: string; modelType?: string }>;
+          prompt?: string;
+          inputTokens?: number;
+          outputTokens?: number;
+          cost?: number;
         };
         events.push({
           type: 'MODEL_USED',
@@ -581,6 +594,14 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             provider: body.provider,
             executionTime: body.executionTime,
             actionContext: body.actionContext,
+            params: body.params,
+            response: body.response,
+            usage: body.usage,
+            prompts: body.prompts,
+            prompt: body.prompt,
+            inputTokens: body.inputTokens,
+            outputTokens: body.outputTokens,
+            cost: body.cost,
           },
         });
       }
