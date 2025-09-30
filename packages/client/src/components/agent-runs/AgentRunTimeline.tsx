@@ -41,7 +41,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
         };
       })
       .filter((item): item is TraceViewerData => item !== null);
-  }, [runs, runDetailQueries.map(q => q.data?.summary?.runId).join(',')]);
+  }, [runs, ...runDetailQueries.map(q => q.data)]);
 
   const isLoading = runsQuery.isLoading;
   const errorMessage = runsQuery.error ? (runsQuery.error as Error).message : undefined;

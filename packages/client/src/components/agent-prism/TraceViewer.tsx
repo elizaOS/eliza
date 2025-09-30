@@ -51,12 +51,12 @@ export interface TraceViewerProps {
 export const TraceViewer = ({ data }: TraceViewerProps) => {
   const [selectedTrace, setSelectedTrace] = useState<
     TraceRecordWithDisplayData | undefined
-  >(data[0].traceRecord);
+  >(data[0]?.traceRecord);
   const [selectedTraceSpans, setSelectedTraceSpans] = useState<TraceSpan[]>(
-    data[0].spans,
+    data[0]?.spans ?? [],
   );
   const [selectedSpan, setSelectedSpan] = useState<TraceSpan | undefined>(
-    data[0].spans[0].children?.[0],
+    data[0]?.spans?.[0]?.children?.[0],
   );
   const [searchValue, setSearchValue] = useState("");
 
