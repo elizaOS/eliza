@@ -5,7 +5,7 @@ import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
-import { logger, type Character, type ProjectAgent } from '@elizaos/core';
+import { logger, type Character, type ProjectAgent, type IAgentRuntime } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -163,16 +163,21 @@ export const start = new Command()
 
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
-        // Batch start all project agents
-        const charactersToStart = projectAgents.map((pa) => pa.character);
-        const runtimes = await server.startAgents(charactersToStart);
+        // Start each agent individually with its specific plugins
+        const runtimes: IAgentRuntime[] = [];
 
-        // Run init functions for each agent if provided
-        for (let i = 0; i < projectAgents.length; i++) {
-          const init = projectAgents[i]?.init;
-          const runtime = runtimes[i];
-          if (typeof init === 'function' && runtime) {
-            await init(runtime);
+        for (const projectAgent of projectAgents) {
+          // Pass the agent's specific plugins to server.startAgents
+          const agentPlugins = projectAgent.plugins || [];
+          const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
+
+          if (runtime) {
+            runtimes.push(runtime);
+
+            // Run init function if provided
+            if (typeof projectAgent.init === 'function') {
+              await projectAgent.init(runtime);
+            }
           }
         }
 
