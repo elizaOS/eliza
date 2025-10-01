@@ -9,6 +9,9 @@ import {
   getGeneratedDir,
   getUploadsAgentsDir,
   ElizaOS,
+  MessageBusCore,
+  MessageDatabaseAdapter,
+  AgentAdapter,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -22,6 +25,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
 import { apiKeyAuthMiddleware } from './authMiddleware.js';
 import { messageBusConnectorPlugin } from './services/message.js';
+import { SocketIOAdapter } from './adapters/index.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
@@ -162,6 +166,7 @@ export class AgentServer {
   private configManager?: ConfigManager; // Configuration management
 
   public database!: DatabaseAdapter;
+  public messageBus?: MessageBusCore; // New message bus
 
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
@@ -527,6 +532,32 @@ export class AgentServer {
     } catch (error) {
       logger.error({ error }, '[AgentServer] Error ensuring default server:');
       throw error; // Re-throw to prevent startup if default server can't be created
+    }
+  }
+
+  /**
+   * Initialize MessageBusCore with adapters
+   * Sets up database, Socket.io, and agent adapters for message routing
+   */
+  private async initializeMessageBus(): Promise<void> {
+    try {
+      logger.info('[MessageBus] Initializing MessageBusCore...');
+
+      // Create the core message bus
+      this.messageBus = new MessageBusCore();
+
+      // Register Socket.io adapter for broadcasting to clients
+      const socketAdapter = new SocketIOAdapter(this.socketIO);
+      this.messageBus.use(socketAdapter);
+      logger.success('[MessageBus] Registered Socket.io adapter');
+
+      // Agent adapters will be registered when agents are started
+      // Database adapters will be registered per-agent (each agent has its own DB adapter)
+
+      logger.success('[MessageBus] MessageBusCore initialized');
+    } catch (error) {
+      logger.error({ error }, '[MessageBus] Failed to initialize MessageBusCore:');
+      throw error;
     }
   }
 
@@ -1169,6 +1200,9 @@ export class AgentServer {
       // Initialize Socket.io, passing the AgentServer instance
       this.socketIO = setupSocketIO(this.server, this.elizaOS!, this);
 
+      // Initialize MessageBusCore with adapters
+      await this.initializeMessageBus();
+
       logger.success('AgentServer HTTP server and Socket.IO initialized');
     } catch (error) {
       logger.error({ error }, 'Failed to complete server initialization:');
@@ -1216,6 +1250,26 @@ export class AgentServer {
           `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
         // Decide if this is a fatal error for the agent.
+      }
+
+      // Register agent with MessageBusCore
+      if (this.messageBus && (runtime as any).databaseAdapter) {
+        try {
+          // Register database adapter for this agent
+          const dbAdapter = new MessageDatabaseAdapter(runtime, (runtime as any).databaseAdapter);
+          this.messageBus.use(dbAdapter);
+
+          // Register agent adapter for processing messages
+          const agentAdapter = new AgentAdapter(runtime, this.messageBus);
+          this.messageBus.use(agentAdapter);
+
+          logger.success(`[MessageBus] Registered adapters for agent ${runtime.character.name}`);
+        } catch (error) {
+          logger.error(
+            { error },
+            `[MessageBus] Failed to register adapters for agent ${runtime.character.name}`
+          );
+        }
       }
 
       // Register TEE plugin if present
