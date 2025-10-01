@@ -41,7 +41,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
         };
       })
       .filter((item): item is TraceViewerData => item !== null);
-  }, [runs, ...runDetailQueries.map(q => q.data)]);
+  }, [runs, ...runDetailQueries.map((q) => q.data)]);
 
   const isLoading = runsQuery.isLoading;
   const errorMessage = runsQuery.error ? (runsQuery.error as Error).message : undefined;
@@ -58,9 +58,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
 
   if (errorMessage) {
     return (
-      <div className="px-4 py-3 text-sm text-destructive">
-        Failed to load runs: {errorMessage}
-      </div>
+      <div className="px-4 py-3 text-sm text-destructive">Failed to load runs: {errorMessage}</div>
     );
   }
 

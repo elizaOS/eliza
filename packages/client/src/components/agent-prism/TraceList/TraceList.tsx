@@ -1,11 +1,11 @@
-import type { TraceRecord } from "@evilmartians/agent-prism-types";
+import type { TraceRecord } from '@evilmartians/agent-prism-types';
 
-import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
+import { cn } from '@/lib/utils';
+import { ArrowLeft } from 'lucide-react';
 
-import { Badge, type BadgeProps } from "../Badge.tsx";
-import { IconButton } from "../IconButton.tsx";
-import { TraceListItem } from "./TraceListItem.tsx";
+import { Badge, type BadgeProps } from '../Badge.tsx';
+import { IconButton } from '../IconButton.tsx';
+import { TraceListItem } from './TraceListItem.tsx';
 
 type TraceRecordWithBadges = TraceRecord & {
   badges?: Array<BadgeProps>;
@@ -31,20 +31,15 @@ export const TraceList = ({
   return (
     <div
       className={cn(
-        "w-full min-w-0",
-        "flex flex-col gap-3",
-        expanded ? "w-full" : "w-fit",
-        className,
+        'w-full min-w-0',
+        'flex flex-col gap-3',
+        expanded ? 'w-full' : 'w-fit',
+        className
       )}
     >
       <header className="flex min-h-6 items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h2
-            className={cn(
-              "font-semibold text-lg text-foreground",
-              !expanded && "hidden",
-            )}
-          >
+          <h2 className={cn('font-semibold text-lg text-foreground', !expanded && 'hidden')}>
             Traces
           </h2>
 
@@ -55,7 +50,6 @@ export const TraceList = ({
             label={traces.length}
           />
         </div>
-
       </header>
 
       {expanded && (

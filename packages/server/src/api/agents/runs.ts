@@ -94,7 +94,8 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           return sendSuccess(res, fastResult);
         } catch (error) {
           runtime.logger?.warn?.(
-            `Optimized run summary query failed, falling back to log aggregation: ${error instanceof Error ? error.message : String(error)
+            `Optimized run summary query failed, falling back to log aggregation: ${
+              error instanceof Error ? error.message : String(error)
             }`
           );
         }

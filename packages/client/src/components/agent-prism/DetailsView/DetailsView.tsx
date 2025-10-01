@@ -1,19 +1,19 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { cn } from "@/lib/utils";
-import { SquareTerminal, Tags, ArrowRightLeft } from "lucide-react";
-import { useState, type ReactElement, type ReactNode } from "react";
+import { cn } from '@/lib/utils';
+import { SquareTerminal, Tags, ArrowRightLeft } from 'lucide-react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 
-import type { AvatarProps } from "../Avatar";
+import type { AvatarProps } from '../Avatar';
 
-import { Tabs, type TabItem } from "../Tabs";
-import { DetailsViewAttributesTab } from "./DetailsViewAttributesTab";
-import { DetailsViewHeader } from "./DetailsViewHeader";
-import { DetailsViewInputOutputTab } from "./DetailsViewInputOutputTab";
-import { DetailsViewMetrics } from "./DetailsViewMetrics";
-import { DetailsViewRawDataTab } from "./DetailsViewRawDataTab";
+import { Tabs, type TabItem } from '../Tabs';
+import { DetailsViewAttributesTab } from './DetailsViewAttributesTab';
+import { DetailsViewHeader } from './DetailsViewHeader';
+import { DetailsViewInputOutputTab } from './DetailsViewInputOutputTab';
+import { DetailsViewMetrics } from './DetailsViewMetrics';
+import { DetailsViewRawDataTab } from './DetailsViewRawDataTab';
 
-type DetailsViewTab = "input-output" | "attributes" | "raw";
+type DetailsViewTab = 'input-output' | 'attributes' | 'raw';
 
 export interface DetailsViewProps {
   /**
@@ -71,22 +71,22 @@ export const DetailsView = ({
   customHeader,
   onTabChange,
 }: DetailsViewProps): ReactElement => {
-  const [tab, setTab] = useState<DetailsViewTab>(defaultTab || "input-output");
+  const [tab, setTab] = useState<DetailsViewTab>(defaultTab || 'input-output');
 
   const tabItems: TabItem<DetailsViewTab>[] = [
     {
-      value: "input-output",
-      label: "In/Out",
+      value: 'input-output',
+      label: 'In/Out',
       icon: <ArrowRightLeft className="size-4" />,
     },
     {
-      value: "attributes",
-      label: "Attributes",
+      value: 'attributes',
+      label: 'Attributes',
       icon: <Tags className="size-4" />,
     },
     {
-      value: "raw",
-      label: "RAW",
+      value: 'raw',
+      label: 'RAW',
       icon: <SquareTerminal className="size-4" />,
     },
   ];
@@ -97,10 +97,10 @@ export const DetailsView = ({
   }
 
   const resolvedHeaderActions =
-    typeof headerActions === "function" ? headerActions(data) : headerActions;
+    typeof headerActions === 'function' ? headerActions(data) : headerActions;
 
   const headerContent = customHeader ? (
-    typeof customHeader === "function" ? (
+    typeof customHeader === 'function' ? (
       customHeader({ data })
     ) : (
       customHeader
@@ -115,12 +115,7 @@ export const DetailsView = ({
   );
 
   return (
-    <div
-      className={cn(
-        "min-w-0 rounded-lg border border-border bg-card p-4 shadow-sm",
-        className,
-      )}
-    >
+    <div className={cn('min-w-0 rounded-lg border border-border bg-card p-4 shadow-sm', className)}>
       {headerContent}
 
       <DetailsViewMetrics data={data} />
@@ -133,9 +128,9 @@ export const DetailsView = ({
         defaultValue={defaultTab}
       />
 
-      {tab === "input-output" && <DetailsViewInputOutputTab data={data} />}
-      {tab === "attributes" && <DetailsViewAttributesTab data={data} />}
-      {tab === "raw" && <DetailsViewRawDataTab data={data} />}
+      {tab === 'input-output' && <DetailsViewInputOutputTab data={data} />}
+      {tab === 'attributes' && <DetailsViewAttributesTab data={data} />}
+      {tab === 'raw' && <DetailsViewRawDataTab data={data} />}
     </div>
   );
 };

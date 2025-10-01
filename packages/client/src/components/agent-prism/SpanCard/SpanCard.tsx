@@ -1,35 +1,24 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import {
-  formatDuration,
-  getTimelineData,
-} from "@evilmartians/agent-prism-data";
-import * as Collapsible from "@radix-ui/react-collapsible";
-import { cn } from "@/lib/utils";
-import {
-  type FC,
-  useCallback,
-  type KeyboardEvent,
-  type MouseEvent,
-} from "react";
+import { formatDuration, getTimelineData } from '@evilmartians/agent-prism-data';
+import * as Collapsible from '@radix-ui/react-collapsible';
+import { cn } from '@/lib/utils';
+import { type FC, useCallback, type KeyboardEvent, type MouseEvent } from 'react';
 
-import { Avatar, type AvatarProps } from "../Avatar.tsx";
-import { getSpanCategoryTheme } from "../shared.ts";
-import { SpanStatus } from "../SpanStatus.tsx";
-import { SpanCardBadges } from "./SpanCardBadges.tsx";
-import {
-  type SpanCardConnectorType,
-  SpanCardConnector,
-} from "./SpanCardConnector.tsx";
-import { SpanCardTimeline } from "./SpanCardTimeline.tsx";
-import { SpanCardToggle } from "./SpanCardToggle.tsx";
+import { Avatar, type AvatarProps } from '../Avatar.tsx';
+import { getSpanCategoryTheme } from '../shared.ts';
+import { SpanStatus } from '../SpanStatus.tsx';
+import { SpanCardBadges } from './SpanCardBadges.tsx';
+import { type SpanCardConnectorType, SpanCardConnector } from './SpanCardConnector.tsx';
+import { SpanCardTimeline } from './SpanCardTimeline.tsx';
+import { SpanCardToggle } from './SpanCardToggle.tsx';
 
 const LAYOUT_CONSTANTS = {
   CONNECTOR_WIDTH: 20,
   CONTENT_BASE_WIDTH: 320,
 } as const;
 
-type ExpandButtonPlacement = "inside" | "outside";
+type ExpandButtonPlacement = 'inside' | 'outside';
 
 export type SpanCardViewOptions = {
   withStatus?: boolean;
@@ -38,7 +27,7 @@ export type SpanCardViewOptions = {
 
 const DEFAULT_VIEW_OPTIONS: Required<SpanCardViewOptions> = {
   withStatus: true,
-  expandButton: "inside",
+  expandButton: 'inside',
 };
 
 interface SpanCardProps {
@@ -73,15 +62,13 @@ const getContentWidth = ({
   contentPadding: number;
   expandButton: ExpandButtonPlacement;
 }) => {
-  let width =
-    LAYOUT_CONSTANTS.CONTENT_BASE_WIDTH -
-    level * LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
+  let width = LAYOUT_CONSTANTS.CONTENT_BASE_WIDTH - level * LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
 
-  if (hasExpandButton && expandButton === "inside") {
+  if (hasExpandButton && expandButton === 'inside') {
     width -= LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
   }
 
-  if (expandButton === "outside" && level === 0) {
+  if (expandButton === 'outside' && level === 0) {
     width -= LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
   }
 
@@ -95,7 +82,7 @@ const getGridTemplateColumns = ({
   connectorsColumnWidth: number;
   expandButton: ExpandButtonPlacement;
 }) => {
-  if (expandButton === "inside") {
+  if (expandButton === 'inside') {
     return `${connectorsColumnWidth}px 1fr`;
   }
 
@@ -136,36 +123,32 @@ const getConnectorsLayout = ({
 
   if (level === 0) {
     return {
-      connectors: expandButton === "inside" ? [] : ["vertical"],
+      connectors: expandButton === 'inside' ? [] : ['vertical'],
       connectorsColumnWidth: 20,
     };
   }
 
   for (let i = 0; i < level - 1; i++) {
-    connectors.push("vertical");
+    connectors.push('vertical');
   }
 
   if (!isLastChild) {
-    connectors.push("t-right");
+    connectors.push('t-right');
   }
 
   if (isLastChild) {
-    connectors.push("corner-top-right");
+    connectors.push('corner-top-right');
   }
 
-  let connectorsColumnWidth =
-    connectors.length * LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
+  let connectorsColumnWidth = connectors.length * LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
 
   if (hasExpandButton) {
     connectorsColumnWidth += LAYOUT_CONSTANTS.CONNECTOR_WIDTH;
   }
 
   for (let i = 0; i < prevConnectors.length; i++) {
-    if (
-      prevConnectors[i] === "empty" ||
-      prevConnectors[i] === "corner-top-right"
-    ) {
-      connectors[i] = "empty";
+    if (prevConnectors[i] === 'empty' || prevConnectors[i] === 'corner-top-right') {
+      connectors[i] = 'empty';
     }
   }
 
@@ -175,30 +158,24 @@ const getConnectorsLayout = ({
   };
 };
 
-const useSpanCardEventHandlers = (
-  data: TraceSpan,
-  onSpanSelect?: (span: TraceSpan) => void,
-) => {
+const useSpanCardEventHandlers = (data: TraceSpan, onSpanSelect?: (span: TraceSpan) => void) => {
   const handleCardClick = useCallback((): void => {
     onSpanSelect?.(data);
   }, [data, onSpanSelect]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent): void => {
-      if (e.key === "Enter" || e.key === " ") {
+      if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         handleCardClick();
       }
     },
-    [handleCardClick],
+    [handleCardClick]
   );
 
-  const handleToggleClick = useCallback(
-    (e: MouseEvent | KeyboardEvent): void => {
-      e.stopPropagation();
-    },
-    [],
-  );
+  const handleToggleClick = useCallback((e: MouseEvent | KeyboardEvent): void => {
+    e.stopPropagation();
+  }, []);
 
   return {
     handleCardClick,
@@ -230,33 +207,33 @@ const SpanCardChildren: FC<{
   onExpandSpansIdsChange,
   viewOptions = DEFAULT_VIEW_OPTIONS,
 }) => {
-    if (!data.children?.length) return null;
+  if (!data.children?.length) return null;
 
-    return (
-      <div className="relative">
-        <Collapsible.Content>
-          <ul role="group">
-            {data.children.map((child, idx) => (
-              <SpanCard
-                viewOptions={viewOptions}
-                key={child.id}
-                data={child}
-                minStart={minStart}
-                maxEnd={maxEnd}
-                level={level + 1}
-                selectedSpan={selectedSpan}
-                onSpanSelect={onSpanSelect}
-                isLastChild={idx === (data.children || []).length - 1}
-                prevLevelConnectors={prevLevelConnectors}
-                expandedSpansIds={expandedSpansIds}
-                onExpandSpansIdsChange={onExpandSpansIdsChange}
-              />
-            ))}
-          </ul>
-        </Collapsible.Content>
-      </div>
-    );
-  };
+  return (
+    <div className="relative">
+      <Collapsible.Content>
+        <ul role="group">
+          {data.children.map((child, idx) => (
+            <SpanCard
+              viewOptions={viewOptions}
+              key={child.id}
+              data={child}
+              minStart={minStart}
+              maxEnd={maxEnd}
+              level={level + 1}
+              selectedSpan={selectedSpan}
+              onSpanSelect={onSpanSelect}
+              isLastChild={idx === (data.children || []).length - 1}
+              prevLevelConnectors={prevLevelConnectors}
+              expandedSpansIds={expandedSpansIds}
+              onExpandSpansIdsChange={onExpandSpansIdsChange}
+            />
+          ))}
+        </ul>
+      </Collapsible.Content>
+    </div>
+  );
+};
 
 export const SpanCard: FC<SpanCardProps> = ({
   data,
@@ -275,8 +252,7 @@ export const SpanCard: FC<SpanCardProps> = ({
   const isExpanded = expandedSpansIds.includes(data.id);
 
   const withStatus = viewOptions.withStatus ?? DEFAULT_VIEW_OPTIONS.withStatus;
-  const expandButton =
-    viewOptions.expandButton || DEFAULT_VIEW_OPTIONS.expandButton;
+  const expandButton = viewOptions.expandButton || DEFAULT_VIEW_OPTIONS.expandButton;
 
   const handleToggleClick = useCallback(
     (expanded: boolean) => {
@@ -290,7 +266,7 @@ export const SpanCard: FC<SpanCardProps> = ({
         onExpandSpansIdsChange([...expandedSpansIds, data.id]);
       }
     },
-    [isExpanded, expandedSpansIds, data.id, onExpandSpansIdsChange],
+    [isExpanded, expandedSpansIds, data.id, onExpandSpansIdsChange]
   );
 
   const state: SpanCardState = {
@@ -307,8 +283,7 @@ export const SpanCard: FC<SpanCardProps> = ({
     maxEnd,
   });
 
-  const hasExpandButtonAsFirstChild =
-    expandButton === "inside" && state.hasChildren;
+  const hasExpandButtonAsFirstChild = expandButton === 'inside' && state.hasChildren;
 
   const contentPadding = getContentPadding({
     level,
@@ -341,16 +316,11 @@ export const SpanCard: FC<SpanCardProps> = ({
       aria-expanded={state.hasChildren ? state.isExpanded : undefined}
       className="list-none"
     >
-      <Collapsible.Root
-        open={state.isExpanded}
-        onOpenChange={handleToggleClick}
-      >
+      <Collapsible.Root open={state.isExpanded} onOpenChange={handleToggleClick}>
         <div
           className={cn(
-            "relative grid w-full rounded-md transition-colors",
-            state.isSelected
-              ? "bg-accent/50 border border-accent"
-              : "hover:bg-muted/30",
+            'relative grid w-full rounded-md transition-colors',
+            state.isSelected ? 'bg-accent/50 border border-accent' : 'hover:bg-muted/30'
           )}
           style={{
             gridTemplateColumns,
@@ -362,7 +332,7 @@ export const SpanCard: FC<SpanCardProps> = ({
           aria-pressed={state.isSelected}
           aria-describedby={`span-card-desc-${data.id}`}
           aria-expanded={state.hasChildren ? state.isExpanded : undefined}
-          aria-label={`${state.isSelected ? "Selected" : "Not selected"} span card for ${data.title} at level ${level}`}
+          aria-label={`${state.isSelected ? 'Selected' : 'Not selected'} span card for ${data.title} at level ${level}`}
         >
           <div className="flex flex-nowrap">
             {connectors.map((connector, idx) => (
@@ -383,10 +353,10 @@ export const SpanCard: FC<SpanCardProps> = ({
           </div>
           <div
             className={cn(
-              "flex flex-nowrap items-center align-middle gap-x-3 gap py-3 px-2",
-              "min-h-5 w-full cursor-pointer",
-              level !== 0 && !hasExpandButtonAsFirstChild && "pl-2",
-              level !== 0 && hasExpandButtonAsFirstChild && "pl-1",
+              'flex flex-nowrap items-center align-middle gap-x-3 gap py-3 px-2',
+              'min-h-5 w-full cursor-pointer',
+              level !== 0 && !hasExpandButtonAsFirstChild && 'pl-2',
+              level !== 0 && hasExpandButtonAsFirstChild && 'pl-1'
             )}
           >
             <div
@@ -409,7 +379,7 @@ export const SpanCard: FC<SpanCardProps> = ({
             </div>
 
             <div className="flex flex-shrink flex-grow flex-nowrap items-center justify-end gap-1 min-w-0">
-              {expandButton === "outside" && withStatus && (
+              {expandButton === 'outside' && withStatus && (
                 <div className="flex-shrink-0">
                   <SpanStatus status={data.status} />
                 </div>
@@ -428,7 +398,7 @@ export const SpanCard: FC<SpanCardProps> = ({
                   {formatDuration(durationMs)}
                 </span>
 
-                {expandButton === "inside" && withStatus && (
+                {expandButton === 'inside' && withStatus && (
                   <div>
                     <SpanStatus status={data.status} />
                   </div>
@@ -437,7 +407,7 @@ export const SpanCard: FC<SpanCardProps> = ({
             </div>
           </div>
 
-          {expandButton === "outside" &&
+          {expandButton === 'outside' &&
             (state.hasChildren ? (
               <SpanCardToggle
                 isExpanded={state.isExpanded}

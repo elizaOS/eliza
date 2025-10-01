@@ -1,6 +1,6 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import JSONPretty from "react-json-pretty";
+import JSONPretty from 'react-json-pretty';
 
 interface RawDataTabProps {
   data: TraceSpan;
@@ -13,7 +13,7 @@ export const DetailsViewRawDataTab = ({ data }: RawDataTabProps) => (
         booleanStyle="color: hsl(var(--primary));"
         className="overflow-x-auto rounded-xl p-4 text-left"
         data={data.raw}
-        id={`json-pretty-${data.id || "span-details"}`}
+        id={`json-pretty-${data.id || 'span-details'}`}
         keyStyle="color: hsl(var(--primary));"
         mainStyle="color: hsl(var(--muted-foreground)); font-size: 12px;"
         stringStyle="color: hsl(var(--chart-2));"

@@ -690,27 +690,24 @@ describe('ElizaOS Dev Commands', () => {
         console.log('[PLUGIN DEV TEST] Starting dev server in plugin directory...');
         // Start dev server in plugin directory
         // NOTE: Using Bun.spawn directly instead of spawnDevProcess to avoid 30s timeout
-        const devProcess = Bun.spawn(
-          ['elizaos', 'dev', '--port', testServerPort.toString()],
-          {
-            cwd: pluginDir,
-            env: {
-              ...process.env,
-              LOG_LEVEL: 'info',
-              PGLITE_DATA_DIR: pluginDbDir,
-              SERVER_PORT: testServerPort.toString(),
-              NODE_ENV: 'test',
-              ELIZA_TEST_MODE: 'true',
-              BUN_TEST: 'true',
-              ELIZA_CLI_TEST_MODE: 'true',
-              NODE_OPTIONS: '--max-old-space-size=2048',
-              ELIZA_NONINTERACTIVE: 'true',
-            },
-            stdout: 'pipe',
-            stderr: 'pipe',
-            stdin: 'ignore',
-          }
-        );
+        const devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
+          cwd: pluginDir,
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            PGLITE_DATA_DIR: pluginDbDir,
+            SERVER_PORT: testServerPort.toString(),
+            NODE_ENV: 'test',
+            ELIZA_TEST_MODE: 'true',
+            BUN_TEST: 'true',
+            ELIZA_CLI_TEST_MODE: 'true',
+            NODE_OPTIONS: '--max-old-space-size=2048',
+            ELIZA_NONINTERACTIVE: 'true',
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+          stdin: 'ignore',
+        });
 
         try {
           // Wait for dev process to build and start with extended timeout for CI
@@ -772,7 +769,10 @@ describe('ElizaOS Dev Commands', () => {
 
                 if (agentDetailsResponse.ok) {
                   const agentDetailsData = await agentDetailsResponse.json();
-                  console.log('[PLUGIN DEV TEST] Agent details response:', JSON.stringify(agentDetailsData, null, 2));
+                  console.log(
+                    '[PLUGIN DEV TEST] Agent details response:',
+                    JSON.stringify(agentDetailsData, null, 2)
+                  );
 
                   // Handle nested response structure
                   const agentDetails = agentDetailsData.data || agentDetailsData;
@@ -782,8 +782,8 @@ describe('ElizaOS Dev Commands', () => {
                   expect(Array.isArray(agentDetails.plugins)).toBe(true);
 
                   // Check if plugin-openai is in the plugins list
-                  const hasOpenAIPlugin = agentDetails.plugins.some((p: string) =>
-                    p.includes('openai') || p.includes('plugin-openai')
+                  const hasOpenAIPlugin = agentDetails.plugins.some(
+                    (p: string) => p.includes('openai') || p.includes('plugin-openai')
                   );
                   expect(hasOpenAIPlugin).toBe(true);
 
@@ -796,7 +796,6 @@ describe('ElizaOS Dev Commands', () => {
           // Verify dev process is still running (file watching active)
           expect(devProcess.pid).toBeDefined();
           expect(devProcess.killed).toBe(false);
-
         } finally {
           // Cleanup dev process
           await cleanupDevProcess(devProcess, 2000);

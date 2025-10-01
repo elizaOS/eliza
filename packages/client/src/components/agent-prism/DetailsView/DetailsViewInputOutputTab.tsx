@@ -1,21 +1,21 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { Check, Copy } from "lucide-react";
-import { useState, type ReactElement } from "react";
-import JSONPretty from "react-json-pretty";
-import colors from "tailwindcss/colors";
+import { Check, Copy } from 'lucide-react';
+import { useState, type ReactElement } from 'react';
+import JSONPretty from 'react-json-pretty';
+import colors from 'tailwindcss/colors';
 
-import { CollapsibleSection } from "../CollapsibleSection";
-import { IconButton } from "../IconButton";
-import { Tabs, type TabItem } from "../Tabs";
+import { CollapsibleSection } from '../CollapsibleSection';
+import { IconButton } from '../IconButton';
+import { Tabs, type TabItem } from '../Tabs';
 
 interface DetailsViewInputOutputTabProps {
   data: TraceSpan;
 }
 
-type IOTab = "json" | "plain";
+type IOTab = 'json' | 'plain';
 
-type IOSection = "Input" | "Output";
+type IOSection = 'Input' | 'Output';
 
 export const DetailsViewInputOutputTab = ({
   data,
@@ -26,9 +26,7 @@ export const DetailsViewInputOutputTab = ({
   if (!hasInput && !hasOutput) {
     return (
       <div className="p-6 text-center">
-        <p className="text-muted-foreground ">
-          No input or output data available for this span.
-        </p>
+        <p className="text-muted-foreground ">No input or output data available for this span.</p>
       </div>
     );
   }
@@ -36,7 +34,7 @@ export const DetailsViewInputOutputTab = ({
   let parsedInput: string | null = null;
   let parsedOutput: string | null = null;
 
-  if (typeof data.input === "string") {
+  if (typeof data.input === 'string') {
     try {
       parsedInput = JSON.parse(data.input);
     } catch {
@@ -44,7 +42,7 @@ export const DetailsViewInputOutputTab = ({
     }
   }
 
-  if (typeof data.output === "string") {
+  if (typeof data.output === 'string') {
     try {
       parsedOutput = JSON.parse(data.output);
     } catch {
@@ -54,20 +52,12 @@ export const DetailsViewInputOutputTab = ({
 
   return (
     <div className="space-y-3">
-      {typeof data.input === "string" && (
-        <IOSection
-          section="Input"
-          content={data.input}
-          parsedContent={parsedInput}
-        />
+      {typeof data.input === 'string' && (
+        <IOSection section="Input" content={data.input} parsedContent={parsedInput} />
       )}
 
-      {typeof data.output === "string" && (
-        <IOSection
-          section="Output"
-          content={data.output}
-          parsedContent={parsedOutput}
-        />
+      {typeof data.output === 'string' && (
+        <IOSection section="Output" content={data.output} parsedContent={parsedOutput} />
       )}
     </div>
   );
@@ -79,23 +69,19 @@ interface IOSectionProps {
   parsedContent: string | null;
 }
 
-const IOSection = ({
-  section,
-  content,
-  parsedContent,
-}: IOSectionProps): ReactElement => {
-  const [tab, setTab] = useState<IOTab>("plain");
+const IOSection = ({ section, content, parsedContent }: IOSectionProps): ReactElement => {
+  const [tab, setTab] = useState<IOTab>('plain');
   const [open, setOpen] = useState(true);
 
   const tabItems: TabItem<IOTab>[] = [
     {
-      value: "json",
-      label: "JSON",
+      value: 'json',
+      label: 'JSON',
       disabled: !parsedContent,
     },
     {
-      value: "plain",
-      label: "Plain",
+      value: 'plain',
+      label: 'Plain',
     },
   ];
 
@@ -118,40 +104,26 @@ const IOSection = ({
       }
       triggerClassName="min-h-16"
     >
-      <IOContent
-        content={content}
-        section={section}
-        tab={tab}
-        parsedContent={parsedContent}
-      />
+      <IOContent content={content} section={section} tab={tab} parsedContent={parsedContent} />
     </CollapsibleSection>
   );
 };
 
-interface IOContentProps extends Omit<IOSectionProps, "title"> {
+interface IOContentProps extends Omit<IOSectionProps, 'title'> {
   tab: IOTab;
   parsedContent: string | null;
 }
 
-const IOContent = ({
-  tab,
-  content,
-  section,
-  parsedContent,
-}: IOContentProps): ReactElement => {
+const IOContent = ({ tab, content, section, parsedContent }: IOContentProps): ReactElement => {
   if (!content) {
-    return (
-      <p className="p-3 text-sm italic text-muted-foreground ">
-        No data available
-      </p>
-    );
+    return <p className="p-3 text-sm italic text-muted-foreground ">No data available</p>;
   }
 
   return (
     <div className="relative rounded-lg border border-border ">
       <CopyButton section={section} content={content} />
 
-      {tab === "json" && (
+      {tab === 'json' && (
         <>
           {parsedContent ? (
             <JSONPretty
@@ -165,14 +137,12 @@ const IOContent = ({
               valueStyle="color: hsl(var(--chart-1));"
             />
           ) : (
-            <div className="p-4 text-sm text-muted-foreground">
-              Invalid JSON format
-            </div>
+            <div className="p-4 text-sm text-muted-foreground">Invalid JSON format</div>
           )}
         </>
       )}
 
-      {tab === "plain" && (
+      {tab === 'plain' && (
         <div className="rounded-lg bg-muted/50 p-4">
           <pre className="overflow-x-auto whitespace-pre-wrap text-left font-mono text-xs text-foreground">
             {content}

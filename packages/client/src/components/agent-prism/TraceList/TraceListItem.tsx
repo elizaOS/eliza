@@ -1,14 +1,14 @@
-import type { TraceRecord } from "@evilmartians/agent-prism-types";
+import type { TraceRecord } from '@evilmartians/agent-prism-types';
 
-import { cn } from "@/lib/utils";
-import { useCallback, type KeyboardEvent } from "react";
+import { cn } from '@/lib/utils';
+import { useCallback, type KeyboardEvent } from 'react';
 
-import { type AvatarProps } from "../Avatar.tsx";
-import { Badge, type BadgeProps } from "../Badge.tsx";
-import { PriceBadge } from "../PriceBadge.tsx";
-import { TimestampBadge } from "../TimestampBadge.tsx";
-import { TokensBadge } from "../TokensBadge.tsx";
-import { TraceListItemHeader } from "./TraceListItemHeader.tsx";
+import { type AvatarProps } from '../Avatar.tsx';
+import { Badge, type BadgeProps } from '../Badge.tsx';
+import { PriceBadge } from '../PriceBadge.tsx';
+import { TimestampBadge } from '../TimestampBadge.tsx';
+import { TokensBadge } from '../TokensBadge.tsx';
+import { TraceListItemHeader } from './TraceListItemHeader.tsx';
 
 interface TraceListItemProps {
   trace: TraceRecord;
@@ -27,12 +27,12 @@ export const TraceListItem = ({
 }: TraceListItemProps) => {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent): void => {
-      if (e.key === "Enter" || e.key === " ") {
+      if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         onClick?.();
       }
     },
-    [onClick],
+    [onClick]
   );
 
   const { name, agentDescription, totalCost, totalTokens, startTime } = trace;
@@ -40,12 +40,10 @@ export const TraceListItem = ({
   return (
     <div
       className={cn(
-        "group w-full",
-        "flex flex-col gap-2.5 p-4",
-        "cursor-pointer",
-        isSelected
-          ? "bg-muted"
-          : "bg-card",
+        'group w-full',
+        'flex flex-col gap-2.5 p-4',
+        'cursor-pointer',
+        isSelected ? 'bg-muted' : 'bg-card'
       )}
       role="button"
       tabIndex={0}
@@ -60,19 +58,15 @@ export const TraceListItem = ({
           {agentDescription}
         </span>
 
-        {typeof totalCost === "number" && <PriceBadge cost={totalCost} />}
+        {typeof totalCost === 'number' && <PriceBadge cost={totalCost} />}
 
-        {typeof totalTokens === "number" && (
-          <TokensBadge tokensCount={totalTokens} />
-        )}
+        {typeof totalTokens === 'number' && <TokensBadge tokensCount={totalTokens} />}
 
         {badges?.map((badge, index) => (
           <Badge key={index} theme={badge.theme} size="4" label={badge.label} />
         ))}
 
-        {typeof startTime === "number" && (
-          <TimestampBadge timestamp={startTime} />
-        )}
+        {typeof startTime === 'number' && <TimestampBadge timestamp={startTime} />}
       </div>
     </div>
   );

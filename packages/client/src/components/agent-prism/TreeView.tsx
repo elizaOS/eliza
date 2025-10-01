@@ -1,10 +1,10 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { findTimeRange, flattenSpans } from "@evilmartians/agent-prism-data";
-import { cn } from "@/lib/utils";
-import { type FC } from "react";
+import { findTimeRange, flattenSpans } from '@evilmartians/agent-prism-data';
+import { cn } from '@/lib/utils';
+import { type FC } from 'react';
 
-import { SpanCard, type SpanCardViewOptions } from "./SpanCard/SpanCard";
+import { SpanCard, type SpanCardViewOptions } from './SpanCard/SpanCard';
 
 interface TreeViewProps {
   spans: TraceSpan[];
@@ -19,7 +19,7 @@ interface TreeViewProps {
 export const TreeView: FC<TreeViewProps> = ({
   spans,
   onSpanSelect,
-  className = "",
+  className = '',
   selectedSpan,
   expandedSpansIds,
   onExpandSpansIdsChange,
@@ -32,7 +32,7 @@ export const TreeView: FC<TreeViewProps> = ({
   return (
     <div className="w-full min-w-0 p-4">
       <ul
-        className={cn(className, "overflow-x-auto space-y-1")}
+        className={cn(className, 'overflow-x-auto space-y-1')}
         role="tree"
         aria-label="Hierarchical card list"
       >

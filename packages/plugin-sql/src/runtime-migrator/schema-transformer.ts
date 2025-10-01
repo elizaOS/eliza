@@ -125,7 +125,7 @@ function normalizeSchemaName(input: string): string {
   }
 
   // Remove leading and trailing underscores
-  let result = chars.join('');
+  const result = chars.join('');
 
   // Trim underscores from start and end efficiently
   let start = 0;

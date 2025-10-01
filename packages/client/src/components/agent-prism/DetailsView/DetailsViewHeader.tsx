@@ -1,11 +1,11 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { Check, Copy } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Check, Copy } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 
-import { Avatar, type AvatarProps } from "../Avatar";
-import { IconButton } from "../IconButton";
-import { SpanStatus } from "../SpanStatus.tsx";
+import { Avatar, type AvatarProps } from '../Avatar';
+import { IconButton } from '../IconButton';
+import { SpanStatus } from '../SpanStatus.tsx';
 
 export interface DetailsViewHeaderProps {
   data: TraceSpan;
@@ -29,7 +29,7 @@ export const DetailsViewHeader = ({
   avatar,
   copyButton,
   actions,
-  className = "mb-4 flex flex-wrap items-center gap-4",
+  className = 'mb-4 flex flex-wrap items-center gap-4',
 }: DetailsViewHeaderProps) => {
   const [hasCopied, setHasCopied] = useState(false);
 
@@ -46,9 +46,7 @@ export const DetailsViewHeader = ({
       <div className="flex items-center gap-1.5">
         {avatar && <Avatar size="4" {...avatar} />}
 
-        <span className="text-base tracking-wide text-foreground ">
-          {data.title}
-        </span>
+        <span className="text-base tracking-wide text-foreground ">{data.title}</span>
 
         <div className="flex size-5 items-center justify-center">
           <SpanStatus status={data.status} />
@@ -56,9 +54,7 @@ export const DetailsViewHeader = ({
 
         {copyButton && (
           <IconButton
-            aria-label={
-              copyButton.isEnabled ? "Copy span details" : "Copy disabled"
-            }
+            aria-label={copyButton.isEnabled ? 'Copy span details' : 'Copy disabled'}
             variant="ghost"
             onClick={handleCopy}
           >

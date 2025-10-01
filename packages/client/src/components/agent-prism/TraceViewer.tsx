@@ -1,40 +1,31 @@
-import {
-  flattenSpans,
-  formatDuration,
-} from "@evilmartians/agent-prism-data";
-import {
-  type TraceRecord,
-  type TraceSpan,
-} from "@evilmartians/agent-prism-types";
-import { filterSpansRecursively } from "@/lib/agent-prism-utils";
-import { cn } from "@/lib/utils";
-import { ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { flattenSpans, formatDuration } from '@evilmartians/agent-prism-data';
+import { type TraceRecord, type TraceSpan } from '@evilmartians/agent-prism-types';
+import { filterSpansRecursively } from '@/lib/agent-prism-utils';
+import { cn } from '@/lib/utils';
+import { ArrowLeft } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { BadgeProps } from "./Badge";
-import type { SpanCardViewOptions } from "./SpanCard/SpanCard";
+import type { BadgeProps } from './Badge';
+import type { SpanCardViewOptions } from './SpanCard/SpanCard';
 
-import { Button } from "./Button";
-import {
-  CollapseAllButton,
-  ExpandAllButton,
-} from "./CollapseAndExpandControls";
-import { DetailsView } from "./DetailsView/DetailsView";
-import { SearchInput } from "./SearchInput";
-import { TraceList } from "./TraceList/TraceList";
-import { TraceListItemHeader } from "./TraceList/TraceListItemHeader";
-import { TreeView } from "./TreeView";
+import { Button } from './Button';
+import { CollapseAllButton, ExpandAllButton } from './CollapseAndExpandControls';
+import { DetailsView } from './DetailsView/DetailsView';
+import { SearchInput } from './SearchInput';
+import { TraceList } from './TraceList/TraceList';
+import { TraceListItemHeader } from './TraceList/TraceListItemHeader';
+import { TreeView } from './TreeView';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "./Badge";
-import { PriceBadge } from "./PriceBadge";
-import { TimestampBadge } from "./TimestampBadge";
-import { TokensBadge } from "./TokensBadge";
+} from '@/components/ui/select';
+import { Badge } from './Badge';
+import { PriceBadge } from './PriceBadge';
+import { TimestampBadge } from './TimestampBadge';
+import { TokensBadge } from './TokensBadge';
 
 export interface TraceViewerData {
   traceRecord: TraceRecord;
@@ -49,16 +40,14 @@ export interface TraceViewerProps {
 }
 
 export const TraceViewer = ({ data }: TraceViewerProps) => {
-  const [selectedTrace, setSelectedTrace] = useState<
-    TraceRecordWithDisplayData | undefined
-  >(data[0]?.traceRecord);
-  const [selectedTraceSpans, setSelectedTraceSpans] = useState<TraceSpan[]>(
-    data[0]?.spans ?? [],
+  const [selectedTrace, setSelectedTrace] = useState<TraceRecordWithDisplayData | undefined>(
+    data[0]?.traceRecord
   );
+  const [selectedTraceSpans, setSelectedTraceSpans] = useState<TraceSpan[]>(data[0]?.spans ?? []);
   const [selectedSpan, setSelectedSpan] = useState<TraceSpan | undefined>(
-    data[0]?.spans?.[0]?.children?.[0],
+    data[0]?.spans?.[0]?.children?.[0]
   );
-  const [searchValue, setSearchValue] = useState("");
+  const [searchValue, setSearchValue] = useState('');
 
   const [traceListExpanded, setTraceListExpanded] = useState(true);
 
@@ -103,11 +92,9 @@ export const TraceViewer = ({ data }: TraceViewerProps) => {
   const handleTraceSelect = useCallback(
     (trace: TraceRecord) => {
       setSelectedTrace(trace);
-      setSelectedTraceSpans(
-        data.find((item) => item.traceRecord.id === trace.id)?.spans ?? [],
-      );
+      setSelectedTraceSpans(data.find((item) => item.traceRecord.id === trace.id)?.spans ?? []);
     },
-    [data],
+    [data]
   );
 
   const props: LayoutProps = {
@@ -201,7 +188,7 @@ const DesktopLayout = ({
                 <div className="flex items-center gap-4 w-full">
                   <span className="font-semibold text-base">{selectedTrace.name}</span>
                   <div className="flex items-center gap-2 ml-auto">
-                    {typeof selectedTrace.startTime === "number" && (
+                    {typeof selectedTrace.startTime === 'number' && (
                       <span className="text-xs text-muted-foreground font-mono">
                         {new Date(selectedTrace.startTime).toLocaleTimeString()}
                       </span>
@@ -235,7 +222,7 @@ const DesktopLayout = ({
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {typeof trace.startTime === "number" && (
+                      {typeof trace.startTime === 'number' && (
                         <span className="text-xs text-muted-foreground font-mono">
                           {new Date(trace.startTime).toLocaleTimeString()}
                         </span>
@@ -264,7 +251,7 @@ const DesktopLayout = ({
               <SearchInput
                 id="span-search-desktop"
                 name="search"
-                onClear={() => setSearchValue("")}
+                onClear={() => setSearchValue('')}
                 value={searchValue}
                 onValueChange={setSearchValue}
                 className="max-w-60 grow"
@@ -279,9 +266,7 @@ const DesktopLayout = ({
             </div>
 
             {filteredSpans.length === 0 ? (
-              <div className="p-3 text-center text-muted-foreground">
-                No spans found
-              </div>
+              <div className="p-3 text-center text-muted-foreground">No spans found</div>
             ) : (
               <TreeView
                 spans={filteredSpans}
@@ -325,7 +310,7 @@ const DesktopLayout = ({
                       )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {typeof trace.startTime === "number" && (
+                      {typeof trace.startTime === 'number' && (
                         <span className="text-xs text-muted-foreground font-mono">
                           {new Date(trace.startTime).toLocaleTimeString()}
                         </span>
@@ -408,7 +393,7 @@ const MobileLayout = ({
             <SearchInput
               id="span-search-mobile"
               name="search"
-              onClear={() => setSearchValue("")}
+              onClear={() => setSearchValue('')}
               value={searchValue}
               onValueChange={setSearchValue}
               className="max-w-60 grow"
@@ -423,9 +408,7 @@ const MobileLayout = ({
           </div>
 
           {filteredSpans.length === 0 ? (
-            <div className="p-3 text-center text-muted-foreground">
-              No spans found
-            </div>
+            <div className="p-3 text-center text-muted-foreground">No spans found</div>
           ) : (
             <TreeView
               spans={filteredSpans}
