@@ -68,8 +68,19 @@ export interface IDatabaseAdapter {
   /** Initialize database connection */
   init(): Promise<void>;
 
-  /** Run database migrations */
-  runMigrations(schema?: any, pluginName?: string): Promise<void>;
+  /**
+   * Run plugin schema migrations for all registered plugins
+   * @param plugins Array of plugins with their schemas
+   * @param options Migration options (verbose, force, dryRun, etc.)
+   */
+  runPluginMigrations?(
+    plugins: Array<{ name: string; schema?: any }>,
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void>;
 
   /** Check if the database connection is ready */
   isReady(): Promise<boolean>;

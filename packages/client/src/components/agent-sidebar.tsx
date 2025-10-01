@@ -123,10 +123,10 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
 
       <TabsContent
         value="timeline"
-        className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0"
+        className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0 p-0"
       >
         {detailsTab === 'timeline' && agentId && (
-          <div className="w-full max-w-full p-4">
+          <div className="w-full max-w-full h-full">
             <AgentRunTimeline agentId={agentId} />
           </div>
         )}

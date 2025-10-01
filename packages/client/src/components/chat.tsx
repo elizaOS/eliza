@@ -372,10 +372,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
@@ -1360,11 +1360,11 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     (typeof channel.metadata?.createdAt === 'string' ||
-                                    typeof channel.metadata?.createdAt === 'number'
+                                      typeof channel.metadata?.createdAt === 'number'
                                       ? channel.metadata.createdAt
                                       : null) ||
-                                      channel.updatedAt ||
-                                      channel.createdAt
+                                    channel.updatedAt ||
+                                    channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -1773,7 +1773,7 @@ export default function Chat({
                 !chatState.isMobile && (
                   <>
                     <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
+                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={15} maxSize={85}>
                       <AgentSidebar
                         agentId={sidebarAgentId}
                         agentName={sidebarAgentName}
