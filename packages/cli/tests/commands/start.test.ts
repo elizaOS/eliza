@@ -564,7 +564,10 @@ describe('ElizaOS Start Commands', () => {
           expect(agentDetailsResponse.ok).toBe(true);
 
           const agentDetailsData = await agentDetailsResponse.json();
-          console.log('[PLUGIN TEST] Agent details response:', JSON.stringify(agentDetailsData, null, 2));
+          console.log(
+            '[PLUGIN TEST] Agent details response:',
+            JSON.stringify(agentDetailsData, null, 2)
+          );
 
           // Handle nested response structure
           const agentDetails = agentDetailsData.data || agentDetailsData;
@@ -574,8 +577,8 @@ describe('ElizaOS Start Commands', () => {
           expect(Array.isArray(agentDetails.plugins)).toBe(true);
 
           // Check if plugin-openai is in the plugins list
-          const hasOpenAIPlugin = agentDetails.plugins.some((p: string) =>
-            p.includes('openai') || p.includes('plugin-openai')
+          const hasOpenAIPlugin = agentDetails.plugins.some(
+            (p: string) => p.includes('openai') || p.includes('plugin-openai')
           );
           expect(hasOpenAIPlugin).toBe(true);
 

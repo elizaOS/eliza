@@ -1,13 +1,9 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { Badge } from "../Badge.tsx";
-import { PriceBadge } from "../PriceBadge.tsx";
-import {
-  getSpanCategoryIcon,
-  getSpanCategoryLabel,
-  getSpanCategoryTheme,
-} from "../shared.ts";
-import { TokensBadge } from "../TokensBadge.tsx";
+import { Badge } from '../Badge.tsx';
+import { PriceBadge } from '../PriceBadge.tsx';
+import { getSpanCategoryIcon, getSpanCategoryLabel, getSpanCategoryTheme } from '../shared.ts';
+import { TokensBadge } from '../TokensBadge.tsx';
 
 interface SpanCardBagdesProps {
   data: TraceSpan;
@@ -25,11 +21,9 @@ export const SpanCardBadges = ({ data }: SpanCardBagdesProps) => {
         label={getSpanCategoryLabel(data.type)}
       />
 
-      {typeof data.tokensCount === "number" && (
-        <TokensBadge tokensCount={data.tokensCount} />
-      )}
+      {typeof data.tokensCount === 'number' && <TokensBadge tokensCount={data.tokensCount} />}
 
-      {typeof data.cost === "number" && <PriceBadge cost={data.cost} />}
+      {typeof data.cost === 'number' && <PriceBadge cost={data.cost} />}
     </div>
   );
 };

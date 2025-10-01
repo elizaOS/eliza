@@ -1,14 +1,14 @@
-import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { cn } from '@/lib/utils';
+import { X } from 'lucide-react';
 import {
   useRef,
   type ChangeEvent,
   type ComponentPropsWithRef,
   type ReactNode,
   type RefObject,
-} from "react";
+} from 'react';
 
-export type TextInputProps = ComponentPropsWithRef<"input"> & {
+export type TextInputProps = ComponentPropsWithRef<'input'> & {
   /**
    * Callback fired when the input value changes
    */
@@ -53,7 +53,7 @@ export type TextInputProps = ComponentPropsWithRef<"input"> & {
 };
 
 const iconBaseClassName =
-  "absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-foreground";
+  'absolute top-1/2 -translate-y-1/2 flex items-center justify-center text-foreground';
 
 export const TextInput = ({
   className,
@@ -87,22 +87,19 @@ export const TextInput = ({
   };
 
   return (
-    <div className={cn("w-full", className)}>
+    <div className={cn('w-full', className)}>
       {label && (
         <label
           htmlFor={id}
-          className={cn(
-            "block text-sm font-medium text-foreground ",
-            hideLabel && "sr-only",
-          )}
+          className={cn('block text-sm font-medium text-foreground ', hideLabel && 'sr-only')}
         >
           {label}
         </label>
       )}
       <div
         className={cn(
-          "relative flex w-full items-center justify-center",
-          label && !hideLabel && "mt-1",
+          'relative flex w-full items-center justify-center',
+          label && !hideLabel && 'mt-1'
         )}
       >
         <input
@@ -111,24 +108,24 @@ export const TextInput = ({
           onChange={handleChange}
           className={cn(
             inputClassName,
-            "flex h-7 items-center truncate",
-            "w-full px-2",
-            !!startIcon && "pl-8",
-            !!onClear && "pr-8",
-            "rounded border border-border bg-transparent ",
-            "text-foreground placeholder:text-muted-foreground ",
-            "hover:border-border dark:hover:border-gray-700",
+            'flex h-7 items-center truncate',
+            'w-full px-2',
+            !!startIcon && 'pl-8',
+            !!onClear && 'pr-8',
+            'rounded border border-border bg-transparent ',
+            'text-foreground placeholder:text-muted-foreground ',
+            'hover:border-border dark:hover:border-gray-700'
           )}
           {...rest}
         />
         {startIcon && (
-          <div className={cn(iconBaseClassName, "left-2")} aria-hidden>
+          <div className={cn(iconBaseClassName, 'left-2')} aria-hidden>
             {startIcon}
           </div>
         )}
         {onClear && rest.value && (
           <button
-            className={cn(iconBaseClassName, "right-2")}
+            className={cn(iconBaseClassName, 'right-2')}
             aria-label="Clear input value"
             onClick={handleClear}
             type="button"

@@ -1,15 +1,11 @@
-import type { TraceSpan } from "@evilmartians/agent-prism-types";
+import type { TraceSpan } from '@evilmartians/agent-prism-types';
 
-import { getDurationMs, formatDuration } from "@evilmartians/agent-prism-data";
-import { Coins } from "lucide-react";
+import { getDurationMs, formatDuration } from '@evilmartians/agent-prism-data';
+import { Coins } from 'lucide-react';
 
-import { Badge } from "../Badge";
-import {
-  getSpanCategoryIcon,
-  getSpanCategoryLabel,
-  getSpanCategoryTheme,
-} from "../shared.ts";
-import { TimestampBadge } from "../TimestampBadge.tsx";
+import { Badge } from '../Badge';
+import { getSpanCategoryIcon, getSpanCategoryLabel, getSpanCategoryTheme } from '../shared.ts';
+import { TimestampBadge } from '../TimestampBadge.tsx';
 
 interface DetailsViewMetricsProps {
   data: TraceSpan;
@@ -28,7 +24,7 @@ export const DetailsViewMetrics = ({ data }: DetailsViewMetricsProps) => {
         label={getSpanCategoryLabel(data.type)}
       />
 
-      {typeof data.tokensCount === "number" && (
+      {typeof data.tokensCount === 'number' && (
         <Badge
           iconStart={<Coins className="size-2.5" />}
           theme="gray"
@@ -37,17 +33,13 @@ export const DetailsViewMetrics = ({ data }: DetailsViewMetricsProps) => {
         />
       )}
 
-      {typeof data.cost === "number" && (
+      {typeof data.cost === 'number' && (
         <Badge theme="gray" size="4" label={`$ ${data.cost.toFixed(4)}`} />
       )}
 
-      <span className="text-xs text-muted-foreground">
-        LATENCY: {formatDuration(durationMs)}
-      </span>
+      <span className="text-xs text-muted-foreground">LATENCY: {formatDuration(durationMs)}</span>
 
-      {typeof data.startTime === "number" && (
-        <TimestampBadge timestamp={data.startTime} />
-      )}
+      {typeof data.startTime === 'number' && <TimestampBadge timestamp={data.startTime} />}
     </div>
   );
 };

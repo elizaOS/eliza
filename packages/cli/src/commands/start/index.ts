@@ -170,9 +170,7 @@ export const start = new Command()
         for (const projectAgent of projectAgents) {
           try {
             // Validate and safely access the agent's plugins array
-            const agentPlugins = Array.isArray(projectAgent.plugins)
-              ? projectAgent.plugins
-              : [];
+            const agentPlugins = Array.isArray(projectAgent.plugins) ? projectAgent.plugins : [];
 
             const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
 

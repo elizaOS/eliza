@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
 export interface DetailsViewHeaderActionsProps {
   /**
@@ -13,7 +13,7 @@ export interface DetailsViewHeaderActionsProps {
 
 export const DetailsViewHeaderActions = ({
   children,
-  className = "flex flex-wrap items-center gap-2",
+  className = 'flex flex-wrap items-center gap-2',
 }: DetailsViewHeaderActionsProps) => {
   if (!children) return null;
 

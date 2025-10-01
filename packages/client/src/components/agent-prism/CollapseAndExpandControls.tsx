@@ -1,44 +1,28 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef } from 'react';
 
-import { ChevronsUpDown, ChevronsDownUp } from "lucide-react";
+import { ChevronsUpDown, ChevronsDownUp } from 'lucide-react';
 
-import { IconButton } from "./IconButton.tsx";
+import { IconButton } from './IconButton.tsx';
 
-export type SpanCardExpandAllButtonProps = ComponentPropsWithRef<"button"> & {
+export type SpanCardExpandAllButtonProps = ComponentPropsWithRef<'button'> & {
   onExpandAll: () => void;
 };
 
-export type SpanCardCollapseAllButtonProps = ComponentPropsWithRef<"button"> & {
+export type SpanCardCollapseAllButtonProps = ComponentPropsWithRef<'button'> & {
   onCollapseAll: () => void;
 };
 
-export const ExpandAllButton = ({
-  onExpandAll,
-  ...rest
-}: SpanCardExpandAllButtonProps) => {
+export const ExpandAllButton = ({ onExpandAll, ...rest }: SpanCardExpandAllButtonProps) => {
   return (
-    <IconButton
-      size="7"
-      onClick={onExpandAll}
-      aria-label="Expand all"
-      {...rest}
-    >
+    <IconButton size="7" onClick={onExpandAll} aria-label="Expand all" {...rest}>
       <ChevronsUpDown className="size-3.5" />
     </IconButton>
   );
 };
 
-export const CollapseAllButton = ({
-  onCollapseAll,
-  ...rest
-}: SpanCardCollapseAllButtonProps) => {
+export const CollapseAllButton = ({ onCollapseAll, ...rest }: SpanCardCollapseAllButtonProps) => {
   return (
-    <IconButton
-      size="7"
-      onClick={onCollapseAll}
-      aria-label="Collapse all"
-      {...rest}
-    >
+    <IconButton size="7" onClick={onCollapseAll} aria-label="Collapse all" {...rest}>
       <ChevronsDownUp className="size-3.5" />
     </IconButton>
   );

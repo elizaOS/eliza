@@ -1,8 +1,8 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef } from 'react';
 
-import * as RadixTabs from "@radix-ui/react-tabs";
-import { cn } from "@/lib/utils";
-import * as React from "react";
+import * as RadixTabs from '@radix-ui/react-tabs';
+import { cn } from '@/lib/utils';
+import * as React from 'react';
 
 export interface TabItem<T extends string = string> {
   value: T;
@@ -11,14 +11,14 @@ export interface TabItem<T extends string = string> {
   disabled?: boolean;
 }
 
-export type TabTheme = "underline" | "pill";
+export type TabTheme = 'underline' | 'pill';
 
 const BASE_TRIGGER =
-  "text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
+  'text-sm font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed';
 
 const THEMES = {
   underline: {
-    list: "h-9 flex border-b border-border ",
+    list: 'h-9 flex border-b border-border ',
     trigger: `w-full justify-center px-3 ${BASE_TRIGGER} 
       text-muted-foreground hover:text-foreground data-[state=active]:text-foreground
        dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
@@ -27,7 +27,7 @@ const THEMES = {
       hover:border-muted `,
   },
   pill: {
-    list: "h-9 inline-flex gap-1 p-1 bg-muted rounded-lg",
+    list: 'h-9 inline-flex gap-1 p-1 bg-muted rounded-lg',
     trigger: `px-3 ${BASE_TRIGGER} rounded-md
       text-muted-foreground hover:text-foreground data-[state=active]:text-foreground
        dark:hover:text-gray-200 dark:data-[state=active]:text-gray-200
@@ -36,10 +36,7 @@ const THEMES = {
   },
 } as const;
 
-export type TabsProps<T extends string = string> = Omit<
-  ComponentPropsWithRef<"div">,
-  "dir"
-> & {
+export type TabsProps<T extends string = string> = Omit<ComponentPropsWithRef<'div'>, 'dir'> & {
   /**
    * Array of tab items to display
    */
@@ -84,7 +81,7 @@ export type TabsProps<T extends string = string> = Omit<
   /**
    * The direction of the content of the tabs
    */
-  dir?: "ltr" | "rtl";
+  dir?: 'ltr' | 'rtl';
 };
 
 export const Tabs = <T extends string = string>({
@@ -92,10 +89,10 @@ export const Tabs = <T extends string = string>({
   defaultValue,
   value,
   onValueChange,
-  theme = "underline",
-  className = "",
-  tabsListClassName = "",
-  triggerClassName = "",
+  theme = 'underline',
+  className = '',
+  tabsListClassName = '',
+  triggerClassName = '',
   dir,
   ...rest
 }: TabsProps<T>) => {
@@ -122,9 +119,9 @@ export const Tabs = <T extends string = string>({
             value={item.value}
             disabled={item.disabled}
             className={cn(
-              "flex items-center overflow-hidden",
+              'flex items-center overflow-hidden',
               currentTheme.trigger,
-              triggerClassName,
+              triggerClassName
             )}
           >
             {item.icon && (

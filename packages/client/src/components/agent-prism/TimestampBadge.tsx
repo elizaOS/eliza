@@ -1,17 +1,13 @@
-import type { ComponentPropsWithRef } from "react";
+import type { ComponentPropsWithRef } from 'react';
 
-import { Badge, type BadgeProps } from "./Badge";
+import { Badge, type BadgeProps } from './Badge';
 
-export type TimestampBadgeProps = ComponentPropsWithRef<"span"> & {
+export type TimestampBadgeProps = ComponentPropsWithRef<'span'> & {
   timestamp: number;
-  size?: BadgeProps["size"];
+  size?: BadgeProps['size'];
 };
 
-export const TimestampBadge = ({
-  timestamp,
-  size,
-  ...rest
-}: TimestampBadgeProps) => {
+export const TimestampBadge = ({ timestamp, size, ...rest }: TimestampBadgeProps) => {
   return (
     <Badge
       variant="outline"
