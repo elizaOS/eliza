@@ -1,7 +1,0 @@
-services:
-  docs:
-    build:
-      dockerfile: Dockerfile.docs
-      context: .
-    ports:
-      - 3000:3000
