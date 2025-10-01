@@ -17,6 +17,7 @@ import type {
 /**
  * Core message bus for real-time messaging
  * Supports dependency injection via adapters
+ * Shared across all agents on the server for group chat support
  */
 export class MessageBusCore extends EventTarget {
   private adapters: MessageBusAdapter[] = [];
@@ -72,20 +73,42 @@ export class MessageBusCore extends EventTarget {
       timestamp: Date.now(),
     };
 
+    console.log(
+      `[MessageBusCore] Sending message ${message.id} from ${message.authorName} to channel ${message.channelId}`
+    );
+    console.log(`[MessageBusCore] Active adapters: ${this.adapters.map((a) => a.name).join(', ')}`);
+
     // Emit to local subscribers first (immediate UI feedback)
     this.emitToSubscribers(message);
+    console.log(
+      `[MessageBusCore] Emitted to ${this.getSubscriberCount(message.channelId)} local subscribers`
+    );
 
     // Pass through all adapters in parallel
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       this.adapters.map(async (adapter) => {
         try {
+          console.log(`[MessageBusCore] Calling adapter '${adapter.name}'...`);
           await adapter.onMessage?.(message);
+          console.log(`[MessageBusCore] Adapter '${adapter.name}' completed`);
         } catch (error) {
           console.error(`[MessageBusCore] Adapter '${adapter.name}' failed:`, error);
+          throw error;
         }
       })
     );
 
+    // Log any adapter failures
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        console.error(
+          `[MessageBusCore] Adapter ${this.adapters[index].name} rejected:`,
+          result.reason
+        );
+      }
+    });
+
+    console.log(`[MessageBusCore] Message ${message.id} processing complete`);
     return message;
   }
 

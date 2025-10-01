@@ -10,7 +10,6 @@ import {
   getUploadsAgentsDir,
   ElizaOS,
   MessageBusCore,
-  MessageDatabaseAdapter,
   AgentAdapter,
 } from '@elizaos/core';
 import cors from 'cors';
@@ -537,13 +536,14 @@ export class AgentServer {
 
   /**
    * Initialize MessageBusCore with adapters
-   * Sets up database, Socket.io, and agent adapters for message routing
+   * Sets up Socket.io adapter for broadcasting
+   * Runtime will be passed when agents are registered
    */
   private async initializeMessageBus(): Promise<void> {
     try {
       logger.info('[MessageBus] Initializing MessageBusCore...');
 
-      // Create the core message bus
+      // Create the core message bus (no runtime yet - will be set per-agent)
       this.messageBus = new MessageBusCore();
 
       // Register Socket.io adapter for broadcasting to clients
@@ -552,7 +552,6 @@ export class AgentServer {
       logger.success('[MessageBus] Registered Socket.io adapter');
 
       // Agent adapters will be registered when agents are started
-      // Database adapters will be registered per-agent (each agent has its own DB adapter)
 
       logger.success('[MessageBus] MessageBusCore initialized');
     } catch (error) {
@@ -1253,23 +1252,29 @@ export class AgentServer {
       }
 
       // Register agent with MessageBusCore
-      if (this.messageBus && (runtime as any).databaseAdapter) {
+      if (this.messageBus) {
         try {
-          // Register database adapter for this agent
-          const dbAdapter = new MessageDatabaseAdapter(runtime, (runtime as any).databaseAdapter);
-          this.messageBus.use(dbAdapter);
+          // NOTE: We DON'T register MessageDatabaseAdapter in server mode
+          // Bootstrap's MESSAGE_RECEIVED handler will handle storage (with embeddings, etc.)
+          // MessageDatabaseAdapter is only for browser-only mode
 
           // Register agent adapter for processing messages
           const agentAdapter = new AgentAdapter(runtime, this.messageBus);
           this.messageBus.use(agentAdapter);
 
-          logger.success(`[MessageBus] Registered adapters for agent ${runtime.character.name}`);
+          logger.success(
+            `[MessageBus] Registered agent adapter for ${runtime.character.name} (total adapters: ${this.messageBus.getAdapters().length})`
+          );
         } catch (error) {
           logger.error(
             { error },
             `[MessageBus] Failed to register adapters for agent ${runtime.character.name}`
           );
         }
+      } else {
+        logger.warn(
+          `[MessageBus] Cannot register adapters for agent ${runtime.character.name}: messageBus not initialized`
+        );
       }
 
       // Register TEE plugin if present

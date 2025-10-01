@@ -20,9 +20,11 @@ export class SocketIOAdapter implements MessageBusAdapter {
    */
   async onMessage(message: Message): Promise<void> {
     try {
-      // Broadcast to all clients in this channel
-      // Format matches existing messageBroadcast event structure
-      this.io.to(message.channelId).emit('messageBroadcast', {
+      console.log(
+        `[SocketIOAdapter] Broadcasting message ${message.id} from ${message.authorName} to channel ${message.channelId}`
+      );
+
+      const broadcastData = {
         id: message.id,
         senderId: message.authorId,
         senderName: message.authorName,
@@ -37,7 +39,13 @@ export class SocketIOAdapter implements MessageBusAdapter {
         thought: message.metadata?.thought,
         actions: message.metadata?.actions,
         inReplyTo: message.inReplyTo,
-      });
+      };
+
+      // Broadcast to all clients in this channel
+      // Format matches existing messageBroadcast event structure
+      this.io.to(message.channelId).emit('messageBroadcast', broadcastData);
+
+      console.log(`[SocketIOAdapter] Message broadcast complete for channel ${message.channelId}`);
     } catch (error) {
       console.error('[SocketIOAdapter] Error broadcasting message:', error);
     }

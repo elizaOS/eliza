@@ -7,6 +7,7 @@
 import type { MessageBusAdapter, Message } from '../types';
 import type { IAgentRuntime, Memory, Content, UUID, Media } from '../../types';
 import { EventType } from '../../types';
+import { createUniqueUuid } from '../../entities';
 
 /**
  * Agent adapter that processes messages through the agent runtime
@@ -25,16 +26,28 @@ export class AgentAdapter implements MessageBusAdapter {
    */
   async onMessage(message: Message): Promise<void> {
     try {
+      console.log(
+        `[AgentAdapter] Processing message ${message.id} from ${message.authorName} in channel ${message.channelId}`
+      );
+
       // Skip if this message is from this agent (avoid loops)
       if (message.authorId === this.runtime.agentId) {
+        console.log(
+          `[AgentAdapter] Skipping message from self (agent ${this.runtime.character.name})`
+        );
         return;
       }
 
       // Transform message to agent Memory format
       const memory = this.transformToMemory(message);
+      console.log(`[AgentAdapter] Transformed to memory, emitting MESSAGE_RECEIVED event`);
 
       // Create callback for agent response
       const callback = async (responseContent: Content): Promise<Memory[]> => {
+        console.log(
+          `[AgentAdapter] Agent ${this.runtime.character.name} generated response, sending back through bus`
+        );
+
         // Send agent's response back through the bus
         await this.messageBus.send({
           channelId: message.channelId,
@@ -52,6 +65,7 @@ export class AgentAdapter implements MessageBusAdapter {
           attachments: responseContent.attachments,
         });
 
+        console.log(`[AgentAdapter] Agent response sent through bus successfully`);
         return [];
       };
 
@@ -62,6 +76,10 @@ export class AgentAdapter implements MessageBusAdapter {
         message: memory,
         callback,
       });
+
+      console.log(
+        `[AgentAdapter] MESSAGE_RECEIVED event emitted for agent ${this.runtime.character.name}`
+      );
     } catch (error) {
       console.error('[AgentAdapter] Error processing message:', error);
     }
@@ -69,23 +87,29 @@ export class AgentAdapter implements MessageBusAdapter {
 
   /**
    * Transform MessageBus Message to agent Memory format
-   * Simplified: use message IDs directly, runtime will handle UUID swizzling
+   * Uses UUID-swizzled IDs for agent-specific storage
    */
   private transformToMemory(message: Message): Memory {
-    // Create Memory object with direct IDs
-    // Runtime/bootstrap will handle any necessary transformations
+    // Create agent-specific swizzled UUIDs
+    const roomId = createUniqueUuid(this.runtime, message.channelId);
+    const worldId = createUniqueUuid(this.runtime, message.serverId);
+    const entityId = createUniqueUuid(this.runtime, message.authorId);
+    const messageId = createUniqueUuid(this.runtime, message.id);
+
     const memory: Memory = {
-      id: message.id as UUID,
-      entityId: message.authorId as UUID,
+      id: messageId,
+      entityId: entityId,
       agentId: this.runtime.agentId,
-      roomId: message.channelId as UUID,
-      worldId: message.serverId as UUID,
+      roomId: roomId,
+      worldId: worldId,
       content: {
         text: message.content,
         source: message.source || 'message-bus',
         attachments: (message.attachments as Media[]) || [],
         metadata: message.metadata,
-        inReplyTo: message.inReplyTo as UUID | undefined,
+        inReplyTo: message.inReplyTo
+          ? (createUniqueUuid(this.runtime, message.inReplyTo) as UUID)
+          : undefined,
       },
       createdAt: message.timestamp,
     };

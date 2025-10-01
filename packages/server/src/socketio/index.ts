@@ -150,6 +150,11 @@ export class SocketIORouter {
     socket.join(channelId);
     logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
 
+    // Load and send previous messages from this channel
+    this.loadAndSendChannelHistory(socket, channelId).catch((error) => {
+      logger.error(`[SocketIO] Error loading channel history: ${error}`);
+    });
+
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
     if (entityId && (serverId || DEFAULT_SERVER_ID)) {
       const finalServerId = serverId || DEFAULT_SERVER_ID;
@@ -344,66 +349,148 @@ export class SocketIORouter {
         );
       }
 
-      const newRootMessageData = {
-        channelId: channelId as UUID,
-        authorId: senderId as UUID,
-        content: message as string,
-        rawMessage: payload,
-        metadata: {
-          ...(metadata || {}),
-          user_display_name: senderName,
-          socket_id: socket.id,
-          serverId: serverId as UUID,
-          attachments,
-        },
-        sourceType: source || 'socketio_client',
-      };
+      // Use MessageBusCore for simplified message routing
+      // This automatically handles: DB storage, Socket.io broadcast, and agent processing
+      if (this.serverInstance.messageBus) {
+        logger.info(
+          `[SocketIO ${socket.id}] Routing message through MessageBusCore for ${channelId}`
+        );
 
-      const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
+        // Transform attachments for web client
+        const transformedAttachments = attachmentsToApiUrls(attachments);
 
-      logger.info(
-        `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
-      );
+        // Send through MessageBusCore - adapters handle everything in parallel
+        const sentMessage = await this.serverInstance.messageBus.send({
+          channelId: channelId,
+          serverId: serverId,
+          authorId: senderId,
+          authorName: senderName || 'User',
+          content: message,
+          source: source || 'socketio_client',
+          attachments: transformedAttachments as unknown[],
+          metadata: {
+            ...(metadata || {}),
+            user_display_name: senderName,
+            socket_id: socket.id,
+            clientMessageId: payload.messageId,
+          },
+        });
 
-      // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(attachments);
+        logger.info(
+          `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) processed by MessageBusCore (ID: ${sentMessage.id})`
+        );
 
-      // Immediately broadcast the message to all clients in the channel
-      const messageBroadcast = {
-        id: createdRootMessage.id,
-        senderId: senderId,
-        senderName: senderName || 'User',
-        text: message,
-        channelId: channelId,
-        roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Use serverId at message server layer
-        createdAt: new Date(createdRootMessage.createdAt).getTime(),
-        source: source || 'socketio_client',
-        attachments: transformedAttachments,
-      };
+        // Send acknowledgment to sender
+        socket.emit('messageAck', {
+          clientMessageId: payload.messageId,
+          messageId: sentMessage.id,
+          status: 'received_by_server_and_processing',
+          channelId,
+          roomId: channelId, // Keep for backward compatibility
+        });
+      } else {
+        // Fallback to old method if MessageBus not initialized (shouldn't happen)
+        logger.warn(
+          `[SocketIO ${socket.id}] MessageBusCore not available, falling back to legacy method`
+        );
 
-      // Broadcast to everyone in the channel except the sender
-      socket.to(channelId).emit('messageBroadcast', messageBroadcast);
+        const newRootMessageData = {
+          channelId: channelId as UUID,
+          authorId: senderId as UUID,
+          content: message as string,
+          rawMessage: payload,
+          metadata: {
+            ...(metadata || {}),
+            user_display_name: senderName,
+            socket_id: socket.id,
+            serverId: serverId as UUID,
+            attachments,
+          },
+          sourceType: source || 'socketio_client',
+        };
 
-      // Also send back to the sender with the server-assigned ID
-      socket.emit('messageBroadcast', {
-        ...messageBroadcast,
-        clientMessageId: payload.messageId,
-      });
+        const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
 
-      socket.emit('messageAck', {
-        clientMessageId: payload.messageId,
-        messageId: createdRootMessage.id,
-        status: 'received_by_server_and_processing',
-        channelId,
-        roomId: channelId, // Keep for backward compatibility
-      });
+        // Transform attachments for web client
+        const transformedAttachments = attachmentsToApiUrls(attachments);
+
+        // Manually broadcast
+        const messageBroadcast = {
+          id: createdRootMessage.id,
+          senderId: senderId,
+          senderName: senderName || 'User',
+          text: message,
+          channelId: channelId,
+          roomId: channelId,
+          serverId: serverId,
+          createdAt: new Date(createdRootMessage.createdAt).getTime(),
+          source: source || 'socketio_client',
+          attachments: transformedAttachments,
+        };
+
+        socket.to(channelId).emit('messageBroadcast', messageBroadcast);
+        socket.emit('messageBroadcast', {
+          ...messageBroadcast,
+          clientMessageId: payload.messageId,
+        });
+
+        socket.emit('messageAck', {
+          clientMessageId: payload.messageId,
+          messageId: createdRootMessage.id,
+          status: 'received_by_server_and_processing',
+          channelId,
+          roomId: channelId,
+        });
+      }
     } catch (error: any) {
       logger.error(
         `[SocketIO ${socket.id}] Error during central submission for message: ${error.message}`,
         error
       );
       this.sendErrorResponse(socket, `[SocketIO] Error processing your message: ${error.message}`);
+    }
+  }
+
+  private async loadAndSendChannelHistory(socket: Socket, channelId: string): Promise<void> {
+    try {
+      logger.info(`[SocketIO] Loading message history for channel ${channelId}`);
+
+      // Get messages from the channel via the server's database
+      const messages = await this.serverInstance.getMessagesForChannel(channelId as UUID, 50);
+
+      if (messages && messages.length > 0) {
+        logger.info(
+          `[SocketIO] Sending ${messages.length} historical messages to socket ${socket.id}`
+        );
+
+        // Send each message to the client
+        for (const msg of messages) {
+          const msgAttachments = (msg.metadata?.attachments || []) as any;
+          const transformedAttachments = attachmentsToApiUrls(msgAttachments);
+
+          socket.emit('messageBroadcast', {
+            id: msg.id,
+            senderId: msg.authorId,
+            senderName: msg.metadata?.user_display_name || msg.metadata?.agent_name || 'User',
+            text: msg.content,
+            channelId: channelId,
+            roomId: channelId,
+            serverId: (msg.metadata?.serverId as string) || undefined,
+            createdAt: new Date(msg.createdAt).getTime(),
+            source: msg.sourceType,
+            attachments: transformedAttachments,
+            metadata: msg.metadata,
+          });
+        }
+
+        logger.success(
+          `[SocketIO] Sent ${messages.length} historical messages to socket ${socket.id}`
+        );
+      } else {
+        logger.info(`[SocketIO] No message history found for channel ${channelId}`);
+      }
+    } catch (error: any) {
+      logger.error(`[SocketIO] Error loading channel history:`, error);
     }
   }
 
