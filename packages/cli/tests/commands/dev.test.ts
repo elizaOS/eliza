@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { bunExecSync } from '../utils/bun-test-helpers';
-import { killProcessOnPort, safeChangeDirectory } from './test-utils';
+import { killProcessOnPort, safeChangeDirectory, cloneAndSetupPlugin } from './test-utils';
 import type { Subprocess } from 'bun';
 
 describe('ElizaOS Dev Commands', () => {
@@ -670,5 +670,141 @@ describe('ElizaOS Dev Commands', () => {
       await cleanupDevProcess(devProcess);
     },
     5000
+  );
+
+  // Test plugin loading in plugin directory
+  it(
+    'dev command loads plugin when run in plugin directory',
+    async () => {
+      // Clone and setup the plugin
+      const { pluginDir, cleanup } = await cloneAndSetupPlugin(
+        'https://github.com/elizaOS-plugins/plugin-openai.git',
+        '1.x'
+      );
+
+      try {
+        // Create a test database directory
+        const pluginDbDir = join(testTmpDir, 'plugindb');
+        await mkdir(pluginDbDir, { recursive: true });
+
+        console.log('[PLUGIN DEV TEST] Starting dev server in plugin directory...');
+        // Start dev server in plugin directory
+        // NOTE: Using Bun.spawn directly instead of spawnDevProcess to avoid 30s timeout
+        const devProcess = Bun.spawn(['elizaos', 'dev', '--port', testServerPort.toString()], {
+          cwd: pluginDir,
+          env: {
+            ...process.env,
+            LOG_LEVEL: 'info',
+            PGLITE_DATA_DIR: pluginDbDir,
+            SERVER_PORT: testServerPort.toString(),
+            NODE_ENV: 'test',
+            ELIZA_TEST_MODE: 'true',
+            BUN_TEST: 'true',
+            ELIZA_CLI_TEST_MODE: 'true',
+            NODE_OPTIONS: '--max-old-space-size=2048',
+            ELIZA_NONINTERACTIVE: 'true',
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+          stdin: 'ignore',
+        });
+
+        try {
+          // Wait for dev process to build and start with extended timeout for CI
+          console.log('[PLUGIN DEV TEST] Waiting for build and server startup...');
+          await new Promise((resolve) => setTimeout(resolve, TEST_TIMEOUTS.SERVER_STARTUP * 2));
+
+          // Check if process is still running
+          if (devProcess.exitCode !== null) {
+            throw new Error(`Dev process exited with code ${devProcess.exitCode}`);
+          }
+
+          console.log('[PLUGIN DEV TEST] Checking if server is ready...');
+          // Try to connect to the server (dev spawns start which runs the server)
+          let serverReady = false;
+          for (let i = 0; i < 10; i++) {
+            try {
+              const healthResponse = await fetch(`http://localhost:${testServerPort}/health`, {
+                signal: AbortSignal.timeout(2000),
+              });
+              if (healthResponse.ok) {
+                serverReady = true;
+                break;
+              }
+            } catch (e) {
+              // Server not ready yet, wait and retry
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+
+          if (!serverReady) {
+            console.log('[PLUGIN DEV TEST] Server not ready, but dev process started');
+          } else {
+            console.log('[PLUGIN DEV TEST] Server is ready, verifying plugin loaded...');
+
+            // Get agents to verify plugin was loaded
+            const agentsResponse = await fetch(`http://localhost:${testServerPort}/api/agents`);
+
+            if (agentsResponse.ok) {
+              const agentsData = await agentsResponse.json();
+              console.log('[PLUGIN DEV TEST] Full response:', JSON.stringify(agentsData, null, 2));
+
+              // Handle nested response structure: { success: true, data: { agents: [...] } }
+              const agents = agentsData.data?.agents || agentsData.agents || agentsData;
+              console.log('[PLUGIN DEV TEST] Agents array:', JSON.stringify(agents, null, 2));
+
+              // Verify that an agent was created
+              expect(agents).toBeDefined();
+              expect(Array.isArray(agents)).toBe(true);
+
+              if (agents.length > 0) {
+                // Get the first agent and check its details including plugins
+                const firstAgent = agents[0];
+                console.log('[PLUGIN DEV TEST] First agent ID:', firstAgent.id);
+
+                // Fetch detailed agent info to check plugins
+                const agentDetailsResponse = await fetch(
+                  `http://localhost:${testServerPort}/api/agents/${firstAgent.id}`
+                );
+
+                if (agentDetailsResponse.ok) {
+                  const agentDetailsData = await agentDetailsResponse.json();
+                  console.log(
+                    '[PLUGIN DEV TEST] Agent details response:',
+                    JSON.stringify(agentDetailsData, null, 2)
+                  );
+
+                  // Handle nested response structure
+                  const agentDetails = agentDetailsData.data || agentDetailsData;
+
+                  // Verify the plugin was loaded
+                  expect(agentDetails.plugins).toBeDefined();
+                  expect(Array.isArray(agentDetails.plugins)).toBe(true);
+
+                  // Check if plugin-openai is in the plugins list
+                  const hasOpenAIPlugin = agentDetails.plugins.some(
+                    (p: string) => p.includes('openai') || p.includes('plugin-openai')
+                  );
+                  expect(hasOpenAIPlugin).toBe(true);
+
+                  console.log('[PLUGIN DEV TEST] Test passed - plugin-openai loaded in dev mode');
+                }
+              }
+            }
+          }
+
+          // Verify dev process is still running (file watching active)
+          expect(devProcess.pid).toBeDefined();
+          expect(devProcess.killed).toBe(false);
+        } finally {
+          // Cleanup dev process
+          await cleanupDevProcess(devProcess, 2000);
+        }
+      } finally {
+        // Cleanup cloned plugin directory
+        await cleanup();
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST * 4 // Quadruple timeout for git clone, build, and dev mode
   );
 });

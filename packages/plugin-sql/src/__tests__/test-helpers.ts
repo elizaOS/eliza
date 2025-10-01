@@ -211,3 +211,114 @@ export async function createIsolatedTestDatabase(
     return { adapter, runtime, cleanup, testAgentId };
   }
 }
+
+/**
+ * Creates an isolated test database specifically for migration testing.
+ * This helper provides a clean database with NO migrations run,
+ * allowing migration tests to control the entire migration process.
+ *
+ * @param testName - A unique name for this test to ensure isolation
+ * @returns Database connection, adapter, and cleanup function
+ */
+export async function createIsolatedTestDatabaseForMigration(testName: string): Promise<{
+  db: any; // DrizzleDatabase
+  adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  cleanup: () => Promise<void>;
+  testAgentId: UUID;
+}> {
+  const testAgentId = v4() as UUID;
+  const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+
+  if (process.env.POSTGRES_URL) {
+    // PostgreSQL - use unique schema per test
+    const schemaName = `test_migration_${testId}_${Date.now()}`;
+    console.log(`[MIGRATION TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+
+    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
+
+    const db = connectionManager.getDatabase();
+
+    // Create isolated schema
+    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
+    // Include public in search path so we can access the vector extension
+    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
+
+    const cleanup = async () => {
+      try {
+        // Reset search path before dropping schema
+        await db.execute(sql.raw(`SET search_path TO public`));
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+      } catch (error) {
+        console.error(`[MIGRATION TEST] Failed to drop schema ${schemaName}:`, error);
+      }
+      await adapter.close();
+    };
+
+    return { db, adapter, cleanup, testAgentId };
+  } else {
+    // PGLite - use unique directory per test
+    const tempDir = path.join(os.tmpdir(), `eliza-migration-test-${testId}-${Date.now()}`);
+    console.log(`[MIGRATION TEST] Creating isolated PGLite database: ${tempDir}`);
+
+    const connectionManager = new PGliteClientManager({ dataDir: tempDir });
+    await connectionManager.initialize();
+    const adapter = new PgliteDatabaseAdapter(testAgentId, connectionManager);
+    await adapter.init();
+
+    const db = adapter.getDatabase();
+
+    const cleanup = async () => {
+      await adapter.close();
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        console.error(`[MIGRATION TEST] Failed to remove temp directory ${tempDir}:`, error);
+      }
+    };
+
+    return { db, adapter, cleanup, testAgentId };
+  }
+}
+
+/**
+ * Creates an isolated test database for schema evolution tests that need to test schema evolution
+ * with destructive migrations. This helper manages the ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS
+ * environment variable and provides a clean database for each test.
+ *
+ * @param testName - A unique name for this test to ensure isolation
+ * @returns Database connection, adapter, cleanup function, and environment management
+ */
+export async function createIsolatedTestDatabaseForSchemaEvolutionTests(testName: string): Promise<{
+  db: any; // DrizzleDatabase
+  adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
+  cleanup: () => Promise<void>;
+  testAgentId: UUID;
+  originalDestructiveSetting?: string;
+}> {
+  // Save original environment variable
+  const originalDestructiveSetting = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+
+  // Get the base setup
+  const baseSetup = await createIsolatedTestDatabaseForMigration(testName);
+
+  // Enhance cleanup to restore environment variable
+  const enhancedCleanup = async () => {
+    // Restore original environment variable
+    if (originalDestructiveSetting !== undefined) {
+      process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = originalDestructiveSetting;
+    } else {
+      delete process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS;
+    }
+
+    // Call original cleanup
+    await baseSetup.cleanup();
+  };
+
+  return {
+    ...baseSetup,
+    cleanup: enhancedCleanup,
+    originalDestructiveSetting,
+  };
+}

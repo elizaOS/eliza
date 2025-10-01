@@ -43,6 +43,7 @@ import {
   apiDateToTimestamp,
   type AgentLog,
 } from '@/lib/api-type-mappers';
+import type { ListRunsParams, RunDetail, RunSummary } from '@elizaos/api-client';
 
 // Create ElizaClient instance for direct API calls
 const elizaClient = createElizaClient();
@@ -178,6 +179,63 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
         refetchInterval: STALE_TIMES.STANDARD, // Poll less frequently on slow connections
       }),
     // Allow overriding any options
+    ...options,
+  });
+}
+
+type RunsListResponse = { runs: RunSummary[]; total: number; hasMore: boolean };
+
+export function useAgentRuns(
+  agentId: UUID | undefined | null,
+  params?: ListRunsParams,
+  options: Partial<UseQueryOptions<RunsListResponse, Error, RunsListResponse>> = {}
+) {
+  const network = useNetworkStatus();
+  const sanitizedParams = params
+    ? Object.fromEntries(Object.entries(params).filter(([_, value]) => value !== undefined))
+    : undefined;
+  const serializedParams = sanitizedParams ? JSON.stringify(sanitizedParams) : 'default';
+
+  return useQuery<RunsListResponse>({
+    queryKey: ['agent', agentId, 'runs', serializedParams],
+    queryFn: async () => {
+      if (!agentId) throw new Error('Agent ID is required');
+      return elizaClient.runs.listRuns(agentId, sanitizedParams as ListRunsParams | undefined);
+    },
+    enabled: Boolean(agentId),
+    staleTime: STALE_TIMES.FREQUENT,
+    refetchInterval: !network.isOffline && Boolean(agentId) ? STALE_TIMES.FREQUENT : false,
+    refetchIntervalInBackground: false,
+    ...(!network.isOffline &&
+      network.effectiveType === 'slow-2g' && {
+        refetchInterval: STALE_TIMES.STANDARD,
+      }),
+    ...options,
+  });
+}
+
+export function useAgentRunDetail(
+  agentId: UUID | undefined | null,
+  runId: UUID | undefined | null,
+  roomId?: UUID | null,
+  options: Partial<UseQueryOptions<RunDetail, Error, RunDetail>> = {}
+) {
+  const network = useNetworkStatus();
+
+  return useQuery<RunDetail>({
+    queryKey: ['agent', agentId, 'runs', 'detail', runId, roomId ?? null],
+    queryFn: async () => {
+      if (!agentId || !runId) throw new Error('Agent ID and Run ID are required');
+      return elizaClient.runs.getRun(agentId, runId, roomId ?? undefined);
+    },
+    enabled: Boolean(agentId && runId),
+    staleTime: STALE_TIMES.FREQUENT,
+    refetchInterval: !network.isOffline && Boolean(agentId && runId) ? STALE_TIMES.FREQUENT : false,
+    refetchIntervalInBackground: false,
+    ...(!network.isOffline &&
+      network.effectiveType === 'slow-2g' && {
+        refetchInterval: STALE_TIMES.STANDARD,
+      }),
     ...options,
   });
 }

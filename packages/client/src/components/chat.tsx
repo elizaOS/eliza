@@ -1773,7 +1773,7 @@ export default function Chat({
                 !chatState.isMobile && (
                   <>
                     <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={20} maxSize={50}>
+                    <ResizablePanel defaultSize={sidebarPanelSize} minSize={15} maxSize={85}>
                       <AgentSidebar
                         agentId={sidebarAgentId}
                         agentName={sidebarAgentName}

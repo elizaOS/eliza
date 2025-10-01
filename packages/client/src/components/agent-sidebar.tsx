@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentPanels, useAgent, type AgentPanel } from '@/hooks/use-query-hooks';
 import type { UUID, Agent } from '@elizaos/core';
-import { Columns3, Database, Eye, Code, InfoIcon, Loader2 } from 'lucide-react';
+import { Columns3, Database, Eye, Code, InfoIcon, Loader2, Activity } from 'lucide-react';
 import { JSX, useMemo } from 'react';
 import { AgentActionViewer } from './agent-action-viewer';
 import { AgentLogViewer } from './agent-log-viewer';
@@ -9,6 +9,7 @@ import { AgentMemoryViewer } from './agent-memory-viewer';
 import { Skeleton } from './ui/skeleton';
 import AgentSettings from '@/components/agent-settings';
 import { useAgentTabState } from '@/hooks/use-agent-tab-state';
+import AgentRunTimeline from '@/components/agent-runs/AgentRunTimeline';
 
 type AgentSidebarProps = {
   agentId: UUID | undefined;
@@ -16,7 +17,7 @@ type AgentSidebarProps = {
   channelId?: UUID;
 };
 
-type FixedTabValue = 'details' | 'actions' | 'logs' | 'memories';
+type FixedTabValue = 'details' | 'timeline' | 'actions' | 'logs' | 'memories';
 type TabValue = FixedTabValue | string;
 
 export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProps) {
@@ -40,6 +41,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
   const allTabs: { value: TabValue; label: string; icon: JSX.Element }[] = useMemo(() => {
     const fixedTabs: { value: FixedTabValue; label: string; icon: JSX.Element }[] = [
       { value: 'details', label: 'Details', icon: <InfoIcon className="h-4 w-4" /> },
+      { value: 'timeline', label: 'Timeline', icon: <Activity className="h-4 w-4" /> },
       { value: 'actions', label: 'Model Calls', icon: <Eye className="h-4 w-4" /> },
       { value: 'memories', label: 'Memories', icon: <Database className="h-4 w-4" /> },
       { value: 'logs', label: 'Logs', icon: <Code className="h-4 w-4" /> },
@@ -116,6 +118,20 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
         )}
         {detailsTab === 'details' && !agentId && (
           <div className="p-4 text-muted-foreground">Select an agent to see their details.</div>
+        )}
+      </TabsContent>
+
+      <TabsContent
+        value="timeline"
+        className="overflow-y-auto overflow-x-hidden flex-1 w-full max-w-full min-h-0 p-0"
+      >
+        {detailsTab === 'timeline' && agentId && (
+          <div className="w-full max-w-full h-full">
+            <AgentRunTimeline agentId={agentId} />
+          </div>
+        )}
+        {detailsTab === 'timeline' && !agentId && (
+          <div className="p-4 text-muted-foreground">Select an agent to see run activity.</div>
         )}
       </TabsContent>
 

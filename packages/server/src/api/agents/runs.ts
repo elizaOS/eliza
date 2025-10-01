@@ -1,4 +1,4 @@
-import type { ElizaOS, UUID, Log } from '@elizaos/core';
+import type { ElizaOS, UUID, Log, IDatabaseAdapter, RunStatus } from '@elizaos/core';
 import { validateUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -8,6 +8,25 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  */
 export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
   const router = express.Router();
+
+  const RUNS_CACHE_TTL = 15_000; // 15 seconds to smooth polling bursts
+  const runsCache = new Map<
+    string,
+    { expiresAt: number; payload: { runs: unknown[]; total: number; hasMore: boolean } }
+  >();
+
+  const buildCacheKey = (
+    agentId: UUID,
+    query: { roomId?: unknown; status?: unknown; limit?: unknown; from?: unknown; to?: unknown }
+  ) =>
+    JSON.stringify({
+      agentId,
+      roomId: query.roomId || null,
+      status: query.status || null,
+      limit: query.limit || null,
+      from: query.from || null,
+      to: query.to || null,
+    });
 
   // List Agent Runs
   router.get('/:agentId/runs', async (req, res) => {
@@ -32,15 +51,67 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const fromTime = from ? Number(from) : undefined;
       const toTime = to ? Number(to) : undefined;
 
-      // Get run_event logs to build the runs list
-      const runEventLogs = await runtime.getLogs({
-        entityId: agentId,
-        roomId: roomId ? (roomId as UUID) : undefined,
-        type: 'run_event',
-        count: limitNum * 3, // Get more to account for multiple events per run
-      });
+      // Try cache for the common polling path (no explicit time filters)
+      const cacheKey =
+        !fromTime && !toTime ? buildCacheKey(agentId, { roomId, status, limit: limitNum }) : null;
+      if (cacheKey) {
+        const cached = runsCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          return sendSuccess(res, cached.payload);
+        }
+      }
 
-      // Group by runId and build run summaries
+      const adapter = (runtime as unknown as { adapter?: IDatabaseAdapter }).adapter;
+      const allowedStatuses: Array<RunStatus | 'all'> = [
+        'started',
+        'completed',
+        'timeout',
+        'error',
+        'all',
+      ];
+      const statusFilter =
+        typeof status === 'string' && allowedStatuses.includes(status as RunStatus | 'all')
+          ? (status as RunStatus | 'all')
+          : undefined;
+
+      if (adapter?.getAgentRunSummaries) {
+        try {
+          const fastResult = await adapter.getAgentRunSummaries({
+            limit: limitNum,
+            roomId: roomId ? (roomId as UUID) : undefined,
+            status: statusFilter,
+            from: fromTime,
+            to: toTime,
+          });
+
+          if (cacheKey) {
+            runsCache.set(cacheKey, {
+              payload: fastResult,
+              expiresAt: Date.now() + RUNS_CACHE_TTL,
+            });
+          }
+
+          return sendSuccess(res, fastResult);
+        } catch (error) {
+          runtime.logger?.warn?.(
+            `Optimized run summary query failed, falling back to log aggregation: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+
+      // 1) Direct agent run events
+      const directAgentRunEventsPromise = runtime
+        .getLogs({
+          entityId: agentId,
+          roomId: roomId ? (roomId as UUID) : undefined,
+          type: 'run_event',
+          count: 1000,
+        })
+        .catch(() => []);
+
+      const directRunEvents = await directAgentRunEventsPromise;
       type RunListItem = {
         runId: string;
         status: 'started' | 'completed' | 'timeout' | 'error';
@@ -53,62 +124,153 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         metadata?: Record<string, unknown>;
         counts?: { actions: number; modelCalls: number; errors: number; evaluators: number };
       };
+
       const runMap = new Map<string, RunListItem>();
 
-      for (const log of runEventLogs) {
-        const body = log.body as {
-          runId?: string;
-          status?: 'started' | 'completed' | 'timeout' | 'error';
-          messageId?: UUID;
-          roomId?: UUID;
-          entityId?: UUID;
-          metadata?: Record<string, unknown>;
-        };
-        const runId = body.runId as string;
-        if (!runId) continue;
+      const ingestRunEvents = (logs: Log[]) => {
+        for (const log of logs) {
+          const body = log.body as {
+            runId?: string;
+            status?: 'started' | 'completed' | 'timeout' | 'error';
+            messageId?: UUID;
+            roomId?: UUID;
+            entityId?: UUID;
+            metadata?: Record<string, unknown>;
+          };
+          const runId = body.runId as string;
+          if (!runId) continue;
 
-        const logTime = new Date(log.createdAt).getTime();
+          const logTime = new Date(log.createdAt).getTime();
+          if (fromTime && logTime < fromTime) continue;
+          if (toTime && logTime > toTime) continue;
 
-        // Apply time filters
-        if (fromTime && logTime < fromTime) continue;
-        if (toTime && logTime > toTime) continue;
-
-        if (!runMap.has(runId)) {
-          runMap.set(runId, {
-            runId,
-            status: 'started',
-            startedAt: null,
-            endedAt: null,
-            durationMs: null,
-            messageId: body.messageId,
-            roomId: body.roomId,
-            entityId: body.entityId,
-            metadata: body.metadata || ({} as Record<string, unknown>),
-          });
-        }
-
-        const run = runMap.get(runId)!;
-        const eventStatus = body.status;
-
-        if (eventStatus === 'started') {
-          run.startedAt = logTime;
-        } else if (
-          eventStatus === 'completed' ||
-          eventStatus === 'timeout' ||
-          eventStatus === 'error'
-        ) {
-          run.status = eventStatus;
-          run.endedAt = logTime;
-          if (run.startedAt) {
-            run.durationMs = logTime - run.startedAt;
+          if (!runMap.has(runId)) {
+            runMap.set(runId, {
+              runId,
+              status: 'started',
+              startedAt: null,
+              endedAt: null,
+              durationMs: null,
+              messageId: body.messageId,
+              roomId: body.roomId,
+              entityId: body.entityId,
+              metadata: body.metadata || ({} as Record<string, unknown>),
+            });
           }
+
+          const run = runMap.get(runId)!;
+          const eventStatus = body.status;
+
+          if (eventStatus === 'started') {
+            run.startedAt = logTime;
+          } else if (
+            eventStatus === 'completed' ||
+            eventStatus === 'timeout' ||
+            eventStatus === 'error'
+          ) {
+            run.status = eventStatus;
+            run.endedAt = logTime;
+            if (run.startedAt) {
+              run.durationMs = logTime - run.startedAt;
+            }
+          }
+        }
+      };
+
+      ingestRunEvents(directRunEvents);
+
+      const needsMoreRuns = () => runMap.size < limitNum;
+
+      // 2) Recent message authors (only if more runs needed)
+      if (needsMoreRuns()) {
+        try {
+          const recentMessages = await runtime.getMemories({
+            tableName: 'messages',
+            roomId: roomId ? (roomId as UUID) : undefined,
+            count: 200,
+          });
+          const authorIds = Array.from(
+            new Set(
+              recentMessages
+                .map((m) => m.entityId)
+                .filter((eid): eid is UUID => Boolean(eid) && (eid as UUID) !== agentId)
+            )
+          ).slice(0, 10); // cap to avoid huge fan-out
+
+          const authorRunEvents = await Promise.all(
+            authorIds.map((authorId) =>
+              runtime
+                .getLogs({
+                  entityId: authorId,
+                  roomId: roomId ? (roomId as UUID) : undefined,
+                  type: 'run_event',
+                  count: 500,
+                })
+                .catch(() => [])
+            )
+          );
+
+          for (const logs of authorRunEvents) {
+            ingestRunEvents(logs);
+            if (!needsMoreRuns()) break;
+          }
+        } catch {
+          // swallow
+        }
+      }
+
+      // 3) Broader participant scan (only if still not enough and no explicit room filter)
+      if (!roomId && needsMoreRuns()) {
+        try {
+          const worlds = await runtime.getAllWorlds();
+          const roomIds: UUID[] = [];
+          for (const w of worlds) {
+            try {
+              const rooms = await runtime.getRooms(w.id);
+              roomIds.push(...rooms.map((r) => r.id));
+            } catch {
+              // ignore
+            }
+            if (roomIds.length > 20) break; // guardrail
+          }
+
+          const participantLogs = await Promise.all(
+            roomIds.map(async (rId) => {
+              try {
+                const participants: UUID[] = await runtime.getParticipantsForRoom(rId);
+                const otherParticipants = participants.filter((pid) => pid !== agentId).slice(0, 5);
+                const logsPerParticipant = await Promise.all(
+                  otherParticipants.map((participantId) =>
+                    runtime
+                      .getLogs({
+                        entityId: participantId,
+                        roomId: rId,
+                        type: 'run_event',
+                        count: 300,
+                      })
+                      .catch(() => [])
+                  )
+                );
+                return logsPerParticipant.flat();
+              } catch {
+                return [];
+              }
+            })
+          );
+
+          for (const logs of participantLogs) {
+            ingestRunEvents(logs);
+            if (!needsMoreRuns()) break;
+          }
+        } catch {
+          // ignore
         }
       }
 
       // Filter by status if specified
       let runs: RunListItem[] = Array.from(runMap.values());
-      if (status && status !== 'all') {
-        runs = runs.filter((run) => run.status === status);
+      if (statusFilter && statusFilter !== 'all') {
+        runs = runs.filter((run) => run.status === statusFilter);
       }
 
       // Sort by startedAt desc and apply limit
@@ -118,25 +280,43 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       // Bulk fetch logs once per type, then aggregate per runId in memory (avoid N+1)
       const runIdSet = new Set<string>(limitedRuns.map((r) => r.runId));
 
-      const [actionLogs, evaluatorLogs, genericLogs]: [Log[], Log[], Log[]] = await Promise.all([
-        runtime.getLogs({
-          entityId: agentId,
-          roomId: roomId ? (roomId as UUID) : undefined,
-          type: 'action',
-          count: 5000,
-        }),
-        runtime.getLogs({
-          entityId: agentId,
-          roomId: roomId ? (roomId as UUID) : undefined,
-          type: 'evaluator',
-          count: 5000,
-        }),
-        runtime.getLogs({
-          entityId: agentId,
-          roomId: roomId ? (roomId as UUID) : undefined,
-          count: 5000,
-        }),
-      ]);
+      let actionLogs: Log[] = [];
+      let evaluatorLogs: Log[] = [];
+      let genericLogs: Log[] = [];
+
+      if (runIdSet.size > 0) {
+        const logFetchCount = Math.max(200, limitNum * 50);
+
+        const [action, evaluator, generic] = await Promise.all([
+          runtime
+            .getLogs({
+              entityId: agentId,
+              roomId: roomId ? (roomId as UUID) : undefined,
+              type: 'action',
+              count: logFetchCount,
+            })
+            .catch(() => []),
+          runtime
+            .getLogs({
+              entityId: agentId,
+              roomId: roomId ? (roomId as UUID) : undefined,
+              type: 'evaluator',
+              count: logFetchCount,
+            })
+            .catch(() => []),
+          runtime
+            .getLogs({
+              entityId: agentId,
+              roomId: roomId ? (roomId as UUID) : undefined,
+              count: logFetchCount,
+            })
+            .catch(() => []),
+        ]);
+
+        actionLogs = action;
+        evaluatorLogs = evaluator;
+        genericLogs = generic;
+      }
 
       const countsByRunId: Record<
         string,
@@ -200,6 +380,13 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         hasMore: runs.length > limitNum,
       };
 
+      if (cacheKey) {
+        runsCache.set(cacheKey, {
+          payload: response,
+          expiresAt: Date.now() + RUNS_CACHE_TTL,
+        });
+      }
+
       sendSuccess(res, response);
     } catch (error) {
       sendError(
@@ -231,14 +418,44 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      // Fetch logs and filter by runId
+      // Fetch agent-side logs (actions, evaluators, model usage)
       const logs: Log[] = await runtime.getLogs({
         entityId: agentId,
         roomId: roomId ? (roomId as UUID) : undefined,
         count: 2000,
       });
 
-      const related = logs.filter((l) => (l.body as { runId?: UUID }).runId === runId);
+      // Also fetch run_event logs emitted under recent message authors' entity IDs for this agent
+      const recentForDetail = await runtime.getMemories({
+        tableName: 'messages',
+        roomId: roomId ? (roomId as UUID) : undefined,
+        count: 300,
+      });
+      const detailAuthorIds = Array.from(
+        new Set(
+          recentForDetail
+            .map((m) => m.entityId)
+            .filter((eid): eid is UUID => Boolean(eid) && (eid as UUID) !== agentId)
+        )
+      );
+      const participantRunEvents: Log[] = [];
+      for (const authorId of detailAuthorIds) {
+        try {
+          const rLogs = await runtime.getLogs({
+            entityId: authorId,
+            roomId: roomId ? (roomId as UUID) : undefined,
+            type: 'run_event',
+            count: 2000,
+          });
+          participantRunEvents.push(...rLogs);
+        } catch {
+          // continue
+        }
+      }
+
+      const related = logs
+        .concat(participantRunEvents)
+        .filter((l) => (l.body as { runId?: UUID }).runId === runId);
 
       const runEvents = related
         .filter((l) => l.type === 'run_event')
@@ -333,6 +550,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           action?: string;
           result?: { success?: boolean };
           promptCount?: number;
+          prompts?: Array<{ prompt?: string; modelType?: string }>;
+          params?: Record<string, unknown>;
+          response?: unknown;
         };
         events.push({
           type: 'ACTION_COMPLETED',
@@ -343,6 +563,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             success: body.result?.success !== false,
             result: body.result as Record<string, unknown> | undefined,
             promptCount: body.promptCount,
+            prompts: body.prompts,
+            params: body.params,
+            response: body.response,
           },
         });
       }
@@ -353,6 +576,14 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           provider?: string;
           executionTime?: number;
           actionContext?: string;
+          params?: Record<string, unknown>;
+          response?: unknown;
+          usage?: Record<string, unknown>;
+          prompts?: Array<{ prompt?: string; modelType?: string }>;
+          prompt?: string;
+          inputTokens?: number;
+          outputTokens?: number;
+          cost?: number;
         };
         events.push({
           type: 'MODEL_USED',
@@ -364,6 +595,14 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             provider: body.provider,
             executionTime: body.executionTime,
             actionContext: body.actionContext,
+            params: body.params,
+            response: body.response,
+            usage: body.usage,
+            prompts: body.prompts,
+            prompt: body.prompt,
+            inputTokens: body.inputTokens,
+            outputTokens: body.outputTokens,
+            cost: body.cost,
           },
         });
       }
