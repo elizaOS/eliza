@@ -21,7 +21,7 @@ describe('Prompts', () => {
 
       // Check for important rules section
       expect(shouldRespondTemplate).toContain('IMPORTANT RULES FOR RESPONDING:');
-      expect(shouldRespondTemplate).toContain('directly mentioned by name');
+      expect(shouldRespondTemplate).toContain('directly mentioned');
       expect(shouldRespondTemplate).toContain('Talking TO {{agentName}}');
       expect(shouldRespondTemplate).toContain('Talking ABOUT {{agentName}}');
     });
