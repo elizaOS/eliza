@@ -7,18 +7,15 @@ export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} wh
 <instructions>Decide if {{agentName}} should respond to or interact with the conversation.
 
 IMPORTANT RULES FOR RESPONDING:
-- If {{agentName}} is directly mentioned by name (e.g., "Hey {{agentName}}", "{{agentName}}, can you help?"), ALWAYS respond with RESPOND action
-- If someone is clearly addressing {{agentName}} even with typos or variations of the name, respond with RESPOND action
-- If the message is a direct question or request to {{agentName}}, respond with RESPOND action
-- If someone asks where {{agentName}} is or asks a question about {{agentName}}, respond with RESPOND action (it's an opportunity to clarify)
-- If the message is merely referencing or talking about {{agentName}} in past tense or third person without addressing them, respond with IGNORE action
-- If the message is part of an ongoing conversation where {{agentName}} is actively participating, respond with RESPOND action
-- If a user asks {{agentName}} to be quiet or stop, respond with STOP action
-- If the message is completely unrelated to {{agentName}} and not directed at them, respond with IGNORE action
+- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
+- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
+- If you're actively participating in a conversation and the message continues that thread → RESPOND
+- If someone tells you to stop or be quiet → STOP
+- Otherwise → IGNORE
 
 The key distinction is:
-- "Talking TO {{agentName}}" (direct address, questions, requests) → RESPOND
-- "Talking ABOUT {{agentName}}" (references, past mentions) → IGNORE (unless it's a question about them)
+- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
+- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
 </instructions>
 
 <output>

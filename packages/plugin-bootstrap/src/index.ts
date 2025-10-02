@@ -349,11 +349,16 @@ export function shouldBypassShouldRespond(
 
   // Bypass for platform mentions and replies (universal across all platforms)
   // This skips the LLM call for guaranteed responses, saving tokens and improving performance
-  const hasPlatformMention = mentionContext?.isMention || mentionContext?.isReply;
+  const hasPlatformMention = !!(mentionContext?.isMention || mentionContext?.isReply);
+
+  // DM/VOICE_DM/API channels: always bypass (no shouldRespond needed in private channels)
+  // GROUP channels: only bypass if there's an explicit mention/reply
+  const shouldBypassForRoom = bypassTypes.has(roomType);
+  const shouldBypassForSource = bypassSources.some((pattern) => sourceStr.includes(pattern));
 
   return (
-    bypassTypes.has(roomType) ||
-    bypassSources.some((pattern) => sourceStr.includes(pattern)) ||
+    shouldBypassForRoom ||
+    shouldBypassForSource ||
     hasPlatformMention
   );
 }
@@ -543,6 +548,19 @@ const messageReceivedHandler = async ({
 
         // Skip shouldRespond check for DM, VOICE_DM channels, platform mentions, and replies
         const room = await runtime.getRoom(message.roomId);
+
+        // DEBUG: Log mentionContext to understand bypass behavior
+        runtime.logger.debug(
+          `[Bootstrap] mentionContext for ${runtime.character.name}: ${JSON.stringify({
+            isMention: mentionContext?.isMention,
+            isReply: mentionContext?.isReply,
+            isThread: mentionContext?.isThread,
+            mentionType: mentionContext?.mentionType,
+            roomType: room?.type,
+            source: message.content.source
+          })}`
+        );
+
         const shouldSkipShouldRespond = shouldBypassShouldRespond(
           runtime,
           room ?? undefined,
