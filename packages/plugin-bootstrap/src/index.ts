@@ -17,6 +17,7 @@ import {
   logger,
   type Media,
   type Memory,
+  type MentionContext,
   messageHandlerTemplate,
   type MessagePayload,
   ModelType,
@@ -306,7 +307,7 @@ export function shouldBypassShouldRespond(
   runtime: IAgentRuntime,
   room?: Room,
   source?: string,
-  mentionContext?: Content['mentionContext']
+  mentionContext?: MentionContext
 ): boolean {
   if (!room) return false;
 
