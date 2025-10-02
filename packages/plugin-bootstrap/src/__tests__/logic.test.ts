@@ -484,6 +484,9 @@ describe('Event Lifecycle Events', () => {
         actionName: 'test-action',
         startTime: Date.now(),
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -504,6 +507,9 @@ describe('Event Lifecycle Events', () => {
         actionName: 'test-action',
         completed: true,
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -525,6 +531,9 @@ describe('Event Lifecycle Events', () => {
         completed: false,
         error: new Error('Action failed'),
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -570,5 +579,130 @@ describe('Event Lifecycle Events', () => {
       // No assertions needed - this just logs information
       expect(true).toBe(true);
     }
+  });
+});
+
+describe('shouldBypassShouldRespond with mentionContext', () => {
+  let mockRuntime: MockRuntime;
+
+  beforeEach(() => {
+    const setup = setupActionTest({});
+    mockRuntime = setup.mockRuntime;
+  });
+
+  it('should bypass for DM channels', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.DM };
+    const result = shouldBypassShouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      room,
+      'discord'
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('should bypass for platform mentions (isMention=true)', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: true,
+      isReply: false,
+      isThread: false,
+      mentionType: 'platform_mention' as const,
+    };
+
+    const result = shouldBypassShouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      room,
+      'discord',
+      mentionContext
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('should bypass for replies to bot (isReply=true)', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: false,
+      isReply: true,
+      isThread: false,
+      mentionType: 'reply' as const,
+    };
+
+    const result = shouldBypassShouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      room,
+      'discord',
+      mentionContext
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('should NOT bypass for regular messages without mention', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: false,
+      isReply: false,
+      isThread: false,
+      mentionType: 'none' as const,
+    };
+
+    const result = shouldBypassShouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      room,
+      'discord',
+      mentionContext
+    );
+
+    expect(result).toBe(false);
+  });
+
+  it('should bypass for client_chat source', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const result = shouldBypassShouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      room,
+      'client_chat'
+    );
+
+    expect(result).toBe(true);
+  });
+
+  it('should be platform agnostic (works for any platform)', () => {
+    const { shouldBypassShouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+
+    // Test with different platform sources
+    const platforms = ['discord', 'telegram', 'twitter', 'slack'];
+
+    platforms.forEach(platform => {
+      const mentionContext = {
+        isMention: true,
+        isReply: false,
+        isThread: false,
+        mentionType: 'platform_mention' as const,
+      };
+
+      const result = shouldBypassShouldRespond(
+        mockRuntime as unknown as IAgentRuntime,
+        room,
+        platform,
+        mentionContext
+      );
+
+      expect(result).toBe(true);
+    });
   });
 });
