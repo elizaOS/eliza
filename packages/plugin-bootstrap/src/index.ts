@@ -613,8 +613,14 @@ const messageReceivedHandler = async ({
             responseObject?.action &&
             !nonResponseActions.includes(responseObject.action.toUpperCase());
         } else {
+          // Determine bypass reason for better debugging
+          const hasMention = mentionContext?.isMention || mentionContext?.isReply;
+          const bypassReason = hasMention
+            ? 'platform mention/reply'
+            : `room type: ${room?.type}, source: ${message.content.source}`;
+
           runtime.logger.debug(
-            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
+            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} (${bypassReason})`
           );
           shouldRespond = true;
         }
