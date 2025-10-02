@@ -22,13 +22,45 @@ const nameConfig: Config = {
  * as well as the expected response action for the agent (RESPOND, IGNORE, STOP).
  */
 const messageExamples = [
-  // Examples where agent should RESPOND
+  // ═══════════════════════════════════════════════════════
+  // RESPOND - Direct mentions and addressing
+  // ═══════════════════════════════════════════════════════
+
   `// {{name1}}: Hey {{agentName}}, can you help me with something
 // Response: RESPOND`,
+
+  `// {{name1}}: {{agentName}} what do you think about this?
+// Response: RESPOND`,
+
+  `// {{name1}}: yo {{agentName}}, quick question
+// Response: RESPOND`,
+
+  `// {{name1}}: @{{agentName}} are you there?
+// Response: RESPOND`,
+
+  // Mentions with typos or variations
+  `// {{name1}}: Hey {{agentName}}x, how are you? (slight typo in name)
+// Response: RESPOND`,
+
+  `// {{name1}}: hey {{agentName}} you around?
+// Response: RESPOND`,
+
+  // ═══════════════════════════════════════════════════════
+  // RESPOND - Continuations of conversation
+  // ═══════════════════════════════════════════════════════
 
   `// {{name1}}: Hey {{agentName}}, can I ask you a question
 // {{agentName}}: Sure, what is it
 // {{name1}}: can you help me create a basic react module that demonstrates a counter
+// Response: RESPOND`,
+
+  `// {{agentName}}: Here's my answer to your question
+// {{name1}}: Thanks! That really helps
+// Response: RESPOND`,
+
+  `// {{name1}}: okay, i want to test something. can you say marco?
+// {{agentName}}: marco
+// {{name1}}: great. okay, now do it again
 // Response: RESPOND`,
 
   `// {{name1}}: {{agentName}} can you tell me a story
@@ -39,15 +71,54 @@ const messageExamples = [
 // {{name1}}: I'm loving it, keep going
 // Response: RESPOND`,
 
-  `// {{name1}}: okay, i want to test something. can you say marco?
-// {{agentName}}: marco
-// {{name1}}: great. okay, now do it again
-// Response: RESPOND`,
+  // ═══════════════════════════════════════════════════════
+  // RESPOND - Indirect questions
+  // ═══════════════════════════════════════════════════════
 
   `// {{name1}}: what do you think about artificial intelligence?
 // Response: RESPOND`,
 
-  // Examples where agent should IGNORE
+  `// {{name1}}: Does anyone know where {{agentName}} is?
+// Response: RESPOND`,
+
+  `// {{name1}}: Has anyone talked to {{agentName}} about this?
+// Response: RESPOND`,
+
+  `// {{name1}}: What would {{agentName}} say about this situation?
+// Response: RESPOND`,
+
+  // ═══════════════════════════════════════════════════════
+  // RESPOND - Reactions to agent's messages
+  // ═══════════════════════════════════════════════════════
+
+  `// {{agentName}}: Oh, this is my favorite scene
+// {{name1}}: sick
+// {{name2}}: wait, why is it your favorite scene?
+// Response: RESPOND`,
+
+  // ═══════════════════════════════════════════════════════
+  // IGNORE - References (not interpellations)
+  // ═══════════════════════════════════════════════════════
+
+  `// {{name1}}: I talked to {{agentName}} yesterday
+// {{name2}}: Oh really? What did he say?
+// Response: IGNORE`,
+
+  `// {{name1}}: {{agentName}} was really helpful last week
+// {{name2}}: Yeah, he's great
+// Response: IGNORE`,
+
+  `// {{name1}}: {{agentName}}'s code is really good
+// {{name2}}: Yeah, I learned a lot from it
+// Response: IGNORE`,
+
+  `// {{name1}}: I like {{agentName}}'s approach to this problem
+// Response: IGNORE`,
+
+  // ═══════════════════════════════════════════════════════
+  // IGNORE - Conversations not concerned
+  // ═══════════════════════════════════════════════════════
+
   `// {{name1}}: I just saw a really great movie
 // {{name2}}: Oh? Which movie?
 // Response: IGNORE`,
@@ -60,12 +131,14 @@ const messageExamples = [
   `// {{name1}}: {{name2}} can you answer a question for me?
 // Response: IGNORE`,
 
-  `// {{agentName}}: Oh, this is my favorite scene
-// {{name1}}: sick
-// {{name2}}: wait, why is it your favorite scene
-// Response: RESPOND`,
+  `// {{name1}}: I love pizza
+// {{name2}}: Me too!
+// Response: IGNORE`,
 
-  // Examples where agent should STOP
+  // ═══════════════════════════════════════════════════════
+  // STOP - Stop requests
+  // ═══════════════════════════════════════════════════════
+
   `// {{name1}}: {{agentName}} stop responding plz
 // Response: STOP`,
 
@@ -73,6 +146,9 @@ const messageExamples = [
 // Response: STOP`,
 
   `// {{name1}}: {{agentName}} stfu plz
+// Response: STOP`,
+
+  `// {{name1}}: {{agentName}} please be quiet for a bit
 // Response: STOP`,
 ];
 
@@ -82,7 +158,7 @@ const messageExamples = [
  */
 export const shouldRespondProvider: Provider = {
   name: 'SHOULD_RESPOND',
-  description: 'Examples of when the agent should respond, ignore, or stop responding',
+  description: 'Examples of when the agent should respond, ignore, or stop responding based on natural conversation context',
   position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory) => {
     // Get agent name
@@ -93,8 +169,8 @@ export const shouldRespondProvider: Provider = {
     const name2 = uniqueNamesGenerator(nameConfig);
     const characterName = uniqueNamesGenerator(nameConfig);
 
-    // Shuffle the message examples array
-    const shuffledExamples = [...messageExamples].sort(() => 0.5 - Math.random()).slice(0, 7); // Use a subset of examples
+    // Shuffle the message examples array and use more examples for better context
+    const shuffledExamples = [...messageExamples].sort(() => 0.5 - Math.random()).slice(0, 10);
 
     // Replace placeholders with generated names
     const formattedExamples = shuffledExamples.map((example) => {

@@ -298,13 +298,15 @@ export async function processAttachments(
 }
 
 /**
- * Determines whether to skip the shouldRespond logic based on room type and message source.
+ * Determines whether to skip the shouldRespond logic based on room type, message source, and mention context.
+ * It works with any platform's mentionContext.
  * Supports both default values and runtime-configurable overrides via env settings.
  */
 export function shouldBypassShouldRespond(
   runtime: IAgentRuntime,
   room?: Room,
-  source?: string
+  source?: string,
+  mentionContext?: Content['mentionContext']
 ): boolean {
   if (!room) return false;
 
@@ -345,7 +347,15 @@ export function shouldBypassShouldRespond(
   const roomType = room.type?.toString().toLowerCase();
   const sourceStr = source?.toLowerCase() || '';
 
-  return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
+  // Bypass for platform mentions and replies (universal across all platforms)
+  // This skips the LLM call for guaranteed responses, saving tokens and improving performance
+  const hasPlatformMention = mentionContext?.isMention || mentionContext?.isReply;
+
+  return (
+    bypassTypes.has(roomType) ||
+    bypassSources.some((pattern) => sourceStr.includes(pattern)) ||
+    hasPlatformMention
+  );
 }
 
 /**
@@ -523,12 +533,21 @@ const messageReceivedHandler = async ({
           true
         );
 
-        // Skip shouldRespond check for DM and VOICE_DM channels
+        // Get mentionContext for intelligent bypass logic
+        const mentionContext = message.content.mentionContext;
+
+        runtime.logger.debug(
+          `[Bootstrap] Mention context:`,
+          JSON.stringify(mentionContext)
+        );
+
+        // Skip shouldRespond check for DM, VOICE_DM channels, platform mentions, and replies
         const room = await runtime.getRoom(message.roomId);
         const shouldSkipShouldRespond = shouldBypassShouldRespond(
           runtime,
           room ?? undefined,
-          message.content.source
+          message.content.source,
+          mentionContext
         );
 
         if (message.content.attachments && message.content.attachments.length > 0) {
