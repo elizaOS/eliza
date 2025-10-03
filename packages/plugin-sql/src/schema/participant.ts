@@ -29,18 +29,21 @@ export const participantTable = pgTable(
       onDelete: 'cascade',
     }),
     roomState: text('roomState'),
+    lastRead: timestamp('last_read', { withTimezone: true }), // For unread message tracking
   },
   (table) => [
-    // unique("participants_user_room_agent_unique").on(table.entityId, table.roomId, table.agentId),
-    index('idx_participants_user').on(table.entityId),
+    // Indexes for efficient queries
+    index('idx_participants_entity').on(table.entityId),
     index('idx_participants_room').on(table.roomId),
+    index('idx_participants_agent').on(table.agentId),
+    // Foreign key constraints
     foreignKey({
       name: 'fk_room',
       columns: [table.roomId],
       foreignColumns: [roomTable.id],
     }).onDelete('cascade'),
     foreignKey({
-      name: 'fk_user',
+      name: 'fk_entity',
       columns: [table.entityId],
       foreignColumns: [entityTable.id],
     }).onDelete('cascade'),
