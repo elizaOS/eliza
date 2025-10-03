@@ -6,16 +6,22 @@ import {
   validateUuid,
   ChannelType,
   type UUID,
-  EventType,
 } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
-import { attachmentsToApiUrls } from '../utils/media-transformer';
+import { v4 as uuidv4 } from 'uuid';
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
+const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+
+/**
+ * Socket.IO Router - MessageBus Edition
+ *
+ * Clean, simple implementation using MessageBus.
+ * No more central messaging tables, HTTP calls, or UUID mapping!
+ */
 export class SocketIORouter {
   private elizaOS: ElizaOS;
-  private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
+  private connections: Map<string, UUID>;
   private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
   private serverInstance: AgentServer;
 
@@ -29,60 +35,83 @@ export class SocketIORouter {
 
   setupListeners(io: SocketIOServer) {
     logger.info(`[SocketIO] Setting up Socket.IO event listeners`);
-    const messageTypes = Object.keys(SOCKET_MESSAGE_TYPE).map(
-      (key) => `${key}: ${SOCKET_MESSAGE_TYPE[key as keyof typeof SOCKET_MESSAGE_TYPE]}`
-    );
-    logger.info(`[SocketIO] Registered message types: ${messageTypes.join(', ')}`);
+
+    // Setup MessageBus → Socket.IO broadcast
+    if (this.serverInstance.messageBus) {
+      logger.info(`[SocketIO] Connecting MessageBus to Socket.IO`);
+      this.serverInstance.messageBus.on('message:received', (message: any) => {
+        logger.info(
+          `[SocketIO] Broadcasting message from ${message.authorId} to room ${message.roomId}`
+        );
+
+        io.to(message.roomId).emit('messageBroadcast', {
+          id: message.id,
+          senderId: message.authorId,
+          senderName: message.metadata?.senderName || 'Agent',
+          text: message.content,
+          channelId: message.roomId,
+          roomId: message.roomId,
+          serverId: message.worldId,
+          createdAt: message.createdAt,
+          source: message.metadata?.source || 'agent',
+          thought: message.metadata?.thought,
+          actions: message.metadata?.actions,
+          attachments: message.metadata?.attachments,
+        });
+      });
+    }
+
     io.on('connection', (socket: Socket) => {
-      this.handleNewConnection(socket, io);
+      this.handleNewConnection(socket);
     });
   }
 
-  private handleNewConnection(socket: Socket, _io: SocketIOServer) {
+  private handleNewConnection(socket: Socket) {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
 
+    // Room joining
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
-      logger.debug(
-        `[SocketIO] Channel joining event received directly: ${JSON.stringify(payload)}`
-      );
-      this.handleChannelJoining(socket, payload);
+      this.handleRoomJoining(socket, payload);
     });
 
+    // Message sending
     socket.on(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), (payload) => {
-      const messagePreview =
-        payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : '');
-      const channelId = payload.channelId || payload.roomId;
-      logger.info(
-        `[SocketIO] SEND_MESSAGE event received directly: ${JSON.stringify({
-          senderId: payload.senderId,
-          channelId: channelId,
-          messagePreview,
-        })}`
-      );
-      this.handleMessageSubmission(socket, payload);
+      this.handleMessageSending(socket, payload);
     });
 
+    // Generic message handler (for compatibility)
     socket.on('message', (data) => {
-      logger.info(
-        `[SocketIO] Generic 'message' event received: ${JSON.stringify(data)} (SocketID: ${socket.id})`
-      );
-      this.handleGenericMessage(socket, data);
+      if (data && typeof data === 'object' && 'type' in data && 'payload' in data) {
+        const { type, payload } = data;
+        if (type === SOCKET_MESSAGE_TYPE.ROOM_JOINING) {
+          this.handleRoomJoining(socket, payload);
+        } else if (type === SOCKET_MESSAGE_TYPE.SEND_MESSAGE) {
+          this.handleMessageSending(socket, payload);
+        }
+      }
     });
 
+    // Log streaming
     socket.on('subscribe_logs', () => this.handleLogSubscription(socket));
     socket.on('unsubscribe_logs', () => this.handleLogUnsubscription(socket));
     socket.on('update_log_filters', (filters) => this.handleLogFilterUpdate(socket, filters));
+
+    // Disconnect
     socket.on('disconnect', () => this.handleDisconnect(socket));
+
+    // Error handling
     socket.on('error', (error) => {
       logger.error(
-        `[SocketIO] Socket error for ${socket.id}: ${error.message}`,
-        error instanceof Error ? error.message : String(error)
+        `[SocketIO] Socket error for ${socket.id}: ${error instanceof Error ? error.message : String(error)}`
       );
     });
 
+    // Debug mode
     if (process.env.NODE_ENV === 'development') {
       socket.onAny((event, ...args) => {
-        logger.info(`[SocketIO DEBUG ${socket.id}] Event '${event}': ${JSON.stringify(args)}`);
+        if (event !== 'ping' && event !== 'pong') {
+          logger.debug(`[SocketIO ${socket.id}] Event '${event}': ${JSON.stringify(args)}`);
+        }
       });
     }
 
@@ -92,331 +121,181 @@ export class SocketIORouter {
     });
   }
 
-  private handleGenericMessage(socket: Socket, data: any) {
-    try {
-      if (!(data && typeof data === 'object' && 'type' in data && 'payload' in data)) {
-        logger.warn(
-          `[SocketIO ${socket.id}] Malformed 'message' event data: ${JSON.stringify(data)}`
-        );
-        return;
-      }
-      const { type, payload } = data;
-
-      switch (type) {
-        case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
-          logger.info(`[SocketIO ${socket.id}] Handling channel joining via 'message' event`);
-          this.handleChannelJoining(socket, payload);
-          break;
-        case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
-          logger.info(`[SocketIO ${socket.id}] Handling message sending via 'message' event`);
-          this.handleMessageSubmission(socket, payload);
-          break;
-        default:
-          logger.warn(
-            `[SocketIO ${socket.id}] Unknown message type received in 'message' event: ${type}`
-          );
-          break;
-      }
-    } catch (error: any) {
-      logger.error(
-        `[SocketIO ${socket.id}] Error processing 'message' event: ${error.message}`,
-        error
-      );
-    }
-  }
-
-  private handleChannelJoining(socket: Socket, payload: any) {
-    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
+  private handleRoomJoining(socket: Socket, payload: any) {
+    const roomId = payload.channelId || payload.roomId;
     const { agentId, entityId, serverId, metadata } = payload;
 
-    logger.debug(
-      `[SocketIO] handleChannelJoining called with payload:`,
-      JSON.stringify(payload, null, 2)
-    );
-
-    if (!channelId) {
-      this.sendErrorResponse(socket, `channelId is required for joining.`);
+    if (!roomId) {
+      this.sendError(socket, 'roomId is required for joining');
       return;
     }
 
-    if (agentId) {
-      const agentUuid = validateUuid(agentId);
-      if (agentUuid) {
-        this.connections.set(socket.id, agentUuid);
-        logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
-      }
+    // Track agent association
+    if (agentId && validateUuid(agentId)) {
+      this.connections.set(socket.id, agentId as UUID);
     }
 
-    socket.join(channelId);
-    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
+    // Join Socket.IO room
+    socket.join(roomId);
+    logger.info(`[SocketIO] Socket ${socket.id} joined room: ${roomId}`);
 
-    // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
-    if (entityId && (serverId || DEFAULT_SERVER_ID)) {
-      const finalServerId = serverId || DEFAULT_SERVER_ID;
-      const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
+    // Add to MessageBus participants
+    if (this.serverInstance.messageBus && entityId) {
+      const messageBus = this.serverInstance.messageBus;
 
-      logger.info(
-        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`
-      );
-
-      // Get the first available runtime (there should typically be one)
-      const runtime = this.elizaOS.getAgents()[0];
-      if (runtime) {
-        runtime.emitEvent(EventType.ENTITY_JOINED as any, {
-          entityId: entityId as UUID,
-          runtime,
-          worldId: finalServerId, // Use serverId as worldId identifier
-          roomId: channelId as UUID,
-          metadata: {
-            type: isDm ? ChannelType.DM : ChannelType.GROUP,
-            isDm,
-            ...metadata,
-          },
+      // Ensure room exists
+      let room = messageBus.getRoom(roomId as UUID);
+      if (!room) {
+        messageBus.createRoom({
+          id: roomId as UUID,
+          worldId: (serverId || DEFAULT_SERVER_ID) as UUID,
+          agentId: this.elizaOS.getAgents()[0]?.agentId,
+          name: `Room ${roomId.substring(0, 8)}`,
           source: 'socketio',
+          type: (metadata?.channelType as any) || ChannelType.GROUP,
+          participants: [],
+          metadata,
         });
-
-        logger.info(`[SocketIO] ENTITY_JOINED event emitted successfully for ${entityId}`);
-      } else {
-        logger.warn(`[SocketIO] No runtime available to emit ENTITY_JOINED event`);
       }
-    } else {
-      logger.debug(
-        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || DEFAULT_SERVER_ID}) - not emitting ENTITY_JOINED event`
-      );
-    }
 
-    const successMessage = `Socket ${socket.id} successfully joined channel ${channelId}.`;
-    const responsePayload = {
-      message: successMessage,
-      channelId,
-      roomId: channelId, // Keep for backward compatibility
-      ...(agentId && { agentId: validateUuid(agentId) || agentId }),
-    };
-    socket.emit('channel_joined', responsePayload);
-    socket.emit('room_joined', responsePayload); // Keep for backward compatibility
-    logger.info(`[SocketIO] ${successMessage}`);
-  }
+      // Add user as participant
+      if (!messageBus.isParticipant(roomId as UUID, entityId as UUID)) {
+        messageBus.addParticipant(roomId as UUID, entityId as UUID);
+      }
 
-  private async handleMessageSubmission(socket: Socket, payload: any) {
-    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
-
-    logger.info(
-      `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
-    );
-    logger.info(
-      `[SocketIO ${socket.id}] Full payload for debugging:`,
-      JSON.stringify(payload, null, 2)
-    );
-
-    // Special handling for default server ID "0"
-    const isValidServerId = serverId === DEFAULT_SERVER_ID || validateUuid(serverId);
-
-    if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
-      this.sendErrorResponse(
-        socket,
-        `For SEND_MESSAGE: channelId, serverId (server_id), senderId (author_id), and message are required.`
-      );
-      return;
-    }
-
-    try {
-      // Check if this is a DM channel and emit ENTITY_JOINED for proper world setup
-      const isDmForWorldSetup = metadata?.isDm || metadata?.channelType === ChannelType.DM;
-      if (isDmForWorldSetup && senderId) {
-        logger.info(
-          `[SocketIO] Detected DM channel during message submission, emitting ENTITY_JOINED for proper world setup`
-        );
-
-        const runtime = this.elizaOS.getAgents()[0];
-        if (runtime) {
-          runtime.emitEvent(EventType.ENTITY_JOINED as any, {
-            entityId: senderId as UUID,
-            runtime,
-            worldId: serverId, // Use serverId as worldId identifier
-            roomId: channelId as UUID,
-            metadata: {
-              type: ChannelType.DM,
-              isDm: true,
-              ...metadata,
-            },
-            source: 'socketio_message',
-          });
-
-          logger.info(`[SocketIO] ENTITY_JOINED event emitted for DM channel setup: ${senderId}`);
+      // Add all agents as participants
+      this.elizaOS.getAgents().forEach((agent) => {
+        if (!messageBus.isParticipant(roomId as UUID, agent.agentId)) {
+          messageBus.addParticipant(roomId as UUID, agent.agentId);
         }
-      }
-
-      // Ensure the channel exists before creating the message
-      logger.info(
-        `[SocketIO ${socket.id}] Checking if channel ${channelId} exists before creating message`
-      );
-      let channelExists = false;
-      try {
-        const existingChannel = await this.serverInstance.getChannelDetails(channelId as UUID);
-        channelExists = !!existingChannel;
-        logger.info(`[SocketIO ${socket.id}] Channel ${channelId} exists: ${channelExists}`);
-      } catch (error: any) {
-        logger.info(
-          `[SocketIO ${socket.id}] Channel ${channelId} does not exist, will create it. Error: ${error.message}`
-        );
-      }
-
-      if (!channelExists) {
-        // Auto-create the channel if it doesn't exist
-        logger.info(
-          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with serverId ${serverId}`
-        );
-        try {
-          // First verify the server exists
-          const servers = await this.serverInstance.getServers();
-          const serverExists = servers.some((s) => s.id === serverId);
-          logger.info(
-            `[SocketIO ${socket.id}] Server ${serverId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
-          );
-
-          if (!serverExists) {
-            logger.error(
-              `[SocketIO ${socket.id}] Server ${serverId} does not exist, cannot create channel`
-            );
-            this.sendErrorResponse(socket, `Server ${serverId} does not exist`);
-            return;
-          }
-
-          // Determine if this is likely a DM based on the context
-          const isDmChannel = metadata?.isDm || metadata?.channelType === ChannelType.DM;
-
-          const channelData = {
-            id: channelId as UUID, // Use the specific channel ID from the client
-            messageServerId: serverId as UUID,
-            name: isDmChannel
-              ? `DM ${channelId.substring(0, 8)}`
-              : `Chat ${channelId.substring(0, 8)}`,
-            type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
-            sourceType: 'auto_created',
-            metadata: {
-              created_by: 'socketio_auto_creation',
-              created_for_user: senderId,
-              created_at: new Date().toISOString(),
-              channel_type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
-              ...metadata,
-            },
-          };
-
-          logger.info(
-            `[SocketIO ${socket.id}] Creating channel with data:`,
-            JSON.stringify(channelData, null, 2)
-          );
-
-          // For DM channels, we need to determine the participants
-          let participants = [senderId as UUID];
-          if (isDmChannel) {
-            // Try to extract the other participant from metadata or payload
-            const otherParticipant =
-              metadata?.targetUserId || metadata?.recipientId || payload.targetUserId;
-            if (otherParticipant && validateUuid(otherParticipant)) {
-              participants.push(otherParticipant as UUID);
-              logger.info(
-                `[SocketIO ${socket.id}] DM channel will include participants: ${participants.join(', ')}`
-              );
-            } else {
-              logger.warn(
-                `[SocketIO ${socket.id}] DM channel missing second participant, only adding sender: ${senderId}`
-              );
-            }
-          }
-
-          await this.serverInstance.createChannel(channelData, participants);
-          logger.info(
-            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelId} for message submission with ${participants.length} participants`
-          );
-        } catch (createError: any) {
-          logger.error(
-            `[SocketIO ${socket.id}] Failed to auto-create channel ${channelId}:`,
-            createError
-          );
-          this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
-          return;
-        }
-      } else {
-        logger.info(
-          `[SocketIO ${socket.id}] Channel ${channelId} already exists, proceeding with message creation`
-        );
-      }
-
-      const newRootMessageData = {
-        channelId: channelId as UUID,
-        authorId: senderId as UUID,
-        content: message as string,
-        rawMessage: payload,
-        metadata: {
-          ...(metadata || {}),
-          user_display_name: senderName,
-          socket_id: socket.id,
-          serverId: serverId as UUID,
-          attachments,
-        },
-        sourceType: source || 'socketio_client',
-      };
-
-      const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
-
-      logger.info(
-        `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
-      );
-
-      // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(attachments);
-
-      // Immediately broadcast the message to all clients in the channel
-      const messageBroadcast = {
-        id: createdRootMessage.id,
-        senderId: senderId,
-        senderName: senderName || 'User',
-        text: message,
-        channelId: channelId,
-        roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Use serverId at message server layer
-        createdAt: new Date(createdRootMessage.createdAt).getTime(),
-        source: source || 'socketio_client',
-        attachments: transformedAttachments,
-      };
-
-      // Broadcast to everyone in the channel except the sender
-      socket.to(channelId).emit('messageBroadcast', messageBroadcast);
-
-      // Also send back to the sender with the server-assigned ID
-      socket.emit('messageBroadcast', {
-        ...messageBroadcast,
-        clientMessageId: payload.messageId,
       });
-
-      socket.emit('messageAck', {
-        clientMessageId: payload.messageId,
-        messageId: createdRootMessage.id,
-        status: 'received_by_server_and_processing',
-        channelId,
-        roomId: channelId, // Keep for backward compatibility
-      });
-    } catch (error: any) {
-      logger.error(
-        `[SocketIO ${socket.id}] Error during central submission for message: ${error.message}`,
-        error
-      );
-      this.sendErrorResponse(socket, `[SocketIO] Error processing your message: ${error.message}`);
     }
-  }
 
-  private sendErrorResponse(socket: Socket, errorMessage: string) {
-    logger.error(`[SocketIO ${socket.id}] Sending error to client: ${errorMessage}`);
-    socket.emit('messageError', {
-      error: errorMessage,
+    socket.emit('room_joined', {
+      message: `Successfully joined room ${roomId}`,
+      channelId: roomId,
+      roomId: roomId,
     });
   }
 
+  private async handleMessageSending(socket: Socket, payload: any) {
+    const roomId = payload.channelId || payload.roomId;
+    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
+
+    logger.info(
+      `[SocketIO ${socket.id}] SEND_MESSAGE: room ${roomId} from ${senderName || senderId}`
+    );
+
+    // Validation
+    const isValidServerId = serverId === DEFAULT_SERVER_ID || validateUuid(serverId);
+    if (!validateUuid(roomId) || !isValidServerId || !validateUuid(senderId) || !message) {
+      this.sendError(socket, 'roomId, serverId, senderId, and message are required');
+      return;
+    }
+
+    try {
+      const messageBus = this.serverInstance.messageBus;
+      if (!messageBus) {
+        throw new Error('MessageBus not initialized');
+      }
+
+      // Ensure room exists
+      let room = messageBus.getRoom(roomId as UUID);
+      if (!room) {
+        messageBus.createRoom({
+          id: roomId as UUID,
+          worldId: (serverId || DEFAULT_SERVER_ID) as UUID,
+          agentId: this.elizaOS.getAgents()[0]?.agentId,
+          name: senderName || `Chat ${roomId.substring(0, 8)}`,
+          source: 'socketio',
+          type: (metadata?.channelType as any) || ChannelType.GROUP,
+          participants: [],
+          metadata,
+        });
+      }
+
+      // Add sender as participant
+      if (!messageBus.isParticipant(roomId as UUID, senderId as UUID)) {
+        messageBus.addParticipant(roomId as UUID, senderId as UUID);
+      }
+
+      // Add all agents as participants
+      this.elizaOS.getAgents().forEach((agent) => {
+        if (!messageBus.isParticipant(roomId as UUID, agent.agentId)) {
+          messageBus.addParticipant(roomId as UUID, agent.agentId);
+        }
+      });
+
+      // Ensure world exists in MessageBus
+      const worldId = (serverId || DEFAULT_SERVER_ID) as UUID;
+      if (!messageBus.getWorld(worldId)) {
+        messageBus.createWorld({
+          id: worldId,
+          agentId: this.elizaOS.getAgents()[0]?.agentId || ('' as UUID),
+          serverId: serverId || 'default',
+          name: 'Default World',
+          rooms: [],
+          metadata: {},
+        });
+      }
+
+      // Send message via MessageBus
+      const messageId = uuidv4() as UUID;
+      await messageBus.sendMessage({
+        id: messageId,
+        roomId: roomId as UUID,
+        worldId: worldId,
+        authorId: senderId as UUID,
+        content: message as string,
+        metadata: {
+          type: 'message',
+          source: source || 'socketio_client',
+          attachments,
+          senderName,
+        },
+        createdAt: Date.now(),
+      });
+
+      // Only broadcast to others in room (not back to sender - sender sees their message immediately in UI)
+      socket.to(roomId).emit('messageBroadcast', {
+        id: messageId,
+        senderId,
+        senderName: senderName || 'User',
+        text: message,
+        channelId: roomId,
+        roomId: roomId,
+        serverId,
+        createdAt: Date.now(),
+        source: source || 'socketio_client',
+        attachments,
+      });
+
+      // Send acknowledgment
+      socket.emit('messageAck', {
+        clientMessageId: payload.messageId,
+        messageId: messageId,
+        status: 'sent_via_messagebus',
+        channelId: roomId,
+        roomId: roomId,
+      });
+
+      logger.success(`[SocketIO] Message sent via MessageBus: ${messageId}`);
+    } catch (error: any) {
+      logger.error(`[SocketIO ${socket.id}] Error sending message:`, error);
+      this.sendError(socket, `Error processing message: ${error.message}`);
+    }
+  }
+
+  private sendError(socket: Socket, errorMessage: string) {
+    logger.error(`[SocketIO] Error: ${errorMessage}`);
+    socket.emit('messageError', { error: errorMessage });
+  }
+
+  // Log streaming methods (unchanged)
+
   private handleLogSubscription(socket: Socket) {
     this.logStreamConnections.set(socket.id, {});
-    logger.info(`[SocketIO ${socket.id}] Client subscribed to log stream`);
+    logger.info(`[SocketIO ${socket.id}] Subscribed to log stream`);
     socket.emit('log_subscription_confirmed', {
       subscribed: true,
       message: 'Successfully subscribed to log stream',
@@ -425,7 +304,7 @@ export class SocketIORouter {
 
   private handleLogUnsubscription(socket: Socket) {
     this.logStreamConnections.delete(socket.id);
-    logger.info(`[SocketIO ${socket.id}] Client unsubscribed from log stream`);
+    logger.info(`[SocketIO ${socket.id}] Unsubscribed from log stream`);
     socket.emit('log_subscription_confirmed', {
       subscribed: false,
       message: 'Successfully unsubscribed from log stream',
@@ -436,13 +315,13 @@ export class SocketIORouter {
     const existingFilters = this.logStreamConnections.get(socket.id);
     if (existingFilters !== undefined) {
       this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
-      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, JSON.stringify(filters));
+      logger.info(`[SocketIO ${socket.id}] Updated log filters: ${JSON.stringify(filters)}`);
       socket.emit('log_filters_updated', {
         success: true,
         filters: this.logStreamConnections.get(socket.id),
       });
     } else {
-      logger.warn(`[SocketIO ${socket.id}] Cannot update filters: not subscribed to log stream`);
+      logger.warn(`[SocketIO ${socket.id}] Not subscribed to log stream`);
       socket.emit('log_filters_updated', {
         success: false,
         error: 'Not subscribed to log stream',
@@ -452,22 +331,25 @@ export class SocketIORouter {
 
   public broadcastLog(io: SocketIOServer, logEntry: any) {
     if (this.logStreamConnections.size === 0) return;
+
     const logData = { type: 'log_entry', payload: logEntry };
     this.logStreamConnections.forEach((filters, socketId) => {
       const socket = io.sockets.sockets.get(socketId);
       if (socket) {
         let shouldBroadcast = true;
+
         if (filters.agentName && filters.agentName !== 'all') {
           shouldBroadcast = shouldBroadcast && logEntry.agentName === filters.agentName;
         }
+
         if (filters.level && filters.level !== 'all') {
-          // Use logger levels directly from @elizaos/core
           const numericLevel =
             typeof filters.level === 'string'
               ? customLevels[filters.level.toLowerCase()] || 70
               : filters.level;
           shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
         }
+
         if (shouldBroadcast) {
           socket.emit('log_stream', logData);
         }
@@ -476,15 +358,14 @@ export class SocketIORouter {
   }
 
   private handleDisconnect(socket: Socket) {
-    const agentIdAssociated = this.connections.get(socket.id);
+    const agentId = this.connections.get(socket.id);
     this.connections.delete(socket.id);
     this.logStreamConnections.delete(socket.id);
-    if (agentIdAssociated) {
-      logger.info(
-        `[SocketIO] Client ${socket.id} (associated with agent ${agentIdAssociated}) disconnected.`
-      );
+
+    if (agentId) {
+      logger.info(`[SocketIO] Client ${socket.id} (agent: ${agentId}) disconnected`);
     } else {
-      logger.info(`[SocketIO] Client ${socket.id} disconnected.`);
+      logger.info(`[SocketIO] Client ${socket.id} disconnected`);
     }
   }
 }

@@ -9,6 +9,9 @@ import {
   getGeneratedDir,
   getUploadsAgentsDir,
   ElizaOS,
+  MessageBus,
+  MemoryTransport,
+  MessageBusConnector,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -21,7 +24,6 @@ import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
 import { apiKeyAuthMiddleware } from './authMiddleware.js';
-import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
@@ -29,13 +31,9 @@ import { PluginLoader } from './managers/PluginLoader.js';
 import { ConfigManager } from './managers/ConfigManager.js';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 
-import internalMessageBus from './bus.js';
-import type {
-  CentralRootMessage,
-  MessageChannel,
-  MessageServer,
-  MessageServiceStructure,
-} from './types.js';
+// Old MessageBusService no longer used - replaced by MessageBus + MessageBusConnector
+
+import type { CentralRootMessage, MessageChannel, MessageServer } from './types.js';
 import { existsSync } from 'node:fs';
 import { resolveEnvFile } from './api/system/environment.js';
 import dotenv from 'dotenv';
@@ -97,8 +95,6 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 
 /**
  * Represents a function that acts as a server middleware.
@@ -162,6 +158,8 @@ export class AgentServer {
   private configManager?: ConfigManager; // Configuration management
 
   public database!: DatabaseAdapter;
+  public messageBus?: MessageBus; // New MessageBus system
+  private messageBusConnectors: Map<UUID, MessageBusConnector> = new Map(); // Track connectors per agent
 
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
@@ -233,11 +231,8 @@ export class AgentServer {
           allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
         }
 
-        // Always include the message bus connector plugin for server agents
-        allAvailablePlugins.set(
-          messageBusConnectorPlugin.name,
-          messageBusConnectorPlugin as unknown as Plugin
-        );
+        // MessageBus connection is now handled in startAgents() via MessageBusConnector
+        // No plugin needed
 
         // Resolve dependencies and get final plugin list
         const finalPlugins = this.pluginLoader?.resolvePluginDependencies(
@@ -293,6 +288,17 @@ export class AgentServer {
         }
 
         runtimes.push(runtime);
+      }
+    }
+
+    // Connect all agents to MessageBus
+    if (this.messageBus) {
+      logger.info(`[AgentServer] Connecting ${runtimes.length} agents to MessageBus...`);
+      for (const runtime of runtimes) {
+        const connector = new MessageBusConnector(runtime, this.messageBus);
+        await connector.connect();
+        this.messageBusConnectors.set(runtime.agentId, connector);
+        logger.success(`[AgentServer] Agent ${runtime.character.name} connected to MessageBus`);
       }
     }
 
@@ -420,10 +426,8 @@ export class AgentServer {
       // Add a small delay to ensure database is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Ensure default server exists
-      logger.info('[INIT] Ensuring default server exists...');
-      await this.ensureDefaultServer();
-      logger.success('[INIT] Default server setup complete');
+      // MessageBus system doesn't need default server setup
+      logger.info('[INIT] Using MessageBus system (no central server tables needed)');
 
       // Server agent is no longer needed - each agent has its own database adapter
       logger.info('[INIT] Server uses temporary adapter for migrations only');
@@ -444,6 +448,11 @@ export class AgentServer {
 
       logger.success('[INIT] ElizaOS initialized');
 
+      // Create MessageBus (always)
+      logger.info('[INIT] 🚀 Creating MessageBus system');
+      this.messageBus = new MessageBus(new MemoryTransport());
+      logger.success('[INIT] MessageBus created');
+
       await this.initializeServer(options);
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
@@ -454,81 +463,7 @@ export class AgentServer {
     }
   }
 
-  private async ensureDefaultServer(): Promise<void> {
-    try {
-      // Check if the default server exists
-      logger.info('[AgentServer] Checking for default server...');
-      const servers = await (this.database as any).getMessageServers();
-      logger.debug(`[AgentServer] Found ${servers.length} existing servers`);
-
-      // Log all existing servers for debugging
-      servers.forEach((s: any) => {
-        logger.debug(`[AgentServer] Existing server: ID=${s.id}, Name=${s.name}`);
-      });
-
-      const defaultServer = servers.find(
-        (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
-      );
-
-      if (!defaultServer) {
-        logger.info(
-          '[AgentServer] Creating default server with UUID 00000000-0000-0000-0000-000000000000...'
-        );
-
-        // Use raw SQL to ensure the server is created with the exact ID
-        try {
-          await (this.database as any).db.execute(`
-            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES ('00000000-0000-0000-0000-000000000000', 'Default Server', 'eliza_default', NOW(), NOW())
-            ON CONFLICT (id) DO NOTHING
-          `);
-          logger.success('[AgentServer] Default server created via raw SQL');
-
-          // Immediately check if it was created
-          const checkResult = await (this.database as any).db.execute(
-            "SELECT id, name FROM message_servers WHERE id = '00000000-0000-0000-0000-000000000000'"
-          );
-          logger.debug('[AgentServer] Raw SQL check result:', checkResult);
-        } catch (sqlError: any) {
-          logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
-
-          // Try creating with ORM as fallback
-          try {
-            const server = await (this.database as any).createMessageServer({
-              id: '00000000-0000-0000-0000-000000000000' as UUID,
-              name: 'Default Server',
-              sourceType: 'eliza_default',
-            });
-            logger.success('[AgentServer] Default server created via ORM with ID:', server.id);
-          } catch (ormError: any) {
-            logger.error('[AgentServer] Both SQL and ORM creation failed:', ormError);
-            throw new Error(`Failed to create default server: ${ormError.message}`);
-          }
-        }
-
-        // Verify it was created
-        const verifyServers = await (this.database as any).getMessageServers();
-        logger.debug(`[AgentServer] After creation attempt, found ${verifyServers.length} servers`);
-        verifyServers.forEach((s: any) => {
-          logger.debug(`[AgentServer] Server after creation: ID=${s.id}, Name=${s.name}`);
-        });
-
-        const verifyDefault = verifyServers.find(
-          (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
-        );
-        if (!verifyDefault) {
-          throw new Error(`Failed to create or verify default server with ID ${DEFAULT_SERVER_ID}`);
-        } else {
-          logger.success('[AgentServer] Default server creation verified successfully');
-        }
-      } else {
-        logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
-      }
-    } catch (error) {
-      logger.error({ error }, '[AgentServer] Error ensuring default server:');
-      throw error; // Re-throw to prevent startup if default server can't be created
-    }
-  }
+  // ensureDefaultServer() removed - no longer needed with MessageBus
 
   /**
    * Initializes the server with the provided options.
@@ -1200,24 +1135,6 @@ export class AgentServer {
       // Agent is now registered in ElizaOS
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) registered`);
 
-      // Auto-register the MessageBusConnector plugin
-      try {
-        if (messageBusConnectorPlugin) {
-          await runtime.registerPlugin(messageBusConnectorPlugin);
-          logger.info(
-            `[AgentServer] Automatically registered MessageBusConnector for agent ${runtime.character.name}`
-          );
-        } else {
-          logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
-        }
-      } catch (e) {
-        logger.error(
-          { error: e },
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
-        );
-        // Decide if this is a fatal error for the agent.
-      }
-
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
       if (teePlugin) {
@@ -1238,11 +1155,6 @@ export class AgentServer {
 
       logger.success(
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
-      );
-
-      await this.addAgentToServer(DEFAULT_SERVER_ID, runtime.agentId);
-      logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
       );
     } catch (error) {
       logger.error({ error }, 'Failed to register agent:');
@@ -1485,27 +1397,9 @@ export class AgentServer {
   ): Promise<CentralRootMessage> {
     const createdMessage = await (this.database as any).createMessage(data);
 
-    // Get the channel details to find the server ID
-    const channel = await this.getChannelDetails(createdMessage.channelId);
-    if (channel) {
-      // Emit to internal message bus for agent consumption
-      const messageForBus: MessageServiceStructure = {
-        id: createdMessage.id,
-        channel_id: createdMessage.channelId,
-        server_id: channel.messageServerId,
-        author_id: createdMessage.authorId,
-        content: createdMessage.content,
-        raw_message: createdMessage.rawMessage,
-        source_id: createdMessage.sourceId,
-        source_type: createdMessage.sourceType,
-        in_reply_to_message_id: createdMessage.inReplyToRootMessageId,
-        created_at: createdMessage.createdAt.getTime(),
-        metadata: createdMessage.metadata,
-      };
-
-      internalMessageBus.emit('new_message', messageForBus);
-      logger.info(`[AgentServer] Published message ${createdMessage.id} to internal message bus`);
-    }
+    // Old central messaging system - messages saved to DB only
+    // With new MessageBus (USE_NEW_MESSAGE_BUS=true), routing happens via MessageBus events
+    logger.info(`[AgentServer] Message created in central DB: ${createdMessage.id}`);
 
     return createdMessage;
   }
