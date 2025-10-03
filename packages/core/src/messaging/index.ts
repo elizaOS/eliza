@@ -8,6 +8,9 @@
 // Core MessageBus
 export { MessageBus } from './message-bus';
 
+// Runtime connector
+export { MessageBusConnector } from './runtime-connector';
+
 // Types
 export * from './types';
 

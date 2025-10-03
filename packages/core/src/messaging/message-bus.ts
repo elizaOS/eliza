@@ -78,6 +78,9 @@ export class MessageBus extends EventEmitter {
     // Send via transport if available (async for network)
     if (this.transport) {
       await this.transport.sendMessage(message);
+      // Also emit received locally for in-process transports (MemoryTransport)
+      // This ensures MessageBusConnector receives the message
+      this.emit('message:received' as MessageBusEvent, message);
     } else {
       // In browser-only mode without transport, emit received immediately
       this.emit('message:received' as MessageBusEvent, message);
