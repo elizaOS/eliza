@@ -17,7 +17,7 @@ import { runtimeRouter } from './runtime';
 import { teeRouter } from './tee';
 import { systemRouter } from './system';
 // NOTE: world router has been removed - functionality moved to messaging/spaces
-import { SocketIORouter } from '../socketio';
+import { SocketIORouter } from '../socketio/index';
 import {
   securityMiddleware,
   validateContentTypeMiddleware,
