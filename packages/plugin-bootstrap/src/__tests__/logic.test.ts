@@ -582,29 +582,41 @@ describe('Event Lifecycle Events', () => {
   });
 });
 
-describe('shouldBypassShouldRespond with mentionContext', () => {
+describe('shouldRespond with mentionContext', () => {
   let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
 
   beforeEach(() => {
-    const setup = setupActionTest({});
+    const setup = setupActionTest({
+      messageOverrides: {
+        content: {
+          text: 'Hello there',
+          channelType: ChannelType.GROUP,
+          source: 'discord',
+        } as Content,
+      },
+    });
     mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
   });
 
-  it('should bypass for DM channels', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+  it('should skip evaluation and respond for DM channels', () => {
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.DM };
-    const result = shouldBypassShouldRespond(
+    const result = shouldRespond(
       mockRuntime as unknown as IAgentRuntime,
-      room,
-      'discord'
+      mockMessage as Memory,
+      room
     );
 
-    expect(result).toBe(true);
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('private channel');
   });
 
-  it('should bypass for platform mentions (isMention=true)', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+  it('should skip evaluation and respond for platform mentions (isMention=true)', () => {
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
@@ -614,18 +626,20 @@ describe('shouldBypassShouldRespond with mentionContext', () => {
       mentionType: 'platform_mention' as const,
     };
 
-    const result = shouldBypassShouldRespond(
+    const result = shouldRespond(
       mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
       room,
-      'discord',
       mentionContext
     );
 
-    expect(result).toBe(true);
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('platform mention');
   });
 
-  it('should bypass for replies to bot (isReply=true)', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+  it('should skip evaluation and respond for replies to bot (isReply=true)', () => {
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
@@ -635,18 +649,20 @@ describe('shouldBypassShouldRespond with mentionContext', () => {
       mentionType: 'reply' as const,
     };
 
-    const result = shouldBypassShouldRespond(
+    const result = shouldRespond(
       mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
       room,
-      'discord',
       mentionContext
     );
 
-    expect(result).toBe(true);
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('platform reply');
   });
 
-  it('should NOT bypass for regular messages without mention', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+  it('should NOT skip evaluation for regular messages without mention', () => {
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.GROUP };
     const mentionContext = {
@@ -656,31 +672,42 @@ describe('shouldBypassShouldRespond with mentionContext', () => {
       mentionType: 'none' as const,
     };
 
-    const result = shouldBypassShouldRespond(
+    const result = shouldRespond(
       mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
       room,
-      'discord',
       mentionContext
     );
 
-    expect(result).toBe(false);
+    expect(result.skipEvaluation).toBe(false);
+    expect(result.reason).toContain('needs LLM evaluation');
   });
 
-  it('should bypass for client_chat source', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+  it('should skip evaluation and respond for client_chat source', () => {
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.GROUP };
-    const result = shouldBypassShouldRespond(
+    const messageWithClientChat = {
+      ...mockMessage,
+      content: {
+        ...mockMessage.content,
+        source: 'client_chat',
+      },
+    };
+
+    const result = shouldRespond(
       mockRuntime as unknown as IAgentRuntime,
-      room,
-      'client_chat'
+      messageWithClientChat as Memory,
+      room
     );
 
-    expect(result).toBe(true);
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('whitelisted source');
   });
 
   it('should be platform agnostic (works for any platform)', () => {
-    const { shouldBypassShouldRespond } = require('../index');
+    const { shouldRespond } = require('../index');
 
     const room = { type: ChannelType.GROUP };
 
@@ -695,14 +722,23 @@ describe('shouldBypassShouldRespond with mentionContext', () => {
         mentionType: 'platform_mention' as const,
       };
 
-      const result = shouldBypassShouldRespond(
+      const messageWithPlatform = {
+        ...mockMessage,
+        content: {
+          ...mockMessage.content,
+          source: platform,
+        },
+      };
+
+      const result = shouldRespond(
         mockRuntime as unknown as IAgentRuntime,
+        messageWithPlatform as Memory,
         room,
-        platform,
         mentionContext
       );
 
-      expect(result).toBe(true);
+      expect(result.skipEvaluation).toBe(true);
+      expect(result.shouldRespond).toBe(true);
     });
   });
 });
