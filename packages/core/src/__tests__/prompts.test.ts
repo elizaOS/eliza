@@ -18,6 +18,12 @@ describe('Prompts', () => {
       expect(shouldRespondTemplate).toContain('<reasoning>');
       expect(shouldRespondTemplate).toContain('<action>');
       expect(shouldRespondTemplate).toMatch(/RESPOND \| IGNORE \| STOP/);
+
+      // Check for important rules section
+      expect(shouldRespondTemplate).toContain('IMPORTANT RULES FOR RESPONDING:');
+      expect(shouldRespondTemplate).toContain('directly mentioned');
+      expect(shouldRespondTemplate).toContain('Talking TO {{agentName}}');
+      expect(shouldRespondTemplate).toContain('Talking ABOUT {{agentName}}');
     });
 
     it('messageHandlerTemplate should contain required placeholders and structure', () => {
