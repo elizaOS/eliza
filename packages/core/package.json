@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.5.13-alpha.2",
+  "version": "1.6.2-alpha.1",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -61,20 +61,20 @@
   "devDependencies": {
     "@types/bun": "^1.2.21",
     "@types/node": "^24.0.3",
-    "@types/uuid": "10.0.0",
-    "prettier": "3.5.3",
-    "typescript": "5.8.3"
+    "@types/uuid": "11.0.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.2"
   },
   "dependencies": {
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
-    "dotenv": "16.5.0",
+    "dotenv": "17.2.3",
     "glob": "11.0.3",
     "handlebars": "^4.7.8",
-    "langchain": "^0.3.15",
+    "langchain": "^0.3.35",
     "pdfjs-dist": "^5.2.133",
     "unique-names-generator": "4.7.1",
-    "uuid": "11.1.0",
+    "uuid": "13.0.0",
     "zod": "4.1.11"
   },
   "publishConfig": {

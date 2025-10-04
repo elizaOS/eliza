@@ -104,12 +104,13 @@ describe('Dynamic Migration Tests', () => {
       expect(tableNames).toContain('memories');
     });
 
-    it('should create tables for the hello-world plugin in a dedicated schema', async () => {
+    it('should create tables for the hello-world plugin', async () => {
       const db = adapter.getDatabase();
       const tables = await db.execute(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'test_hello_world'`
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r: any) => r.table_name);
+      // Plugin tables are created in public schema
       expect(tableNames).toContain('hello_world');
       expect(tableNames).toContain('greetings');
     });
@@ -164,8 +165,10 @@ describe('Dynamic Migration Tests', () => {
       );
 
       const db = complexAdapter.getDatabase();
+
+      // Check tables in public schema (where plugin tables are created)
       const tables = await db.execute(
-        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'test_complex_plugin'`
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
       );
       const tableNames = tables.rows.map((r: any) => r.table_name);
       expect(tableNames).toContain('users');

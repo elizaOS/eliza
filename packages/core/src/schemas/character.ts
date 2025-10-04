@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Character } from '../types/agent';
+import { ChannelType } from '../types/environment';
 
 // UUID validation schema
 const uuidSchema = z
@@ -18,7 +19,7 @@ const contentSchema = z
     url: z.string().optional(),
     inReplyTo: uuidSchema.optional(),
     attachments: z.array(z.any()).optional(),
-    channelType: z.string().optional(),
+    channelType: z.nativeEnum(ChannelType).optional(),
   })
   .passthrough(); // Allow additional properties
 

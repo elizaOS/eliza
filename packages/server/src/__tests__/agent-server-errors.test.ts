@@ -33,7 +33,7 @@ describe('AgentServer Error Handling Tests', () => {
   it('should handle initialization errors and log them', async () => {
     // Reset mock for this test
     mock.restore();
-    
+
     mock.module('@elizaos/core', () => ({
       ...coreModule,
       logger: {
@@ -64,7 +64,7 @@ describe('AgentServer Error Handling Tests', () => {
     const errorSpy = jest.spyOn(logger, 'error');
 
     const server = new AgentServer();
-    
+
     await expect(server.initialize()).rejects.toThrow('Initialization failed');
     expect(errorSpy).toHaveBeenCalled();
   });

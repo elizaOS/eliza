@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.5.13-alpha.2",
+  "version": "1.6.2-alpha.1",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -46,23 +46,23 @@
   "devDependencies": {
     "@elizaos/client": "workspace:*",
     "@types/node": "^24.0.1",
-    "prettier": "3.5.3",
-    "tsx": "4.19.4",
+    "prettier": "3.6.2",
+    "tsx": "4.20.6",
     "typescript": "^5.5.4",
-    "which": "^4.0.0",
+    "which": "^5.0.0",
     "ws": "^8.18.0"
   },
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "@sentry/node": "^10.11.0",
+    "@sentry/node": "^10.16.0",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
-    "@types/multer": "^1.4.13",
-    "dotenv": "^16.5.0",
+    "@types/multer": "^2.0.0",
+    "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "express-rate-limit": "^7.5.0",
+    "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",

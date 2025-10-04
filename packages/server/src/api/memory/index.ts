@@ -8,10 +8,7 @@ import { createRoomManagementRouter } from './rooms';
 /**
  * Creates the memory router for memory and knowledge management
  */
-export function memoryRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): express.Router {
+export function memoryRouter(elizaOS: ElizaOS, serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Mount agent memory management at root level

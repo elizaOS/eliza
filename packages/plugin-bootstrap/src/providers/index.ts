@@ -13,5 +13,6 @@ export { recentMessagesProvider } from './recentMessages';
 export { relationshipsProvider } from './relationships';
 export { roleProvider } from './roles';
 export { settingsProvider } from './settings';
+export { shouldRespondProvider } from './shouldRespond';
 export { timeProvider } from './time';
 export { worldProvider } from './world';

@@ -30,6 +30,7 @@ export * from './actions';
 export * from './database';
 export * from './entities';
 export * from './logger';
+export * from './memory';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';

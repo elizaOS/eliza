@@ -75,9 +75,19 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
  */
 export function createEnvironmentRouter(): express.Router {
   const router = express.Router();
+  const isProd = process.env.NODE_ENV === 'production';
 
   // Get local environment variables
   (router as any).get('/local', async (_req: express.Request, res: express.Response) => {
+    if (isProd) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Local environment inspection is disabled in production',
+        },
+      });
+    }
     try {
       const localEnvPath = getLocalEnvPath();
       if (!localEnvPath) {
@@ -113,6 +123,15 @@ export function createEnvironmentRouter(): express.Router {
 
   // Update local environment variables
   (router as any).post('/local', async (req: express.Request, res: express.Response) => {
+    if (isProd) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: 'Local environment updates are disabled in production',
+        },
+      });
+    }
     try {
       const { content } = req.body;
 

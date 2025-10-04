@@ -105,8 +105,9 @@ export const shouldRespondProvider: Provider = {
         .replace(/{{characterName}}/g, characterName);
     });
 
-    // Join examples with newlines
-    const text = addHeader('# RESPONSE EXAMPLES', formattedExamples.join('\n\n'));
+    // Join examples
+    const examplesText = formattedExamples.join('\n\n');
+    const text = addHeader('# RESPONSE EXAMPLES', examplesText);
 
     return {
       text,

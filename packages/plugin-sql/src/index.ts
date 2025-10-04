@@ -93,7 +93,10 @@ export const plugin: Plugin = {
         ? (runtime as any).hasDatabaseAdapter()
         : (() => {
             try {
-              const existing = (runtime as any).getDatabaseAdapter?.() ?? (runtime as any).databaseAdapter ?? (runtime as any).adapter;
+              const existing =
+                (runtime as any).getDatabaseAdapter?.() ??
+                (runtime as any).databaseAdapter ??
+                (runtime as any).adapter;
               return Boolean(existing);
             } catch {
               return false;

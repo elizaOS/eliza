@@ -132,14 +132,16 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
   // Handle process completion using Bun's API
   try {
     const exitCode = await childProcess.exited;
-    
+
     // Check if process was terminated by signal
     if (childProcess.signalCode) {
       // Map signals to standard exit codes
-      const signalExitCode = 
-        childProcess.signalCode === 'SIGINT' ? 130 :
-        childProcess.signalCode === 'SIGTERM' ? 143 : 
-        128; // Default for other signals
+      const signalExitCode =
+        childProcess.signalCode === 'SIGINT'
+          ? 130
+          : childProcess.signalCode === 'SIGTERM'
+            ? 143
+            : 128; // Default for other signals
       process.exit(signalExitCode);
     } else {
       // Exit with the same code as the child process

@@ -60,7 +60,7 @@ class MockPdfService extends Service {
 describe('Service Type System', () => {
   let runtime: AgentRuntime;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     runtime = new AgentRuntime({
       agentId: uuidv4() as UUID,
       character: {
@@ -69,6 +69,10 @@ describe('Service Type System', () => {
         clients: [],
       },
     });
+    // Resolve initPromise directly since these tests don't require DB setup
+    // Access private resolver for test purposes
+    const resolver = (runtime as any).initResolver as (() => void) | undefined;
+    if (resolver) resolver();
   });
 
   describe('Multiple services of same type', () => {

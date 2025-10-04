@@ -65,7 +65,7 @@ describe('ElizaOS Agent Commands', () => {
             LOG_LEVEL: 'debug',
             PGLITE_DATA_DIR: `${testTmpDir}/elizadb`,
             NODE_OPTIONS: '--max-old-space-size=4096',
-            SERVER_HOST: '127.0.0.1'
+            SERVER_HOST: '127.0.0.1',
           },
           stdin: 'ignore',
           stdout: 'pipe',
@@ -238,7 +238,10 @@ describe('ElizaOS Agent Commands', () => {
 
   it('agent help displays usage information', async () => {
     const cliPath = join(__dirname, '../../src/index.ts');
-    const result = bunExecSync(`bun ${cliPath} agent --help`, getPlatformOptions({ encoding: 'utf8' }));
+    const result = bunExecSync(
+      `bun ${cliPath} agent --help`,
+      getPlatformOptions({ encoding: 'utf8' })
+    );
     expect(result).toContain('Usage:');
     expect(result).toContain('agent');
   });
@@ -359,165 +362,177 @@ describe('ElizaOS Agent Commands', () => {
     }
   });
 
-  it('agent set updates configuration correctly', async () => {
-    // Create a NEW agent specifically for this test to avoid conflicts
-    const testAgentName = `TestAgent_${Date.now()}`;
-    const testCharacter = join(__dirname, '../test-characters', 'ada.json');
-    const cliPath = join(__dirname, '../../src/index.ts');
+  it(
+    'agent set updates configuration correctly',
+    async () => {
+      // Create a NEW agent specifically for this test to avoid conflicts
+      const testAgentName = `TestAgent_${Date.now()}`;
+      const testCharacter = join(__dirname, '../test-characters', 'ada.json');
+      const cliPath = join(__dirname, '../../src/index.ts');
 
-    // Create a unique test agent
-    try {
-      // Read ada.json and modify the name
-      const { readFileSync, writeFileSync } = require('fs');
-      const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
-      adaConfig.name = testAgentName;
+      // Create a unique test agent
+      try {
+        // Read ada.json and modify the name
+        const { readFileSync, writeFileSync } = require('fs');
+        const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
+        adaConfig.name = testAgentName;
 
-      const tempCharFile = join(testTmpDir, `${testAgentName}.json`);
-      writeFileSync(tempCharFile, JSON.stringify(adaConfig));
+        const tempCharFile = join(testTmpDir, `${testAgentName}.json`);
+        writeFileSync(tempCharFile, JSON.stringify(adaConfig));
 
-      // Start the unique test agent
-      bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
-        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
-      );
-    } catch (e) {
-      // If agent creation fails, test should fail
-      throw e;
-    }
+        // Start the unique test agent
+        bunExecSync(
+          `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
+          getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
+        );
+      } catch (e) {
+        // If agent creation fails, test should fail
+        throw e;
+      }
 
-    const configFile = join(testTmpDir, 'update_config.json');
-    const configContent = JSON.stringify({
-      system: 'Updated system prompt for testing',
-    });
+      const configFile = join(testTmpDir, 'update_config.json');
+      const configContent = JSON.stringify({
+        system: 'Updated system prompt for testing',
+      });
 
-    const { writeFile } = await import('fs/promises');
-    await writeFile(configFile, configContent);
+      const { writeFile } = await import('fs/promises');
+      await writeFile(configFile, configContent);
 
-    // Wait for agent to be ready
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for agent to be ready
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    const result = bunExecSync(
-      `bun ${cliPath} agent set --remote-url ${testServerUrl} -n ${testAgentName} -f ${configFile}`,
-      getPlatformOptions({ encoding: 'utf8', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
-    );
-    expect(result).toMatch(/(updated|Updated)/);
-
-    // Clean up: stop the test agent
-    try {
-      bunExecSync(
-        `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${testAgentName}`,
-        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
-      );
-    } catch (e) {
-      // Ignore cleanup errors
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
-
-  it('agent full lifecycle management', async () => {
-    // Create a unique agent for this test to avoid affecting other tests
-    const lifecycleAgentName = `LifecycleAgent_${Date.now()}`;
-    const testCharacter = join(__dirname, '../test-characters', 'ada.json');
-    const cliPath = join(__dirname, '../../src/index.ts');
-
-    // Create a unique test agent
-    const { readFileSync, writeFileSync } = require('fs');
-    const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
-    adaConfig.name = lifecycleAgentName;
-
-    const tempCharFile = join(testTmpDir, `${lifecycleAgentName}.json`);
-    writeFileSync(tempCharFile, JSON.stringify(adaConfig));
-
-    // Start the test agent
-    try {
-      const startResult = bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
-        getPlatformOptions({
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND
-        })
-      );
-      expect(startResult).toMatch(/(started|created)/);
-    } catch (e: any) {
-      // Should not fail for a new agent
-      throw new Error(`Failed to start test agent: ${e.message}`);
-    }
-
-    // Wait for agent to be ready
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Stop the test agent
-    try {
-      const stopResult = bunExecSync(
-        `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${lifecycleAgentName}`,
-        getPlatformOptions({
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND
-        })
-      );
-      expect(stopResult).toMatch(/(stopped|Stopped)/);
-    } catch (e: any) {
-      throw new Error(`Failed to stop test agent: ${e.message}`);
-    }
-
-    // Verify agent is stopped by trying to start again
-    try {
-      const restartResult = bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
+      const result = bunExecSync(
+        `bun ${cliPath} agent set --remote-url ${testServerUrl} -n ${testAgentName} -f ${configFile}`,
         getPlatformOptions({ encoding: 'utf8', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
       );
-      expect(restartResult).toMatch(/(started|created)/);
+      expect(result).toMatch(/(updated|Updated)/);
 
-      // Clean up: stop the agent again
-      bunExecSync(
-        `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${lifecycleAgentName}`,
-        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
-      );
-    } catch (e) {
-      // Ignore cleanup errors
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+      // Clean up: stop the test agent
+      try {
+        bunExecSync(
+          `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${testAgentName}`,
+          getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
+        );
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
-  it('agent stop works after start', async () => {
-    // Create a unique agent for this test
-    const stopTestAgentName = `StopTestAgent_${Date.now()}`;
-    const testCharacter = join(__dirname, '../test-characters', 'ada.json');
-    const cliPath = join(__dirname, '../../src/index.ts');
+  it(
+    'agent full lifecycle management',
+    async () => {
+      // Create a unique agent for this test to avoid affecting other tests
+      const lifecycleAgentName = `LifecycleAgent_${Date.now()}`;
+      const testCharacter = join(__dirname, '../test-characters', 'ada.json');
+      const cliPath = join(__dirname, '../../src/index.ts');
 
-    // Create a unique test agent
-    const { readFileSync, writeFileSync } = require('fs');
-    const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
-    adaConfig.name = stopTestAgentName;
+      // Create a unique test agent
+      const { readFileSync, writeFileSync } = require('fs');
+      const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
+      adaConfig.name = lifecycleAgentName;
 
-    const tempCharFile = join(testTmpDir, `${stopTestAgentName}.json`);
-    writeFileSync(tempCharFile, JSON.stringify(adaConfig));
+      const tempCharFile = join(testTmpDir, `${lifecycleAgentName}.json`);
+      writeFileSync(tempCharFile, JSON.stringify(adaConfig));
 
-    // Start the test agent
-    try {
-      bunExecSync(
-        `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
-        getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
-      );
-    } catch (e: any) {
-      throw new Error(`Failed to start test agent: ${e.message}`);
-    }
+      // Start the test agent
+      try {
+        const startResult = bunExecSync(
+          `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          })
+        );
+        expect(startResult).toMatch(/(started|created)/);
+      } catch (e: any) {
+        // Should not fail for a new agent
+        throw new Error(`Failed to start test agent: ${e.message}`);
+      }
 
-    // Wait a moment for agent to be ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for agent to be ready
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Now stop the test agent
-    try {
-      const result = bunExecSync(
-        `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${stopTestAgentName}`,
-        getPlatformOptions({
-          encoding: 'utf8',
-          timeout: TEST_TIMEOUTS.STANDARD_COMMAND
-        })
-      );
-      expect(result).toMatch(/(stopped|Stopped)/);
-    } catch (e: any) {
-      throw new Error(`Failed to stop test agent: ${e.message}`);
-    }
-  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
+      // Stop the test agent
+      try {
+        const stopResult = bunExecSync(
+          `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${lifecycleAgentName}`,
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          })
+        );
+        expect(stopResult).toMatch(/(stopped|Stopped)/);
+      } catch (e: any) {
+        throw new Error(`Failed to stop test agent: ${e.message}`);
+      }
+
+      // Verify agent is stopped by trying to start again
+      try {
+        const restartResult = bunExecSync(
+          `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
+          getPlatformOptions({ encoding: 'utf8', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
+        );
+        expect(restartResult).toMatch(/(started|created)/);
+
+        // Clean up: stop the agent again
+        bunExecSync(
+          `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${lifecycleAgentName}`,
+          getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
+        );
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it(
+    'agent stop works after start',
+    async () => {
+      // Create a unique agent for this test
+      const stopTestAgentName = `StopTestAgent_${Date.now()}`;
+      const testCharacter = join(__dirname, '../test-characters', 'ada.json');
+      const cliPath = join(__dirname, '../../src/index.ts');
+
+      // Create a unique test agent
+      const { readFileSync, writeFileSync } = require('fs');
+      const adaConfig = JSON.parse(readFileSync(testCharacter, 'utf8'));
+      adaConfig.name = stopTestAgentName;
+
+      const tempCharFile = join(testTmpDir, `${stopTestAgentName}.json`);
+      writeFileSync(tempCharFile, JSON.stringify(adaConfig));
+
+      // Start the test agent
+      try {
+        bunExecSync(
+          `bun ${cliPath} agent start --remote-url ${testServerUrl} --path ${tempCharFile}`,
+          getPlatformOptions({ stdio: 'pipe', timeout: TEST_TIMEOUTS.STANDARD_COMMAND })
+        );
+      } catch (e: any) {
+        throw new Error(`Failed to start test agent: ${e.message}`);
+      }
+
+      // Wait a moment for agent to be ready
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Now stop the test agent
+      try {
+        const result = bunExecSync(
+          `bun ${cliPath} agent stop --remote-url ${testServerUrl} -n ${stopTestAgentName}`,
+          getPlatformOptions({
+            encoding: 'utf8',
+            timeout: TEST_TIMEOUTS.STANDARD_COMMAND,
+          })
+        );
+        expect(result).toMatch(/(stopped|Stopped)/);
+      } catch (e: any) {
+        throw new Error(`Failed to stop test agent: ${e.message}`);
+      }
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
 
   // This test must be absolutely last as it kills the server
   // Moving it after all other tests to avoid disrupting them

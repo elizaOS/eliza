@@ -15,7 +15,7 @@ describe('PluginLoader', () => {
         name: 'test-plugin',
         description: 'A test plugin',
         actions: [],
-        services: []
+        services: [],
       };
 
       expect(pluginLoader.isValidPluginShape(plugin)).toBe(true);
@@ -23,7 +23,7 @@ describe('PluginLoader', () => {
 
     test('should return false for invalid plugin shape', () => {
       const invalidPlugin = {
-        name: 'test-plugin'
+        name: 'test-plugin',
         // Missing required properties
       };
 
@@ -50,11 +50,11 @@ describe('PluginLoader', () => {
         actions: [],
         services: [],
         providers: [],
-        evaluators: []
+        evaluators: [],
       };
 
       const result = pluginLoader.validatePlugin(plugin);
-      
+
       expect(result.isValid).toBe(true);
       expect(result.errors).toEqual([]);
     });
@@ -63,11 +63,11 @@ describe('PluginLoader', () => {
       const plugin = {
         description: 'A test plugin',
         actions: [],
-        services: []
+        services: [],
       } as any;
 
       const result = pluginLoader.validatePlugin(plugin);
-      
+
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain('Plugin must have a name');
     });
@@ -77,13 +77,13 @@ describe('PluginLoader', () => {
         name: 'test-plugin',
         description: 'A test plugin',
         actions: ['not-an-action'] as any,
-        services: []
+        services: [],
       };
 
       const result = pluginLoader.validatePlugin(plugin);
-      
+
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.includes('actions'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('actions'))).toBe(true);
     });
 
     test('should detect invalid service format', () => {
@@ -91,13 +91,13 @@ describe('PluginLoader', () => {
         name: 'test-plugin',
         description: 'A test plugin',
         actions: [],
-        services: ['not-a-service'] as any
+        services: ['not-a-service'] as any,
       };
 
       const result = pluginLoader.validatePlugin(plugin);
-      
+
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.includes('services'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('services'))).toBe(true);
     });
   });
 
@@ -107,7 +107,7 @@ describe('PluginLoader', () => {
         name: 'plugin-a',
         description: 'Plugin A',
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginB: Plugin = {
@@ -115,16 +115,16 @@ describe('PluginLoader', () => {
         description: 'Plugin B',
         dependencies: ['plugin-a'],
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginsMap = new Map<string, Plugin>([
         ['plugin-a', pluginA],
-        ['plugin-b', pluginB]
+        ['plugin-b', pluginB],
       ]);
 
       const resolved = pluginLoader.resolvePluginDependencies(pluginsMap);
-      
+
       expect(resolved).toHaveLength(2);
       expect(resolved[0].name).toBe('plugin-a');
       expect(resolved[1].name).toBe('plugin-b');
@@ -136,7 +136,7 @@ describe('PluginLoader', () => {
         description: 'Plugin A',
         dependencies: ['plugin-b'],
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginB: Plugin = {
@@ -144,16 +144,16 @@ describe('PluginLoader', () => {
         description: 'Plugin B',
         dependencies: ['plugin-a'],
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginsMap = new Map<string, Plugin>([
         ['plugin-a', pluginA],
-        ['plugin-b', pluginB]
+        ['plugin-b', pluginB],
       ]);
 
       const resolved = pluginLoader.resolvePluginDependencies(pluginsMap);
-      
+
       // Should return plugins even with circular dependencies
       expect(resolved).toHaveLength(2);
     });
@@ -164,15 +164,13 @@ describe('PluginLoader', () => {
         description: 'Plugin A',
         dependencies: ['non-existent-plugin'],
         actions: [],
-        services: []
+        services: [],
       };
 
-      const pluginsMap = new Map<string, Plugin>([
-        ['plugin-a', plugin]
-      ]);
+      const pluginsMap = new Map<string, Plugin>([['plugin-a', plugin]]);
 
       const resolved = pluginLoader.resolvePluginDependencies(pluginsMap);
-      
+
       expect(resolved).toHaveLength(1);
       expect(resolved[0].name).toBe('plugin-a');
     });
@@ -183,23 +181,23 @@ describe('PluginLoader', () => {
         description: 'Plugin A',
         testDependencies: ['plugin-b'],
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginB: Plugin = {
         name: 'plugin-b',
         description: 'Plugin B',
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginsMap = new Map<string, Plugin>([
         ['plugin-a', pluginA],
-        ['plugin-b', pluginB]
+        ['plugin-b', pluginB],
       ]);
 
       const resolved = pluginLoader.resolvePluginDependencies(pluginsMap, true);
-      
+
       expect(resolved).toHaveLength(2);
       expect(resolved[0].name).toBe('plugin-b');
       expect(resolved[1].name).toBe('plugin-a');
@@ -211,26 +209,26 @@ describe('PluginLoader', () => {
         description: 'Plugin A',
         testDependencies: ['plugin-b'],
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginB: Plugin = {
         name: 'plugin-b',
         description: 'Plugin B',
         actions: [],
-        services: []
+        services: [],
       };
 
       const pluginsMap = new Map<string, Plugin>([
         ['plugin-a', pluginA],
-        ['plugin-b', pluginB]
+        ['plugin-b', pluginB],
       ]);
 
       const resolved = pluginLoader.resolvePluginDependencies(pluginsMap, false);
-      
+
       // Plugin B should not be included as dependency in non-test mode
-      expect(resolved.some(p => p.name === 'plugin-a')).toBe(true);
-      expect(resolved.some(p => p.name === 'plugin-b')).toBe(true);
+      expect(resolved.some((p) => p.name === 'plugin-a')).toBe(true);
+      expect(resolved.some((p) => p.name === 'plugin-b')).toBe(true);
     });
   });
 
@@ -238,13 +236,13 @@ describe('PluginLoader', () => {
     test('should handle plugin loading errors gracefully', async () => {
       // Test with a non-existent plugin
       const result = await pluginLoader.loadAndPreparePlugin('@elizaos/non-existent-plugin');
-      
+
       expect(result).toBeNull();
     });
 
     test('should load bootstrap plugin successfully', async () => {
       const result = await pluginLoader.loadAndPreparePlugin('@elizaos/plugin-bootstrap');
-      
+
       expect(result).toBeDefined();
       expect(result?.name).toBe('bootstrap');
     });

@@ -1,5 +1,3 @@
-import { UUID } from '@elizaos/core';
-
 export interface ApiSuccessResponse<T> {
   success: true;
   data: T;

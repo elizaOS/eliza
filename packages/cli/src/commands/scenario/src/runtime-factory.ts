@@ -112,7 +112,6 @@ export async function createScenarioServer(
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
         await server.initialize({ dataDir: uniqueDataDir });
-        
         await server.start(port);
         createdServer = true;
 
@@ -200,7 +199,7 @@ export async function createScenarioAgent(
   // Use ConfigManager from server to set default secrets
   const configManager = new ConfigManager();
   await configManager.setDefaultSecretsFromEnv(character);
-  
+
   // Pass raw character; encryption is handled inside startAgents
   const [runtime] = await server.startAgents([character]);
   if (!runtime) {

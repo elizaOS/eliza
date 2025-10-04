@@ -179,30 +179,32 @@ export class AgentServer {
     if (!this.elizaOS || !this.pluginLoader || !this.configManager) {
       throw new Error('Server not properly initialized');
     }
-    
+
     // Prepare all characters in parallel
     const preparations = await Promise.all(
       characters.map(async (character) => {
         character.id ??= stringToUuid(character.name);
-        
+
         // Handle secrets for character configuration
         if (!this.configManager?.hasCharacterSecrets(character)) {
           await this.configManager?.setDefaultSecretsFromEnv(character);
         }
-        
+
         // Load and resolve plugins
         const loadedPlugins = new Map<string, Plugin>();
         const pluginsToLoad = new Set<string>(character.plugins || []);
-        
+
         for (const p of plugins) {
           if (typeof p === 'string') {
             pluginsToLoad.add(p);
           } else if (this.pluginLoader?.isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
             loadedPlugins.set(p.name, p);
-            (p.dependencies || []).forEach((dep) => { pluginsToLoad.add(dep); });
+            (p.dependencies || []).forEach((dep) => {
+              pluginsToLoad.add(dep);
+            });
           }
         }
-        
+
         // Load all requested plugins
         const allAvailablePlugins = new Map<string, Plugin>();
         for (const p of loadedPlugins.values()) {
@@ -216,7 +218,7 @@ export class AgentServer {
             }
           }
         }
-        
+
         // Check if we have a SQL plugin
         let haveSql = false;
         for (const [name] of allAvailablePlugins.entries()) {
@@ -230,19 +232,22 @@ export class AgentServer {
         if (!haveSql) {
           allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
         }
-        
+
         // Always include the message bus connector plugin for server agents
-        allAvailablePlugins.set(messageBusConnectorPlugin.name, messageBusConnectorPlugin as unknown as Plugin);
-        
+        allAvailablePlugins.set(
+          messageBusConnectorPlugin.name,
+          messageBusConnectorPlugin as unknown as Plugin
+        );
+
         // Resolve dependencies and get final plugin list
         const finalPlugins = this.pluginLoader?.resolvePluginDependencies(
           allAvailablePlugins,
           false // isTestMode
         );
-        
+
         // Prepare the character with encrypted data
         const preparedCharacter = encryptedCharacter(character);
-        
+
         return { character: preparedCharacter, plugins: finalPlugins };
       })
     );
@@ -253,22 +258,22 @@ export class AgentServer {
       preparations.map((p) => ({
         character: p.character,
         plugins: p.plugins,
-        settings: settings || {}
-      })),
+        settings: settings || {},
+      }))
     );
-    
+
     // Step 2: Start all agents (initialize them)
     await this.elizaOS.startAgents(agentIds);
-    
+
     // Step 3: Collect started runtimes and register them
     const runtimes: IAgentRuntime[] = [];
-    
+
     for (const id of agentIds) {
       const runtime = this.elizaOS.getAgent(id);
       if (runtime) {
         // Register the agent in the server
         await this.registerAgent(runtime);
-        
+
         // Persist to database
         if (this.database) {
           try {
@@ -278,17 +283,19 @@ export class AgentServer {
                 ...runtime.character,
                 id: runtime.agentId,
               });
-              logger.info(`Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`);
+              logger.info(
+                `Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`
+              );
             }
           } catch (error) {
             logger.error({ error }, `Failed to persist agent ${runtime.agentId} to database`);
           }
         }
-        
+
         runtimes.push(runtime);
       }
     }
-    
+
     return runtimes;
   }
 
@@ -300,7 +307,7 @@ export class AgentServer {
     if (!this.elizaOS) {
       throw new Error('ElizaOS not initialized');
     }
-    
+
     // Delegate to ElizaOS for batch stop
     await this.elizaOS.stopAgents(agentIds);
   }
@@ -366,14 +373,14 @@ export class AgentServer {
 
       const agentDataDir = resolvePgliteDir(options?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
-      
+
       // Ensure the database directory exists
       const dbDir = path.dirname(agentDataDir);
       if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
         logger.info(`[INIT] Created database directory: ${dbDir}`);
       }
-      
+
       // Create a temporary database adapter just for server operations (migrations, default server)
       // Each agent will have its own database adapter created by the SQL plugin
       const tempServerAgentId = '00000000-0000-0000-0000-000000000000'; // Temporary ID for server operations
@@ -417,7 +424,7 @@ export class AgentServer {
       logger.info('[INIT] Ensuring default server exists...');
       await this.ensureDefaultServer();
       logger.success('[INIT] Default server setup complete');
-      
+
       // Server agent is no longer needed - each agent has its own database adapter
       logger.info('[INIT] Server uses temporary adapter for migrations only');
 
@@ -434,7 +441,7 @@ export class AgentServer {
       // Create AgentManager with ElizaOS instance
       this.pluginLoader = new PluginLoader();
       this.configManager = new ConfigManager();
-      
+
       logger.success('[INIT] ElizaOS initialized');
 
       await this.initializeServer(options);
@@ -542,8 +549,7 @@ export class AgentServer {
       // Initialize Sentry (if configured) before any other middleware
       const DEFAULT_SENTRY_DSN =
         'https://c20e2d51b66c14a783b0689d536f7e5c@o4509349865259008.ingest.us.sentry.io/4509352524120064';
-      const sentryDsn =
-        process.env.SENTRY_DSN?.trim() || DEFAULT_SENTRY_DSN;
+      const sentryDsn = process.env.SENTRY_DSN?.trim() || DEFAULT_SENTRY_DSN;
       const sentryEnabled = Boolean(sentryDsn);
       if (sentryEnabled) {
         try {
@@ -1282,7 +1288,7 @@ export class AgentServer {
       if (this.elizaOS) {
         await this.elizaOS.deleteAgents([agentId]);
       }
-      
+
       logger.debug(`Agent ${agentId} unregistered`);
     } catch (error) {
       logger.error({ error, agentId }, `Error removing agent ${agentId}:`);

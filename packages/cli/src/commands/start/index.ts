@@ -5,7 +5,7 @@ import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
-import { logger, type Character, type ProjectAgent } from '@elizaos/core';
+import { logger, type Character, type ProjectAgent, type IAgentRuntime } from '@elizaos/core';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -149,34 +149,81 @@ export const start = new Command()
       // Use AgentServer from server package
       const moduleLoader = getModuleLoader();
       const { AgentServer } = await moduleLoader.load('@elizaos/server');
-      
+
       const server = new AgentServer();
-      
+
       // Initialize server with database configuration
       await server.initialize({
         dataDir: process.env.PGLITE_DATA_DIR,
         postgresUrl: process.env.POSTGRES_URL,
       });
-      
+
       // Start HTTP server
       await server.start(options.port || 3000);
-      
+
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
-        // Batch start all project agents
-        const charactersToStart = projectAgents.map(pa => pa.character);
-        const runtimes = await server.startAgents(charactersToStart);
-        
-        // Run init functions for each agent if provided
-        for (let i = 0; i < projectAgents.length; i++) {
-          const init = projectAgents[i]?.init;
-          const runtime = runtimes[i];
-          if (typeof init === 'function' && runtime) {
-            await init(runtime);
+        // Phase 1: Start all agents first (collect runtimes)
+        const runtimes: IAgentRuntime[] = [];
+        const agentRuntimeMap = new Map<ProjectAgent, IAgentRuntime>();
+
+        for (const projectAgent of projectAgents) {
+          try {
+            // Validate and safely access the agent's plugins array
+            const agentPlugins = Array.isArray(projectAgent.plugins) ? projectAgent.plugins : [];
+
+            const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
+
+            if (runtime) {
+              runtimes.push(runtime);
+              agentRuntimeMap.set(projectAgent, runtime);
+              logger.info(
+                `Started agent: ${projectAgent.character.name || 'Unnamed'} (${runtime.agentId})`
+              );
+            } else {
+              logger.error(
+                `Failed to start agent: ${projectAgent.character.name || 'Unnamed'} - runtime is undefined`
+              );
+            }
+          } catch (error) {
+            logger.error(
+              {
+                error,
+                characterName: projectAgent.character.name || 'Unnamed',
+              },
+              'Failed to start project agent'
+            );
+            // Continue with other agents even if one fails
           }
         }
-        
-        logger.info(`Started ${runtimes.length} project agents`);
+
+        logger.info(`Started ${runtimes.length}/${projectAgents.length} project agents`);
+
+        // Phase 2: Run all init functions after all agents have started
+        // This ensures init functions can discover/communicate with all other agents
+        for (const projectAgent of projectAgents) {
+          const runtime = agentRuntimeMap.get(projectAgent);
+          if (runtime && typeof projectAgent.init === 'function') {
+            try {
+              logger.info(
+                `Running init function for agent: ${projectAgent.character.name || 'Unnamed'}`
+              );
+              await projectAgent.init(runtime);
+            } catch (error) {
+              logger.error(
+                {
+                  error,
+                  characterName: projectAgent.character.name || 'Unnamed',
+                  agentId: runtime.agentId,
+                },
+                'Agent init function failed'
+              );
+              // Continue with other init functions even if one fails
+            }
+          }
+        }
+
+        logger.info('All agent init functions completed');
       }
       // Handle standalone characters from CLI
       else if (characters && characters.length > 0) {

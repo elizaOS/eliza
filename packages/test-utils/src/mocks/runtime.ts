@@ -84,10 +84,23 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     evaluators: overrides.evaluators || [],
     plugins: overrides.plugins || [],
     services: overrides.services || new Map(),
-    events: overrides.events || new Map(),
+    events: overrides.events || {},
     fetch: overrides.fetch || null,
     routes: overrides.routes || [],
-    logger: overrides.logger || console,
+    logger: overrides.logger || {
+      level: 'info',
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+      success: () => {},
+      progress: () => {},
+      log: () => {},
+      clear: () => {},
+      child: () => ({}) as any,
+    },
 
     // Database Properties
     db: overrides.db || mockDb,
@@ -149,7 +162,6 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Database Adapter Methods - Agent Management
     init: mock().mockResolvedValue(undefined),
     isReady: mock().mockResolvedValue(true),
-    runMigrations: mock().mockResolvedValue(undefined),
     close: mock().mockResolvedValue(undefined),
     getAgent: mock().mockResolvedValue(null),
     getAgents: mock().mockResolvedValue([]),
