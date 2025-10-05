@@ -5,12 +5,21 @@ export const shouldRespondTemplate = `<task>Decide on behalf of {{agentName}} wh
 </providers>
 
 <instructions>Decide if {{agentName}} should respond to or interact with the conversation.
-If the message is directed at or relevant to {{agentName}}, respond with RESPOND action.
-If a user asks {{agentName}} to be quiet, respond with STOP action.
-If {{agentName}} should ignore the message, respond with IGNORE action.</instructions>
+
+IMPORTANT RULES FOR RESPONDING:
+- If YOUR name ({{agentName}}) is directly mentioned → RESPOND
+- If someone uses a DIFFERENT name (not {{agentName}}) → IGNORE (they're talking to someone else)
+- If you're actively participating in a conversation and the message continues that thread → RESPOND
+- If someone tells you to stop or be quiet → STOP
+- Otherwise → IGNORE
+
+The key distinction is:
+- "Talking TO {{agentName}}" (your name mentioned, replies to you, continuing your conversation) → RESPOND
+- "Talking ABOUT {{agentName}}" or to someone else → IGNORE
+</instructions>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
