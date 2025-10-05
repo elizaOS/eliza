@@ -1,3 +1,6 @@
 [submodule ".cursor"]
 	path = .cursor
 	url = https://github.com/elizaOS/.cursor
+[submodule "packages/plugin-knowledge"]
+	path = packages/plugin-knowledge
+	url = https://github.com/elizaos-plugins/plugin-knowledge
