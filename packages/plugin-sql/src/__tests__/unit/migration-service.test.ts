@@ -102,7 +102,7 @@ describe('DatabaseMigrationService', () => {
   describe('runAllPluginMigrations', () => {
     it('should throw if database not initialized', async () => {
       await expect(migrationService.runAllPluginMigrations()).rejects.toThrow(
-        'Database not initialized in DatabaseMigrationService'
+        'Database or migrator not initialized in DatabaseMigrationService'
       );
     });
 

@@ -1,4 +1,4 @@
-import type { IAgentRuntime, TextGenerationParams, TextEmbeddingParams } from '@elizaos/core';
+import type { IAgentRuntime, GenerateTextParams, TextEmbeddingParams } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 
 /**
@@ -143,7 +143,7 @@ export class TestModelProvider {
   /**
    * Generate text response based on prompt
    */
-  async generateText(params: TextGenerationParams): Promise<string> {
+  async generateText(params: GenerateTextParams): Promise<string> {
     const prompt = params.prompt;
 
     try {

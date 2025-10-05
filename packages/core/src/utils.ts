@@ -776,7 +776,12 @@ export function parseBooleanFromText(value: string | undefined | null): boolean 
 
 // UUID Utils
 
-const uuidSchema = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Invalid UUID format') as z.ZodType<UUID>;
+const uuidSchema = z
+  .string()
+  .regex(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    'Invalid UUID format'
+  ) as z.ZodType<UUID>;
 
 /**
  * Validates a UUID value.

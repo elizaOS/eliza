@@ -28,7 +28,11 @@ import {
 } from '../../../src/utils/local-cli-delegation';
 
 // Helper to create a mock subprocess
-function createMockSubprocess(exitCode: number = 0, signal: NodeJS.Signals | null = null, error?: Error) {
+function createMockSubprocess(
+  exitCode: number = 0,
+  signal: NodeJS.Signals | null = null,
+  error?: Error
+) {
   const mockProcess = {
     // Required properties
     stdin: null as any,
@@ -42,21 +46,21 @@ function createMockSubprocess(exitCode: number = 0, signal: NodeJS.Signals | nul
     ref() {},
     unref() {},
     // Simulate exited promise - resolves after a small delay to trigger process.exit
-    exited: error 
-      ? Promise.reject(error) 
+    exited: error
+      ? Promise.reject(error)
       : new Promise<number>((resolve) => {
           setTimeout(() => {
             resolve(exitCode);
           }, 10);
         }),
-    
+
     // Kill method
     kill: mock((sig?: NodeJS.Signals) => {
       // Cannot modify readonly properties - they're already set correctly
       return true;
     }),
   } as unknown as Subprocess;
-  
+
   return mockProcess;
 }
 
@@ -397,16 +401,22 @@ describe('Local CLI Delegation', () => {
       spawnSpy.mockReturnValue(mockChildProcess);
 
       const result = await tryDelegateToLocalCli();
-      
+
       // Function returns true when delegation happens
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(mockLogger.info).toHaveBeenCalledWith('Using local @elizaos/cli installation');
       expect(spawnSpy).toHaveBeenCalledWith(
-        [process.execPath, '/test/project/node_modules/@elizaos/cli/dist/index.js', 'start', '--port', '3000'],
+        [
+          process.execPath,
+          '/test/project/node_modules/@elizaos/cli/dist/index.js',
+          'start',
+          '--port',
+          '3000',
+        ],
         expect.objectContaining({
           stdio: ['inherit', 'inherit', 'inherit'],
           cwd: '/test/project',
@@ -430,9 +440,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       const spawnCall = spawnSpy.mock.calls[0];
       const spawnOptions = spawnCall?.[1]; // Bun.spawn takes [cmd, ...args] as first arg, options as second
@@ -455,9 +465,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       const spawnCall = spawnSpy.mock.calls[0];
       const spawnOptions = spawnCall?.[1]; // Bun.spawn takes [cmd, ...args] as first arg, options as second
@@ -554,9 +564,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(process.exit).toHaveBeenCalledWith(42);
     });
@@ -570,9 +580,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(process.exit).toHaveBeenCalledWith(143);
     });
@@ -586,9 +596,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(process.exit).toHaveBeenCalledWith(130);
     });
@@ -602,9 +612,9 @@ describe('Local CLI Delegation', () => {
 
       const result = await tryDelegateToLocalCli();
       expect(result).toBe(true);
-      
+
       // Wait for the async process.exit to be called
-      await new Promise(resolve => setTimeout(resolve, 20));
+      await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(process.exit).toHaveBeenCalledWith(128);
     });

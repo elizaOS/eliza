@@ -26,11 +26,16 @@ mock.module('@elizaos/plugin-sql', () => ({
     getDatabase: jest.fn(() => ({
       execute: jest.fn().mockResolvedValue([]),
     })),
-    getMessageServers: jest.fn()
+    getMessageServers: jest
+      .fn()
       .mockResolvedValueOnce([])
       .mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }]),
-    createMessageServer: jest.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
-    getMessageServerById: jest.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
+    createMessageServer: jest
+      .fn()
+      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
+    getMessageServerById: jest
+      .fn()
+      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
     addAgentToServer: jest.fn().mockResolvedValue(undefined),
     getChannelsForServer: jest.fn().mockResolvedValue([]),
     createChannel: jest.fn().mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000' }),

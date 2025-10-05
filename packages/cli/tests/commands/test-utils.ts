@@ -1,10 +1,9 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'fs/promises';
-import { join } from 'path';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
-import { existsSync } from 'fs';
+import { join } from 'path';
+import { bunExecSimple } from '../../src/utils/bun-exec';
 import { TEST_TIMEOUTS } from '../test-timeouts';
-import { bunExec, bunExecSimple } from '../../src/utils/bun-exec';
-import { parseCommand } from '../utils/bun-test-helpers';
 
 /**
  * Helper function to execute shell commands using Bun.spawn
@@ -119,13 +118,8 @@ export function safeChangeDirectory(targetDir: string): void {
  * Helper to create a basic ElizaOS project for testing
  */
 export async function createTestProject(projectName: string): Promise<void> {
-  const platformOptions = getPlatformOptions({
-    stdio: 'pipe',
-    timeout: TEST_TIMEOUTS.PROJECT_CREATION,
-  });
-
   try {
-    const result = await bunExecSimple(`elizaos create ${projectName} --yes`);
+    await bunExecSimple(`elizaos create ${projectName} --yes`);
     process.chdir(projectName);
   } catch (error: any) {
     console.error(`[Create Test Project Error] Failed to create ${projectName}:`, {
@@ -534,9 +528,9 @@ export class TestProcessManager {
     const processOptions = {
       cwd: options.cwd || process.cwd(),
       env: options.env || process.env,
-      stdout: options.allowOutput ? 'inherit' : 'ignore',
-      stderr: options.allowOutput ? 'inherit' : 'ignore',
-      stdin: 'ignore',
+      stdout: (options.allowOutput ? 'inherit' : 'ignore') as 'pipe' | 'inherit' | 'ignore',
+      stderr: (options.allowOutput ? 'inherit' : 'ignore') as 'pipe' | 'inherit' | 'ignore',
+      stdin: 'ignore' as 'pipe' | 'inherit' | 'ignore',
     };
 
     const childProcess = Bun.spawn([command, ...args], processOptions);
@@ -617,4 +611,126 @@ export class TestProcessManager {
   getActiveCount(): number {
     return this.processes.size;
   }
+}
+
+/**
+ * Execute a shell command using Bun.spawn
+ * @param command - Command to execute
+ * @param args - Command arguments
+ * @param options - Spawn options
+ * @throws Error if command fails
+ */
+async function spawnCommand(
+  command: string,
+  args: string[],
+  options: { cwd?: string; env?: Record<string, string> } = {}
+): Promise<void> {
+  const proc = Bun.spawn([command, ...args], {
+    cwd: options.cwd,
+    env: options.env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(
+      `Command failed: ${command} ${args.join(' ')}\nExit code: ${exitCode}\nError: ${stderr}`
+    );
+  }
+}
+
+/**
+ * Clone and setup a plugin for testing
+ * @param pluginRepoUrl - Git repository URL
+ * @param branch - Git branch to clone
+ * @returns Object with plugin directory path and cleanup function
+ */
+export async function cloneAndSetupPlugin(
+  pluginRepoUrl: string,
+  branch: string = '1.x'
+): Promise<{ pluginDir: string; cleanup: () => Promise<void> }> {
+  // Create a temp directory for cloning the plugin
+  const pluginTestDir = await mkdtemp(join(tmpdir(), 'eliza-plugin-test-'));
+
+  console.log(`[PLUGIN SETUP] Cloning ${pluginRepoUrl}...`);
+
+  // Clone the plugin repository using Bun.spawn
+  await spawnCommand('git', ['clone', '--depth', '1', '--branch', branch, pluginRepoUrl], {
+    cwd: pluginTestDir,
+  });
+
+  // Extract plugin name from URL
+  const pluginName = pluginRepoUrl.split('/').pop()?.replace('.git', '') || 'plugin';
+  const pluginDir = join(pluginTestDir, pluginName);
+
+  console.log(`[PLUGIN SETUP] Installing plugin dependencies...`);
+  // Install dependencies using Bun.spawn
+  await spawnCommand('bun', ['install'], {
+    cwd: pluginDir,
+  });
+
+  console.log(`[PLUGIN SETUP] Linking @elizaos/core and @elizaos/server in plugin...`);
+  // Link globally installed packages so the plugin can find them
+  await spawnCommand('bun', ['link', '@elizaos/core'], {
+    cwd: pluginDir,
+  });
+  await spawnCommand('bun', ['link', '@elizaos/server'], {
+    cwd: pluginDir,
+  });
+
+  console.log(`[PLUGIN SETUP] Building plugin...`);
+  // Build the plugin (skip type checking to avoid external plugin TS errors)
+  try {
+    await spawnCommand('bun', ['run', 'build'], {
+      cwd: pluginDir,
+      env: {
+        ...process.env,
+        // Skip TypeScript type checking during test builds
+        SKIP_TYPE_CHECK: 'true',
+      },
+    });
+  } catch (buildError) {
+    // If build fails, try without type checking by modifying build.ts temporarily
+    console.log(`[PLUGIN SETUP] Build failed, retrying with skipNodeModulesBundle...`);
+    const buildTsPath = join(pluginDir, 'build.ts');
+
+    if (existsSync(buildTsPath)) {
+      const originalBuild = readFileSync(buildTsPath, 'utf-8');
+
+      // Modify build.ts to skip DTS generation
+      const modifiedBuild = originalBuild.replace(/dts:\s*{[^}]*}/g, 'dts: false');
+
+      writeFileSync(buildTsPath, modifiedBuild, 'utf-8');
+
+      try {
+        await spawnCommand('bun', ['run', 'build'], {
+          cwd: pluginDir,
+        });
+      } finally {
+        // Restore original build.ts
+        writeFileSync(buildTsPath, originalBuild, 'utf-8');
+      }
+    } else {
+      throw buildError;
+    }
+  }
+
+  console.log(`[PLUGIN SETUP] Plugin ready at ${pluginDir}`);
+
+  // Return cleanup function
+  const cleanup = async () => {
+    if (pluginTestDir && pluginTestDir.includes('eliza-plugin-test-')) {
+      try {
+        await rm(pluginTestDir, { recursive: true, force: true });
+        console.log(`[PLUGIN CLEANUP] Removed ${pluginTestDir}`);
+      } catch (e) {
+        console.log(`[PLUGIN CLEANUP] Failed to clean up plugin directory:`, e);
+      }
+    }
+  };
+
+  return { pluginDir, cleanup };
 }

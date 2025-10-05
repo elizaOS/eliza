@@ -51,7 +51,6 @@ export function createMockDatabase(overrides: MockDatabaseOverrides = {}): IData
     init: mock().mockResolvedValue(undefined),
     initialize: mock().mockResolvedValue(undefined),
     isReady: mock().mockResolvedValue(true),
-    runMigrations: mock().mockResolvedValue(undefined),
     close: mock().mockResolvedValue(undefined),
     getConnection: mock().mockResolvedValue(mockConnection),
 

@@ -27,6 +27,34 @@ export interface Log {
   createdAt: Date;
 }
 
+export type RunStatus = 'started' | 'completed' | 'timeout' | 'error';
+
+export interface AgentRunCounts {
+  actions: number;
+  modelCalls: number;
+  errors: number;
+  evaluators: number;
+}
+
+export interface AgentRunSummary {
+  runId: string;
+  status: RunStatus;
+  startedAt: number | null;
+  endedAt: number | null;
+  durationMs: number | null;
+  messageId?: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  metadata?: Record<string, unknown>;
+  counts?: AgentRunCounts;
+}
+
+export interface AgentRunSummaryResult {
+  runs: AgentRunSummary[];
+  total: number;
+  hasMore: boolean;
+}
+
 /**
  * Interface for database operations
  */
@@ -40,8 +68,19 @@ export interface IDatabaseAdapter {
   /** Initialize database connection */
   init(): Promise<void>;
 
-  /** Run database migrations */
-  runMigrations(schema?: any, pluginName?: string): Promise<void>;
+  /**
+   * Run plugin schema migrations for all registered plugins
+   * @param plugins Array of plugins with their schemas
+   * @param options Migration options (verbose, force, dryRun, etc.)
+   */
+  runPluginMigrations?(
+    plugins: Array<{ name: string; schema?: any }>,
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void>;
 
   /** Check if the database connection is ready */
   isReady(): Promise<boolean>;
@@ -101,6 +140,7 @@ export interface IDatabaseAdapter {
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -144,6 +184,14 @@ export interface IDatabaseAdapter {
   }): Promise<Log[]>;
 
   deleteLog(logId: UUID): Promise<void>;
+
+  getAgentRunSummaries?(params: {
+    limit?: number;
+    roomId?: UUID;
+    status?: RunStatus | 'all';
+    from?: number;
+    to?: number;
+  }): Promise<AgentRunSummaryResult>;
 
   searchMemories(params: {
     embedding: number[];

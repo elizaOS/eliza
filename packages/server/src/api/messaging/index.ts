@@ -9,10 +9,7 @@ import { createSessionsRouter } from './sessions';
 /**
  * Creates the messaging router for all communication functionality
  */
-export function messagingRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): express.Router {
+export function messagingRouter(elizaOS: ElizaOS, serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   if (!serverInstance) {

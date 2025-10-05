@@ -28,14 +28,21 @@ mock.module('../src/utils', () => ({
 const mockSafeReplacer = mock((_key, value) => value); // Simple replacer mock
 // Don't mock the entire index module to avoid interfering with other tests
 
+// Track adapter readiness across init/close to properly test idempotent initialization
+let adapterReady = false;
+
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
   db: {},
-  init: mock().mockResolvedValue(undefined),
+  init: mock().mockImplementation(async () => {
+    adapterReady = true;
+  }),
   initialize: mock().mockResolvedValue(undefined),
   runMigrations: mock().mockResolvedValue(undefined),
-  isReady: mock().mockResolvedValue(true),
-  close: mock().mockResolvedValue(undefined),
+  isReady: mock().mockImplementation(async () => adapterReady),
+  close: mock().mockImplementation(async () => {
+    adapterReady = false;
+  }),
   getConnection: mock().mockResolvedValue({}),
   getEntitiesByIds: mock().mockResolvedValue([]),
   createEntities: mock().mockResolvedValue(true),
@@ -178,6 +185,9 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         mockFn.mockClear();
       }
     });
+
+    // Reset readiness state between tests
+    adapterReady = false;
 
     agentId = mockCharacter.id!; // Use character's ID
 
@@ -348,12 +358,41 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
     });
 
+    it('should skip adapter.init when adapter is already ready (idempotent initialize)', async () => {
+      // Simulate adapter already initialized
+      adapterReady = true;
+
+      await runtime.initialize();
+
+      expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.init).not.toHaveBeenCalled();
+      expect(runtime.ensureAgentExists).toHaveBeenCalledWith(mockCharacter);
+      expect(mockDatabaseAdapter.getEntitiesByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.getRoomsByIds).toHaveBeenCalledWith([agentId]);
+      expect(mockDatabaseAdapter.createRooms).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.addParticipantsRoom).toHaveBeenCalledWith([agentId], agentId);
+    });
+
+    it('should call adapter.init only once across multiple initialize calls', async () => {
+      // First initialize: adapterReady is false; init should be called
+      await runtime.initialize();
+      // Second initialize: adapterReady should now be true; init should be skipped
+      await runtime.initialize();
+
+      expect(mockDatabaseAdapter.isReady).toHaveBeenCalled();
+      expect(mockDatabaseAdapter.init).toHaveBeenCalledTimes(1);
+    });
+
     it('should throw if adapter is not available during initialize', async () => {
       // Create runtime without passing adapter
       const runtimeWithoutAdapter = new AgentRuntime({
         character: mockCharacter,
         agentId: agentId,
       });
+
+      // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
+      runtimeWithoutAdapter.initPromise.catch(() => {});
+
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
       );
@@ -429,11 +468,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       const result = await runtime.useModel(modelType, params);
 
       expect(modelHandler).toHaveBeenCalledTimes(1);
-      // Check that handler was called with runtime and merged params
-      expect(modelHandler).toHaveBeenCalledWith(
-        runtime,
-        expect.objectContaining({ ...params, runtime: runtime })
-      );
+      // Check that handler was called with runtime and params (no runtime in params)
+      expect(modelHandler).toHaveBeenCalledWith(runtime, expect.objectContaining(params));
       expect(result).toEqual('success');
       // Check if log was called (part of useModel logic)
       expect(mockDatabaseAdapter.log).toHaveBeenCalledWith(
@@ -490,11 +526,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           data: {},
         }), // accumulated state
         expect.objectContaining({
-          context: expect.objectContaining({
+          actionContext: expect.objectContaining({
             previousResults: [],
             getPreviousResult: expect.any(Function),
           }),
-        }), // options with context
+        }), // options with actionContext
         expect.any(Function), // storage callback function
         [responseMemory] // responses array
       );

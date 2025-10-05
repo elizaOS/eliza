@@ -19,7 +19,9 @@ describe('Character Plugin Ordering', () => {
 
   // Helper function to set up test environment
   const setupTestEnvironment = (config: Record<string, string | undefined>) => {
-    Object.keys(originalEnv).forEach((key) => { delete process.env[key]; });
+    Object.keys(originalEnv).forEach((key) => {
+      delete process.env[key];
+    });
     Object.entries(config).forEach(([key, value]) => {
       if (value !== undefined) {
         process.env[key] = value;

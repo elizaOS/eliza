@@ -160,7 +160,7 @@ describe('E2E Tests Plugin Isolation', () => {
       character: { name: 'Eliza' },
       plugins: [],
     });
-    
+
     // Save original ELIZA_TESTING_PLUGIN value specifically
     originalElizaTestingPlugin = process.env.ELIZA_TESTING_PLUGIN;
 

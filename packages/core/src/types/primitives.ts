@@ -1,3 +1,5 @@
+import type { ChannelType } from './environment';
+
 /**
  * Defines a custom type UUID representing a universally unique identifier
  */
@@ -47,7 +49,10 @@ export interface Content {
   attachments?: Media[];
 
   /** room type */
-  channelType?: string;
+  channelType?: ChannelType;
+
+  /** Platform-provided metadata about mentions */
+  mentionContext?: MentionContext;
 
   /**
    * Additional dynamic properties
@@ -55,6 +60,26 @@ export interface Content {
    */
   [key: string]: unknown;
 }
+
+/**
+  * Platform-provided metadata about mentions.
+  * Contains ONLY technical facts from the platform API.
+  * This allows bootstrap to make intelligent decisions about responding
+  * while keeping platform-specific logic isolated.
+  */
+export interface MentionContext {
+  /** Platform native mention (@Discord, @Telegram, etc.) */
+  isMention: boolean;
+
+  /** Reply to agent's message */
+  isReply: boolean;
+
+  /** In a thread with agent */
+  isThread: boolean;
+
+  /** Platform-specific mention type for debugging/logging */
+  mentionType?: 'platform_mention' | 'reply' | 'thread' | 'none';
+};
 
 /**
  * Represents a media attachment

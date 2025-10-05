@@ -45,11 +45,16 @@ mock.module('@elizaos/plugin-sql', () => ({
     getDatabase: jest.fn(() => ({
       execute: jest.fn().mockResolvedValue([]),
     })),
-    getMessageServers: jest.fn()
+    getMessageServers: jest
+      .fn()
       .mockResolvedValueOnce([])
       .mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }]),
-    createMessageServer: jest.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
-    getMessageServerById: jest.fn().mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
+    createMessageServer: jest
+      .fn()
+      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000' }),
+    getMessageServerById: jest
+      .fn()
+      .mockResolvedValue({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }),
     addAgentToServer: jest.fn().mockResolvedValue(undefined),
     getChannelsForServer: jest.fn().mockResolvedValue([]),
     createChannel: jest.fn().mockResolvedValue({ id: '123e4567-e89b-12d3-a456-426614174000' }),
@@ -85,9 +90,12 @@ describe('AgentServer Agent Management Tests', () => {
     // Mock the database methods
     server.database = {
       ...server.database,
-      getMessageServers: jest.fn()
+      getMessageServers: jest
+        .fn()
         .mockResolvedValueOnce([])
-        .mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' }]),
+        .mockResolvedValue([
+          { id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' },
+        ]),
       createMessageServer: jest.fn().mockResolvedValue({ id: 'server-id' }),
       db: {
         execute: jest.fn().mockResolvedValue([]),
@@ -106,13 +114,13 @@ describe('AgentServer Agent Management Tests', () => {
   it('should register agent successfully', async () => {
     // Mock elizaOS.getAgents to return our mock runtime after sync
     server.elizaOS = {
-      getAgents: jest.fn().mockReturnValue([mockRuntime])
+      getAgents: jest.fn().mockReturnValue([mockRuntime]),
     } as any;
 
     await server.registerAgent(mockRuntime);
 
     const agents = server.getAllAgents();
-    const agent = agents.find(a => a.agentId === mockRuntime.agentId);
+    const agent = agents.find((a) => a.agentId === mockRuntime.agentId);
     expect(agent).toBeDefined();
     expect(agent).toBe(mockRuntime);
     expect(mockRuntime.registerPlugin).toHaveBeenCalled();
@@ -145,27 +153,27 @@ describe('AgentServer Agent Management Tests', () => {
     // Mock elizaOS to return current state of mockAgents
     server.elizaOS = {
       getAgents: jest.fn(() => [...mockAgents]),
-      getAgent: jest.fn((id) => mockAgents.find(a => a.agentId === id)),
+      getAgent: jest.fn((id) => mockAgents.find((a) => a.agentId === id)),
       deleteAgents: jest.fn(async (ids) => {
         // Simulate deletion by removing from mockAgents
-        mockAgents = mockAgents.filter(a => !ids.includes(a.agentId));
+        mockAgents = mockAgents.filter((a) => !ids.includes(a.agentId));
       }),
       registerAgent: jest.fn((agent) => {
-        if (!mockAgents.find(a => a.agentId === agent.agentId)) {
+        if (!mockAgents.find((a) => a.agentId === agent.agentId)) {
           mockAgents.push(agent);
         }
-      })
+      }),
     } as any;
 
     await server.registerAgent(mockRuntime);
 
     let agents = server.getAllAgents();
-    expect(agents.find(a => a.agentId === mockRuntime.agentId)).toBeDefined();
+    expect(agents.find((a) => a.agentId === mockRuntime.agentId)).toBeDefined();
 
     await server.unregisterAgent(mockRuntime.agentId);
 
     agents = server.getAllAgents();
-    expect(agents.find(a => a.agentId === mockRuntime.agentId)).toBeUndefined();
+    expect(agents.find((a) => a.agentId === mockRuntime.agentId)).toBeUndefined();
     expect(mockRuntime.stop).toHaveBeenCalled();
   });
 
@@ -175,7 +183,7 @@ describe('AgentServer Agent Management Tests', () => {
     // Mock elizaOS with empty agents
     server.elizaOS = {
       getAgent: jest.fn().mockReturnValue(undefined),
-      deleteAgents: jest.fn().mockResolvedValue(undefined)
+      deleteAgents: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     // Should not throw when unregistering non-existent agent
@@ -187,7 +195,7 @@ describe('AgentServer Agent Management Tests', () => {
     // Mock elizaOS
     server.elizaOS = {
       getAgent: jest.fn().mockReturnValue(undefined),
-      deleteAgents: jest.fn().mockResolvedValue(undefined)
+      deleteAgents: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     // Should not throw when agentId is null or undefined

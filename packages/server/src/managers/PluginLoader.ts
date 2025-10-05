@@ -1,4 +1,5 @@
 import { logger, type Plugin } from '@elizaos/core';
+import { pluginInstaller } from './PluginInstaller';
 
 /**
  * Manages plugin loading and dependency resolution
@@ -26,16 +27,16 @@ export class PluginLoader {
    */
   validatePlugin(plugin: any): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     if (!plugin) {
       errors.push('Plugin is null or undefined');
       return { isValid: false, errors };
     }
-    
+
     if (!plugin.name) {
       errors.push('Plugin must have a name');
     }
-    
+
     if (plugin.actions) {
       if (!Array.isArray(plugin.actions)) {
         errors.push('Plugin actions must be an array');
@@ -47,32 +48,32 @@ export class PluginLoader {
         }
       }
     }
-    
+
     if (plugin.services) {
       if (!Array.isArray(plugin.services)) {
         errors.push('Plugin services must be an array');
       } else {
         // Check if services contain non-objects/non-constructors
-        const invalidServices = plugin.services.filter((s: any) => 
-          typeof s !== 'function' && (typeof s !== 'object' || !s)
+        const invalidServices = plugin.services.filter(
+          (s: any) => typeof s !== 'function' && (typeof s !== 'object' || !s)
         );
         if (invalidServices.length > 0) {
           errors.push('Plugin services must be an array of service classes or objects');
         }
       }
     }
-    
+
     if (plugin.providers && !Array.isArray(plugin.providers)) {
       errors.push('Plugin providers must be an array');
     }
-    
+
     if (plugin.evaluators && !Array.isArray(plugin.evaluators)) {
       errors.push('Plugin evaluators must be an array');
     }
-    
+
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -83,13 +84,26 @@ export class PluginLoader {
     try {
       // Try to load the plugin module
       let pluginModule: any;
-      
+
       try {
         // Attempt to dynamically import the plugin
         pluginModule = await import(pluginName);
       } catch (error) {
-        logger.error(`Failed to load plugin ${pluginName}: ${error}`);
-        return null;
+        logger.warn(`Failed to load plugin ${pluginName}: ${error}`);
+        // Attempt auto-install if allowed and not already attempted
+        const attempted = await pluginInstaller.tryInstall(pluginName);
+        if (!attempted) {
+          return null;
+        }
+        // Retry import once after successful installation attempt
+        try {
+          pluginModule = await import(pluginName);
+        } catch (secondError) {
+          logger.error(
+            `Auto-install attempted for ${pluginName} but import still failed: ${secondError}`
+          );
+          return null;
+        }
       }
 
       if (!pluginModule) {
@@ -188,5 +202,4 @@ export class PluginLoader {
 
     return finalPlugins;
   }
-
 }

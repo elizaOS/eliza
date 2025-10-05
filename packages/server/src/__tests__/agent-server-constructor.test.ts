@@ -17,7 +17,7 @@ describe('AgentServer Constructor Tests', () => {
 
   it('should create an instance with default properties', () => {
     server = new AgentServer();
-    
+
     expect(server).toBeDefined();
     expect(server).toBeInstanceOf(AgentServer);
     expect(server.getAllAgents).toBeDefined();
@@ -27,7 +27,7 @@ describe('AgentServer Constructor Tests', () => {
 
   it('should have character loading functions', () => {
     server = new AgentServer();
-    
+
     expect(server.loadCharacterTryPath).toBeDefined();
     expect(typeof server.loadCharacterTryPath).toBe('function');
     expect(server.jsonToCharacter).toBeDefined();
@@ -36,13 +36,13 @@ describe('AgentServer Constructor Tests', () => {
 
   it('should have elizaOS property undefined before initialization', () => {
     server = new AgentServer();
-    
+
     expect(server.elizaOS).toBeUndefined();
   });
 
   it('should have all required methods', () => {
     server = new AgentServer();
-    
+
     const requiredMethods = [
       'initialize',
       'startAgents',
@@ -50,7 +50,7 @@ describe('AgentServer Constructor Tests', () => {
       'getAgent',
       'getAllAgents',
       'registerAgent',
-      'stop'
+      'stop',
     ];
 
     for (const method of requiredMethods) {

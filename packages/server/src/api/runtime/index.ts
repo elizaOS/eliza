@@ -8,10 +8,7 @@ import { createDebugRouter } from './debug';
 /**
  * Creates the runtime router for system operations and health monitoring
  */
-export function runtimeRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): express.Router {
+export function runtimeRouter(elizaOS: ElizaOS, serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
   // Mount health endpoints at root level

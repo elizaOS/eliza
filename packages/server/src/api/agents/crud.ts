@@ -28,7 +28,7 @@ export function createAgentCrudRouter(
         return sendError(res, 500, 'DB_ERROR', 'Database not available');
       }
       const allAgents = await db.getAgents();
-      const runtimes = elizaOS.getAgents().map(a => a.agentId);
+      const runtimes = elizaOS.getAgents().map((a) => a.agentId);
 
       // Return only minimal agent data
       const response = allAgents
