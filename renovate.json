@@ -35,15 +35,6 @@
       "matchPackagePatterns": ["^@types/react"]
     },
     {
-      "description": "Group testing libraries (project uses bun test)",
-      "groupName": "Testing",
-      "matchPackagePatterns": [
-        "^@testing-library/",
-        "^@cypress/",
-        "^@playwright/"
-      ]
-    },
-    {
       "description": "Group Tailwind CSS ecosystem",
       "groupName": "Tailwind CSS",
       "matchPackageNames": ["tailwindcss", "tailwindcss-animate", "tailwind-merge"],
