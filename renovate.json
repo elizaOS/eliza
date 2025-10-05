@@ -35,15 +35,12 @@
       "matchPackagePatterns": ["^@types/react"]
     },
     {
-      "description": "Group all testing frameworks and utilities",
+      "description": "Group testing libraries (project uses bun test)",
       "groupName": "Testing",
       "matchPackagePatterns": [
-        "^vitest",
-        "^@vitest/",
         "^@testing-library/",
         "^@cypress/",
-        "^@playwright/",
-        "^@happy-dom/"
+        "^@playwright/"
       ]
     },
     {

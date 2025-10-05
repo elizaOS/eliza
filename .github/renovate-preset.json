@@ -23,16 +23,6 @@
       "matchPackagePatterns": ["^eslint", "^prettier", "^@eslint/"]
     },
     {
-      "description": "Group testing frameworks",
-      "groupName": "Testing",
-      "matchPackagePatterns": [
-        "^vitest",
-        "^@vitest/",
-        "^@testing-library/",
-        "^@happy-dom/"
-      ]
-    },
-    {
       "description": "Group build tools",
       "groupName": "Build Tools",
       "matchPackageNames": ["tsup", "vite", "rollup"],
@@ -42,7 +32,7 @@
   "timezone": "UTC",
   "schedule": ["every day"],
   "prHourlyLimit": 5,
-  "prConcurrentLimit": 10,
+  "prConcurrentLimit": 15,
   "rangeStrategy": "pin",
   "separateMajorMinor": true,
   "separateMinorPatch": false,
