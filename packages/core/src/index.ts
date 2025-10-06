@@ -41,6 +41,12 @@ export * from './search';
 // Export ElizaOS
 export * from './elizaos';
 
+// Export configuration modules
+export * from './config';
+
+// Export plugin manager
+export * from './plugin';
+
 // Environment detection utilities
 export const isBrowser =
   typeof globalThis !== 'undefined' &&
