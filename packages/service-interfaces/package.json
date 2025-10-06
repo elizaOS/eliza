@@ -48,7 +48,7 @@
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "echo 'Skipping tests for types-only package' && exit 0",
     "test:coverage": "echo 'Skipping tests for types-only package' && exit 0",
-    "test:watch": "echo 'Skipping tests for types-only package'",
+    "test:watch": "echo 'Skipping tests for types-only package' && exit 0",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "lint": "prettier --write ./src"
