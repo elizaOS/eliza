@@ -2,7 +2,6 @@ import type { Agent, Character, ElizaOS } from '@elizaos/core';
 import {
   validateUuid,
   logger,
-  stringToUuid,
   getSalt,
   encryptObjectValues,
   encryptStringValue,
@@ -139,7 +138,11 @@ export function createAgentCrudRouter(
       }
 
       const ensureAgentExists = async (character: Character) => {
-        const agentId = stringToUuid(character.name);
+        // Ensure character has an ID - if not, it should have been set during loading
+        if (!character.id) {
+          throw new Error('Character must have an ID');
+        }
+        const agentId = character.id;
         let agent = await db.getAgent(agentId);
         if (!agent) {
           await db.createAgent({ ...character, id: agentId });

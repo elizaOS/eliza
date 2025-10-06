@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 import {
   type Character,
   logger,
   parseAndValidateCharacter,
   validateCharacter,
   getCharactersDir,
+  stringToUuid,
 } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,9 +103,15 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
 
   const validatedCharacter = validationResult.data;
 
+  // Ensure character has an ID - generate one if not present
+  if (!validatedCharacter.id) {
+    validatedCharacter.id = stringToUuid(randomUUID());
+  }
+
   // Add environment-based settings and secrets (preserve existing functionality)
-  const characterId = validatedCharacter.id || validatedCharacter.name;
-  const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, '_')}.`;
+  // Use character.id for environment variable prefix (keep backward compatibility with name-based env vars)
+  const characterId = validatedCharacter.id;
+  const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/-/g, '_')}.`;
 
   const characterSettings = Object.entries(process.env)
     .filter(([key]) => key.startsWith(characterPrefix))

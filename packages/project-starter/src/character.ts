@@ -5,6 +5,9 @@ import { type Character } from '@elizaos/core';
  * Eliza responds to a wide range of messages, is helpful and conversational.
  * She interacts with users in a concise, direct, and helpful manner, using humor and empathy effectively.
  * Eliza's responses are geared towards providing assistance on various topics while maintaining a friendly demeanor.
+ *
+ * Note: This character does not have a pre-defined ID. The loader will generate one.
+ * If you want a stable agent across restarts, add an "id" field with a specific UUID.
  */
 export const character: Character = {
   name: 'Eliza',

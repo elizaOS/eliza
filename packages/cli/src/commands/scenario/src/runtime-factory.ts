@@ -5,6 +5,7 @@ import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
@@ -177,7 +178,7 @@ export async function createScenarioAgent(
   );
   const character: Character = {
     name: agentName,
-    id: stringToUuid(agentName),
+    id: stringToUuid(crypto.randomUUID()),
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
