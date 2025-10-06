@@ -1,4 +1,5 @@
-import { logger, type Plugin } from './index';
+import { logger } from './logger';
+import type { Plugin } from './types';
 
 // ============================================================================
 // Plugin Installation Utilities
@@ -331,21 +332,18 @@ export async function resolvePlugins(
   isTestMode: boolean = false
 ): Promise<Plugin[]> {
   const pluginMap = new Map<string, Plugin>();
+  const queue: (string | Plugin)[] = [...plugins];
 
-  // Load all plugins
-  for (const p of plugins) {
-    const loaded = await loadPlugin(p);
-    if (loaded) {
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    const loaded = await loadPlugin(next);
+    if (!loaded) continue;
+
+    if (!pluginMap.has(loaded.name)) {
       pluginMap.set(loaded.name, loaded);
-
-      // Also load dependencies
-      const deps = loaded.dependencies || [];
-      for (const depName of deps) {
+      for (const depName of loaded.dependencies ?? []) {
         if (!pluginMap.has(depName)) {
-          const depPlugin = await loadAndPreparePlugin(depName);
-          if (depPlugin) {
-            pluginMap.set(depPlugin.name, depPlugin);
-          }
+          queue.push(depName);
         }
       }
     }

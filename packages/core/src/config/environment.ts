@@ -29,7 +29,10 @@ export async function loadEnvConfig(envPath?: string): Promise<RuntimeSettings> 
   // Try to find and load .env file
   const resolvedPath = envPath || findEnvFile();
   if (resolvedPath) {
-    dotenv.config({ path: resolvedPath });
+    const result = dotenv.config({ path: resolvedPath });
+    if (result.error) {
+      throw result.error;
+    }
   }
   return process.env as RuntimeSettings;
 }
