@@ -5,7 +5,6 @@ import { EnvironmentConfig } from './environment';
 
 /**
  * Manages character secrets configuration
- * Migrated from packages/server/src/managers/ConfigManager.ts (lines 42-99)
  */
 export class SecretsManager {
   /**

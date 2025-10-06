@@ -3,7 +3,6 @@ import { logger, type Plugin } from './index';
 /**
  * Handles on-demand plugin installation using Bun.
  * Provides environment guards and single-attempt tracking per process.
- * Migrated from packages/server/src/managers/PluginInstaller.ts
  */
 class PluginInstaller {
   private attempted = new Set<string>();
@@ -75,7 +74,6 @@ class PluginInstaller {
 
 /**
  * Manages plugin loading and dependency resolution
- * Migrated from packages/server/src/managers/PluginLoader.ts
  */
 class PluginLoader {
   private installer = new PluginInstaller();

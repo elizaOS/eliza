@@ -5,8 +5,6 @@ import { type RuntimeSettings } from '../types';
 
 /**
  * Manages environment configuration loading and access
- * Migrated from packages/server/src/managers/ConfigManager.ts (lines 15-40)
- * Note: Different from utils/environment.ts which is for browser/node abstraction
  */
 export class EnvironmentConfig {
   /**
