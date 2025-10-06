@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import {
   type Character,
+  type UUID,
   logger,
   parseAndValidateCharacter,
   validateCharacter,
   getCharactersDir,
-  stringToUuid,
 } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -105,18 +105,27 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
 
   // Ensure character has an ID - generate one if not present
   if (!validatedCharacter.id) {
-    validatedCharacter.id = stringToUuid(randomUUID());
+    validatedCharacter.id = randomUUID() as UUID;
   }
 
   // Add environment-based settings and secrets (preserve existing functionality)
-  // Use character.id for environment variable prefix (keep backward compatibility with name-based env vars)
-  const characterId = validatedCharacter.id;
-  const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/-/g, '_')}.`;
+  // Support both name-based (backward compatible) and ID-based prefixes
+  const namePrefixes = validatedCharacter.name
+    ? [
+        `CHARACTER.${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}.`,
+        `${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`,
+      ]
+    : [];
+  // At this point, validatedCharacter.id is guaranteed to be defined (set above if missing)
+  const idPrefix = `CHARACTER.${validatedCharacter.id!.toUpperCase().replace(/-/g, '_')}.`;
+  const allPrefixes = [...namePrefixes, idPrefix];
 
   const characterSettings = Object.entries(process.env)
-    .filter(([key]) => key.startsWith(characterPrefix))
+    .filter(([key]) => allPrefixes.some((prefix) => key.startsWith(prefix)))
     .reduce((settings, [key, value]) => {
-      const settingKey = key.slice(characterPrefix.length);
+      // Find which prefix matched and remove it to get the setting key
+      const matchedPrefix = allPrefixes.find((prefix) => key.startsWith(prefix));
+      const settingKey = matchedPrefix ? key.slice(matchedPrefix.length) : key;
       return { ...settings, [settingKey]: value };
     }, {});
 

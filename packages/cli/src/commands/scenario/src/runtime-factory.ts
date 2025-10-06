@@ -178,7 +178,7 @@ export async function createScenarioAgent(
   );
   const character: Character = {
     name: agentName,
-    id: stringToUuid(crypto.randomUUID()),
+    id: crypto.randomUUID() as UUID,
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
