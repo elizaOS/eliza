@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { SecretsManager } from '../secrets';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from '../secrets';
 import type { Character } from '../../types';
 
 describe('SecretsManager', () => {
@@ -25,6 +25,7 @@ describe('SecretsManager', () => {
     test('should return true when character has secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             apiKey: 'secret-key',
@@ -32,27 +33,29 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      expect(SecretsManager.hasCharacterSecrets(character)).toBe(true);
+      expect(hasCharacterSecrets(character)).toBe(true);
     });
 
     test('should return false when character has no secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      expect(SecretsManager.hasCharacterSecrets(character)).toBe(false);
+      expect(hasCharacterSecrets(character)).toBe(false);
     });
 
     test('should return false when character has empty secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {},
         },
       } as Character;
 
-      expect(SecretsManager.hasCharacterSecrets(character)).toBe(false);
+      expect(hasCharacterSecrets(character)).toBe(false);
     });
   });
 
@@ -60,10 +63,11 @@ describe('SecretsManager', () => {
     test('should return false when no .env file exists', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      const result = await SecretsManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       // Should return false because no .env file exists in test environment
       expect(result).toBe(false);
@@ -72,6 +76,7 @@ describe('SecretsManager', () => {
     test('should not override existing secrets', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             OPENAI_API_KEY: 'existing-key',
@@ -79,16 +84,17 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      const result = await SecretsManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       // Should return false because character already has secrets
       expect(result).toBe(false);
-      expect(character.settings!.secrets!.OPENAI_API_KEY).toBe('existing-key');
+      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('existing-key');
     });
 
     test('should return false when character already has secrets', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             someKey: 'value',
@@ -96,7 +102,7 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      const result = await SecretsManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       expect(result).toBe(false);
     });

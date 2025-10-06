@@ -1,13 +1,13 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { PluginManager } from '../plugin';
+import { loadPlugin, resolvePlugins, isValidPluginShape } from '../plugin';
 import type { Plugin } from '../types';
 
-describe('PluginManager', () => {
-  let pluginManager: PluginManager;
+describe('Plugin Functions', () => {
+  
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    pluginManager = new PluginManager();
+    
     originalEnv = { ...process.env };
   });
 
@@ -24,7 +24,7 @@ describe('PluginManager', () => {
         services: [],
       };
 
-      expect(pluginManager.isValidPlugin(plugin)).toBe(true);
+      expect(isValidPluginShape(plugin)).toBe(true);
     });
 
     test('should return false for invalid plugin shape', () => {
@@ -33,18 +33,18 @@ describe('PluginManager', () => {
         // Missing required properties
       };
 
-      expect(pluginManager.isValidPlugin(invalidPlugin)).toBe(false);
+      expect(isValidPluginShape(invalidPlugin)).toBe(false);
     });
 
     test('should return false for null or undefined', () => {
-      expect(pluginManager.isValidPlugin(null)).toBe(false);
-      expect(pluginManager.isValidPlugin(undefined)).toBe(false);
+      expect(isValidPluginShape(null)).toBe(false);
+      expect(isValidPluginShape(undefined)).toBe(false);
     });
 
     test('should return false for non-object types', () => {
-      expect(pluginManager.isValidPlugin('string')).toBe(false);
-      expect(pluginManager.isValidPlugin(123)).toBe(false);
-      expect(pluginManager.isValidPlugin(true)).toBe(false);
+      expect(isValidPluginShape('string')).toBe(false);
+      expect(isValidPluginShape(123)).toBe(false);
+      expect(isValidPluginShape(true)).toBe(false);
     });
   });
 
@@ -59,7 +59,7 @@ describe('PluginManager', () => {
         evaluators: [],
       };
 
-      const result = await pluginManager.loadPlugin(plugin);
+      const result = await loadPlugin(plugin);
 
       expect(result).toBe(plugin);
       expect(result?.name).toBe('test-plugin');
@@ -71,20 +71,20 @@ describe('PluginManager', () => {
         description: 'Invalid plugin',
       } as any;
 
-      const result = await pluginManager.loadPlugin(invalidPlugin);
+      const result = await loadPlugin(invalidPlugin);
 
       expect(result).toBeNull();
     });
 
     test('should handle plugin loading errors gracefully', async () => {
       // Test with a non-existent plugin
-      const result = await pluginManager.loadPlugin('@elizaos/non-existent-plugin');
+      const result = await loadPlugin('@elizaos/non-existent-plugin');
 
       expect(result).toBeNull();
     });
 
     test('should load bootstrap plugin successfully', async () => {
-      const result = await pluginManager.loadPlugin('@elizaos/plugin-bootstrap');
+      const result = await loadPlugin('@elizaos/plugin-bootstrap');
 
       expect(result).toBeDefined();
       expect(result?.name).toBe('bootstrap');
@@ -107,7 +107,7 @@ describe('PluginManager', () => {
         services: [],
       };
 
-      const resolved = await pluginManager.resolvePlugins([pluginA, pluginB]);
+      const resolved = await resolvePlugins([pluginA, pluginB]);
 
       expect(resolved).toHaveLength(2);
       expect(resolved.some((p) => p.name === 'plugin-a')).toBe(true);
@@ -130,7 +130,7 @@ describe('PluginManager', () => {
         services: [],
       };
 
-      const resolved = await pluginManager.resolvePlugins([pluginB, pluginA]);
+      const resolved = await resolvePlugins([pluginB, pluginA]);
 
       expect(resolved).toHaveLength(2);
       // Plugin A should come before Plugin B due to dependency
@@ -156,7 +156,7 @@ describe('PluginManager', () => {
         services: [],
       };
 
-      const resolved = await pluginManager.resolvePlugins([pluginA, pluginB]);
+      const resolved = await resolvePlugins([pluginA, pluginB]);
 
       // Should return plugins even with circular dependencies
       expect(resolved).toHaveLength(2);
@@ -175,7 +175,7 @@ describe('PluginManager', () => {
         description: 'Invalid plugin',
       } as any;
 
-      const resolved = await pluginManager.resolvePlugins([validPlugin, invalidPlugin]);
+      const resolved = await resolvePlugins([validPlugin, invalidPlugin]);
 
       expect(resolved).toHaveLength(1);
       expect(resolved[0].name).toBe('valid-plugin');
@@ -197,7 +197,7 @@ describe('PluginManager', () => {
         services: [],
       };
 
-      const resolved = await pluginManager.resolvePlugins([pluginA, pluginB], true);
+      const resolved = await resolvePlugins([pluginA, pluginB], true);
 
       expect(resolved).toHaveLength(2);
       const indexA = resolved.findIndex((p) => p.name === 'plugin-a');

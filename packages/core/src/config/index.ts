@@ -3,6 +3,11 @@
  * Provides character parsing, environment loading, and secrets management
  */
 
-export { CharacterConfig } from './character';
-export { EnvironmentConfig as ConfigEnvironment } from './environment';
-export { SecretsManager } from './secrets';
+// Character configuration utilities
+export { parseCharacter, validateCharacterConfig, mergeCharacterDefaults } from './character';
+
+// Environment configuration utilities
+export { findEnvFile, loadEnvConfig } from './environment';
+
+// Secrets management utilities
+export { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';

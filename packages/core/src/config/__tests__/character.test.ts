@@ -1,9 +1,9 @@
 import { describe, test, expect } from 'bun:test';
-import { CharacterConfig } from '../character';
+import { parseCharacter, validateCharacterConfig, mergeCharacterDefaults } from '../character';
 import type { Character } from '../../types';
 
-describe('CharacterConfig', () => {
-  describe('parse', () => {
+describe('Character Config Functions', () => {
+  describe('parseCharacter', () => {
     test('should return character object if already a Character', () => {
       const character: Character = {
         name: 'TestChar',
@@ -11,14 +11,14 @@ describe('CharacterConfig', () => {
         settings: {},
       } as Character;
 
-      const parsed = CharacterConfig.parse(character);
+      const parsed = parseCharacter(character);
 
       expect(parsed.name).toBe('TestChar');
     });
 
     test('should throw error when given a string path', () => {
       expect(() => {
-        CharacterConfig.parse('/path/to/character.json');
+        parseCharacter('/path/to/character.json');
       }).toThrow('Character path provided but must be loaded first');
     });
 
@@ -31,14 +31,14 @@ describe('CharacterConfig', () => {
         },
       };
 
-      const parsed = CharacterConfig.parse(obj);
+      const parsed = parseCharacter(obj);
 
       expect(parsed.name).toBe('TestChar');
       expect(parsed.settings).toBeDefined();
     });
   });
 
-  describe('validate', () => {
+  describe('validateCharacterConfig', () => {
     test('should return valid for character with name and bio', () => {
       const character: Character = {
         name: 'TestChar',
@@ -46,7 +46,7 @@ describe('CharacterConfig', () => {
         settings: {},
       } as Character;
 
-      const result = CharacterConfig.validate(character);
+      const result = validateCharacterConfig(character);
 
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
@@ -58,20 +58,20 @@ describe('CharacterConfig', () => {
         settings: {},
       } as Character;
 
-      const result = CharacterConfig.validate(character);
+      const result = validateCharacterConfig(character);
 
       expect(result.isValid).toBe(false);
       expect(result.errors.some(e => e.includes('name'))).toBe(true);
     });
   });
 
-  describe('mergeDefaults', () => {
+  describe('mergeCharacterDefaults', () => {
     test('should merge partial character with defaults', () => {
       const partial: Partial<Character> = {
         name: 'TestChar',
       };
 
-      const merged = CharacterConfig.mergeDefaults(partial);
+      const merged = mergeCharacterDefaults(partial);
 
       expect(merged.name).toBe('TestChar');
       expect(merged.settings).toBeDefined();
@@ -81,7 +81,7 @@ describe('CharacterConfig', () => {
     test('should use default name if not provided', () => {
       const partial: Partial<Character> = {};
 
-      const merged = CharacterConfig.mergeDefaults(partial);
+      const merged = mergeCharacterDefaults(partial);
 
       expect(merged.name).toBe('Unnamed Character');
     });
@@ -93,7 +93,7 @@ describe('CharacterConfig', () => {
         plugins: ['plugin1'],
       };
 
-      const merged = CharacterConfig.mergeDefaults(partial);
+      const merged = mergeCharacterDefaults(partial);
 
       expect(merged.name).toBe('TestChar');
       expect((merged.settings?.secrets as any)?.key).toBe('value');

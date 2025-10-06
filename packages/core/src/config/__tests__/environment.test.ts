@@ -1,21 +1,21 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { EnvironmentConfig } from '../environment';
+import { loadEnvConfig, findEnvFile } from '../environment';
 
-describe('EnvironmentConfig', () => {
+describe('Environment Config Functions', () => {
   let originalEnvSnapshot: NodeJS.ProcessEnv;
 
   beforeEach(() => {
     // Snapshot and clear env
     originalEnvSnapshot = { ...process.env };
     for (const k of Object.keys(process.env)) {
-      delete (process.env as any)[k];
+      delete (process.env as Record<string, string | undefined>)[k];
     }
   });
 
   afterEach(() => {
     // Restore env in-place
     for (const k of Object.keys(process.env)) {
-      delete (process.env as any)[k];
+      delete (process.env as Record<string, string | undefined>)[k];
     }
     Object.assign(process.env, originalEnvSnapshot);
   });
@@ -25,7 +25,7 @@ describe('EnvironmentConfig', () => {
       process.env.OPENAI_API_KEY = 'test-key';
       process.env.ANTHROPIC_API_KEY = 'anthropic-key';
 
-      const config = await EnvironmentConfig.loadEnvConfig();
+      const config = await loadEnvConfig();
 
       expect(config).toBeDefined();
       expect(config.OPENAI_API_KEY).toBe('test-key');
@@ -36,7 +36,7 @@ describe('EnvironmentConfig', () => {
       delete process.env.OPENAI_API_KEY;
       delete process.env.ANTHROPIC_API_KEY;
 
-      const config = await EnvironmentConfig.loadEnvConfig();
+      const config = await loadEnvConfig();
 
       expect(config).toBeDefined();
       expect(Object.keys(config).length).toBeGreaterThanOrEqual(0);
@@ -45,7 +45,7 @@ describe('EnvironmentConfig', () => {
 
   describe('findEnvFile', () => {
     test('should return null when no .env file exists', () => {
-      const envPath = EnvironmentConfig.findEnvFile();
+      const envPath = findEnvFile();
       // In test environment, may or may not exist
       expect(envPath === null || typeof envPath === 'string').toBe(true);
     });
