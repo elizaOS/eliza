@@ -159,7 +159,7 @@ export const start = new Command()
       });
 
       // Start HTTP server
-      await server.start(options.port || 3000);
+      await server.start(options.port || parseInt(process.env.SERVER_PORT ?? '') || 3000);
 
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {
