@@ -177,6 +177,12 @@ export class TaskService extends Service {
    */
   private async checkTasks() {
     try {
+      // Check if runtime database is fully initialized before accessing tasks
+      const isReady = await this.runtime.isReady();
+      if (!isReady) {
+        return;
+      }
+
       // Get all tasks with "queue" tag
       const allTasks = await this.runtime.getTasks({
         tags: ['queue'],
