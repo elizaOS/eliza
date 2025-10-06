@@ -121,6 +121,20 @@ describe('TaskService', () => {
     });
   });
 
+  it('should skip task checking when database is not ready', async () => {
+    // Mock isReady to return false
+    mockRuntime.isReady = mock().mockResolvedValue(false);
+
+    // Expose the private method for testing
+    const checkTasksMethod = (taskService as any).checkTasks.bind(taskService);
+
+    // Call the method
+    await checkTasksMethod();
+
+    // Verify that getTasks was NOT called
+    expect(mockRuntime.getTasks).not.toHaveBeenCalled();
+  });
+
   it('should process tasks that are ready', async () => {
     // Create a task that's ready to process (scheduled for the past)
     const pastTask = {
