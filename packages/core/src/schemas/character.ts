@@ -4,13 +4,13 @@ import { ChannelType } from '../types/environment';
 import { ContentType } from '../types/primitives';
 
 // UUID validation schema
-const uuidSchema = z
+export const uuidSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Invalid UUID format')
   .describe('Unique identifier for the character in UUID format');
 
 // Media attachment schema matching the Media type
-const mediaSchema = z
+export const mediaSchema = z
   .object({
     id: z.string().describe('Unique identifier for the media'),
     url: z.string().describe('URL of the media file'),
@@ -23,7 +23,7 @@ const mediaSchema = z
   .describe('Media attachment with URL and metadata');
 
 // Message content schema matching the Content interface
-const contentSchema = z
+export const contentSchema = z
   .object({
     text: z.string().optional().describe('The main text content of the message'),
     thought: z.string().optional().describe('Internal thought process or reasoning'),
@@ -43,7 +43,7 @@ const contentSchema = z
   .describe('Content structure for messages in conversation examples');
 
 // MessageExample schema
-const messageExampleSchema = z
+export const messageExampleSchema = z
   .object({
     name: z
       .string()
@@ -53,7 +53,7 @@ const messageExampleSchema = z
   .describe('A single message in a conversation example');
 
 // DirectoryItem schema
-const directoryItemSchema = z
+export const directoryItemSchema = z
   .object({
     directory: z.string().describe('Path to a directory containing knowledge files'),
     shared: z.boolean().optional().describe('Whether this knowledge is shared across characters'),
@@ -61,7 +61,7 @@ const directoryItemSchema = z
   .describe('Directory-based knowledge source');
 
 // Knowledge item can be a string, object with path, or DirectoryItem
-const knowledgeItemSchema = z
+export const knowledgeItemSchema = z
   .union([
     z.string().describe('File path to a knowledge document'),
     z.object({
@@ -73,7 +73,7 @@ const knowledgeItemSchema = z
   .describe('Knowledge source - can be a file path, file object, or directory');
 
 // TemplateType schema - can be string or function (we'll validate as string for JSON)
-const templateTypeSchema = z
+export const templateTypeSchema = z
   .union([
     z.string().describe('Template string with placeholders'),
     z.function().optional(), // Functions won't be in JSON but allowed in runtime
@@ -81,7 +81,7 @@ const templateTypeSchema = z
   .describe('Template for generating text - can be a string template or function');
 
 // Style configuration schema
-const styleSchema = z
+export const styleSchema = z
   .object({
     all: z
       .array(z.string())
@@ -102,7 +102,7 @@ const styleSchema = z
   );
 
 // Settings schema - flexible object allowing any JSON-serializable values
-const settingsSchema = z
+export const settingsSchema = z
   .record(
     z.string(),
     z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.any())])
@@ -111,7 +111,7 @@ const settingsSchema = z
   .describe('Character-specific settings like avatar URL, preferences, and configuration');
 
 // Secrets schema
-const secretsSchema = z
+export const secretsSchema = z
   .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
   .optional()
   .describe('Secret values and API keys (should not be committed to version control)');
@@ -119,7 +119,7 @@ const secretsSchema = z
 // Main Character schema
 export const characterSchema = z
   .object({
-    id: uuidSchema.optional(),
+    id: uuidSchema.optional().describe('Unique identifier for the character'),
     name: z
       .string()
       .min(1, 'Character name is required')
