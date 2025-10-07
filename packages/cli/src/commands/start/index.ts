@@ -160,7 +160,8 @@ export const start = new Command()
 
       // Start HTTP server with robust port resolution
       let port: number;
-      if (typeof options.port === 'number' && Number.isFinite(options.port)) {
+      if (options.port !== undefined) {
+        // Already validated by Commander using validatePort
         port = options.port;
       } else {
         const envPort = process.env.SERVER_PORT;
