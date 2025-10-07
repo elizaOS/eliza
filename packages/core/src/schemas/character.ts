@@ -19,10 +19,13 @@ const contentSchema = z
     target: z.string().optional().describe('Target of the content'),
     url: z.string().optional().describe('Related URL'),
     inReplyTo: uuidSchema.optional().describe('UUID of message this is replying to'),
-    attachments: z.array(z.object()).optional().describe('File attachments'),
+    attachments: z
+      .array(z.object({ type: z.string(), data: z.unknown() }))
+      .optional()
+      .describe('Attachments related to the content'),
     channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
   })
-  .passthrough() // Allow additional properties
+  .loose() // Allow additional properties
   .describe('Content structure for messages in conversation examples');
 
 // MessageExample schema
@@ -85,7 +88,8 @@ const styleSchema = z
   );
 
 // Settings schema - flexible object allowing any JSON-serializable values
-const settingsSchema = .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.object({}).passthrough()]))
+const settingsSchema = z
+  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.object({}).loose()]))
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');
 
@@ -139,7 +143,7 @@ export const characterSchema = z
       .array(z.string())
       .optional()
       .describe(
-        'List of plugin package names to load (e.g., "@elizaos/plugin-sql, @elizaos/plugin-bootstrap; these two are required")'
+        'List of plugin package names to load (e.g., ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap"] - these are commonly required)'
       ),
     settings: settingsSchema,
     secrets: secretsSchema,
