@@ -196,12 +196,12 @@ These are the actions or data provider calls that have already been used in this
 
 <keys>
 "thought" Clearly explain your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request.
-"action"  Name of the action to execute after providers return (can be null if no action is needed).
+"action"  Name of the action to execute after providers return (can be empty if no action is needed).
 "providers" List of provider names to call in this step (can be empty if none are needed).
 "isFinish" Set to true only if the task is fully complete.
 </keys>
 
-⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action like. Wait for the action to complete before deciding the task is finished.
+⚠️ IMPORTANT: Do **not** mark the task as \`isFinish: true\` immediately after calling an action. Wait for the action to complete before deciding the task is finished.
 
 <output>
 <response>

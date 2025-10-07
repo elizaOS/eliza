@@ -2,9 +2,8 @@
  * Agent management tests for AgentServer
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
 import { AgentServer } from '../index';
-import type { UUID } from '@elizaos/core';
 
 // Mock logger to avoid console output during tests
 mock.module('@elizaos/core', () => ({
@@ -202,5 +201,31 @@ describe('AgentServer Agent Management Tests', () => {
     await server.unregisterAgent(null as any);
     await server.unregisterAgent(undefined as any);
     expect(true).toBe(true); // Test passes if no error thrown
+  });
+
+  it('should await agent.stop() during unregisterAgent', async () => {
+    const stopPromise = Promise.resolve();
+    const stopMock = jest.fn(() => stopPromise);
+
+    const testRuntime = {
+      ...mockRuntime,
+      stop: stopMock,
+    };
+
+    // Mock elizaOS with our test runtime
+    server.elizaOS = {
+      getAgent: jest.fn().mockReturnValue(testRuntime),
+      deleteAgents: jest.fn().mockResolvedValue(undefined),
+    } as any;
+
+    await server.unregisterAgent(testRuntime.agentId);
+
+    // Verify stop was called
+    expect(stopMock).toHaveBeenCalled();
+
+    // Verify the stop promise was awaited (by checking the order)
+    // If not awaited, deleteAgents could be called before stop completes
+    await stopPromise;
+    expect(server.elizaOS?.deleteAgents).toHaveBeenCalled();
   });
 });

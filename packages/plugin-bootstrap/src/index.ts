@@ -37,6 +37,8 @@ import {
   multiStepDecisionTemplate,
   multiStepSummaryTemplate,
   type State,
+  type Action,
+  HandlerCallback,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -71,16 +73,6 @@ interface MultiStepActionResult {
   text?: string;
   error?: string | Error;
   values?: Record<string, any>;
-}
-
-/**
- * Multi-step workflow state
- */
-interface MultiStepState extends State {
-  data: {
-    actionResults: MultiStepActionResult[];
-    [key: string]: any;
-  };
 }
 
 const latestResponseIds = new Map<string, Map<string, string>>();
@@ -627,6 +619,9 @@ const messageReceivedHandler = async ({
         let responseContent: Content | null = null;
         let responseMessages: Memory[] = [];
 
+        // helpful for swarms
+        const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+        
         if (shouldRespondToMessage) {
           const result = useMultiStep
             ? await runMultiStepCore({ runtime, message, state, callback })
@@ -638,7 +633,7 @@ const messageReceivedHandler = async ({
 
           // Race check before we send anything
           const currentResponseId = agentResponses.get(message.roomId);
-          if (currentResponseId !== responseId) {
+          if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
             );
@@ -687,8 +682,6 @@ const messageReceivedHandler = async ({
 
           // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
-          // helpful for swarms
-          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
@@ -814,7 +807,7 @@ const messageReceivedHandler = async ({
 
         // get available actions
         const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
-          (a) => a.name
+          (a: Action) => a.name
         ) || [-1];
 
         // generate data of interest
@@ -888,7 +881,7 @@ type StrategyResult = {
   mode: StrategyMode;
 };
 
-async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
+async function runSingleShotCore({ runtime, message, state }: { runtime: IAgentRuntime, message: Memory, state: State }): Promise<StrategyResult> {
   state = await runtime.composeState(message, ['ACTIONS']);
 
   if (!state.values?.actionNames) {
@@ -1003,9 +996,9 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
   };
 }
 
-async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
+async function runMultiStepCore({ runtime, message, state, callback }: { runtime: IAgentRuntime, message: Memory, state: State, callback?: HandlerCallback }): Promise<StrategyResult> {
   const traceActionResult: MultiStepActionResult[] = [];
-  let accumulatedState: MultiStepState = state;
+  let accumulatedState: State = state;
   const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
   let iterationCount = 0;
 
@@ -1086,7 +1079,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           data: { actionName: providerName },
           success,
           text: success ? providerResult.text : undefined,
-          error: success ? undefined : providerResult?.error,
+          error: success ? undefined : providerResult?.text,
         });
         if (callback) {
           await callback({
@@ -1476,7 +1469,7 @@ const postGeneratedHandler = async ({
   // }
 
   // have we posted it before?
-  const RM = state.providerData?.find((pd) => pd.providerName === 'RECENT_MESSAGES');
+  const RM = state.data?.providers?.RECENT_MESSAGES;
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {

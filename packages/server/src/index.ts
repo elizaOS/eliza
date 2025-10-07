@@ -1269,17 +1269,13 @@ export class AgentServer {
       if (agent) {
         // Stop all services of the agent before unregistering it
         try {
-          agent.stop().catch((stopError) => {
-            logger.error(
-              { error: stopError, agentId },
-              `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
-            );
-          });
           logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
+          await agent.stop();
+          logger.debug(`[AGENT UNREGISTER] All services stopped for agent ${agentId}`);
         } catch (stopError) {
           logger.error(
             { error: stopError, agentId },
-            `[AGENT UNREGISTER] Error initiating stop for agent ${agentId}:`
+            `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
           );
         }
       }
