@@ -7,8 +7,11 @@
  * - Input validation for plugins array
  */
 
-import { describe, it, expect, beforeEach, jest, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, mock, jest } from 'bun:test';
 import type { Character } from '@elizaos/core';
+
+// Type for plugins (string or object with name)
+type PluginType = string | { name: string };
 
 // Mock logger to avoid console output during tests
 mock.module('@elizaos/core', () => ({
@@ -73,14 +76,14 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
     });
 
     it('should handle plugin objects with name property', () => {
-      const currentPlugins = [{ name: 'bootstrap' }, { name: 'discord' }];
-      const updatedPlugins = [{ name: 'bootstrap' }, { name: 'knowledge' }];
+      const currentPlugins: PluginType[] = [{ name: 'bootstrap' }, { name: 'discord' }];
+      const updatedPlugins: PluginType[] = [{ name: 'bootstrap' }, { name: 'knowledge' }];
 
       const current = currentPlugins
-        .map(p => typeof p === 'string' ? p : (p as any).name)
+        .map(p => typeof p === 'string' ? p : p.name)
         .sort();
       const updated = updatedPlugins
-        .map(p => typeof p === 'string' ? p : (p as any).name)
+        .map(p => typeof p === 'string' ? p : p.name)
         .sort();
 
       const pluginsChanged =
@@ -91,14 +94,14 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
     });
 
     it('should handle mixed string and object plugins', () => {
-      const currentPlugins = ['bootstrap', { name: 'discord' }];
-      const updatedPlugins = [{ name: 'bootstrap' }, 'discord'];
+      const currentPlugins: PluginType[] = ['bootstrap', { name: 'discord' }];
+      const updatedPlugins: PluginType[] = [{ name: 'bootstrap' }, 'discord'];
 
       const current = currentPlugins
-        .map(p => typeof p === 'string' ? p : (p as any).name)
+        .map(p => typeof p === 'string' ? p : p.name)
         .sort();
       const updated = updatedPlugins
-        .map(p => typeof p === 'string' ? p : (p as any).name)
+        .map(p => typeof p === 'string' ? p : p.name)
         .sort();
 
       const pluginsChanged =
@@ -109,19 +112,19 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
     });
 
     it('should filter out null and undefined plugins', () => {
-      const currentPlugins = ['bootstrap', null, 'discord', undefined] as any[];
-      const updatedPlugins = ['bootstrap', 'discord'];
+      const currentPlugins: (PluginType | null | undefined)[] = ['bootstrap', null, 'discord', undefined];
+      const updatedPlugins: PluginType[] = ['bootstrap', 'discord'];
 
       const current = currentPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p): p is PluginType => p != null)
+        .map(p => typeof p === 'string' ? p : p.name)
+        .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const updated = updatedPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p): p is PluginType => p != null)
+        .map(p => typeof p === 'string' ? p : p.name)
+        .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
@@ -132,19 +135,19 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
     });
 
     it('should filter out plugins with invalid name', () => {
-      const currentPlugins = ['bootstrap', { name: 123 as any }, 'discord'];
-      const updatedPlugins = ['bootstrap', 'discord'];
+      const currentPlugins: (PluginType | { name: number })[] = ['bootstrap', { name: 123 as any }, 'discord'];
+      const updatedPlugins: PluginType[] = ['bootstrap', 'discord'];
 
       const current = currentPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p): p is PluginType | { name: number } => p != null)
+        .map(p => typeof p === 'string' ? p : p.name)
+        .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const updated = updatedPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p): p is PluginType => p != null)
+        .map(p => typeof p === 'string' ? p : p.name)
+        .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
