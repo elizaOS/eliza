@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/config",
   "description": "Shared configuration for ElizaOS projects and plugins",
-  "version": "1.6.2-alpha.3",
+  "version": "1.6.2-alpha.4",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

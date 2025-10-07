@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/service-interfaces",
-  "version": "1.6.2-alpha.3",
+  "version": "1.6.2-alpha.4",
   "description": "Service interface definitions for ElizaOS plugins",
   "type": "module",
   "main": "dist/index.js",

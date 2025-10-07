@@ -28,7 +28,9 @@ const contentSchema = z
 // MessageExample schema
 const messageExampleSchema = z
   .object({
-    name: z.string().describe('Name of the speaker (can use {{name1}} placeholder for dynamic names)'),
+    name: z
+      .string()
+      .describe('Name of the speaker (can use {{name1}} placeholder for dynamic names)'),
     content: contentSchema,
   })
   .describe('A single message in a conversation example');
@@ -78,7 +80,9 @@ const styleSchema = z
       .describe('Style guidelines specific to social media posts'),
   })
   .optional()
-  .describe('Style configuration defining how the character communicates across different contexts');
+  .describe(
+    'Style configuration defining how the character communicates across different contexts'
+  );
 
 // Settings schema - flexible object
 const settingsSchema = z
@@ -104,28 +108,22 @@ export const characterSchema = z
     system: z
       .string()
       .optional()
-      .describe(
-        'System prompt that defines the character\'s core behavior and response style',
-      ),
+      .describe("System prompt that defines the character's core behavior and response style"),
     templates: z
       .record(z.string(), templateTypeSchema)
       .optional()
       .describe('Custom templates for generating different types of content'),
     bio: z
       .union([z.string(), z.array(z.string())])
-      .describe(
-        'Character biography - can be a single string or array of biographical points',
-      ),
+      .describe('Character biography - can be a single string or array of biographical points'),
     messageExamples: z
       .array(z.array(messageExampleSchema))
       .optional()
-      .describe(
-        'Example conversations showing how the character responds in different scenarios',
-      ),
+      .describe('Example conversations showing how the character responds in different scenarios'),
     postExamples: z
       .array(z.string())
       .optional()
-      .describe('Example social media posts demonstrating the character\'s voice and topics'),
+      .describe("Example social media posts demonstrating the character's voice and topics"),
     topics: z
       .array(z.string())
       .optional()
@@ -133,17 +131,17 @@ export const characterSchema = z
     adjectives: z
       .array(z.string())
       .optional()
-      .describe('Adjectives that describe the character\'s personality and traits'),
+      .describe("Adjectives that describe the character's personality and traits"),
     knowledge: z
       .array(knowledgeItemSchema)
       .optional()
-      .describe(
-        'Knowledge sources (files, directories) the character can reference',
-      ),
+      .describe('Knowledge sources (files, directories) the character can reference'),
     plugins: z
       .array(z.string())
       .optional()
-      .describe('List of plugin package names to load (e.g., "@elizaos/plugin-sql, @elizaos/plugin-bootstrap; these two are required")'),
+      .describe(
+        'List of plugin package names to load (e.g., "@elizaos/plugin-sql, @elizaos/plugin-bootstrap; these two are required")'
+      ),
     settings: settingsSchema,
     secrets: secretsSchema,
     style: styleSchema,
