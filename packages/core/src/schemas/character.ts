@@ -1,12 +1,26 @@
 import { z } from 'zod';
 import type { Character } from '../types/agent';
 import { ChannelType } from '../types/environment';
+import { ContentType } from '../types/primitives';
 
 // UUID validation schema
 const uuidSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'Invalid UUID format')
   .describe('Unique identifier for the character in UUID format');
+
+// Media attachment schema matching the Media type
+const mediaSchema = z
+  .object({
+    id: z.string().describe('Unique identifier for the media'),
+    url: z.string().describe('URL of the media file'),
+    title: z.string().optional().describe('Media title'),
+    source: z.string().optional().describe('Media source'),
+    description: z.string().optional().describe('Media description'),
+    text: z.string().optional().describe('Text content associated with the media'),
+    contentType: z.nativeEnum(ContentType).optional().describe('Type of media content'),
+  })
+  .describe('Media attachment with URL and metadata');
 
 // Message content schema matching the Content interface
 const contentSchema = z
@@ -20,12 +34,12 @@ const contentSchema = z
     url: z.string().optional().describe('Related URL'),
     inReplyTo: uuidSchema.optional().describe('UUID of message this is replying to'),
     attachments: z
-      .array(z.object({ type: z.string(), data: z.unknown() }))
+      .array(mediaSchema)
       .optional()
-      .describe('Attachments related to the content'),
+      .describe('Array of media attachments (images, videos, documents, etc.)'),
     channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
   })
-  .loose() // Allow additional properties
+  .passthrough() // Allow additional dynamic properties per Content interface
   .describe('Content structure for messages in conversation examples');
 
 // MessageExample schema
