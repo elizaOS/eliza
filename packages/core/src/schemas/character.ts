@@ -39,7 +39,7 @@ const contentSchema = z
       .describe('Array of media attachments (images, videos, documents, etc.)'),
     channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
   })
-  .passthrough() // Allow additional dynamic properties per Content interface
+  .catchall(z.unknown()) // Allow additional dynamic properties per Content interface
   .describe('Content structure for messages in conversation examples');
 
 // MessageExample schema
