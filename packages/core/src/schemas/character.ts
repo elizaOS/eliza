@@ -20,6 +20,7 @@ export const mediaSchema = z
     text: z.string().optional().describe('Text content associated with the media'),
     contentType: z.nativeEnum(ContentType).optional().describe('Type of media content'),
   })
+  .loose()
   .describe('Media attachment with URL and metadata');
 
 // Message content schema matching the Content interface
@@ -39,6 +40,7 @@ export const contentSchema = z
       .describe('Array of media attachments (images, videos, documents, etc.)'),
     channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
   })
+  .loose()
   .catchall(z.unknown()) // Allow additional dynamic properties per Content interface
   .describe('Content structure for messages in conversation examples');
 
@@ -49,6 +51,7 @@ export const messageExampleSchema = z
       .string()
       .describe('Name of the speaker (can use {{name1}} placeholder for dynamic names)'),
     content: contentSchema,
+    actions: z.array(z.string()).optional().describe('Actions to be taken in response'),
   })
   .describe('A single message in a conversation example');
 
