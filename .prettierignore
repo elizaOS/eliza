@@ -1,0 +1,32 @@
+**/*/target
+**/*/dist
+
+# ignore lock files
+**/*-lock.yaml
+dev-dist
+
+**/CHANGELOG.md
+
+# Build artifacts
+dist
+build
+.turbo
+
+# Dependencies
+node_modules
+bun.lockb
+
+# Generated files
+.coverage
+.next
+.cache
+out
+*.min.js
+
+# Documentation (not a node package)
+packages/docs
+
+# Misc
+.DS_Store
+.env
+.env.*

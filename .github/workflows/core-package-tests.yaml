@@ -1,0 +1,181 @@
+name: Core Package Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: core-package-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - '*'
+    paths:
+      - 'packages/**'
+      - '.github/workflows/core-package-tests.yaml'
+  pull_request:
+    branches:
+      - '*'
+    paths:
+      - 'packages/**'
+      - '.github/workflows/core-package-tests.yaml'
+
+env:
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  ELIZA_NONINTERACTIVE: true
+
+jobs:
+  # Validation job
+  validate:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Install global packages
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Install cli now that it's built
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Check for API key
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+              echo "Error: OPENAI_API_KEY is not set."
+              exit 1
+          fi
+
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+              echo "Error: ANTHROPIC_API_KEY is not set."
+              exit 1
+          fi
+
+  # Core package tests job
+  # Runs unit tests for backend/server-side packages:
+  # - Core framework (@elizaos/core)
+  # - Server (@elizaos/server)
+  # - Core plugins (bootstrap, dummy-services)
+  # - Project templates (tee-starter)
+  #
+  # Excluded packages:
+  # - CLI: handled by cli-tests.yml (requires multi-OS, model downloads)
+  # - Client: handled by client-cypress-tests.yml (requires browser/DOM environment)
+  # - Plugin/Project starters: no real tests, just templates
+  # - SQL plugin: excluded in main package.json
+  core-tests:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Build packages
+        run: bun run build
+
+      - name: Install global packages
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Create .env file for tests
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Install cli now that it's built
+        env:
+          SHARP_IGNORE_GLOBAL_LIBVIPS: '1'
+        run: bun install
+
+      - name: Run core package tests
+        timeout-minutes: 15
+        env:
+          # Set CI-specific environment variables
+          CI: true
+          NODE_ENV: test
+          PGLITE_WASM_MODE: node
+          # Prevent interactive prompts
+          ELIZA_NONINTERACTIVE: true
+          # Set memory limits for CI
+          NODE_OPTIONS: '--max-old-space-size=2048'
+        run: |
+          # Set test timeout for CI (60 seconds per test)
+          export BUN_TEST_TIMEOUT=60000
+
+          # CLI tests are handled by the dedicated cli-tests.yml workflow
+          # Client tests are handled by the dedicated client-cypress-tests.yml workflow
+          echo "Starting core package tests..."
+
+          # Track if any tests fail
+          TESTS_FAILED=0
+
+          # Run tests in each package that has them (excluding CLI, client, server, and other excluded packages)
+          # These packages are tested together because they:
+          # - Use standard bun test without special environment requirements
+          # - Form the core backend functionality of ElizaOS
+          # - Can run with in-memory PGLite database
+          for package in core plugin-bootstrap plugin-dummy-services project-tee-starter; do
+            echo ""
+            echo "========================================="
+            echo "Running tests in packages/$package"
+            echo "========================================="
+            
+            cd "packages/$package"
+            
+            if bun run test --timeout 60000; then
+              echo "✅ Tests passed for $package"
+            else
+              echo "❌ Tests failed for $package"
+              TESTS_FAILED=1
+            fi
+            
+            cd ../..
+          done
+
+          if [ $TESTS_FAILED -ne 0 ]; then
+            echo ""
+            echo "❌ Some tests failed"
+            echo "Checking for any hanging processes..."
+            ps aux | grep -E "(bun|node)" || true
+            exit 1
+          else
+            echo ""
+            echo "✅ All core package tests passed!"
+          fi

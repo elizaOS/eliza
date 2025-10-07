@@ -1,0 +1,84 @@
+name: Generate Readme Translations
+on:
+  push:
+    branches:
+      - '1222--README-ci-auto-translation'
+
+jobs:
+  translation:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language:
+          [
+            { code: 'CN', name: 'Chinese' },
+            { code: 'DE', name: 'German' },
+            { code: 'ES', name: 'Spanish' },
+            { code: 'FR', name: 'French' },
+            { code: 'HE', name: 'Hebrew' },
+            { code: 'IT', name: 'Italian' },
+            { code: 'JA', name: 'Japanese' },
+            { code: 'KOR', name: 'Korean' },
+            { code: 'PTBR', name: 'Portuguese (Brazil)' },
+            { code: 'RU', name: 'Russian' },
+            { code: 'TH', name: 'Thai' },
+            { code: 'TR', name: 'Turkish' },
+            { code: 'VI', name: 'Vietnamese' },
+            { code: 'AR', name: 'Arabic' },
+            { code: 'RS', name: 'Srpski' },
+            { code: 'TG', name: 'Tagalog' },
+            { code: 'PL', name: 'Polski' },
+            { code: 'HU', name: 'Hungarian' },
+            { code: 'FA', name: 'Persian' },
+            { code: 'RO', name: 'Romanian' },
+            { code: 'GR', name: 'Greek' },
+            { code: 'NL', name: 'Dutch' },
+          ]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Translate to ${{ matrix.language.name }}
+        uses: 0xjord4n/aixion@v1.2.1
+        id: aixion
+        with:
+          config: >
+            {
+              "provider": "openai",
+              "provider_options": {
+                "api_key": "${{ secrets.OPENAI_API_KEY }}"
+              },
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "You will be provided with a markdown file in English, and your task is to translate it into ${{ matrix.language.name }}."
+                },
+                {
+                  "role": "user",
+                  "content_path": "README.md"
+                }
+              ],
+              save_path: "packages/docs/packages/docs/i18n/readme/README_${{ matrix.language.code }}.md",
+              "model": "gpt-4o"
+            }
+
+  commit:
+    needs: translation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Commit all translations
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: update all README translations'
+          branch: main
+          file_pattern: 'README_*.md'
+          commit_author: 'GitHub Action <actions@github.com>'

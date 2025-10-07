@@ -1,0 +1,40 @@
+name: Plugin SQL Integration Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: plugin-sql-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'develop'
+  pull_request:
+    branches:
+      - 'main'
+      - 'develop'
+
+jobs:
+  databaseIntegrationTests:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - name: Install root dependencies
+        run: bun install
+      - name: Build all packages
+        run: bun run build
+      - name: Install dependencies and build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: |
+          bun install
+          bun run build
+      - name: Run plugin-sql integration tests
+        working-directory: ./packages/plugin-sql
+        run: bun run test:integration

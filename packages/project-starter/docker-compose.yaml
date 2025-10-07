@@ -1,0 +1,72 @@
+version: '3.8'
+services:
+  postgres:
+    image: ankane/pgvector:latest
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=eliza
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data:rw
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - eliza-network
+  elizaos:
+    image: ${DOCKER_IMAGE}
+    container_name: elizaos
+    environment:
+      # Core AI providers (at least one required)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Database (required for production)
+      - POSTGRES_URL=${POSTGRES_URL}
+
+      # Server configuration
+      - SERVER_PORT=${SERVER_PORT:-3000}
+      - ELIZA_UI_ENABLE=${ELIZA_UI_ENABLE:-true}
+      - NODE_ENV=${NODE_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+      # Optional: Add these based on your plugins
+      # Discord
+      - DISCORD_APPLICATION_ID=${DISCORD_APPLICATION_ID:-}
+      - DISCORD_API_TOKEN=${DISCORD_API_TOKEN:-}
+
+      # Solana
+      - SOLANA_PRIVATE_KEY=${SOLANA_PRIVATE_KEY:-}
+      - SOLANA_PUBLIC_KEY=${SOLANA_PUBLIC_KEY:-}
+      - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
+
+      # EVM
+      - EVM_CHAINS=${EVM_CHAINS:-}
+
+      # Voice/Audio
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-}
+
+      # Other AI providers
+      - REDPILL_API_KEY=${REDPILL_API_KEY:-}
+    ports:
+      - '3000:3000'
+      - '50000-50100:50000-50100/udp'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+      - eliza-network
+
+networks:
+  eliza-network:
+    driver: bridge
+volumes:
+  postgres-data:

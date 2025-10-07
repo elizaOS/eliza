@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>ElizaOS - Client</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Minimal early Buffer/global/process bootstrap to avoid race before entry polyfills -->
+    <script type="module">
+      import { Buffer as B } from 'buffer';
+      if (typeof globalThis.Buffer === 'undefined') globalThis.Buffer = B;
+      if (typeof globalThis.global === 'undefined') globalThis.global = globalThis;
+      if (typeof globalThis.process === 'undefined') {
+        globalThis.process = { env: {} };
+      } else if (!globalThis.process.env) {
+        globalThis.process.env = {};
+      }
+    </script>
+    <script type="module" src="/src/entry.tsx"></script>
+  </body>
+</html>

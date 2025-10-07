@@ -1,0 +1,27 @@
+name: 'Basic Test Scenario'
+description: 'Tests basic agent functionality without external plugins'
+
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+
+environment:
+  type: local
+
+run:
+  - name: 'Ask agent to introduce itself'
+    input: 'Hello! Who are you?'
+    evaluations:
+      - type: 'string_contains'
+        value: 'agent'
+        description: 'Agent should mention being an agent'
+      - type: 'string_contains'
+        value: 'scenario-agent'
+        description: 'Agent should mention its name'
+
+judgment:
+  strategy: 'all_pass'

@@ -1,0 +1,94 @@
+{
+  "name": "eliza",
+  "version": "1.4.4",
+  "module": "index.ts",
+  "type": "module",
+  "engines": {
+    "node": "23.3.0"
+  },
+  "scripts": {
+    "postinstall": "bash ./scripts/init-submodules.sh",
+    "start": "turbo run start --filter=./packages/cli --log-prefix=none --no-cache",
+    "start:debug": "cross-env NODE_NO_WARNINGS=1 LOG_LEVEL=debug elizaos start",
+    "start:app": "turbo run start --filter=./packages/app",
+    "dev": "bun run scripts/dev-watch.js",
+    "build": "turbo run build --filter=!./packages/app --filter=!@elizaos/config",
+    "build:client": "turbo run build --filter=@elizaos/client",
+    "format": "turbo run format --filter=./packages/*",
+    "format:check": "turbo run format:check --filter=./packages/*",
+    "clean": "turbo run clean --concurrency=100% --filter=./packages/* --filter=!./packages/app --filter=!@elizaos/config && rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo bun.lock* .eliza .elizadb && bun install && bun run build --concurrency=100%",
+    "build:cli": "turbo run build --filter=@elizaos/cli --no-cache",
+    "build:core": "turbo run build --filter=@elizaos/core --no-cache",
+    "lint": "turbo run lint --filter=./packages/* && prettier --write . --ignore-path .prettierignore && prettier --check . --ignore-path .prettierignore",
+    "pre-commit": "bun run scripts/pre-commit-lint.js",
+    "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access",
+    "release:beta": "bunx lerna publish from-package --dist-tag beta --force-publish --yes --no-verify-access",
+    "release:alpha": "bunx lerna publish from-package --dist-tag alpha --force-publish --yes --no-verify-access",
+    "version:alpha": "bunx lerna version prerelease --preid alpha --force-publish --yes --no-push --no-git-tag-version",
+    "version:beta": "bunx lerna version prerelease --preid beta --force-publish --yes --no-push --no-git-tag-version",
+    "version:patch": "bunx lerna version patch --force-publish --yes --no-push --no-git-tag-version",
+    "version:minor": "bunx lerna version minor --force-publish --yes --no-push --no-git-tag-version",
+    "version:major": "bunx lerna version major --force-publish --yes --no-push --no-git-tag-version",
+    "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
+    "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
+    "docker:build": "bash ./scripts/docker.sh build",
+    "docker:run": "bash ./scripts/docker.sh run",
+    "docker:bash": "bash ./scripts/docker.sh bash",
+    "docker:start": "bash ./scripts/docker.sh start",
+    "docker": "bun docker:build && bun docker:run && bun docker:bash",
+    "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!@elizaos/plugin-sql",
+    "test:client": "turbo run test --filter=./packages/client",
+    "test:core": "turbo run test --filter=./packages/core",
+    "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
+    "prepare": "husky"
+  },
+  "packageManager": "bun@1.2.21",
+  "workspaces": [
+    "packages/*",
+    "plugin-specification/*"
+  ],
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.6.0",
+    "@types/uuid": "^11.0.0",
+    "bun": "^1.2.21",
+    "husky": "^9.1.7",
+    "lerna": "9.0.0",
+    "turbo": "^2.5.5",
+    "typescript": "5.9.2"
+  },
+  "resolutions": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "@types/react": "19.1.5",
+    "typedoc-plugin-markdown": "4.2.10",
+    "typedoc": "0.27.9"
+  },
+  "overrides": {
+    "@nrwl/devkit": "19.8.4",
+    "@nrwl/tao": "19.8.4",
+    "color-convert": "2.0.1",
+    "color-name": "1.1.4",
+    "is-core-module": "2.13.1",
+    "error-ex": "1.3.2",
+    "has-ansi": "6.0.2"
+  },
+  "trustedDependencies": [
+    "@swc/core",
+    "bigint-buffer",
+    "bufferutil",
+    "bun",
+    "canvas",
+    "esbuild",
+    "husky",
+    "node-llama-cpp",
+    "protobufjs",
+    "utf-8-validate"
+  ],
+  "dependencies": {
+    "helmet": "^8.1.0",
+    "js-yaml": "^4.1.0",
+    "zod": "4.1.11"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/index.ts",
+    "src/plugin.ts",
+    "src/character.ts",
+    "src/frontend/**/*.ts",
+    "src/frontend/**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "src/__tests__/**/*",
+    "src/**/cypress/**/*"
+  ]
+}

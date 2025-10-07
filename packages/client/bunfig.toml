@@ -1,0 +1,31 @@
+[test]
+# Test timeout in milliseconds
+timeout = 60000
+
+# Setup files
+preload = ["./src/test/setup.ts"]
+
+# Coverage configuration  
+coverage = true
+coverage-reporter = ["text", "json", "html"]
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+  "src/test/**", 
+  "*.config.ts",
+  "*.config.js",
+  "**/*.d.ts",
+  "**/*.cy.ts",
+  "**/*.cy.tsx",
+  "cypress/**",
+]
+
+[test.env]
+NODE_ENV = "test"

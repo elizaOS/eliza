@@ -1,0 +1,20 @@
+# Ignore node_modules from the build context
+node_modules
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+.DS_Store
+
+# Ignore Git files and metadata
+.gitignore
+
+# Ignore IDE and editor config files
+.vscode
+.idea
+*.swp
+
+# Ignore build artifacts from the host
+dist
+build
+.env

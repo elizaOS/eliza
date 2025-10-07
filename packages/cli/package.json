@@ -1,0 +1,107 @@
+{
+  "name": "@elizaos/cli",
+  "version": "1.6.2-alpha.4",
+  "description": "elizaOS CLI - Manage your AI agents and plugins",
+  "publishConfig": {
+    "access": "public",
+    "workspaces": {
+      "preserveIfPresent": true
+    }
+  },
+  "license": "MIT",
+  "author": {
+    "name": "elizaOS",
+    "url": "https://twitter.com/eliza_OS"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/cli"
+  },
+  "files": [
+    "dist",
+    "dist/**/*",
+    "dist/version.js",
+    "templates",
+    "templates/**/*"
+  ],
+  "keywords": [],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "elizaos": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "bun run build && bun dist/index.js start",
+    "build": "bun run build.ts",
+    "lint": "prettier --write ./src",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "test": "bun run test:all",
+    "test:all": "./run-all-tests.sh",
+    "test:unit": "bun test --timeout 30000",
+    "test:unit:watch": "bun test --watch --timeout 30000",
+    "test:unit:coverage": "bun test --coverage --timeout 30000",
+    "test:matrix": "bun test src/commands/scenario/src/__tests__/matrix-*.test.ts --timeout 30000",
+    "test:bats": "bats tests/bats",
+    "test:bats:commands": "bats tests/bats/commands",
+    "test:bats:integration": "bats tests/bats/integration",
+    "test:bats:e2e": "bats tests/bats/e2e",
+    "test:types": "tsc --noEmit",
+    "coverage": "c8 --reporter=lcov --reporter=text bun test",
+    "coverage:html": "c8 --reporter=html bun test && open coverage/index.html",
+    "test:cli": "cross-env NODE_OPTIONS=\"--max-old-space-size=4096\" bun test tests/commands/ --timeout 120000; EXIT_CODE=$?; bash tests/cleanup-processes.sh; exit $EXIT_CODE",
+    "dev": "bun run build.ts --watch",
+    "test:scenarios": "for f in src/commands/scenario/examples/*.scenario.yaml; do echo \"=== $f ===\"; bun dist/index.js scenario run \"$f\" || echo \"FAIL $f\"; echo; done | cat"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.21",
+    "@types/express": "^5.0.2",
+    "@types/fs-extra": "^11.0.1",
+    "@types/helmet": "^4.0.0",
+    "@types/node": "^24.0.3",
+    "@types/prompts": "^2.4.2",
+    "@types/semver": "^7.5.8",
+    "bats-support": "^0.3.0",
+    "cross-env": "^10.1.0",
+    "node-html-parser": "^7.0.1",
+    "prettier": "3.6.2",
+    "puppeteer": "^24.22.3",
+    "typescript": "5.9.2",
+    "vite": "^7.1.7"
+  },
+  "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^2.0.1",
+    "@anthropic-ai/sdk": "^0.65.0",
+    "@clack/prompts": "^0.11.0",
+    "@elizaos/api-client": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-openai": "1.5.15",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/server": "workspace:*",
+    "bun": "^1.2.21",
+    "chalk": "^5.4.1",
+    "chokidar": "^4.0.3",
+    "commander": "^14.0.0",
+    "dotenv": "^17.2.3",
+    "fs-extra": "^11.1.0",
+    "globby": "^15.0.0",
+    "https-proxy-agent": "^7.0.6",
+    "lodash": "^4.17.21",
+    "ora": "^9.0.0",
+    "rimraf": "6.0.1",
+    "semver": "^7.7.2",
+    "simple-git": "^3.27.0",
+    "tiktoken": "^1.0.18",
+    "tsconfig-paths": "^4.2.0",
+    "type-fest": "^5.0.1",
+    "yoctocolors": "^2.1.1",
+    "zod": "4.1.11"
+  }
+}

@@ -1,0 +1,165 @@
+name: Client Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'packages/client/**'
+      - '.github/workflows/client-tests.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'packages/client/**'
+      - '.github/workflows/client-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: ./
+
+      - name: Build core package
+        run: bun run build
+        working-directory: ./packages/core
+
+      - name: Build server package
+        run: bun run build
+        working-directory: ./packages/server
+
+      - name: Install Cypress
+        run: |
+          cd packages/client
+          npx cypress install
+
+      - name: Run linting
+        run: bun run lint
+        working-directory: ./packages/client
+
+      - name: Run unit tests
+        run: bun test --coverage
+        working-directory: ./packages/client
+
+      - name: Run component tests
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: ./packages/client
+          component: true
+          browser: chrome
+          quiet: true
+
+      - name: Start backend server
+        run: |
+          cd packages/server
+          bun run dev &
+          sleep 10
+          curl -f http://localhost:3000/health || exit 1
+
+      - name: Run E2E tests
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: ./packages/client
+          start: bun run dev:client
+          wait-on: 'http://localhost:5173'
+          wait-on-timeout: 120
+          browser: chrome
+          quiet: true
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.node-version }}
+          path: |
+            packages/client/cypress/screenshots
+            packages/client/cypress/videos
+            packages/client/coverage
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./packages/client/coverage
+          flags: client
+          name: client-coverage-${{ matrix.node-version }}
+
+  visual-regression:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: |
+          bun run build --filter=@elizaos/core
+          bun run build --filter=@elizaos/server
+
+      - name: Run visual regression tests
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: ./packages/client
+          command: cypress run --component --spec "**/*.cy.tsx"
+          browser: chrome
+
+      - name: Upload visual regression results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-results
+          path: packages/client/cypress/screenshots/visual-regression
+
+  accessibility:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build packages
+        run: |
+          bun run build --filter=@elizaos/core
+          bun run build --filter=@elizaos/server
+
+      - name: Install additional accessibility tools
+        run: |
+          cd packages/client
+          bun add -d cypress-axe axe-core
+
+      - name: Run accessibility tests
+        run: |
+          cd packages/client
+          echo "// Accessibility tests would run here"
+          # cypress run --spec "cypress/e2e/accessibility/**/*.cy.ts"

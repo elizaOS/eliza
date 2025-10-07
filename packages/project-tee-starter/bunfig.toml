@@ -1,0 +1,18 @@
+[test]
+timeout = 60000
+coverage = true
+
+[test.env]
+NODE_ENV = "test"
+
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]

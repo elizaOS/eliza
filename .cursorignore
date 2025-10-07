@@ -1,0 +1,12 @@
+.turbo/
+.cursorrules
+
+**/dist/**
+**/node_modules/**
+**/build/**
+**/cache/**
+
+.env
+*.lock
+codecov.yml
+LICENSE

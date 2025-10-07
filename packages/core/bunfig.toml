@@ -1,0 +1,21 @@
+[test]
+# Test timeout in milliseconds
+timeout = 60000
+
+# Test setup files - removed preload due to path resolution conflicts in CI
+# preload = ["packages/core/src/test_resources/testSetup.ts"]
+
+# Coverage configuration
+coverage = true
+
+coverage-exclude = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]

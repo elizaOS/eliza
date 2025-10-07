@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "lib": ["ES2021.String", "DOM", "DOM.Iterable"],
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "incremental": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@elizaos/core": ["packages/core/src"],
+      "@elizaos/core/*": ["packages/core/src/*"],
+      "@elizaos/plugin-sql": ["packages/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["packages/plugin-sql/src/*"]
+    }
+  }
+}

@@ -1,0 +1,25 @@
+name: Enhanced Evaluation Demo
+description: Demonstrates the new structured JSON output from evaluators
+plugins:
+  - name: '@elizaos/plugin-bootstrap'
+    enabled: true
+  - name: '@elizaos/plugin-openai'
+    enabled: true
+  - name: '@elizaos/plugin-sql'
+    enabled: true
+character:
+  name: test-agent
+  bio: A simple test agent for demonstration
+
+run:
+  - input: "Please respond with 'Hello World' and tell me the current time"
+    evaluations:
+      - type: string_contains
+        value: 'Hello'
+        description: 'Response should contain greeting'
+      - type: string_contains
+        value: 'World'
+        description: "Response should contain 'World'"
+      - type: execution_time
+        max_duration_ms: 10000
+        description: 'Should respond within 10 seconds'

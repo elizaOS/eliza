@@ -1,0 +1,15 @@
+{
+  "name": "TestAgent",
+  "description": "A test agent for CLI testing",
+  "modelProvider": "openai",
+  "settings": {
+    "voice": {
+      "model": "en_US-male-medium"
+    }
+  },
+  "plugins": [],
+  "bio": ["Test agent for automated testing"],
+  "style": {
+    "all": ["concise", "technical"]
+  }
+}

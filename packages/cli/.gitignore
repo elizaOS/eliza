@@ -1,0 +1,13 @@
+components
+dist
+.turbo
+cache
+models
+templates/
+
+# Generated version file (created at build time)
+src/version.ts
+src/version.js
+
+# Scenario and Report logs
+/src/commands/scenario/_logs_/

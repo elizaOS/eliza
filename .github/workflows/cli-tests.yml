@@ -1,0 +1,132 @@
+name: Eliza CLI Tests
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: cli-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ELIZA_NONINTERACTIVE: true
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'develop'
+  pull_request:
+    branches:
+      - 'main'
+      - 'develop'
+
+jobs:
+  test:
+    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45 # Prevent job timeout from killing processes prematurely
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+
+      - name: Mention Bun version
+        run: bun --version
+
+      - name: Debug Bun Setup
+        shell: bash
+        run: |
+          echo "PATH: $PATH"
+          echo "which bun: $(which bun 2>/dev/null || echo 'which not found')"
+          echo "command -v bun: $(command -v bun 2>/dev/null || echo 'command not found')"
+          if command -v bun &> /dev/null; then
+            BUN_PATH=$(which bun 2>/dev/null || command -v bun)
+            echo "Bun found at: $BUN_PATH"
+            ls -la "$BUN_PATH" 2>/dev/null || echo "Failed to ls bun"
+            file "$BUN_PATH" 2>/dev/null || echo "Failed to get bun file info"
+          else
+            echo "Bun not found in PATH"
+          fi
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build all packages
+        run: bun run build
+
+      - name: Link packages globally
+        run: |
+          # Link core package first (everything depends on it)
+          cd packages/core
+          bun link
+          cd ../..
+          echo "Linked @elizaos/core package globally"
+
+          # Link server package (CLI depends on it)
+          cd packages/server
+          bun link
+          cd ../..
+          echo "Linked @elizaos/server package globally"
+
+          # Link CLI package
+          cd packages/cli
+          bun link
+          cd ../..
+          echo "Linked elizaos command globally"
+
+      - name: Verify package links
+        shell: bash
+        run: |
+          echo "Verifying @elizaos/server package is available..."
+          bun pm ls -g | grep "@elizaos/server" || echo "@elizaos/server not found in global links"
+
+          echo "Verifying elizaos command is available..."
+          which elizaos || echo "elizaos not found in PATH"
+          elizaos --version || echo "Failed to run elizaos --version"
+
+      - name: Verify CLI build artifacts
+        shell: bash
+        run: |
+          echo "Checking CLI build artifacts..."
+          echo "CLI dist contents:"
+          ls -la packages/cli/dist/ || echo "ERROR: No dist directory"
+          echo ""
+          echo "CLI templates in dist:"
+          ls -la packages/cli/dist/templates/ || echo "ERROR: No templates in dist"
+          echo ""
+          echo "CLI executable:"
+          test -f packages/cli/dist/index.js && echo "✓ CLI index.js exists" || echo "ERROR: CLI index.js missing"
+
+      - name: Clean eliza projects cache
+        shell: bash
+        run: rm -rf ~/.eliza/projects
+
+      - name: Create .env file for tests
+        shell: bash
+        run: |
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
+          echo "LOG_LEVEL=info" >> .env
+
+      - name: Install cross-env globally
+        run: bun install -g cross-env
+
+      - name: Install BATS on macOS
+        if: matrix.os == 'macos-latest'
+        run: bun install -g bats
+
+      - name: Run CLI TypeScript tests
+        run: cross-env bun test tests/commands/
+        working-directory: packages/cli
+        env:
+          ELIZA_TEST_MODE: true

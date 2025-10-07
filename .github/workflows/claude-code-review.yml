@@ -1,0 +1,86 @@
+name: Claude Code Review
+
+# Cancel previous runs for the same PR/branch
+concurrency:
+  group: claude-code-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, ready_for_review, synchronize]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+  # Allow manual triggering for when you specifically want a review
+  workflow_dispatch:
+
+jobs:
+  claude-review:
+    # Skip review if PR title contains [skip-review] or is a draft
+    if: |
+      !contains(github.event.pull_request.title, '[skip-review]') &&
+      github.event.pull_request.draft != true
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
+          # model: "claude-opus-4-20250514"
+
+          # Direct prompt for automated review (no @claude mention needed)
+          direct_prompt: |
+            Review this PR. Be concise and actionable.
+
+            **📝 IMPORTANT: Check and consider all previous review comments in this PR before making new suggestions. Don't repeat issues that have already been addressed or are being discussed.**
+
+            **🚨 CRITICAL CHECKS:**
+            - Security: hardcoded keys, SQL injection, XSS
+            - No tests = REJECT (untested code is broken)
+            - Wrong tools: npm/pnpm/yarn/jest/vitest = REJECT
+            - Breaking changes without migration = REJECT
+
+            **✅ REQUIRED:**
+            - TypeScript types (no 'any')
+            - Tests with bun test ONLY
+            - Use @elizaos/core imports (not packages/core)
+            - Functional code (no classes)
+            - Error handling
+
+            **📋 VERIFY:**
+            - All new code has tests
+            - bun commands only in package.json
+            - No circular dependencies
+            - Follows existing patterns
+            - Docs updated if needed
+
+            **🎯 OUTPUT FORMAT:**
+            ```
+            ❌ CRITICAL: [issue] → Fix: [specific action]
+            ⚠️ IMPORTANT: [issue] → Fix: [specific action]
+            💡 SUGGESTION: [improvement] → Consider: [action]
+            ```
+
+            Skip explanations. List issues with fixes.
+
+          # Allow Claude to run all bash and gh commands during review
+          allowed_tools: 'Bash(*),Bash(gh *)'
