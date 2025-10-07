@@ -152,7 +152,7 @@ Manage an ElizaOS plugin.
   - `upgrade <path>`: Upgrade a plugin from v0.x to v1.x using AI
     - Arguments: `<path>` (GitHub URL or local path)
     - Options: `--api-key <key>`, `--skip-tests`, `--skip-validation`
-    - See [Plugin Upgrade Documentation](./docs/PLUGIN_UPGRADE.md) for details
+    - See [Plugin Upgrade Documentation](./src/utils/upgrade/README.md) for details
 
 ### Agent Management
 
