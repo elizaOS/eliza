@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { loadEnvConfig, findEnvFile } from '../environment';
+import { loadEnvConfig, findEnvFile } from '../../config/environment';
 
 describe('Environment Config Functions', () => {
   let originalEnvSnapshot: NodeJS.ProcessEnv;

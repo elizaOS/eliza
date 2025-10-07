@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { hasCharacterSecrets, setDefaultSecretsFromEnv } from '../secrets';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from '../../config/secrets';
 import type { Character } from '../../types';
 
 describe('SecretsManager', () => {
