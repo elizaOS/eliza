@@ -627,6 +627,9 @@ const messageReceivedHandler = async ({
         let responseContent: Content | null = null;
         let responseMessages: Memory[] = [];
 
+        // helpful for swarms
+        const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+        
         if (shouldRespondToMessage) {
           const result = useMultiStep
             ? await runMultiStepCore({ runtime, message, state, callback })
@@ -638,7 +641,7 @@ const messageReceivedHandler = async ({
 
           // Race check before we send anything
           const currentResponseId = agentResponses.get(message.roomId);
-          if (currentResponseId !== responseId) {
+          if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
             );
@@ -687,8 +690,6 @@ const messageReceivedHandler = async ({
 
           // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
-          // helpful for swarms
-          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
