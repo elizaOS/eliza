@@ -18,8 +18,8 @@ const contentSchema = z
     target: z.string().optional(),
     url: z.string().optional(),
     inReplyTo: uuidSchema.optional(),
-    attachments: z.array(z.any()).optional(),
-    channelType: z.nativeEnum(ChannelType).optional(),
+    attachments: z.array(z.object()).optional(),
+    channelType: z.enum(ChannelType).optional(),
   })
   .passthrough(); // Allow additional properties
 
@@ -62,7 +62,7 @@ const styleSchema = z
 
 // Settings schema - flexible object
 const settingsSchema = z
-  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.any()]))
+  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.object()]))
   .optional();
 
 // Secrets schema
