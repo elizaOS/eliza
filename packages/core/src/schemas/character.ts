@@ -51,7 +51,6 @@ export const messageExampleSchema = z
       .string()
       .describe('Name of the speaker (can use {{name1}} placeholder for dynamic names)'),
     content: contentSchema,
-    actions: z.array(z.string()).optional().describe('Actions to be taken in response'),
   })
   .describe('A single message in a conversation example');
 
