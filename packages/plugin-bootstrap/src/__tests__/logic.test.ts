@@ -714,7 +714,7 @@ describe('shouldRespond with mentionContext', () => {
     // Test with different platform sources
     const platforms = ['discord', 'telegram', 'twitter', 'slack'];
 
-    platforms.forEach(platform => {
+    platforms.forEach((platform) => {
       const mentionContext = {
         isMention: true,
         isReply: false,

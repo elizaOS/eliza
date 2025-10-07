@@ -85,18 +85,7 @@ const styleSchema = z
   );
 
 // Settings schema - flexible object allowing any JSON-serializable values
-const settingsSchema = z
-  .record(
-    z.string(),
-    z.union([
-      z.string(),
-      z.boolean(),
-      z.number(),
-      z.null(),
-      z.array(z.any()),
-      z.record(z.string(), z.any()),
-    ])
-  )
+const settingsSchema = .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.object({}).passthrough()]))
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');
 

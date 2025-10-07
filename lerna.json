@@ -1,33 +1,17 @@
 {
   "version": "1.6.2-alpha.4",
-  "packages": [
-    "packages/*"
-  ],
+  "packages": ["packages/*"],
   "npmClient": "bun",
   "command": {
     "publish": {
       "message": "chore(release): publish alpha",
       "registry": "https://registry.npmjs.org",
-      "allowBranch": [
-        "main",
-        "develop",
-        "alpha",
-        "release/*"
-      ],
-      "ignoreChanges": [
-        "**/*.md",
-        "**/test/**",
-        "**/__tests__/**"
-      ],
+      "allowBranch": ["main", "develop", "alpha", "release/*"],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
       "verifyAccess": false
     },
     "version": {
-      "allowBranch": [
-        "main",
-        "develop",
-        "alpha",
-        "release/*"
-      ],
+      "allowBranch": ["main", "develop", "alpha", "release/*"],
       "message": "chore(release): publish %s",
       "push": true,
       "gitTagVersion": true,

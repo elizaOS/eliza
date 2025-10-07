@@ -341,11 +341,11 @@ export function shouldRespond(
   // Accepts both new and legacy setting names for backwards compatibility
   const customChannels = normalizeEnvList(
     runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-    runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
   );
   const customSources = normalizeEnvList(
     runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-    runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
   );
 
   const respondChannels = new Set(
@@ -368,7 +368,11 @@ export function shouldRespond(
 
   // 2. Specific sources (e.g., client_chat): always respond
   if (respondSources.some((pattern) => sourceStr.includes(pattern))) {
-    return { shouldRespond: true, skipEvaluation: true, reason: `whitelisted source: ${sourceStr}` };
+    return {
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: `whitelisted source: ${sourceStr}`,
+    };
   }
 
   // 3. Platform mentions and replies: always respond
@@ -575,16 +579,9 @@ const messageReceivedHandler = async ({
         }
 
         // Determine if we should respond using smart detection
-        const responseDecision = shouldRespond(
-          runtime,
-          message,
-          room ?? undefined,
-          mentionContext
-        );
+        const responseDecision = shouldRespond(runtime, message, room ?? undefined, mentionContext);
 
-        runtime.logger.debug(
-          `[Bootstrap] Response decision: ${JSON.stringify(responseDecision)}`
-        );
+        runtime.logger.debug(`[Bootstrap] Response decision: ${JSON.stringify(responseDecision)}`);
 
         let shouldRespondToMessage = true;
 
@@ -609,9 +606,7 @@ const messageReceivedHandler = async ({
             prompt: shouldRespondPrompt,
           });
 
-          runtime.logger.debug(
-            `[Bootstrap] LLM evaluation result:\n${response}`
-          );
+          runtime.logger.debug(`[Bootstrap] LLM evaluation result:\n${response}`);
 
           const responseObject = parseKeyValueXml(response);
           runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed evaluation result:');
