@@ -250,7 +250,7 @@ export function createAgentCrudRouter(
       // Check if agent is currently active
       if (activeRuntime && updatedAgent) {
         if (needsRestart) {
-          // Plugins or clients changed - need full restart
+          // Plugins changed - need full restart
           logger.debug(`[AGENT UPDATE] Restarting agent ${agentId} due to configuration changes`);
 
           try {
