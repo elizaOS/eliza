@@ -19,8 +19,8 @@ const contentSchema = z
     target: z.string().optional().describe('Target of the content'),
     url: z.string().optional().describe('Related URL'),
     inReplyTo: uuidSchema.optional().describe('UUID of message this is replying to'),
-    attachments: z.array(z.any()).optional().describe('File attachments'),
-    channelType: z.nativeEnum(ChannelType).optional().describe('Type of channel this content is for'),
+    attachments: z.array(z.object()).optional().describe('File attachments'),
+    channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
   })
   .passthrough() // Allow additional properties
   .describe('Content structure for messages in conversation examples');
@@ -82,7 +82,7 @@ const styleSchema = z
 
 // Settings schema - flexible object
 const settingsSchema = z
-  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.any()]))
+  .record(z.string(), z.union([z.string(), z.boolean(), z.number(), z.object()]))
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');
 
