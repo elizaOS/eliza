@@ -509,7 +509,7 @@ For private Docker images, set these environment variables before deployment and
 ##### Additional Resources
 
 - **Command Help**: `elizaos tee phala help` or `elizaos tee phala <command> --help`
-- **Official Documentation**: [Phala Cloud Docs](https://docs.phala.network/phala-cloud)
+- **Official Documentation**: [Phala Cloud Docs](https://docs.phala.com/phala-cloud/what-is/what-is-phala-cloud)
 - **Dashboard**: [Phala Cloud Dashboard](https://cloud.phala.network)
 - **NPM Package**: [phala on npm](https://www.npmjs.com/package/phala)
 - **Support**: [Phala Network Discord](https://discord.gg/phala-network)
