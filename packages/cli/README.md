@@ -331,7 +331,7 @@ elizaos tee phala <command> [options]
 - **`elizaos tee phala auth login [api-key]`** - Set the API key for authentication
 
   - Store your Phala Cloud API key securely for subsequent operations
-  - Get your API key from [Phala Cloud Dashboard](https://cloud.phala.network)
+  - Get your API key from [Phala Cloud Dashboard](https://cloud.phala.network/register)
 
 - **`elizaos tee phala auth logout`** - Remove the stored API key
 
