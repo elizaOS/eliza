@@ -5,18 +5,14 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 describe('SecretsManager', () => {
-  let originalEnvSnapshot: NodeJS.ProcessEnv;
   let originalCwd: string;
   let testDir: string;
+  let testEnvKeys: Set<string>;
 
   beforeEach(() => {
-    // Snapshot and clear env
-    originalEnvSnapshot = { ...process.env };
+    // Track test-added keys only
+    testEnvKeys = new Set();
     originalCwd = process.cwd();
-
-    for (const k of Object.keys(process.env)) {
-      delete (process.env as any)[k];
-    }
 
     // Create a temporary test directory without .env files
     testDir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'secrets-test-'));
@@ -32,11 +28,11 @@ describe('SecretsManager', () => {
       fs.rmSync(testDir, { recursive: true, force: true });
     } catch {}
 
-    // Restore env in-place
-    for (const k of Object.keys(process.env)) {
-      delete (process.env as any)[k];
+    // Clean up only test-added environment variables
+    for (const key of testEnvKeys) {
+      delete (process.env as any)[key];
     }
-    Object.assign(process.env, originalEnvSnapshot);
+    testEnvKeys.clear();
   });
 
   describe('hasCharacterSecrets', () => {
