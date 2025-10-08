@@ -184,8 +184,7 @@ export class AgentServer {
       const allPlugins = [
         ...(character.plugins || []),
         ...plugins,
-        sqlPlugin as unknown as Plugin,
-        messageBusConnectorPlugin as unknown as Plugin,
+        sqlPlugin
       ];
 
       return {
@@ -1128,12 +1127,12 @@ export class AgentServer {
       // Agent is now registered in ElizaOS
       logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) registered`);
 
-      // Auto-register the MessageBusConnector plugin
+      // Auto-register the MessageBusConnector plugin for server-side communication
       try {
         if (messageBusConnectorPlugin) {
           await runtime.registerPlugin(messageBusConnectorPlugin);
           logger.info(
-            `[AgentServer] Automatically registered MessageBusConnector for agent ${runtime.character.name}`
+            `[AgentServer] Registered MessageBusConnector for agent ${runtime.character.name}`
           );
         } else {
           logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
@@ -1143,7 +1142,6 @@ export class AgentServer {
           { error: e },
           `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
         );
-        // Decide if this is a fatal error for the agent.
       }
 
       // Register TEE plugin if present

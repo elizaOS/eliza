@@ -8,9 +8,6 @@ import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
-// Note: Environment loading is now handled by ConfigManager.setDefaultSecretsFromEnv
-// which properly filters and manages secrets instead of exposing all env vars
-
 /**
  * Find an available port in the given range
  */
