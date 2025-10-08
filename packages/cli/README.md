@@ -444,7 +444,7 @@ elizaos tee phala <command> [options]
 
    ```bash
    elizaos tee phala free
-   # Or visit https://cloud.phala.network to create an account
+   # Or visit https://cloud.phala.network/register to create an account
    ```
 
 2. **Authenticate**:
