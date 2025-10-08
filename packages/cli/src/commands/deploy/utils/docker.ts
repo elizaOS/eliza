@@ -1,0 +1,196 @@
+/**
+ * Docker build utilities for ElizaOS deployment
+ */
+
+import { execa } from "execa";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { logger } from "@elizaos/core";
+
+export interface DockerBuildOptions {
+  dockerfile: string;
+  tag: string;
+  context: string;
+  platform?: string;
+  buildArgs?: Record<string, string>;
+}
+
+export interface DockerBuildResult {
+  success: boolean;
+  imageId?: string;
+  tag: string;
+  error?: string;
+}
+
+/**
+ * Check if Docker is installed and running
+ */
+export async function checkDockerAvailable(): Promise<boolean> {
+  try {
+    await execa("docker", ["info"], {
+      stdio: "pipe",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build a Docker image
+ */
+export async function buildDockerImage(
+  options: DockerBuildOptions,
+): Promise<DockerBuildResult> {
+  try {
+    logger.info(`Building Docker image: ${options.tag}`);
+
+    // Verify Dockerfile exists
+    const dockerfilePath = path.resolve(options.context, options.dockerfile);
+    if (!fs.existsSync(dockerfilePath)) {
+      return {
+        success: false,
+        tag: options.tag,
+        error: `Dockerfile not found: ${dockerfilePath}`,
+      };
+    }
+
+    // Build arguments
+    const buildArgs: string[] = ["build"];
+
+    // Add platform if specified
+    if (options.platform) {
+      buildArgs.push("--platform", options.platform);
+    }
+
+    // Add build args
+    if (options.buildArgs) {
+      Object.entries(options.buildArgs).forEach(([key, value]) => {
+        buildArgs.push("--build-arg", `${key}=${value}`);
+      });
+    }
+
+    // Add tag
+    buildArgs.push("-t", options.tag);
+
+    // Add dockerfile location
+    buildArgs.push("-f", options.dockerfile);
+
+    // Add context
+    buildArgs.push(options.context);
+
+    // Execute docker build
+    const result = await execa("docker", buildArgs, {
+      cwd: options.context,
+      stdio: "inherit",
+    });
+
+    // Get image ID
+    const inspectResult = await execa("docker", [
+      "inspect",
+      "--format={{.Id}}",
+      options.tag,
+    ]);
+
+    const imageId = inspectResult.stdout.trim();
+
+    logger.info(`✅ Docker image built successfully: ${options.tag}`);
+
+    return {
+      success: true,
+      imageId,
+      tag: options.tag,
+    };
+  } catch (error) {
+    logger.error("Docker build failed:", error);
+    return {
+      success: false,
+      tag: options.tag,
+      error:
+        error instanceof Error ? error.message : "Unknown Docker build error",
+    };
+  }
+}
+
+/**
+ * Generate a default Dockerfile if none exists
+ */
+export function generateDefaultDockerfile(projectPath: string): string {
+  const dockerfileContent = `# ElizaOS Project Dockerfile
+FROM node:20-alpine
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY bun.lockb* ./
+
+# Install dependencies
+RUN npm install -g bun
+RUN bun install --production
+
+# Copy project files
+COPY . .
+
+# Build the project
+RUN bun run build || true
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \\
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error('unhealthy')})"
+
+# Start the application
+CMD ["bun", "run", "start"]
+`;
+
+  const dockerfilePath = path.join(projectPath, "Dockerfile");
+  fs.writeFileSync(dockerfilePath, dockerfileContent);
+
+  logger.info(`✅ Created default Dockerfile at ${dockerfilePath}`);
+
+  return "Dockerfile";
+}
+
+/**
+ * Push Docker image to a registry
+ */
+export async function pushDockerImage(tag: string): Promise<boolean> {
+  try {
+    logger.info(`Pushing Docker image: ${tag}`);
+
+    await execa("docker", ["push", tag], {
+      stdio: "inherit",
+    });
+
+    logger.info(`✅ Docker image pushed successfully: ${tag}`);
+
+    return true;
+  } catch (error) {
+    logger.error("Docker push failed:", error);
+    return false;
+  }
+}
+
+/**
+ * Tag a Docker image
+ */
+export async function tagDockerImage(
+  sourceTag: string,
+  targetTag: string,
+): Promise<boolean> {
+  try {
+    await execa("docker", ["tag", sourceTag, targetTag]);
+    logger.info(`✅ Tagged image ${sourceTag} as ${targetTag}`);
+    return true;
+  } catch (error) {
+    logger.error("Docker tag failed:", error);
+    return false;
+  }
+}
+
