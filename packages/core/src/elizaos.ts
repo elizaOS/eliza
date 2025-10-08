@@ -9,6 +9,8 @@ import type {
   Plugin,
   RuntimeSettings,
 } from './types';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './config';
+import { resolvePlugins } from './plugin';
 
 /**
  * Batch operation for sending messages
@@ -66,14 +68,25 @@ export class ElizaOS extends EventTarget {
 
   /**
    * Add multiple agents (batch operation)
+   * Handles config and plugin resolution automatically
    */
   async addAgents(
-    agents: Array<{ character: Character; plugins?: Plugin[]; settings?: RuntimeSettings }>
+    agents: Array<{ character: Character; plugins?: (Plugin | string)[]; settings?: RuntimeSettings }>
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
+      // Set default secrets from environment if character doesn't have them
+      const character = agent.character;
+      if (!hasCharacterSecrets(character)) {
+        await setDefaultSecretsFromEnv(character);
+      }
+
+      const resolvedPlugins = agent.plugins
+        ? await resolvePlugins(agent.plugins)
+        : [];
+
       const runtime = new AgentRuntime({
-        character: agent.character,
-        plugins: agent.plugins || [],
+        character,
+        plugins: resolvedPlugins,
         settings: agent.settings || {},
       });
 
@@ -81,7 +94,7 @@ export class ElizaOS extends EventTarget {
 
       this.dispatchEvent(
         new CustomEvent('agent:added', {
-          detail: { agentId: runtime.agentId, character: agent.character },
+          detail: { agentId: runtime.agentId, character },
         })
       );
 

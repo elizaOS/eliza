@@ -1,5 +1,5 @@
-import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
-import { AgentServer, ConfigManager } from '@elizaos/server';
+import { Character, UUID, IAgentRuntime, stringToUuid, setDefaultSecretsFromEnv } from '@elizaos/core';
+import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
@@ -195,10 +195,7 @@ export async function createScenarioAgent(
       chat: ['Direct', 'Helpful'],
     },
   };
-
-  // Use ConfigManager from server to set default secrets
-  const configManager = new ConfigManager();
-  await configManager.setDefaultSecretsFromEnv(character);
+  await setDefaultSecretsFromEnv(character);
 
   // Pass raw character; encryption is handled inside startAgents
   const [runtime] = await server.startAgents([character]);

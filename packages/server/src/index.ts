@@ -25,8 +25,6 @@ import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
-import { PluginLoader } from './managers/PluginLoader.js';
-import { ConfigManager } from './managers/ConfigManager.js';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 
 import internalMessageBus from './bus.js';
@@ -158,8 +156,6 @@ export class AgentServer {
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
   private clientPath?: string; // Optional path to client dist files
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
-  private pluginLoader?: PluginLoader; // Plugin loading and resolution
-  private configManager?: ConfigManager; // Configuration management
 
   public database!: DatabaseAdapter;
 
@@ -176,105 +172,41 @@ export class AgentServer {
     characters: Character[],
     plugins: (Plugin | string)[] = []
   ): Promise<IAgentRuntime[]> {
-    if (!this.elizaOS || !this.pluginLoader || !this.configManager) {
+    if (!this.elizaOS) {
       throw new Error('Server not properly initialized');
     }
 
-    // Prepare all characters in parallel
-    const preparations = await Promise.all(
-      characters.map(async (character) => {
-        character.id ??= stringToUuid(character.name);
+    // Prepare characters with server-specific setup
+    const preparations = characters.map((character) => {
+      character.id ??= stringToUuid(character.name);
 
-        // Handle secrets for character configuration
-        if (!this.configManager?.hasCharacterSecrets(character)) {
-          await this.configManager?.setDefaultSecretsFromEnv(character);
-        }
+      // Merge character plugins with provided plugins and add server-required plugins
+      const allPlugins = [
+        ...(character.plugins || []),
+        ...plugins,
+        sqlPlugin as unknown as Plugin,
+        messageBusConnectorPlugin as unknown as Plugin,
+      ];
 
-        // Load and resolve plugins
-        const loadedPlugins = new Map<string, Plugin>();
-        const pluginsToLoad = new Set<string>(character.plugins || []);
+      return {
+        character: encryptedCharacter(character),
+        plugins: allPlugins,
+      };
+    });
 
-        for (const p of plugins) {
-          if (typeof p === 'string') {
-            pluginsToLoad.add(p);
-          } else if (this.pluginLoader?.isValidPluginShape(p) && !loadedPlugins.has(p.name)) {
-            loadedPlugins.set(p.name, p);
-            (p.dependencies || []).forEach((dep) => {
-              pluginsToLoad.add(dep);
-            });
-          }
-        }
+    // Delegate to ElizaOS for config/plugin resolution and agent creation
+    const agentIds = await this.elizaOS.addAgents(preparations);
 
-        // Load all requested plugins
-        const allAvailablePlugins = new Map<string, Plugin>();
-        for (const p of loadedPlugins.values()) {
-          allAvailablePlugins.set(p.name, p);
-        }
-        for (const name of pluginsToLoad) {
-          if (!allAvailablePlugins.has(name)) {
-            const loaded = await this.pluginLoader?.loadAndPreparePlugin(name);
-            if (loaded) {
-              allAvailablePlugins.set(loaded.name, loaded);
-            }
-          }
-        }
-
-        // Check if we have a SQL plugin
-        let haveSql = false;
-        for (const [name] of allAvailablePlugins.entries()) {
-          if (name === sqlPlugin.name || name === 'mysql') {
-            haveSql = true;
-            break;
-          }
-        }
-
-        // Each agent will get its own adapter instance from the plugin's init
-        if (!haveSql) {
-          allAvailablePlugins.set(sqlPlugin.name, sqlPlugin as unknown as Plugin);
-        }
-
-        // Always include the message bus connector plugin for server agents
-        allAvailablePlugins.set(
-          messageBusConnectorPlugin.name,
-          messageBusConnectorPlugin as unknown as Plugin
-        );
-
-        // Resolve dependencies and get final plugin list
-        const finalPlugins = this.pluginLoader?.resolvePluginDependencies(
-          allAvailablePlugins,
-          false // isTestMode
-        );
-
-        // Prepare the character with encrypted data
-        const preparedCharacter = encryptedCharacter(character);
-
-        return { character: preparedCharacter, plugins: finalPlugins };
-      })
-    );
-
-    const settings = await this.configManager?.loadEnvConfig();
-
-    const agentIds = await this.elizaOS.addAgents(
-      preparations.map((p) => ({
-        character: p.character,
-        plugins: p.plugins,
-        settings: settings || {},
-      }))
-    );
-
-    // Step 2: Start all agents (initialize them)
+    // Start all agents
     await this.elizaOS.startAgents(agentIds);
 
-    // Step 3: Collect started runtimes and register them
+    // Register agents with server and persist to database
     const runtimes: IAgentRuntime[] = [];
-
     for (const id of agentIds) {
       const runtime = this.elizaOS.getAgent(id);
       if (runtime) {
-        // Register the agent in the server
         await this.registerAgent(runtime);
 
-        // Persist to database
         if (this.database) {
           try {
             const existingAgent = await this.database.getAgent(runtime.agentId);
@@ -437,10 +369,6 @@ export class AgentServer {
       // Enable editable mode to allow updating agent characters at runtime
       // This is required for the API to be able to update agents
       this.elizaOS.enableEditableMode();
-
-      // Create AgentManager with ElizaOS instance
-      this.pluginLoader = new PluginLoader();
-      this.configManager = new ConfigManager();
 
       logger.success('[INIT] ElizaOS initialized');
 
@@ -1661,7 +1589,3 @@ export * from './types';
 
 // Export ElizaOS from core (re-export for convenience)
 export { ElizaOS } from '@elizaos/core';
-
-// Export managers for advanced usage
-export { PluginLoader } from './managers/PluginLoader';
-export { ConfigManager } from './managers/ConfigManager';

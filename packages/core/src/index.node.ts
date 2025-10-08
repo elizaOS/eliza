@@ -34,6 +34,10 @@ export * from './services';
 export * from './search';
 export * from './elizaos';
 
+// Export configuration and plugin modules (Phase 4) - will be removed after Cli cleaning
+export * from './config';
+export * from './plugin';
+
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;
