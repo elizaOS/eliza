@@ -79,6 +79,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Core Properties
     agentId: 'test-agent-id' as UUID,
     character: overrides.character || defaultCharacter,
+    messageService: overrides.messageService ?? null,
     providers: overrides.providers || [],
     actions: overrides.actions || [],
     evaluators: overrides.evaluators || [],
@@ -101,7 +102,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       clear: () => {},
       child: () => ({}) as any,
     },
-    stateCache: new Map(),
+    stateCache: overrides.stateCache || new Map(),
 
     // Database Properties
     db: overrides.db || mockDb,
