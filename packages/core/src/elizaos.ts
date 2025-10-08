@@ -92,7 +92,6 @@ export class ElizaOS extends EventTarget {
 
       this.runtimes.set(runtime.agentId, runtime);
 
-      // Strip secrets from event payload to prevent leakage
       const { settings, ...characterWithoutSecrets } = character;
       const { secrets, ...settingsWithoutSecrets } = settings || {};
 
