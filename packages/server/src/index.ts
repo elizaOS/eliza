@@ -176,8 +176,8 @@ export class AgentServer {
       throw new Error('Server not properly initialized');
     }
 
-    // Prepare characters with server-specific setup
-    const preparations = characters.map((character) => {
+    // Prepare agent configurations with server-specific setup
+    const agentConfigs = characters.map((character) => {
       character.id ??= stringToUuid(character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
@@ -194,7 +194,7 @@ export class AgentServer {
     });
 
     // Delegate to ElizaOS for config/plugin resolution and agent creation
-    const agentIds = await this.elizaOS.addAgents(preparations);
+    const agentIds = await this.elizaOS.addAgents(agentConfigs);
 
     // Start all agents
     await this.elizaOS.startAgents(agentIds);
