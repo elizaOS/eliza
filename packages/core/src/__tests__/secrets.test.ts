@@ -1,13 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { ConfigManager } from '../ConfigManager';
-import type { Character } from '@elizaos/core';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from '../secrets';
+import type { Character } from '../../types';
 
-describe('ConfigManager', () => {
-  let configManager: ConfigManager;
+describe('SecretsManager', () => {
   let originalEnvSnapshot: NodeJS.ProcessEnv;
 
   beforeEach(() => {
-    configManager = new ConfigManager();
     // Snapshot and clear env
     originalEnvSnapshot = { ...process.env };
     for (const k of Object.keys(process.env)) {
@@ -23,33 +21,11 @@ describe('ConfigManager', () => {
     Object.assign(process.env, originalEnvSnapshot);
   });
 
-  describe('loadEnvConfig', () => {
-    test('should load environment configuration', async () => {
-      process.env.OPENAI_API_KEY = 'test-key';
-      process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-
-      const config = await configManager.loadEnvConfig();
-
-      expect(config).toBeDefined();
-      expect(config.OPENAI_API_KEY).toBe('test-key');
-      expect(config.ANTHROPIC_API_KEY).toBe('anthropic-key');
-    });
-
-    test('should return empty config when no env vars set', async () => {
-      delete process.env.OPENAI_API_KEY;
-      delete process.env.ANTHROPIC_API_KEY;
-
-      const config = await configManager.loadEnvConfig();
-
-      expect(config).toBeDefined();
-      expect(Object.keys(config).length).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   describe('hasCharacterSecrets', () => {
     test('should return true when character has secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             apiKey: 'secret-key',
@@ -57,27 +33,29 @@ describe('ConfigManager', () => {
         },
       } as Character;
 
-      expect(configManager.hasCharacterSecrets(character)).toBe(true);
+      expect(hasCharacterSecrets(character)).toBe(true);
     });
 
     test('should return false when character has no secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      expect(configManager.hasCharacterSecrets(character)).toBe(false);
+      expect(hasCharacterSecrets(character)).toBe(false);
     });
 
     test('should return false when character has empty secrets', () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {},
         },
       } as Character;
 
-      expect(configManager.hasCharacterSecrets(character)).toBe(false);
+      expect(hasCharacterSecrets(character)).toBe(false);
     });
   });
 
@@ -85,10 +63,11 @@ describe('ConfigManager', () => {
     test('should return false when no .env file exists', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      const result = await configManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       // Should return false because no .env file exists in test environment
       expect(result).toBe(false);
@@ -97,6 +76,7 @@ describe('ConfigManager', () => {
     test('should not override existing secrets', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             OPENAI_API_KEY: 'existing-key',
@@ -104,16 +84,17 @@ describe('ConfigManager', () => {
         },
       } as Character;
 
-      const result = await configManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       // Should return false because character already has secrets
       expect(result).toBe(false);
-      expect(character.settings.secrets.OPENAI_API_KEY).toBe('existing-key');
+      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('existing-key');
     });
 
     test('should return false when character already has secrets', async () => {
       const character: Character = {
         name: 'TestChar',
+        bio: ['Test bio'],
         settings: {
           secrets: {
             someKey: 'value',
@@ -121,7 +102,7 @@ describe('ConfigManager', () => {
         },
       } as Character;
 
-      const result = await configManager.setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character);
 
       expect(result).toBe(false);
     });

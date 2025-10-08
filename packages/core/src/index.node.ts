@@ -34,8 +34,9 @@ export * from './services';
 export * from './search';
 export * from './elizaos';
 
-// Export configuration and plugin modules (Phase 4) - will be removed after Cli cleaning
-export * from './config';
+// Export configuration and plugin modules (Phase 4)
+export * from './character';
+export * from './secrets';
 export * from './plugin';
 
 // Node-specific exports

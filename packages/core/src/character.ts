@@ -1,5 +1,5 @@
-import { type Character } from '../types';
-import { validateCharacter } from '../schemas/character';
+import { type Character } from './types';
+import { validateCharacter } from './schemas/character';
 
 /**
  * Parse character input from various formats (string path, object, or Character)

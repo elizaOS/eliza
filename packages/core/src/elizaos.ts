@@ -9,7 +9,7 @@ import type {
   Plugin,
   RuntimeSettings,
 } from './types';
-import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './config';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';
 import { resolvePlugins } from './plugin';
 
 /**

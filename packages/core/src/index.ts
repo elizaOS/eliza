@@ -42,7 +42,8 @@ export * from './search';
 export * from './elizaos';
 
 // Export configuration modules
-export * from './config';
+export * from './character';
+export * from './secrets';
 
 // Export plugin manager
 export * from './plugin';

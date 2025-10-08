@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import dotenv from 'dotenv';
-import { type Character } from '../types';
-import { findEnvFile } from './environment';
+import { type Character } from './types';
+import { findEnvFile } from './utils/environment';
 
 /**
  * Validates if a character has secrets configured

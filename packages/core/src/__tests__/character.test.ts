@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { parseCharacter, validateCharacterConfig, mergeCharacterDefaults } from '../../config/character';
+import { parseCharacter, validateCharacterConfig, mergeCharacterDefaults } from '../character';
 import type { Character } from '../../types';
 
 describe('Character Config Functions', () => {
