@@ -42,12 +42,12 @@ export class CloudApiClient {
       }
 
       return await response.json();
-    } catch (error) {
-      logger.error("Failed to create container:", error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to create container:", errorMessage);
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Unknown API error",
+        error: errorMessage,
       };
     }
   }
@@ -73,12 +73,12 @@ export class CloudApiClient {
       }
 
       return await response.json();
-    } catch (error) {
-      logger.error("Failed to get container:", error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to get container:", errorMessage);
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Unknown API error",
+        error: errorMessage,
       };
     }
   }
@@ -101,12 +101,12 @@ export class CloudApiClient {
       }
 
       return await response.json();
-    } catch (error) {
-      logger.error("Failed to list containers:", error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to list containers:", errorMessage);
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Unknown API error",
+        error: errorMessage,
       };
     }
   }
@@ -132,12 +132,12 @@ export class CloudApiClient {
       }
 
       return await response.json();
-    } catch (error) {
-      logger.error("Failed to delete container:", error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to delete container:", errorMessage);
       return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Unknown API error",
+        error: errorMessage,
       };
     }
   }

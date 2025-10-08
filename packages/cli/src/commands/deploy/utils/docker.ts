@@ -2,7 +2,7 @@
  * Docker build utilities for ElizaOS deployment
  */
 
-import { execa } from "execa";
+import execa from "execa";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";
@@ -80,7 +80,7 @@ export async function buildDockerImage(
     buildArgs.push(options.context);
 
     // Execute docker build
-    const result = await execa("docker", buildArgs, {
+    await execa("docker", buildArgs, {
       cwd: options.context,
       stdio: "inherit",
     });
@@ -101,13 +101,13 @@ export async function buildDockerImage(
       imageId,
       tag: options.tag,
     };
-  } catch (error) {
-    logger.error("Docker build failed:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown Docker build error";
+    logger.error("Docker build failed:", errorMessage);
     return {
       success: false,
       tag: options.tag,
-      error:
-        error instanceof Error ? error.message : "Unknown Docker build error",
+      error: errorMessage,
     };
   }
 }
@@ -171,8 +171,9 @@ export async function pushDockerImage(tag: string): Promise<boolean> {
     logger.info(`✅ Docker image pushed successfully: ${tag}`);
 
     return true;
-  } catch (error) {
-    logger.error("Docker push failed:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Docker push failed:", errorMessage);
     return false;
   }
 }
@@ -188,8 +189,9 @@ export async function tagDockerImage(
     await execa("docker", ["tag", sourceTag, targetTag]);
     logger.info(`✅ Tagged image ${sourceTag} as ${targetTag}`);
     return true;
-  } catch (error) {
-    logger.error("Docker tag failed:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Docker tag failed:", errorMessage);
     return false;
   }
 }

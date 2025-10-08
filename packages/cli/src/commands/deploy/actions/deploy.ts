@@ -5,6 +5,7 @@
 import { logger } from "@elizaos/core";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import dotenv from "dotenv";
 import type { DeployOptions, DeploymentResult, ContainerConfig } from "../types";
 import {
   buildDockerImage,
@@ -24,10 +25,27 @@ export async function deployProject(
   options: DeployOptions,
 ): Promise<DeploymentResult> {
   try {
+    // Load .env files from current directory and parent directories
+    const cwd = process.cwd();
+    const envPaths = [
+      path.join(cwd, ".env"),
+      path.join(cwd, ".env.local"),
+      path.join(cwd, "..", ".env"),
+      path.join(cwd, "..", ".env.local"),
+      path.join(cwd, "../..", ".env"),
+      path.join(cwd, "../..", ".env.local"),
+    ];
+
+    for (const envPath of envPaths) {
+      if (fs.existsSync(envPath)) {
+        dotenv.config({ path: envPath });
+        logger.debug(`Loaded environment from: ${envPath}`);
+      }
+    }
+
     // Step 1: Validate environment
     logger.info("🚀 Starting ElizaOS deployment...");
 
-    const cwd = process.cwd();
     const dirInfo = detectDirectoryType(cwd);
 
     if (!dirInfo.hasPackageJson) {
@@ -174,11 +192,12 @@ export async function deployProject(
       workerId: container.cloudflare_worker_id,
       url: `https://${projectName.toLowerCase()}.workers.dev`, // This would come from the actual deployment
     };
-  } catch (error) {
-    logger.error("Deployment error:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.error("Deployment error:", errorMessage);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: errorMessage,
     };
   }
 }
