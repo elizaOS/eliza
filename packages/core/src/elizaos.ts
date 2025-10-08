@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
+import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';
+import { resolvePlugins } from './plugin';
 import type {
   Character,
   IAgentRuntime,
@@ -9,8 +11,6 @@ import type {
   Plugin,
   RuntimeSettings,
 } from './types';
-import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';
-import { resolvePlugins } from './plugin';
 
 /**
  * Batch operation for sending messages
@@ -92,9 +92,19 @@ export class ElizaOS extends EventTarget {
 
       this.runtimes.set(runtime.agentId, runtime);
 
+      // Strip secrets from event payload to prevent leakage
+      const { settings, ...characterWithoutSecrets } = character;
+      const { secrets, ...settingsWithoutSecrets } = settings || {};
+
       this.dispatchEvent(
         new CustomEvent('agent:added', {
-          detail: { agentId: runtime.agentId, character },
+          detail: {
+            agentId: runtime.agentId,
+            character: {
+              ...characterWithoutSecrets,
+              settings: settingsWithoutSecrets
+            }
+          },
         })
       );
 

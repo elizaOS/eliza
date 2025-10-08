@@ -1,4 +1,5 @@
 import { logger } from './logger';
+import { detectEnvironment } from './utils/environment';
 import type { Plugin } from './types';
 
 // ============================================================================
@@ -330,12 +331,12 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
 }
 
 /**
- * Resolve multiple plugins with dependency ordering
+ * Internal implementation of plugin resolution
  * @param plugins - Array of plugin names or Plugin objects
  * @param isTestMode - Whether to include test dependencies
  * @returns Ordered array of resolved plugins
  */
-export async function resolvePlugins(
+async function resolvePluginsImpl(
   plugins: (string | Plugin)[],
   isTestMode: boolean = false
 ): Promise<Plugin[]> {
@@ -349,14 +350,67 @@ export async function resolvePlugins(
 
     if (!pluginMap.has(loaded.name)) {
       pluginMap.set(loaded.name, loaded);
+
+      // Add regular dependencies
       for (const depName of loaded.dependencies ?? []) {
         if (!pluginMap.has(depName)) {
           queue.push(depName);
+        }
+      }
+
+      // Add test dependencies if in test mode
+      if (isTestMode) {
+        for (const depName of loaded.testDependencies ?? []) {
+          if (!pluginMap.has(depName)) {
+            queue.push(depName);
+          }
         }
       }
     }
   }
 
   // Resolve dependencies and return ordered list
+  return resolvePluginDependencies(pluginMap, isTestMode);
+}
+
+/**
+ * Resolve multiple plugins with dependency ordering
+ * Browser-compatible wrapper that handles Node.js-only plugin loading
+ *
+ * @param plugins - Array of plugin names or Plugin objects
+ * @param isTestMode - Whether to include test dependencies
+ * @returns Ordered array of resolved plugins
+ *
+ * Note: In browser environments, string plugin names are not supported.
+ * Only pre-resolved Plugin objects can be used.
+ */
+export async function resolvePlugins(
+  plugins: (string | Plugin)[],
+  isTestMode: boolean = false
+): Promise<Plugin[]> {
+  const env = detectEnvironment();
+
+  // In Node.js, use full implementation
+  if (env === 'node') {
+    return resolvePluginsImpl(plugins, isTestMode);
+  }
+
+  // In browser, only Plugin objects are supported
+  const pluginObjects = plugins.filter((p): p is Plugin => typeof p !== 'string');
+
+  if (plugins.some(p => typeof p === 'string')) {
+    logger.warn(
+      'Browser environment: String plugin references are not supported. ' +
+      'Only Plugin objects will be used. Skipped plugins: ' +
+      plugins.filter(p => typeof p === 'string').join(', ')
+    );
+  }
+
+  // Still resolve dependencies for Plugin objects
+  const pluginMap = new Map<string, Plugin>();
+  for (const plugin of pluginObjects) {
+    pluginMap.set(plugin.name, plugin);
+  }
+
   return resolvePluginDependencies(pluginMap, isTestMode);
 }
