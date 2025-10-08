@@ -11,6 +11,8 @@ import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
+import { DefaultMessageService } from './services/default-message-service';
+import type { IMessageService } from './services/message-service';
 import {
   ChannelType,
   EventType,
@@ -142,6 +144,7 @@ export class AgentRuntime implements IAgentRuntime {
     }>;
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
+  public messageService: IMessageService | null = null; // Lazily initialized
 
   constructor(opts: {
     conversationLength?: number;
@@ -396,6 +399,9 @@ export class AgentRuntime implements IAgentRuntime {
       if (!(await this.adapter.isReady())) {
         await this.adapter.init();
       }
+
+      // Initialize message service
+      this.messageService = new DefaultMessageService();
 
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
