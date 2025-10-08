@@ -41,7 +41,15 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     }
     attemptedInstalls.add(pluginName);
 
-    // Verify Bun availability
+    // Check if Bun is available before trying to use it
+    if (typeof Bun === 'undefined' || typeof Bun.spawn !== 'function') {
+      logger.warn(
+        `Bun runtime not available. Cannot auto-install ${pluginName}. Please run: bun add ${pluginName}`
+      );
+      return false;
+    }
+
+    // Verify Bun availability on PATH
     try {
       const check = Bun.spawn(['bun', '--version'], { stdout: 'pipe', stderr: 'pipe' });
       const code = await check.exited;

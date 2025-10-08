@@ -8,15 +8,21 @@ function delay(ms: number) {
 
 describe('Plugin Functions', () => {
   
-  let originalEnv: NodeJS.ProcessEnv;
+  let originalEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
-    
     originalEnv = { ...process.env };
   });
 
   afterEach(() => {
-    process.env = originalEnv;
+    for (const k of Object.keys(process.env)) {
+      if (!(k in originalEnv)) {
+        delete (process.env as any)[k];
+      }
+    }
+    for (const [k, v] of Object.entries(originalEnv)) {
+      (process.env as any)[k] = v;
+    }
   });
 
   describe('isValidPlugin', () => {
