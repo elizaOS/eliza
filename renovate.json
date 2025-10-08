@@ -1,30 +1,69 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "baseBranches": ["develop", "main"],
   "packageRules": [
     {
-      "groupName": "Discord.js ecosystem",
-      "matchPackagePatterns": ["^@discordjs/", "^discord.js"]
+      "description": "Disable updates for internal ElizaOS packages (managed by Lerna)",
+      "matchPackagePatterns": ["^@elizaos/"],
+      "enabled": false
     },
     {
-      "groupName": "TypeScript and related",
-      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$", "^ts-", "^tslib$"]
+      "description": "Group TypeScript ecosystem updates",
+      "groupName": "TypeScript",
+      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$"]
     },
     {
-      "groupName": "Rollup and plugins",
-      "matchPackagePatterns": ["^@rollup/", "^rollup"]
+      "description": "Group ESLint and Prettier updates",
+      "groupName": "Linting",
+      "matchPackagePatterns": ["^eslint", "^prettier", "^@eslint/"]
     },
     {
-      "groupName": "ESLint and formatting",
-      "matchPackagePatterns": ["^eslint", "^prettier"]
+      "description": "Group Radix UI component library updates (16 packages)",
+      "groupName": "Radix UI",
+      "matchPackagePatterns": ["^@radix-ui/"]
+    },
+    {
+      "description": "Group Tauri desktop framework updates",
+      "groupName": "Tauri",
+      "matchPackagePatterns": ["^@tauri-apps/"]
+    },
+    {
+      "description": "Group React core libraries together",
+      "groupName": "React",
+      "matchPackageNames": ["react", "react-dom"],
+      "matchPackagePatterns": ["^@types/react"]
+    },
+    {
+      "description": "Group Tailwind CSS ecosystem",
+      "groupName": "Tailwind CSS",
+      "matchPackageNames": ["tailwindcss", "tailwindcss-animate", "tailwind-merge"],
+      "matchPackagePatterns": ["^@tailwindcss/"]
+    },
+    {
+      "description": "Group Vite and plugins",
+      "groupName": "Vite",
+      "matchPackageNames": ["vite"],
+      "matchPackagePatterns": ["^@vitejs/", "^vite-plugin-"]
+    },
+    {
+      "description": "Group Drizzle ORM packages",
+      "groupName": "Drizzle ORM",
+      "matchPackageNames": ["drizzle-orm", "drizzle-kit"]
     }
   ],
   "timezone": "UTC",
-  "schedule": ["every weekend"],
-  "prHourlyLimit": 2,
-  "prConcurrentLimit": 10,
+  "schedule": ["every day"],
+  "prHourlyLimit": 5,
+  "prConcurrentLimit": 15,
   "rangeStrategy": "pin",
   "separateMajorMinor": true,
-  "dependencyDashboard": true
+  "separateMinorPatch": false,
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "🤖 Renovate Dependency Dashboard",
+  "commitMessagePrefix": "chore(deps):",
+  "semanticCommits": "enabled",
+  "automerge": false,
+  "platformAutomerge": false,
+  "rebaseWhen": "conflicted"
 }

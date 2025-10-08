@@ -152,7 +152,7 @@ Manage an ElizaOS plugin.
   - `upgrade <path>`: Upgrade a plugin from v0.x to v1.x using AI
     - Arguments: `<path>` (GitHub URL or local path)
     - Options: `--api-key <key>`, `--skip-tests`, `--skip-validation`
-    - See [Plugin Upgrade Documentation](./docs/PLUGIN_UPGRADE.md) for details
+    - See [Plugin Upgrade Documentation](./src/utils/upgrade/README.md) for details
 
 ### Agent Management
 
@@ -312,7 +312,7 @@ ElizaOS employs a dual testing strategy:
 
 #### `elizaos tee phala <subcommand>`
 
-Manage TEE deployments using the official [Phala Cloud CLI](https://docs.phala.network/phala-cloud/references/tee-cloud-cli). This integration provides seamless access to Phala's decentralized TEE cloud infrastructure directly through the ElizaOS CLI.
+Manage TEE deployments using the official [Phala Cloud CLI](https://docs.phala.com/phala-cloud/references/phala-cloud-cli/phala/docker). This integration provides seamless access to Phala's decentralized TEE cloud infrastructure directly through the ElizaOS CLI.
 
 All Phala Cloud CLI commands are passed through transparently, allowing you to use the full functionality of Phala's TEE platform.
 
