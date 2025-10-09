@@ -527,6 +527,13 @@ export class MessageBusService extends Service {
 
       // Call the message handler directly instead of emitting events
       // This provides a clearer, more traceable flow for message processing
+      if (!this.runtime.messageService) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: messageService is not initialized, cannot handle message`
+        );
+        return;
+      }
+
       await this.runtime.messageService.handleMessage(
         this.runtime,
         agentMemory,
@@ -560,7 +567,14 @@ export class MessageBusService extends Service {
       const existingMemory = await this.runtime.getMemoryById(agentMemoryId);
 
       if (existingMemory) {
-        await this.runtime.messageService!.deleteMessage(this.runtime, existingMemory);
+        if (!this.runtime.messageService) {
+          logger.error(
+            `[${this.runtime.character.name}] MessageBusService: messageService is not initialized, cannot delete message`
+          );
+          return;
+        }
+
+        await this.runtime.messageService.deleteMessage(this.runtime, existingMemory);
         logger.debug(
           `[${this.runtime.character.name}] MessageBusService: Successfully processed message deletion for ${data.messageId}`
         );
@@ -586,8 +600,15 @@ export class MessageBusService extends Service {
       // Convert the central channel ID to the agent's unique room ID
       const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
 
+      if (!this.runtime.messageService) {
+        logger.error(
+          `[${this.runtime.character.name}] MessageBusService: messageService is not initialized, cannot clear channel`
+        );
+        return;
+      }
+
       // Use message service to clear the channel
-      await this.runtime.messageService!.clearChannel(this.runtime, agentRoomId, data.channelId);
+      await this.runtime.messageService.clearChannel(this.runtime, agentRoomId, data.channelId);
 
       logger.info(
         `[${this.runtime.character.name}] MessageBusService: Successfully processed channel clear for ${data.channelId} -> room ${agentRoomId}`
