@@ -21,6 +21,99 @@ export class CloudApiClient {
   }
 
   /**
+   * Get container quota and pricing information
+   */
+  async getQuota(): Promise<CloudApiResponse<any>> {
+    try {
+      const response = await fetch(`${this.apiUrl}/api/v1/containers/quota`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`API request failed: ${error}`);
+      }
+
+      return await response.json();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to get quota:", errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Upload Docker image to Cloudflare via the cloud API
+   */
+  async uploadImage(
+    imageName: string,
+    imagePath: string,
+  ): Promise<CloudApiResponse<{
+    imageId: string;
+    digest: string;
+    size: number;
+  }>> {
+    try {
+      const fs = await import("node:fs");
+      const imageBuffer = fs.readFileSync(imagePath);
+
+      logger.info(`📤 Uploading image to Cloudflare: ${imageName} (${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+
+      // Create abort controller for timeout (5 minutes for large uploads)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
+
+      try {
+        const response = await fetch(
+          `${this.apiUrl}/api/v1/containers/upload-image?name=${encodeURIComponent(imageName)}`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.apiKey}`,
+              "Content-Type": "application/x-tar",
+              "X-Image-Name": imageName,
+            },
+            body: imageBuffer,
+            signal: controller.signal,
+          },
+        );
+
+        clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Image upload failed: ${error}`);
+      }
+
+        const result = await response.json();
+        logger.info(`✅ Image uploaded successfully: ${result.data.imageId}`);
+
+        return result;
+      } catch (fetchError: unknown) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          throw new Error("Upload timeout after 5 minutes. Please check your network connection.");
+        }
+        throw fetchError;
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+      logger.error("Failed to upload image:", errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
    * Create a new container deployment
    */
   async createContainer(
@@ -202,7 +295,7 @@ export function getApiCredentials(): {
   const apiUrl =
     process.env.ELIZAOS_API_URL ||
     process.env.ELIZA_CLOUD_API_URL ||
-    "https://eliza.cloud";
+    "https://elizacloud.ai";
 
   if (!apiKey) {
     return null;

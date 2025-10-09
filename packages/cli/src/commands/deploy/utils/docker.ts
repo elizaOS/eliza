@@ -22,6 +22,13 @@ export interface DockerBuildResult {
   error?: string;
 }
 
+export interface DockerExportResult {
+  success: boolean;
+  tarballPath?: string;
+  size?: number;
+  error?: string;
+}
+
 /**
  * Check if Docker is installed and running
  */
@@ -109,6 +116,61 @@ export async function buildDockerImage(
       tag: options.tag,
       error: errorMessage,
     };
+  }
+}
+
+/**
+ * Export Docker image to tarball for upload to Cloudflare
+ */
+export async function exportDockerImage(
+  imageTag: string,
+  outputPath?: string,
+): Promise<DockerExportResult> {
+  try {
+    // Create temp directory if no output path specified
+    const os = await import("node:os");
+    const tempDir = outputPath || fs.mkdtempSync(path.join(os.tmpdir(), "eliza-deploy-"));
+    const tarballPath = path.join(tempDir, "image.tar");
+
+    logger.info(`📦 Exporting Docker image: ${imageTag}`);
+
+    // Export image to tarball
+    await execa("docker", ["save", "-o", tarballPath, imageTag], {
+      stdio: "pipe",
+    });
+
+    // Get file size
+    const stats = fs.statSync(tarballPath);
+    const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+
+    logger.info(`✅ Image exported: ${tarballPath} (${sizeMB} MB)`);
+
+    return {
+      success: true,
+      tarballPath,
+      size: stats.size,
+    };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    logger.error(`Docker export failed: ${errorMessage}`);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+/**
+ * Clean up exported image tarball
+ */
+export async function cleanupImageTarball(tarballPath: string): Promise<void> {
+  try {
+    if (fs.existsSync(tarballPath)) {
+      fs.unlinkSync(tarballPath);
+      logger.debug(`Cleaned up tarball: ${tarballPath}`);
+    }
+  } catch (error) {
+    logger.warn(`Failed to cleanup tarball: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
 

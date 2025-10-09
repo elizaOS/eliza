@@ -39,5 +39,11 @@ export interface CloudApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  creditsDeducted?: number;
+  creditsRemaining?: number;
+  requiredCredits?: number;
+  availableCredits?: number;
+  limit?: number;
+  current?: number;
 }
 
