@@ -101,9 +101,19 @@ export async function deployProject(
     if (options.build !== false) {
       logger.info("🔨 Building Docker image...");
 
+      // Sanitize project name for Docker tag
+      // Remove @ prefix and scope, replace invalid chars with hyphens, remove leading/trailing hyphens
+      const sanitizedName = projectName
+        .toLowerCase()
+        .replace(/^@/, "")           // Remove leading @
+        .replace(/\//g, "-")          // Replace / with -
+        .replace(/[^a-z0-9-]/g, "-")  // Replace other invalid chars with -
+        .replace(/^-+|-+$/g, "")      // Remove leading/trailing hyphens
+        .replace(/-+/g, "-");         // Replace multiple consecutive hyphens with single hyphen
+
       const imageTag =
         options.tag ||
-        `elizaos/${projectName.toLowerCase().replace(/[^a-z0-9-]/g, "-")}:latest`;
+        `elizaos/${sanitizedName}:latest`;
 
       const buildResult = await buildDockerImage({
         dockerfile: dockerfilePath,
