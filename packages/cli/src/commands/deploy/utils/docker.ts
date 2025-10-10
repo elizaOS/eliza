@@ -190,20 +190,19 @@ export async function cleanupImageTarball(tarballPath: string): Promise<void> {
  */
 export function generateDefaultDockerfile(projectPath: string): string {
   const dockerfileContent = `# ElizaOS Project Dockerfile
-FROM node:20-alpine
+FROM oven/bun:1.2-alpine AS base
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++ curl
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
 COPY bun.lockb* ./
 
 # Install dependencies
-RUN npm install -g bun
-RUN bun install --production
+RUN bun install --frozen-lockfile --production
 
 # Copy project files
 COPY . .
@@ -214,9 +213,9 @@ RUN bun run build || true
 # Expose port
 EXPOSE 3000
 
-# Health check
+# Health check using bun's native HTTP capabilities
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \\
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error('unhealthy')})"
+  CMD curl -f http://localhost:3000/health || exit 1
 
 # Start the application
 CMD ["bun", "run", "start"]

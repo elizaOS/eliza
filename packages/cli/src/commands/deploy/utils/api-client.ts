@@ -67,14 +67,66 @@ export class CloudApiClient {
     try {
       const fs = await import("node:fs");
       const imageBuffer = fs.readFileSync(imagePath);
+      const fileSizeMB = imageBuffer.length / 1024 / 1024;
+      const showProgress = fileSizeMB > 50; // Show progress for files >50MB
 
-      logger.info(`📤 Uploading image to Cloudflare: ${imageName} (${(imageBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+      logger.info(`📤 Uploading image to Cloudflare: ${imageName} (${fileSizeMB.toFixed(2)} MB)`);
 
       // Create abort controller for timeout (5 minutes for large uploads)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
 
       try {
+        let uploadBody: BodyInit;
+        
+        if (showProgress) {
+          // Create a progress-tracking readable stream for large files
+          let uploaded = 0;
+          let lastProgress = 0;
+          const totalBytes = imageBuffer.length;
+          
+          uploadBody = new ReadableStream({
+            start(controller) {
+              const chunkSize = 64 * 1024; // 64KB chunks
+              let offset = 0;
+
+              function push() {
+                if (offset >= totalBytes) {
+                  controller.close();
+                  // Show final 100% progress
+                  if (showProgress) {
+                    process.stdout.write(`\r📤 Upload progress: 100.0% (${fileSizeMB.toFixed(2)} MB / ${fileSizeMB.toFixed(2)} MB)   \n`);
+                  }
+                  return;
+                }
+
+                const end = Math.min(offset + chunkSize, totalBytes);
+                const chunk = imageBuffer.slice(offset, end);
+                controller.enqueue(chunk);
+                
+                uploaded += chunk.length;
+                offset = end;
+
+                // Update progress every 5%
+                const currentProgress = Math.floor((uploaded / totalBytes) * 100);
+                if (currentProgress >= lastProgress + 5 || currentProgress === 100) {
+                  const uploadedMB = uploaded / 1024 / 1024;
+                  process.stdout.write(
+                    `\r📤 Upload progress: ${currentProgress.toFixed(1)}% (${uploadedMB.toFixed(2)} MB / ${fileSizeMB.toFixed(2)} MB)   `
+                  );
+                  lastProgress = currentProgress;
+                }
+
+                push();
+              }
+
+              push();
+            },
+          }) as ReadableStream<Uint8Array>;
+        } else {
+          uploadBody = imageBuffer;
+        }
+
         const response = await fetch(
           `${this.apiUrl}/api/v1/containers/upload-image?name=${encodeURIComponent(imageName)}`,
           {
@@ -84,7 +136,7 @@ export class CloudApiClient {
               "Content-Type": "application/x-tar",
               "X-Image-Name": imageName,
             },
-            body: imageBuffer,
+            body: uploadBody as BodyInit,
             signal: controller.signal,
           },
         );
