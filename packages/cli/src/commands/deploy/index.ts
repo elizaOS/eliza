@@ -67,7 +67,7 @@ export const deploy = new Command()
       }
 
       console.log("\n");
-    } catch (error: any) {
+    } catch (error: unknown) {
       handleError(error);
       process.exit(1);
     }
