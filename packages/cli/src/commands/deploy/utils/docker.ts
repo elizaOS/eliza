@@ -2,10 +2,10 @@
  * Docker build utilities for ElizaOS deployment
  */
 
-import execa from "execa";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "@elizaos/core";
+import { bunExec, bunExecInherit } from "@/src/utils/bun-exec";
 
 export interface DockerBuildOptions {
   dockerfile: string;
@@ -34,10 +34,10 @@ export interface DockerExportResult {
  */
 export async function checkDockerAvailable(): Promise<boolean> {
   try {
-    await execa("docker", ["info"], {
+    const result = await bunExec("docker", ["info"], {
       stdio: "pipe",
     });
-    return true;
+    return result.success;
   } catch {
     return false;
   }
@@ -87,17 +87,24 @@ export async function buildDockerImage(
     buildArgs.push(options.context);
 
     // Execute docker build
-    await execa("docker", buildArgs, {
+    const buildResult = await bunExecInherit("docker", buildArgs, {
       cwd: options.context,
-      stdio: "inherit",
     });
 
+    if (!buildResult.success) {
+      throw new Error("Docker build failed");
+    }
+
     // Get image ID
-    const inspectResult = await execa("docker", [
+    const inspectResult = await bunExec("docker", [
       "inspect",
       "--format={{.Id}}",
       options.tag,
     ]);
+
+    if (!inspectResult.success) {
+      throw new Error("Failed to inspect Docker image");
+    }
 
     const imageId = inspectResult.stdout.trim();
 
@@ -135,9 +142,13 @@ export async function exportDockerImage(
     logger.info(`📦 Exporting Docker image: ${imageTag}`);
 
     // Export image to tarball
-    await execa("docker", ["save", "-o", tarballPath, imageTag], {
+    const saveResult = await bunExec("docker", ["save", "-o", tarballPath, imageTag], {
       stdio: "pipe",
     });
+
+    if (!saveResult.success) {
+      throw new Error("Failed to export Docker image");
+    }
 
     // Get file size
     const stats = fs.statSync(tarballPath);
@@ -226,9 +237,11 @@ export async function pushDockerImage(tag: string): Promise<boolean> {
   try {
     logger.info(`Pushing Docker image: ${tag}`);
 
-    await execa("docker", ["push", tag], {
-      stdio: "inherit",
-    });
+    const pushResult = await bunExecInherit("docker", ["push", tag]);
+
+    if (!pushResult.success) {
+      throw new Error("Docker push failed");
+    }
 
     logger.info(`✅ Docker image pushed successfully: ${tag}`);
 
@@ -248,7 +261,12 @@ export async function tagDockerImage(
   targetTag: string,
 ): Promise<boolean> {
   try {
-    await execa("docker", ["tag", sourceTag, targetTag]);
+    const tagResult = await bunExec("docker", ["tag", sourceTag, targetTag]);
+    
+    if (!tagResult.success) {
+      throw new Error("Docker tag failed");
+    }
+    
     logger.info(`✅ Tagged image ${sourceTag} as ${targetTag}`);
     return true;
   } catch (error: unknown) {
