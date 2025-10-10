@@ -213,10 +213,9 @@ export async function deployProject(
       }
 
       // Log credits info if available
-      const uploadResponse = uploadResult as any;
-      if (uploadResponse.creditsDeducted) {
+      if (uploadResult.creditsDeducted) {
         logger.info(
-          `💰 Credits deducted for upload: ${uploadResponse.creditsDeducted}`,
+          `💰 Credits deducted for upload: ${uploadResult.creditsDeducted}`,
         );
       }
 
@@ -274,10 +273,9 @@ export async function deployProject(
     }
 
     // Log credits info if available
-    const createResp = createResponse as any;
-    if (createResp.creditsDeducted && createResp.creditsRemaining) {
+    if (createResponse.creditsDeducted && createResponse.creditsRemaining) {
       logger.info(
-        `💰 Credits deducted: ${createResp.creditsDeducted} (${createResp.creditsRemaining} remaining)`,
+        `💰 Credits deducted: ${createResponse.creditsDeducted} (${createResponse.creditsRemaining} remaining)`,
       );
     }
 

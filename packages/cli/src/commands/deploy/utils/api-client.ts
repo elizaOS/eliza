@@ -4,7 +4,12 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { ContainerConfig, CloudApiResponse } from "../types";
+import type {
+  ContainerConfig,
+  CloudApiResponse,
+  QuotaInfo,
+  ContainerData,
+} from "../types";
 
 export interface ApiClientOptions {
   apiKey: string;
@@ -23,7 +28,7 @@ export class CloudApiClient {
   /**
    * Get container quota and pricing information
    */
-  async getQuota(): Promise<CloudApiResponse<any>> {
+  async getQuota(): Promise<CloudApiResponse<QuotaInfo>> {
     try {
       const response = await fetch(`${this.apiUrl}/api/v1/containers/quota`, {
         method: "GET",
@@ -118,7 +123,7 @@ export class CloudApiClient {
    */
   async createContainer(
     config: ContainerConfig,
-  ): Promise<CloudApiResponse<any>> {
+  ): Promise<CloudApiResponse<ContainerData>> {
     try {
       const response = await fetch(`${this.apiUrl}/api/v1/containers`, {
         method: "POST",
@@ -148,7 +153,7 @@ export class CloudApiClient {
   /**
    * Get container status
    */
-  async getContainer(containerId: string): Promise<CloudApiResponse<any>> {
+  async getContainer(containerId: string): Promise<CloudApiResponse<ContainerData>> {
     try {
       const response = await fetch(
         `${this.apiUrl}/api/v1/containers/${containerId}`,
@@ -179,7 +184,7 @@ export class CloudApiClient {
   /**
    * List all containers
    */
-  async listContainers(): Promise<CloudApiResponse<any[]>> {
+  async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
     try {
       const response = await fetch(`${this.apiUrl}/api/v1/containers`, {
         method: "GET",
@@ -244,7 +249,7 @@ export class CloudApiClient {
       maxAttempts?: number;
       intervalMs?: number;
     } = {},
-  ): Promise<CloudApiResponse<any>> {
+  ): Promise<CloudApiResponse<ContainerData>> {
     const maxAttempts = options.maxAttempts || 60; // 5 minutes with 5s intervals
     const intervalMs = options.intervalMs || 5000;
 
