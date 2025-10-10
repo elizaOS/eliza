@@ -290,7 +290,7 @@ export async function deployProject(
       intervalMs: 5000,
     });
 
-    if (!deploymentResponse.success) {
+    if (!deploymentResponse.success || !deploymentResponse.data) {
       return {
         success: false,
         containerId,

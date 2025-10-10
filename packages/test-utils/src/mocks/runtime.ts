@@ -101,6 +101,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       clear: () => {},
       child: () => ({}) as any,
     },
+    stateCache: new Map(),
 
     // Database Properties
     db: overrides.db || mockDb,
