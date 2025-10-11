@@ -202,8 +202,6 @@ export class AgentServer {
     for (const id of agentIds) {
       const runtime = this.elizaOS.getAgent(id);
       if (runtime) {
-        await this.registerAgent(runtime);
-
         if (this.database) {
           try {
             const existingAgent = await this.database.getAgent(runtime.agentId);
@@ -220,6 +218,7 @@ export class AgentServer {
             logger.error({ error }, `Failed to persist agent ${runtime.agentId} to database`);
           }
         }
+        await this.registerAgent(runtime);
 
         runtimes.push(runtime);
       }
