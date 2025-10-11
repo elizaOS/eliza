@@ -166,11 +166,13 @@ export class AgentServer {
    * Start multiple agents in batch (true parallel)
    * @param characters - Array of character configurations
    * @param plugins - Optional plugins to load
+   * @param options - Optional configuration (e.g., isTestMode for test dependencies)
    * @returns Array of started agent runtimes
    */
   public async startAgents(
     characters: Character[],
-    plugins: (Plugin | string)[] = []
+    plugins: (Plugin | string)[] = [],
+    options?: { isTestMode?: boolean }
   ): Promise<IAgentRuntime[]> {
     if (!this.elizaOS) {
       throw new Error('Server not properly initialized');
@@ -181,11 +183,7 @@ export class AgentServer {
       character.id ??= stringToUuid(character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [
-        ...(character.plugins || []),
-        ...plugins,
-        sqlPlugin
-      ];
+      const allPlugins = [...(character.plugins || []), ...plugins, sqlPlugin];
 
       return {
         character: encryptedCharacter(character),
@@ -194,7 +192,7 @@ export class AgentServer {
     });
 
     // Delegate to ElizaOS for config/plugin resolution and agent creation
-    const agentIds = await this.elizaOS.addAgents(agentConfigs);
+    const agentIds = await this.elizaOS.addAgents(agentConfigs, options);
 
     // Start all agents
     await this.elizaOS.startAgents(agentIds);

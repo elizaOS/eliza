@@ -144,7 +144,7 @@ export async function runE2eTests(
       // Note: AgentManager was removed, using AgentServer's startAgents directly
       server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
-        const runtimes = await server.startAgents([character]);
+        const runtimes = await server.startAgents([character], [], { isTestMode: true });
         return runtimes[0];
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
@@ -195,9 +195,11 @@ export async function runE2eTests(
             const defaultElizaCharacter = getElizaCharacter();
 
             // Use AgentServer's startAgents method with the plugin under test
+            // isTestMode: true ensures testDependencies are loaded
             const startedRuntimes = await server.startAgents(
               [defaultElizaCharacter],
-              [pluginUnderTest] // Pass the local plugin module directly
+              [pluginUnderTest], // Pass the local plugin module directly
+              { isTestMode: true }
             );
             const runtime = startedRuntimes[0];
 
@@ -224,9 +226,11 @@ export async function runE2eTests(
 
               logger.debug(`Starting agent: ${originalCharacter.name}`);
 
+              // isTestMode: true ensures testDependencies are loaded for project tests
               const startedRuntimes = await server.startAgents(
                 [originalCharacter],
-                agent.plugins || []
+                agent.plugins || [],
+                { isTestMode: true }
               );
               const runtime = startedRuntimes[0];
 
