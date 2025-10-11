@@ -1,8 +1,8 @@
 import { loadProject, type Project } from '@/src/project';
 import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
-import { getModuleLoader } from '@/src/utils/module-loader';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
+import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -38,11 +38,6 @@ export async function runE2eTests(
   try {
     const runtimes: IAgentRuntime[] = [];
     const projectAgents: ProjectAgent[] = [];
-
-    // Load @elizaos/server from the project's node_modules
-    const moduleLoader = getModuleLoader();
-    const serverModule = await moduleLoader.load('@elizaos/server');
-    const { AgentServer, jsonToCharacter, loadCharacterTryPath } = serverModule;
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');

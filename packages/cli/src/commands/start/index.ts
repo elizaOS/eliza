@@ -3,9 +3,9 @@ import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { getModuleLoader } from '@/src/utils/module-loader';
 import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent, type IAgentRuntime } from '@elizaos/core';
+import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
 import * as fs from 'node:fs';
@@ -87,11 +87,6 @@ export const start = new Command()
       let projectAgents: ProjectAgent[] = [];
 
       if (options.character && options.character.length > 0) {
-        // Load @elizaos/server module for character loading
-        const moduleLoader = getModuleLoader();
-        const serverModule = await moduleLoader.load('@elizaos/server');
-        const { loadCharacterTryPath } = serverModule;
-
         // Validate and load characters from provided paths
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);
@@ -147,9 +142,6 @@ export const start = new Command()
       }
 
       // Use AgentServer from server package
-      const moduleLoader = getModuleLoader();
-      const { AgentServer } = await moduleLoader.load('@elizaos/server');
-
       const server = new AgentServer();
 
       // Initialize server with database configuration
