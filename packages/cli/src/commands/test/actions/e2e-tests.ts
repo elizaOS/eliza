@@ -234,6 +234,12 @@ export async function runE2eTests(
               );
               const runtime = startedRuntimes[0];
 
+              // Call custom init function if provided
+              if (agent.init) {
+                logger.debug(`Running custom init for agent: ${originalCharacter.name}`);
+                await agent.init(runtime);
+              }
+
               runtimes.push(runtime);
               projectAgents.push(agent);
 
