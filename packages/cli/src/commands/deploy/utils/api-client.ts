@@ -9,6 +9,8 @@ import type {
   CloudApiResponse,
   QuotaInfo,
   ContainerData,
+  ArtifactUploadRequest,
+  ArtifactUploadResponse,
 } from "../types";
 
 export interface ApiClientOptions {
@@ -337,6 +339,73 @@ export class CloudApiClient {
       success: false,
       error: "Deployment timeout - container did not reach running state",
     };
+  }
+
+  /**
+   * Upload artifact to R2 storage via Cloud API
+   */
+  async uploadArtifact(
+    request: ArtifactUploadRequest & { artifactPath: string },
+  ): Promise<CloudApiResponse<ArtifactUploadResponse>> {
+    try {
+      const fs = await import("node:fs");
+      
+      // First, request upload URL from API
+      logger.info("📤 Requesting artifact upload URL...");
+      
+      const uploadRequest = await fetch(`${this.apiUrl}/api/v1/artifacts/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          projectId: request.projectId,
+          version: request.version,
+          checksum: request.checksum,
+          size: request.size,
+          metadata: request.metadata,
+        }),
+      });
+
+      if (!uploadRequest.ok) {
+        const error = await uploadRequest.text();
+        throw new Error(`Failed to get upload URL: ${error}`);
+      }
+
+      const uploadData = await uploadRequest.json() as CloudApiResponse<ArtifactUploadResponse>;
+      
+      if (!uploadData.success || !uploadData.data) {
+        throw new Error(uploadData.error || "Failed to get upload URL");
+      }
+
+      // Now upload the artifact to the presigned URL
+      logger.info("📤 Uploading artifact to storage...");
+      
+      const artifactBuffer = fs.readFileSync(request.artifactPath);
+      const uploadResponse = await fetch(uploadData.data.uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/gzip",
+        },
+        body: artifactBuffer,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload artifact: ${uploadResponse.statusText}`);
+      }
+
+      logger.info("✅ Artifact uploaded successfully");
+
+      return uploadData;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.error("Failed to upload artifact:", errorMessage);
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
   }
 }
 

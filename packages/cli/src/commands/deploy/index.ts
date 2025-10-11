@@ -32,8 +32,14 @@ export const deploy = new Command()
     },
     [],
   )
-  .option("--no-build", "Skip Docker build step")
-  .option("-t, --tag <tag>", "Docker image tag")
+  .option(
+    "--skip-artifact",
+    "Skip artifact creation and use existing artifact",
+  )
+  .option(
+    "--artifact-path <path>",
+    "Path to existing artifact to deploy",
+  )
   .action(async (options: DeployOptions) => {
     try {
       // Parse numeric options
@@ -43,6 +49,8 @@ export const deploy = new Command()
         maxInstances: options.maxInstances
           ? parseInt(options.maxInstances.toString(), 10)
           : 1,
+        skipArtifact: (options as any).skipArtifact,
+        artifactPath: (options as any).artifactPath,
       };
 
       const result = await deployProject(parsedOptions);

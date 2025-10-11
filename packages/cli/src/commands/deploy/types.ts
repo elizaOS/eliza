@@ -9,10 +9,9 @@ export interface DeployOptions {
   maxInstances?: number;
   apiKey?: string;
   apiUrl?: string;
-  dockerfile?: string;
   env?: string[];
-  build?: boolean;
-  tag?: string;
+  skipArtifact?: boolean; // Skip artifact creation (use existing)
+  artifactPath?: string; // Path to existing artifact
 }
 
 export interface DeploymentResult {
@@ -26,12 +25,14 @@ export interface DeploymentResult {
 export interface ContainerConfig {
   name: string;
   description?: string;
-  image_tag?: string;
-  dockerfile_path?: string;
   port: number;
   max_instances: number;
   environment_vars?: Record<string, string>;
   health_check_path: string;
+  use_bootstrapper?: boolean; // Use bootstrapper image
+  artifact_url?: string; // URL to artifact in R2
+  artifact_checksum?: string; // SHA256 checksum of artifact
+  image_tag?: string; // Optional: custom bootstrapper image tag
 }
 
 export interface CloudApiResponse<T = unknown> {
@@ -100,5 +101,61 @@ export interface ContainerData {
 export interface CloudApiResponseWithCredits<T = unknown> extends CloudApiResponse<T> {
   creditsDeducted: number;
   creditsRemaining: number;
+}
+
+/**
+ * Artifact upload request
+ */
+export interface ArtifactUploadRequest {
+  projectId: string;
+  version: string;
+  checksum: string;
+  size: number;
+  metadata?: Record<string, string>;
+}
+
+/**
+ * Artifact upload response
+ */
+export interface ArtifactUploadResponse {
+  artifactId: string;
+  uploadUrl: string; // Presigned URL for upload
+  artifactUrl: string; // Final URL for retrieval
+  token?: string; // One-time scoped token
+  expiresAt: string;
+}
+
+/**
+ * Artifact metadata stored in database
+ */
+export interface ArtifactMetadata {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  version: string;
+  checksum: string;
+  size: number;
+  r2Key: string;
+  r2Url: string;
+  metadata?: Record<string, string>;
+  createdAt: Date;
+  createdBy: string;
+}
+
+/**
+ * Deployment mode
+ */
+export type DeploymentMode = "docker" | "bootstrapper";
+
+/**
+ * Bootstrapper deployment config
+ */
+export interface BootstrapperConfig {
+  artifactUrl: string;
+  artifactChecksum: string;
+  r2Token: string;
+  startCommand?: string;
+  skipBuild?: boolean;
+  envVars?: Record<string, string>;
 }
 
