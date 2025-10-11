@@ -1,4 +1,4 @@
-import { Character, UUID, IAgentRuntime, stringToUuid, setDefaultSecretsFromEnv } from '@elizaos/core';
+import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
@@ -192,9 +192,8 @@ export async function createScenarioAgent(
       chat: ['Direct', 'Helpful'],
     },
   };
-  await setDefaultSecretsFromEnv(character);
 
-  // Pass raw character; encryption is handled inside startAgents
+  // Pass raw character; encryption and secrets are handled inside startAgents
   const [runtime] = await server.startAgents([character]);
   if (!runtime) {
     throw new Error(`Failed to start agent: ${character.name}`);
