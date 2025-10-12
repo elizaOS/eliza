@@ -71,7 +71,12 @@ export class ElizaOS extends EventTarget {
    * Handles config and plugin resolution automatically
    */
   async addAgents(
-    agents: Array<{ character: Character; plugins?: (Plugin | string)[]; settings?: RuntimeSettings }>
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      settings?: RuntimeSettings;
+    }>,
+    options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
       // Set default secrets from environment if character doesn't have them
@@ -81,7 +86,7 @@ export class ElizaOS extends EventTarget {
       }
 
       const resolvedPlugins = agent.plugins
-        ? await resolvePlugins(agent.plugins)
+        ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
         : [];
 
       const runtime = new AgentRuntime({
@@ -101,8 +106,8 @@ export class ElizaOS extends EventTarget {
             agentId: runtime.agentId,
             character: {
               ...characterWithoutSecrets,
-              settings: settingsWithoutSecrets
-            }
+              settings: settingsWithoutSecrets,
+            },
           },
         })
       );
