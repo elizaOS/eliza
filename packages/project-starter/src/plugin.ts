@@ -203,7 +203,7 @@ const plugin: Plugin = {
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errorMessages =
-          error.issues?.map((e) => e.message).join(', ') || 'Unknown validation error';
+          error.issues?.map((e) => e.message)?.join(', ') || 'Unknown validation error';
         throw new Error(`Invalid plugin configuration: ${errorMessages}`);
       }
       throw new Error(
