@@ -35,18 +35,56 @@ export interface ContainerConfig {
   image_tag?: string; // Optional: custom bootstrapper image tag
 }
 
-export interface CloudApiResponse<T = unknown> {
+/**
+ * Base API response structure
+ */
+export interface CloudApiResponseBase {
   success: boolean;
-  data?: T;
   error?: string;
   message?: string;
-  creditsDeducted?: number;
-  creditsRemaining?: number;
-  requiredCredits?: number;
-  availableCredits?: number;
-  limit?: number;
-  current?: number;
 }
+
+/**
+ * API response for successful operations with data
+ */
+export interface CloudApiSuccessResponse<T> extends CloudApiResponseBase {
+  success: true;
+  data: T;
+  error?: never;
+}
+
+/**
+ * API response for failed operations
+ */
+export interface CloudApiErrorResponse extends CloudApiResponseBase {
+  success: false;
+  data?: never;
+  error: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * API response with credit information
+ */
+export interface CloudApiResponseWithCredits<T> extends CloudApiSuccessResponse<T> {
+  creditsDeducted: number;
+  creditsRemaining: number;
+}
+
+/**
+ * API response for quota checks
+ */
+export interface CloudApiQuotaResponse extends CloudApiSuccessResponse<QuotaInfo> {
+  data: QuotaInfo;
+}
+
+/**
+ * Generic API response type (union of success and error)
+ */
+export type CloudApiResponse<T = unknown> =
+  | CloudApiSuccessResponse<T>
+  | CloudApiErrorResponse
+  | CloudApiResponseWithCredits<T>;
 
 /**
  * Quota information for container deployments
@@ -95,13 +133,6 @@ export interface ContainerData {
   health_check_path?: string;
 }
 
-/**
- * Extended CloudApiResponse with credits info
- */
-export interface CloudApiResponseWithCredits<T = unknown> extends CloudApiResponse<T> {
-  creditsDeducted: number;
-  creditsRemaining: number;
-}
 
 /**
  * Artifact upload request
@@ -180,7 +211,6 @@ export type DeploymentMode = "docker" | "bootstrapper";
 export interface BootstrapperConfig {
   artifactUrl: string;
   artifactChecksum: string;
-  r2Token: string;
   startCommand?: string;
   skipBuild?: boolean;
   envVars?: Record<string, string>;

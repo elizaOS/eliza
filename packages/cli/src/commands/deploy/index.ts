@@ -27,9 +27,8 @@ export const deploy = new Command()
   .option(
     "-u, --api-url <url>",
     "ElizaOS Cloud API URL",
-    "https://eliza.cloud",
+    "https://elizacloud.ai",
   )
-  .option("-d, --dockerfile <path>", "Path to Dockerfile", "Dockerfile")
   .option(
     "-e, --env <KEY=VALUE>",
     "Environment variable (can be specified multiple times)",

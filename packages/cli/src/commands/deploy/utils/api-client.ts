@@ -7,6 +7,7 @@ import { logger } from "@elizaos/core";
 import type {
   ContainerConfig,
   CloudApiResponse,
+  CloudApiErrorResponse,
   QuotaInfo,
   ContainerData,
   ArtifactUploadRequest,
@@ -56,6 +57,38 @@ export class CloudApiClient {
   }
 
   /**
+   * Parse API error response with support for multiple formats
+   */
+  private async parseErrorResponse(response: Response): Promise<string> {
+    const contentType = response.headers.get("content-type");
+    
+    try {
+      if (contentType?.includes("application/json")) {
+        const json = await response.json();
+        // Handle multiple error formats from Cloud API
+        return json.error || json.message || JSON.stringify(json);
+      }
+      return await response.text();
+    } catch {
+      return `HTTP ${response.status} ${response.statusText}`;
+    }
+  }
+
+  /**
+   * Handle API errors consistently
+   */
+  private handleApiError(operation: string, error: unknown): CloudApiErrorResponse {
+    const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+    logger.error(`Failed to ${operation}:`, errorMessage);
+    
+    return {
+      success: false,
+      error: errorMessage,
+      details: error instanceof Error ? { name: error.name, stack: error.stack } : undefined,
+    };
+  }
+
+  /**
    * Get container quota and pricing information
    */
   async getQuota(): Promise<CloudApiResponse<QuotaInfo>> {
@@ -71,18 +104,20 @@ export class CloudApiClient {
       );
 
       if (!response.ok) {
-        const error = await response.text();
+        const error = await this.parseErrorResponse(response);
         throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
-      return await response.json();
+      const data = await response.json();
+      
+      // Validate response structure
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid API response format");
+      }
+
+      return data as CloudApiResponse<QuotaInfo>;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to get quota:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return this.handleApiError("get quota", error);
     }
   }
 
@@ -108,18 +143,23 @@ export class CloudApiClient {
       );
 
       if (!response.ok) {
-        const error = await response.text();
+        const error = await this.parseErrorResponse(response);
+        
+        // Handle specific HTTP status codes
+        if (response.status === 402) {
+          throw new Error(`Insufficient credits: ${error}`);
+        } else if (response.status === 403) {
+          throw new Error(`Quota exceeded: ${error}`);
+        } else if (response.status === 409) {
+          throw new Error(`Container name conflict: ${error}`);
+        }
+        
         throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to create container:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return this.handleApiError("create container", error);
     }
   }
 
@@ -139,18 +179,13 @@ export class CloudApiClient {
       );
 
       if (!response.ok) {
-        const error = await response.text();
+        const error = await this.parseErrorResponse(response);
         throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to get container status:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return this.handleApiError("get container status", error);
     }
   }
 
@@ -218,6 +253,7 @@ export class CloudApiClient {
 
   /**
    * Poll container status until it reaches a terminal state
+   * Matches Cloud API deployment timeout of 10 minutes
    */
   async waitForDeployment(
     containerId: string,
@@ -226,8 +262,13 @@ export class CloudApiClient {
       intervalMs?: number;
     } = {},
   ): Promise<CloudApiResponse<ContainerData>> {
-    const maxAttempts = options.maxAttempts || 60; // 5 minutes with 5s intervals
+    // Match Cloud API deployment timeout: 10 minutes = 600 seconds
+    // Default: 120 attempts * 5s = 600s = 10 minutes
+    const maxAttempts = options.maxAttempts || 120;
     const intervalMs = options.intervalMs || 5000;
+    const totalTimeoutMs = maxAttempts * intervalMs;
+
+    logger.info(`Waiting for deployment (timeout: ${totalTimeoutMs / 1000}s)...`);
 
     for (let i = 0; i < maxAttempts; i++) {
       const response = await this.getContainer(containerId);
@@ -238,11 +279,12 @@ export class CloudApiClient {
 
       const status = response.data?.status;
 
-      // Terminal states
+      // Success terminal state
       if (status === "running") {
         return response;
       }
 
+      // Failure terminal states
       if (status === "failed") {
         return {
           success: false,
@@ -250,16 +292,26 @@ export class CloudApiClient {
         };
       }
 
-      // Log progress
-      logger.info(`Deployment status: ${status}...`);
+      // Stopped/deleted states (unexpected during deployment)
+      if (status === "stopped" || status === "deleting" || status === "deleted") {
+        return {
+          success: false,
+          error: `Deployment interrupted - container is ${status}`,
+        };
+      }
+
+      // In-progress states: pending, building, deploying
+      // Log progress with attempt number for better debugging
+      logger.info(`Deployment status: ${status}... (${i + 1}/${maxAttempts})`);
 
       // Wait before next check
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
 
+    // Timeout reached
     return {
       success: false,
-      error: "Deployment timeout - container did not reach running state",
+      error: `Deployment timeout after ${totalTimeoutMs / 1000}s - container did not reach running state. Check dashboard for details.`,
     };
   }
 
@@ -294,7 +346,7 @@ export class CloudApiClient {
       );
 
       if (!uploadRequest.ok) {
-        const error = await uploadRequest.text();
+        const error = await this.parseErrorResponse(uploadRequest);
         throw new Error(`Failed to get upload URL (${uploadRequest.status}): ${error}`);
       }
 
@@ -318,6 +370,10 @@ export class CloudApiClient {
       // Use longer timeout for large files (1 minute per 10MB, minimum 2 minutes)
       const uploadTimeout = Math.max(120000, Math.ceil(fileSizeMB / 10) * 60000);
       
+      // Show progress for uploads
+      logger.info(`📤 Uploading ${fileSizeMB.toFixed(2)} MB...`);
+      const uploadStartTime = Date.now();
+      
       const uploadResponse = await this.fetchWithTimeout(
         uploadData.data.upload.url,
         {
@@ -334,7 +390,9 @@ export class CloudApiClient {
         throw new Error(`Failed to upload artifact (${uploadResponse.status}): ${uploadResponse.statusText}`);
       }
 
-      logger.info("✅ Artifact uploaded successfully");
+      const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
+      const uploadSpeed = (fileSizeMB / (Date.now() - uploadStartTime) * 1000).toFixed(2);
+      logger.info(`✅ Artifact uploaded successfully (${uploadDuration}s, ${uploadSpeed} MB/s)`);
 
       return uploadData;
     } catch (error: unknown) {
