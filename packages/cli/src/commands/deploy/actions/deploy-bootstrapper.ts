@@ -248,7 +248,8 @@ export async function deployWithBootstrapper(
       },
       health_check_path: "/health",
       use_bootstrapper: true,
-      artifact_url: artifactData.download.url,
+      artifact_url: artifactData.download.url, // Presigned URL (expires)
+      artifact_id: artifactData.artifactId, // Immutable ID for tracking
       artifact_checksum: artifactChecksum,
     };
 

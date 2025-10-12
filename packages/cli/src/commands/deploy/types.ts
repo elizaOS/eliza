@@ -30,7 +30,8 @@ export interface ContainerConfig {
   environment_vars?: Record<string, string>;
   health_check_path: string;
   use_bootstrapper?: boolean; // Use bootstrapper image
-  artifact_url?: string; // URL to artifact in R2
+  artifact_url?: string; // Presigned download URL to artifact in R2 (expires in 1 hour)
+  artifact_id?: string; // Artifact ID for reference tracking
   artifact_checksum?: string; // SHA256 checksum of artifact
   image_tag?: string; // Optional: custom bootstrapper image tag
 }
