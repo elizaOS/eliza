@@ -148,6 +148,11 @@ export interface ArtifactUploadRequest {
 /**
  * Artifact upload response from Cloud API
  * Updated to match Cloud API v1 response format
+ * 
+ * SECURITY: Raw credentials have been removed from this interface.
+ * The API no longer returns temporary AWS credentials to reduce attack surface.
+ * Use the presigned URLs (upload.url and download.url) which contain all
+ * necessary authentication embedded in the URL itself.
  */
 export interface ArtifactUploadResponse {
   artifactId: string;
@@ -160,18 +165,6 @@ export interface ArtifactUploadResponse {
     url: string;
     method: "GET";
     expiresAt: string;
-  };
-  credentials?: {
-    upload: {
-      accessKeyId: string;
-      secretAccessKey: string;
-      sessionToken: string;
-    };
-    download: {
-      accessKeyId: string;
-      secretAccessKey: string;
-      sessionToken: string;
-    };
   };
   artifact: {
     id: string;

@@ -3,6 +3,7 @@
  */
 
 import { Command } from "commander";
+import { logger } from "@elizaos/core";
 import { handleError } from "@/src/utils";
 import { deployProject } from "./actions/deploy";
 import type { DeployOptions } from "./types";
@@ -49,37 +50,37 @@ export const deploy = new Command()
     try {
       // Validate numeric options
       if (isNaN(options.port!) || options.port! < 1 || options.port! > 65535) {
-        console.error("❌ Error: Port must be a number between 1 and 65535");
+        logger.error("❌ Error: Port must be a number between 1 and 65535");
         process.exit(1);
       }
 
       if (isNaN(options.maxInstances!) || options.maxInstances! < 1 || options.maxInstances! > 10) {
-        console.error("❌ Error: Max instances must be a number between 1 and 10");
+        logger.error("❌ Error: Max instances must be a number between 1 and 10");
         process.exit(1);
       }
 
       const result = await deployProject(options);
 
       if (!result.success) {
-        console.error(`\n❌ Deployment failed: ${result.error}\n`);
+        logger.error(`\n❌ Deployment failed: ${result.error}\n`);
         process.exit(1);
       }
 
-      console.log("\n✅ Deployment completed successfully!\n");
+      logger.info("\n✅ Deployment completed successfully!\n");
 
       if (result.containerId) {
-        console.log(`Container ID: ${result.containerId}`);
+        logger.info(`Container ID: ${result.containerId}`);
       }
 
       if (result.workerId) {
-        console.log(`Worker ID: ${result.workerId}`);
+        logger.info(`Worker ID: ${result.workerId}`);
       }
 
       if (result.url) {
-        console.log(`URL: ${result.url}`);
+        logger.info(`URL: ${result.url}`);
       }
 
-      console.log("\n");
+      logger.info("\n");
     } catch (error: unknown) {
       handleError(error);
       process.exit(1);
