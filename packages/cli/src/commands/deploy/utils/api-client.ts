@@ -21,6 +21,7 @@ export interface ApiClientOptions {
 export class CloudApiClient {
   private apiKey: string;
   private apiUrl: string;
+  private readonly DEFAULT_TIMEOUT_MS = 30000; // 30 seconds default timeout
 
   constructor(options: ApiClientOptions) {
     this.apiKey = options.apiKey;
@@ -28,20 +29,50 @@ export class CloudApiClient {
   }
 
   /**
+   * Fetch with timeout helper
+   */
+  private async fetchWithTimeout(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number = this.DEFAULT_TIMEOUT_MS,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`Request timeout after ${timeoutMs}ms. Please check your network connection.`);
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Get container quota and pricing information
    */
   async getQuota(): Promise<CloudApiResponse<QuotaInfo>> {
     try {
-      const response = await fetch(`${this.apiUrl}/api/v1/containers/quota`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+      const response = await this.fetchWithTimeout(
+        `${this.apiUrl}/api/v1/containers/quota`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API request failed: ${error}`);
+        throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
@@ -55,122 +86,6 @@ export class CloudApiClient {
     }
   }
 
-  /**
-   * Upload Docker image to Cloudflare via the cloud API
-   */
-  async uploadImage(
-    imageName: string,
-    imagePath: string,
-  ): Promise<CloudApiResponse<{
-    imageId: string;
-    digest: string;
-    size: number;
-  }>> {
-    try {
-      const fs = await import("node:fs");
-      const imageBuffer = fs.readFileSync(imagePath);
-      const fileSizeMB = imageBuffer.length / 1024 / 1024;
-      const showProgress = fileSizeMB > 50; // Show progress for files >50MB
-
-      logger.info(`📤 Uploading image to Cloudflare: ${imageName} (${fileSizeMB.toFixed(2)} MB)`);
-
-      // Create abort controller for timeout (5 minutes for large uploads)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000);
-
-      try {
-        let uploadBody: BodyInit;
-        
-        if (showProgress) {
-          // Create a progress-tracking readable stream for large files
-          let uploaded = 0;
-          let lastProgress = 0;
-          const totalBytes = imageBuffer.length;
-          
-          uploadBody = new ReadableStream({
-            start(controller) {
-              const chunkSize = 64 * 1024; // 64KB chunks
-              let offset = 0;
-
-              function push() {
-                if (offset >= totalBytes) {
-                  controller.close();
-                  // Show final 100% progress
-                  if (showProgress) {
-                    process.stdout.write(`\r📤 Upload progress: 100.0% (${fileSizeMB.toFixed(2)} MB / ${fileSizeMB.toFixed(2)} MB)   \n`);
-                  }
-                  return;
-                }
-
-                const end = Math.min(offset + chunkSize, totalBytes);
-                const chunk = imageBuffer.slice(offset, end);
-                controller.enqueue(chunk);
-                
-                uploaded += chunk.length;
-                offset = end;
-
-                // Update progress every 5%
-                const currentProgress = Math.floor((uploaded / totalBytes) * 100);
-                if (currentProgress >= lastProgress + 5 || currentProgress === 100) {
-                  const uploadedMB = uploaded / 1024 / 1024;
-                  process.stdout.write(
-                    `\r📤 Upload progress: ${currentProgress.toFixed(1)}% (${uploadedMB.toFixed(2)} MB / ${fileSizeMB.toFixed(2)} MB)   `
-                  );
-                  lastProgress = currentProgress;
-                }
-
-                push();
-              }
-
-              push();
-            },
-          }) as ReadableStream<Uint8Array>;
-        } else {
-          uploadBody = imageBuffer;
-        }
-
-        const response = await fetch(
-          `${this.apiUrl}/api/v1/containers/upload-image?name=${encodeURIComponent(imageName)}`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${this.apiKey}`,
-              "Content-Type": "application/x-tar",
-              "X-Image-Name": imageName,
-            },
-            body: uploadBody as BodyInit,
-            signal: controller.signal,
-          },
-        );
-
-        clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Image upload failed: ${error}`);
-      }
-
-        const result = await response.json();
-        logger.info(`✅ Image uploaded successfully: ${result.data.imageId}`);
-
-        return result;
-      } catch (fetchError: unknown) {
-        clearTimeout(timeoutId);
-        
-        if (fetchError instanceof Error && fetchError.name === "AbortError") {
-          throw new Error("Upload timeout after 5 minutes. Please check your network connection.");
-        }
-        throw fetchError;
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to upload image:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
-    }
-  }
 
   /**
    * Create a new container deployment
@@ -179,18 +94,22 @@ export class CloudApiClient {
     config: ContainerConfig,
   ): Promise<CloudApiResponse<ContainerData>> {
     try {
-      const response = await fetch(`${this.apiUrl}/api/v1/containers`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
+      const response = await this.fetchWithTimeout(
+        `${this.apiUrl}/api/v1/containers`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify(config),
         },
-        body: JSON.stringify(config),
-      });
+        60000, // 60 seconds for container creation
+      );
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API request failed: ${error}`);
+        throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
@@ -209,7 +128,7 @@ export class CloudApiClient {
    */
   async getContainer(containerId: string): Promise<CloudApiResponse<ContainerData>> {
     try {
-      const response = await fetch(
+      const response = await this.fetchWithTimeout(
         `${this.apiUrl}/api/v1/containers/${containerId}`,
         {
           method: "GET",
@@ -221,13 +140,13 @@ export class CloudApiClient {
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API request failed: ${error}`);
+        throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to get container:", errorMessage);
+      logger.error("Failed to get container status:", errorMessage);
       return {
         success: false,
         error: errorMessage,
@@ -240,16 +159,19 @@ export class CloudApiClient {
    */
   async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
     try {
-      const response = await fetch(`${this.apiUrl}/api/v1/containers`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+      const response = await this.fetchWithTimeout(
+        `${this.apiUrl}/api/v1/containers`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+          },
         },
-      });
+      );
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API request failed: ${error}`);
+        throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
@@ -268,7 +190,7 @@ export class CloudApiClient {
    */
   async deleteContainer(containerId: string): Promise<CloudApiResponse> {
     try {
-      const response = await fetch(
+      const response = await this.fetchWithTimeout(
         `${this.apiUrl}/api/v1/containers/${containerId}`,
         {
           method: "DELETE",
@@ -280,7 +202,7 @@ export class CloudApiClient {
 
       if (!response.ok) {
         const error = await response.text();
-        throw new Error(`API request failed: ${error}`);
+        throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
@@ -353,24 +275,27 @@ export class CloudApiClient {
       // First, request upload URL from API
       logger.info("📤 Requesting artifact upload URL...");
       
-      const uploadRequest = await fetch(`${this.apiUrl}/api/v1/artifacts/upload`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
+      const uploadRequest = await this.fetchWithTimeout(
+        `${this.apiUrl}/api/v1/artifacts/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            projectId: request.projectId,
+            version: request.version,
+            checksum: request.checksum,
+            size: request.size,
+            metadata: request.metadata,
+          }),
         },
-        body: JSON.stringify({
-          projectId: request.projectId,
-          version: request.version,
-          checksum: request.checksum,
-          size: request.size,
-          metadata: request.metadata,
-        }),
-      });
+      );
 
       if (!uploadRequest.ok) {
         const error = await uploadRequest.text();
-        throw new Error(`Failed to get upload URL: ${error}`);
+        throw new Error(`Failed to get upload URL (${uploadRequest.status}): ${error}`);
       }
 
       const uploadData = await uploadRequest.json() as CloudApiResponse<ArtifactUploadResponse>;
@@ -388,16 +313,25 @@ export class CloudApiClient {
       logger.info("📤 Uploading artifact to storage...");
       
       const artifactBuffer = fs.readFileSync(request.artifactPath);
-      const uploadResponse = await fetch(uploadData.data.upload.url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/gzip",
+      const fileSizeMB = artifactBuffer.length / 1024 / 1024;
+      
+      // Use longer timeout for large files (1 minute per 10MB, minimum 2 minutes)
+      const uploadTimeout = Math.max(120000, Math.ceil(fileSizeMB / 10) * 60000);
+      
+      const uploadResponse = await this.fetchWithTimeout(
+        uploadData.data.upload.url,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/gzip",
+          },
+          body: artifactBuffer,
         },
-        body: artifactBuffer,
-      });
+        uploadTimeout,
+      );
 
       if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload artifact: ${uploadResponse.statusText}`);
+        throw new Error(`Failed to upload artifact (${uploadResponse.status}): ${uploadResponse.statusText}`);
       }
 
       logger.info("✅ Artifact uploaded successfully");

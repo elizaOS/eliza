@@ -11,11 +11,17 @@ export const deploy = new Command()
   .name("deploy")
   .description("Deploy ElizaOS project to Cloudflare Containers")
   .option("-n, --name <name>", "Name for the deployment")
-  .option("-p, --port <port>", "Port the container listens on", "3000")
+  .option(
+    "-p, --port <port>",
+    "Port the container listens on",
+    (value) => parseInt(value, 10),
+    3000,
+  )
   .option(
     "-m, --max-instances <count>",
     "Maximum number of container instances",
-    "1",
+    (value) => parseInt(value, 10),
+    1,
   )
   .option("-k, --api-key <key>", "ElizaOS Cloud API key")
   .option(
@@ -42,18 +48,18 @@ export const deploy = new Command()
   )
   .action(async (options: DeployOptions) => {
     try {
-      // Parse numeric options
-      const parsedOptions: DeployOptions = {
-        ...options,
-        port: options.port ? parseInt(options.port.toString(), 10) : 3000,
-        maxInstances: options.maxInstances
-          ? parseInt(options.maxInstances.toString(), 10)
-          : 1,
-        skipArtifact: (options as any).skipArtifact,
-        artifactPath: (options as any).artifactPath,
-      };
+      // Validate numeric options
+      if (isNaN(options.port!) || options.port! < 1 || options.port! > 65535) {
+        console.error("❌ Error: Port must be a number between 1 and 65535");
+        process.exit(1);
+      }
 
-      const result = await deployProject(parsedOptions);
+      if (isNaN(options.maxInstances!) || options.maxInstances! < 1 || options.maxInstances! > 10) {
+        console.error("❌ Error: Max instances must be a number between 1 and 10");
+        process.exit(1);
+      }
+
+      const result = await deployProject(options);
 
       if (!result.success) {
         console.error(`\n❌ Deployment failed: ${result.error}\n`);

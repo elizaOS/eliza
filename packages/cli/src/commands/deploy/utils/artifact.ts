@@ -272,7 +272,14 @@ async function createTarGz(
   outputPath: string,
   deterministic = true,
 ): Promise<void> {
-  const tarOptions: any = {
+  const tarOptions: {
+    gzip: boolean;
+    file: string;
+    cwd: string;
+    portable?: boolean;
+    noMtime?: boolean;
+    mtime?: Date;
+  } = {
     gzip: true,
     file: outputPath,
     cwd: basePath,

@@ -18,8 +18,8 @@ import { createArtifact, cleanupArtifacts } from "../utils/artifact";
 import { CloudApiClient, getApiCredentials } from "../utils/api-client";
 import { detectDirectoryType } from "@/src/utils/directory-detection";
 
-// Bootstrapper image tag - this should be versioned and published to a registry
-const BOOTSTRAPPER_IMAGE_TAG = "elizaos/bootstrapper:latest";
+// Bootstrapper image tag - configurable via BOOTSTRAPPER_IMAGE_TAG environment variable
+const BOOTSTRAPPER_IMAGE_TAG = process.env.BOOTSTRAPPER_IMAGE_TAG || "elizaos/bootstrapper:latest";
 
 /**
  * Deploy project using bootstrapper architecture
@@ -160,6 +160,23 @@ export async function deployWithBootstrapper(
       return {
         success: false,
         error: "Invalid artifact upload response: missing download URL",
+      };
+    }
+
+    // Validate download URL is accessible and well-formed
+    try {
+      const downloadUrl = new URL(artifactData.download.url);
+      if (!downloadUrl.protocol.startsWith("http")) {
+        return {
+          success: false,
+          error: `Invalid artifact download URL protocol: ${downloadUrl.protocol}`,
+        };
+      }
+      logger.debug(`Validated artifact download URL: ${downloadUrl.origin}${downloadUrl.pathname.substring(0, 50)}...`);
+    } catch (urlError) {
+      return {
+        success: false,
+        error: `Invalid artifact download URL format: ${urlError instanceof Error ? urlError.message : "Unknown error"}`,
       };
     }
 
