@@ -155,11 +155,11 @@ export async function deployWithBootstrapper(
 
     const artifactData = uploadResponse.data as ArtifactUploadResponse;
 
-    // Validate artifact data
-    if (!artifactData.artifactUrl || !artifactData.token) {
+    // Validate artifact data (new format with upload/download URLs)
+    if (!artifactData.download?.url) {
       return {
         success: false,
-        error: "Invalid artifact upload response: missing URL or token",
+        error: "Invalid artifact upload response: missing download URL",
       };
     }
 
@@ -181,9 +181,9 @@ export async function deployWithBootstrapper(
 
     // Step 9: Create bootstrapper deployment configuration
     const bootstrapperConfig: BootstrapperConfig = {
-      artifactUrl: artifactData.artifactUrl,
+      artifactUrl: artifactData.download.url, // Use download URL for container
       artifactChecksum,
-      r2Token: artifactData.token || "",
+      r2Token: "", // No longer needed - presigned URL
       startCommand: "bun run start",
       skipBuild: false,
       envVars: environmentVars,
@@ -207,7 +207,7 @@ export async function deployWithBootstrapper(
       },
       health_check_path: "/health",
       use_bootstrapper: true,
-      artifact_url: artifactData.artifactUrl,
+      artifact_url: artifactData.download.url,
       artifact_checksum: artifactChecksum,
     };
 

@@ -379,11 +379,16 @@ export class CloudApiClient {
         throw new Error(uploadData.error || "Failed to get upload URL");
       }
 
+      // Validate response structure
+      if (!uploadData.data.upload?.url) {
+        throw new Error("Invalid response: missing upload URL");
+      }
+
       // Now upload the artifact to the presigned URL
       logger.info("📤 Uploading artifact to storage...");
       
       const artifactBuffer = fs.readFileSync(request.artifactPath);
-      const uploadResponse = await fetch(uploadData.data.uploadUrl, {
+      const uploadResponse = await fetch(uploadData.data.upload.url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/gzip",

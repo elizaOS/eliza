@@ -115,14 +115,41 @@ export interface ArtifactUploadRequest {
 }
 
 /**
- * Artifact upload response
+ * Artifact upload response from Cloud API
+ * Updated to match Cloud API v1 response format
  */
 export interface ArtifactUploadResponse {
   artifactId: string;
-  uploadUrl: string; // Presigned URL for upload
-  artifactUrl: string; // Final URL for retrieval
-  token?: string; // One-time scoped token
-  expiresAt: string;
+  upload: {
+    url: string;
+    method: "PUT";
+    expiresAt: string;
+  };
+  download: {
+    url: string;
+    method: "GET";
+    expiresAt: string;
+  };
+  credentials?: {
+    upload: {
+      accessKeyId: string;
+      secretAccessKey: string;
+      sessionToken: string;
+    };
+    download: {
+      accessKeyId: string;
+      secretAccessKey: string;
+      sessionToken: string;
+    };
+  };
+  artifact: {
+    id: string;
+    version: string;
+    checksum: string;
+    size: number;
+    r2Key?: string;
+    r2Url?: string;
+  };
 }
 
 /**
