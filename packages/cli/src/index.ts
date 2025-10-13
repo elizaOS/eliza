@@ -5,6 +5,7 @@ process.env.QUIET_MODE = process.env.QUIET_MODE || 'true';
 
 import { agent } from '@/src/commands/agent';
 import { create } from '@/src/commands/create';
+import { deploy } from '@/src/commands/deploy';
 import { dev } from '@/src/commands/dev';
 import { env } from '@/src/commands/env';
 import { plugins } from '@/src/commands/plugins';
@@ -135,6 +136,7 @@ async function main() {
     .addCommand(agent)
     .addCommand(tee)
     .addCommand(start)
+    .addCommand(deploy)
     .addCommand(update)
     .addCommand(test)
     .addCommand(env)
