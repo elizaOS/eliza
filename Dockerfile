@@ -29,11 +29,10 @@ RUN SKIP_POSTINSTALL=1 bun install --no-cache
 RUN echo "=== Build Environment Info ===" && \
     echo "Node version: $(node --version)" && \
     echo "Bun version: $(bun --version)" && \
-    echo "Available memory: $(free -h)" && \
     echo "CPU info: $(nproc) cores" && \
     echo "Disk space: $(df -h /)" && \
     echo "=== Starting Build ===" && \
-    TURBO_CONCURRENCY=2 bun run build --concurrency=2 --verbose || (echo "=== Build Failed - System State ===" && free -h && df -h / && exit 1)
+    TURBO_CONCURRENCY=2 bun run build --concurrency=2 --verbosity=1 || (echo "=== Build Failed - System State ===" && df -h / && exit 1)
 
 FROM node:23.3.0-slim
 
