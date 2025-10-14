@@ -3,11 +3,11 @@ import { jsonToCharacter } from '../loader';
 import type { Character } from '@elizaos/core';
 
 /**
- * Test suite to verify that the character loader generates proper UUIDs
- * and allows multiple characters with the same name.
+ * Test suite to verify that the character loader generates deterministic UUIDs from names.
+ * This ensures backward compatibility and predictable environment variable naming.
  */
 describe('Character Loader - UUID Generation', () => {
-  it('should generate UUID for character without ID', async () => {
+  it('should generate deterministic UUID from name when ID not provided', async () => {
     const characterData = {
       name: 'TestAgent',
       bio: ['A test agent'],
@@ -23,7 +23,7 @@ describe('Character Loader - UUID Generation', () => {
     expect(uuidRegex.test(character.id!)).toBe(true);
   });
 
-  it('should generate different UUIDs for multiple characters with same name', async () => {
+  it('should generate same deterministic UUID for characters with same name', async () => {
     const characterData1 = {
       name: 'DuplicateName',
       bio: ['First agent'],
@@ -39,7 +39,8 @@ describe('Character Loader - UUID Generation', () => {
 
     expect(character1.id).toBeTruthy();
     expect(character2.id).toBeTruthy();
-    expect(character1.id).not.toBe(character2.id);
+    // Deterministic UUIDs from same name should be identical
+    expect(character1.id).toBe(character2.id);
     expect(character1.name).toBe(character2.name);
   });
 
@@ -57,7 +58,7 @@ describe('Character Loader - UUID Generation', () => {
     expect(character.name).toBe('TestAgent');
   });
 
-  it('should not derive UUID from name', async () => {
+  it('should derive deterministic UUID from name for backward compatibility', async () => {
     const characterName = 'SpecificName';
     const characterData1 = {
       name: characterName,
@@ -72,14 +73,14 @@ describe('Character Loader - UUID Generation', () => {
     const character1 = await jsonToCharacter(characterData1);
     const character2 = await jsonToCharacter(characterData2);
 
-    // If UUIDs were derived from name, they would be the same
-    // We want them to be different even with same name
-    expect(character1.id).not.toBe(character2.id);
+    // UUIDs derived from same name should be identical (deterministic)
+    // This enables backward compatibility and predictable environment variables
+    expect(character1.id).toBe(character2.id);
     expect(character1.name).toBe(characterName);
     expect(character2.name).toBe(characterName);
   });
 
-  it('should handle array of characters with duplicate names', async () => {
+  it('should handle array of characters with duplicate names consistently', async () => {
     const characters: Character[] = [];
     const sharedName = 'ClonedAgent';
 
@@ -99,13 +100,13 @@ describe('Character Loader - UUID Generation', () => {
     // Verify all have the same name
     expect(characters.every((c) => c.name === sharedName)).toBe(true);
 
-    // Verify all have different IDs
+    // Verify all have the SAME ID (deterministic from name)
     const ids = characters.map((c) => c.id);
     const uniqueIds = new Set(ids);
-    expect(uniqueIds.size).toBe(5);
+    expect(uniqueIds.size).toBe(1); // All should have the same deterministic UUID
   });
 
-  it('should generate truly random UUIDs, not deterministic from name', async () => {
+  it('should generate deterministic UUIDs from name consistently', async () => {
     const iterations = 10;
     const results: string[] = [];
     const characterName = 'SameName';
@@ -119,9 +120,9 @@ describe('Character Loader - UUID Generation', () => {
       results.push(character.id!);
     }
 
-    // All IDs should be unique (not derived from name)
+    // All IDs should be identical (deterministic from name)
     const uniqueIds = new Set(results);
-    expect(uniqueIds.size).toBe(iterations);
+    expect(uniqueIds.size).toBe(1);
 
     // All should be the same name
     const characters = await Promise.all(
@@ -134,5 +135,30 @@ describe('Character Loader - UUID Generation', () => {
       )
     );
     expect(characters.every((c) => c.name === characterName)).toBe(true);
+  });
+
+  it('should support different IDs for same name when explicitly provided', async () => {
+    const sharedName = 'SharedName';
+    const explicitId1 = '11111111-1111-1111-1111-111111111111';
+    const explicitId2 = '22222222-2222-2222-2222-222222222222';
+
+    const character1 = await jsonToCharacter({
+      id: explicitId1,
+      name: sharedName,
+      bio: ['First agent with explicit ID'],
+    });
+
+    const character2 = await jsonToCharacter({
+      id: explicitId2,
+      name: sharedName,
+      bio: ['Second agent with explicit ID'],
+    });
+
+    // When IDs are explicitly provided, they should be preserved
+    expect(character1.id).toBe(explicitId1);
+    expect(character2.id).toBe(explicitId2);
+    expect(character1.id).not.toBe(character2.id);
+    expect(character1.name).toBe(sharedName);
+    expect(character2.name).toBe(sharedName);
   });
 });

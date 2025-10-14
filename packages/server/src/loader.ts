@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import {
   type Character,
   type UUID,
@@ -9,6 +8,7 @@ import {
   parseAndValidateCharacter,
   validateCharacter,
   getCharactersDir,
+  stringToUuid,
 } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,20 +103,24 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
 
   const validatedCharacter = validationResult.data;
 
-  // Ensure character has an ID - generate one if not present
+  // Ensure character has an ID - generate deterministic UUID from name if not present
+  // This preserves backward compatibility and allows predictable environment variable naming
   if (!validatedCharacter.id) {
-    validatedCharacter.id = randomUUID() as UUID;
+    if (!validatedCharacter.name) {
+      throw new Error('Character must have either an id or a name to generate a deterministic ID');
+    }
+    validatedCharacter.id = stringToUuid(validatedCharacter.name);
   }
 
   // Add environment-based settings and secrets (preserve existing functionality)
-  // Support both name-based (backward compatible) and ID-based prefixes
+  // Priority: name-based prefixes (backward compatible) first, then ID-based (for explicit IDs)
   const namePrefixes = validatedCharacter.name
     ? [
         `CHARACTER.${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}.`,
         `${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`,
       ]
     : [];
-  // At this point, validatedCharacter.id is guaranteed to be defined (set above if missing)
+  // ID-based prefix as fallback for explicitly set UUIDs
   const idPrefix = `CHARACTER.${validatedCharacter.id!.toUpperCase().replace(/-/g, '_')}.`;
   const allPrefixes = [...namePrefixes, idPrefix];
 

@@ -1,11 +1,16 @@
-import { Character, UUID, IAgentRuntime, stringToUuid, setDefaultSecretsFromEnv } from '@elizaos/core';
+import {
+  Character,
+  UUID,
+  IAgentRuntime,
+  stringToUuid,
+  setDefaultSecretsFromEnv,
+} from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
 
@@ -175,7 +180,7 @@ export async function createScenarioAgent(
   );
   const character: Character = {
     name: agentName,
-    id: crypto.randomUUID() as UUID,
+    id: stringToUuid(agentName),
     bio: 'A test agent for scenario execution',
     plugins: pluginNames,
     settings: {
