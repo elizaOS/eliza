@@ -68,7 +68,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     } as Character;
 
     // Use startAgents to properly create and initialize the agent
-    const [testAgent] = await agentServer.startAgents([testCharacter]);
+    const [testAgent] = await agentServer.startAgents([{ character: testCharacter }]);
     mockRuntime = testAgent;
 
     // Mock the agent's processActions to immediately return a response

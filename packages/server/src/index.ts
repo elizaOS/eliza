@@ -164,14 +164,16 @@ export class AgentServer {
 
   /**
    * Start multiple agents in batch (true parallel)
-   * @param characters - Array of character configurations
-   * @param plugins - Optional plugins to load
+   * @param agents - Array of agent configurations (character + optional plugins/init)
    * @param options - Optional configuration (e.g., isTestMode for test dependencies)
    * @returns Array of started agent runtimes
    */
   public async startAgents(
-    characters: Character[],
-    plugins: (Plugin | string)[] = [],
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+    }>,
     options?: { isTestMode?: boolean }
   ): Promise<IAgentRuntime[]> {
     if (!this.elizaOS) {
@@ -179,15 +181,20 @@ export class AgentServer {
     }
 
     // Prepare agent configurations with server-specific setup
-    const agentConfigs = characters.map((character) => {
-      character.id ??= stringToUuid(character.name);
+    const agentConfigs = agents.map((agent) => {
+      agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [...(character.plugins || []), ...plugins, sqlPlugin];
+      const allPlugins = [
+        ...(agent.character.plugins || []),
+        ...(agent.plugins || []),
+        sqlPlugin,
+      ];
 
       return {
-        character: encryptedCharacter(character),
+        character: encryptedCharacter(agent.character),
         plugins: allPlugins,
+        init: agent.init,
       };
     });
 

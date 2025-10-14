@@ -94,7 +94,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent1] = await agentServer.startAgents([char1]);
+      const [agent1] = await agentServer.startAgents([{ character: char1 }]);
       expect(agent1).toBeDefined();
       const agent1Id = agent1.agentId;
 
@@ -130,7 +130,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent1, agent2] = await agentServer.startAgents([char1, char2]);
+      const [agent1, agent2] = await agentServer.startAgents([{ character: char1 }, { character: char2 }]);
       expect(agent1).toBeDefined();
       expect(agent2).toBeDefined();
 
@@ -457,7 +457,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent] = await agentServer.startAgents([char]);
+      const [agent] = await agentServer.startAgents([{ character: char }]);
       testAgentId = agent.agentId;
     });
 
@@ -536,7 +536,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
           },
         } as Character;
 
-        const [agent] = await isolatedServer.startAgents([char]);
+        const [agent] = await isolatedServer.startAgents([{ character: char }]);
         const agentId = agent.agentId;
 
         // Get initial agent count

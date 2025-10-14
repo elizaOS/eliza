@@ -213,32 +213,29 @@ export async function runE2eTests(
             throw pluginError;
           }
         } else {
-          // For regular projects, start each agent as defined
+          // For regular projects, start agents with delay between each (for E2E test stability)
           for (const agent of project.agents) {
             try {
-              // Make a copy of the original character to avoid modifying the project configuration
-              const originalCharacter = { ...agent.character };
-
-              logger.debug(`Starting agent: ${originalCharacter.name}`);
+              logger.debug(`Starting agent: ${agent.character.name}`);
 
               // isTestMode: true ensures testDependencies are loaded for project tests
+              // init function is now automatically called by Core
               const startedRuntimes = await server.startAgents(
-                [originalCharacter],
-                agent.plugins || [],
+                [
+                  {
+                    character: { ...agent.character },
+                    plugins: agent.plugins || [],
+                    init: agent.init,
+                  },
+                ],
                 { isTestMode: true }
               );
               const runtime = startedRuntimes[0];
 
-              // Call custom init function if provided
-              if (agent.init) {
-                logger.debug(`Running custom init for agent: ${originalCharacter.name}`);
-                await agent.init(runtime);
-              }
-
               runtimes.push(runtime);
               projectAgents.push(agent);
 
-              // wait 1 second between agent starts
+              // wait 1 second between agent starts for E2E test stability
               await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (agentError) {
               logger.error(
