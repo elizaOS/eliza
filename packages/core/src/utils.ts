@@ -757,6 +757,8 @@ export function safeReplacer() {
  */
 export function parseBooleanFromText(value: string | undefined | null): boolean {
   if (!value) return false;
+  // shouldn't need this but we're hitting where value is true at runtime
+  if (typeof value === "boolean") return value;
 
   const affirmative = ['YES', 'Y', 'TRUE', 'T', '1', 'ON', 'ENABLE'];
   const negative = ['NO', 'N', 'FALSE', 'F', '0', 'OFF', 'DISABLE'];

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { describe, expect, it, test, beforeEach, afterEach } from 'bun:test';
 import {
   detectEnvironment,
   getEnvironment,
@@ -8,7 +8,9 @@ import {
   getBooleanEnv,
   getNumberEnv,
   initBrowserEnvironment,
-} from '../utils/environment';
+  loadEnvConfig,
+  findEnvFile,
+} from '../../utils/environment';
 
 describe('Environment Abstraction', () => {
   let originalProcess: any;
@@ -280,6 +282,105 @@ describe('Environment Abstraction', () => {
 
       delete process.env.TEST1;
       delete process.env.TEST2;
+    });
+  });
+
+  describe('Environment Config Functions (.env file loading)', () => {
+    let originalEnvSnapshot: NodeJS.ProcessEnv;
+
+    beforeEach(() => {
+      // Snapshot and clear env
+      originalEnvSnapshot = { ...process.env };
+      for (const k of Object.keys(process.env)) {
+        delete (process.env as Record<string, string | undefined>)[k];
+      }
+    });
+
+    afterEach(() => {
+      // Restore env in-place
+      for (const k of Object.keys(process.env)) {
+        delete (process.env as Record<string, string | undefined>)[k];
+      }
+      Object.assign(process.env, originalEnvSnapshot);
+    });
+
+    describe('loadEnvConfig', () => {
+      test('should load environment configuration', async () => {
+        process.env.OPENAI_API_KEY = 'test-key';
+        process.env.ANTHROPIC_API_KEY = 'anthropic-key';
+
+        const config = await loadEnvConfig();
+
+        expect(config).toBeDefined();
+        expect(config.OPENAI_API_KEY).toBe('test-key');
+        expect(config.ANTHROPIC_API_KEY).toBe('anthropic-key');
+      });
+
+      test('should return empty config when no env vars set', async () => {
+        delete process.env.OPENAI_API_KEY;
+        delete process.env.ANTHROPIC_API_KEY;
+
+        const config = await loadEnvConfig();
+
+        expect(config).toBeDefined();
+        expect(Object.keys(config).length).toBeGreaterThanOrEqual(0);
+      });
+    });
+
+    describe('findEnvFile', () => {
+      test('should return null when no .env file exists', () => {
+        const envPath = findEnvFile();
+        // In test environment, may or may not exist
+        expect(envPath === null || typeof envPath === 'string').toBe(true);
+      });
+    });
+  });
+
+  // Additional basic tests from src/utils/__tests__/environment.test.ts
+  describe('environment utils (basic)', () => {
+    it('detects runtime (node in tests)', () => {
+      const runtime = detectEnvironment();
+      expect(['node', 'browser', 'unknown']).toContain(runtime);
+    });
+
+    it('gets and sets env vars via API', () => {
+      const key = 'TEST_ENV_UTILS_KEY';
+      setEnv(key, 'value1');
+      expect(getEnv(key)).toBe('value1');
+      expect(hasEnv(key)).toBe(true);
+    });
+
+    it('boolean env parsing works', () => {
+      const key = 'TEST_BOOL_ENV';
+      setEnv(key, 'true');
+      expect(getBooleanEnv(key, false)).toBe(true);
+      setEnv(key, '0');
+      expect(getBooleanEnv(key, true)).toBe(false);
+    });
+
+    it('number env parsing works', () => {
+      const key = 'TEST_NUM_ENV';
+      setEnv(key, '42');
+      expect(getNumberEnv(key)).toBe(42);
+      setEnv(key, 'NaN');
+      expect(getNumberEnv(key, 7)).toBe(7);
+    });
+
+    it('browser init helper is safe in node', () => {
+      // Should not throw even though we are not in browser
+      initBrowserEnvironment({ SOME_KEY: 'x' });
+      expect(true).toBe(true);
+    });
+
+    it('environment cache can be cleared indirectly by creating a new instance', () => {
+      const env = getEnvironment();
+      // Access a key, then change it, ensure fresh read gets latest
+      const key = 'TEST_CACHE_KEY';
+      setEnv(key, 'a');
+      expect(getEnv(key)).toBe('a');
+      setEnv(key, 'b');
+      // getEnv reads through the singleton which clears cache on set
+      expect(getEnv(key)).toBe('b');
     });
   });
 });

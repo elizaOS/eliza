@@ -32,6 +32,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;
+  stateCache: Map<string, State>;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;

@@ -958,6 +958,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {Object} params - The parameters for retrieving memories.
    * @param {UUID} params.roomId - The ID of the room to retrieve memories for.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
+   * @param {number} [params.offset] - The offset for pagination.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
    * @param {string} [params.tableName] - The name of the table to retrieve memories from.
    * @param {number} [params.start] - The start date to retrieve memories from.
@@ -968,6 +969,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -975,9 +977,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     roomId?: UUID;
     worldId?: UUID;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, worldId, tableName, unique, start, end } = params;
+    const { entityId, agentId, roomId, worldId, tableName, unique, start, end, offset } = params;
 
     if (!tableName) throw new Error('tableName is required');
+    if (offset !== undefined && offset < 0) {
+      throw new Error('offset must be a non-negative number');
+    }
 
     return this.withDatabase(async () => {
       const conditions = [eq(memoryTable.type, tableName)];
@@ -1011,7 +1016,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         conditions.push(eq(memoryTable.agentId, agentId));
       }
 
-      const query = this.db
+      const baseQuery = this.db
         .select({
           memory: {
             id: memoryTable.id,
@@ -1031,7 +1036,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
-      const rows = params.count ? await query.limit(params.count) : await query;
+      // Apply limit and offset for pagination
+      // Build query conditionally to maintain proper types
+      const rows = await (async () => {
+        if (params.count && offset !== undefined && offset > 0) {
+          return baseQuery.limit(params.count).offset(offset);
+        } else if (params.count) {
+          return baseQuery.limit(params.count);
+        } else if (offset !== undefined && offset > 0) {
+          return baseQuery.offset(offset);
+        } else {
+          return baseQuery;
+        }
+      })();
 
       return rows.map((row) => ({
         id: row.memory.id as UUID,

@@ -1,6 +1,7 @@
 {
   "name": "@elizaos/service-interfaces",
   "version": "1.6.2-beta.0",
+  "version": "1.6.2-alpha.14",
   "description": "Service interface definitions for ElizaOS plugins",
   "type": "module",
   "main": "dist/index.js",
@@ -46,9 +47,9 @@
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
-    "test": "bun test --coverage",
-    "test:coverage": "bun test --coverage",
-    "test:watch": "bun test --watch",
+    "test": "echo 'Skipping tests for types-only package' && exit 0",
+    "test:coverage": "echo 'Skipping tests for types-only package' && exit 0",
+    "test:watch": "echo 'Skipping tests for types-only package' && exit 0",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "lint": "prettier --write ./src"

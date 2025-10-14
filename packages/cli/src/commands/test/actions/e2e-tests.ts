@@ -139,17 +139,13 @@ export async function runE2eTests(
 
       logger.info(`Found ${project.agents?.length || 0} agents`);
 
-      // Set up server properties using AgentManager from server
+      // Set up server properties using AgentServer's built-in methods
       logger.info('Setting up server properties...');
-      const { AgentManager } = serverModule;
-      const agentManager = new AgentManager(server);
-
+      // Note: AgentManager was removed, using AgentServer's startAgents directly
       server.startAgent = async (character: any) => {
         logger.info(`Starting agent for character ${character.name}`);
-        const [runtime] = await agentManager.startAgents([character], undefined, [], {
-          isTestMode: true,
-        });
-        return runtime;
+        const runtimes = await server.startAgents([character], [], { isTestMode: true });
+        return runtimes[0];
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
       server.jsonToCharacter = jsonToCharacter;
@@ -198,16 +194,15 @@ export async function runE2eTests(
             }
             const defaultElizaCharacter = getElizaCharacter();
 
-            // The AgentManager now handles all dependency resolution,
-            // including testDependencies when isTestMode is true.
-            const [runtime] = await agentManager.startAgents(
+            // Use AgentServer's startAgents method with the plugin under test
+            // isTestMode: true ensures testDependencies are loaded
+            const startedRuntimes = await server.startAgents(
               [defaultElizaCharacter],
-              undefined, // No custom init for default test setup
               [pluginUnderTest], // Pass the local plugin module directly
               { isTestMode: true }
             );
+            const runtime = startedRuntimes[0];
 
-            server.registerAgent(runtime); // Ensure server knows about the runtime
             runtimes.push(runtime);
 
             // Pass all loaded plugins to the projectAgent so TestRunner can identify
@@ -231,12 +226,19 @@ export async function runE2eTests(
 
               logger.debug(`Starting agent: ${originalCharacter.name}`);
 
-              const [runtime] = await agentManager.startAgents(
+              // isTestMode: true ensures testDependencies are loaded for project tests
+              const startedRuntimes = await server.startAgents(
                 [originalCharacter],
-                agent.init,
                 agent.plugins || [],
-                { isTestMode: true } // Pass isTestMode for project tests as well
+                { isTestMode: true }
               );
+              const runtime = startedRuntimes[0];
+
+              // Call custom init function if provided
+              if (agent.init) {
+                logger.debug(`Running custom init for agent: ${originalCharacter.name}`);
+                await agent.init(runtime);
+              }
 
               runtimes.push(runtime);
               projectAgents.push(agent);

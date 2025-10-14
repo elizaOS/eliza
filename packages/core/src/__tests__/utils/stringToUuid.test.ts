@@ -16,7 +16,7 @@ describe('stringToUuid SHA-1 implementation', () => {
   it('should produce deterministic UUIDs for known inputs', () => {
     testVectors.forEach(({ input, expected }) => {
       const result = stringToUuid(input);
-      expect(result).toBe(expected);
+      expect(result).toBe(expected as UUID);
     });
   });
 
@@ -30,7 +30,7 @@ describe('stringToUuid SHA-1 implementation', () => {
 
     unicodeTests.forEach(({ input, expected }) => {
       const result = stringToUuid(input);
-      expect(result).toBe(expected);
+      expect(result).toBe(expected as UUID);
     });
   });
 
@@ -48,7 +48,7 @@ describe('stringToUuid SHA-1 implementation', () => {
 
     urlTests.forEach(({ input, expected }) => {
       const result = stringToUuid(input);
-      expect(result).toBe(expected);
+      expect(result).toBe(expected as UUID);
     });
   });
 

@@ -749,7 +749,7 @@ conversation:
 
 ### Usage notes
 
-Occassionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
+Occasionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
 
 ```bash
 # Use a specific embedding model to avoid GPT-5 embedding issues

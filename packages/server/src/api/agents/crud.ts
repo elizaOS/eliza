@@ -191,6 +191,10 @@ export function createAgentCrudRouter(
     const updates = req.body;
 
     try {
+      // Get current agent state before update to detect critical changes
+      const currentAgent = await db.getAgent(agentId);
+      const activeRuntime = elizaOS.getAgent(agentId);
+
       if (updates.settings?.secrets) {
         const salt = getSalt();
         const encryptedSecrets: Record<string, string | null> = {};
@@ -212,16 +216,79 @@ export function createAgentCrudRouter(
 
       const updatedAgent = await db.getAgent(agentId);
 
-      // Check if agent is currently active
-      const activeRuntime = elizaOS.getAgent(agentId);
-      if (activeRuntime && updatedAgent) {
-        // Extract character properties from the Agent (Agent extends Character)
-        const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+      // Detect if plugins have changed - this requires a full restart
+      let needsRestart = false;
+      if (currentAgent && activeRuntime && updatedAgent) {
+        // Validate plugins array structure
+        if (updatedAgent.plugins && !Array.isArray(updatedAgent.plugins)) {
+          throw new Error('plugins must be an array');
+        }
 
-        // Update the character on the active runtime instead of unregistering/restarting
-        // This preserves database connections and other resources
-        await elizaOS.updateAgent(agentId, characterData as Character);
-        logger.debug(`[AGENT UPDATE] Updated active agent ${agentId} without restart`);
+        const currentPlugins = (currentAgent.plugins || [])
+          .filter(p => p != null)
+          .map(p => typeof p === 'string' ? p : (p as any).name)
+          .filter(name => typeof name === 'string')
+          .sort();
+
+        const updatedPlugins = (updatedAgent.plugins || [])
+          .filter(p => p != null)
+          .map(p => typeof p === 'string' ? p : (p as any).name)
+          .filter(name => typeof name === 'string')
+          .sort();
+
+        const pluginsChanged =
+          currentPlugins.length !== updatedPlugins.length ||
+          currentPlugins.some((plugin, idx) => plugin !== updatedPlugins[idx]);
+
+        needsRestart = pluginsChanged;
+
+        if (needsRestart) {
+          logger.debug(`[AGENT UPDATE] Agent ${agentId} requires restart due to plugins changes`);
+        }
+      }
+
+      // Check if agent is currently active
+      if (activeRuntime && updatedAgent) {
+        if (needsRestart) {
+          // Plugins changed - need full restart
+          logger.debug(`[AGENT UPDATE] Restarting agent ${agentId} due to configuration changes`);
+
+          try {
+            await serverInstance?.unregisterAgent(agentId);
+
+            // Restart the agent with new configuration
+            const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+            const runtimes = await serverInstance?.startAgents([characterData as Character]);
+            if (!runtimes || runtimes.length === 0) {
+              throw new Error('Failed to restart agent after configuration change');
+            }
+            logger.success(`[AGENT UPDATE] Agent ${agentId} restarted successfully`);
+          } catch (restartError) {
+            logger.error(
+              { error: restartError, agentId },
+              `[AGENT UPDATE] Failed to restart agent ${agentId}, attempting to restore previous state`
+            );
+
+            // Try to restore the agent with the previous configuration
+            try {
+              const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent!;
+              await serverInstance?.startAgents([previousCharacterData as Character]);
+              logger.warn(`[AGENT UPDATE] Restored agent ${agentId} to previous state`);
+            } catch (restoreError) {
+              logger.error(
+                { error: restoreError, agentId },
+                `[AGENT UPDATE] Failed to restore agent ${agentId} - agent may be in broken state`
+              );
+            }
+
+            throw restartError;
+          }
+        } else {
+          // Only character properties changed - can update in-place
+          const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+          await elizaOS.updateAgent(agentId, characterData as Character);
+          logger.debug(`[AGENT UPDATE] Updated active agent ${agentId} without restart`);
+        }
       }
 
       const runtime = elizaOS.getAgent(agentId);

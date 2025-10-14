@@ -158,8 +158,25 @@ export const start = new Command()
         postgresUrl: process.env.POSTGRES_URL,
       });
 
-      // Start HTTP server
-      await server.start(options.port || 3000);
+      // Start HTTP server with robust port resolution
+      let port: number;
+      if (options.port !== undefined) {
+        // Already validated by Commander using validatePort
+        port = options.port;
+      } else {
+        const envPort = process.env.SERVER_PORT;
+        if (envPort) {
+          try {
+            port = validatePort(envPort);
+          } catch {
+            logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
+            port = 3000;
+          }
+        } else {
+          port = 3000;
+        }
+      }
+      await server.start(port);
 
       // Handle project agents with their init functions
       if (projectAgents && projectAgents.length > 0) {

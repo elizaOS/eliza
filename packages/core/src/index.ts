@@ -34,6 +34,7 @@ export * from './memory';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
+export * from './secrets';
 export * from './settings';
 export * from './services';
 export * from './search';

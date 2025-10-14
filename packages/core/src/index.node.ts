@@ -34,6 +34,11 @@ export * from './services';
 export * from './search';
 export * from './elizaos';
 
+// Export configuration and plugin modules - will be removed once cli cleanup
+export * from './character';
+export * from './secrets';
+export * from './plugin';
+
 // Node-specific exports
 export const isBrowser = false;
 export const isNode = true;

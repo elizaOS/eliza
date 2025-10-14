@@ -17,6 +17,7 @@ import {
   logger,
   type Media,
   type Memory,
+  type MentionContext,
   messageHandlerTemplate,
   type MessagePayload,
   ModelType,
@@ -36,6 +37,8 @@ import {
   multiStepDecisionTemplate,
   multiStepSummaryTemplate,
   type State,
+  type Action,
+  HandlerCallback,
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
@@ -70,16 +73,6 @@ interface MultiStepActionResult {
   text?: string;
   error?: string | Error;
   values?: Record<string, any>;
-}
-
-/**
- * Multi-step workflow state
- */
-interface MultiStepState extends State {
-  data: {
-    actionResults: MultiStepActionResult[];
-    [key: string]: any;
-  };
 }
 
 const latestResponseIds = new Map<string, Map<string, string>>();
@@ -298,19 +291,26 @@ export async function processAttachments(
 }
 
 /**
- * Determines whether to skip the shouldRespond logic based on room type and message source.
- * Supports both default values and runtime-configurable overrides via env settings.
+ * Determines whether the agent should respond to a message.
+ * Uses simple rules for obvious cases (DM, mentions, specific sources) and defers to LLM for ambiguous cases.
+ *
+ * @returns Object containing:
+ *  - shouldRespond: boolean - whether the agent should respond (only relevant if skipEvaluation is true)
+ *  - skipEvaluation: boolean - whether we can skip the LLM evaluation (decision made by simple rules)
+ *  - reason: string - explanation for debugging
  */
-export function shouldBypassShouldRespond(
+export function shouldRespond(
   runtime: IAgentRuntime,
+  message: Memory,
   room?: Room,
-  source?: string
-): boolean {
-  if (!room) return false;
+  mentionContext?: MentionContext
+): { shouldRespond: boolean; skipEvaluation: boolean; reason: string } {
+  if (!room) {
+    return { shouldRespond: false, skipEvaluation: true, reason: 'no room context' };
+  }
 
   function normalizeEnvList(value: unknown): string[] {
     if (!value || typeof value !== 'string') return [];
-
     const cleaned = value.trim().replace(/^\[|\]$/g, '');
     return cleaned
       .split(',')
@@ -318,34 +318,62 @@ export function shouldBypassShouldRespond(
       .filter(Boolean);
   }
 
-  const defaultBypassTypes = [
+  // Channel types that always trigger a response (private channels)
+  const alwaysRespondChannels = [
     ChannelType.DM,
     ChannelType.VOICE_DM,
     ChannelType.SELF,
     ChannelType.API,
   ];
 
-  const defaultBypassSources = ['client_chat'];
+  // Sources that always trigger a response
+  const alwaysRespondSources = ['client_chat'];
 
-  const bypassTypesSetting = normalizeEnvList(runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES'));
-  const bypassSourcesSetting = normalizeEnvList(
+  // Support runtime-configurable overrides via env settings
+  // Accepts both new and legacy setting names for backwards compatibility
+  const customChannels = normalizeEnvList(
+    runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
+    runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+  );
+  const customSources = normalizeEnvList(
+    runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
     runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
   );
 
-  const bypassTypes = new Set(
-    [...defaultBypassTypes.map((t) => t.toString()), ...bypassTypesSetting].map((s: string) =>
+  const respondChannels = new Set(
+    [...alwaysRespondChannels.map((t) => t.toString()), ...customChannels].map((s: string) =>
       s.trim().toLowerCase()
     )
   );
 
-  const bypassSources = [...defaultBypassSources, ...bypassSourcesSetting].map((s: string) =>
+  const respondSources = [...alwaysRespondSources, ...customSources].map((s: string) =>
     s.trim().toLowerCase()
   );
 
   const roomType = room.type?.toString().toLowerCase();
-  const sourceStr = source?.toLowerCase() || '';
+  const sourceStr = message.content.source?.toLowerCase() || '';
 
-  return bypassTypes.has(roomType) || bypassSources.some((pattern) => sourceStr.includes(pattern));
+  // 1. DM/VOICE_DM/API channels: always respond (private channels)
+  if (respondChannels.has(roomType)) {
+    return { shouldRespond: true, skipEvaluation: true, reason: `private channel: ${roomType}` };
+  }
+
+  // 2. Specific sources (e.g., client_chat): always respond
+  if (respondSources.some((pattern) => sourceStr.includes(pattern))) {
+    return { shouldRespond: true, skipEvaluation: true, reason: `whitelisted source: ${sourceStr}` };
+  }
+
+  // 3. Platform mentions and replies: always respond
+  // This is the key feature from mentionContext - platform-detected mentions/replies
+  const hasPlatformMention = !!(mentionContext?.isMention || mentionContext?.isReply);
+  if (hasPlatformMention) {
+    const mentionType = mentionContext?.isMention ? 'mention' : 'reply';
+    return { shouldRespond: true, skipEvaluation: true, reason: `platform ${mentionType}` };
+  }
+
+  // 4. All other cases: let the LLM decide
+  // The LLM will handle: text-based name detection, indirect questions, conversation context, etc.
+  return { shouldRespond: false, skipEvaluation: false, reason: 'needs LLM evaluation' };
 }
 
 /**
@@ -519,18 +547,15 @@ const messageReceivedHandler = async ({
 
         let state = await runtime.composeState(
           message,
-          ['ANXIETY', 'SHOULD_RESPOND', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
+          ['ANXIETY', 'ENTITIES', 'CHARACTER', 'RECENT_MESSAGES', 'ACTIONS'],
           true
         );
 
-        // Skip shouldRespond check for DM and VOICE_DM channels
+        // Get mentionContext for intelligent response decision
+        const mentionContext = message.content.mentionContext;
         const room = await runtime.getRoom(message.roomId);
-        const shouldSkipShouldRespond = shouldBypassShouldRespond(
-          runtime,
-          room ?? undefined,
-          message.content.source
-        );
 
+        // Process attachments before deciding to respond
         if (message.content.attachments && message.content.attachments.length > 0) {
           message.content.attachments = await processAttachments(
             message.content.attachments,
@@ -541,17 +566,35 @@ const messageReceivedHandler = async ({
           }
         }
 
-        let shouldRespond = true;
+        // Determine if we should respond using smart detection
+        const responseDecision = shouldRespond(
+          runtime,
+          message,
+          room ?? undefined,
+          mentionContext
+        );
 
-        // Handle shouldRespond
-        if (!shouldSkipShouldRespond) {
+        runtime.logger.debug(
+          `[Bootstrap] Response decision: ${JSON.stringify(responseDecision)}`
+        );
+
+        let shouldRespondToMessage = true;
+
+        // If we can skip the evaluation, use the decision directly
+        if (responseDecision.skipEvaluation) {
+          runtime.logger.debug(
+            `[Bootstrap] Skipping evaluation for ${runtime.character.name} (${responseDecision.reason})`
+          );
+          shouldRespondToMessage = responseDecision.shouldRespond;
+        } else {
+          // Need LLM evaluation for ambiguous case
           const shouldRespondPrompt = composePromptFromState({
             state,
             template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
           });
 
           runtime.logger.debug(
-            `[Bootstrap] Evaluating response for ${runtime.character.name}\nPrompt: ${shouldRespondPrompt}`
+            `[Bootstrap] Using LLM evaluation for ${runtime.character.name} (${responseDecision.reason})`
           );
 
           const response = await runtime.useModel(ModelType.TEXT_SMALL, {
@@ -559,37 +602,27 @@ const messageReceivedHandler = async ({
           });
 
           runtime.logger.debug(
-            `[Bootstrap] Response evaluation for ${runtime.character.name}:\n${response}`
+            `[Bootstrap] LLM evaluation result:\n${response}`
           );
-          runtime.logger.debug(`[Bootstrap] Response type: ${typeof response}`);
-
-          // Try to preprocess response by removing code blocks markers if present
-          // let processedResponse = response.replace('```json', '').replaceAll('```', '').trim(); // No longer needed for XML
 
           const responseObject = parseKeyValueXml(response);
-          runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed response:');
+          runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed evaluation result:');
 
           // If an action is provided, the agent intends to respond in some way
           // Only exclude explicit non-response actions
           const nonResponseActions = ['IGNORE', 'NONE'];
-          shouldRespond =
+          shouldRespondToMessage =
             responseObject?.action &&
             !nonResponseActions.includes(responseObject.action.toUpperCase());
-        } else {
-          runtime.logger.debug(
-            `[Bootstrap] Skipping shouldRespond check for ${runtime.character.name} because ${room?.type} ${room?.source}`
-          );
-          shouldRespond = true;
         }
-
-        // I don't think we need these right now
-        //runtime.logger.debug('shouldRespond is', shouldRespond);
-        //runtime.logger.debug('shouldSkipShouldRespond', shouldSkipShouldRespond);
 
         let responseContent: Content | null = null;
         let responseMessages: Memory[] = [];
 
-        if (shouldRespond) {
+        // helpful for swarms
+        const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+        
+        if (shouldRespondToMessage) {
           const result = useMultiStep
             ? await runMultiStepCore({ runtime, message, state, callback })
             : await runSingleShotCore({ runtime, message, state });
@@ -600,7 +633,7 @@ const messageReceivedHandler = async ({
 
           // Race check before we send anything
           const currentResponseId = agentResponses.get(message.roomId);
-          if (currentResponseId !== responseId) {
+          if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
             );
@@ -649,8 +682,6 @@ const messageReceivedHandler = async ({
 
           // Check if we still have the latest response ID
           const currentResponseId = agentResponses.get(message.roomId);
-          // helpful for swarms
-          const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
           if (currentResponseId !== responseId && !keepResp) {
             runtime.logger.info(
               `Ignore response discarded - newer message being processed for agent: ${runtime.agentId}, room: ${message.roomId}`
@@ -732,7 +763,7 @@ const messageReceivedHandler = async ({
         await runtime.evaluate(
           message,
           state,
-          shouldRespond,
+          shouldRespondToMessage,
           async (content) => {
             runtime.logger.debug({ content }, 'evaluate callback');
             if (responseContent) {
@@ -776,7 +807,7 @@ const messageReceivedHandler = async ({
 
         // get available actions
         const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
-          (a) => a.name
+          (a: Action) => a.name
         ) || [-1];
 
         // generate data of interest
@@ -850,7 +881,7 @@ type StrategyResult = {
   mode: StrategyMode;
 };
 
-async function runSingleShotCore({ runtime, message, state }): Promise<StrategyResult> {
+async function runSingleShotCore({ runtime, message, state }: { runtime: IAgentRuntime, message: Memory, state: State }): Promise<StrategyResult> {
   state = await runtime.composeState(message, ['ACTIONS']);
 
   if (!state.values?.actionNames) {
@@ -965,9 +996,9 @@ async function runSingleShotCore({ runtime, message, state }): Promise<StrategyR
   };
 }
 
-async function runMultiStepCore({ runtime, message, state, callback }): Promise<StrategyResult> {
+async function runMultiStepCore({ runtime, message, state, callback }: { runtime: IAgentRuntime, message: Memory, state: State, callback?: HandlerCallback }): Promise<StrategyResult> {
   const traceActionResult: MultiStepActionResult[] = [];
-  let accumulatedState: MultiStepState = state;
+  let accumulatedState: State = state;
   const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
   let iterationCount = 0;
 
@@ -1048,7 +1079,7 @@ async function runMultiStepCore({ runtime, message, state, callback }): Promise<
           data: { actionName: providerName },
           success,
           text: success ? providerResult.text : undefined,
-          error: success ? undefined : providerResult?.error,
+          error: success ? undefined : providerResult?.text,
         });
         if (callback) {
           await callback({
@@ -1438,7 +1469,7 @@ const postGeneratedHandler = async ({
   // }
 
   // have we posted it before?
-  const RM = state.providerData?.find((pd) => pd.providerName === 'RECENT_MESSAGES');
+  const RM = state.data?.providers?.RECENT_MESSAGES;
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
@@ -2002,7 +2033,6 @@ export const bootstrapPlugin: Plugin = {
   providers: [
     providers.evaluatorsProvider,
     providers.anxietyProvider,
-    providers.shouldRespondProvider,
     providers.timeProvider,
     providers.entitiesProvider,
     providers.relationshipsProvider,
