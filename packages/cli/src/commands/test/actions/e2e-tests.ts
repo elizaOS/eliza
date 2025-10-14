@@ -1,5 +1,5 @@
 import { loadProject, type Project } from '@/src/project';
-import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
+import { buildProject, TestRunner, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
@@ -146,18 +146,12 @@ export async function runE2eTests(
       server.jsonToCharacter = jsonToCharacter;
       logger.info('Server properties set up');
 
-      const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-      const serverHost = process.env.SERVER_HOST || '0.0.0.0';
-      const serverPort = await findNextAvailablePort(desiredPort, serverHost);
-
-      if (serverPort !== desiredPort) {
-        logger.warn(`Port ${desiredPort} is in use for testing, using port ${serverPort} instead.`);
-      }
-
       logger.info('Starting server...');
       try {
-        await server.start(serverPort);
-        logger.info({ serverPort }, 'Server started successfully on port');
+        // Server will auto-discover available port (don't pass port for auto-discovery)
+        // If options.port is provided, pass it (will fail if not available - strict mode)
+        await server.start(options.port ? { port: options.port } : undefined);
+        logger.info('Server started successfully');
       } catch (error) {
         logger.error({ error }, 'Error starting server:');
         if (error instanceof Error) {

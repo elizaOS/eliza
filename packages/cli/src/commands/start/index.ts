@@ -3,7 +3,6 @@ import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { validatePort } from '@/src/utils/port-validation';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
 import { Command } from 'commander';
@@ -17,7 +16,7 @@ export const start = new Command()
   .name('start')
   .description('Build and start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
-  .option('-p, --port <port>', 'Port to listen on', validatePort)
+  .option('-p, --port <port>', 'Port to listen on', parseInt)
   .option('--character <paths...>', 'Character file(s) to use')
   .hook('preAction', async () => {
     await displayBanner();

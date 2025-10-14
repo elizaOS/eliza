@@ -1,5 +1,4 @@
 import { handleError } from '@/src/utils';
-import { validatePort } from '@/src/utils/port-validation';
 import { logger } from '@elizaos/core';
 import { Command, Option } from 'commander';
 import { runAllTests } from './actions/run-all-tests';
@@ -18,7 +17,7 @@ export const test = new Command()
       .choices(['component', 'e2e', 'all'])
       .default('all')
   )
-  .option('--port <port>', 'The port to run e2e tests on', validatePort)
+  .option('--port <port>', 'The port to run e2e tests on', parseInt)
   .option('--name <name>', 'Filter tests by name')
   .option('--skip-build', 'Skip building before running tests')
   .option('--skip-type-check', 'Skip TypeScript validation before running tests')

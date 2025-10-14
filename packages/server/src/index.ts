@@ -121,7 +121,7 @@ export interface ServerConfig {
   dataDir?: string;
   postgresUrl?: string;
   clientPath?: string;
-  port?: number;
+  port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
 
   // Agent configuration (runtime, not infrastructure)
   agents?: Array<{
@@ -163,6 +163,7 @@ export class AgentServer {
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
   private clientPath?: string; // Optional path to client dist files
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
+  public port?: number; // The actual port the server is listening on
 
   public database!: DatabaseAdapter;
 
@@ -1254,7 +1255,7 @@ export class AgentServer {
 
     // Step 2: Start HTTP server (skip in test mode)
     if (!config?.isTestMode) {
-      const port = this.resolvePort(config?.port);
+      const port = await this.resolveAndFindPort(config?.port);
       await this.startHttpServer(port);
     }
 
@@ -1266,27 +1267,88 @@ export class AgentServer {
   }
 
   /**
-   * Resolves the port to use for the server.
-   * Priority: 1. Provided port, 2. SERVER_PORT env, 3. Default 3000
+   * Resolves and finds an available port.
+   * - If port is provided (number): validates and returns it (strict - fails if unavailable)
+   * - If port is undefined: finds next available port starting from env/default (auto-discovery)
    */
-  private resolvePort(port?: number): number {
+  private async resolveAndFindPort(port?: number): Promise<number> {
+    // Explicit port number: validate and fail if unavailable (strict mode)
     if (port !== undefined) {
       if (typeof port !== 'number' || port < 1 || port > 65535) {
-        throw new Error(`Invalid port number: ${port}`);
+        throw new Error(`Invalid port number: ${port}. Must be between 1 and 65535.`);
       }
+      // Don't auto-discover, fail if port is taken
       return port;
     }
+
+    // undefined: resolve from env/default, then find available (auto-discovery mode)
+    let requestedPort = 3000;
 
     const envPort = process.env.SERVER_PORT;
     if (envPort) {
       const parsed = parseInt(envPort, 10);
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 65535) {
-        return parsed;
+        requestedPort = parsed;
+      } else {
+        logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
       }
-      logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
     }
 
-    return 3000;
+    // Find next available port starting from requestedPort
+    return await this.findAvailablePort(requestedPort);
+  }
+
+  /**
+   * Finds an available port starting from the requested port.
+   * Tries incrementing ports up to maxAttempts.
+   */
+  private async findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const port = startPort + attempt;
+
+      if (port > 65535) {
+        throw new Error(
+          `Could not find available port (exceeded max port 65535, tried up to ${port - 1})`
+        );
+      }
+
+      if (await this.isPortAvailable(port)) {
+        if (attempt > 0) {
+          logger.info(`Port ${startPort} is in use, using port ${port} instead`);
+        }
+        return port;
+      }
+    }
+
+    throw new Error(
+      `Could not find available port after ${maxAttempts} attempts starting from ${startPort}`
+    );
+  }
+
+  /**
+   * Checks if a port is available by attempting to bind to it.
+   */
+  private async isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const net = require('net');
+      const server = net.createServer();
+
+      server.once('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(false);
+        } else {
+          // Other errors also mean the port is not available
+          resolve(false);
+        }
+      });
+
+      server.once('listening', () => {
+        server.close();
+        resolve(true);
+      });
+
+      server.listen(port);
+    });
   }
 
   /**

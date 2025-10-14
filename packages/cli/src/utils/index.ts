@@ -16,7 +16,6 @@ export * from './load-plugin';
 export * from './local-cli-delegation';
 export * from './package-manager';
 export * from './plugin-context';
-export * from './port-handling';
 export * from './publisher';
 export * from './resolve-import';
 export * from './resolve-utils';

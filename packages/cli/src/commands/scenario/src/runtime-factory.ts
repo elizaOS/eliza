@@ -108,8 +108,7 @@ export async function createScenarioServer(
         }
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
-        await server.initialize({ dataDir: uniqueDataDir });
-        await server.start(port);
+        await server.start({ port, dataDir: uniqueDataDir });
         createdServer = true;
 
         // Set SERVER_PORT environment variable so MessageBusService uses the correct URL
@@ -194,7 +193,7 @@ export async function createScenarioAgent(
   };
 
   // Pass raw character; encryption and secrets are handled inside startAgents
-  const [runtime] = await server.startAgents([character]);
+  const [runtime] = await server.startAgents([{ character }]);
   if (!runtime) {
     throw new Error(`Failed to start agent: ${character.name}`);
   }
