@@ -35,6 +35,17 @@ export const ModelType = {
 } as const;
 
 /**
+ * Union type of all text generation model types.
+ * These models accept GenerateTextParams
+ */
+export type TextGenerationModelType =
+  | typeof ModelType.TEXT_SMALL
+  | typeof ModelType.TEXT_LARGE
+  | typeof ModelType.TEXT_REASONING_SMALL
+  | typeof ModelType.TEXT_REASONING_LARGE
+  | typeof ModelType.TEXT_COMPLETION;
+
+/**
  * Model configuration setting keys used in character settings.
  * These constants define the keys for accessing model parameters
  * from character configuration with support for per-model-type settings.
@@ -113,6 +124,29 @@ export type GenerateTextParams = {
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
 };
+
+/**
+ * Options for the simplified generateText API.
+ * Extends GenerateTextParams with additional configuration for character context.
+ */
+export interface GenerateTextOptions extends Omit<GenerateTextParams, 'prompt'> {
+  /**
+   * Whether to include character personality in the prompt.
+   */
+  includeCharacter?: boolean;
+  /**
+   * The model type to use for text generation.
+   */
+  modelType?: TextGenerationModelType;
+}
+
+/**
+ * Structured response from text generation.
+ */
+export interface GenerateTextResult {
+  /** The generated text response from the model */
+  text: string;
+}
 
 /**
  * Parameters for text tokenization models

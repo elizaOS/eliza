@@ -6,7 +6,13 @@ import type { Entity, Room, World, ChannelType } from './environment';
 import type { Logger } from '../logger';
 import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
-import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
+import type {
+  ModelParamsMap,
+  ModelResultMap,
+  ModelTypeName,
+  GenerateTextOptions,
+  GenerateTextResult,
+} from './model';
 import type { Plugin, PluginEvents, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
@@ -132,6 +138,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     params: Omit<ModelParamsMap[T], 'runtime'> | any,
     provider?: string
   ): Promise<R>;
+
+  generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult>;
 
   registerModel(
     modelType: ModelTypeName | string,

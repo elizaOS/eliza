@@ -54,6 +54,9 @@ import {
   type Component,
   IAgentRuntime,
   type ActionResult,
+  type GenerateTextParams,
+  type GenerateTextOptions,
+  type GenerateTextResult,
 } from './types';
 
 import { BM25 } from './search';
@@ -2140,6 +2143,64 @@ export class AgentRuntime implements IAgentRuntime {
     } catch (error: any) {
       throw error;
     }
+  }
+
+  /**
+   * Simplified text generation with optional character context.
+   */
+  async generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult> {
+    if (!input?.trim()) {
+      throw new Error('Input cannot be empty');
+    }
+
+    // Set defaults
+    const includeCharacter = options?.includeCharacter ?? true;
+    const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
+
+    let prompt = input;
+
+    // Add character context if requested
+    if (includeCharacter && this.character) {
+      const c = this.character;
+      const parts: string[] = [];
+
+      // Add bio
+      const bioText = Array.isArray(c.bio) ? c.bio.join(' ') : c.bio;
+      if (bioText) {
+        parts.push(`# About ${c.name}\n${bioText}`);
+      }
+
+      // Add system prompt
+      if (c.system) {
+        parts.push(c.system);
+      }
+
+      // Add style directives (all + chat)
+      const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
+      if (styles.length > 0) {
+        parts.push(`Style:\n${styles.map((s) => `- ${s}`).join('\n')}`);
+      }
+
+      // Combine character context with input
+      if (parts.length > 0) {
+        prompt = `${parts.join('\n\n')}\n\n${input}`;
+      }
+    }
+
+    const params: GenerateTextParams = {
+      prompt,
+      maxTokens: options?.maxTokens,
+      temperature: options?.temperature,
+      frequencyPenalty: options?.frequencyPenalty,
+      presencePenalty: options?.presencePenalty,
+      stopSequences: options?.stopSequences,
+    };
+
+    const response = await this.useModel(modelType, params);
+
+    return {
+      text: response as string,
+    };
   }
 
   registerEvent(event: string, handler: (params: any) => Promise<void>) {
