@@ -258,7 +258,7 @@ export function createAgentCrudRouter(
 
             // Restart the agent with new configuration
             const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
-            const runtimes = await serverInstance?.startAgents([characterData as Character]);
+            const runtimes = await serverInstance?.startAgents([{ character: characterData as Character }]);
             if (!runtimes || runtimes.length === 0) {
               throw new Error('Failed to restart agent after configuration change');
             }
@@ -272,7 +272,7 @@ export function createAgentCrudRouter(
             // Try to restore the agent with the previous configuration
             try {
               const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent!;
-              await serverInstance?.startAgents([previousCharacterData as Character]);
+              await serverInstance?.startAgents([{ character: previousCharacterData as Character }]);
               logger.warn(`[AGENT UPDATE] Restored agent ${agentId} to previous state`);
             } catch (restoreError) {
               logger.error(

@@ -141,36 +141,7 @@ export const start = new Command()
         }
       }
 
-      // Use AgentServer from server package
-      const server = new AgentServer();
-
-      // Initialize server with database configuration
-      await server.initialize({
-        dataDir: process.env.PGLITE_DATA_DIR,
-        postgresUrl: process.env.POSTGRES_URL,
-      });
-
-      // Start HTTP server with robust port resolution
-      let port: number;
-      if (options.port !== undefined) {
-        // Already validated by Commander using validatePort
-        port = options.port;
-      } else {
-        const envPort = process.env.SERVER_PORT;
-        if (envPort) {
-          try {
-            port = validatePort(envPort);
-          } catch {
-            logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
-            port = 3000;
-          }
-        } else {
-          port = 3000;
-        }
-      }
-      await server.start(port);
-
-      // Start all agents
+      // Prepare agent configurations (unified handling)
       const agentConfigs = projectAgents?.length
         ? projectAgents.map((pa) => ({
             character: pa.character,
@@ -179,11 +150,17 @@ export const start = new Command()
           }))
         : characters?.map((character) => ({ character })) || [];
 
-      if (agentConfigs.length > 0) {
-        const runtimes = await server.startAgents(agentConfigs);
-        logger.info(`Started ${runtimes.length} agents`);
-      }
-      // If no characters or agents specified, server is ready but no agents started
+      // Use AgentServer with unified startup
+      const server = new AgentServer();
+      await server.start({
+        port: options.port,
+        dataDir: process.env.PGLITE_DATA_DIR,
+        postgresUrl: process.env.POSTGRES_URL,
+        agents: agentConfigs,
+      });
+
+      // Server handles initialization, port resolution, and agent startup automatically
+      logger.success(`Server started with ${agentConfigs.length} agents`)
     } catch (e: any) {
       handleError(e);
       process.exit(1);

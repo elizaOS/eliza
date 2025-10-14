@@ -22,19 +22,17 @@ describe('Agent-Server Interaction Integration Tests', () => {
       `test-db-agent-server-${Date.now()}-${Math.random().toString(36).substring(7)}`
     );
 
-    // Create and initialize agent server
+    // Create and start agent server
     agentServer = new AgentServer();
-    await agentServer.initialize({
-      dataDir: testDbPath,
-    });
-
-    // Start the HTTP server
     serverPort = 5000 + Math.floor(Math.random() * 1000);
 
     // Set SERVER_PORT before starting so MessageBusService can connect
     process.env.SERVER_PORT = serverPort.toString();
 
-    await agentServer.start(serverPort);
+    await agentServer.start({
+      dataDir: testDbPath,
+      port: serverPort,
+    });
     console.log(`Test server started on port ${serverPort}`);
 
     // Wait for server to be fully ready and accepting connections
@@ -516,12 +514,11 @@ describe('Agent-Server Interaction Integration Tests', () => {
       );
 
       const isolatedServer = new AgentServer();
-      await isolatedServer.initialize({
-        dataDir: testDbPath,
-      });
-
       const testPort = 6000 + Math.floor(Math.random() * 1000);
-      await isolatedServer.start(testPort);
+      await isolatedServer.start({
+        dataDir: testDbPath,
+        port: testPort,
+      });
 
       try {
         // Create a new agent specifically for unregistration

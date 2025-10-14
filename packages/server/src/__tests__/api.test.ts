@@ -111,7 +111,7 @@ describe('API Server Functionality', () => {
     jest.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
-    await server.initialize();
+    await server.start({ isTestMode: true });
     app = server.app;
   });
 

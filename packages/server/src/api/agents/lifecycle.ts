@@ -44,7 +44,7 @@ export function createAgentLifecycleRouter(
       }
 
       // Use batch method even for single agent
-      await serverInstance?.startAgents([agent]);
+      await serverInstance?.startAgents([{ character: agent }]);
 
       const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {

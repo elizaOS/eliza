@@ -35,15 +35,14 @@ describe('Database Operations Integration Tests', () => {
     agentServer = new AgentServer();
 
     try {
-      await agentServer.initialize({
-        dataDir: testDbPath,
-      });
-
-      // Actually start the HTTP server to prevent MessageBusService errors
+      // Start the HTTP server to prevent MessageBusService errors
       serverPort = 3000 + Math.floor(Math.random() * 1000); // Random port to avoid conflicts
       process.env.SERVER_PORT = serverPort.toString();
 
-      await agentServer.start(serverPort);
+      await agentServer.start({
+        dataDir: testDbPath,
+        port: serverPort,
+      });
       isServerStarted = true;
 
       console.log(`Test server started on port ${serverPort}`);
