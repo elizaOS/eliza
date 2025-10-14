@@ -57,13 +57,8 @@ export const DetailsViewHeader = ({
             aria-label={copyButton.isEnabled ? 'Copy span details' : 'Copy disabled'}
             variant="ghost"
             onClick={handleCopy}
-          >
-            {hasCopied ? (
-              <Check className="size-3 text-muted-foreground" />
-            ) : (
-              <Copy className="size-3 text-muted-foreground" />
-            )}
-          </IconButton>
+            icon={hasCopied ? Check : Copy}
+          />
         )}
       </div>
 

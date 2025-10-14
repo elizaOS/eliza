@@ -173,8 +173,7 @@ const CopyButton = ({ section, content }: CopyButtonProps) => {
       aria-label={isCopied ? `${section} Data Copied` : `Copy ${section} Data`}
       variant="ghost"
       className="absolute right-1.5 top-1.5"
-    >
-      {isCopied ? <Check className="size-3" /> : <Copy className="size-3" />}
-    </IconButton>
+      icon={isCopied ? Check : Copy}
+    />
   );
 };

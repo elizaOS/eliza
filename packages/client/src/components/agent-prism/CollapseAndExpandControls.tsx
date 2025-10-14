@@ -14,16 +14,12 @@ export type SpanCardCollapseAllButtonProps = ComponentPropsWithRef<'button'> & {
 
 export const ExpandAllButton = ({ onExpandAll, ...rest }: SpanCardExpandAllButtonProps) => {
   return (
-    <IconButton size="7" onClick={onExpandAll} aria-label="Expand all" {...rest}>
-      <ChevronsUpDown className="size-3.5" />
-    </IconButton>
+    <IconButton size="7" onClick={onExpandAll} aria-label="Expand all" icon={ChevronsUpDown} {...rest} />
   );
 };
 
 export const CollapseAllButton = ({ onCollapseAll, ...rest }: SpanCardCollapseAllButtonProps) => {
   return (
-    <IconButton size="7" onClick={onCollapseAll} aria-label="Collapse all" {...rest}>
-      <ChevronsDownUp className="size-3.5" />
-    </IconButton>
+    <IconButton size="7" onClick={onCollapseAll} aria-label="Collapse all" icon={ChevronsDownUp} {...rest} />
   );
 };

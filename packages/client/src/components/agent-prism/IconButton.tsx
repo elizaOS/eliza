@@ -1,4 +1,4 @@
-import type { ComponentPropsWithRef } from 'react';
+import type { ComponentPropsWithRef, ElementType } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -23,6 +23,11 @@ export type IconButtonProps = ComponentPropsWithRef<'button'> & {
    * Required for accessibility compliance
    */
   'aria-label': string;
+
+  /**
+   * The icon to display
+   */
+  icon: ElementType;
 };
 
 const sizeClasses: Record<IconButtonSize, string> = {
@@ -36,19 +41,29 @@ const sizeClasses: Record<IconButtonSize, string> = {
   '16': 'h-16 min-h-16',
 };
 
+const iconSizeClasses: Record<IconButtonSize, number> = {
+  '6': 16,
+  '7': 18,
+  '8': 20,
+  '9': 22,
+  '10': 24,
+  '11': 28,
+  '12': 32,
+  '16': 48,
+};
+
 const variantClasses: Record<IconButtonVariant, string> = {
   default: 'border border-border bg-transparent ',
   ghost: 'bg-transparent',
 };
 
-// TODO: Remake to call Icon component directly instead of passing children
 export const IconButton = ({
-  children,
   className,
   size = '6',
   variant = 'default',
   type = 'button',
   'aria-label': ariaLabel,
+  icon: Icon,
   ...rest
 }: IconButtonProps) => {
   return (
@@ -66,7 +81,7 @@ export const IconButton = ({
       )}
       {...rest}
     >
-      {children}
+      <Icon size={iconSizeClasses[size]} />
     </button>
   );
 };
