@@ -16,6 +16,7 @@ import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
+import net from 'node:net';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
@@ -26,6 +27,7 @@ import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+
 
 import internalMessageBus from './bus.js';
 import type {
@@ -163,7 +165,6 @@ export class AgentServer {
   private isWebUIEnabled: boolean = true; // Default to enabled until initialized
   private clientPath?: string; // Optional path to client dist files
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
-  public port?: number; // The actual port the server is listening on
 
   public database!: DatabaseAdapter;
 
@@ -1330,7 +1331,6 @@ export class AgentServer {
    */
   private async isPortAvailable(port: number): Promise<boolean> {
     return new Promise((resolve) => {
-      const net = require('net');
       const server = net.createServer();
 
       server.once('error', (err: any) => {

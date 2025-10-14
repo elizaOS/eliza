@@ -81,11 +81,6 @@ async function validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidatio
       continue;
     }
 
-    // Note: Actual plugin loading and validation is handled by ElizaOS/AgentServer
-    // Here we just do basic validation of the plugin reference
-    // The plugin will be loaded and resolved when the agent is created
-    result.plugins.push(plugin);
-
     // Validate version if provided
     if (plugin.version && !isValidVersion(plugin.version)) {
       result.errors.push(`Invalid version '${plugin.version}' for plugin '${plugin.name}'`);
@@ -99,6 +94,8 @@ async function validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidatio
       result.valid = false;
       continue;
     }
+
+    result.plugins.push(plugin);
   }
 
   return result;

@@ -5,7 +5,7 @@ import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger, type Character, type ProjectAgent } from '@elizaos/core';
 import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
-import { Command } from 'commander';
+import { Command, InvalidOptionArgumentError } from 'commander';
 import dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -16,7 +16,13 @@ export const start = new Command()
   .name('start')
   .description('Build and start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
-  .option('-p, --port <port>', 'Port to listen on', parseInt)
+  .option('-p, --port <port>', 'Port to listen on', (value: string) => {
+    const n = Number.parseInt(value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new InvalidOptionArgumentError('Port must be an integer between 1 and 65535');
+    }
+    return n;
+  })
   .option('--character <paths...>', 'Character file(s) to use')
   .hook('preAction', async () => {
     await displayBanner();
