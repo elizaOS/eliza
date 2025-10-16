@@ -1,6 +1,6 @@
 # ElizaOS Deploy Command
 
-Deploy ElizaOS projects to Cloudflare Containers with a single command.
+Deploy ElizaOS projects to AWS ECS (Elastic Container Service) with a single command.
 
 ## Usage
 
@@ -15,7 +15,13 @@ elizaos deploy [options]
    export ELIZAOS_API_KEY="your-api-key-here"
    ```
 
-2. **Deploy**:
+2. **Ensure Docker is running**:
+   ```bash
+   docker --version
+   docker info
+   ```
+
+3. **Deploy**:
    ```bash
    cd your-elizaos-project
    elizaos deploy
@@ -27,12 +33,14 @@ elizaos deploy [options]
 |--------|-------------|---------|
 | `-n, --name <name>` | Deployment name | Package name |
 | `-p, --port <port>` | Container port | 3000 |
-| `-m, --max-instances <count>` | Max instances | 1 |
+| `--desired-count <count>` | Number of container instances | 1 |
+| `--cpu <units>` | CPU units (256 = 0.25 vCPU) | 256 |
+| `--memory <mb>` | Memory in MB | 512 |
 | `-k, --api-key <key>` | API key | $ELIZAOS_API_KEY |
 | `-u, --api-url <url>` | API URL | https://elizacloud.ai |
 | `-e, --env <KEY=VALUE>` | Environment variable | - |
-| `--skip-artifact` | Skip artifact creation | false |
-| `--artifact-path <path>` | Use existing artifact | - |
+| `--skip-build` | Skip Docker build | false |
+| `--image-uri <uri>` | Use existing ECR image | - |
 
 ## Examples
 
@@ -46,7 +54,9 @@ elizaos deploy
 elizaos deploy \
   --name my-agent \
   --port 8080 \
-  --max-instances 3
+  --desired-count 2 \
+  --cpu 512 \
+  --memory 1024
 ```
 
 ### With environment variables
@@ -56,70 +66,192 @@ elizaos deploy \
   --env "DATABASE_URL=postgresql://..."
 ```
 
-### Using existing artifact
+### Using existing Docker image
 ```bash
 elizaos deploy \
-  --skip-artifact \
-  --artifact-path ./path/to/artifact.tar.gz
+  --skip-build \
+  --image-uri 123456789.dkr.ecr.us-east-1.amazonaws.com/my-project:v1.0.0
 ```
 
 ## How It Works
 
-1. **Validates environment** - Checks API credentials and project structure
-2. **Creates artifact** - Bundles your project into a tar.gz archive
-3. **Uploads to R2** - Sends artifact to Cloudflare R2 storage
-4. **Deploys to Cloudflare** - Creates Worker with bootstrapper container
-5. **Monitors deployment** - Polls status until running
+The deployment process follows these steps:
+
+1. **Validates environment** - Checks API credentials, project structure, and Docker availability
+2. **Builds Docker image** - Creates a containerized version of your project
+3. **Requests ECR credentials** - Gets authentication token and repository from ElizaOS Cloud
+4. **Pushes to ECR** - Uploads Docker image to AWS Elastic Container Registry
+5. **Deploys to ECS** - Creates and runs container on AWS ECS Fargate
+6. **Monitors deployment** - Polls status until container is running
+7. **Returns URL** - Provides load balancer URL for accessing your deployed agent
+
+## Architecture
+
+### Docker-Based Deployment
+
+```
+┌─────────────────┐
+│ Local Project   │
+└────────┬────────┘
+         │
+         ├─── elizaos deploy
+         │
+         ▼
+┌─────────────────┐
+│ Docker Build    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Push to ECR     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Deploy to ECS   │
+│ (Fargate)       │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Load Balancer   │
+│ Public URL      │
+└─────────────────┘
+```
+
+### Benefits
+
+- **Standard Docker workflow** - Use familiar Docker commands and Dockerfiles
+- **No artifact size limits** - ECR supports large images
+- **Auto-scaling** - ECS can scale containers based on demand
+- **Load balancing** - Automatic traffic distribution
+- **Health checks** - Built-in container health monitoring
+- **Log aggregation** - Centralized logging with CloudWatch
 
 ## Requirements
 
 - ElizaOS Cloud API key
 - Valid ElizaOS project with package.json
+- Docker installed and running
 - Network access to ElizaOS Cloud API
+
+## Dockerfile Customization
+
+The CLI will create a default Dockerfile if one doesn't exist. You can customize it:
+
+```dockerfile
+# Use Bun base image
+FROM oven/bun:1.2-slim AS base
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl ca-certificates
+
+# Copy and install dependencies
+COPY package.json bun.lockb* ./
+RUN bun install --frozen-lockfile
+
+# Copy application code
+COPY . .
+
+# Build if needed
+RUN if [ -f "tsconfig.json" ]; then bun run build; fi
+
+# Set environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start application
+CMD ["bun", "run", "start"]
+```
 
 ## Troubleshooting
 
-### API key invalid
+### Docker not running
 ```bash
-# Get new key from dashboard
-https://elizacloud.ai/dashboard/api-keys
+# Check Docker status
+docker info
+
+# Start Docker Desktop (Mac/Windows)
+open -a Docker
+
+# Start Docker daemon (Linux)
+sudo systemctl start docker
 ```
 
-### Artifact creation fails
+### Build fails
 ```bash
 # Check project structure
 ls package.json
 
-# Verify all files are accessible
-git status
+# Verify Dockerfile syntax
+docker build . --dry-run
+
+# Check build logs
+docker build . --progress=plain
+```
+
+### Push fails
+```bash
+# Verify ECR credentials
+aws ecr get-login-password --region us-east-1
+
+# Check network connectivity
+ping elizacloud.ai
 ```
 
 ### Deployment timeout
-The deployment process may take several minutes. If it times out:
+The deployment process may take several minutes for:
+- First-time deployments (image pull + container start)
+- Large images (>1GB)
+- Cold starts
+
+If it times out:
 - Check your internet connection
 - Verify the ElizaOS Cloud API is accessible
-- Try deploying again (artifacts are cached)
+- Check container logs in the dashboard
+- Ensure health check endpoint is working
 
-## Architecture
+## Container Configuration
 
-The deploy command uses a **bootstrapper architecture**:
-1. Detects project type and configuration
-2. Creates compressed artifact (.tar.gz) of your project
-3. Uploads artifact to Cloudflare R2 storage
-4. Creates container deployment with artifact URL
-5. Bootstrapper container downloads and runs your project
-6. Monitors deployment progress
-7. Reports status and URLs
+### CPU and Memory Allocation
 
-### Benefits of Bootstrapper Architecture
-- **Faster deployments** - Small base image, no build in cloud
-- **Version control** - Each deployment creates a versioned artifact
-- **Easy rollbacks** - Deploy previous artifacts instantly
-- **Reduced costs** - Smaller image sizes and faster cold starts
+ECS Fargate supports specific CPU/memory combinations:
+
+| CPU (units) | vCPU | Memory (MB) |
+|------------|------|-------------|
+| 256 | 0.25 | 512, 1024, 2048 |
+| 512 | 0.5 | 1024-4096 (1GB increments) |
+| 1024 | 1 | 2048-8192 (1GB increments) |
+| 2048 | 2 | 4096-16384 (1GB increments) |
+| 4096 | 4 | 8192-30720 (1GB increments) |
+
+### Cost Estimation
+
+AWS Fargate pricing (us-east-1):
+- vCPU: ~$0.04048 per hour
+- Memory: ~$0.004445 per GB per hour
+
+Example monthly costs:
+- 0.25 vCPU + 512MB: ~$11/month (24/7)
+- 0.5 vCPU + 1GB: ~$19/month (24/7)
+- 1 vCPU + 2GB: ~$36/month (24/7)
+
+Plus:
+- ECR storage: ~$0.10/GB per month
+- Data transfer: Standard AWS rates
+- Load balancer: ~$16/month
 
 ## See Also
 
-- [Full Documentation](../../../../../eliza-cloud-v2/docs/DEPLOYMENT.md)
+- [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
+- [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
+- [Docker Documentation](https://docs.docker.com/)
 - [ElizaOS Cloud Dashboard](https://elizacloud.ai/dashboard/containers)
 - [API Documentation](https://elizacloud.ai/docs/api)
-
