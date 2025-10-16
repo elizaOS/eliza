@@ -6,10 +6,12 @@ import { v4 as uuidv4 } from 'uuid';
 const stringToUuid = (id: string): UUID => id as UUID;
 
 /**
- * Test suite to verify that agents are uniquely identified by UUID, not by name.
- * Multiple agents with the same name should be allowed as long as they have different UUIDs.
+ * Test suite to verify agent UUID identification behavior.
+ * - Agents are uniquely identified by UUID
+ * - Multiple agents with the same name are allowed when they have explicit different UUIDs
+ * - For backward compatibility, agents without explicit IDs get deterministic UUIDs from their names
  */
-describe('Agent UUID Independence from Name', () => {
+describe('Agent UUID Identification', () => {
   let mockAdapter: IDatabaseAdapter;
   let adapterReady = false;
   const agentStore = new Map<UUID, Agent>();
@@ -189,7 +191,7 @@ describe('Agent UUID Independence from Name', () => {
     expect(agent2?.name).toBe(sharedName);
   });
 
-  it('should generate different UUIDs for characters without IDs even with same name', async () => {
+  it('should generate deterministic UUIDs from character names for backward compatibility', async () => {
     const sharedName = 'TestAgent';
 
     // Simulate what happens when a character without ID is processed
@@ -203,7 +205,7 @@ describe('Agent UUID Independence from Name', () => {
       bio: ['Second agent'],
     };
 
-    // Create runtimes - constructor should generate UUIDs
+    // Create runtimes - constructor should generate deterministic UUIDs from name
     const runtime1 = new AgentRuntime({
       character: character1,
       adapter: mockAdapter,
@@ -214,18 +216,18 @@ describe('Agent UUID Independence from Name', () => {
       adapter: mockAdapter,
     });
 
-    // Verify different UUIDs were generated
-    expect(runtime1.agentId).not.toBe(runtime2.agentId);
+    // Verify same UUIDs were generated for same name (backward compatibility)
+    expect(runtime1.agentId).toBe(runtime2.agentId);
 
     await runtime1.initialize();
+
+    // Second runtime will update the existing agent since it has the same ID
     await runtime2.initialize();
 
-    // Verify both exist with different IDs
+    // Verify only one agent exists (same ID means same agent)
     const allAgents = await mockAdapter.getAgents();
-    expect(allAgents).toHaveLength(2);
-
-    const ids = allAgents.map((a) => a.id);
-    expect(ids[0]).not.toBe(ids[1]);
+    expect(allAgents).toHaveLength(1);
+    expect(allAgents[0].name).toBe(sharedName);
   });
 
   it('should use character ID if provided, ignoring name-based generation', async () => {

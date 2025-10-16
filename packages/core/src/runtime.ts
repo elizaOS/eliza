@@ -156,7 +156,10 @@ export class AgentRuntime implements IAgentRuntime {
     settings?: RuntimeSettings;
     allAvailablePlugins?: Plugin[];
   }) {
-    this.agentId = opts.character?.id ?? opts?.agentId ?? (uuidv4() as UUID);
+    // Generate deterministic UUID from character name for backward compatibility
+    // Falls back to random UUID only if no character name is provided
+    this.agentId =
+      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character as Character;
 
     this.initPromise = new Promise((resolve, reject) => {
