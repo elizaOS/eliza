@@ -233,6 +233,16 @@ describe('buildCharacterPlugins', () => {
   });
 
   describe('Error Handling', () => {
+    it('should trim and accept keys with surrounding whitespace', () => {
+      testEnv.OPENAI_API_KEY = '  valid-key  ';
+      testEnv.ANTHROPIC_API_KEY = '\tvalid-key\n';
+
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).toContain(PLUGINS.OPENAI);
+      expect(plugins).toContain(PLUGINS.ANTHROPIC);
+      expect(plugins).not.toContain(PLUGINS.OLLAMA);
+    });
+
     it('should handle whitespace-only environment variables', () => {
       testEnv.OPENAI_API_KEY = '   ';
       testEnv.ANTHROPIC_API_KEY = '\t\n';
