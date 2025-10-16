@@ -6,8 +6,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
-import { SOCKET_MESSAGE_TYPE, ChannelType, AgentRuntime } from '@elizaos/core';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
+import { SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -35,23 +34,23 @@ describe('Socket.IO End-to-End Message Flow', () => {
     // Create and initialize agent server
     agentServer = new AgentServer();
 
+    // Start server on a fixed port for testing FIRST
+    port = 3100;
+    process.env.SERVER_PORT = port.toString();
+
     try {
-      await agentServer.initialize({
+      await agentServer.start({
         dataDir: testDbPath,
+        port,
       });
     } catch (error) {
-      console.error('Failed to initialize agent server:', error);
+      console.error('Failed to start agent server:', error);
       // Clean up on failure
       if (fs.existsSync(testDbPath)) {
         fs.rmSync(testDbPath, { recursive: true, force: true });
       }
       throw error;
     }
-
-    // Start server on a fixed port for testing FIRST
-    port = 3100;
-    process.env.SERVER_PORT = port.toString();
-    await agentServer.start(port);
 
     // Create and register a real test agent AFTER server is running
     const testCharacter = {
@@ -68,7 +67,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     } as Character;
 
     // Use startAgents to properly create and initialize the agent
-    const [testAgent] = await agentServer.startAgents([testCharacter]);
+    const [testAgent] = await agentServer.startAgents([{ character: testCharacter }]);
     mockRuntime = testAgent;
 
     // Mock the agent's processActions to immediately return a response
@@ -83,7 +82,6 @@ describe('Socket.IO End-to-End Message Flow', () => {
         roomId: message.roomId,
         createdAt: Date.now(),
       });
-      return responses;
     };
 
     // Wait a bit for server to fully start

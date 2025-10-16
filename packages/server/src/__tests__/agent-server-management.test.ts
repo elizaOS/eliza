@@ -74,7 +74,7 @@ describe('AgentServer Agent Management Tests', () => {
 
   beforeEach(async () => {
     server = new AgentServer();
-    await server.initialize();
+    await server.start({ isTestMode: true });
 
     mockRuntime = {
       agentId: '123e4567-e89b-12d3-a456-426614174000',
