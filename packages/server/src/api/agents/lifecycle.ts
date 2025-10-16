@@ -12,7 +12,7 @@ export function createAgentLifecycleRouter(
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
-  const db = serverInstance?.database;
+  const db = serverInstance.database;
 
   // Start an existing agent
   router.post('/:agentId/start', async (req, res) => {
@@ -44,7 +44,7 @@ export function createAgentLifecycleRouter(
       }
 
       // Use batch method even for single agent
-      await serverInstance?.startAgents([agent]);
+      await serverInstance.startAgents([{ character: agent }]);
 
       const runtime = elizaOS.getAgent(agentId);
       if (!runtime) {

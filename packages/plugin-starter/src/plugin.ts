@@ -183,11 +183,13 @@ export const starterPlugin: Plugin = {
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
-        throw new Error(
-          `Invalid plugin configuration: ${error.errors.map((e) => e.message).join(', ')}`
-        );
+        const errorMessages =
+          error.issues?.map((e) => e.message)?.join(', ') || 'Unknown validation error';
+        throw new Error(`Invalid plugin configuration: ${errorMessages}`);
       }
-      throw error;
+      throw new Error(
+        `Invalid plugin configuration: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   },
   models: {

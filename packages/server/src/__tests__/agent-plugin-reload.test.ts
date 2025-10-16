@@ -263,7 +263,7 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       if (pluginsChanged) {
         await mockServerInstance.unregisterAgent(testAgentId);
         const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
-        await mockServerInstance.startAgents([characterData as Character]);
+        await mockServerInstance.startAgents([{ character: characterData as Character }]);
       }
 
       expect(mockServerInstance.unregisterAgent).toHaveBeenCalledWith(testAgentId);
@@ -285,14 +285,14 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       try {
         await mockServerInstance.unregisterAgent(testAgentId);
-        await mockServerInstance.startAgents([updatedAgent as Character]);
+        await mockServerInstance.startAgents([{ character: updatedAgent as Character }]);
       } catch (error) {
         restartError = error as Error;
 
         // Try to restore previous state
         try {
           const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent;
-          await mockServerInstance.startAgents([previousCharacterData as Character]);
+          await mockServerInstance.startAgents([{ character: previousCharacterData as Character }]);
           restoredAgent = previousCharacterData;
         } catch (restoreError) {
           // Failed to restore
@@ -318,13 +318,13 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       try {
         await mockServerInstance.unregisterAgent(testAgentId);
-        await mockServerInstance.startAgents([updatedAgent as Character]);
+        await mockServerInstance.startAgents([{ character: updatedAgent as Character }]);
       } catch (error) {
         restartError = error as Error;
 
         try {
           const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent;
-          await mockServerInstance.startAgents([previousCharacterData as Character]);
+          await mockServerInstance.startAgents([{ character: previousCharacterData as Character }]);
         } catch (error) {
           restoreError = error as Error;
         }

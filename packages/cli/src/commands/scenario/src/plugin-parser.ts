@@ -1,6 +1,5 @@
 import { PluginReference } from './schema';
 import { Plugin } from '@elizaos/core';
-import { getModuleLoader } from '@/src/utils/module-loader';
 
 export interface ParsedPlugin {
   name: string;
@@ -82,28 +81,6 @@ async function validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidatio
       continue;
     }
 
-    // Dynamically load and validate plugin
-    try {
-      const moduleLoader = getModuleLoader();
-      const { PluginLoader } = await moduleLoader.load('@elizaos/server');
-      const loader = new PluginLoader();
-      const loadedPlugin = await loader.loadAndPreparePlugin(plugin.name);
-      if (loadedPlugin) {
-        plugin.loadedPlugin = loadedPlugin;
-        result.plugins.push(plugin);
-      } else {
-        result.errors.push(`Failed to load plugin '${plugin.name}'`);
-        result.valid = false;
-        continue;
-      }
-    } catch (error) {
-      result.errors.push(
-        `Error loading plugin '${plugin.name}': ${error instanceof Error ? error.message : String(error)}`
-      );
-      result.valid = false;
-      continue;
-    }
-
     // Validate version if provided
     if (plugin.version && !isValidVersion(plugin.version)) {
       result.errors.push(`Invalid version '${plugin.version}' for plugin '${plugin.name}'`);
@@ -117,6 +94,8 @@ async function validatePlugins(plugins: ParsedPlugin[]): Promise<PluginValidatio
       result.valid = false;
       continue;
     }
+
+    result.plugins.push(plugin);
   }
 
   return result;
