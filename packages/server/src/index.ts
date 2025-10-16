@@ -26,6 +26,7 @@ import { messageBusConnectorPlugin } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+import bootstrapPlugin from '@elizaos/plugin-bootstrap';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 
 
@@ -195,6 +196,7 @@ export class AgentServer {
 
       // Merge character plugins with provided plugins and add server-required plugins
       const allPlugins = [
+        ...(!process.env.IGNORE_BOOTSTRAP ? [bootstrapPlugin] : []),
         ...(agent.character.plugins || []),
         ...(agent.plugins || []),
         sqlPlugin,

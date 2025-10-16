@@ -2,11 +2,12 @@ import type { Character } from '@elizaos/core';
 
 /**
  * Base character object representing Eliza - a versatile, helpful AI assistant.
- * This contains all available plugins which will be filtered based on environment.
+ * Note: Server automatically includes bootstrap and SQL plugins.
+ * Add additional plugins based on environment in getDefaultCharacter().
  */
 const baseCharacter: Character = {
   name: 'Eliza',
-  plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
+  plugins: [],
   settings: {
     secrets: {},
     avatar: 'https://elizaos.github.io/eliza-avatars/Eliza/portrait.png',
@@ -245,8 +246,8 @@ export function getDefaultCharacter(): Character {
       : []),
     ...(process.env.TELEGRAM_BOT_TOKEN?.trim() ? ['@elizaos/plugin-telegram'] : []),
 
-    // Bootstrap plugin
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+    // Note: Bootstrap plugin is automatically included by the server
+    // Use IGNORE_BOOTSTRAP=true to disable it if needed
 
     // Only include Ollama as fallback if no other LLM providers are configured
     ...(!process.env.ANTHROPIC_API_KEY?.trim() &&
