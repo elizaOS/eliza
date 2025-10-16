@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/plugin-memory",
+  "version": "1.0.0",
+  "description": "Advanced memory management plugin with short-term summarization and long-term persistent memory",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build --watch",
+    "test": "bun test",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "drizzle-orm": "^0.38.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.2"
+  },
+  "keywords": [
+    "eliza",
+    "plugin",
+    "memory",
+    "long-term-memory",
+    "short-term-memory",
+    "summarization"
+  ],
+  "author": "ElizaOS Team",
+  "license": "MIT"
+}
