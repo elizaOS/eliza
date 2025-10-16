@@ -183,9 +183,9 @@ export interface AgentLog {
 export function mapApiMemoryToClient(apiMemory: ApiMemory): Memory {
   return {
     id: apiMemory.id as UUID,
-    entityId: (apiMemory.metadata?.entityId ||
-      apiMemory.metadata?.userId ||
-      apiMemory.agentId) as UUID,
+    entityId: (apiMemory.entityId ||
+      apiMemory.metadata?.entityId ||
+      apiMemory.metadata?.userId) as UUID,
     agentId: apiMemory.agentId as UUID,
     content: apiMemory.content,
     embedding: apiMemory.embedding,
