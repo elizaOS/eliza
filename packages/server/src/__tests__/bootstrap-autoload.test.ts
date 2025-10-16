@@ -134,6 +134,7 @@ describe('Bootstrap Auto-Loading', () => {
       const runtime = runtimes[0];
 
       // Verify SQL plugin is present
+      // Note: Plugin can be registered with either 'sql' (short name) or '@elizaos/plugin-sql' (full package name)
       const hasSQL = runtime.plugins.some(
         (p) => p.name === 'sql' || p.name === '@elizaos/plugin-sql'
       );
@@ -155,6 +156,7 @@ describe('Bootstrap Auto-Loading', () => {
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
 
+      // Plugin names can be either short ('sql') or full package name ('@elizaos/plugin-sql')
       const sqlIndex = pluginNames.findIndex(
         (name) => name === 'sql' || name === '@elizaos/plugin-sql'
       );
@@ -196,21 +198,26 @@ describe('Bootstrap Auto-Loading', () => {
       const pluginNames = runtime.plugins.map((p) => p.name);
 
       const bootstrapIndex = pluginNames.indexOf('bootstrap');
+      const characterPluginIndex = pluginNames.findIndex((name) =>
+        name.toLowerCase().includes('openai')
+      );
       const runtimePluginIndex = pluginNames.indexOf('test-runtime-plugin');
+      // Plugin names can be either short ('sql') or full package name ('@elizaos/plugin-sql')
       const sqlIndex = pluginNames.findIndex(
         (name) => name === 'sql' || name === '@elizaos/plugin-sql'
       );
 
-      // Verify order
+      // Verify all plugins are present
       expect(bootstrapIndex).not.toBe(-1);
+      expect(characterPluginIndex).not.toBe(-1);
       expect(runtimePluginIndex).not.toBe(-1);
       expect(sqlIndex).not.toBe(-1);
 
-      // Bootstrap should be first
-      expect(bootstrapIndex).toBe(0);
-
-      // Runtime plugin should come before SQL
-      expect(runtimePluginIndex).toBeLessThan(sqlIndex);
+      // Verify correct order: bootstrap -> character -> runtime -> SQL
+      expect(bootstrapIndex).toBe(0); // Bootstrap first
+      expect(characterPluginIndex).toBeGreaterThan(bootstrapIndex); // Character after bootstrap
+      expect(runtimePluginIndex).toBeGreaterThan(characterPluginIndex); // Runtime after character
+      expect(sqlIndex).toBeGreaterThan(runtimePluginIndex); // SQL last
     });
   });
 
@@ -229,6 +236,7 @@ describe('Bootstrap Auto-Loading', () => {
       // Verify both agents have bootstrap and SQL
       for (const runtime of runtimes) {
         const hasBootstrap = runtime.plugins.some((p) => p.name === 'bootstrap');
+        // Plugin names can be either short ('sql') or full package name ('@elizaos/plugin-sql')
         const hasSQL = runtime.plugins.some(
           (p) => p.name === 'sql' || p.name === '@elizaos/plugin-sql'
         );

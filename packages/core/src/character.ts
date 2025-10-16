@@ -126,7 +126,11 @@ export function buildCharacterPlugins(
     ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ['@elizaos/plugin-telegram'] : []),
 
     // Bootstrap plugin
-    ...(!env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
+    ...(() => {
+      const ignore = env.IGNORE_BOOTSTRAP?.trim().toLowerCase();
+      const shouldIgnore = ignore === 'true' || ignore === '1' || ignore === 'yes';
+      return shouldIgnore ? [] : ['@elizaos/plugin-bootstrap'];
+    })(),
 
     // Only include Ollama as fallback if no other LLM providers are configured
     ...(!env.ANTHROPIC_API_KEY?.trim() &&

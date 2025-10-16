@@ -34,10 +34,50 @@ describe('buildCharacterPlugins', () => {
       expect(plugins).toContain(PLUGINS.BOOTSTRAP);
     });
 
-    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP is set', () => {
+    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="true"', () => {
       testEnv.IGNORE_BOOTSTRAP = 'true';
       const plugins = buildCharacterPlugins(testEnv);
       expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="1"', () => {
+      testEnv.IGNORE_BOOTSTRAP = '1';
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should exclude bootstrap plugin when IGNORE_BOOTSTRAP="yes"', () => {
+      testEnv.IGNORE_BOOTSTRAP = 'yes';
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).not.toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="false" (common mistake)', () => {
+      testEnv.IGNORE_BOOTSTRAP = 'false';
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="0"', () => {
+      testEnv.IGNORE_BOOTSTRAP = '0';
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should INCLUDE bootstrap plugin when IGNORE_BOOTSTRAP="no"', () => {
+      testEnv.IGNORE_BOOTSTRAP = 'no';
+      const plugins = buildCharacterPlugins(testEnv);
+      expect(plugins).toContain(PLUGINS.BOOTSTRAP);
+    });
+
+    it('should handle case-insensitive IGNORE_BOOTSTRAP values', () => {
+      testEnv.IGNORE_BOOTSTRAP = 'TRUE';
+      const plugins1 = buildCharacterPlugins(testEnv);
+      expect(plugins1).not.toContain(PLUGINS.BOOTSTRAP);
+
+      testEnv.IGNORE_BOOTSTRAP = 'Yes';
+      const plugins2 = buildCharacterPlugins(testEnv);
+      expect(plugins2).not.toContain(PLUGINS.BOOTSTRAP);
     });
   });
 
