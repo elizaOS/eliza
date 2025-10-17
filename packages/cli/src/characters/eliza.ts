@@ -1,14 +1,14 @@
-import type { Character } from '@elizaos/core';
+import { buildCharacterPlugins, type Character } from '@elizaos/core';
 
 /**
- * Base character object representing Eliza - a versatile, helpful AI assistant.
- * This contains all available plugins which will be filtered based on environment.
+ * Base Eliza character configuration
+ * Contains personality, style, and conversation templates
  */
-const baseCharacter: Character = {
+const baseElizaCharacter: Character = {
   name: 'Eliza',
   plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
-  secrets: {},
   settings: {
+    secrets: {},
     avatar: 'https://elizaos.github.io/eliza-avatars/Eliza/portrait.png',
   },
   system:
@@ -217,55 +217,24 @@ const baseCharacter: Character = {
 };
 
 /**
- * Returns the Eliza character with plugins ordered by priority based on environment variables.
- * This should be called after environment variables are loaded.
+ * Get the Eliza character with plugins configured based on environment variables.
+ * Uses buildCharacterPlugins from @elizaos/core to determine which plugins to load.
  *
- * @returns {Character} The Eliza character with appropriate plugins for the current environment
+ * @param env - Environment object to check for API keys (defaults to process.env)
+ * @returns The Eliza character with appropriate plugins for the current environment
  */
-export function getElizaCharacter(): Character {
-  const plugins = [
-    // Core plugins first
-    '@elizaos/plugin-sql',
-
-    // Text-only plugins (no embedding support)
-    ...(process.env.ANTHROPIC_API_KEY?.trim() ? ['@elizaos/plugin-anthropic'] : []),
-    ...(process.env.OPENROUTER_API_KEY?.trim() ? ['@elizaos/plugin-openrouter'] : []),
-
-    // Embedding-capable plugins (before platform plugins per documented order)
-    ...(process.env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
-    ...(process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
-
-    // Platform plugins
-    ...(process.env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
-    ...(process.env.TWITTER_API_KEY?.trim() &&
-    process.env.TWITTER_API_SECRET_KEY?.trim() &&
-    process.env.TWITTER_ACCESS_TOKEN?.trim() &&
-    process.env.TWITTER_ACCESS_TOKEN_SECRET?.trim()
-      ? ['@elizaos/plugin-twitter']
-      : []),
-    ...(process.env.TELEGRAM_BOT_TOKEN?.trim() ? ['@elizaos/plugin-telegram'] : []),
-
-    // Bootstrap plugin
-    ...(!process.env.IGNORE_BOOTSTRAP ? ['@elizaos/plugin-bootstrap'] : []),
-
-    // Only include Ollama as fallback if no other LLM providers are configured
-    ...(!process.env.ANTHROPIC_API_KEY?.trim() &&
-    !process.env.OPENROUTER_API_KEY?.trim() &&
-    !process.env.OPENAI_API_KEY?.trim() &&
-    !process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
-      ? ['@elizaos/plugin-ollama']
-      : []),
-  ];
-
+export function getDefaultCharacter(
+  env: Record<string, string | undefined> = process.env
+): Character {
   return {
-    ...baseCharacter,
-    plugins,
-  } as Character;
+    ...baseElizaCharacter,
+    plugins: buildCharacterPlugins(env),
+  };
 }
 
 /**
  * Legacy export for backward compatibility.
- * Note: This will include all plugins regardless of environment variables.
- * Use getElizaCharacter() for environment-aware plugin loading.
+ * Note: This will use plugins based on current process.env.
+ * For explicit environment control, use getDefaultCharacter(env) instead.
  */
-export const character: Character = baseCharacter;
+export const character: Character = getDefaultCharacter();
