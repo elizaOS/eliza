@@ -15,6 +15,9 @@ export * from './utils';
 // Export schemas
 export * from './schemas/character';
 
+// Export character utilities
+export * from './character';
+
 // Export environment utilities
 export * from './utils/environment';
 
