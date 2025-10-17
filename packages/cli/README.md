@@ -62,7 +62,7 @@ Initialize a new project, plugin, or agent.
   - `[name]`: Name for the project, plugin, or agent (optional)
 - **Options:**
   - `-y, --yes`: Skip confirmation and use defaults (default: `false`)
-  - `--type <type>`: Type to create: 'project', 'plugin', 'agent', or 'tee' (default: 'project')
+  - `-t, --type <type>`: Type to create: 'project', 'plugin', 'agent', or 'tee' (default: 'project')
 
 **Important notes:**
 
