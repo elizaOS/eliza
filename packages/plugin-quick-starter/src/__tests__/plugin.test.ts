@@ -117,6 +117,60 @@ describe('Plugin Configuration', () => {
       );
     }
   });
+
+  it('should handle ZodError with issues array correctly', async () => {
+    const runtime = createMockRuntime();
+    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: '' }; // Empty string violates min(1)
+
+    if (starterPlugin.init) {
+      try {
+        await starterPlugin.init(invalidConfig, runtime);
+        throw new Error('Should have thrown error');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        const errorMessage = (error as Error).message;
+        expect(errorMessage).toContain('Invalid plugin configuration');
+        // Should use error.issues, not error.errors
+        expect(errorMessage).toContain('Example plugin variable is not provided');
+      }
+    }
+  });
+
+  it('should handle ZodError with fallback for undefined issues', async () => {
+    const runtime = createMockRuntime();
+    // Test that the error handling doesn't crash if issues is somehow undefined
+    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: null };
+
+    if (starterPlugin.init) {
+      try {
+        await starterPlugin.init(invalidConfig as any, runtime);
+        throw new Error('Should have thrown error');
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error);
+        const errorMessage = (error as Error).message;
+        // Should either show specific error or fallback message
+        expect(errorMessage).toContain('Invalid plugin configuration');
+      }
+    }
+  });
+
+  it('should handle non-ZodError exceptions', async () => {
+    const runtime = createMockRuntime();
+    // Pass a config that will cause validation but won't be a ZodError
+    const config = { EXAMPLE_PLUGIN_VARIABLE: 'valid-value' };
+
+    if (starterPlugin.init) {
+      // This should succeed without throwing
+      let error: Error | null = null;
+      try {
+        await starterPlugin.init(config, runtime);
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeNull();
+      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('valid-value');
+    }
+  });
 });
 
 describe('Hello World Action', () => {

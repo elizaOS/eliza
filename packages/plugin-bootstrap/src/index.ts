@@ -288,7 +288,7 @@ export function shouldRespond(
 
   function normalizeEnvList(value: unknown): string[] {
     if (!value || typeof value !== 'string') return [];
-    const cleaned = value.trim().replace(/^\[|\]$/g, '');
+    const cleaned = value.trim().replace(/^[\[]|[\]]$/g, '');
     return cleaned
       .split(',')
       .map((v) => v.trim())

@@ -83,17 +83,18 @@ describe('Agent Integration Tests', () => {
         expect(createdAgent?.name).toBe(newAgent.name);
       });
 
-      it('should return false when creating an agent with a duplicate name', async () => {
-        const agent1Id = stringToUuid('duplicate-name-agent-1');
+      it('should allow creating multiple agents with the same name (UUID-based identification)', async () => {
+        const sharedName = 'duplicate-name';
+        const agent1Id = uuidv4() as UUID; // Use random UUID
         const agent1: Agent = {
           id: agent1Id,
-          name: 'duplicate-name',
+          name: sharedName,
           enabled: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           username: 'duplicate-name-1',
           system: 'System message',
-          bio: ['Bio line 1'],
+          bio: ['First agent with this name'],
           messageExamples: [],
           postExamples: [],
           topics: [],
@@ -103,18 +104,19 @@ describe('Agent Integration Tests', () => {
           settings: {},
           style: {},
         };
-        await adapter.createAgent(agent1);
+        const result1 = await adapter.createAgent(agent1);
+        expect(result1).toBe(true);
 
-        const agent2Id = stringToUuid('duplicate-name-agent-2');
+        const agent2Id = uuidv4() as UUID; // Use random UUID
         const agent2: Agent = {
           id: agent2Id,
-          name: 'duplicate-name',
+          name: sharedName,
           enabled: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           username: 'duplicate-name-2',
           system: 'System message',
-          bio: ['Bio line 1'],
+          bio: ['Second agent with this name'],
           messageExamples: [],
           postExamples: [],
           topics: [],
@@ -124,8 +126,20 @@ describe('Agent Integration Tests', () => {
           settings: {},
           style: {},
         };
-        const result = await adapter.createAgent(agent2);
-        expect(result).toBe(false);
+        const result2 = await adapter.createAgent(agent2);
+        expect(result2).toBe(true);
+
+        // Verify both agents exist with the same name but different IDs
+        const retrievedAgent1 = await adapter.getAgent(agent1Id);
+        const retrievedAgent2 = await adapter.getAgent(agent2Id);
+
+        expect(retrievedAgent1).not.toBeNull();
+        expect(retrievedAgent2).not.toBeNull();
+        expect(retrievedAgent1?.name).toBe(sharedName);
+        expect(retrievedAgent2?.name).toBe(sharedName);
+        expect(retrievedAgent1?.id).not.toBe(retrievedAgent2?.id);
+        expect(retrievedAgent1?.bio).toContain('First agent with this name');
+        expect(retrievedAgent2?.bio).toContain('Second agent with this name');
       });
 
       it('should return false when creating an agent with a duplicate ID', async () => {
@@ -979,6 +993,207 @@ describe('Agent Integration Tests', () => {
         await adapter.cleanupAgents();
 
         // Add appropriate verification based on what the method should do
+      });
+    });
+
+    describe('UUID-Based Agent Identification', () => {
+      it('should allow multiple agents with identical names in real database', async () => {
+        const sharedName = 'TestAgent-Duplicate';
+
+        // Create 3 agents with the same name
+        const agent1 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'user1',
+          bio: ['First agent instance'],
+        };
+
+        const agent2 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'user2',
+          bio: ['Second agent instance'],
+        };
+
+        const agent3 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'user3',
+          bio: ['Third agent instance'],
+        };
+
+        // All should succeed
+        expect(await adapter.createAgent(agent1)).toBe(true);
+        expect(await adapter.createAgent(agent2)).toBe(true);
+        expect(await adapter.createAgent(agent3)).toBe(true);
+
+        // Verify all three exist and can be retrieved by their unique IDs
+        const retrieved1 = await adapter.getAgent(agent1.id);
+        const retrieved2 = await adapter.getAgent(agent2.id);
+        const retrieved3 = await adapter.getAgent(agent3.id);
+
+        expect(retrieved1).not.toBeNull();
+        expect(retrieved2).not.toBeNull();
+        expect(retrieved3).not.toBeNull();
+
+        // All have the same name
+        expect(retrieved1?.name).toBe(sharedName);
+        expect(retrieved2?.name).toBe(sharedName);
+        expect(retrieved3?.name).toBe(sharedName);
+
+        // But different IDs
+        expect(retrieved1?.id).toBe(agent1.id);
+        expect(retrieved2?.id).toBe(agent2.id);
+        expect(retrieved3?.id).toBe(agent3.id);
+
+        // And different bios (to prove they're distinct)
+        expect(retrieved1?.bio).toContain('First agent instance');
+        expect(retrieved2?.bio).toContain('Second agent instance');
+        expect(retrieved3?.bio).toContain('Third agent instance');
+      });
+
+      it('should get all agents including those with duplicate names', async () => {
+        const sharedName = 'ListTest-Duplicate';
+
+        // Create agents with duplicate names
+        const agent1 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'list_user1',
+        };
+
+        const agent2 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'list_user2',
+        };
+
+        await adapter.createAgent(agent1);
+        await adapter.createAgent(agent2);
+
+        // Get all agents
+        const allAgents = await adapter.getAgents();
+
+        // Find our test agents
+        const testAgents = allAgents.filter((a) => a.name === sharedName);
+
+        expect(testAgents.length).toBeGreaterThanOrEqual(2);
+        expect(testAgents.some((a) => a.id === agent1.id)).toBe(true);
+        expect(testAgents.some((a) => a.id === agent2.id)).toBe(true);
+      });
+
+      it('should update only the targeted agent when multiple have the same name', async () => {
+        const sharedName = 'UpdateTest-Duplicate';
+
+        const agent1 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'update_user1',
+          bio: ['Original bio 1'],
+        };
+
+        const agent2 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'update_user2',
+          bio: ['Original bio 2'],
+        };
+
+        await adapter.createAgent(agent1);
+        await adapter.createAgent(agent2);
+
+        // Update only agent1
+        await adapter.updateAgent(agent1.id, {
+          bio: ['Updated bio for agent 1'],
+          settings: { updated: true },
+        });
+
+        // Verify only agent1 was updated
+        const retrieved1 = await adapter.getAgent(agent1.id);
+        const retrieved2 = await adapter.getAgent(agent2.id);
+
+        expect(retrieved1?.bio).toContain('Updated bio for agent 1');
+        expect(retrieved1?.settings?.updated).toBe(true);
+
+        // Agent 2 should be unchanged
+        expect(retrieved2?.bio).toContain('Original bio 2');
+        expect(retrieved2?.settings?.updated).toBeUndefined();
+      });
+
+      it('should delete only the targeted agent when multiple have the same name', async () => {
+        const sharedName = 'DeleteTest-Duplicate';
+
+        const agent1 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'delete_user1',
+        };
+
+        const agent2 = {
+          ...testAgent,
+          id: uuidv4() as UUID,
+          name: sharedName,
+          username: 'delete_user2',
+        };
+
+        await adapter.createAgent(agent1);
+        await adapter.createAgent(agent2);
+
+        // Delete only agent1
+        const deleteResult = await adapter.deleteAgent(agent1.id);
+        expect(deleteResult).toBe(true);
+
+        // Verify only agent1 was deleted
+        const retrieved1 = await adapter.getAgent(agent1.id);
+        const retrieved2 = await adapter.getAgent(agent2.id);
+
+        expect(retrieved1).toBeNull();
+        expect(retrieved2).not.toBeNull();
+        expect(retrieved2?.name).toBe(sharedName);
+      });
+
+      it('should handle 10+ agents with the same name', async () => {
+        const sharedName = 'ManyAgents-SameName';
+        const agentIds: UUID[] = [];
+
+        // Create 10 agents with the same name
+        for (let i = 0; i < 10; i++) {
+          const agent = {
+            ...testAgent,
+            id: uuidv4() as UUID,
+            name: sharedName,
+            username: `many_user_${i}`,
+            bio: [`Agent number ${i}`],
+          };
+
+          const result = await adapter.createAgent(agent);
+          expect(result).toBe(true);
+          agentIds.push(agent.id);
+        }
+
+        // Verify all exist
+        for (const id of agentIds) {
+          const retrieved = await adapter.getAgent(id);
+          expect(retrieved).not.toBeNull();
+          expect(retrieved?.name).toBe(sharedName);
+        }
+
+        // Verify they all have unique IDs
+        const uniqueIds = new Set(agentIds);
+        expect(uniqueIds.size).toBe(10);
+
+        // Get all agents and verify our 10 are in there
+        const allAgents = await adapter.getAgents();
+        const ourAgents = allAgents.filter((a) => agentIds.includes(a.id!));
+        expect(ourAgents.length).toBe(10);
       });
     });
   });
