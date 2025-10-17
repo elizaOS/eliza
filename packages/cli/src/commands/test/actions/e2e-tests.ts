@@ -2,11 +2,11 @@ import { loadProject, type Project } from '@/src/project';
 import { buildProject, TestRunner, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
+import { getDefaultCharacter } from '@/src/characters/eliza';
 import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { getElizaCharacter } from '@/src/characters/eliza';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 
@@ -181,7 +181,7 @@ export async function runE2eTests(
             if (!pluginUnderTest) {
               throw new Error('Plugin module could not be loaded for testing.');
             }
-            const defaultElizaCharacter = getElizaCharacter();
+            const defaultElizaCharacter = getDefaultCharacter();
 
             // Use AgentServer's startAgents method with the plugin under test
             // isTestMode: true ensures testDependencies are loaded
