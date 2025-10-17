@@ -19,8 +19,8 @@ function formatProjectType(type: string): string {
 export const create = new Command('create')
   .description('Create a new ElizaOS project, plugin, agent, or TEE project')
   .argument('[name]', 'name of the project/plugin/agent to create')
-  .option('--yes, -y', 'skip prompts and use defaults')
-  .option('--type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
+  .option('-y, --yes', 'skip prompts and use defaults')
+  .option('-t, --type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
   .action(async (name?: string, opts?: any) => {
     let projectType: string | undefined; // Declare outside try block for catch access
 

@@ -520,8 +520,8 @@ export class MessageBusService extends Service {
           message
         );
 
-        // The core runtime/bootstrap plugin will handle creating the agent's own memory of its response.
-        // So, we return an empty array here as this callback's primary job is to ferry the response externally.
+        // Return empty array because we don't need to communicate the created memories back.
+        // We've already saved the response memory above and sent it to the message bus.
         return [];
       };
 
