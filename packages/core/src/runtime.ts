@@ -156,10 +156,10 @@ export class AgentRuntime implements IAgentRuntime {
     settings?: RuntimeSettings;
     allAvailablePlugins?: Plugin[];
   }) {
+    // Generate deterministic UUID from character name for backward compatibility
+    // Falls back to random UUID only if no character name is provided
     this.agentId =
-      opts.character?.id ??
-      opts?.agentId ??
-      stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
+      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character as Character;
 
     this.initPromise = new Promise((resolve, reject) => {
@@ -405,9 +405,14 @@ export class AgentRuntime implements IAgentRuntime {
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
 
-      const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
+      // Ensure character has the agent ID set before calling ensureAgentExists
+      // We create a new object with the ID to avoid mutating the original character
+      const existingAgent = await this.ensureAgentExists({
+        ...this.character,
+        id: this.agentId,
+      } as Partial<Agent>);
       if (!existingAgent) {
-        const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
+        const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
         throw new Error(errorMsg);
       }
 
@@ -2312,44 +2317,44 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    if (!agent.name) {
-      throw new Error('Agent name is required');
+    if (!agent.id) {
+      throw new Error('Agent id is required');
     }
 
-    const agents = await this.adapter.getAgents();
-    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+    // Check if agent exists by ID
+    const existingAgent = await this.adapter.getAgent(agent.id);
 
-    if (existingAgentId) {
+    if (existingAgent) {
       // Update the agent on restart with the latest character configuration
       const updatedAgent = {
         ...agent,
-        id: existingAgentId,
+        id: agent.id,
         updatedAt: Date.now(),
       };
 
-      await this.adapter.updateAgent(existingAgentId, updatedAgent);
-      const existingAgent = await this.adapter.getAgent(existingAgentId);
+      await this.adapter.updateAgent(agent.id, updatedAgent);
+      const refreshedAgent = await this.adapter.getAgent(agent.id);
 
-      if (!existingAgent) {
-        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+      if (!refreshedAgent) {
+        throw new Error(`Failed to retrieve agent after update: ${agent.id}`);
       }
 
-      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
-      return existingAgent;
+      this.logger.debug(`Updated existing agent ${agent.id} on restart`);
+      return refreshedAgent;
     }
 
     // Create new agent if it doesn't exist
     const newAgent: Agent = {
       ...agent,
-      id: stringToUuid(agent.name),
+      id: agent.id,
     } as Agent;
 
     const created = await this.adapter.createAgent(newAgent);
     if (!created) {
-      throw new Error(`Failed to create agent: ${agent.name}`);
+      throw new Error(`Failed to create agent: ${agent.id}`);
     }
 
-    this.logger.debug(`Created new agent ${agent.name}`);
+    this.logger.debug(`Created new agent ${agent.id}`);
     return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
