@@ -26,15 +26,15 @@ export const deploy = new Command()
   )
   .option(
     "--cpu <units>",
-    "CPU units (256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU)",
+    "CPU units (1792 = 1.75 vCPU, uses 87.5% of t3g.small)",
     (value) => parseInt(value, 10),
-    256,
+    1792,
   )
   .option(
     "--memory <mb>",
-    "Memory in MB (minimum 512 for 256 CPU units)",
+    "Memory in MB (1792 = 1.75 GB, uses 87.5% of t3g.small)",
     (value) => parseInt(value, 10),
-    512,
+    1792,
   )
   .option("-k, --api-key <key>", "ElizaOS Cloud API key")
   .option(
@@ -71,12 +71,12 @@ export const deploy = new Command()
         process.exit(1);
       }
 
-      if (options.cpu && ![256, 512, 1024, 2048, 4096].includes(options.cpu)) {
+      if (options.cpu && (options.cpu < 256 || options.cpu > 2048)) {
         logger.error("❌ Error: CPU must be one of: 256, 512, 1024, 2048, 4096");
         process.exit(1);
       }
 
-      if (options.memory && (isNaN(options.memory) || options.memory < 512)) {
+      if (options.memory && (isNaN(options.memory) || options.memory < 512 || options.memory > 2048)) {
         logger.error("❌ Error: Memory must be at least 512 MB");
         process.exit(1);
       }

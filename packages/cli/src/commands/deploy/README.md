@@ -34,8 +34,8 @@ elizaos deploy [options]
 | `-n, --name <name>` | Deployment name | Package name |
 | `-p, --port <port>` | Container port | 3000 |
 | `--desired-count <count>` | Number of container instances | 1 |
-| `--cpu <units>` | CPU units (256 = 0.25 vCPU) | 256 |
-| `--memory <mb>` | Memory in MB | 512 |
+| `--cpu <units>` | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small) | 1792 |
+| `--memory <mb>` | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792 |
 | `-k, --api-key <key>` | API key | $ELIZAOS_API_KEY |
 | `-u, --api-url <url>` | API URL | https://elizacloud.ai |
 | `-e, --env <KEY=VALUE>` | Environment variable | - |
@@ -237,12 +237,16 @@ ECS on EC2 supports flexible CPU/memory combinations. Default configuration:
 AWS EC2 t3g.small pricing (us-east-1):
 - Instance: ~$0.0168 per hour (~$12.41/month)
 - EBS 20GB gp3: ~$1.60/month
-- Total: ~$14.01/month per container
+- CloudWatch Logs (5GB): ~$0.50/month
+- Container Insights: ~$0.20/month
+- Total: ~$14.71/month per container
 
-Example monthly costs:
-- 0.25 vCPU + 512MB: ~$11/month (24/7)
-- 0.5 vCPU + 1GB: ~$19/month (24/7)
-- 1 vCPU + 2GB: ~$36/month (24/7)
+**Default allocation (1.75 vCPU + 1.75 GB)**:
+- Uses 87.5% of t3g.small resources
+- Leaves 12.5% overhead for ECS agent and OS
+- Cost: ~$14.71/month per container (fixed, not usage-based)
+
+**Note**: Since you're paying for the full t3g.small instance, we allocate maximum resources to the container!
 
 Plus:
 - ECR storage: ~$0.10/GB per month

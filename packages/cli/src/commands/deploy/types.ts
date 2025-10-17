@@ -7,8 +7,8 @@ export interface DeployOptions {
   name?: string;
   port?: number;
   desiredCount?: number; // Replaces maxInstances
-  cpu?: number; // CPU units (256 = 0.25 vCPU)
-  memory?: number; // Memory in MB
+  cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
+  memory?: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
   apiKey?: string;
   apiUrl?: string;
   env?: string[];
@@ -30,8 +30,8 @@ export interface ContainerConfig {
   description?: string;
   port: number;
   desired_count: number; // Number of tasks to run
-  cpu: number; // CPU units (256 = 0.25 vCPU)
-  memory: number; // Memory in MB
+  cpu: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
+  memory: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
   environment_vars?: Record<string, string>;
   health_check_path: string;
   ecr_image_uri: string; // Full ECR image URI with tag

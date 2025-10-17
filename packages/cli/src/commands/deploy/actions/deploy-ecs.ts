@@ -178,8 +178,8 @@ export async function deployWithECS(
       image_tag: imageBuildData.ecrImageTag,
       port: options.port || 3000,
       desired_count: options.desiredCount || 1,
-      cpu: options.cpu || 256, // 0.25 vCPU
-      memory: options.memory || 512, // 512 MB
+      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t3g.small)
+      memory: options.memory || 1792, // 1.75 GB (87.5% of t3g.small)
       environment_vars: {
         ...environmentVars,
         PORT: (options.port || 3000).toString(),
