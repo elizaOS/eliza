@@ -1181,44 +1181,68 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-      if (!evaluator.handler) {
-        return null;
+    try {
+      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+        try {
+          if (!evaluator.handler) {
+            return null;
+          }
+          if (!didRespond && !evaluator.alwaysRun) {
+            return null;
+          }
+          const result = await evaluator.validate(this, message, state);
+          if (result) {
+            return evaluator;
+          }
+          return null;
+        } catch (error) {
+          this.logger.error(
+            { error, evaluatorName: evaluator.name },
+            `Error validating evaluator ${evaluator.name}`
+          );
+          return null;
+        }
+      });
+      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+      if (evaluators.length === 0) {
+        return [];
       }
-      if (!didRespond && !evaluator.alwaysRun) {
-        return null;
-      }
-      const result = await evaluator.validate(this, message, state);
-      if (result) {
-        return evaluator;
-      }
-      return null;
-    });
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-    if (evaluators.length === 0) {
+      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+      await Promise.all(
+        evaluators.map(async (evaluator) => {
+          try {
+            if (evaluator.handler) {
+              await evaluator.handler(this, message, state, {}, callback, responses);
+              this.adapter.log({
+                entityId: message.entityId,
+                roomId: message.roomId,
+                type: 'evaluator',
+                body: {
+                  evaluator: evaluator.name,
+                  messageId: message.id,
+                  message: message.content.text,
+                  state,
+                  runId: this.getCurrentRunId(),
+                },
+              });
+            }
+          } catch (error) {
+            this.logger.error(
+              { error, evaluatorName: evaluator.name },
+              `Error executing evaluator ${evaluator.name}`
+            );
+            // Continue with other evaluators even if one fails
+          }
+        })
+      );
+      return evaluators;
+    } catch (error) {
+      this.logger.error(
+        { error, messageId: message.id, roomId: message.roomId },
+        'Error in evaluate method'
+      );
       return [];
     }
-    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-    await Promise.all(
-      evaluators.map(async (evaluator) => {
-        if (evaluator.handler) {
-          await evaluator.handler(this, message, state, {}, callback, responses);
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'evaluator',
-            body: {
-              evaluator: evaluator.name,
-              messageId: message.id,
-              message: message.content.text,
-              state,
-              runId: this.getCurrentRunId(),
-            },
-          });
-        }
-      })
-    );
-    return evaluators;
   }
 
   // highly SQL optimized queries
