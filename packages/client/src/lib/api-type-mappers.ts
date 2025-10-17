@@ -181,11 +181,15 @@ export interface AgentLog {
 
 // Map API Memory to client Memory
 export function mapApiMemoryToClient(apiMemory: ApiMemory): Memory {
+  // Extract entityId from available sources, fallback to agentId if none available
+  const entityId = (apiMemory.entityId ||
+    apiMemory.metadata?.entityId ||
+    apiMemory.metadata?.userId ||
+    apiMemory.agentId) as UUID;
+
   return {
     id: apiMemory.id as UUID,
-    entityId: (apiMemory.metadata?.entityId ||
-      apiMemory.metadata?.userId ||
-      apiMemory.agentId) as UUID,
+    entityId,
     agentId: apiMemory.agentId as UUID,
     content: apiMemory.content,
     embedding: apiMemory.embedding,
