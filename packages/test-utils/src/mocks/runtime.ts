@@ -254,6 +254,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     updateTask: mock().mockResolvedValue(undefined),
     deleteTask: mock().mockResolvedValue(undefined),
 
+    // Text Generation (required by IAgentRuntime)
+    generateText: mock().mockResolvedValue('Mock generated text'),
+
     // Apply overrides
     ...overrides,
   };
