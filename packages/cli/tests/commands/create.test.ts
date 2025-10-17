@@ -258,6 +258,58 @@ describe('ElizaOS Create Commands', () => {
     expect(result.output).toMatch(/Invalid type/i);
   });
 
+  it(
+    'accepts both -t and --type flags for plugin creation',
+    async () => {
+      // Test with --type (long form)
+      await crossPlatform.removeDir('plugin-long-flag-test');
+      bunExecSync('elizaos create long-flag-test --yes --type plugin', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      });
+
+      const longPluginDir = 'plugin-long-flag-test';
+      expect(existsSync(longPluginDir)).toBe(true);
+      expect(existsSync(join(longPluginDir, 'package.json'))).toBe(true);
+      expect(existsSync(join(longPluginDir, 'src/index.ts'))).toBe(true);
+
+      // Test with -t (short form)
+      await crossPlatform.removeDir('plugin-short-flag-test');
+      bunExecSync('elizaos create short-flag-test -y -t plugin', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      });
+
+      const shortPluginDir = 'plugin-short-flag-test';
+      expect(existsSync(shortPluginDir)).toBe(true);
+      expect(existsSync(join(shortPluginDir, 'package.json'))).toBe(true);
+      expect(existsSync(join(shortPluginDir, 'src/index.ts'))).toBe(true);
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
+  it(
+    'accepts both -y and --yes flags',
+    async () => {
+      // Test with --yes (long form)
+      await crossPlatform.removeDir('yes-long-flag-test');
+      bunExecSync('elizaos create yes-long-flag-test --yes', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      });
+      expect(existsSync('yes-long-flag-test')).toBe(true);
+
+      // Test with -y (short form)
+      await crossPlatform.removeDir('yes-short-flag-test');
+      bunExecSync('elizaos create yes-short-flag-test -y', {
+        encoding: 'utf8',
+        timeout: TEST_TIMEOUTS.PROJECT_CREATION,
+      });
+      expect(existsSync('yes-short-flag-test')).toBe(true);
+    },
+    TEST_TIMEOUTS.INDIVIDUAL_TEST
+  );
+
   // create-eliza parity tests
   it('create-eliza default project succeeds', async () => {
     // Use cross-platform directory removal
