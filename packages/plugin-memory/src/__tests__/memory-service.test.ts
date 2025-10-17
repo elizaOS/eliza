@@ -10,10 +10,37 @@ describe('MemoryService', () => {
   beforeEach(() => {
     service = new MemoryService();
 
+    // Create mock database
+    const mockDb = {
+      insert: mock(() => ({
+        values: mock(async () => {}),
+      })),
+      select: mock(() => ({
+        from: mock(() => ({
+          where: mock(() => ({
+            orderBy: mock(() => ({
+              limit: mock(async () => []),
+            })),
+            limit: mock(async () => []),
+          })),
+        })),
+      })),
+      update: mock(() => ({
+        set: mock(() => ({
+          where: mock(async () => {}),
+        })),
+      })),
+      delete: mock(() => ({
+        where: mock(async () => {}),
+      })),
+    };
+
     // Create mock runtime
     mockRuntime = {
       agentId: 'test-agent-id' as UUID,
       getSetting: mock(() => undefined),
+      countMemories: mock(async () => 0),
+      db: mockDb,
       getConnection: mock(async () => ({
         query: mock(async () => ({ rows: [] })),
       })),
@@ -25,7 +52,7 @@ describe('MemoryService', () => {
       await service.initialize(mockRuntime);
 
       const config = service.getConfig();
-      expect(config.shortTermSummarizationThreshold).toBe(50);
+      expect(config.shortTermSummarizationThreshold).toBe(5);
       expect(config.shortTermRetainRecent).toBe(10);
       expect(config.longTermExtractionEnabled).toBe(true);
       expect(config.longTermConfidenceThreshold).toBe(0.7);
@@ -75,14 +102,17 @@ describe('MemoryService', () => {
       await service.initialize(mockRuntime);
       const roomId = 'room-1' as UUID;
 
-      // Increment to threshold
-      for (let i = 0; i < 49; i++) {
-        service.incrementMessageCount(roomId);
-        expect(service.shouldSummarize(roomId)).toBe(false);
-      }
+      // Mock countMemories to return below threshold
+      mockRuntime.countMemories = mock(async () => 4);
+      expect(await service.shouldSummarize(roomId)).toBe(false);
 
-      service.incrementMessageCount(roomId);
-      expect(service.shouldSummarize(roomId)).toBe(true);
+      // Mock countMemories to return at threshold (default is 5)
+      mockRuntime.countMemories = mock(async () => 5);
+      expect(await service.shouldSummarize(roomId)).toBe(true);
+
+      // Mock countMemories to return above threshold
+      mockRuntime.countMemories = mock(async () => 10);
+      expect(await service.shouldSummarize(roomId)).toBe(true);
     });
   });
 
@@ -123,34 +153,41 @@ describe('MemoryService', () => {
       expect(memory.confidence).toBe(0.9);
       expect(memory.createdAt).toBeDefined();
       expect(memory.updatedAt).toBeDefined();
-
-      // Verify database connection was called
-      expect(mockRuntime.getConnection).toHaveBeenCalled();
     });
 
     it('should retrieve long-term memories', async () => {
       const entityId = 'user-1' as UUID;
 
-      // Mock database response
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({
-          rows: [
-            {
-              id: 'mem-1',
-              agent_id: mockRuntime.agentId,
-              entity_id: entityId,
-              category: LongTermMemoryCategory.PREFERENCES,
-              content: 'User prefers TypeScript',
-              metadata: {},
-              confidence: 0.9,
-              source: 'manual',
-              created_at: Date.now(),
-              updated_at: Date.now(),
-              access_count: 0,
-            },
-          ],
+      // Mock database to return memories
+      const mockMemoryData = [
+        {
+          id: 'mem-1',
+          agentId: mockRuntime.agentId,
+          entityId: entityId,
+          category: LongTermMemoryCategory.PREFERENCES,
+          content: 'User prefers TypeScript',
+          metadata: {},
+          embedding: null,
+          confidence: 0.9,
+          source: 'manual',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessedAt: null,
+          accessCount: 0,
+        },
+      ];
+
+      (mockRuntime as any).db = {
+        select: mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              orderBy: mock(() => ({
+                limit: mock(async () => mockMemoryData),
+              })),
+            })),
+          })),
         })),
-      }));
+      };
 
       const memories = await service.getLongTermMemories(entityId);
 
@@ -162,9 +199,14 @@ describe('MemoryService', () => {
     it('should filter by category', async () => {
       const entityId = 'user-1' as UUID;
 
-      await service.getLongTermMemories(entityId, LongTermMemoryCategory.EXPERTISE, 5);
+      const memories = await service.getLongTermMemories(
+        entityId,
+        LongTermMemoryCategory.EXPERTISE,
+        5
+      );
 
-      expect(mockRuntime.getConnection).toHaveBeenCalled();
+      // Should return empty array when no memories match
+      expect(memories).toEqual([]);
     });
   });
 
@@ -179,6 +221,7 @@ describe('MemoryService', () => {
         roomId: 'room-1' as UUID,
         summary: 'Discussion about TypeScript features',
         messageCount: 25,
+        lastMessageOffset: 25,
         startTime: new Date(Date.now() - 3600000),
         endTime: new Date(),
         topics: ['TypeScript', 'Features'],
@@ -187,31 +230,45 @@ describe('MemoryService', () => {
       expect(summary.id).toBeDefined();
       expect(summary.summary).toBe('Discussion about TypeScript features');
       expect(summary.messageCount).toBe(25);
+      expect(summary.lastMessageOffset).toBe(25);
       expect(summary.topics).toEqual(['TypeScript', 'Features']);
       expect(summary.createdAt).toBeDefined();
+      expect(summary.updatedAt).toBeDefined();
     });
 
     it('should retrieve session summaries', async () => {
       const roomId = 'room-1' as UUID;
 
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({
-          rows: [
-            {
-              id: 'summary-1',
-              agent_id: mockRuntime.agentId,
-              room_id: roomId,
-              summary: 'Test summary',
-              message_count: 25,
-              start_time: Date.now() - 3600000,
-              end_time: Date.now(),
-              topics: ['test'],
-              metadata: {},
-              created_at: Date.now(),
-            },
-          ],
+      const mockSummaryData = [
+        {
+          id: 'summary-1',
+          agentId: mockRuntime.agentId,
+          roomId: roomId,
+          entityId: null,
+          summary: 'Test summary',
+          messageCount: 25,
+          lastMessageOffset: 25,
+          startTime: new Date(Date.now() - 3600000),
+          endTime: new Date(),
+          topics: ['test'],
+          metadata: {},
+          embedding: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+
+      (mockRuntime as any).db = {
+        select: mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              orderBy: mock(() => ({
+                limit: mock(async () => mockSummaryData),
+              })),
+            })),
+          })),
         })),
-      }));
+      };
 
       const summaries = await service.getSessionSummaries(roomId);
 
@@ -228,36 +285,50 @@ describe('MemoryService', () => {
     it('should format long-term memories by category', async () => {
       const entityId = 'user-1' as UUID;
 
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({
-          rows: [
-            {
-              id: 'mem-1',
-              agent_id: mockRuntime.agentId,
-              entity_id: entityId,
-              category: LongTermMemoryCategory.IDENTITY,
-              content: 'User is a software engineer',
-              metadata: {},
-              confidence: 0.95,
-              created_at: Date.now(),
-              updated_at: Date.now(),
-              access_count: 0,
-            },
-            {
-              id: 'mem-2',
-              agent_id: mockRuntime.agentId,
-              entity_id: entityId,
-              category: LongTermMemoryCategory.PREFERENCES,
-              content: 'Prefers concise responses',
-              metadata: {},
-              confidence: 0.85,
-              created_at: Date.now(),
-              updated_at: Date.now(),
-              access_count: 0,
-            },
-          ],
+      const mockMemoryData = [
+        {
+          id: 'mem-1',
+          agentId: mockRuntime.agentId,
+          entityId: entityId,
+          category: LongTermMemoryCategory.IDENTITY,
+          content: 'User is a software engineer',
+          metadata: {},
+          embedding: null,
+          confidence: 0.95,
+          source: 'conversation',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessedAt: null,
+          accessCount: 0,
+        },
+        {
+          id: 'mem-2',
+          agentId: mockRuntime.agentId,
+          entityId: entityId,
+          category: LongTermMemoryCategory.PREFERENCES,
+          content: 'Prefers concise responses',
+          metadata: {},
+          embedding: null,
+          confidence: 0.85,
+          source: 'conversation',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessedAt: null,
+          accessCount: 0,
+        },
+      ];
+
+      (mockRuntime as any).db = {
+        select: mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              orderBy: mock(() => ({
+                limit: mock(async () => mockMemoryData),
+              })),
+            })),
+          })),
         })),
-      }));
+      };
 
       const formatted = await service.getFormattedLongTermMemories(entityId);
 

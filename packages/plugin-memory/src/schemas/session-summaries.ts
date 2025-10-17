@@ -23,12 +23,16 @@ export const sessionSummaries = pgTable(
     entityId: varchar('entity_id', { length: 36 }),
     summary: text('summary').notNull(),
     messageCount: integer('message_count').notNull(),
+    lastMessageOffset: integer('last_message_offset').notNull().default(0),
     startTime: timestamp('start_time').notNull(),
     endTime: timestamp('end_time').notNull(),
     topics: jsonb('topics'),
     metadata: jsonb('metadata'),
     embedding: real('embedding').array(),
     createdAt: timestamp('created_at')
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp('updated_at')
       .default(sql`now()`)
       .notNull(),
   },

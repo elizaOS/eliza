@@ -2,7 +2,6 @@ import {
   type IAgentRuntime,
   type Memory,
   type Evaluator,
-  type UUID,
   logger,
   ModelType,
   composePromptFromState,
@@ -96,38 +95,43 @@ export const longTermExtractionEvaluator: Evaluator = {
   name: 'LONG_TERM_MEMORY_EXTRACTION',
   description: 'Extracts long-term facts about users from conversations',
   similes: ['MEMORY_EXTRACTION', 'FACT_LEARNING', 'USER_PROFILING'],
+  alwaysRun: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    logger.debug(`Validating long-term memory extraction for message: ${message.content?.text}`);
     // Only run on user messages (not agent's own)
     if (message.entityId === runtime.agentId) {
+      logger.debug("Skipping long-term memory extraction for agent's own message");
       return false;
     }
 
     if (!message.content?.text) {
+      logger.debug('Skipping long-term memory extraction for message without text');
       return false;
     }
 
     const memoryService = runtime.getService('memory') as MemoryService | null;
     if (!memoryService) {
+      logger.debug('MemoryService not found');
       return false;
     }
 
     const config = memoryService.getConfig();
     if (!config.longTermExtractionEnabled) {
+      logger.debug('Long-term memory extraction is disabled');
       return false;
     }
 
-    // Run extraction periodically (every 10 messages from this user)
-    // This is a simple heuristic - could be made more sophisticated
-    const messages = await runtime.getMemories({
-      tableName: 'messages',
-      roomId: message.roomId,
-      count: 10,
-      unique: false,
-    });
+    // Count total messages from this entity in this room
+    const currentMessageCount = await runtime.countMemories(message.roomId, false, 'messages');
 
-    // Simple check: run every 10 messages by checking if we have exactly 10
-    return messages.length >= 10;
+    const shouldRun = await memoryService.shouldRunExtraction(
+      message.entityId,
+      message.roomId,
+      currentMessageCount
+    );
+    logger.debug(`Should run extraction: ${shouldRun}`);
+    return shouldRun;
   },
 
   handler: async (runtime: IAgentRuntime, message: Memory): Promise<void> => {
@@ -212,6 +216,13 @@ export const longTermExtractionEvaluator: Evaluator = {
           );
         }
       }
+
+      // Update the extraction checkpoint after successful extraction
+      const currentMessageCount = await runtime.countMemories(roomId, false, 'messages');
+      await memoryService.setLastExtractionCheckpoint(entityId, roomId, currentMessageCount);
+      logger.debug(
+        `Updated extraction checkpoint to ${currentMessageCount} for entity ${entityId} in room ${roomId}`
+      );
     } catch (error) {
       logger.error({ error }, 'Error during long-term memory extraction:');
     }

@@ -4,7 +4,7 @@ import { summarizationEvaluator } from './evaluators/summarization';
 import { longTermExtractionEvaluator } from './evaluators/long-term-extraction';
 import { shortTermMemoryProvider } from './providers/short-term-memory';
 import { longTermMemoryProvider } from './providers/long-term-memory';
-import { rememberAction } from './actions/remember';
+// import { rememberAction } from './actions/remember';
 import * as schema from './schemas/index';
 
 export * from './types/index';
@@ -54,7 +54,7 @@ export const memoryPlugin: Plugin = {
 
   providers: [longTermMemoryProvider, shortTermMemoryProvider],
 
-  actions: [rememberAction],
+  // actions: [rememberAction],
 
   // Export schema for dynamic migrations
   schema,

@@ -32,6 +32,7 @@ export interface LongTermMemory {
   updatedAt: Date;
   lastAccessedAt?: Date;
   accessCount?: number;
+  similarity?: number; // Optional similarity score from vector search
 }
 
 /**
@@ -44,12 +45,14 @@ export interface SessionSummary {
   entityId?: UUID; // Optional: specific user in the session
   summary: string; // The summarized conversation
   messageCount: number; // Number of messages summarized
+  lastMessageOffset: number; // Index of last summarized message (for pagination)
   startTime: Date; // Timestamp of first message
   endTime: Date; // Timestamp of last message
   topics?: string[]; // Main topics discussed
   metadata?: Record<string, unknown>;
   embedding?: number[]; // Vector embedding of the summary
   createdAt: Date;
+  updatedAt: Date; // Track when summary was last updated
 }
 
 /**
@@ -64,6 +67,7 @@ export interface MemoryConfig {
   longTermExtractionEnabled: boolean;
   longTermVectorSearchEnabled: boolean;
   longTermConfidenceThreshold: number; // Minimum confidence to store
+  longTermExtractionInterval: number; // Run extraction every N messages (e.g., 5, 10, 15...)
 
   // Summarization settings
   summaryModelType?: string;

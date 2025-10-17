@@ -20,6 +20,9 @@ describe('Evaluators', () => {
         return null;
       }),
       getMemories: mock(async () => []),
+      countMemories: mock(async () => 0),
+      getCache: mock(async () => undefined),
+      setCache: mock(async () => {}),
       getConnection: mock(async () => ({
         query: mock(async () => ({ rows: [] })),
       })),
@@ -44,14 +47,12 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      // Not reached threshold
+      // Not reached threshold (default is 5)
+      mockRuntime.countMemories = mock(async () => 4);
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(false);
 
       // Reach threshold
-      for (let i = 0; i < 50; i++) {
-        mockMemoryService.incrementMessageCount(message.roomId);
-      }
-
+      mockRuntime.countMemories = mock(async () => 5);
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(true);
     });
 
@@ -67,9 +68,7 @@ describe('Evaluators', () => {
       };
 
       // Even with threshold reached
-      for (let i = 0; i < 50; i++) {
-        mockMemoryService.incrementMessageCount(message.roomId);
-      }
+      mockRuntime.countMemories = mock(async () => 50);
 
       expect(await summarizationEvaluator.validate(mockRuntime, message)).toBe(false);
     });
@@ -96,7 +95,7 @@ describe('Evaluators', () => {
       expect(longTermExtractionEvaluator.similes).toContain('MEMORY_EXTRACTION');
     });
 
-    it('should validate every 10 messages from user', async () => {
+    it('should validate every 5 messages from user (default interval)', async () => {
       await mockMemoryService.initialize(mockRuntime);
 
       const message: Memory = {
@@ -107,14 +106,17 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      // Mock getMemories to return appropriate number of messages
-      mockRuntime.getMemories = mock(async () => Array(10).fill({} as Memory));
+      // Mock countMemories to return appropriate counts
+      // At exactly 5 messages, should trigger
+      mockRuntime.countMemories = mock(async () => 5);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(true);
 
-      mockRuntime.getMemories = mock(async () => Array(20).fill({} as Memory));
+      // At exactly 10 messages, should trigger again
+      mockRuntime.countMemories = mock(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(true);
 
-      mockRuntime.getMemories = mock(async () => Array(5).fill({} as Memory));
+      // At 4 messages, should not trigger yet
+      mockRuntime.countMemories = mock(async () => 4);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
@@ -129,7 +131,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.getMemories = mock(async () => Array(10).fill({} as Memory));
+      mockRuntime.countMemories = mock(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
@@ -145,7 +147,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.getMemories = mock(async () => Array(10).fill({} as Memory));
+      mockRuntime.countMemories = mock(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
 
@@ -160,7 +162,7 @@ describe('Evaluators', () => {
         createdAt: Date.now(),
       };
 
-      mockRuntime.getMemories = mock(async () => Array(10).fill({} as Memory));
+      mockRuntime.countMemories = mock(async () => 10);
       expect(await longTermExtractionEvaluator.validate(mockRuntime, message)).toBe(false);
     });
   });

@@ -2,16 +2,17 @@ import {
   type IAgentRuntime,
   Service,
   type UUID,
-  type Memory,
   logger,
   type ServiceTypeName,
 } from '@elizaos/core';
+import { eq, and, desc, sql, cosineDistance, gte } from 'drizzle-orm';
 import {
   type LongTermMemory,
   type SessionSummary,
   type MemoryConfig,
   LongTermMemoryCategory,
 } from '../types/index';
+import { longTermMemories, sessionSummaries } from '../schemas/index';
 
 /**
  * Memory Service
@@ -22,6 +23,7 @@ export class MemoryService extends Service {
 
   private sessionMessageCounts: Map<UUID, number>;
   private memoryConfig: MemoryConfig;
+  private lastExtractionCheckpoints: Map<string, number>; // Track last extraction per entity-room pair
 
   capabilityDescription =
     'Advanced memory management with short-term summarization and long-term persistent facts';
@@ -29,14 +31,16 @@ export class MemoryService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.sessionMessageCounts = new Map();
+    this.lastExtractionCheckpoints = new Map();
     this.memoryConfig = {
-      shortTermSummarizationThreshold: 50,
+      shortTermSummarizationThreshold: 5,
       shortTermRetainRecent: 10,
       longTermExtractionEnabled: true,
       longTermVectorSearchEnabled: false,
       longTermConfidenceThreshold: 0.7,
+      longTermExtractionInterval: 5, // Run extraction every N messages
       summaryModelType: 'TEXT_LARGE',
-      summaryMaxTokens: 500,
+      summaryMaxTokens: 2500,
     };
   }
 
@@ -66,16 +70,40 @@ export class MemoryService extends Service {
     }
 
     const longTermEnabled = runtime.getSetting('MEMORY_LONG_TERM_ENABLED');
-    if (longTermEnabled !== undefined) {
-      this.memoryConfig.longTermExtractionEnabled = longTermEnabled === 'true';
+    // Only override default if explicitly set to 'false'
+    if (longTermEnabled === 'false') {
+      this.memoryConfig.longTermExtractionEnabled = false;
+    } else if (longTermEnabled === 'true') {
+      this.memoryConfig.longTermExtractionEnabled = true;
     }
+    // Otherwise keep the default value (true)
 
     const confidenceThreshold = runtime.getSetting('MEMORY_CONFIDENCE_THRESHOLD');
     if (confidenceThreshold) {
       this.memoryConfig.longTermConfidenceThreshold = parseFloat(confidenceThreshold);
     }
 
-    logger.info('MemoryService initialized');
+    logger.info(
+      {
+        summarizationThreshold: this.memoryConfig.shortTermSummarizationThreshold,
+        retainRecent: this.memoryConfig.shortTermRetainRecent,
+        longTermEnabled: this.memoryConfig.longTermExtractionEnabled,
+        extractionInterval: this.memoryConfig.longTermExtractionInterval,
+        confidenceThreshold: this.memoryConfig.longTermConfidenceThreshold,
+      },
+      'MemoryService initialized'
+    );
+  }
+
+  /**
+   * Get the Drizzle database instance
+   */
+  private getDb(): any {
+    const db = (this.runtime as any).db;
+    if (!db) {
+      throw new Error('Database not available');
+    }
+    return db;
   }
 
   /**
@@ -112,9 +140,102 @@ export class MemoryService extends Service {
   /**
    * Check if summarization is needed for a room
    */
-  shouldSummarize(roomId: UUID): boolean {
-    const count = this.sessionMessageCounts.get(roomId) || 0;
+  async shouldSummarize(roomId: UUID): Promise<boolean> {
+    const count = await this.runtime.countMemories(roomId, false, 'messages');
     return count >= this.memoryConfig.shortTermSummarizationThreshold;
+  }
+
+  /**
+   * Generate cache key for tracking extraction checkpoints per entity-room pair
+   */
+  private getExtractionKey(entityId: UUID, roomId: UUID): string {
+    return `memory:extraction:${entityId}:${roomId}`;
+  }
+
+  /**
+   * Get the last extraction checkpoint for an entity in a room
+   * Uses the cache table via adapter
+   */
+  async getLastExtractionCheckpoint(entityId: UUID, roomId: UUID): Promise<number> {
+    const key = this.getExtractionKey(entityId, roomId);
+
+    // Check in-memory cache first
+    const cached = this.lastExtractionCheckpoints.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    // Check database cache table via adapter
+    try {
+      const checkpoint = await this.runtime.getCache<number>(key);
+      const messageCount = checkpoint ?? 0;
+
+      // Cache it in memory for faster access
+      this.lastExtractionCheckpoints.set(key, messageCount);
+
+      return messageCount;
+    } catch (error) {
+      logger.warn({ error }, 'Failed to get extraction checkpoint from cache');
+      return 0;
+    }
+  }
+
+  /**
+   * Set the last extraction checkpoint for an entity in a room
+   * Uses the cache table via adapter
+   */
+  async setLastExtractionCheckpoint(
+    entityId: UUID,
+    roomId: UUID,
+    messageCount: number
+  ): Promise<void> {
+    const key = this.getExtractionKey(entityId, roomId);
+
+    // Update in-memory cache
+    this.lastExtractionCheckpoints.set(key, messageCount);
+
+    // Persist to database cache table via adapter
+    try {
+      await this.runtime.setCache(key, messageCount);
+      logger.debug(
+        `Set extraction checkpoint for ${entityId} in room ${roomId} at message count ${messageCount}`
+      );
+    } catch (error) {
+      logger.error({ error }, 'Failed to persist extraction checkpoint to cache');
+    }
+  }
+
+  /**
+   * Check if long-term extraction should run based on message count and interval
+   */
+  async shouldRunExtraction(
+    entityId: UUID,
+    roomId: UUID,
+    currentMessageCount: number
+  ): Promise<boolean> {
+    const interval = this.memoryConfig.longTermExtractionInterval;
+    const lastCheckpoint = await this.getLastExtractionCheckpoint(entityId, roomId);
+
+    // Calculate the current checkpoint (e.g., if interval=5: 5, 10, 15, 20...)
+    const currentCheckpoint = Math.floor(currentMessageCount / interval) * interval;
+
+    // Run if we're at or past a checkpoint and haven't processed this checkpoint yet
+    const shouldRun = currentMessageCount >= interval && currentCheckpoint > lastCheckpoint;
+
+    logger.debug(
+      {
+        entityId,
+        roomId,
+        currentMessageCount,
+        interval,
+        lastCheckpoint,
+        currentCheckpoint,
+        shouldRun,
+      },
+      'Extraction check'
+    );
+
+    return shouldRun;
   }
 
   /**
@@ -123,17 +244,7 @@ export class MemoryService extends Service {
   async storeLongTermMemory(
     memory: Omit<LongTermMemory, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<LongTermMemory> {
-    let db;
-    try {
-      db = await this.runtime.getConnection();
-    } catch (error) {
-      logger.error({ error }, 'Failed to get database connection');
-      throw new Error('Database not available');
-    }
-
-    if (!db) {
-      throw new Error('Database not available');
-    }
+    const db = this.getDb();
 
     const id = crypto.randomUUID() as UUID;
     const now = new Date();
@@ -146,25 +257,22 @@ export class MemoryService extends Service {
       ...memory,
     };
 
-    // Store using raw SQL since we're using custom tables
     try {
-      await db.query(
-        `INSERT INTO long_term_memories 
-         (id, agent_id, entity_id, category, content, metadata, embedding, confidence, source, access_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          newMemory.id,
-          newMemory.agentId,
-          newMemory.entityId,
-          newMemory.category,
-          newMemory.content,
-          JSON.stringify(newMemory.metadata || {}),
-          newMemory.embedding,
-          newMemory.confidence,
-          newMemory.source,
-          newMemory.accessCount,
-        ]
-      );
+      await db.insert(longTermMemories).values({
+        id: newMemory.id,
+        agentId: newMemory.agentId,
+        entityId: newMemory.entityId,
+        category: newMemory.category,
+        content: newMemory.content,
+        metadata: newMemory.metadata || {},
+        embedding: newMemory.embedding,
+        confidence: newMemory.confidence,
+        source: newMemory.source,
+        accessCount: newMemory.accessCount,
+        createdAt: now,
+        updatedAt: now,
+        lastAccessedAt: newMemory.lastAccessedAt,
+      });
     } catch (error) {
       logger.error({ error }, 'Failed to store long-term memory');
       throw error;
@@ -182,43 +290,38 @@ export class MemoryService extends Service {
     category?: LongTermMemoryCategory,
     limit: number = 10
   ): Promise<LongTermMemory[]> {
-    const db = await this.runtime.getConnection();
-    if (!db) {
-      return [];
-    }
+    const db = this.getDb();
 
-    let query = `
-      SELECT * FROM long_term_memories 
-      WHERE agent_id = $1 AND entity_id = $2
-    `;
-    const params: unknown[] = [this.runtime.agentId, entityId];
+    const conditions = [
+      eq(longTermMemories.agentId, this.runtime.agentId),
+      eq(longTermMemories.entityId, entityId),
+    ];
 
     if (category) {
-      query += ` AND category = $3`;
-      params.push(category);
-      query += ` ORDER BY confidence DESC, updated_at DESC LIMIT $4`;
-      params.push(limit);
-    } else {
-      query += ` ORDER BY confidence DESC, updated_at DESC LIMIT $3`;
-      params.push(limit);
+      conditions.push(eq(longTermMemories.category, category));
     }
 
-    const results = await db.query(query, params);
+    const results = await db
+      .select()
+      .from(longTermMemories)
+      .where(and(...conditions))
+      .orderBy(desc(longTermMemories.confidence), desc(longTermMemories.updatedAt))
+      .limit(limit);
 
-    return results.rows.map((row: Record<string, unknown>) => ({
+    return results.map((row) => ({
       id: row.id as UUID,
-      agentId: row.agent_id as UUID,
-      entityId: row.entity_id as UUID,
+      agentId: row.agentId as UUID,
+      entityId: row.entityId as UUID,
       category: row.category as LongTermMemoryCategory,
-      content: row.content as string,
+      content: row.content,
       metadata: row.metadata as Record<string, unknown>,
       embedding: row.embedding as number[],
       confidence: row.confidence as number,
       source: row.source as string,
-      createdAt: row.created_at as Date,
-      updatedAt: row.updated_at as Date,
-      lastAccessedAt: row.last_accessed_at as Date,
-      accessCount: row.access_count as number,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      lastAccessedAt: row.lastAccessedAt,
+      accessCount: row.accessCount as number,
     }));
   }
 
@@ -229,39 +332,38 @@ export class MemoryService extends Service {
     id: UUID,
     updates: Partial<Omit<LongTermMemory, 'id' | 'agentId' | 'createdAt'>>
   ): Promise<void> {
-    const db = await this.runtime.getConnection();
-    if (!db) {
-      throw new Error('Database not available');
-    }
+    const db = this.getDb();
 
-    const setClauses: string[] = ['updated_at = now()'];
-    const params: unknown[] = [];
-    let paramIndex = 1;
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
 
     if (updates.content !== undefined) {
-      setClauses.push(`content = $${paramIndex++}`);
-      params.push(updates.content);
+      updateData.content = updates.content;
     }
 
     if (updates.metadata !== undefined) {
-      setClauses.push(`metadata = $${paramIndex++}`);
-      params.push(JSON.stringify(updates.metadata));
+      updateData.metadata = updates.metadata;
     }
 
     if (updates.confidence !== undefined) {
-      setClauses.push(`confidence = $${paramIndex++}`);
-      params.push(updates.confidence);
+      updateData.confidence = updates.confidence;
     }
 
     if (updates.embedding !== undefined) {
-      setClauses.push(`embedding = $${paramIndex++}`);
-      params.push(updates.embedding);
+      updateData.embedding = updates.embedding;
     }
 
-    params.push(id);
-    const query = `UPDATE long_term_memories SET ${setClauses.join(', ')} WHERE id = $${paramIndex}`;
+    if (updates.lastAccessedAt !== undefined) {
+      updateData.lastAccessedAt = updates.lastAccessedAt;
+    }
 
-    await db.query(query, params);
+    if (updates.accessCount !== undefined) {
+      updateData.accessCount = updates.accessCount;
+    }
+
+    await db.update(longTermMemories).set(updateData).where(eq(longTermMemories.id, id));
+
     logger.info(`Updated long-term memory: ${id}`);
   }
 
@@ -269,32 +371,58 @@ export class MemoryService extends Service {
    * Delete a long-term memory
    */
   async deleteLongTermMemory(id: UUID): Promise<void> {
-    const db = await this.runtime.getConnection();
-    if (!db) {
-      throw new Error('Database not available');
-    }
+    const db = this.getDb();
 
-    await db.query('DELETE FROM long_term_memories WHERE id = $1', [id]);
+    await db.delete(longTermMemories).where(eq(longTermMemories.id, id));
+
     logger.info(`Deleted long-term memory: ${id}`);
   }
 
   /**
-   * Store a session summary
+   * Get the current session summary for a room (latest one)
    */
-  async storeSessionSummary(
-    summary: Omit<SessionSummary, 'id' | 'createdAt'>
-  ): Promise<SessionSummary> {
-    let db;
-    try {
-      db = await this.runtime.getConnection();
-    } catch (error) {
-      logger.error({ error }, 'Failed to get database connection');
-      throw new Error('Database not available');
+  async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
+    const db = this.getDb();
+
+    const results = await db
+      .select()
+      .from(sessionSummaries)
+      .where(
+        and(eq(sessionSummaries.agentId, this.runtime.agentId), eq(sessionSummaries.roomId, roomId))
+      )
+      .orderBy(desc(sessionSummaries.updatedAt))
+      .limit(1);
+
+    if (results.length === 0) {
+      return null;
     }
 
-    if (!db) {
-      throw new Error('Database not available');
-    }
+    const row = results[0];
+    return {
+      id: row.id as UUID,
+      agentId: row.agentId as UUID,
+      roomId: row.roomId as UUID,
+      entityId: row.entityId as UUID | undefined,
+      summary: row.summary,
+      messageCount: row.messageCount,
+      lastMessageOffset: row.lastMessageOffset,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      topics: (row.topics as string[]) || [],
+      metadata: row.metadata as Record<string, unknown>,
+      embedding: row.embedding as number[],
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
+   * Store a session summary (initial creation)
+   */
+  async storeSessionSummary(
+    summary: Omit<SessionSummary, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<SessionSummary> {
+    const db = this.getDb();
 
     const id = crypto.randomUUID() as UUID;
     const now = new Date();
@@ -302,63 +430,107 @@ export class MemoryService extends Service {
     const newSummary: SessionSummary = {
       id,
       createdAt: now,
+      updatedAt: now,
       ...summary,
     };
 
-    await db.query(
-      `INSERT INTO session_summaries 
-       (id, agent_id, room_id, entity_id, summary, message_count, start_time, end_time, topics, metadata, embedding)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [
-        newSummary.id,
-        newSummary.agentId,
-        newSummary.roomId,
-        newSummary.entityId,
-        newSummary.summary,
-        newSummary.messageCount,
-        newSummary.startTime,
-        newSummary.endTime,
-        JSON.stringify(newSummary.topics || []),
-        JSON.stringify(newSummary.metadata || {}),
-        newSummary.embedding,
-      ]
-    );
+    await db.insert(sessionSummaries).values({
+      id: newSummary.id,
+      agentId: newSummary.agentId,
+      roomId: newSummary.roomId,
+      entityId: newSummary.entityId || null,
+      summary: newSummary.summary,
+      messageCount: newSummary.messageCount,
+      lastMessageOffset: newSummary.lastMessageOffset,
+      startTime: newSummary.startTime,
+      endTime: newSummary.endTime,
+      topics: newSummary.topics || [],
+      metadata: newSummary.metadata || {},
+      embedding: newSummary.embedding,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     logger.info(`Stored session summary for room ${newSummary.roomId}`);
     return newSummary;
   }
 
   /**
+   * Update an existing session summary
+   */
+  async updateSessionSummary(
+    id: UUID,
+    updates: Partial<Omit<SessionSummary, 'id' | 'agentId' | 'roomId' | 'createdAt' | 'updatedAt'>>
+  ): Promise<void> {
+    const db = this.getDb();
+
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (updates.summary !== undefined) {
+      updateData.summary = updates.summary;
+    }
+
+    if (updates.messageCount !== undefined) {
+      updateData.messageCount = updates.messageCount;
+    }
+
+    if (updates.lastMessageOffset !== undefined) {
+      updateData.lastMessageOffset = updates.lastMessageOffset;
+    }
+
+    if (updates.endTime !== undefined) {
+      updateData.endTime = updates.endTime;
+    }
+
+    if (updates.topics !== undefined) {
+      updateData.topics = updates.topics;
+    }
+
+    if (updates.metadata !== undefined) {
+      updateData.metadata = updates.metadata;
+    }
+
+    if (updates.embedding !== undefined) {
+      updateData.embedding = updates.embedding;
+    }
+
+    await db.update(sessionSummaries).set(updateData).where(eq(sessionSummaries.id, id));
+
+    logger.info(`Updated session summary: ${id}`);
+  }
+
+  /**
    * Get session summaries for a room
    */
   async getSessionSummaries(roomId: UUID, limit: number = 5): Promise<SessionSummary[]> {
-    const db = await this.runtime.getConnection();
-    if (!db) {
-      return [];
-    }
+    const db = this.getDb();
 
-    const query = `
-      SELECT * FROM session_summaries 
-      WHERE agent_id = $1 AND room_id = $2 
-      ORDER BY end_time DESC 
-      LIMIT $3
-    `;
+    const results = await db
+      .select()
+      .from(sessionSummaries)
+      .where(
+        and(eq(sessionSummaries.agentId, this.runtime.agentId), eq(sessionSummaries.roomId, roomId))
+      )
+      .orderBy(desc(sessionSummaries.updatedAt))
+      .limit(limit);
 
-    const results = await db.query(query, [this.runtime.agentId, roomId, limit]);
-
-    return results.rows.map((row: Record<string, unknown>) => ({
+    return results.map((row) => ({
       id: row.id as UUID,
-      agentId: row.agent_id as UUID,
-      roomId: row.room_id as UUID,
-      entityId: row.entity_id as UUID | undefined,
-      summary: row.summary as string,
-      messageCount: row.message_count as number,
-      startTime: row.start_time as Date,
-      endTime: row.end_time as Date,
+      agentId: row.agentId as UUID,
+      roomId: row.roomId as UUID,
+      entityId: row.entityId as UUID | undefined,
+      summary: row.summary,
+      messageCount: row.messageCount,
+      lastMessageOffset: row.lastMessageOffset,
+      startTime: row.startTime,
+      endTime: row.endTime,
       topics: (row.topics as string[]) || [],
       metadata: row.metadata as Record<string, unknown>,
       embedding: row.embedding as number[],
-      createdAt: row.created_at as Date,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     }));
   }
 
@@ -368,54 +540,67 @@ export class MemoryService extends Service {
   async searchLongTermMemories(
     entityId: UUID,
     queryEmbedding: number[],
-    limit: number = 5
+    limit: number = 5,
+    matchThreshold: number = 0.7
   ): Promise<LongTermMemory[]> {
     if (!this.memoryConfig.longTermVectorSearchEnabled) {
       logger.warn('Vector search is not enabled, falling back to recent memories');
       return this.getLongTermMemories(entityId, undefined, limit);
     }
 
-    const db = await this.runtime.getConnection();
-    if (!db) {
-      return [];
-    }
-
-    // Use pgvector cosine similarity if available
-    // This is a placeholder - actual implementation would depend on vector extension
-    const query = `
-      SELECT *, 
-        1 - (embedding <=> $1::vector) as similarity
-      FROM long_term_memories 
-      WHERE agent_id = $2 AND entity_id = $3 AND embedding IS NOT NULL
-      ORDER BY similarity DESC 
-      LIMIT $4
-    `;
+    const db = this.getDb();
 
     try {
-      const results = await db.query(query, [
-        JSON.stringify(queryEmbedding),
-        this.runtime.agentId,
-        entityId,
-        limit,
-      ]);
+      // Clean the vector to ensure all numbers are finite and properly formatted
+      const cleanVector = queryEmbedding.map((n) =>
+        Number.isFinite(n) ? Number(n.toFixed(6)) : 0
+      );
 
-      return results.rows.map((row: Record<string, unknown>) => ({
-        id: row.id as UUID,
-        agentId: row.agent_id as UUID,
-        entityId: row.entity_id as UUID,
-        category: row.category as LongTermMemoryCategory,
-        content: row.content as string,
-        metadata: row.metadata as Record<string, unknown>,
-        embedding: row.embedding as number[],
-        confidence: row.confidence as number,
-        source: row.source as string,
-        createdAt: row.created_at as Date,
-        updatedAt: row.updated_at as Date,
-        lastAccessedAt: row.last_accessed_at as Date,
-        accessCount: row.access_count as number,
+      // Calculate similarity using Drizzle's cosineDistance
+      const similarity = sql<number>`1 - (${cosineDistance(
+        longTermMemories.embedding,
+        cleanVector
+      )})`;
+
+      const conditions = [
+        eq(longTermMemories.agentId, this.runtime.agentId),
+        eq(longTermMemories.entityId, entityId),
+        sql`${longTermMemories.embedding} IS NOT NULL`,
+      ];
+
+      // Add similarity threshold if specified
+      if (matchThreshold > 0) {
+        conditions.push(gte(similarity, matchThreshold));
+      }
+
+      const results = await db
+        .select({
+          memory: longTermMemories,
+          similarity,
+        })
+        .from(longTermMemories)
+        .where(and(...conditions))
+        .orderBy(desc(similarity))
+        .limit(limit);
+
+      return results.map((row) => ({
+        id: row.memory.id as UUID,
+        agentId: row.memory.agentId as UUID,
+        entityId: row.memory.entityId as UUID,
+        category: row.memory.category as LongTermMemoryCategory,
+        content: row.memory.content,
+        metadata: row.memory.metadata as Record<string, unknown>,
+        embedding: row.memory.embedding as number[],
+        confidence: row.memory.confidence as number,
+        source: row.memory.source as string,
+        createdAt: row.memory.createdAt,
+        updatedAt: row.memory.updatedAt,
+        lastAccessedAt: row.memory.lastAccessedAt,
+        accessCount: row.memory.accessCount as number,
+        similarity: row.similarity,
       }));
     } catch (error) {
-      logger.warn('Vector search failed, falling back to recent memories:', error);
+      logger.warn({ error }, 'Vector search failed, falling back to recent memories');
       return this.getLongTermMemories(entityId, undefined, limit);
     }
   }

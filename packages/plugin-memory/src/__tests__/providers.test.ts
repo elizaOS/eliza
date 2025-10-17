@@ -13,6 +13,31 @@ describe('Providers', () => {
   beforeEach(() => {
     mockMemoryService = new MemoryService();
 
+    // Create mock database
+    const mockDb = {
+      insert: mock(() => ({
+        values: mock(async () => {}),
+      })),
+      select: mock(() => ({
+        from: mock(() => ({
+          where: mock(() => ({
+            orderBy: mock(() => ({
+              limit: mock(async () => []),
+            })),
+            limit: mock(async () => []),
+          })),
+        })),
+      })),
+      update: mock(() => ({
+        set: mock(() => ({
+          where: mock(async () => {}),
+        })),
+      })),
+      delete: mock(() => ({
+        where: mock(async () => {}),
+      })),
+    };
+
     mockRuntime = {
       agentId: 'test-agent' as UUID,
       character: { name: 'TestAgent' },
@@ -21,6 +46,7 @@ describe('Providers', () => {
         if (name === 'memory') return mockMemoryService;
         return null;
       }),
+      db: mockDb,
       getConnection: mock(async () => ({
         query: mock(async () => ({ rows: [] })),
       })),
@@ -62,25 +88,35 @@ describe('Providers', () => {
         createdAt: Date.now(),
       };
 
-      // Mock summaries
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({
-          rows: [
-            {
-              id: 'summary-1',
-              agent_id: mockRuntime.agentId,
-              room_id: message.roomId,
-              summary: 'Discussed TypeScript features',
-              message_count: 25,
-              start_time: Date.now() - 3600000,
-              end_time: Date.now(),
-              topics: ['TypeScript', 'Features'],
-              metadata: {},
-              created_at: Date.now(),
-            },
-          ],
+      // Mock database to return summaries
+      const mockSummaryData = [
+        {
+          id: 'summary-1',
+          agentId: mockRuntime.agentId,
+          roomId: message.roomId,
+          summary: 'Discussed TypeScript features',
+          messageCount: 25,
+          lastMessageOffset: 25,
+          startTime: new Date(Date.now() - 3600000),
+          endTime: new Date(),
+          topics: ['TypeScript', 'Features'],
+          metadata: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+
+      (mockRuntime as any).db = {
+        select: mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              orderBy: mock(() => ({
+                limit: mock(async () => mockSummaryData),
+              })),
+            })),
+          })),
         })),
-      }));
+      };
 
       const result = await shortTermMemoryProvider.get(mockRuntime, message, mockState);
 
@@ -154,37 +190,51 @@ describe('Providers', () => {
         createdAt: Date.now(),
       };
 
-      // Mock memories
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({
-          rows: [
-            {
-              id: 'mem-1',
-              agent_id: mockRuntime.agentId,
-              entity_id: message.entityId,
-              category: LongTermMemoryCategory.IDENTITY,
-              content: 'User is a software engineer',
-              metadata: {},
-              confidence: 0.95,
-              created_at: Date.now(),
-              updated_at: Date.now(),
-              access_count: 0,
-            },
-            {
-              id: 'mem-2',
-              agent_id: mockRuntime.agentId,
-              entity_id: message.entityId,
-              category: LongTermMemoryCategory.PREFERENCES,
-              content: 'Prefers TypeScript',
-              metadata: {},
-              confidence: 0.85,
-              created_at: Date.now(),
-              updated_at: Date.now(),
-              access_count: 0,
-            },
-          ],
+      // Mock database to return memories
+      const mockMemoryData = [
+        {
+          id: 'mem-1',
+          agentId: mockRuntime.agentId,
+          entityId: message.entityId,
+          category: LongTermMemoryCategory.IDENTITY,
+          content: 'User is a software engineer',
+          metadata: {},
+          confidence: 0.95,
+          source: 'conversation',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessedAt: null,
+          accessCount: 0,
+          embedding: null,
+        },
+        {
+          id: 'mem-2',
+          agentId: mockRuntime.agentId,
+          entityId: message.entityId,
+          category: LongTermMemoryCategory.PREFERENCES,
+          content: 'Prefers TypeScript',
+          metadata: {},
+          confidence: 0.85,
+          source: 'conversation',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastAccessedAt: null,
+          accessCount: 0,
+          embedding: null,
+        },
+      ];
+
+      (mockRuntime as any).db = {
+        select: mock(() => ({
+          from: mock(() => ({
+            where: mock(() => ({
+              orderBy: mock(() => ({
+                limit: mock(async () => mockMemoryData),
+              })),
+            })),
+          })),
         })),
-      }));
+      };
 
       const result = await longTermMemoryProvider.get(mockRuntime, message, mockState);
 

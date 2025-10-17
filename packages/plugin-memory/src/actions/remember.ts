@@ -3,7 +3,6 @@ import {
   type Memory,
   type Action,
   type ActionResult,
-  type UUID,
   logger,
   ModelType,
   composePromptFromState,
@@ -88,7 +87,7 @@ export const rememberAction: Action = {
     'REMEMBER_THIS',
   ],
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     // Check if message contains explicit memory request
     const text = message.content.text?.toLowerCase() || '';
 
