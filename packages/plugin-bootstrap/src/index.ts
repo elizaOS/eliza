@@ -333,11 +333,11 @@ export function shouldRespond(
   // Accepts both new and legacy setting names for backwards compatibility
   const customChannels = normalizeEnvList(
     runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-    runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
   );
   const customSources = normalizeEnvList(
     runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-    runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
   );
 
   const respondChannels = new Set(
@@ -360,7 +360,11 @@ export function shouldRespond(
 
   // 2. Specific sources (e.g., client_chat): always respond
   if (respondSources.some((pattern) => sourceStr.includes(pattern))) {
-    return { shouldRespond: true, skipEvaluation: true, reason: `whitelisted source: ${sourceStr}` };
+    return {
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: `whitelisted source: ${sourceStr}`,
+    };
   }
 
   // 3. Platform mentions and replies: always respond
@@ -567,16 +571,9 @@ const messageReceivedHandler = async ({
         }
 
         // Determine if we should respond using smart detection
-        const responseDecision = shouldRespond(
-          runtime,
-          message,
-          room ?? undefined,
-          mentionContext
-        );
+        const responseDecision = shouldRespond(runtime, message, room ?? undefined, mentionContext);
 
-        runtime.logger.debug(
-          `[Bootstrap] Response decision: ${JSON.stringify(responseDecision)}`
-        );
+        runtime.logger.debug(`[Bootstrap] Response decision: ${JSON.stringify(responseDecision)}`);
 
         let shouldRespondToMessage = true;
 
@@ -601,9 +598,7 @@ const messageReceivedHandler = async ({
             prompt: shouldRespondPrompt,
           });
 
-          runtime.logger.debug(
-            `[Bootstrap] LLM evaluation result:\n${response}`
-          );
+          runtime.logger.debug(`[Bootstrap] LLM evaluation result:\n${response}`);
 
           const responseObject = parseKeyValueXml(response);
           runtime.logger.debug({ responseObject }, '[Bootstrap] Parsed evaluation result:');
@@ -621,7 +616,7 @@ const messageReceivedHandler = async ({
 
         // helpful for swarms
         const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
-        
+
         if (shouldRespondToMessage) {
           const result = useMultiStep
             ? await runMultiStepCore({ runtime, message, state, callback })
@@ -760,22 +755,32 @@ const messageReceivedHandler = async ({
           latestResponseIds.delete(runtime.agentId);
         }
 
-        await runtime.evaluate(
-          message,
-          state,
-          shouldRespondToMessage,
-          async (content) => {
-            runtime.logger.debug({ content }, 'evaluate callback');
-            if (responseContent) {
-              responseContent.evalCallbacks = content;
-            }
-            if (callback) {
-              return callback(content);
-            }
-            return [];
-          },
-          responseMessages
-        );
+        // Run evaluators in the background without blocking
+        // This allows new messages to be processed immediately
+        runtime
+          .evaluate(
+            message,
+            state,
+            shouldRespondToMessage,
+            async (content) => {
+              runtime.logger.debug({ content }, 'evaluate callback');
+              if (responseContent) {
+                responseContent.evalCallbacks = content;
+              }
+              if (callback) {
+                return callback(content);
+              }
+              return [];
+            },
+            responseMessages
+          )
+          .catch((error) => {
+            // Log evaluator errors but don't let them crash the message handler
+            runtime.logger.error(
+              { error, messageId: message.id, roomId: message.roomId },
+              '[Bootstrap] Error in background evaluator execution'
+            );
+          });
 
         // ok who are they
         let entityName = 'noname';
@@ -881,7 +886,15 @@ type StrategyResult = {
   mode: StrategyMode;
 };
 
-async function runSingleShotCore({ runtime, message, state }: { runtime: IAgentRuntime, message: Memory, state: State }): Promise<StrategyResult> {
+async function runSingleShotCore({
+  runtime,
+  message,
+  state,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+}): Promise<StrategyResult> {
   state = await runtime.composeState(message, ['ACTIONS']);
 
   if (!state.values?.actionNames) {
@@ -996,7 +1009,17 @@ async function runSingleShotCore({ runtime, message, state }: { runtime: IAgentR
   };
 }
 
-async function runMultiStepCore({ runtime, message, state, callback }: { runtime: IAgentRuntime, message: Memory, state: State, callback?: HandlerCallback }): Promise<StrategyResult> {
+async function runMultiStepCore({
+  runtime,
+  message,
+  state,
+  callback,
+}: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  state: State;
+  callback?: HandlerCallback;
+}): Promise<StrategyResult> {
   const traceActionResult: MultiStepActionResult[] = [];
   let accumulatedState: State = state;
   const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');

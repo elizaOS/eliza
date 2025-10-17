@@ -1,5 +1,5 @@
 /**
- * Deploy Command - Deploy ElizaOS projects to Cloudflare Containers
+ * Deploy Command - Deploy ElizaOS projects to AWS ECS
  */
 
 import { Command } from "commander";
@@ -10,7 +10,7 @@ import type { DeployOptions } from "./types";
 
 export const deploy = new Command()
   .name("deploy")
-  .description("Deploy ElizaOS project to Cloudflare Containers")
+  .description("Deploy ElizaOS project to AWS ECS (Elastic Container Service)")
   .option("-n, --name <name>", "Name for the deployment")
   .option(
     "-p, --port <port>",
@@ -19,10 +19,22 @@ export const deploy = new Command()
     3000,
   )
   .option(
-    "-m, --max-instances <count>",
-    "Maximum number of container instances",
+    "--desired-count <count>",
+    "Number of container instances to run",
     (value) => parseInt(value, 10),
     1,
+  )
+  .option(
+    "--cpu <units>",
+    "CPU units (1792 = 1.75 vCPU, uses 87.5% of t3g.small)",
+    (value) => parseInt(value, 10),
+    1792,
+  )
+  .option(
+    "--memory <mb>",
+    "Memory in MB (1792 = 1.75 GB, uses 87.5% of t3g.small)",
+    (value) => parseInt(value, 10),
+    1792,
   )
   .option("-k, --api-key <key>", "ElizaOS Cloud API key")
   .option(
@@ -39,12 +51,12 @@ export const deploy = new Command()
     [],
   )
   .option(
-    "--skip-artifact",
-    "Skip artifact creation and use existing artifact",
+    "--skip-build",
+    "Skip Docker build and use existing image",
   )
   .option(
-    "--artifact-path <path>",
-    "Path to existing artifact to deploy",
+    "--image-uri <uri>",
+    "Use existing ECR image URI (requires --skip-build)",
   )
   .action(async (options: DeployOptions) => {
     try {
@@ -54,8 +66,18 @@ export const deploy = new Command()
         process.exit(1);
       }
 
-      if (isNaN(options.maxInstances!) || options.maxInstances! < 1 || options.maxInstances! > 10) {
-        logger.error("❌ Error: Max instances must be a number between 1 and 10");
+      if (options.desiredCount && (isNaN(options.desiredCount) || options.desiredCount < 1 || options.desiredCount > 10)) {
+        logger.error("❌ Error: Desired count must be a number between 1 and 10");
+        process.exit(1);
+      }
+
+      if (options.cpu && (options.cpu < 256 || options.cpu > 2048)) {
+        logger.error("❌ Error: CPU must be one of: 256, 512, 1024, 2048, 4096");
+        process.exit(1);
+      }
+
+      if (options.memory && (isNaN(options.memory) || options.memory < 512 || options.memory > 2048)) {
+        logger.error("❌ Error: Memory must be at least 512 MB");
         process.exit(1);
       }
 
@@ -72,8 +94,12 @@ export const deploy = new Command()
         logger.info(`Container ID: ${result.containerId}`);
       }
 
-      if (result.workerId) {
-        logger.info(`Worker ID: ${result.workerId}`);
+      if (result.serviceArn) {
+        logger.info(`ECS Service: ${result.serviceArn}`);
+      }
+
+      if (result.taskDefinitionArn) {
+        logger.info(`Task Definition: ${result.taskDefinitionArn}`);
       }
 
       if (result.url) {

@@ -10,8 +10,6 @@ import type {
   CloudApiErrorResponse,
   QuotaInfo,
   ContainerData,
-  ArtifactUploadRequest,
-  ArtifactUploadResponse,
 } from "../types";
 
 export interface ApiClientOptions {
@@ -316,19 +314,16 @@ export class CloudApiClient {
   }
 
   /**
-   * Upload artifact to R2 storage via Cloud API
+   * Request ECR credentials and repository for image build
    */
-  async uploadArtifact(
-    request: ArtifactUploadRequest & { artifactPath: string },
-  ): Promise<CloudApiResponse<ArtifactUploadResponse>> {
+  async requestImageBuild(
+    request: { projectId: string; version: string; metadata?: Record<string, string> }
+  ): Promise<CloudApiResponse<any>> {
     try {
-      const fs = await import("node:fs");
+      logger.info("🔐 Requesting ECR credentials...");
       
-      // First, request upload URL from API
-      logger.info("📤 Requesting artifact upload URL...");
-      
-      const uploadRequest = await this.fetchWithTimeout(
-        `${this.apiUrl}/api/v1/artifacts/upload`,
+      const response = await this.fetchWithTimeout(
+        `${this.apiUrl}/api/v1/containers/credentials`,
         {
           method: "POST",
           headers: {
@@ -338,70 +333,31 @@ export class CloudApiClient {
           body: JSON.stringify({
             projectId: request.projectId,
             version: request.version,
-            checksum: request.checksum,
-            size: request.size,
             metadata: request.metadata,
           }),
         },
       );
 
-      if (!uploadRequest.ok) {
-        const error = await this.parseErrorResponse(uploadRequest);
-        throw new Error(`Failed to get upload URL (${uploadRequest.status}): ${error}`);
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        throw new Error(`Failed to get ECR credentials (${response.status}): ${error}`);
       }
 
-      const uploadData = await uploadRequest.json() as CloudApiResponse<ArtifactUploadResponse>;
+      const data = await response.json();
       
-      if (!uploadData.success || !uploadData.data) {
-        throw new Error(uploadData.error || "Failed to get upload URL");
+      if (!data.success || !data.data) {
+        throw new Error(data.error || "Failed to get ECR credentials");
       }
 
       // Validate response structure
-      if (!uploadData.data.upload?.url) {
-        throw new Error("Invalid response: missing upload URL");
+      if (!data.data.ecrRepositoryUri || !data.data.authToken) {
+        throw new Error("Invalid response: missing ECR credentials");
       }
 
-      // Now upload the artifact to the presigned URL
-      logger.info("📤 Uploading artifact to storage...");
-      
-      const artifactBuffer = fs.readFileSync(request.artifactPath);
-      const fileSizeMB = artifactBuffer.length / 1024 / 1024;
-      
-      // Use longer timeout for large files (1 minute per 10MB, minimum 2 minutes)
-      const uploadTimeout = Math.max(120000, Math.ceil(fileSizeMB / 10) * 60000);
-      
-      // Show progress for uploads
-      logger.info(`📤 Uploading ${fileSizeMB.toFixed(2)} MB...`);
-      const uploadStartTime = Date.now();
-      
-      const uploadResponse = await this.fetchWithTimeout(
-        uploadData.data.upload.url,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/gzip",
-          },
-          body: artifactBuffer,
-        },
-        uploadTimeout,
-      );
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload artifact (${uploadResponse.status}): ${uploadResponse.statusText}`);
-      }
-
-      const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
-      const uploadSpeed = (fileSizeMB / (Date.now() - uploadStartTime) * 1000).toFixed(2);
-      logger.info(`✅ Artifact uploaded successfully (${uploadDuration}s, ${uploadSpeed} MB/s)`);
-
-      return uploadData;
+      logger.info("✅ Received ECR credentials");
+      return data;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("Failed to upload artifact:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return this.handleApiError("request image build credentials", error);
     }
   }
 }
