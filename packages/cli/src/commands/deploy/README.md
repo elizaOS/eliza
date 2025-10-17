@@ -81,7 +81,7 @@ The deployment process follows these steps:
 2. **Builds Docker image** - Creates a containerized version of your project
 3. **Requests ECR credentials** - Gets authentication token and repository from ElizaOS Cloud
 4. **Pushes to ECR** - Uploads Docker image to AWS Elastic Container Registry
-5. **Deploys to ECS** - Creates and runs container on AWS ECS Fargate
+5. **Deploys to ECS** - Creates dedicated EC2 instance (t3g.small ARM) and runs container
 6. **Monitors deployment** - Polls status until container is running
 7. **Returns URL** - Provides load balancer URL for accessing your deployed agent
 
@@ -109,7 +109,7 @@ The deployment process follows these steps:
          ▼
 ┌─────────────────┐
 │ Deploy to ECS   │
-│ (Fargate)       │
+│ (EC2 Launch)    │
 └────────┬────────┘
          │
          ▼
@@ -222,7 +222,7 @@ If it times out:
 
 ### CPU and Memory Allocation
 
-ECS Fargate supports specific CPU/memory combinations:
+ECS on EC2 supports flexible CPU/memory combinations. Default configuration:
 
 | CPU (units) | vCPU | Memory (MB) |
 |------------|------|-------------|
@@ -234,9 +234,10 @@ ECS Fargate supports specific CPU/memory combinations:
 
 ### Cost Estimation
 
-AWS Fargate pricing (us-east-1):
-- vCPU: ~$0.04048 per hour
-- Memory: ~$0.004445 per GB per hour
+AWS EC2 t3g.small pricing (us-east-1):
+- Instance: ~$0.0168 per hour (~$12.41/month)
+- EBS 20GB gp3: ~$1.60/month
+- Total: ~$14.01/month per container
 
 Example monthly costs:
 - 0.25 vCPU + 512MB: ~$11/month (24/7)

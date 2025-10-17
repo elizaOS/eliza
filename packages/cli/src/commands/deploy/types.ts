@@ -155,40 +155,12 @@ export interface ImageBuildRequest {
  * Returns ECR repository and authentication information
  */
 export interface ImageBuildResponse {
-  artifactId: string;
   ecrRepositoryUri: string;
   ecrImageUri: string; // Full image URI with tag
   ecrImageTag: string;
   authToken: string; // ECR authorization token for Docker login
   authTokenExpiresAt: string;
   registryEndpoint: string;
-  artifact: {
-    id: string;
-    version: string;
-    checksum: string;
-    size: number;
-    ecrRepositoryUri: string;
-    ecrImageUri: string;
-    ecrImageDigest?: string;
-  };
-}
-
-/**
- * Artifact metadata stored in database (now refers to Docker images in ECR)
- */
-export interface ArtifactMetadata {
-  id: string;
-  organizationId: string;
-  projectId: string;
-  version: string;
-  checksum: string;
-  size: number;
-  ecrRepositoryUri: string;
-  ecrImageUri: string;
-  ecrImageDigest?: string;
-  metadata?: Record<string, string>;
-  createdAt: Date;
-  createdBy: string;
 }
 
 /**
