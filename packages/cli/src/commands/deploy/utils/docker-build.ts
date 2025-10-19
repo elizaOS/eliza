@@ -3,11 +3,11 @@
  * Handles Docker image building and pushing to ECR
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { logger } from "@elizaos/core";
-import { execa } from "execa";
-import crypto from "node:crypto";
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { logger } from '@elizaos/core';
+import { execa } from 'execa';
+import crypto from 'node:crypto';
 
 export interface DockerBuildOptions {
   projectPath: string;
@@ -44,8 +44,8 @@ export interface DockerPushResult {
  */
 export async function checkDockerAvailable(): Promise<boolean> {
   try {
-    await execa("docker", ["--version"]);
-    await execa("docker", ["info"]);
+    await execa('docker', ['--version']);
+    await execa('docker', ['info']);
     return true;
   } catch {
     return false;
@@ -56,39 +56,33 @@ export async function checkDockerAvailable(): Promise<boolean> {
  * Ensure Dockerfile exists, create from template if needed
  */
 export async function ensureDockerfile(projectPath: string): Promise<string> {
-  const dockerfilePath = path.join(projectPath, "Dockerfile");
-  
+  const dockerfilePath = path.join(projectPath, 'Dockerfile');
+
   if (fs.existsSync(dockerfilePath)) {
-    logger.debug("Using existing Dockerfile");
+    logger.debug('Using existing Dockerfile');
     return dockerfilePath;
   }
 
   // Copy template Dockerfile
-  logger.info("No Dockerfile found, creating from template...");
-  
-  const templatePath = path.join(
-    __dirname,
-    "../../../templates/Dockerfile.template"
-  );
-  
+  logger.info('No Dockerfile found, creating from template...');
+
+  const templatePath = path.join(__dirname, '../../../templates/Dockerfile.template');
+
   if (!fs.existsSync(templatePath)) {
-    throw new Error("Dockerfile template not found");
+    throw new Error('Dockerfile template not found');
   }
 
   fs.copyFileSync(templatePath, dockerfilePath);
-  logger.info("Created Dockerfile from template");
+  logger.info('Created Dockerfile from template');
 
   // Also copy .dockerignore if it doesn't exist
-  const dockerignorePath = path.join(projectPath, ".dockerignore");
+  const dockerignorePath = path.join(projectPath, '.dockerignore');
   if (!fs.existsSync(dockerignorePath)) {
-    const dockerignoreTemplatePath = path.join(
-      __dirname,
-      "../../../templates/.dockerignore"
-    );
-    
+    const dockerignoreTemplatePath = path.join(__dirname, '../../../templates/.dockerignore');
+
     if (fs.existsSync(dockerignoreTemplatePath)) {
       fs.copyFileSync(dockerignoreTemplatePath, dockerignorePath);
-      logger.debug("Created .dockerignore from template");
+      logger.debug('Created .dockerignore from template');
     }
   }
 
@@ -98,13 +92,11 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
 /**
  * Build Docker image
  */
-export async function buildDockerImage(
-  options: DockerBuildOptions
-): Promise<DockerBuildResult> {
+export async function buildDockerImage(options: DockerBuildOptions): Promise<DockerBuildResult> {
   try {
     logger.info(`Building Docker image: ${options.imageTag}`);
 
-    const dockerfilePath = options.dockerfile 
+    const dockerfilePath = options.dockerfile
       ? path.join(options.projectPath, options.dockerfile)
       : await ensureDockerfile(options.projectPath);
 
@@ -117,56 +109,53 @@ export async function buildDockerImage(
     }
 
     // Build Docker command arguments
-    const buildArgs = ["build"];
-    
+    const buildArgs = ['build'];
+
     // Add build context
-    buildArgs.push("-f", dockerfilePath);
-    buildArgs.push("-t", options.imageTag);
+    buildArgs.push('-f', dockerfilePath);
+    buildArgs.push('-t', options.imageTag);
 
     // Add build args if provided
     if (options.buildArgs) {
       for (const [key, value] of Object.entries(options.buildArgs)) {
-        buildArgs.push("--build-arg", `${key}=${value}`);
+        buildArgs.push('--build-arg', `${key}=${value}`);
       }
     }
 
     // Add target if specified
     if (options.target) {
-      buildArgs.push("--target", options.target);
+      buildArgs.push('--target', options.target);
     }
 
     // Add context (project directory)
     buildArgs.push(options.projectPath);
 
-    logger.debug("Docker build command:", `docker ${buildArgs.join(" ")}`);
+    logger.debug('Docker build command:', `docker ${buildArgs.join(' ')}`);
 
     // Execute Docker build
     const startTime = Date.now();
-    const { stdout } = await execa("docker", buildArgs);
+    const { stdout } = await execa('docker', buildArgs);
     const buildTime = Date.now() - startTime;
 
-    logger.debug("Docker build completed in", `${(buildTime / 1000).toFixed(2)}s`);
-    
+    logger.debug('Docker build completed in', `${(buildTime / 1000).toFixed(2)}s`);
+
     // Log build output if verbose
     if (process.env.VERBOSE) {
-      logger.debug("Build output:", stdout);
+      logger.debug('Build output:', stdout);
     }
 
     // Get image info
-    const inspectResult = await execa("docker", [
-      "inspect",
+    const inspectResult = await execa('docker', [
+      'inspect',
       options.imageTag,
-      "--format={{.Id}}|{{.Size}}",
+      '--format={{.Id}}|{{.Size}}',
     ]);
 
-    const [imageId, sizeStr] = inspectResult.stdout.split("|");
+    const [imageId, sizeStr] = inspectResult.stdout.split('|');
     const size = parseInt(sizeStr, 10);
 
     // Calculate checksum from image ID
-    const checksum = crypto
-      .createHash("sha256")
-      .update(imageId)
-      .digest("hex");
+    const checksum = crypto.createHash('sha256').update(imageId).digest('hex');
 
     logger.info(`✅ Image built: ${options.imageTag}`);
     logger.info(`   Size: ${(size / 1024 / 1024).toFixed(2)} MB`);
@@ -179,9 +168,9 @@ export async function buildDockerImage(
       checksum,
     };
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    logger.error("Docker build failed:", errorMessage);
-    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Docker build failed:', errorMessage);
+
     return {
       success: false,
       imageTag: options.imageTag,
@@ -193,50 +182,36 @@ export async function buildDockerImage(
 /**
  * Login to ECR registry
  */
-async function loginToECR(
-  registryUrl: string,
-  authToken: string
-): Promise<void> {
+async function loginToECR(registryUrl: string, authToken: string): Promise<void> {
   // Decode ECR auth token (it's base64 encoded username:password)
-  const decoded = Buffer.from(authToken, "base64").toString("utf-8");
-  const [username, password] = decoded.split(":");
+  const decoded = Buffer.from(authToken, 'base64').toString('utf-8');
+  const [username, password] = decoded.split(':');
 
   logger.info(`Logging in to ECR registry: ${registryUrl}`);
 
   // Docker login
-  await execa("docker", [
-    "login",
-    "--username",
-    username,
-    "--password-stdin",
-    registryUrl,
-  ], {
+  await execa('docker', ['login', '--username', username, '--password-stdin', registryUrl], {
     input: password,
   });
 
-  logger.info("✅ Logged in to ECR");
+  logger.info('✅ Logged in to ECR');
 }
 
 /**
  * Tag image for ECR
  */
-async function tagImageForECR(
-  localTag: string,
-  ecrImageUri: string
-): Promise<void> {
+async function tagImageForECR(localTag: string, ecrImageUri: string): Promise<void> {
   logger.info(`Tagging image for ECR: ${ecrImageUri}`);
-  
-  await execa("docker", ["tag", localTag, ecrImageUri]);
-  
+
+  await execa('docker', ['tag', localTag, ecrImageUri]);
+
   logger.debug(`✅ Tagged: ${localTag} -> ${ecrImageUri}`);
 }
 
 /**
  * Push Docker image to ECR
  */
-export async function pushDockerImage(
-  options: DockerPushOptions
-): Promise<DockerPushResult> {
+export async function pushDockerImage(options: DockerPushOptions): Promise<DockerPushResult> {
   try {
     logger.info(`Pushing image to ECR: ${options.imageTag}`);
 
@@ -250,11 +225,11 @@ export async function pushDockerImage(
     }
 
     // Step 3: Push to ECR
-    logger.info("Pushing to ECR (this may take a few minutes)...");
+    logger.info('Pushing to ECR (this may take a few minutes)...');
     const startTime = Date.now();
-    
-    const { stdout } = await execa("docker", ["push", ecrImageUri]);
-    
+
+    const { stdout } = await execa('docker', ['push', ecrImageUri]);
+
     const pushTime = Date.now() - startTime;
     logger.info(`✅ Image pushed in ${(pushTime / 1000).toFixed(2)}s`);
 
@@ -268,9 +243,9 @@ export async function pushDockerImage(
       repositoryUri: ecrImageUri,
     };
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    logger.error("Docker push failed:", errorMessage);
-    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Docker push failed:', errorMessage);
+
     return {
       success: false,
       error: errorMessage,
@@ -290,7 +265,7 @@ export async function buildAndPushImage(
 }> {
   // Step 1: Build image
   const buildResult = await buildDockerImage(buildOptions);
-  
+
   if (!buildResult.success) {
     return { buildResult };
   }
@@ -313,13 +288,12 @@ export async function cleanupLocalImages(imageTags: string[]): Promise<void> {
   }
 
   logger.info(`Cleaning up ${imageTags.length} local images...`);
-  
+
   try {
-    await execa("docker", ["rmi", ...imageTags, "--force"]);
-    logger.info("✅ Local images cleaned up");
+    await execa('docker', ['rmi', ...imageTags, '--force']);
+    logger.info('✅ Local images cleaned up');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.warn("Failed to clean up some images:", errorMessage);
+    logger.warn('Failed to clean up some images:', errorMessage);
   }
 }
-

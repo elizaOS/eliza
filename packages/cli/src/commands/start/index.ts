@@ -165,7 +165,7 @@ export const start = new Command()
       });
 
       // Server handles initialization, port resolution, and agent startup automatically
-      logger.success(`Server started with ${agentConfigs.length} agents`)
+      logger.success(`Server started with ${agentConfigs.length} agents`);
     } catch (e: any) {
       handleError(e);
       process.exit(1);

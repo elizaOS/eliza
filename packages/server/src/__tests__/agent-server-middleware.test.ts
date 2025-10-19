@@ -99,7 +99,9 @@ describe('AgentServer Server Lifecycle Tests', () => {
 
   it('should throw error for invalid port', async () => {
     await expect(server.start({ port: null as any })).rejects.toThrow('Invalid port number: null');
-    await expect(server.start({ port: 'invalid' as any })).rejects.toThrow('Invalid port number: invalid');
+    await expect(server.start({ port: 'invalid' as any })).rejects.toThrow(
+      'Invalid port number: invalid'
+    );
   });
 
   it('should stop server gracefully', async () => {

@@ -331,10 +331,7 @@ export function findEnvFile(): string | null {
   const fs = require('node:fs');
   const path = require('node:path');
 
-  const possiblePaths = [
-    path.join(process.cwd(), '.env'),
-    path.join(process.cwd(), '.env.local'),
-  ];
+  const possiblePaths = [path.join(process.cwd(), '.env'), path.join(process.cwd(), '.env.local')];
 
   for (const envPath of possiblePaths) {
     if (fs.existsSync(envPath)) {

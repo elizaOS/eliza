@@ -11,11 +11,13 @@ elizaos deploy [options]
 ## Quick Start
 
 1. **Set your API key**:
+
    ```bash
    export ELIZAOS_API_KEY="your-api-key-here"
    ```
 
 2. **Ensure Docker is running**:
+
    ```bash
    docker --version
    docker info
@@ -29,27 +31,29 @@ elizaos deploy [options]
 
 ## Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-n, --name <name>` | Deployment name | Package name |
-| `-p, --port <port>` | Container port | 3000 |
-| `--desired-count <count>` | Number of container instances | 1 |
-| `--cpu <units>` | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small) | 1792 |
-| `--memory <mb>` | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792 |
-| `-k, --api-key <key>` | API key | $ELIZAOS_API_KEY |
-| `-u, --api-url <url>` | API URL | https://elizacloud.ai |
-| `-e, --env <KEY=VALUE>` | Environment variable | - |
-| `--skip-build` | Skip Docker build | false |
-| `--image-uri <uri>` | Use existing ECR image | - |
+| Option                    | Description                                       | Default               |
+| ------------------------- | ------------------------------------------------- | --------------------- |
+| `-n, --name <name>`       | Deployment name                                   | Package name          |
+| `-p, --port <port>`       | Container port                                    | 3000                  |
+| `--desired-count <count>` | Number of container instances                     | 1                     |
+| `--cpu <units>`           | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)  | 1792                  |
+| `--memory <mb>`           | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792                  |
+| `-k, --api-key <key>`     | API key                                           | $ELIZAOS_API_KEY      |
+| `-u, --api-url <url>`     | API URL                                           | https://elizacloud.ai |
+| `-e, --env <KEY=VALUE>`   | Environment variable                              | -                     |
+| `--skip-build`            | Skip Docker build                                 | false                 |
+| `--image-uri <uri>`       | Use existing ECR image                            | -                     |
 
 ## Examples
 
 ### Basic deployment
+
 ```bash
 elizaos deploy
 ```
 
 ### With custom configuration
+
 ```bash
 elizaos deploy \
   --name my-agent \
@@ -60,6 +64,7 @@ elizaos deploy \
 ```
 
 ### With environment variables
+
 ```bash
 elizaos deploy \
   --env "OPENAI_API_KEY=sk-..." \
@@ -67,6 +72,7 @@ elizaos deploy \
 ```
 
 ### Using existing Docker image
+
 ```bash
 elizaos deploy \
   --skip-build \
@@ -174,6 +180,7 @@ CMD ["bun", "run", "start"]
 ## Troubleshooting
 
 ### Docker not running
+
 ```bash
 # Check Docker status
 docker info
@@ -186,6 +193,7 @@ sudo systemctl start docker
 ```
 
 ### Build fails
+
 ```bash
 # Check project structure
 ls package.json
@@ -198,6 +206,7 @@ docker build . --progress=plain
 ```
 
 ### Push fails
+
 ```bash
 # Verify ECR credentials
 aws ecr get-login-password --region us-east-1
@@ -207,12 +216,15 @@ ping elizacloud.ai
 ```
 
 ### Deployment timeout
+
 The deployment process may take several minutes for:
+
 - First-time deployments (image pull + container start)
 - Large images (>1GB)
 - Cold starts
 
 If it times out:
+
 - Check your internet connection
 - Verify the ElizaOS Cloud API is accessible
 - Check container logs in the dashboard
@@ -224,17 +236,18 @@ If it times out:
 
 ECS on EC2 supports flexible CPU/memory combinations. Default configuration:
 
-| CPU (units) | vCPU | Memory (MB) |
-|------------|------|-------------|
-| 256 | 0.25 | 512, 1024, 2048 |
-| 512 | 0.5 | 1024-4096 (1GB increments) |
-| 1024 | 1 | 2048-8192 (1GB increments) |
-| 2048 | 2 | 4096-16384 (1GB increments) |
-| 4096 | 4 | 8192-30720 (1GB increments) |
+| CPU (units) | vCPU | Memory (MB)                 |
+| ----------- | ---- | --------------------------- |
+| 256         | 0.25 | 512, 1024, 2048             |
+| 512         | 0.5  | 1024-4096 (1GB increments)  |
+| 1024        | 1    | 2048-8192 (1GB increments)  |
+| 2048        | 2    | 4096-16384 (1GB increments) |
+| 4096        | 4    | 8192-30720 (1GB increments) |
 
 ### Cost Estimation
 
 AWS EC2 t3g.small pricing (us-east-1):
+
 - Instance: ~$0.0168 per hour (~$12.41/month)
 - EBS 20GB gp3: ~$1.60/month
 - CloudWatch Logs (5GB): ~$0.50/month
@@ -242,6 +255,7 @@ AWS EC2 t3g.small pricing (us-east-1):
 - Total: ~$14.71/month per container
 
 **Default allocation (1.75 vCPU + 1.75 GB)**:
+
 - Uses 87.5% of t3g.small resources
 - Leaves 12.5% overhead for ECS agent and OS
 - Cost: ~$14.71/month per container (fixed, not usage-based)
@@ -249,6 +263,7 @@ AWS EC2 t3g.small pricing (us-east-1):
 **Note**: Since you're paying for the full t3g.small instance, we allocate maximum resources to the container!
 
 Plus:
+
 - ECR storage: ~$0.10/GB per month
 - Data transfer: Standard AWS rates
 - Load balancer: ~$16/month

@@ -7,8 +7,7 @@ import { detectEnvironment } from './utils/environment';
  */
 export function hasCharacterSecrets(character: Character): boolean {
   return Boolean(
-    character?.settings?.secrets &&
-      Object.keys(character.settings.secrets).length > 0
+    character?.settings?.secrets && Object.keys(character.settings.secrets).length > 0
   );
 }
 
@@ -51,9 +50,7 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
  *
  * Note: This is a Node.js-only feature. In browser environments, it returns false.
  */
-export async function setDefaultSecretsFromEnv(
-  character: Character
-): Promise<boolean> {
+export async function setDefaultSecretsFromEnv(character: Character): Promise<boolean> {
   const env = detectEnvironment();
 
   // Only work in Node.js environment

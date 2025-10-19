@@ -128,7 +128,10 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent1, agent2] = await agentServer.startAgents([{ character: char1 }, { character: char2 }]);
+      const [agent1, agent2] = await agentServer.startAgents([
+        { character: char1 },
+        { character: char2 },
+      ]);
       expect(agent1).toBeDefined();
       expect(agent2).toBeDefined();
 
