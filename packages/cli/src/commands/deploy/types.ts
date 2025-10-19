@@ -140,7 +140,6 @@ export interface ContainerData {
   health_check_path?: string;
 }
 
-
 /**
  * Image build and push request
  */
@@ -172,4 +171,3 @@ export interface DockerBuildContext {
   buildArgs?: Record<string, string>;
   target?: string;
 }
-

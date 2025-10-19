@@ -38,10 +38,9 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: [], // No plugins specified
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       expect(runtimes).toHaveLength(1);
       const runtime = runtimes[0];
@@ -58,18 +57,15 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: ['@elizaos/plugin-openai'],
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
 
       const bootstrapIndex = pluginNames.indexOf('bootstrap');
-      const openaiIndex = pluginNames.findIndex((name) =>
-        name.toLowerCase().includes('openai')
-      );
+      const openaiIndex = pluginNames.findIndex((name) => name.toLowerCase().includes('openai'));
 
       // Bootstrap should come before openai (if openai loaded successfully)
       if (openaiIndex !== -1) {
@@ -86,10 +82,9 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: [],
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       const runtime = runtimes[0];
 
@@ -105,10 +100,9 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: ['@elizaos/plugin-bootstrap'], // User explicitly added bootstrap
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       const runtime = runtimes[0];
 
@@ -126,10 +120,9 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: [],
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       const runtime = runtimes[0];
 
@@ -148,10 +141,9 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: ['@elizaos/plugin-openai'],
       };
 
-      const runtimes = await server.startAgents(
-        [{ character: testCharacter }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: testCharacter }], {
+        isTestMode: true,
+      });
 
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
@@ -160,9 +152,7 @@ describe('Bootstrap Auto-Loading', () => {
       const sqlIndex = pluginNames.findIndex(
         (name) => name === 'sql' || name === '@elizaos/plugin-sql'
       );
-      const openaiIndex = pluginNames.findIndex((name) =>
-        name.toLowerCase().includes('openai')
-      );
+      const openaiIndex = pluginNames.findIndex((name) => name.toLowerCase().includes('openai'));
 
       // SQL should come after openai (if openai loaded successfully)
       if (openaiIndex !== -1 && sqlIndex !== -1) {
@@ -226,10 +216,9 @@ describe('Bootstrap Auto-Loading', () => {
       const agent1: Character = { name: 'Agent1', bio: ['Agent 1'], plugins: [] };
       const agent2: Character = { name: 'Agent2', bio: ['Agent 2'], plugins: [] };
 
-      const runtimes = await server.startAgents(
-        [{ character: agent1 }, { character: agent2 }],
-        { isTestMode: true }
-      );
+      const runtimes = await server.startAgents([{ character: agent1 }, { character: agent2 }], {
+        isTestMode: true,
+      });
 
       expect(runtimes).toHaveLength(2);
 

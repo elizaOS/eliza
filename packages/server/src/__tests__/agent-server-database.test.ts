@@ -64,15 +64,19 @@ describe('AgentServer Database Operations Tests', () => {
     // Mock database methods
     server.database = {
       ...server.database,
-      createMessageServer: jest.fn().mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', name: 'Test Server' }),
+      createMessageServer: jest
+        .fn()
+        .mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111', name: 'Test Server' }),
       getMessageServers: jest
         .fn()
         .mockResolvedValueOnce([])
         .mockResolvedValue([
           { id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' },
         ]),
-      getMessageServerById: jest.fn().mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111' }),
-      createChannel: jest.fn().mockResolvedValue({ 
+      getMessageServerById: jest
+        .fn()
+        .mockResolvedValue({ id: '11111111-1111-1111-1111-111111111111' }),
+      createChannel: jest.fn().mockResolvedValue({
         id: '123e4567-e89b-12d3-a456-426614174000',
         messageServerId: '11111111-1111-1111-1111-111111111111' as UUID,
         name: 'Test Channel',

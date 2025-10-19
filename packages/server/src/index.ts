@@ -28,7 +28,6 @@ import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 
-
 import internalMessageBus from './bus.js';
 import type {
   CentralRootMessage,
@@ -194,11 +193,7 @@ export class AgentServer {
       agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [
-        ...(agent.character.plugins || []),
-        ...(agent.plugins || []),
-        sqlPlugin,
-      ];
+      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
 
       return {
         character: encryptedCharacter(agent.character),

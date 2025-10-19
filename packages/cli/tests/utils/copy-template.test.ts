@@ -170,9 +170,7 @@ describe('Template Path Resolution', () => {
         // Read package.json to verify the name was updated
         const packageJsonPath = join(targetDir, 'package.json');
         if (existsSync(packageJsonPath)) {
-          const packageJson = JSON.parse(
-            await Bun.file(packageJsonPath).text()
-          );
+          const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
           expect(packageJson.name).toBe('plugin-my-custom-name');
         }
       } catch (error) {
@@ -191,9 +189,7 @@ describe('Template Path Resolution', () => {
 
         const packageJsonPath = join(targetDir, 'package.json');
         if (existsSync(packageJsonPath)) {
-          const packageJson = JSON.parse(
-            await Bun.file(packageJsonPath).text()
-          );
+          const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
 
           // Check that dependencies don't have workspace: prefix
           if (packageJson.dependencies) {
@@ -229,9 +225,7 @@ describe('Template Path Resolution', () => {
 
         const packageJsonPath = join(targetDir, 'package.json');
         if (existsSync(packageJsonPath)) {
-          const packageJson = JSON.parse(
-            await Bun.file(packageJsonPath).text()
-          );
+          const packageJson = JSON.parse(await Bun.file(packageJsonPath).text());
           expect(packageJson.private).toBeUndefined();
         }
       } catch (error) {

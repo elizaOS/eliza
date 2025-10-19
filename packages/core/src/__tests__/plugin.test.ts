@@ -7,7 +7,6 @@ function delay(ms: number) {
 }
 
 describe('Plugin Functions', () => {
-  
   let originalEnv: Record<string, string | undefined>;
 
   beforeEach(() => {

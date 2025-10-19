@@ -10,9 +10,7 @@ import { validateCharacter } from './schemas/character';
 export function parseCharacter(input: string | object | Character): Character {
   // If it's a string, treat it as a file path (to be loaded by caller)
   if (typeof input === 'string') {
-    throw new Error(
-      `Character path provided but must be loaded first: ${input}`
-    );
+    throw new Error(`Character path provided but must be loaded first: ${input}`);
   }
 
   // If it's an object, validate and return it
@@ -54,9 +52,7 @@ export function validateCharacterConfig(character: Character): {
   }
 
   const errors = validationResult.error?.issues
-    ? validationResult.error.issues.map(
-        (issue) => `${issue.path.join('.')}: ${issue.message}`
-      )
+    ? validationResult.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`)
     : [validationResult.error?.message || 'Unknown validation error'];
 
   return {
@@ -111,9 +107,7 @@ export function buildCharacterPlugins(
 
     // Embedding-capable plugins (before platform plugins per documented order)
     ...(env.OPENAI_API_KEY?.trim() ? ['@elizaos/plugin-openai'] : []),
-    ...(env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
-      ? ['@elizaos/plugin-google-genai']
-      : []),
+    ...(env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ? ['@elizaos/plugin-google-genai'] : []),
 
     // Platform plugins
     ...(env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
