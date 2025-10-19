@@ -2,7 +2,7 @@
  * Constructor tests for AgentServer
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, afterEach } from 'bun:test';
 import { AgentServer } from '../index';
 
 describe('AgentServer Constructor Tests', () => {

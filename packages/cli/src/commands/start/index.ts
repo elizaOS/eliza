@@ -3,10 +3,9 @@ import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { getModuleLoader } from '@/src/utils/module-loader';
-import { validatePort } from '@/src/utils/port-validation';
-import { logger, type Character, type ProjectAgent, type IAgentRuntime } from '@elizaos/core';
-import { Command } from 'commander';
+import { logger, type Character, type ProjectAgent } from '@elizaos/core';
+import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
+import { Command, InvalidOptionArgumentError } from 'commander';
 import dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -17,7 +16,13 @@ export const start = new Command()
   .name('start')
   .description('Build and start the Eliza agent server')
   .option('-c, --configure', 'Reconfigure services and AI models')
-  .option('-p, --port <port>', 'Port to listen on', validatePort)
+  .option('-p, --port <port>', 'Port to listen on', (value: string) => {
+    const n = Number.parseInt(value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new InvalidOptionArgumentError('Port must be an integer between 1 and 65535');
+    }
+    return n;
+  })
   .option('--character <paths...>', 'Character file(s) to use')
   .hook('preAction', async () => {
     await displayBanner();
@@ -87,11 +92,6 @@ export const start = new Command()
       let projectAgents: ProjectAgent[] = [];
 
       if (options.character && options.character.length > 0) {
-        // Load @elizaos/server module for character loading
-        const moduleLoader = getModuleLoader();
-        const serverModule = await moduleLoader.load('@elizaos/server');
-        const { loadCharacterTryPath } = serverModule;
-
         // Validate and load characters from provided paths
         for (const charPath of options.character) {
           const resolvedPath = path.resolve(charPath);
@@ -146,92 +146,26 @@ export const start = new Command()
         }
       }
 
-      // Use AgentServer from server package
-      const moduleLoader = getModuleLoader();
-      const { AgentServer } = await moduleLoader.load('@elizaos/server');
+      // Prepare agent configurations (unified handling)
+      const agentConfigs = projectAgents?.length
+        ? projectAgents.map((pa) => ({
+            character: pa.character,
+            plugins: Array.isArray(pa.plugins) ? pa.plugins : [],
+            init: pa.init,
+          }))
+        : characters?.map((character) => ({ character })) || [];
 
+      // Use AgentServer with unified startup
       const server = new AgentServer();
-
-      // Initialize server with database configuration
-      await server.initialize({
+      await server.start({
+        port: options.port,
         dataDir: process.env.PGLITE_DATA_DIR,
         postgresUrl: process.env.POSTGRES_URL,
+        agents: agentConfigs,
       });
 
-      // Start HTTP server
-      await server.start(options.port || 3000);
-
-      // Handle project agents with their init functions
-      if (projectAgents && projectAgents.length > 0) {
-        // Phase 1: Start all agents first (collect runtimes)
-        const runtimes: IAgentRuntime[] = [];
-        const agentRuntimeMap = new Map<ProjectAgent, IAgentRuntime>();
-
-        for (const projectAgent of projectAgents) {
-          try {
-            // Validate and safely access the agent's plugins array
-            const agentPlugins = Array.isArray(projectAgent.plugins) ? projectAgent.plugins : [];
-
-            const [runtime] = await server.startAgents([projectAgent.character], agentPlugins);
-
-            if (runtime) {
-              runtimes.push(runtime);
-              agentRuntimeMap.set(projectAgent, runtime);
-              logger.info(
-                `Started agent: ${projectAgent.character.name || 'Unnamed'} (${runtime.agentId})`
-              );
-            } else {
-              logger.error(
-                `Failed to start agent: ${projectAgent.character.name || 'Unnamed'} - runtime is undefined`
-              );
-            }
-          } catch (error) {
-            logger.error(
-              {
-                error,
-                characterName: projectAgent.character.name || 'Unnamed',
-              },
-              'Failed to start project agent'
-            );
-            // Continue with other agents even if one fails
-          }
-        }
-
-        logger.info(`Started ${runtimes.length}/${projectAgents.length} project agents`);
-
-        // Phase 2: Run all init functions after all agents have started
-        // This ensures init functions can discover/communicate with all other agents
-        for (const projectAgent of projectAgents) {
-          const runtime = agentRuntimeMap.get(projectAgent);
-          if (runtime && typeof projectAgent.init === 'function') {
-            try {
-              logger.info(
-                `Running init function for agent: ${projectAgent.character.name || 'Unnamed'}`
-              );
-              await projectAgent.init(runtime);
-            } catch (error) {
-              logger.error(
-                {
-                  error,
-                  characterName: projectAgent.character.name || 'Unnamed',
-                  agentId: runtime.agentId,
-                },
-                'Agent init function failed'
-              );
-              // Continue with other init functions even if one fails
-            }
-          }
-        }
-
-        logger.info('All agent init functions completed');
-      }
-      // Handle standalone characters from CLI
-      else if (characters && characters.length > 0) {
-        // Batch start all characters
-        const runtimes = await server.startAgents(characters);
-        logger.info(`Started ${runtimes.length} agents`);
-      }
-      // If no characters or agents specified, server is ready but no agents started
+      // Server handles initialization, port resolution, and agent startup automatically
+      logger.success(`Server started with ${agentConfigs.length} agents`);
     } catch (e: any) {
       handleError(e);
       process.exit(1);

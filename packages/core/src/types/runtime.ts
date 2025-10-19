@@ -6,7 +6,13 @@ import type { Entity, Room, World, ChannelType } from './environment';
 import type { Logger } from '../logger';
 import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
-import type { ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
+import type {
+  ModelParamsMap,
+  ModelResultMap,
+  ModelTypeName,
+  GenerateTextOptions,
+  GenerateTextResult,
+} from './model';
 import type { Plugin, PluginEvents, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
@@ -23,6 +29,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
   character: Character;
+  messageService: any | null; // IMessageService - initialized in runtime.initialize()
   providers: Provider[];
   actions: Action[];
   evaluators: Evaluator[];
@@ -32,6 +39,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;
+  stateCache: Map<string, State>;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -132,6 +140,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     provider?: string
   ): Promise<R>;
 
+  generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult>;
+
   registerModel(
     modelType: ModelTypeName | string,
     handler: (params: any) => Promise<any>,
@@ -148,6 +158,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getEvent(event: string): ((params: any) => Promise<void>)[] | undefined;
 
   emitEvent(event: string | string[], params: any): Promise<void>;
+
   // In-memory task definition methods
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;

@@ -13,10 +13,10 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
   // Get memories for a specific room
   router.get('/:agentId/rooms/:roomId/memories', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
-    const roomId = validateUuid(req.params.roomId);
+    const channelId = validateUuid(req.params.roomId); // Frontend passes channelId in roomId param
 
-    if (!agentId || !roomId) {
-      return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or room ID format');
+    if (!agentId || !channelId) {
+      return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID or channel ID format');
     }
 
     const runtime = elizaOS.getAgent(agentId);
@@ -32,6 +32,12 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         : Date.now();
       const includeEmbedding = req.query.includeEmbedding === 'true';
       const tableName = (req.query.tableName as string) || 'messages';
+
+      // Convert channelId to agent's unique roomId
+      const roomId = createUniqueUuid(runtime, channelId);
+      logger.info(
+        `[ROOM MEMORIES] Converting channelId ${channelId} to roomId ${roomId} for agent ${agentId}`
+      );
 
       const memories = await runtime.getMemories({
         tableName,

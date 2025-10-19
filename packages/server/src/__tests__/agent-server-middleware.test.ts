@@ -78,7 +78,7 @@ describe('AgentServer Server Lifecycle Tests', () => {
     jest.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
-    await server.initialize();
+    await server.start({ isTestMode: true });
   });
 
   afterEach(async () => {
@@ -89,21 +89,23 @@ describe('AgentServer Server Lifecycle Tests', () => {
     mock.restore();
   });
 
-  it('should start server on specified port', () => {
+  it('should start server on specified port', async () => {
     const port = 3001;
 
-    server.start(port);
+    await server.start({ port });
 
     expect(mockServer.listen).toHaveBeenCalledWith(port, '0.0.0.0', expect.any(Function));
   });
 
-  it('should throw error for invalid port', () => {
-    expect(() => server.start(null as any)).toThrow('Invalid port number: null');
-    expect(() => server.start('invalid' as any)).toThrow('Invalid port number: invalid');
+  it('should throw error for invalid port', async () => {
+    await expect(server.start({ port: null as any })).rejects.toThrow('Invalid port number: null');
+    await expect(server.start({ port: 'invalid' as any })).rejects.toThrow(
+      'Invalid port number: invalid'
+    );
   });
 
   it('should stop server gracefully', async () => {
-    server.start(3001);
+    await server.start({ port: 3001 });
 
     await server.stop();
 

@@ -32,15 +32,34 @@ export class EmbeddingGenerationService extends Service {
   private maxQueueSize = 1000;
   private batchSize = 10; // Process up to 10 embeddings at a time
   private processingIntervalMs = 100; // Check queue every 100ms
+  private isDisabled = false; // Flag to indicate if service is disabled due to missing embedding model
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     logger.info('[EmbeddingService] Starting embedding generation service');
+
+    // Check if TEXT_EMBEDDING model is registered
+    const embeddingModel = runtime.getModel(ModelType.TEXT_EMBEDDING);
+    if (!embeddingModel) {
+      logger.warn(
+        '[EmbeddingService] No TEXT_EMBEDDING model registered. Embedding service will not be initialized.'
+      );
+      // Return a no-op service that does nothing
+      const noOpService = new EmbeddingGenerationService(runtime);
+      noOpService.isDisabled = true;
+      return noOpService;
+    }
+
     const service = new EmbeddingGenerationService(runtime);
     await service.initialize();
     return service;
   }
 
   async initialize(): Promise<void> {
+    if (this.isDisabled) {
+      logger.debug('[EmbeddingService] Service is disabled, skipping initialization');
+      return;
+    }
+
     logger.info('[EmbeddingService] Initializing embedding generation service');
 
     // Register event handlers
@@ -54,6 +73,12 @@ export class EmbeddingGenerationService extends Service {
   }
 
   private async handleEmbeddingRequest(payload: EmbeddingGenerationPayload): Promise<void> {
+    // Skip if service is disabled
+    if (this.isDisabled) {
+      logger.debug('[EmbeddingService] Service is disabled, skipping embedding request');
+      return;
+    }
+
     const { memory, priority = 'normal', retryCount = 0, maxRetries = 3, runId } = payload;
 
     // Skip if memory already has embeddings
@@ -171,6 +196,11 @@ export class EmbeddingGenerationService extends Service {
   }
 
   private startProcessing(): void {
+    if (this.isDisabled) {
+      logger.debug('[EmbeddingService] Service is disabled, not starting processing loop');
+      return;
+    }
+
     if (this.processingInterval) {
       return;
     }
@@ -309,6 +339,11 @@ export class EmbeddingGenerationService extends Service {
 
   async stop(): Promise<void> {
     logger.info('[EmbeddingService] Stopping embedding generation service');
+
+    if (this.isDisabled) {
+      logger.debug('[EmbeddingService] Service is disabled, nothing to stop');
+      return;
+    }
 
     if (this.processingInterval) {
       clearInterval(this.processingInterval);

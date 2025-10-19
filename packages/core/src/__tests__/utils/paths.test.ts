@@ -9,7 +9,7 @@ import {
   getUploadsChannelsDir,
   getAllElizaPaths,
   resetPaths,
-} from '../paths';
+} from '../../utils/paths';
 import path from 'node:path';
 
 describe('ElizaPaths', () => {

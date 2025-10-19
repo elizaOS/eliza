@@ -31,8 +31,15 @@ export * from './roles';
 export * from './runtime';
 export * from './settings';
 export * from './services';
+export * from './services/message-service';
+export * from './services/default-message-service';
 export * from './search';
 export * from './elizaos';
+
+// Export configuration and plugin modules - will be removed once cli cleanup
+export * from './character';
+export * from './secrets';
+export * from './plugin';
 
 // Node-specific exports
 export const isBrowser = false;

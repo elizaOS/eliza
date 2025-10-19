@@ -3,6 +3,7 @@ import { PaginationParams } from './base';
 
 export interface Memory {
   id: UUID;
+  entityId?: UUID;
   agentId: UUID;
   roomId?: UUID;
   type: string;

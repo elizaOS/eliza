@@ -22,6 +22,7 @@ describe('EmbeddingGenerationService - Queue Management', () => {
         emittedEvents.push({ event, payload });
       }),
       useModel: mock().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+      getModel: mock().mockReturnValue(mock().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5])),
       updateMemory: mock().mockResolvedValue(undefined),
       logger: {
         debug: mock(),

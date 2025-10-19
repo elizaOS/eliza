@@ -181,6 +181,13 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       content: { text: 'Test fact' },
     }),
     queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
+    getModel: mock().mockImplementation((modelType: string) => {
+      // By default, return a mock handler for TEXT_EMBEDDING
+      if (modelType === ModelType.TEXT_EMBEDDING) {
+        return mock().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]);
+      }
+      return mock().mockResolvedValue({});
+    }),
     createRelationship: mock().mockResolvedValue(true),
     updateRelationship: mock().mockResolvedValue(true),
     getRelationships: mock().mockResolvedValue([]),
@@ -411,6 +418,7 @@ export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
 
   // Additional properties and methods commonly used in tests
   useModel: ReturnType<typeof mock>;
+  getModel: ReturnType<typeof mock>;
   composePrompt: ReturnType<typeof mock>;
   composeState: ReturnType<typeof mock>;
   createMemory: ReturnType<typeof mock>;
