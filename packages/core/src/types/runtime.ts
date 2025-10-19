@@ -29,6 +29,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
   character: Character;
+  messageService: any | null; // IMessageService - initialized in runtime.initialize()
   providers: Provider[];
   actions: Action[];
   evaluators: Evaluator[];
@@ -157,6 +158,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getEvent(event: string): ((params: any) => Promise<void>)[] | undefined;
 
   emitEvent(event: string | string[], params: any): Promise<void>;
+
   // In-memory task definition methods
   registerTaskWorker(taskHandler: TaskWorker): void;
   getTaskWorker(name: string): TaskWorker | undefined;
