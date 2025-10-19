@@ -442,6 +442,7 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
 
   return {
     sessionId: session.id,
+    channelId: session.channelId,
     agentId: session.agentId,
     userId: session.userId,
     createdAt: session.createdAt,
@@ -649,6 +650,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
 
       const response: CreateSessionResponse = {
         sessionId,
+        channelId: session.channelId,
         agentId: session.agentId,
         userId: session.userId,
         createdAt: session.createdAt,
