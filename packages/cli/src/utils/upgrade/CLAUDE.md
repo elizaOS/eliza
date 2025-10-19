@@ -286,12 +286,10 @@ echo "✅ TypeScript validation complete"
    ```
 
 2. **State Handling** (Step 6.2 + state-and-providers-guide.md):
-
    - Convert to new state management patterns
    - Update state parameter handling
 
 3. **Context Composition** (Step 6.3):
-
    - Replace composeContext with new patterns
    - Update template processing
 
@@ -305,7 +303,6 @@ echo "✅ TypeScript validation complete"
    ```
 
 5. **Generation Updates** (Step 6.5):
-
    - Replace generateObject with runtime.useModel
    - Update model interaction patterns
 
@@ -334,7 +331,6 @@ bunx tsc --noEmit  # MUST PASS
    ```
 
 2. **Return Type Updates** (Step 7.3):
-
    - Ensure returns ProviderResult
    - Update data structure
 
