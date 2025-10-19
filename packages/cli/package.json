@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.6.2",
+  "version": "1.6.3-beta.0",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",

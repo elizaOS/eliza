@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/project-starter",
   "description": "Project starter for elizaOS",
-  "version": "1.6.2",
+  "version": "1.6.3-beta.0",
   "type": "module",
   "main": "dist/src/index.js",
   "module": "dist/src/index.js",
