@@ -114,13 +114,11 @@ npm install --save-dev supertest @types/supertest
 The tests include comprehensive security validation:
 
 1. **Input Validation**
-
    - UUID format checking
    - Suspicious pattern detection
    - Path traversal prevention
 
 2. **Injection Prevention**
-
    - Script injection detection
    - SQL injection pattern recognition
    - XSS attempt identification
