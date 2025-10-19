@@ -12,7 +12,7 @@ import {
   isBuffer,
   byteLength,
   randomBytes,
-} from '../buffer';
+} from '../../utils/buffer';
 
 describe('buffer utils', () => {
   it('converts hex <-> buffer', () => {

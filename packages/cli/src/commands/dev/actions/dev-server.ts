@@ -2,10 +2,7 @@ import { DevOptions } from '../types';
 import { createDevContext, performInitialBuild, performRebuild } from '../utils/build-utils';
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
-import { findNextAvailablePort } from '@/src/utils';
-import { isPortFree } from '@/src/utils/port-handling';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
-import { logger } from '@elizaos/core';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import type { Subprocess } from 'bun';
@@ -242,26 +239,6 @@ async function stopClientDevServer(): Promise<void> {
 }
 
 /**
- * Wait until a TCP port is free (unbound) on the given host or until timeout.
- */
-async function waitForPortToBeFree(
-  port: number,
-  host: string,
-  timeoutMs: number = 15000
-): Promise<void> {
-  const start = Date.now();
-  // Quick short-circuit
-  if (await isPortFree(port, host)) return;
-
-  while (Date.now() - start < timeoutMs) {
-    // Small delay between checks
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    if (await isPortFree(port, host)) return;
-  }
-  // If still not free, proceed; the start step will re-check availability
-}
-
-/**
  * Get the client dev server port (from Vite config or default)
  */
 async function getClientPort(cwd: string): Promise<number | null> {
@@ -352,34 +329,10 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Prepare CLI arguments for the start command
   const cliArgs: string[] = [];
 
-  // Handle port availability checking
-  let desiredPort: number;
+  // Pass port to start command only if explicitly provided (server will auto-discover if not provided)
   if (options.port !== undefined) {
-    desiredPort = options.port;
-  } else {
-    const serverPort = process.env.SERVER_PORT;
-    const parsedPort = serverPort ? Number.parseInt(serverPort, 10) : NaN;
-    desiredPort = Number.isNaN(parsedPort) ? 3000 : parsedPort;
+    cliArgs.push('--port', options.port.toString());
   }
-  const serverHost = process.env.SERVER_HOST || '0.0.0.0';
-  let availablePort: number;
-
-  try {
-    availablePort = await findNextAvailablePort(desiredPort, serverHost);
-
-    if (availablePort !== desiredPort) {
-      logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
-    }
-  } catch (error) {
-    logger.error(
-      `Failed to find available port starting from ${desiredPort}: ${error instanceof Error ? error.message : String(error)}`
-    );
-    logger.error('Please specify a different port using --port option');
-    throw new Error(`No available ports found starting from ${desiredPort}`);
-  }
-
-  // Pass the available port to the start command
-  cliArgs.push('--port', availablePort.toString());
 
   // Pass through configure option
   if (options.configure) {
@@ -421,10 +374,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
       console.log('✓ Rebuild successful, restarting...');
 
-      // Ensure previous port is free before starting to avoid port bumping
-      await waitForPortToBeFree(serverPort, serverHost);
-
-      // Start the server with the args
+      // Start the server with the args (server will auto-discover available port)
       await serverManager.start(cliArgs);
 
       // Restart client dev server if needed
@@ -456,18 +406,18 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
   // Start the server initially (skip in standalone mode)
   let backendStarted = false;
-  let serverPort = availablePort || 3000;
+  let serverPort = 3000; // Default port (server may auto-discover different port)
   if (!inStandalone) {
     if (process.env.ELIZA_TEST_MODE === 'true') {
       console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
     }
 
-    // Extract the actual port being used (after availability check)
+    // Extract the port from CLI args if provided
     const portArgIndex = cliArgs.indexOf('--port');
     serverPort =
       portArgIndex !== -1 && cliArgs[portArgIndex + 1]
         ? parseInt(cliArgs[portArgIndex + 1], 10)
-        : availablePort || 3000;
+        : 3000;
 
     await serverManager.start(cliArgs);
     backendStarted = true;

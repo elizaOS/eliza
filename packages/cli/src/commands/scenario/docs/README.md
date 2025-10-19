@@ -749,7 +749,7 @@ conversation:
 
 ### Usage notes
 
-Occassionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
+Occasionally there were some embedding issues with GPT-5 models, so if you run into issues append your `.env` file with:
 
 ```bash
 # Use a specific embedding model to avoid GPT-5 embedding issues
@@ -774,22 +774,18 @@ OPENAI_EMBEDDING_MODEL="text-embedding-3-small"
 The scenario system is built on several key components:
 
 1. **YAML Parser** ([#5574](https://github.com/elizaOS/eliza/issues/5574))
-
    - Validates scenario file structure
    - Provides type-safe scenario configuration
 
 2. **Environment Providers**
-
    - Local ([#5575](https://github.com/elizaOS/eliza/issues/5575))
    - E2B Sandbox ([#5576](https://github.com/elizaOS/eliza/issues/5576))
 
 3. **Mock Engine** ([#5577](https://github.com/elizaOS/eliza/issues/5577))
-
    - Service call interception
    - Response mocking
 
 4. **Evaluation Engine** ([#5578](https://github.com/elizaOS/eliza/issues/5578))
-
    - Action tracking
    - Response validation
    - Trajectory analysis
@@ -804,7 +800,6 @@ The scenario system is built on several key components:
 ## Common Issues
 
 1. **E2B Hanging**: If E2B tests hang, check:
-
    - E2B_API_KEY is set correctly
    - Network connectivity
    - E2B service status
@@ -812,13 +807,11 @@ The scenario system is built on several key components:
    - Database initialization problems
 
 2. **Mock Failures**: For mock test failures:
-
    - Verify mock service name matches exactly
    - Check response format matches service expectations
    - Ensure all required methods are mocked
 
 3. **Evaluation Failures**: For evaluation issues:
-
    - Check evaluator configuration
    - Verify expected responses match format
    - Review action tracking configuration

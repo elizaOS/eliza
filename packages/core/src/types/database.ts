@@ -140,6 +140,7 @@ export interface IDatabaseAdapter {
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;

@@ -230,7 +230,14 @@ describe('Character Schema Validation', () => {
               content: {
                 text: 'I am doing well, thank you!',
                 source: 'assistant',
-                attachments: [{ type: 'text', data: 'additional info' }],
+                attachments: [
+                  {
+                    id: 'attachment-1',
+                    url: 'https://example.com/file.txt',
+                    title: 'Additional Info',
+                    description: 'additional info',
+                  },
+                ],
               },
             },
           ],

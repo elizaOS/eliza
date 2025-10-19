@@ -15,7 +15,7 @@ This is the starter template for ElizaOS projects.
 
 ```bash
 # Create a new project
-elizaos create -t project my-project
+elizaos create --type project my-project
 # Dependencies are automatically installed and built
 
 # Navigate to the project directory

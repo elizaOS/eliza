@@ -1,248 +1,108 @@
-import { type IAgentRuntime } from '@elizaos/core';
+import { type IAgentRuntime, type UUID } from '@elizaos/core';
 import { TestSuite } from '../utils/test-suite';
-import { RunDataAggregator } from '../../src/data-aggregator';
-import { TrajectoryReconstructor } from '../../src/TrajectoryReconstructor';
-import { EvaluationEngine } from '../../src/EvaluationEngine';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 /**
- * E2E Test for Centralized Data Serialization (Ticket #5786)
+ * E2E Test for Message Service Integration
  *
- * This test validates that the RunDataAggregator correctly collects data
- * from a live agent runtime and produces the expected JSON structure.
+ * This test validates that the message service correctly processes messages
+ * through a live agent runtime.
  */
 export default class CentralizedDataTestSuite extends TestSuite {
-  public name = 'Centralized Data Serialization E2E Test';
+  public name = 'Message Service E2E Test';
 
   public tests = {
-    'Should aggregate data from live runtime and produce valid ScenarioRunResult': async (
+    'Should process message through messageService and generate response': async (
       runtime: IAgentRuntime
     ) => {
-      // Arrange: Set up the data aggregator with live components
-      const trajectoryReconstructor = new TrajectoryReconstructor(runtime);
-      const evaluationEngine = new EvaluationEngine();
-      const aggregator = new RunDataAggregator(runtime, trajectoryReconstructor, evaluationEngine);
+      // Create a test room
+      const roomId = '123e4567-e89b-12d3-a456-426614174999' as UUID;
 
-      // Create a test room for isolation
-      const roomId = 'e2e-centralized-data-test';
-
-      // Start a run with matrix parameters
-      const runId = 'e2e-test-run-001';
-      const combinationId = 'e2e-combo-001';
-      const parameters = {
-        'character.llm.model': 'gpt-4',
-        'run[0].input': 'List the open issues for elizaOS/eliza repository',
-      };
-
-      aggregator.startRun(runId, combinationId, parameters);
-
-      // Act: Simulate agent interaction
+      // Create test message
       const userMessage = {
+        id: '123e4567-e89b-12d3-a456-426614174998' as UUID,
         roomId,
-        content: { text: 'List the open issues for elizaOS/eliza repository' },
+        content: { text: 'Hello, how are you?', source: 'test' },
+        entityId: '123e4567-e89b-12d3-a456-426614174997' as UUID,
         agentId: runtime.agentId,
-        userId: 'test-user',
         createdAt: Date.now(),
       };
 
       // Process the message through the live runtime
       const startTime = Date.now();
-      await runtime.handleMessage(userMessage);
+      const result = await runtime.messageService!.handleMessage(runtime, userMessage);
       const endTime = Date.now();
 
-      // Record metrics based on the actual execution
-      aggregator.recordMetrics({
-        execution_time_seconds: (endTime - startTime) / 1000,
-        llm_calls: 1, // Mock value - in real scenario this would be tracked
-        total_tokens: 500, // Mock value
-      });
+      // Validate result structure
+      this.expect(result).toBeDefined();
+      this.expect(typeof result.didRespond).toBe('boolean');
+      this.expect(result.state).toBeDefined();
+
+      // Validate execution time is reasonable
+      const executionTime = endTime - startTime;
+      this.expect(executionTime).toBeGreaterThan(0);
+      this.expect(executionTime).toBeLessThan(60000); // Should complete within 60 seconds
 
       // Get the agent's response from memory
       const memories = await runtime.getMemories({
+        tableName: 'messages',
         roomId,
         count: 10,
         unique: false,
       });
 
-      const agentResponse = memories.find(
-        (m) =>
-          m.agentId === runtime.agentId &&
-          m.content &&
-          typeof m.content === 'object' &&
-          (m.content as any).text
-      );
-
-      this.expect(agentResponse).toBeDefined();
-
-      if (agentResponse) {
-        aggregator.recordFinalResponse((agentResponse.content as any).text);
-      }
-
-      // Set up evaluations
-      const evaluations = [
-        {
-          type: 'string_contains' as const,
-          value: 'issues',
-          case_sensitive: false,
-        },
-        {
-          type: 'trajectory_contains_action' as const,
-          action: 'LIST_GITHUB_ISSUES',
-        },
-      ];
-
-      const mockExecutionResult = {
-        exitCode: 0,
-        stdout: agentResponse ? (agentResponse.content as any).text : '',
-        stderr: '',
-        durationMs: endTime - startTime,
-      };
-
-      // Act: Build the final result
-      const result = await aggregator.buildResult(roomId, evaluations, mockExecutionResult);
-
-      // Assert: Validate the ScenarioRunResult structure
-      this.expect(result.run_id).toBe(runId);
-      this.expect(result.matrix_combination_id).toBe(combinationId);
-      this.expect(result.parameters).toEqual(parameters);
-
-      // Validate metrics
-      this.expect(result.metrics).toBeDefined();
-      this.expect(typeof result.metrics.execution_time_seconds).toBe('number');
-      this.expect(result.metrics.execution_time_seconds).toBeGreaterThan(0);
-
-      // Validate evaluations
-      this.expect(Array.isArray(result.evaluations)).toBe(true);
-      this.expect(result.evaluations.length).toBeGreaterThan(0);
-
-      // Each evaluation should have the required structure
-      result.evaluations.forEach((evaluation) => {
-        this.expect(typeof evaluation.evaluator_type).toBe('string');
-        this.expect(typeof evaluation.success).toBe('boolean');
-        this.expect(typeof evaluation.summary).toBe('string');
-        this.expect(typeof evaluation.details).toBe('object');
-      });
-
-      // Validate trajectory
-      this.expect(Array.isArray(result.trajectory)).toBe(true);
-
-      // Each trajectory step should have the required structure
-      result.trajectory.forEach((step) => {
-        this.expect(['thought', 'action', 'observation']).toContain(step.type);
-        this.expect(typeof step.timestamp).toBe('string');
-        this.expect(step.content).toBeDefined();
-
-        // Validate ISO timestamp format
-        this.expect(() => new Date(step.timestamp).toISOString()).not.toThrow();
-      });
-
-      // Validate final response
-      this.expect(typeof result.final_agent_response).toBe('string');
-      this.expect(result.final_agent_response.length).toBeGreaterThan(0);
-
-      // Error should be null for successful run
-      this.expect(result.error).toBeNull();
-
-      // Additional validation: Ensure JSON serialization works
-      const jsonString = JSON.stringify(result, null, 2);
-      this.expect(jsonString.length).toBeGreaterThan(100);
-
-      // Ensure it can be parsed back
-      const parsedResult = JSON.parse(jsonString);
-      this.expect(parsedResult.run_id).toBe(runId);
+      this.expect(memories).toBeDefined();
+      this.expect(Array.isArray(memories)).toBe(true);
     },
 
-    'Should handle failed runs with error field populated': async (runtime: IAgentRuntime) => {
-      // Arrange: Set up aggregator for a failed run
-      const trajectoryReconstructor = new TrajectoryReconstructor(runtime);
-      const evaluationEngine = new EvaluationEngine();
-      const aggregator = new RunDataAggregator(runtime, trajectoryReconstructor, evaluationEngine);
+    'Should handle message deletion through messageService': async (runtime: IAgentRuntime) => {
+      const roomId = '123e4567-e89b-12d3-a456-426614174996' as UUID;
 
-      const runId = 'e2e-failed-run-001';
-      const combinationId = 'e2e-failed-combo-001';
-      const parameters = { 'invalid.parameter': 'should-cause-error' };
-
-      aggregator.startRun(runId, combinationId, parameters);
-
-      // Simulate an error during execution
-      const testError = new Error('Simulated runtime error for testing');
-      aggregator.recordError(testError);
-
-      // Record minimal metrics
-      aggregator.recordMetrics({
-        execution_time_seconds: 1.0,
-        llm_calls: 0,
-        total_tokens: 0,
-      });
-
-      const roomId = 'e2e-failed-test-room';
-      const evaluations: any[] = []; // No evaluations for failed run
-      const executionResult = {
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Simulated error occurred',
-        durationMs: 1000,
+      // Create and process a message
+      const testMessage = {
+        id: '123e4567-e89b-12d3-a456-426614174995' as UUID,
+        roomId,
+        content: { text: 'Message to delete', source: 'test' },
+        entityId: '123e4567-e89b-12d3-a456-426614174994' as UUID,
+        agentId: runtime.agentId,
+        createdAt: Date.now(),
       };
 
-      // Act: Build result for failed run
-      const result = await aggregator.buildResult(roomId, evaluations, executionResult);
+      // Create the message in memory
+      await runtime.createMemory(testMessage, 'messages');
 
-      // Assert: Validate error handling
-      this.expect(result.run_id).toBe(runId);
-      this.expect(result.error).toBe('Simulated runtime error for testing');
-      this.expect(result.evaluations).toEqual([]);
-      this.expect(result.metrics.execution_time_seconds).toBe(1.0);
+      // Verify it exists
+      const beforeDelete = await runtime.getMemoryById(testMessage.id);
+      this.expect(beforeDelete).toBeDefined();
 
-      // Final response should be undefined for failed run
-      this.expect(result.final_agent_response).toBeUndefined();
+      // Delete using message service
+      await runtime.messageService!.deleteMessage(runtime, testMessage);
+
+      // Verify it's deleted
+      const afterDelete = await runtime.getMemoryById(testMessage.id);
+      this.expect(afterDelete).toBeNull();
     },
 
-    'Should serialize result to JSON file with correct naming pattern': async (
-      runtime: IAgentRuntime
-    ) => {
-      // Arrange: Set up a complete run
-      const trajectoryReconstructor = new TrajectoryReconstructor(runtime);
-      const evaluationEngine = new EvaluationEngine();
-      const aggregator = new RunDataAggregator(runtime, trajectoryReconstructor, evaluationEngine);
-
-      const runId = 'e2e-file-test-001';
-      const combinationId = 'e2e-file-combo-001';
-      const parameters = { 'test.param': 'file-test-value' };
-
-      aggregator.startRun(runId, combinationId, parameters);
-      aggregator.recordFinalResponse('Test response for file serialization');
-      aggregator.recordMetrics({
-        execution_time_seconds: 2.5,
-        llm_calls: 1,
-        total_tokens: 250,
-      });
-
-      const roomId = 'e2e-file-test-room';
-      const evaluations = [
-        {
-          type: 'string_contains' as const,
-          value: 'test',
-          case_sensitive: false,
-        },
-      ];
-      const executionResult = {
-        exitCode: 0,
-        stdout: 'Test response for file serialization',
-        stderr: '',
-        durationMs: 2500,
+    'Should serialize test results to JSON file': async (runtime: IAgentRuntime) => {
+      // Simple test data structure
+      const testResult = {
+        run_id: 'e2e-message-service-001',
+        test_name: 'Message Service Integration',
+        timestamp: new Date().toISOString(),
+        success: true,
+        agent_id: runtime.agentId,
+        character_name: runtime.character.name,
       };
-
-      const result = await aggregator.buildResult(roomId, evaluations, executionResult);
 
       // Act: Serialize to file
       const outputDir = '/tmp/e2e-test-output';
       await fs.mkdir(outputDir, { recursive: true });
 
-      const filename = `run-${runId}.json`;
+      const filename = `test-${testResult.run_id}.json`;
       const filepath = path.join(outputDir, filename);
 
-      await fs.writeFile(filepath, JSON.stringify(result, null, 2));
+      await fs.writeFile(filepath, JSON.stringify(testResult, null, 2));
 
       // Assert: Verify file was created with correct content
       const fileExists = await fs
@@ -254,13 +114,11 @@ export default class CentralizedDataTestSuite extends TestSuite {
       const fileContent = await fs.readFile(filepath, 'utf-8');
       const parsedContent = JSON.parse(fileContent);
 
-      this.expect(parsedContent.run_id).toBe(runId);
-      this.expect(parsedContent.matrix_combination_id).toBe(combinationId);
-      this.expect(parsedContent.parameters).toEqual(parameters);
+      this.expect(parsedContent.run_id).toBe(testResult.run_id);
+      this.expect(parsedContent.success).toBe(true);
 
       // Verify pretty-printing (should have indentation)
       this.expect(fileContent).toContain('  "run_id":');
-      this.expect(fileContent).toContain('  "matrix_combination_id":');
 
       // Cleanup
       await fs.unlink(filepath).catch(() => {}); // Ignore cleanup errors

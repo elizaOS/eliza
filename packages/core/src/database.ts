@@ -157,6 +157,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;

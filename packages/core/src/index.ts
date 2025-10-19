@@ -15,6 +15,9 @@ export * from './utils';
 // Export schemas
 export * from './schemas/character';
 
+// Export character utilities
+export * from './character';
+
 // Export environment utilities
 export * from './utils/environment';
 
@@ -34,8 +37,11 @@ export * from './memory';
 export * from './prompts';
 export * from './roles';
 export * from './runtime';
+export * from './secrets';
 export * from './settings';
 export * from './services';
+export * from './services/message-service';
+export * from './services/default-message-service';
 export * from './search';
 
 // Export ElizaOS

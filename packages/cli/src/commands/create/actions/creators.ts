@@ -1,4 +1,4 @@
-import { getElizaCharacter } from '@/src/characters/eliza';
+import { getDefaultCharacter } from '@/src/characters/eliza';
 import { copyTemplate as copyTemplateUtil, promptAndStorePostgresUrl } from '@/src/utils';
 import { join } from 'path';
 import fs from 'node:fs/promises';
@@ -219,7 +219,7 @@ export async function createAgent(
 
   // Create agent character based on Eliza template
   const agentCharacter = {
-    ...getElizaCharacter(),
+    ...getDefaultCharacter(),
     name: agentName,
     bio: [
       `${agentName} is a helpful AI assistant created to provide assistance and engage in meaningful conversations.`,

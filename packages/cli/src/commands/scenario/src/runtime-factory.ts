@@ -1,5 +1,5 @@
 import { Character, UUID, IAgentRuntime, stringToUuid } from '@elizaos/core';
-import { AgentServer, ConfigManager } from '@elizaos/server';
+import { AgentServer } from '@elizaos/server';
 import { ElizaClient } from '@elizaos/api-client';
 import type { Message } from '@elizaos/api-client';
 import { ChannelType, stringToUuid as stringToUuidCore } from '@elizaos/core';
@@ -7,9 +7,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createServer } from 'node:net';
 import { processManager } from './process-manager';
-
-// Note: Environment loading is now handled by ConfigManager.setDefaultSecretsFromEnv
-// which properly filters and manages secrets instead of exposing all env vars
 
 /**
  * Find an available port in the given range
@@ -111,8 +108,7 @@ export async function createScenarioServer(
         }
         // Persist the chosen directory for downstream consumers
         process.env.PGLITE_DATA_DIR = uniqueDataDir;
-        await server.initialize({ dataDir: uniqueDataDir });
-        await server.start(port);
+        await server.start({ port, dataDir: uniqueDataDir });
         createdServer = true;
 
         // Set SERVER_PORT environment variable so MessageBusService uses the correct URL
@@ -196,12 +192,8 @@ export async function createScenarioAgent(
     },
   };
 
-  // Use ConfigManager from server to set default secrets
-  const configManager = new ConfigManager();
-  await configManager.setDefaultSecretsFromEnv(character);
-
-  // Pass raw character; encryption is handled inside startAgents
-  const [runtime] = await server.startAgents([character]);
+  // Pass raw character; encryption and secrets are handled inside startAgents
+  const [runtime] = await server.startAgents([{ character }]);
   if (!runtime) {
     throw new Error(`Failed to start agent: ${character.name}`);
   }

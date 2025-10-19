@@ -187,48 +187,6 @@ describe('Bootstrap Plugin', () => {
 });
 
 describe('Message Event Handlers', () => {
-  let mockRuntime: MockRuntime;
-  let mockMessage: Partial<Memory>;
-  let mockCallback: any;
-
-  beforeEach(() => {
-    mock.restore();
-
-    mockCallback = mock();
-
-    mockRuntime = createMockRuntime({
-      getSetting: mock().mockReturnValue('medium'),
-      getParticipantUserState: mock().mockResolvedValue('ACTIVE'),
-      composeState: mock().mockResolvedValue({}),
-    });
-
-    mockMessage = {
-      id: 'msg-id' as UUID,
-      roomId: 'room-id' as UUID,
-      entityId: 'user-id' as UUID,
-      content: {
-        text: 'Hello, bot!',
-      } as Content,
-      createdAt: Date.now(),
-    };
-  });
-
-  afterEach(() => {
-    mock.restore();
-  });
-
-  it('should have message received event handlers', () => {
-    expect(bootstrapPlugin.events).toBeDefined();
-    const events = bootstrapPlugin.events;
-    if (events && EventType.MESSAGE_RECEIVED in events) {
-      const handlers = events[EventType.MESSAGE_RECEIVED];
-      if (handlers) {
-        expect(handlers).toBeDefined();
-        expect(handlers.length).toBeGreaterThan(0);
-      }
-    }
-  });
-
   it('should have handlers for other event types', () => {
     expect(bootstrapPlugin.events).toBeDefined();
 
@@ -238,13 +196,12 @@ describe('Message Event Handlers', () => {
       const eventTypes = Object.keys(events);
 
       // Check for event types that actually exist in the bootstrapPlugin.events
-      expect(eventTypes).toContain(EventType.MESSAGE_RECEIVED);
+      // Note: MESSAGE_RECEIVED is now handled via runtime.messageService, not as a plugin event
       expect(eventTypes).toContain(EventType.WORLD_JOINED);
       expect(eventTypes).toContain(EventType.ENTITY_JOINED);
 
       // Verify we have comprehensive coverage of event handlers
       const commonEventTypes = [
-        EventType.MESSAGE_RECEIVED,
         EventType.WORLD_JOINED,
         EventType.ENTITY_JOINED,
         EventType.ENTITY_LEFT,
@@ -261,32 +218,6 @@ describe('Message Event Handlers', () => {
           }
         }
       });
-    }
-  });
-
-  it('should skip message handling with mock runtime', async () => {
-    const events = bootstrapPlugin.events;
-    if (events && EventType.MESSAGE_RECEIVED in events) {
-      const handlers = events[EventType.MESSAGE_RECEIVED];
-      if (handlers && handlers.length > 0) {
-        // Get the message handler
-        const messageHandler = handlers[0];
-        expect(messageHandler).toBeDefined();
-
-        // Mock the message handling to skip actual processing
-        mockRuntime.emitEvent.mockResolvedValue(undefined);
-
-        // Call the message handler with our mocked runtime
-        // This test only verifies the handler doesn't throw with our mock
-        await expect(async () => {
-          await messageHandler({
-            runtime: mockRuntime as unknown as IAgentRuntime,
-            message: mockMessage as Memory,
-            callback: mockCallback,
-            source: 'test',
-          });
-        }).not.toThrow();
-      }
     }
   });
 });

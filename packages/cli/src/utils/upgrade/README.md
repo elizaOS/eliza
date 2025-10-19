@@ -80,7 +80,6 @@ elizaos plugins upgrade ./my-plugin --skip-tests --skip-validation
 ## Requirements
 
 1. **Anthropic API Key**: Required for AI-powered migration
-
    - Set `ANTHROPIC_API_KEY` environment variable
    - Or use `--api-key` option
 
@@ -237,32 +236,27 @@ The plugin upgrade system follows this flow:
 ### Recommended Improvements
 
 1. **Enhanced Error Recovery**
-
    - Add resume capability from failed migrations
    - Implement checkpoint system for long-running migrations
    - Better handling of partial migrations
 
 2. **Performance Optimizations**
-
    - Parallel file analysis for large repositories
    - Incremental migration support
    - Cache migration strategies for similar plugins
 
 3. **User Experience**
-
    - Interactive mode for reviewing changes before applying
    - Progress dashboard for monitoring migration status
    - Migration report generation with detailed change log
 
 4. **Advanced Features**
-
    - Support for custom migration rules
    - Plugin dependency analysis and migration ordering
    - Batch migration support for multiple plugins
    - Migration rollback capability
 
 5. **Testing & Validation**
-
    - Integration test suite with example plugins
    - Performance benchmarks
    - Edge case coverage (large files, binary assets, etc.)

@@ -56,7 +56,7 @@ Examples:
   $ elizaos agent start --remote-character https://example.com/char.json
 
 To create a new agent:
-  $ elizaos create -t agent my-agent-name   Create a new agent using Eliza template
+  $ elizaos create --type agent my-agent-name   Create a new agent using Eliza template
 
 Required configuration:
   You must provide one of these options: --name, --path, or --remote-character

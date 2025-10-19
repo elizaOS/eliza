@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared Renovate configuration preset for ElizaOS plugins",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Pin @elizaos/* packages and check daily for new releases",
+      "groupName": "ElizaOS Core Dependencies",
+      "matchPackagePatterns": ["^@elizaos/"],
+      "rangeStrategy": "pin",
+      "schedule": ["every day"],
+      "separateMajorMinor": true,
+      "automerge": false
+    },
+    {
+      "description": "Group TypeScript ecosystem updates",
+      "groupName": "TypeScript",
+      "matchPackagePatterns": ["^@typescript-eslint/", "^typescript$"]
+    },
+    {
+      "description": "Group ESLint and Prettier updates",
+      "groupName": "Linting",
+      "matchPackagePatterns": ["^eslint", "^prettier", "^@eslint/"]
+    },
+    {
+      "description": "Group build tools",
+      "groupName": "Build Tools",
+      "matchPackageNames": ["tsup", "vite", "rollup"],
+      "matchPackagePatterns": ["^@vitejs/", "^@rollup/", "^vite-plugin-", "^rollup-plugin-"]
+    }
+  ],
+  "timezone": "UTC",
+  "schedule": ["every day"],
+  "prHourlyLimit": 5,
+  "prConcurrentLimit": 15,
+  "rangeStrategy": "pin",
+  "separateMajorMinor": true,
+  "separateMinorPatch": false,
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "🤖 Renovate Dependency Dashboard",
+  "commitMessagePrefix": "chore(deps):",
+  "semanticCommits": "enabled",
+  "automerge": false,
+  "platformAutomerge": false,
+  "rebaseWhen": "conflicted"
+}

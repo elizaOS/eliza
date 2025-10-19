@@ -27,6 +27,7 @@ export interface ServiceTypeRegistry {
   WALLET: 'wallet';
   LP_POOL: 'lp_pool';
   TOKEN_DATA: 'token_data';
+  MESSAGE_SERVICE: 'message_service';
   MESSAGE: 'message';
   POST: 'post';
   UNKNOWN: 'unknown';
@@ -96,6 +97,7 @@ export const ServiceType = {
   WALLET: 'wallet',
   LP_POOL: 'lp_pool',
   TOKEN_DATA: 'token_data',
+  MESSAGE_SERVICE: 'message_service',
   MESSAGE: 'message',
   POST: 'post',
   UNKNOWN: 'unknown',

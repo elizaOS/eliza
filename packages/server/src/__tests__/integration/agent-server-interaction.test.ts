@@ -22,19 +22,17 @@ describe('Agent-Server Interaction Integration Tests', () => {
       `test-db-agent-server-${Date.now()}-${Math.random().toString(36).substring(7)}`
     );
 
-    // Create and initialize agent server
+    // Create and start agent server
     agentServer = new AgentServer();
-    await agentServer.initialize({
-      dataDir: testDbPath,
-    });
-
-    // Start the HTTP server
     serverPort = 5000 + Math.floor(Math.random() * 1000);
 
     // Set SERVER_PORT before starting so MessageBusService can connect
     process.env.SERVER_PORT = serverPort.toString();
 
-    await agentServer.start(serverPort);
+    await agentServer.start({
+      dataDir: testDbPath,
+      port: serverPort,
+    });
     console.log(`Test server started on port ${serverPort}`);
 
     // Wait for server to be fully ready and accepting connections
@@ -94,7 +92,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent1] = await agentServer.startAgents([char1]);
+      const [agent1] = await agentServer.startAgents([{ character: char1 }]);
       expect(agent1).toBeDefined();
       const agent1Id = agent1.agentId;
 
@@ -130,7 +128,10 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent1, agent2] = await agentServer.startAgents([char1, char2]);
+      const [agent1, agent2] = await agentServer.startAgents([
+        { character: char1 },
+        { character: char2 },
+      ]);
       expect(agent1).toBeDefined();
       expect(agent2).toBeDefined();
 
@@ -457,7 +458,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         },
       } as Character;
 
-      const [agent] = await agentServer.startAgents([char]);
+      const [agent] = await agentServer.startAgents([{ character: char }]);
       testAgentId = agent.agentId;
     });
 
@@ -516,12 +517,11 @@ describe('Agent-Server Interaction Integration Tests', () => {
       );
 
       const isolatedServer = new AgentServer();
-      await isolatedServer.initialize({
-        dataDir: testDbPath,
-      });
-
       const testPort = 6000 + Math.floor(Math.random() * 1000);
-      await isolatedServer.start(testPort);
+      await isolatedServer.start({
+        dataDir: testDbPath,
+        port: testPort,
+      });
 
       try {
         // Create a new agent specifically for unregistration
@@ -536,7 +536,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
           },
         } as Character;
 
-        const [agent] = await isolatedServer.startAgents([char]);
+        const [agent] = await isolatedServer.startAgents([{ character: char }]);
         const agentId = agent.agentId;
 
         // Get initial agent count

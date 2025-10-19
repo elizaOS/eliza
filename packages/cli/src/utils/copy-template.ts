@@ -126,6 +126,10 @@ export async function copyTemplate(
     path.resolve(__dirname, '../../../templates', packageName),
     // 5. Fallback for various directory structures
     path.resolve(__dirname, 'templates', packageName),
+    // 6. Fallback to monorepo packages (when templates haven't been copied yet)
+    path.resolve(__dirname, '../../../..', packageName),
+    // 7. Alternative monorepo package path (from utils to packages directory)
+    path.resolve(__dirname, '../../../../packages', packageName),
   ];
 
   let templateDir: string | null = null;
