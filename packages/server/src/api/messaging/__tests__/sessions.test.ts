@@ -230,6 +230,7 @@ describe('Sessions API', () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('sessionId');
+      expect(res.body).toHaveProperty('channelId');
       expect(res.body).toHaveProperty('agentId', agentId);
       expect(res.body).toHaveProperty('userId', userId);
       expect(res.body).toHaveProperty('expiresAt');
@@ -237,6 +238,8 @@ describe('Sessions API', () => {
 
       // Verify the session ID is a valid UUID
       expect(isValidUuid(res.body.sessionId)).toBe(true);
+      // Verify the channel ID is a valid UUID
+      expect(isValidUuid(res.body.channelId)).toBe(true);
 
       // Verify timeout config has expected structure
       const { timeoutConfig } = res.body;
@@ -749,6 +752,7 @@ describe('Sessions API', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('sessionId', sessionId);
+      expect(res.body).toHaveProperty('channelId');
       expect(res.body).toHaveProperty('agentId', agentId);
       expect(res.body).toHaveProperty('userId', userId);
       expect(res.body).toHaveProperty('metadata');
@@ -756,6 +760,8 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('timeRemaining');
       expect(res.body).toHaveProperty('isNearExpiration');
       expect(res.body).toHaveProperty('renewalCount');
+      // Verify the channel ID is a valid UUID
+      expect(isValidUuid(res.body.channelId)).toBe(true);
     });
 
     it('should return 404 for non-existent session', async () => {
