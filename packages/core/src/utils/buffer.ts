@@ -267,21 +267,16 @@ export function byteLength(buffer: BufferLike): number {
  * @returns A BufferLike object filled with random bytes
  */
 export function randomBytes(size: number): BufferLike {
-  if (hasNativeBuffer()) {
-    // In Node.js, use crypto.randomBytes if available
-    try {
-      const crypto = require('crypto');
-      return crypto.randomBytes(size);
-    } catch {
-      // Fall back to manual generation
-    }
-  }
-
-  // Browser implementation using crypto.getRandomValues
+  // Prefer Web Crypto API across environments (Node >=18 exposes global crypto)
   const bytes = new Uint8Array(size);
 
-  if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.getRandomValues) {
-    globalThis.crypto.getRandomValues(bytes);
+  const cryptoGlobal: any =
+    typeof globalThis !== 'undefined'
+      ? (globalThis as any).crypto || (globalThis as any).webcrypto
+      : undefined;
+
+  if (cryptoGlobal && typeof cryptoGlobal.getRandomValues === 'function') {
+    cryptoGlobal.getRandomValues(bytes);
   } else {
     // Fallback: less secure random generation
     for (let i = 0; i < size; i++) {
