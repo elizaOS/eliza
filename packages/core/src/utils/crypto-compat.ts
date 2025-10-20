@@ -18,12 +18,14 @@
  */
 
 /**
- * Check if we're in Node.js with native crypto module available
- * @returns {boolean} True if Node.js crypto is available
+ * Check if we're in Node.js or Bun with native crypto module available
+ * @returns {boolean} True if Node.js or Bun crypto is available
  */
 function hasNodeCrypto(): boolean {
     try {
-        return typeof require !== 'undefined' && typeof process !== 'undefined' && process.versions?.node !== undefined;
+        return typeof require !== 'undefined' && 
+               typeof process !== 'undefined' && 
+               (process.versions?.node !== undefined || process.versions?.bun !== undefined);
     } catch {
         return false;
     }
@@ -32,7 +34,7 @@ function hasNodeCrypto(): boolean {
 
 /**
  * Get the appropriate crypto module for the current environment
- * @returns {any} Native crypto in Node.js, crypto-browserify in browser
+ * @returns {any} Native crypto in Node.js/Bun, crypto-browserify in browser
  */
 function getCryptoModule(): any {
     if (hasNodeCrypto()) {
