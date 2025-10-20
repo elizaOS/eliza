@@ -30,6 +30,18 @@ function hasNodeCrypto(): boolean {
 }
 
 /**
+ * Get the appropriate crypto module for the current environment
+ * @returns {any} Native crypto in Node.js, crypto-browserify in browser
+ */
+function getCryptoModule(): any {
+    if (hasNodeCrypto()) {
+        return require('crypto');
+    }
+    // Use crypto-browserify for synchronous APIs in browser
+    return require('crypto-browserify');
+}
+
+/**
  * Hash data using Web Crypto API (browser-compatible)
  * @param {string} algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
  * @param {Uint8Array} data - Data to hash
@@ -144,18 +156,16 @@ async function webCryptoDecrypt(
 }
 
 /**
- * Create a hash object for incremental hashing (Node.js only - synchronous)
+ * Create a hash object for incremental hashing (cross-platform - synchronous)
  * 
- * **Note:** This function only works in Node.js environments. For browser compatibility,
- * use `createHashAsync()` instead.
+ * This function works in both Node.js and browser environments. In browsers, it uses
+ * crypto-browserify to provide synchronous hashing compatible with Node.js crypto API.
  * 
  * @param {string} algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
  * @returns {object} Hash object with update() and digest() methods
- * @throws {Error} In browser environments - use createHashAsync() instead
  * 
  * @example
  * ```typescript
- * // Node.js only
  * const hash = createHash('sha256')
  *   .update('hello')
  *   .update('world')
@@ -166,39 +176,16 @@ export function createHash(algorithm: string): {
     update(data: string | Uint8Array): ReturnType<typeof createHash>;
     digest(): Uint8Array;
 } {
-    let buffer: Uint8Array = new Uint8Array(0);
-
-    if (hasNodeCrypto()) {
-        // Use Node.js crypto
-        const crypto = require('crypto');
-        const hash = crypto.createHash(algorithm);
-        return {
-            update(data: string | Uint8Array) {
-                hash.update(data);
-                return this;
-            },
-            digest() {
-                return new Uint8Array(hash.digest());
-            },
-        };
-    }
-
-    // Browser: collect data and hash on digest()
+    // Use crypto-browserify in browser, native crypto in Node.js
+    const crypto = getCryptoModule();
+    const hash = crypto.createHash(algorithm);
     return {
         update(data: string | Uint8Array) {
-            const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
-            const newBuffer = new Uint8Array(buffer.length + bytes.length);
-            newBuffer.set(buffer);
-            newBuffer.set(bytes, buffer.length);
-            buffer = newBuffer;
+            hash.update(data);
             return this;
         },
         digest() {
-            throw new Error(
-                'Synchronous digest not supported in browser. ' +
-                'Use createHashAsync() instead for cross-platform compatibility. ' +
-                'Example: await createHashAsync("sha256", data)'
-            );
+            return new Uint8Array(hash.digest());
         },
     };
 }
@@ -227,30 +214,29 @@ export async function createHashAsync(
     const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
 
     if (hasNodeCrypto()) {
-        // Use Node.js crypto
-        const crypto = require('crypto');
+        // Use Node.js native crypto for better performance
+        const crypto = getCryptoModule();
         return new Uint8Array(crypto.createHash(algorithm).update(bytes).digest());
     }
 
-    // Use Web Crypto API in browser
+    // Use Web Crypto API in browser for async operations
     return webCryptoHash(algorithm, bytes);
 }
 
 /**
- * Create a cipher for encryption (Node.js only - synchronous)
+ * Create a cipher for encryption (cross-platform - synchronous)
  * 
- * **Note:** This function only works in Node.js environments. For browser compatibility,
- * use `encryptAsync()` instead.
+ * This function works in both Node.js and browser environments. In browsers, it uses
+ * crypto-browserify to provide synchronous encryption compatible with Node.js crypto API.
  * 
  * @param {string} algorithm - Cipher algorithm (currently only 'aes-256-cbc' is supported)
  * @param {Uint8Array} key - 256-bit (32-byte) encryption key
  * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
  * @returns {object} Cipher object with update() and final() methods
- * @throws {Error} In browser environments or if algorithm is unsupported
+ * @throws {Error} If algorithm is unsupported
  * 
  * @example
  * ```typescript
- * // Node.js only
  * const cipher = createCipheriv('aes-256-cbc', key, iv);
  * let encrypted = cipher.update('data', 'utf8', 'hex');
  * encrypted += cipher.final('hex');
@@ -268,33 +254,25 @@ export function createCipheriv(
         throw new Error(`Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is currently supported.`);
     }
 
-    if (hasNodeCrypto()) {
-        const crypto = require('crypto');
-        return crypto.createCipheriv(algorithm, key, iv);
-    }
-
-    throw new Error(
-        'Synchronous encryption not supported in browser. ' +
-        'Use encryptAsync() instead for cross-platform compatibility. ' +
-        'Example: await encryptAsync(key, iv, data)'
-    );
+    // Use crypto-browserify in browser, native crypto in Node.js
+    const crypto = getCryptoModule();
+    return crypto.createCipheriv(algorithm, key, iv);
 }
 
 /**
- * Create a decipher for decryption (Node.js only - synchronous)
+ * Create a decipher for decryption (cross-platform - synchronous)
  * 
- * **Note:** This function only works in Node.js environments. For browser compatibility,
- * use `decryptAsync()` instead.
+ * This function works in both Node.js and browser environments. In browsers, it uses
+ * crypto-browserify to provide synchronous decryption compatible with Node.js crypto API.
  * 
  * @param {string} algorithm - Cipher algorithm (currently only 'aes-256-cbc' is supported)
  * @param {Uint8Array} key - 256-bit (32-byte) decryption key
  * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
  * @returns {object} Decipher object with update() and final() methods
- * @throws {Error} In browser environments or if algorithm is unsupported
+ * @throws {Error} If algorithm is unsupported
  * 
  * @example
  * ```typescript
- * // Node.js only
  * const decipher = createDecipheriv('aes-256-cbc', key, iv);
  * let decrypted = decipher.update(encrypted, 'hex', 'utf8');
  * decrypted += decipher.final('utf8');
@@ -312,16 +290,9 @@ export function createDecipheriv(
         throw new Error(`Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is currently supported.`);
     }
 
-    if (hasNodeCrypto()) {
-        const crypto = require('crypto');
-        return crypto.createDecipheriv(algorithm, key, iv);
-    }
-
-    throw new Error(
-        'Synchronous decryption not supported in browser. ' +
-        'Use decryptAsync() instead for cross-platform compatibility. ' +
-        'Example: await decryptAsync(key, iv, encryptedData)'
-    );
+    // Use crypto-browserify in browser, native crypto in Node.js
+    const crypto = getCryptoModule();
+    return crypto.createDecipheriv(algorithm, key, iv);
 }
 
 /**
@@ -356,14 +327,14 @@ export async function encryptAsync(
     }
 
     if (hasNodeCrypto()) {
-        // Use Node.js crypto
-        const crypto = require('crypto');
+        // Use Node.js native crypto for better performance
+        const crypto = getCryptoModule();
         const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
         const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
         return new Uint8Array(encrypted);
     }
 
-    // Use Web Crypto API in browser
+    // Use Web Crypto API in browser for async operations
     return webCryptoEncrypt(key, iv, data);
 }
 
@@ -399,14 +370,14 @@ export async function decryptAsync(
     }
 
     if (hasNodeCrypto()) {
-        // Use Node.js crypto
-        const crypto = require('crypto');
+        // Use Node.js native crypto for better performance
+        const crypto = getCryptoModule();
         const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
         const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
         return new Uint8Array(decrypted);
     }
 
-    // Use Web Crypto API in browser
+    // Use Web Crypto API in browser for async operations
     return webCryptoDecrypt(key, iv, data);
 }
 

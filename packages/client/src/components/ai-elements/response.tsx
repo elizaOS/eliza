@@ -17,7 +17,15 @@ export const Response = memo(
       {...props}
     />
   ),
-  (prevProps, nextProps) => prevProps.children === nextProps.children
+  (prevProps, nextProps) => {
+    // Compare all props that affect rendering
+    return (
+      prevProps.children === nextProps.children &&
+      prevProps.className === nextProps.className &&
+      prevProps.isAnimating === nextProps.isAnimating &&
+      JSON.stringify(prevProps.shikiTheme) === JSON.stringify(nextProps.shikiTheme)
+    );
+  }
 );
 
 Response.displayName = "Response";
