@@ -230,7 +230,7 @@ export function MessageContent({
                 <div className="space-y-3">
                   {textWithoutUrls.trim() && (
                     <div>
-                      <AiResponse className="max-w-none">
+                      <AiResponse className="max-w-none" isAnimating={shouldAnimate}>
                         {textWithoutUrls}
                       </AiResponse>
                     </div>
