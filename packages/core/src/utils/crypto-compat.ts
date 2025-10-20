@@ -29,6 +29,7 @@ function hasNodeCrypto(): boolean {
     }
 }
 
+
 /**
  * Get the appropriate crypto module for the current environment
  * @returns {any} Native crypto in Node.js, crypto-browserify in browser
