@@ -109,6 +109,7 @@
     "semver": "^7.7.1",
     "shiki": "^3.6.0",
     "socket.io-client": "^4.8.1",
+    "streamdown": "^1.4.0",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "use-stick-to-bottom": "^1.1.1",
