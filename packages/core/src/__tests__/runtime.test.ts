@@ -38,7 +38,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     adapterReady = true;
   }),
   initialize: mock().mockResolvedValue(undefined),
-  runMigrations: mock().mockResolvedValue(undefined),
   isReady: mock().mockImplementation(async () => adapterReady),
   close: mock().mockImplementation(async () => {
     adapterReady = false;
