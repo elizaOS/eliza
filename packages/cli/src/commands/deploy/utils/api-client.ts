@@ -133,7 +133,7 @@ export class CloudApiClient {
           },
           body: JSON.stringify(config),
         },
-        60000 // 60 seconds for container creation
+        330000 // 5.5 minutes (330s) - CloudFormation takes 5-8 min, plus buffer for API processing
       );
 
       if (!response.ok) {
@@ -363,7 +363,7 @@ export function getApiCredentials(): {
 } | null {
   const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZA_CLOUD_API_KEY;
   const apiUrl =
-    process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://elizacloud.ai';
+    process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://www.elizacloud.ai';
 
   if (!apiKey) {
     return null;
