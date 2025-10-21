@@ -35,15 +35,14 @@ describe('Database Operations Integration Tests', () => {
     agentServer = new AgentServer();
 
     try {
-      await agentServer.initialize({
-        dataDir: testDbPath,
-      });
-
-      // Actually start the HTTP server to prevent MessageBusService errors
+      // Start the HTTP server to prevent MessageBusService errors
       serverPort = 3000 + Math.floor(Math.random() * 1000); // Random port to avoid conflicts
       process.env.SERVER_PORT = serverPort.toString();
 
-      await agentServer.start(serverPort);
+      await agentServer.start({
+        dataDir: testDbPath,
+        port: serverPort,
+      });
       isServerStarted = true;
 
       console.log(`Test server started on port ${serverPort}`);
@@ -284,7 +283,7 @@ describe('Database Operations Integration Tests', () => {
       } as Character;
 
       // Start the agent to ensure it exists in database
-      const [runtime] = await agentServer.startAgents([agentChar]);
+      const [runtime] = await agentServer.startAgents([{ character: agentChar }]);
       expect(runtime).toBeDefined();
       const agentId = runtime.agentId; // Get the generated agent ID
 
@@ -361,7 +360,7 @@ describe('Database Operations Integration Tests', () => {
           plugins: [],
           settings: { secrets: {} },
         } as Character;
-        const [runtime] = await agentServer.startAgents([testAgent]);
+        const [runtime] = await agentServer.startAgents([{ character: testAgent }]);
         participantAgentId = runtime.agentId;
       }
 

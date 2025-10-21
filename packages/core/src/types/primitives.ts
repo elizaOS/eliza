@@ -62,11 +62,11 @@ export interface Content {
 }
 
 /**
-  * Platform-provided metadata about mentions.
-  * Contains ONLY technical facts from the platform API.
-  * This allows bootstrap to make intelligent decisions about responding
-  * while keeping platform-specific logic isolated.
-  */
+ * Platform-provided metadata about mentions.
+ * Contains ONLY technical facts from the platform API.
+ * This allows bootstrap to make intelligent decisions about responding
+ * while keeping platform-specific logic isolated.
+ */
 export interface MentionContext {
   /** Platform native mention (@Discord, @Telegram, etc.) */
   isMention: boolean;
@@ -79,7 +79,7 @@ export interface MentionContext {
 
   /** Platform-specific mention type for debugging/logging */
   mentionType?: 'platform_mention' | 'reply' | 'thread' | 'none';
-};
+}
 
 /**
  * Represents a media attachment

@@ -30,6 +30,8 @@ export * from './roles';
 export * from './runtime';
 export * from './settings';
 export * from './services';
+export * from './services/message-service';
+export * from './services/default-message-service';
 export * from './search';
 export * from './elizaos';
 

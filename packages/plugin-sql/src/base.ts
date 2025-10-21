@@ -276,30 +276,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        // Check for existing agent with the same ID or name
-        // Check for existing agent with the same ID or name
-        const conditions: (SQL<unknown> | undefined)[] = [];
+        // Check for existing agent with the same ID only (names can be duplicated)
         if (agent.id) {
-          conditions.push(eq(agentTable.id, agent.id));
-        }
-        if (agent.name) {
-          conditions.push(eq(agentTable.name, agent.name));
-        }
+          const existing = await this.db
+            .select({ id: agentTable.id })
+            .from(agentTable)
+            .where(eq(agentTable.id, agent.id))
+            .limit(1);
 
-        const existing =
-          conditions.length > 0
-            ? await this.db
-                .select({ id: agentTable.id })
-                .from(agentTable)
-                .where(or(...conditions))
-                .limit(1)
-            : [];
-
-        if (existing.length > 0) {
-          logger.warn(
-            `Attempted to create an agent with a duplicate ID or name. ID: ${agent.id}, name: ${agent.name}`
-          );
-          return false;
+          if (existing.length > 0) {
+            logger.warn(`Attempted to create an agent with a duplicate ID. ID: ${agent.id}`);
+            return false;
+          }
         }
 
         await this.db.transaction(async (tx) => {

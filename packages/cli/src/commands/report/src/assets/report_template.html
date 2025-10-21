@@ -793,10 +793,10 @@
               var s,
                 n,
                 o = t.changedTouches;
-              if (o && o.length > 0) (s = o[0]), (n = o[0]);
+              if (o && o.length > 0) ((s = o[0]), (n = o[0]));
               else {
                 if (t.clientX === undefined) return null;
-                (s = t), (n = t);
+                ((s = t), (n = t));
               }
               var a = i.getBoundingClientRect();
               return { x: s.clientX - a.left, y: n.clientY - a.top };
@@ -837,7 +837,7 @@
           };
         class i {
           constructor() {
-            (this._request = null), (this._running = !1), (this._lastId = 0);
+            ((this._request = null), (this._running = !1), (this._lastId = 0));
           }
           start(t) {
             this._running ||
@@ -846,7 +846,7 @@
               this._request.id === this._lastId && this._run());
           }
           stop() {
-            (this._running = !1), (this._request = null);
+            ((this._running = !1), (this._request = null));
           }
           _run() {
             this._running &&
@@ -884,7 +884,7 @@
         };
         function l(t, i) {
           var s = document.createElement('canvas');
-          return (s.width = i.width || 400), (s.height = i.height || 400), t.appendChild(s), s;
+          return ((s.width = i.width || 400), (s.height = i.height || 400), t.appendChild(s), s);
         }
         function c(t, i) {
           var s = t.getBoundingClientRect(),
@@ -917,7 +917,7 @@
               !this.platform || !this.platform.isAttached())
             )
               throw new Error('Failed to create chart');
-            (this.canvas = this.platform.canvas),
+            ((this.canvas = this.platform.canvas),
               (this.ctx = this.platform.getContext('2d')),
               (this.width = this.canvas.width),
               (this.height = this.canvas.height),
@@ -929,7 +929,7 @@
               (this.scales = {}),
               (this._metasets = []),
               (this.data = this._options.data || { labels: [], datasets: [] }),
-              this.initialize();
+              this.initialize());
           }
           var i = t.prototype;
           return (
@@ -987,9 +987,9 @@
                 var a = this.width / (s.length - 1),
                   h = r(this),
                   l = Math.abs(this.height / (h - Math.min.apply(Math, o)));
-                t.beginPath(),
+                (t.beginPath(),
                   (t.strokeStyle = n.borderColor || 'rgba(75,192,192,1)'),
-                  (t.lineWidth = 2);
+                  (t.lineWidth = 2));
                 for (var c = 0; c < o.length; c++) {
                   var d = c * a,
                     u = this.height - o[c] * l;
@@ -1031,12 +1031,12 @@
               t.translate(a, r);
               for (var c = 0; c < n.length; c++) {
                 var d = (n[c] / o) * 2 * Math.PI;
-                t.beginPath(),
+                (t.beginPath(),
                   t.arc(0, 0, h, l, l + d),
                   t.lineTo(0, 0),
                   (t.fillStyle = this.getColor(c)),
                   t.fill(),
-                  (l += d);
+                  (l += d));
               }
               t.translate(-a, -r);
             }),
@@ -1056,13 +1056,13 @@
               t.translate(a, r);
               for (var d = 0; d < n.length; d++) {
                 var u = (n[d] / o) * 2 * Math.PI;
-                t.beginPath(),
+                (t.beginPath(),
                   t.arc(0, 0, h, c, c + u),
                   t.arc(0, 0, l, c + u, c, !0),
                   t.closePath(),
                   (t.fillStyle = this.getColor(d)),
                   t.fill(),
-                  (c += u);
+                  (c += u));
               }
               t.translate(-a, -r);
             }),
@@ -1113,7 +1113,7 @@
             return !0;
           }
         }
-        return (d.helpers = e), (d.defaults = h), (d.registerables = []), d;
+        return ((d.helpers = e), (d.defaults = h), (d.registerables = []), d);
       });
       // Simplified Chart.js interface for our needs
       window.Chart = window.Chart || {};

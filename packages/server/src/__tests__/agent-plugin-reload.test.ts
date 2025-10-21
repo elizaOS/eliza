@@ -32,17 +32,16 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       const updatedPlugins = ['bootstrap', 'discord', 'knowledge'];
 
       const current = currentPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : p)
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : p))
         .sort();
       const updated = updatedPlugins
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : p)
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : p))
         .sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(true);
     });
@@ -55,8 +54,7 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       const updated = updatedPlugins.sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(true);
     });
@@ -69,8 +67,7 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       const updated = updatedPlugins.sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(false);
     });
@@ -79,16 +76,11 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       const currentPlugins: PluginType[] = [{ name: 'bootstrap' }, { name: 'discord' }];
       const updatedPlugins: PluginType[] = [{ name: 'bootstrap' }, { name: 'knowledge' }];
 
-      const current = currentPlugins
-        .map(p => typeof p === 'string' ? p : p.name)
-        .sort();
-      const updated = updatedPlugins
-        .map(p => typeof p === 'string' ? p : p.name)
-        .sort();
+      const current = currentPlugins.map((p) => (typeof p === 'string' ? p : p.name)).sort();
+      const updated = updatedPlugins.map((p) => (typeof p === 'string' ? p : p.name)).sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(true);
     });
@@ -97,62 +89,64 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       const currentPlugins: PluginType[] = ['bootstrap', { name: 'discord' }];
       const updatedPlugins: PluginType[] = [{ name: 'bootstrap' }, 'discord'];
 
-      const current = currentPlugins
-        .map(p => typeof p === 'string' ? p : p.name)
-        .sort();
-      const updated = updatedPlugins
-        .map(p => typeof p === 'string' ? p : p.name)
-        .sort();
+      const current = currentPlugins.map((p) => (typeof p === 'string' ? p : p.name)).sort();
+      const updated = updatedPlugins.map((p) => (typeof p === 'string' ? p : p.name)).sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(false);
     });
 
     it('should filter out null and undefined plugins', () => {
-      const currentPlugins: (PluginType | null | undefined)[] = ['bootstrap', null, 'discord', undefined];
+      const currentPlugins: (PluginType | null | undefined)[] = [
+        'bootstrap',
+        null,
+        'discord',
+        undefined,
+      ];
       const updatedPlugins: PluginType[] = ['bootstrap', 'discord'];
 
       const current = currentPlugins
         .filter((p): p is PluginType => p != null)
-        .map(p => typeof p === 'string' ? p : p.name)
+        .map((p) => (typeof p === 'string' ? p : p.name))
         .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const updated = updatedPlugins
         .filter((p): p is PluginType => p != null)
-        .map(p => typeof p === 'string' ? p : p.name)
+        .map((p) => (typeof p === 'string' ? p : p.name))
         .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(false);
     });
 
     it('should filter out plugins with invalid name', () => {
-      const currentPlugins: (PluginType | { name: number })[] = ['bootstrap', { name: 123 as any }, 'discord'];
+      const currentPlugins: (PluginType | { name: number })[] = [
+        'bootstrap',
+        { name: 123 as any },
+        'discord',
+      ];
       const updatedPlugins: PluginType[] = ['bootstrap', 'discord'];
 
       const current = currentPlugins
         .filter((p): p is PluginType | { name: number } => p != null)
-        .map(p => typeof p === 'string' ? p : p.name)
+        .map((p) => (typeof p === 'string' ? p : p.name))
         .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const updated = updatedPlugins
         .filter((p): p is PluginType => p != null)
-        .map(p => typeof p === 'string' ? p : p.name)
+        .map((p) => (typeof p === 'string' ? p : p.name))
         .filter((name): name is string => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
-        current.length !== updated.length ||
-        current.some((plugin, idx) => plugin !== updated[idx]);
+        current.length !== updated.length || current.some((plugin, idx) => plugin !== updated[idx]);
 
       expect(pluginsChanged).toBe(false);
     });
@@ -242,15 +236,15 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       // Simulate the restart logic from crud.ts (lines 227-237)
       const currentPlugins = (currentAgent.plugins || [])
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : (p as any).name))
+        .filter((name) => typeof name === 'string')
         .sort();
 
       const updatedPlugins = (updatedAgent.plugins || [])
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : (p as any).name))
+        .filter((name) => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
@@ -263,7 +257,7 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
       if (pluginsChanged) {
         await mockServerInstance.unregisterAgent(testAgentId);
         const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
-        await mockServerInstance.startAgents([characterData as Character]);
+        await mockServerInstance.startAgents([{ character: characterData as Character }]);
       }
 
       expect(mockServerInstance.unregisterAgent).toHaveBeenCalledWith(testAgentId);
@@ -285,14 +279,14 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       try {
         await mockServerInstance.unregisterAgent(testAgentId);
-        await mockServerInstance.startAgents([updatedAgent as Character]);
+        await mockServerInstance.startAgents([{ character: updatedAgent as Character }]);
       } catch (error) {
         restartError = error as Error;
 
         // Try to restore previous state
         try {
           const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent;
-          await mockServerInstance.startAgents([previousCharacterData as Character]);
+          await mockServerInstance.startAgents([{ character: previousCharacterData as Character }]);
           restoredAgent = previousCharacterData;
         } catch (restoreError) {
           // Failed to restore
@@ -318,13 +312,13 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       try {
         await mockServerInstance.unregisterAgent(testAgentId);
-        await mockServerInstance.startAgents([updatedAgent as Character]);
+        await mockServerInstance.startAgents([{ character: updatedAgent as Character }]);
       } catch (error) {
         restartError = error as Error;
 
         try {
           const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent;
-          await mockServerInstance.startAgents([previousCharacterData as Character]);
+          await mockServerInstance.startAgents([{ character: previousCharacterData as Character }]);
         } catch (error) {
           restoreError = error as Error;
         }
@@ -378,15 +372,15 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
 
       // Check if plugins changed
       const currentPlugins = (currentAgent.plugins || [])
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : (p as any).name))
+        .filter((name) => typeof name === 'string')
         .sort();
 
       const updatedPlugins = (updatedAgent.plugins || [])
-        .filter(p => p != null)
-        .map(p => typeof p === 'string' ? p : (p as any).name)
-        .filter(name => typeof name === 'string')
+        .filter((p) => p != null)
+        .map((p) => (typeof p === 'string' ? p : (p as any).name))
+        .filter((name) => typeof name === 'string')
         .sort();
 
       const pluginsChanged =
@@ -401,10 +395,13 @@ describe('Agent Plugin Reload - Plugin Change Detection', () => {
         await mockElizaOS.updateAgent(testAgentId, characterData as Character);
       }
 
-      expect(mockElizaOS.updateAgent).toHaveBeenCalledWith(testAgentId, expect.objectContaining({
-        name: 'UpdatedName',
-        bio: ['Updated bio'],
-      }));
+      expect(mockElizaOS.updateAgent).toHaveBeenCalledWith(
+        testAgentId,
+        expect.objectContaining({
+          name: 'UpdatedName',
+          bio: ['Updated bio'],
+        })
+      );
       expect(mockServerInstance.unregisterAgent).not.toHaveBeenCalled();
     });
   });

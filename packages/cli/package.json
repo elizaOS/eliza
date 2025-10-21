@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.6.2-alpha.15",
+  "version": "1.6.3-alpha.3",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -23,7 +23,13 @@
     "dist/**/*",
     "dist/version.js",
     "templates",
-    "templates/**/*"
+    "templates/**/*",
+    "templates/**/.gitignore",
+    "templates/**/.npmignore",
+    "templates/**/.env.example",
+    "dist/templates/**/.gitignore",
+    "dist/templates/**/.npmignore",
+    "dist/templates/**/.env.example"
   ],
   "keywords": [],
   "type": "module",
@@ -91,6 +97,7 @@
     "chokidar": "^4.0.3",
     "commander": "^14.0.0",
     "dotenv": "^17.2.3",
+    "execa": "^9.6.0",
     "form-data": "^4.0.0",
     "fs-extra": "^11.1.0",
     "globby": "^15.0.0",

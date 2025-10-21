@@ -68,6 +68,7 @@ export interface CreateSessionRequest {
  */
 export interface CreateSessionResponse {
   sessionId: string;
+  channelId: UUID;
   agentId: UUID;
   userId: UUID;
   createdAt: Date;
@@ -136,6 +137,7 @@ export interface GetMessagesResponse {
  */
 export interface SessionInfoResponse {
   sessionId: string;
+  channelId: UUID;
   agentId: UUID;
   userId: UUID;
   createdAt: Date;

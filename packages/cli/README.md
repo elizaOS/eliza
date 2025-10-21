@@ -458,7 +458,7 @@ elizaos tee phala <command> [options]
 
    ```bash
    # Create a TEE project starter template
-   elizaos create -t tee tee-agent
+   elizaos create --type tee tee-agent
 
    # cd into directory and authenticate your Phala Cloud API Key
    cd tee-agent

@@ -7,7 +7,7 @@ import type { Service } from './service';
 import type { TestSuite } from './testing';
 
 export type Route = {
-  type: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'STATIC';
+  type: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'STATIC';
   path: string;
   filePath?: string;
   public?: boolean;

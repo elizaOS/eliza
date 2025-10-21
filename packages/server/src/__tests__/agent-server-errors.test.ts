@@ -65,7 +65,7 @@ describe('AgentServer Error Handling Tests', () => {
 
     const server = new AgentServer();
 
-    await expect(server.initialize()).rejects.toThrow('Initialization failed');
+    await expect(server.start()).rejects.toThrow('Initialization failed');
     expect(errorSpy).toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
 import { AgentServer } from '../index';
-import type { ServerOptions } from '../index';
+import type { ServerConfig } from '../index';
 
 // Mock logger to avoid console output during tests
 mock.module('@elizaos/core', () => ({
@@ -68,7 +68,7 @@ describe('AgentServer Initialization Tests', () => {
       plugin: {},
     }));
 
-    await server.initialize();
+    await server.start({ isTestMode: true });
 
     expect(server.isInitialized).toBe(true);
     expect(server.database).toBeDefined();
@@ -76,10 +76,11 @@ describe('AgentServer Initialization Tests', () => {
   });
 
   it('should initialize server with custom options', async () => {
-    const options: ServerOptions = {
+    const config: ServerConfig = {
       dataDir: './test-data',
       middlewares: [],
       postgresUrl: 'postgresql://test:test@localhost:5432/test',
+      isTestMode: true,
     };
 
     // Mock database adapter
@@ -118,7 +119,7 @@ describe('AgentServer Initialization Tests', () => {
       plugin: {},
     }));
 
-    await server.initialize(options);
+    await server.start(config);
 
     expect(server.isInitialized).toBe(true);
   });
@@ -160,15 +161,13 @@ describe('AgentServer Initialization Tests', () => {
       plugin: {},
     }));
 
-    await server.initialize();
-    const { logger } = await import('@elizaos/core');
-    const loggerWarnSpy = jest.spyOn(logger, 'warn');
+    // First initialization
+    await server.start({ isTestMode: true });
+    expect(server.isInitialized).toBe(true);
 
-    await server.initialize();
-
-    expect(loggerWarnSpy).toHaveBeenCalledWith(
-      'AgentServer is already initialized, skipping initialization'
-    );
+    // Second initialization should be skipped (no error should be thrown)
+    await server.start({ isTestMode: true });
+    expect(server.isInitialized).toBe(true); // Should still be initialized
   });
 
   it('should handle initialization errors gracefully', async () => {
@@ -186,6 +185,6 @@ describe('AgentServer Initialization Tests', () => {
       plugin: {},
     }));
 
-    await expect(server.initialize()).rejects.toThrow('Database connection failed');
+    await expect(server.start({ isTestMode: true })).rejects.toThrow('Database connection failed');
   });
 });

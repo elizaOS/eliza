@@ -16,6 +16,7 @@ import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
+import net from 'node:net';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
@@ -112,17 +113,24 @@ export type ServerMiddleware = (
 ) => void;
 
 /**
- * Interface for defining server configuration options.
- * @typedef {Object} ServerOptions
- * @property {ServerMiddleware[]} [middlewares] - Optional array of server middlewares.
- * @property {string} [dataDir] - Optional directory for storing server data.
- * @property {string} [postgresUrl] - Optional URL for connecting to a PostgreSQL database.
+ * Interface for defining server configuration.
+ * Used for unified server initialization and startup.
  */
-export interface ServerOptions {
+export interface ServerConfig {
+  // Infrastructure configuration
   middlewares?: ServerMiddleware[];
   dataDir?: string;
   postgresUrl?: string;
   clientPath?: string;
+  port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
+
+  // Agent configuration (runtime, not infrastructure)
+  agents?: Array<{
+    character: Character;
+    plugins?: (Plugin | string)[];
+    init?: (runtime: IAgentRuntime) => Promise<void>;
+  }>;
+  isTestMode?: boolean;
 }
 
 /**
@@ -164,14 +172,16 @@ export class AgentServer {
 
   /**
    * Start multiple agents in batch (true parallel)
-   * @param characters - Array of character configurations
-   * @param plugins - Optional plugins to load
+   * @param agents - Array of agent configurations (character + optional plugins/init)
    * @param options - Optional configuration (e.g., isTestMode for test dependencies)
    * @returns Array of started agent runtimes
    */
   public async startAgents(
-    characters: Character[],
-    plugins: (Plugin | string)[] = [],
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+    }>,
     options?: { isTestMode?: boolean }
   ): Promise<IAgentRuntime[]> {
     if (!this.elizaOS) {
@@ -179,15 +189,16 @@ export class AgentServer {
     }
 
     // Prepare agent configurations with server-specific setup
-    const agentConfigs = characters.map((character) => {
-      character.id ??= stringToUuid(character.name);
+    const agentConfigs = agents.map((agent) => {
+      agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [...(character.plugins || []), ...plugins, sqlPlugin];
+      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
 
       return {
-        character: encryptedCharacter(character),
+        character: encryptedCharacter(agent.character),
         plugins: allPlugins,
+        init: agent.init,
       };
     });
 
@@ -285,12 +296,13 @@ export class AgentServer {
   }
 
   /**
-   * Initializes the database and server.
+   * Initializes the database and server (internal use only).
    *
-   * @param {ServerOptions} [options] - Optional server options.
+   * @param {ServerConfig} [config] - Optional server configuration.
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
+   * @private
    */
-  public async initialize(options?: ServerOptions): Promise<void> {
+  private async initialize(config?: ServerConfig): Promise<void> {
     if (this.isInitialized) {
       logger.warn('AgentServer is already initialized, skipping initialization');
       return;
@@ -299,7 +311,7 @@ export class AgentServer {
     try {
       logger.debug('Initializing AgentServer (async operations)...');
 
-      const agentDataDir = resolvePgliteDir(options?.dataDir);
+      const agentDataDir = resolvePgliteDir(config?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
 
       // Ensure the database directory exists
@@ -315,7 +327,7 @@ export class AgentServer {
       this.database = createDatabaseAdapter(
         {
           dataDir: agentDataDir,
-          postgresUrl: options?.postgresUrl,
+          postgresUrl: config?.postgresUrl,
         },
         tempServerAgentId
       ) as DatabaseAdapter;
@@ -368,7 +380,7 @@ export class AgentServer {
 
       logger.success('[INIT] ElizaOS initialized');
 
-      await this.initializeServer(options);
+      await this.initializeServer(config);
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
@@ -455,16 +467,17 @@ export class AgentServer {
   }
 
   /**
-   * Initializes the server with the provided options.
+   * Initializes the server with the provided configuration.
    *
-   * @param {ServerOptions} [options] - Optional server options.
+   * @param {ServerConfig} [config] - Optional server configuration.
    * @returns {Promise<void>} - A promise that resolves once the server is initialized.
+   * @private
    */
-  private async initializeServer(options?: ServerOptions) {
+  private async initializeServer(config?: ServerConfig) {
     try {
       // Store the client path if provided
-      if (options?.clientPath) {
-        this.clientPath = options.clientPath;
+      if (config?.clientPath) {
+        this.clientPath = config.clientPath;
       }
 
       // Initialize middleware and database
@@ -565,9 +578,9 @@ export class AgentServer {
       );
 
       // Apply custom middlewares if provided
-      if (options?.middlewares) {
+      if (config?.middlewares) {
         logger.debug('Applying custom middlewares...');
-        for (const middleware of options.middlewares) {
+        for (const middleware of config.middlewares) {
           this.app.use(middleware);
         }
       }
@@ -1223,19 +1236,122 @@ export class AgentServer {
   }
 
   /**
-   * Starts the server on the specified port.
+   * Starts the server with unified configuration.
+   * Handles initialization, port resolution, and optional agent startup.
    *
-   * @param {number} port - The port number on which the server should listen.
+   * @param {ServerConfig} config - Server configuration including port, agents, and infrastructure options.
    * @returns {Promise<void>} A promise that resolves when the server is listening.
-   * @throws {Error} If the port is invalid or if there is an error while starting the server.
+   * @throws {Error} If there is an error during initialization or startup.
    */
-  public start(port: number): Promise<void> {
+  public async start(config?: ServerConfig): Promise<void> {
+    // Step 1: Auto-initialize if not already done
+    if (!this.isInitialized) {
+      await this.initialize(config);
+    }
+
+    // Step 2: Start HTTP server (skip in test mode)
+    if (!config?.isTestMode) {
+      const port = await this.resolveAndFindPort(config?.port);
+      await this.startHttpServer(port);
+    }
+
+    // Step 3: Start agents if provided
+    if (config?.agents && config.agents.length > 0) {
+      await this.startAgents(config.agents, { isTestMode: config.isTestMode });
+      logger.info(`Started ${config.agents.length} agents`);
+    }
+  }
+
+  /**
+   * Resolves and finds an available port.
+   * - If port is provided (number): validates and returns it (strict - fails if unavailable)
+   * - If port is undefined: finds next available port starting from env/default (auto-discovery)
+   */
+  private async resolveAndFindPort(port?: number): Promise<number> {
+    // Explicit port number: validate and fail if unavailable (strict mode)
+    if (port !== undefined) {
+      if (typeof port !== 'number' || port < 1 || port > 65535) {
+        throw new Error(`Invalid port number: ${port}. Must be between 1 and 65535.`);
+      }
+      // Don't auto-discover, fail if port is taken
+      return port;
+    }
+
+    // undefined: resolve from env/default, then find available (auto-discovery mode)
+    let requestedPort = 3000;
+
+    const envPort = process.env.SERVER_PORT;
+    if (envPort) {
+      const parsed = parseInt(envPort, 10);
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 65535) {
+        requestedPort = parsed;
+      } else {
+        logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
+      }
+    }
+
+    // Find next available port starting from requestedPort
+    return await this.findAvailablePort(requestedPort);
+  }
+
+  /**
+   * Finds an available port starting from the requested port.
+   * Tries incrementing ports up to maxAttempts.
+   */
+  private async findAvailablePort(startPort: number, maxAttempts = 10): Promise<number> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const port = startPort + attempt;
+
+      if (port > 65535) {
+        throw new Error(
+          `Could not find available port (exceeded max port 65535, tried up to ${port - 1})`
+        );
+      }
+
+      if (await this.isPortAvailable(port)) {
+        if (attempt > 0) {
+          logger.info(`Port ${startPort} is in use, using port ${port} instead`);
+        }
+        return port;
+      }
+    }
+
+    throw new Error(
+      `Could not find available port after ${maxAttempts} attempts starting from ${startPort}`
+    );
+  }
+
+  /**
+   * Checks if a port is available by attempting to bind to it.
+   */
+  private async isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+
+      server.once('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          resolve(false);
+        } else {
+          // Other errors also mean the port is not available
+          resolve(false);
+        }
+      });
+
+      server.once('listening', () => {
+        server.close();
+        resolve(true);
+      });
+
+      server.listen(port);
+    });
+  }
+
+  /**
+   * Starts the HTTP server on the specified port.
+   */
+  private startHttpServer(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        if (!port || typeof port !== 'number') {
-          throw new Error(`Invalid port number: ${port}`);
-        }
-
         logger.debug(`Starting server on port ${port}...`);
         logger.debug(`Current agents count: ${this.elizaOS?.getAgents().length || 0}`);
         logger.debug(`Environment: ${process.env.NODE_ENV}`);

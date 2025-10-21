@@ -6,7 +6,7 @@ This is an ElizaOS plugin built with the official plugin starter template.
 
 ```bash
 # Create a new plugin (automatically adds "plugin-" prefix)
-elizaos create -t plugin solana
+elizaos create --type plugin solana
 # This creates: plugin-solana
 # Dependencies are automatically installed and built
 

@@ -1,24 +1,27 @@
 /**
  * Deploy Command Types
- * Types for deploying ElizaOS projects to Cloudflare Containers
+ * Types for deploying ElizaOS projects to AWS ECS
  */
 
 export interface DeployOptions {
   name?: string;
   port?: number;
-  maxInstances?: number;
+  desiredCount?: number; // Replaces maxInstances
+  cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
+  memory?: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
   apiKey?: string;
   apiUrl?: string;
   env?: string[];
-  skipArtifact?: boolean; // Skip artifact creation (use existing)
-  artifactPath?: string; // Path to existing artifact
+  skipBuild?: boolean; // Skip Docker build (use existing image)
+  imageUri?: string; // Use existing ECR image URI
 }
 
 export interface DeploymentResult {
   success: boolean;
   containerId?: string;
-  workerId?: string;
-  url?: string;
+  serviceArn?: string; // ECS service ARN
+  taskDefinitionArn?: string; // ECS task definition ARN
+  url?: string; // Load balancer URL
   error?: string;
 }
 
@@ -26,14 +29,14 @@ export interface ContainerConfig {
   name: string;
   description?: string;
   port: number;
-  max_instances: number;
+  desired_count: number; // Number of tasks to run
+  cpu: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
+  memory: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
   environment_vars?: Record<string, string>;
   health_check_path: string;
-  use_bootstrapper?: boolean; // Use bootstrapper image
-  artifact_url?: string; // Presigned download URL to artifact in R2 (expires in 1 hour)
-  artifact_id?: string; // Artifact ID for reference tracking
-  artifact_checksum?: string; // SHA256 checksum of artifact
-  image_tag?: string; // Optional: custom bootstrapper image tag
+  ecr_image_uri: string; // Full ECR image URI with tag
+  ecr_repository_uri?: string; // ECR repository URI
+  image_tag?: string; // Image tag (e.g., "latest", "v1.0.0")
 }
 
 /**
@@ -122,91 +125,49 @@ export interface ContainerData {
   id: string;
   name: string;
   status: string;
-  cloudflare_worker_id?: string;
+  ecs_service_arn?: string;
+  ecs_task_definition_arn?: string;
+  load_balancer_url?: string;
   deployment_url?: string;
-  cloudflare_url?: string;
   error_message?: string;
   created_at?: string;
   updated_at?: string;
   port?: number;
-  max_instances?: number;
+  desired_count?: number;
+  cpu?: number;
+  memory?: number;
   environment_vars?: Record<string, string>;
   health_check_path?: string;
 }
 
-
 /**
- * Artifact upload request
+ * Image build and push request
  */
-export interface ArtifactUploadRequest {
+export interface ImageBuildRequest {
   projectId: string;
   version: string;
-  checksum: string;
-  size: number;
   metadata?: Record<string, string>;
 }
 
 /**
- * Artifact upload response from Cloud API
- * Updated to match Cloud API v1 response format
- * 
- * SECURITY: Raw credentials have been removed from this interface.
- * The API no longer returns temporary AWS credentials to reduce attack surface.
- * Use the presigned URLs (upload.url and download.url) which contain all
- * necessary authentication embedded in the URL itself.
+ * Image build and push response from Cloud API
+ * Returns ECR repository and authentication information
  */
-export interface ArtifactUploadResponse {
-  artifactId: string;
-  upload: {
-    url: string;
-    method: "PUT";
-    expiresAt: string;
-  };
-  download: {
-    url: string;
-    method: "GET";
-    expiresAt: string;
-  };
-  artifact: {
-    id: string;
-    version: string;
-    checksum: string;
-    size: number;
-    r2Key?: string;
-    r2Url?: string;
-  };
+export interface ImageBuildResponse {
+  ecrRepositoryUri: string;
+  ecrImageUri: string; // Full image URI with tag
+  ecrImageTag: string;
+  authToken: string; // ECR authorization token for Docker login
+  authTokenExpiresAt: string;
+  registryEndpoint: string;
 }
 
 /**
- * Artifact metadata stored in database
+ * Docker build context
  */
-export interface ArtifactMetadata {
-  id: string;
-  organizationId: string;
-  projectId: string;
-  version: string;
-  checksum: string;
-  size: number;
-  r2Key: string;
-  r2Url: string;
-  metadata?: Record<string, string>;
-  createdAt: Date;
-  createdBy: string;
+export interface DockerBuildContext {
+  projectPath: string;
+  dockerfile?: string;
+  buildArgs?: Record<string, string>;
+  target?: string;
 }
-
-/**
- * Deployment mode
- */
-export type DeploymentMode = "docker" | "bootstrapper";
-
-/**
- * Bootstrapper deployment config
- */
-export interface BootstrapperConfig {
-  artifactUrl: string;
-  artifactChecksum: string;
-  startCommand?: string;
-  skipBuild?: boolean;
-  envVars?: Record<string, string>;
-}
-

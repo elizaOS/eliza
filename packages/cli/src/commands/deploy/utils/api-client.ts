@@ -3,16 +3,14 @@
  * Handles communication with the ElizaOS Cloud backend for deployments
  */
 
-import { logger } from "@elizaos/core";
+import { logger } from '@elizaos/core';
 import type {
   ContainerConfig,
   CloudApiResponse,
   CloudApiErrorResponse,
   QuotaInfo,
   ContainerData,
-  ArtifactUploadRequest,
-  ArtifactUploadResponse,
-} from "../types";
+} from '../types';
 
 export interface ApiClientOptions {
   apiKey: string;
@@ -26,7 +24,7 @@ export class CloudApiClient {
 
   constructor(options: ApiClientOptions) {
     this.apiKey = options.apiKey;
-    this.apiUrl = options.apiUrl.replace(/\/$/, ""); // Remove trailing slash
+    this.apiUrl = options.apiUrl.replace(/\/$/, ''); // Remove trailing slash
   }
 
   /**
@@ -35,7 +33,7 @@ export class CloudApiClient {
   private async fetchWithTimeout(
     url: string,
     init: RequestInit,
-    timeoutMs: number = this.DEFAULT_TIMEOUT_MS,
+    timeoutMs: number = this.DEFAULT_TIMEOUT_MS
   ): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -49,8 +47,10 @@ export class CloudApiClient {
       return response;
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Request timeout after ${timeoutMs}ms. Please check your network connection.`);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(
+          `Request timeout after ${timeoutMs}ms. Please check your network connection.`
+        );
       }
       throw error;
     }
@@ -60,10 +60,10 @@ export class CloudApiClient {
    * Parse API error response with support for multiple formats
    */
   private async parseErrorResponse(response: Response): Promise<string> {
-    const contentType = response.headers.get("content-type");
-    
+    const contentType = response.headers.get('content-type');
+
     try {
-      if (contentType?.includes("application/json")) {
+      if (contentType?.includes('application/json')) {
         const json = await response.json();
         // Handle multiple error formats from Cloud API
         return json.error || json.message || JSON.stringify(json);
@@ -78,9 +78,9 @@ export class CloudApiClient {
    * Handle API errors consistently
    */
   private handleApiError(operation: string, error: unknown): CloudApiErrorResponse {
-    const errorMessage = error instanceof Error ? error.message : "Unknown API error";
+    const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
     logger.error(`Failed to ${operation}:`, errorMessage);
-    
+
     return {
       success: false,
       error: errorMessage,
@@ -93,15 +93,12 @@ export class CloudApiClient {
    */
   async getQuota(): Promise<CloudApiResponse<QuotaInfo>> {
     try {
-      const response = await this.fetchWithTimeout(
-        `${this.apiUrl}/api/v1/containers/quota`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-          },
+      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers/quota`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const error = await this.parseErrorResponse(response);
@@ -109,42 +106,39 @@ export class CloudApiClient {
       }
 
       const data = await response.json();
-      
+
       // Validate response structure
-      if (!data || typeof data !== "object") {
-        throw new Error("Invalid API response format");
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid API response format');
       }
 
       return data as CloudApiResponse<QuotaInfo>;
     } catch (error: unknown) {
-      return this.handleApiError("get quota", error);
+      return this.handleApiError('get quota', error);
     }
   }
-
 
   /**
    * Create a new container deployment
    */
-  async createContainer(
-    config: ContainerConfig,
-  ): Promise<CloudApiResponse<ContainerData>> {
+  async createContainer(config: ContainerConfig): Promise<CloudApiResponse<ContainerData>> {
     try {
       const response = await this.fetchWithTimeout(
         `${this.apiUrl}/api/v1/containers`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
             Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(config),
         },
-        60000, // 60 seconds for container creation
+        60000 // 60 seconds for container creation
       );
 
       if (!response.ok) {
         const error = await this.parseErrorResponse(response);
-        
+
         // Handle specific HTTP status codes
         if (response.status === 402) {
           throw new Error(`Insufficient credits: ${error}`);
@@ -153,13 +147,13 @@ export class CloudApiClient {
         } else if (response.status === 409) {
           throw new Error(`Container name conflict: ${error}`);
         }
-        
+
         throw new Error(`API request failed (${response.status}): ${error}`);
       }
 
       return await response.json();
     } catch (error: unknown) {
-      return this.handleApiError("create container", error);
+      return this.handleApiError('create container', error);
     }
   }
 
@@ -171,11 +165,11 @@ export class CloudApiClient {
       const response = await this.fetchWithTimeout(
         `${this.apiUrl}/api/v1/containers/${containerId}`,
         {
-          method: "GET",
+          method: 'GET',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
           },
-        },
+        }
       );
 
       if (!response.ok) {
@@ -185,7 +179,7 @@ export class CloudApiClient {
 
       return await response.json();
     } catch (error: unknown) {
-      return this.handleApiError("get container status", error);
+      return this.handleApiError('get container status', error);
     }
   }
 
@@ -194,15 +188,12 @@ export class CloudApiClient {
    */
   async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
     try {
-      const response = await this.fetchWithTimeout(
-        `${this.apiUrl}/api/v1/containers`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-          },
+      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const error = await response.text();
@@ -211,8 +202,8 @@ export class CloudApiClient {
 
       return await response.json();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to list containers:", errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
+      logger.error('Failed to list containers:', errorMessage);
       return {
         success: false,
         error: errorMessage,
@@ -228,11 +219,11 @@ export class CloudApiClient {
       const response = await this.fetchWithTimeout(
         `${this.apiUrl}/api/v1/containers/${containerId}`,
         {
-          method: "DELETE",
+          method: 'DELETE',
           headers: {
             Authorization: `Bearer ${this.apiKey}`,
           },
-        },
+        }
       );
 
       if (!response.ok) {
@@ -242,8 +233,8 @@ export class CloudApiClient {
 
       return await response.json();
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown API error";
-      logger.error("Failed to delete container:", errorMessage);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
+      logger.error('Failed to delete container:', errorMessage);
       return {
         success: false,
         error: errorMessage,
@@ -260,7 +251,7 @@ export class CloudApiClient {
     options: {
       maxAttempts?: number;
       intervalMs?: number;
-    } = {},
+    } = {}
   ): Promise<CloudApiResponse<ContainerData>> {
     // Match Cloud API deployment timeout: 10 minutes = 600 seconds
     // Default: 120 attempts * 5s = 600s = 10 minutes
@@ -280,20 +271,20 @@ export class CloudApiClient {
       const status = response.data?.status;
 
       // Success terminal state
-      if (status === "running") {
+      if (status === 'running') {
         return response;
       }
 
       // Failure terminal states
-      if (status === "failed") {
+      if (status === 'failed') {
         return {
           success: false,
-          error: response.data?.error_message || "Deployment failed",
+          error: response.data?.error_message || 'Deployment failed',
         };
       }
 
       // Stopped/deleted states (unexpected during deployment)
-      if (status === "stopped" || status === "deleting" || status === "deleted") {
+      if (status === 'stopped' || status === 'deleting' || status === 'deleted') {
         return {
           success: false,
           error: `Deployment interrupted - container is ${status}`,
@@ -316,92 +307,49 @@ export class CloudApiClient {
   }
 
   /**
-   * Upload artifact to R2 storage via Cloud API
+   * Request ECR credentials and repository for image build
    */
-  async uploadArtifact(
-    request: ArtifactUploadRequest & { artifactPath: string },
-  ): Promise<CloudApiResponse<ArtifactUploadResponse>> {
+  async requestImageBuild(request: {
+    projectId: string;
+    version: string;
+    metadata?: Record<string, string>;
+  }): Promise<CloudApiResponse<any>> {
     try {
-      const fs = await import("node:fs");
-      
-      // First, request upload URL from API
-      logger.info("📤 Requesting artifact upload URL...");
-      
-      const uploadRequest = await this.fetchWithTimeout(
-        `${this.apiUrl}/api/v1/artifacts/upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            projectId: request.projectId,
-            version: request.version,
-            checksum: request.checksum,
-            size: request.size,
-            metadata: request.metadata,
-          }),
-        },
-      );
+      logger.info('🔐 Requesting ECR credentials...');
 
-      if (!uploadRequest.ok) {
-        const error = await this.parseErrorResponse(uploadRequest);
-        throw new Error(`Failed to get upload URL (${uploadRequest.status}): ${error}`);
+      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers/credentials`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          projectId: request.projectId,
+          version: request.version,
+          metadata: request.metadata,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        throw new Error(`Failed to get ECR credentials (${response.status}): ${error}`);
       }
 
-      const uploadData = await uploadRequest.json() as CloudApiResponse<ArtifactUploadResponse>;
-      
-      if (!uploadData.success || !uploadData.data) {
-        throw new Error(uploadData.error || "Failed to get upload URL");
+      const data = await response.json();
+
+      if (!data.success || !data.data) {
+        throw new Error(data.error || 'Failed to get ECR credentials');
       }
 
       // Validate response structure
-      if (!uploadData.data.upload?.url) {
-        throw new Error("Invalid response: missing upload URL");
+      if (!data.data.ecrRepositoryUri || !data.data.authToken) {
+        throw new Error('Invalid response: missing ECR credentials');
       }
 
-      // Now upload the artifact to the presigned URL
-      logger.info("📤 Uploading artifact to storage...");
-      
-      const artifactBuffer = fs.readFileSync(request.artifactPath);
-      const fileSizeMB = artifactBuffer.length / 1024 / 1024;
-      
-      // Use longer timeout for large files (1 minute per 10MB, minimum 2 minutes)
-      const uploadTimeout = Math.max(120000, Math.ceil(fileSizeMB / 10) * 60000);
-      
-      // Show progress for uploads
-      logger.info(`📤 Uploading ${fileSizeMB.toFixed(2)} MB...`);
-      const uploadStartTime = Date.now();
-      
-      const uploadResponse = await this.fetchWithTimeout(
-        uploadData.data.upload.url,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/gzip",
-          },
-          body: artifactBuffer,
-        },
-        uploadTimeout,
-      );
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload artifact (${uploadResponse.status}): ${uploadResponse.statusText}`);
-      }
-
-      const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
-      const uploadSpeed = (fileSizeMB / (Date.now() - uploadStartTime) * 1000).toFixed(2);
-      logger.info(`✅ Artifact uploaded successfully (${uploadDuration}s, ${uploadSpeed} MB/s)`);
-
-      return uploadData;
+      logger.info('✅ Received ECR credentials');
+      return data;
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.error("Failed to upload artifact:", errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
+      return this.handleApiError('request image build credentials', error);
     }
   }
 }
@@ -413,12 +361,9 @@ export function getApiCredentials(): {
   apiKey: string;
   apiUrl: string;
 } | null {
-  const apiKey =
-    process.env.ELIZAOS_API_KEY || process.env.ELIZA_CLOUD_API_KEY;
+  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZA_CLOUD_API_KEY;
   const apiUrl =
-    process.env.ELIZAOS_API_URL ||
-    process.env.ELIZA_CLOUD_API_URL ||
-    "https://elizacloud.ai";
+    process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://elizacloud.ai';
 
   if (!apiKey) {
     return null;
@@ -426,4 +371,3 @@ export function getApiCredentials(): {
 
   return { apiKey, apiUrl };
 }
-

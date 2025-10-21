@@ -7,7 +7,6 @@ import express from 'express';
 import http from 'node:http';
 import { AgentServer } from '../index';
 
-
 // Mock only plugin-sql to avoid real database operations
 mock.module('@elizaos/plugin-sql', () => ({
   createDatabaseAdapter: jest.fn(() => ({
@@ -111,7 +110,7 @@ describe('API Server Functionality', () => {
     jest.spyOn(http, 'createServer').mockReturnValue(mockServer as any);
 
     server = new AgentServer();
-    await server.initialize();
+    await server.start({ isTestMode: true });
     app = server.app;
   });
 

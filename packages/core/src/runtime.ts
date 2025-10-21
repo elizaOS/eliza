@@ -11,6 +11,8 @@ import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
+import { DefaultMessageService } from './services/default-message-service';
+import type { IMessageService } from './services/message-service';
 import {
   ChannelType,
   EventType,
@@ -106,7 +108,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   events: PluginEvents = {};
-  stateCache = new Map<UUID, State>();
+  stateCache = new Map<string, State>();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
@@ -145,6 +147,7 @@ export class AgentRuntime implements IAgentRuntime {
     }>;
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
+  public messageService: IMessageService | null = null; // Lazily initialized
 
   constructor(opts: {
     conversationLength?: number;
@@ -156,10 +159,10 @@ export class AgentRuntime implements IAgentRuntime {
     settings?: RuntimeSettings;
     allAvailablePlugins?: Plugin[];
   }) {
+    // Generate deterministic UUID from character name for backward compatibility
+    // Falls back to random UUID only if no character name is provided
     this.agentId =
-      opts.character?.id ??
-      opts?.agentId ??
-      stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
+      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character as Character;
 
     this.initPromise = new Promise((resolve, reject) => {
@@ -400,14 +403,22 @@ export class AgentRuntime implements IAgentRuntime {
         await this.adapter.init();
       }
 
+      // Initialize message service
+      this.messageService = new DefaultMessageService();
+
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
 
-      const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
+      // Ensure character has the agent ID set before calling ensureAgentExists
+      // We create a new object with the ID to avoid mutating the original character
+      const existingAgent = await this.ensureAgentExists({
+        ...this.character,
+        id: this.agentId,
+      } as Partial<Agent>);
       if (!existingAgent) {
-        const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
+        const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
         throw new Error(errorMsg);
       }
 
@@ -1176,44 +1187,68 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-      if (!evaluator.handler) {
-        return null;
+    try {
+      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+        try {
+          if (!evaluator.handler) {
+            return null;
+          }
+          if (!didRespond && !evaluator.alwaysRun) {
+            return null;
+          }
+          const result = await evaluator.validate(this, message, state);
+          if (result) {
+            return evaluator;
+          }
+          return null;
+        } catch (error) {
+          this.logger.error(
+            { error, evaluatorName: evaluator.name },
+            `Error validating evaluator ${evaluator.name}`
+          );
+          return null;
+        }
+      });
+      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+      if (evaluators.length === 0) {
+        return [];
       }
-      if (!didRespond && !evaluator.alwaysRun) {
-        return null;
-      }
-      const result = await evaluator.validate(this, message, state);
-      if (result) {
-        return evaluator;
-      }
-      return null;
-    });
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-    if (evaluators.length === 0) {
+      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+      await Promise.all(
+        evaluators.map(async (evaluator) => {
+          try {
+            if (evaluator.handler) {
+              await evaluator.handler(this, message, state, {}, callback, responses);
+              this.adapter.log({
+                entityId: message.entityId,
+                roomId: message.roomId,
+                type: 'evaluator',
+                body: {
+                  evaluator: evaluator.name,
+                  messageId: message.id,
+                  message: message.content.text,
+                  state,
+                  runId: this.getCurrentRunId(),
+                },
+              });
+            }
+          } catch (error) {
+            this.logger.error(
+              { error, evaluatorName: evaluator.name },
+              `Error executing evaluator ${evaluator.name}`
+            );
+            // Continue with other evaluators even if one fails
+          }
+        })
+      );
+      return evaluators;
+    } catch (error) {
+      this.logger.error(
+        { error, messageId: message.id, roomId: message.roomId },
+        'Error in evaluate method'
+      );
       return [];
     }
-    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-    await Promise.all(
-      evaluators.map(async (evaluator) => {
-        if (evaluator.handler) {
-          await evaluator.handler(this, message, state, {}, callback, responses);
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'evaluator',
-            body: {
-              evaluator: evaluator.name,
-              messageId: message.id,
-              message: message.content.text,
-              state,
-              runId: this.getCurrentRunId(),
-            },
-          });
-        }
-      })
-    );
-    return evaluators;
   }
 
   // highly SQL optimized queries
@@ -2312,44 +2347,44 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    if (!agent.name) {
-      throw new Error('Agent name is required');
+    if (!agent.id) {
+      throw new Error('Agent id is required');
     }
 
-    const agents = await this.adapter.getAgents();
-    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+    // Check if agent exists by ID
+    const existingAgent = await this.adapter.getAgent(agent.id);
 
-    if (existingAgentId) {
+    if (existingAgent) {
       // Update the agent on restart with the latest character configuration
       const updatedAgent = {
         ...agent,
-        id: existingAgentId,
+        id: agent.id,
         updatedAt: Date.now(),
       };
 
-      await this.adapter.updateAgent(existingAgentId, updatedAgent);
-      const existingAgent = await this.adapter.getAgent(existingAgentId);
+      await this.adapter.updateAgent(agent.id, updatedAgent);
+      const refreshedAgent = await this.adapter.getAgent(agent.id);
 
-      if (!existingAgent) {
-        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+      if (!refreshedAgent) {
+        throw new Error(`Failed to retrieve agent after update: ${agent.id}`);
       }
 
-      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
-      return existingAgent;
+      this.logger.debug(`Updated existing agent ${agent.id} on restart`);
+      return refreshedAgent;
     }
 
     // Create new agent if it doesn't exist
     const newAgent: Agent = {
       ...agent,
-      id: stringToUuid(agent.name),
+      id: agent.id,
     } as Agent;
 
     const created = await this.adapter.createAgent(newAgent);
     if (!created) {
-      throw new Error(`Failed to create agent: ${agent.name}`);
+      throw new Error(`Failed to create agent: ${agent.id}`);
     }
 
-    this.logger.debug(`Created new agent ${agent.name}`);
+    this.logger.debug(`Created new agent ${agent.id}`);
     return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {

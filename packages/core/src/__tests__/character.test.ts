@@ -61,7 +61,7 @@ describe('Character Config Functions', () => {
       const result = validateCharacterConfig(character);
 
       expect(result.isValid).toBe(false);
-      expect(result.errors.some(e => e.includes('name'))).toBe(true);
+      expect(result.errors.some((e) => e.includes('name'))).toBe(true);
     });
   });
 

@@ -2,7 +2,6 @@ import type { Agent, Character, ElizaOS } from '@elizaos/core';
 import {
   validateUuid,
   logger,
-  stringToUuid,
   getSalt,
   encryptObjectValues,
   encryptStringValue,
@@ -139,7 +138,11 @@ export function createAgentCrudRouter(
       }
 
       const ensureAgentExists = async (character: Character) => {
-        const agentId = stringToUuid(character.name);
+        // Ensure character has an ID - if not, it should have been set during loading
+        if (!character.id) {
+          throw new Error('Character must have an ID');
+        }
+        const agentId = character.id;
         let agent = await db.getAgent(agentId);
         if (!agent) {
           await db.createAgent({ ...character, id: agentId });
@@ -225,15 +228,15 @@ export function createAgentCrudRouter(
         }
 
         const currentPlugins = (currentAgent.plugins || [])
-          .filter(p => p != null)
-          .map(p => typeof p === 'string' ? p : (p as any).name)
-          .filter(name => typeof name === 'string')
+          .filter((p) => p != null)
+          .map((p) => (typeof p === 'string' ? p : (p as any).name))
+          .filter((name) => typeof name === 'string')
           .sort();
 
         const updatedPlugins = (updatedAgent.plugins || [])
-          .filter(p => p != null)
-          .map(p => typeof p === 'string' ? p : (p as any).name)
-          .filter(name => typeof name === 'string')
+          .filter((p) => p != null)
+          .map((p) => (typeof p === 'string' ? p : (p as any).name))
+          .filter((name) => typeof name === 'string')
           .sort();
 
         const pluginsChanged =
@@ -258,7 +261,9 @@ export function createAgentCrudRouter(
 
             // Restart the agent with new configuration
             const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
-            const runtimes = await serverInstance?.startAgents([characterData as Character]);
+            const runtimes = await serverInstance?.startAgents([
+              { character: characterData as Character },
+            ]);
             if (!runtimes || runtimes.length === 0) {
               throw new Error('Failed to restart agent after configuration change');
             }
@@ -271,8 +276,11 @@ export function createAgentCrudRouter(
 
             // Try to restore the agent with the previous configuration
             try {
-              const { enabled, status, createdAt, updatedAt, ...previousCharacterData } = currentAgent!;
-              await serverInstance?.startAgents([previousCharacterData as Character]);
+              const { enabled, status, createdAt, updatedAt, ...previousCharacterData } =
+                currentAgent!;
+              await serverInstance?.startAgents([
+                { character: previousCharacterData as Character },
+              ]);
               logger.warn(`[AGENT UPDATE] Restored agent ${agentId} to previous state`);
             } catch (restoreError) {
               logger.error(

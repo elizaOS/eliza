@@ -3,10 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type Character,
+  type UUID,
   logger,
   parseAndValidateCharacter,
   validateCharacter,
   getCharactersDir,
+  stringToUuid,
 } from '@elizaos/core';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,14 +103,33 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
 
   const validatedCharacter = validationResult.data;
 
+  // Ensure character has an ID - generate deterministic UUID from name if not present
+  // This preserves backward compatibility and allows predictable environment variable naming
+  if (!validatedCharacter.id) {
+    if (!validatedCharacter.name) {
+      throw new Error('Character must have either an id or a name to generate a deterministic ID');
+    }
+    validatedCharacter.id = stringToUuid(validatedCharacter.name);
+  }
+
   // Add environment-based settings and secrets (preserve existing functionality)
-  const characterId = validatedCharacter.id || validatedCharacter.name;
-  const characterPrefix = `CHARACTER.${characterId.toUpperCase().replace(/ /g, '_')}.`;
+  // Priority: name-based prefixes (backward compatible) first, then ID-based (for explicit IDs)
+  const namePrefixes = validatedCharacter.name
+    ? [
+        `CHARACTER.${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}.`,
+        `${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`,
+      ]
+    : [];
+  // ID-based prefix as fallback for explicitly set UUIDs
+  const idPrefix = `CHARACTER.${validatedCharacter.id!.toUpperCase().replace(/-/g, '_')}.`;
+  const allPrefixes = [...namePrefixes, idPrefix];
 
   const characterSettings = Object.entries(process.env)
-    .filter(([key]) => key.startsWith(characterPrefix))
+    .filter(([key]) => allPrefixes.some((prefix) => key.startsWith(prefix)))
     .reduce((settings, [key, value]) => {
-      const settingKey = key.slice(characterPrefix.length);
+      // Find which prefix matched and remove it to get the setting key
+      const matchedPrefix = allPrefixes.find((prefix) => key.startsWith(prefix));
+      const settingKey = matchedPrefix ? key.slice(matchedPrefix.length) : key;
       return { ...settings, [settingKey]: value };
     }, {});
 

@@ -6,10 +6,10 @@ import {
   type ProjectAgent,
   type UUID,
 } from '@elizaos/core';
+import { getDefaultCharacter } from '@/src/characters/eliza';
 import { stringToUuid } from '@elizaos/core';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { getElizaCharacter } from '@/src/characters/eliza';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 
 /**
@@ -148,7 +148,7 @@ export async function loadProject(dir: string): Promise<Project> {
       // Create a fallback project with the default Eliza character
       // Use deterministic UUID based on character name to match runtime behavior
       const defaultCharacterName = 'Eliza (Default)';
-      const elizaCharacter = getElizaCharacter(); // Get the filtered character based on env vars
+      const elizaCharacter = getDefaultCharacter(); // Get the filtered character based on env vars
       const defaultAgent: ProjectAgent = {
         character: {
           ...elizaCharacter,
@@ -243,7 +243,7 @@ export async function loadProject(dir: string): Promise<Project> {
         // Use the Eliza character as our test agent
         // Use deterministic UUID based on character name to match runtime behavior
         const characterName = 'Eliza (Test Mode)';
-        const elizaCharacter = getElizaCharacter(); // Get the filtered character based on env vars
+        const elizaCharacter = getDefaultCharacter(); // Get the filtered character based on env vars
         const testCharacter: Character = {
           ...elizaCharacter,
           id: stringToUuid(characterName) as UUID,

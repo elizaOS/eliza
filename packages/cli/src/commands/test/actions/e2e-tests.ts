@@ -1,12 +1,12 @@
 import { loadProject, type Project } from '@/src/project';
-import { buildProject, findNextAvailablePort, TestRunner, UserEnvironment } from '@/src/utils';
-import { getModuleLoader } from '@/src/utils/module-loader';
+import { buildProject, TestRunner, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
 import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
+import { getDefaultCharacter } from '@/src/characters/eliza';
+import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { getElizaCharacter } from '@/src/characters/eliza';
 import { E2ETestOptions, TestResult } from '../types';
 import { processFilterName } from '../utils/project-utils';
 
@@ -38,11 +38,6 @@ export async function runE2eTests(
   try {
     const runtimes: IAgentRuntime[] = [];
     const projectAgents: ProjectAgent[] = [];
-
-    // Load @elizaos/server from the project's node_modules
-    const moduleLoader = getModuleLoader();
-    const serverModule = await moduleLoader.load('@elizaos/server');
-    const { AgentServer, jsonToCharacter, loadCharacterTryPath } = serverModule;
 
     // Set up standard paths and load .env
     const elizaDir = path.join(process.cwd(), '.eliza');
@@ -151,18 +146,12 @@ export async function runE2eTests(
       server.jsonToCharacter = jsonToCharacter;
       logger.info('Server properties set up');
 
-      const desiredPort = options.port || Number.parseInt(process.env.SERVER_PORT || '3000');
-      const serverHost = process.env.SERVER_HOST || '0.0.0.0';
-      const serverPort = await findNextAvailablePort(desiredPort, serverHost);
-
-      if (serverPort !== desiredPort) {
-        logger.warn(`Port ${desiredPort} is in use for testing, using port ${serverPort} instead.`);
-      }
-
       logger.info('Starting server...');
       try {
-        await server.start(serverPort);
-        logger.info({ serverPort }, 'Server started successfully on port');
+        // Server will auto-discover available port (don't pass port for auto-discovery)
+        // If options.port is provided, pass it (will fail if not available - strict mode)
+        await server.start(options.port ? { port: options.port } : undefined);
+        logger.info('Server started successfully');
       } catch (error) {
         logger.error({ error }, 'Error starting server:');
         if (error instanceof Error) {
@@ -192,7 +181,7 @@ export async function runE2eTests(
             if (!pluginUnderTest) {
               throw new Error('Plugin module could not be loaded for testing.');
             }
-            const defaultElizaCharacter = getElizaCharacter();
+            const defaultElizaCharacter = getDefaultCharacter();
 
             // Use AgentServer's startAgents method with the plugin under test
             // isTestMode: true ensures testDependencies are loaded
@@ -218,32 +207,29 @@ export async function runE2eTests(
             throw pluginError;
           }
         } else {
-          // For regular projects, start each agent as defined
+          // For regular projects, start agents with delay between each (for E2E test stability)
           for (const agent of project.agents) {
             try {
-              // Make a copy of the original character to avoid modifying the project configuration
-              const originalCharacter = { ...agent.character };
-
-              logger.debug(`Starting agent: ${originalCharacter.name}`);
+              logger.debug(`Starting agent: ${agent.character.name}`);
 
               // isTestMode: true ensures testDependencies are loaded for project tests
+              // init function is now automatically called by Core
               const startedRuntimes = await server.startAgents(
-                [originalCharacter],
-                agent.plugins || [],
+                [
+                  {
+                    character: { ...agent.character },
+                    plugins: agent.plugins || [],
+                    init: agent.init,
+                  },
+                ],
                 { isTestMode: true }
               );
               const runtime = startedRuntimes[0];
 
-              // Call custom init function if provided
-              if (agent.init) {
-                logger.debug(`Running custom init for agent: ${originalCharacter.name}`);
-                await agent.init(runtime);
-              }
-
               runtimes.push(runtime);
               projectAgents.push(agent);
 
-              // wait 1 second between agent starts
+              // wait 1 second between agent starts for E2E test stability
               await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (agentError) {
               logger.error(

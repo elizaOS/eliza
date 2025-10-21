@@ -64,6 +64,7 @@ export interface AgentUpdate {
  */
 export class ElizaOS extends EventTarget {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
+  private initFunctions: Map<UUID, (runtime: IAgentRuntime) => Promise<void>> = new Map();
   private editableMode = false;
 
   /**
@@ -75,6 +76,7 @@ export class ElizaOS extends EventTarget {
       character: Character;
       plugins?: (Plugin | string)[];
       settings?: RuntimeSettings;
+      init?: (runtime: IAgentRuntime) => Promise<void>;
     }>,
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
@@ -96,6 +98,10 @@ export class ElizaOS extends EventTarget {
       });
 
       this.runtimes.set(runtime.agentId, runtime);
+
+      if (typeof agent.init === 'function') {
+        this.initFunctions.set(runtime.agentId, agent.init);
+      }
 
       const { settings, ...characterWithoutSecrets } = character;
       const { secrets, ...settingsWithoutSecrets } = settings || {};
@@ -174,6 +180,7 @@ export class ElizaOS extends EventTarget {
 
     for (const id of agentIds) {
       this.runtimes.delete(id);
+      this.initFunctions.delete(id);
     }
 
     this.dispatchEvent(
@@ -204,6 +211,17 @@ export class ElizaOS extends EventTarget {
         );
       })
     );
+
+    for (const id of ids) {
+      const initFn = this.initFunctions.get(id);
+      if (initFn) {
+        const runtime = this.runtimes.get(id);
+        if (runtime) {
+          await initFn(runtime);
+          this.initFunctions.delete(id);
+        }
+      }
+    }
 
     this.dispatchEvent(
       new CustomEvent('agents:started', {

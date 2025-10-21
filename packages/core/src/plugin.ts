@@ -398,11 +398,11 @@ export async function resolvePlugins(
   // In browser, only Plugin objects are supported
   const pluginObjects = plugins.filter((p): p is Plugin => typeof p !== 'string');
 
-  if (plugins.some(p => typeof p === 'string')) {
+  if (plugins.some((p) => typeof p === 'string')) {
     logger.warn(
       'Browser environment: String plugin references are not supported. ' +
-      'Only Plugin objects will be used. Skipped plugins: ' +
-      plugins.filter(p => typeof p === 'string').join(', ')
+        'Only Plugin objects will be used. Skipped plugins: ' +
+        plugins.filter((p) => typeof p === 'string').join(', ')
     );
   }
 

@@ -51,8 +51,24 @@ describe('MemoryService', () => {
     it('should retrieve agent memories successfully', async () => {
       const mockMemories = {
         memories: [
-          { id: 'mem-1', content: 'Memory 1', timestamp: '2024-01-01T00:00:00Z' },
-          { id: 'mem-2', content: 'Memory 2', timestamp: '2024-01-02T00:00:00Z' },
+          {
+            id: TEST_MEMORY_ID,
+            entityId: '550e8400-e29b-41d4-a716-446655440005' as UUID,
+            agentId: TEST_AGENT_ID,
+            type: 'messages',
+            content: 'Memory 1',
+            createdAt: new Date('2024-01-01T00:00:00Z'),
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
+          },
+          {
+            id: '550e8400-e29b-41d4-a716-446655440007' as UUID,
+            entityId: '550e8400-e29b-41d4-a716-446655440006' as UUID,
+            agentId: TEST_AGENT_ID,
+            type: 'messages',
+            content: 'Memory 2',
+            createdAt: new Date('2024-01-02T00:00:00Z'),
+            updatedAt: new Date('2024-01-02T00:00:00Z'),
+          },
         ],
       };
       (memoryService as any).get.mockResolvedValue(mockMemories);
@@ -81,7 +97,19 @@ describe('MemoryService', () => {
 
   describe('getRoomMemories', () => {
     it('should retrieve room memories successfully', async () => {
-      const mockMemories = { memories: [{ id: 'mem-1', content: 'Room memory' }] };
+      const mockMemories = {
+        memories: [
+          {
+            id: TEST_MEMORY_ID,
+            entityId: '550e8400-e29b-41d4-a716-446655440005' as UUID,
+            agentId: TEST_AGENT_ID,
+            type: 'messages',
+            content: 'Room memory',
+            createdAt: new Date('2024-01-01T00:00:00Z'),
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
+          },
+        ],
+      };
       (memoryService as any).get.mockResolvedValue(mockMemories);
 
       const result = await memoryService.getRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID);
@@ -110,7 +138,14 @@ describe('MemoryService', () => {
     const updateParams = { content: 'Updated memory content' };
 
     it('should update memory successfully', async () => {
-      const mockUpdatedMemory = { id: TEST_MEMORY_ID, content: 'Updated memory content' };
+      const mockUpdatedMemory = {
+        id: TEST_MEMORY_ID,
+        agentId: TEST_AGENT_ID,
+        type: 'messages',
+        content: 'Updated memory content',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
+      };
       (memoryService as any).patch.mockResolvedValue(mockUpdatedMemory);
 
       const result = await memoryService.updateMemory(TEST_AGENT_ID, TEST_MEMORY_ID, updateParams);
@@ -155,8 +190,20 @@ describe('MemoryService', () => {
     it('should list agent rooms successfully', async () => {
       const mockRooms = {
         rooms: [
-          { id: 'room-1', name: 'Room 1' },
-          { id: 'room-2', name: 'Room 2' },
+          {
+            id: TEST_ROOM_ID,
+            agentId: TEST_AGENT_ID,
+            name: 'Room 1',
+            createdAt: new Date('2024-01-01T00:00:00Z'),
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
+          },
+          {
+            id: '550e8400-e29b-41d4-a716-446655440008' as UUID,
+            agentId: TEST_AGENT_ID,
+            name: 'Room 2',
+            createdAt: new Date('2024-01-01T00:00:00Z'),
+            updatedAt: new Date('2024-01-01T00:00:00Z'),
+          },
         ],
       };
       (memoryService as any).get.mockResolvedValue(mockRooms);
@@ -170,7 +217,14 @@ describe('MemoryService', () => {
 
   describe('getRoom', () => {
     it('should get room details successfully', async () => {
-      const mockRoom = { id: TEST_ROOM_ID, name: 'Test Room', description: 'A test room' };
+      const mockRoom = {
+        id: TEST_ROOM_ID,
+        agentId: TEST_AGENT_ID,
+        name: 'Test Room',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
+        metadata: { description: 'A test room' },
+      };
       (memoryService as any).get.mockResolvedValue(mockRoom);
 
       const result = await memoryService.getRoom(TEST_AGENT_ID, TEST_ROOM_ID);
@@ -183,10 +237,17 @@ describe('MemoryService', () => {
   });
 
   describe('createRoom', () => {
-    const roomParams = { name: 'New Room', description: 'A new room' };
+    const roomParams = { name: 'New Room', metadata: { description: 'A new room' } };
 
     it('should create room successfully', async () => {
-      const mockCreatedRoom = { id: 'room-new', ...roomParams };
+      const mockCreatedRoom = {
+        id: '550e8400-e29b-41d4-a716-446655440009' as UUID,
+        agentId: TEST_AGENT_ID,
+        name: roomParams.name,
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
+        metadata: roomParams.metadata,
+      };
       (memoryService as any).post.mockResolvedValue(mockCreatedRoom);
 
       const result = await memoryService.createRoom(TEST_AGENT_ID, roomParams);
@@ -200,7 +261,7 @@ describe('MemoryService', () => {
   });
 
   describe('createWorldFromServer', () => {
-    const worldParams = { name: 'New World', description: 'A new world' };
+    const worldParams = { serverId: TEST_SERVER_ID, name: 'New World', description: 'A new world' };
 
     it('should create world from server successfully', async () => {
       const mockResponse = { worldId: 'world-new' as UUID };
