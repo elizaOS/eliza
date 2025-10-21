@@ -10,8 +10,7 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
 import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
-import { Markdown } from '@/components/ui/chat/markdown';
-import { AnimatedMarkdown } from '@/components/ui/chat/animated-markdown';
+import { Response as AiResponse } from '@/components/ai-elements/response';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -232,18 +231,13 @@ export function MessageContent({
                   {textWithoutUrls.trim() && (
                     <div>
                       {isUser ? (
-                        <Markdown className="prose-sm max-w-none" variant="user">
-                          {textWithoutUrls}
-                        </Markdown>
+                        // User messages: render as plain text without animation
+                        <div className="whitespace-pre-wrap">{textWithoutUrls}</div>
                       ) : (
-                        <AnimatedMarkdown
-                          className="prose-sm max-w-none"
-                          variant="agent"
-                          shouldAnimate={shouldAnimate}
-                          messageId={message.id}
-                        >
+                        // Agent messages: use AiResponse with animation support
+                        <AiResponse className="max-w-none" isAnimating={shouldAnimate}>
                           {textWithoutUrls}
-                        </AnimatedMarkdown>
+                        </AiResponse>
                       )}
                     </div>
                   )}
@@ -372,10 +366,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
@@ -1360,11 +1354,11 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     (typeof channel.metadata?.createdAt === 'string' ||
-                                    typeof channel.metadata?.createdAt === 'number'
+                                      typeof channel.metadata?.createdAt === 'number'
                                       ? channel.metadata.createdAt
                                       : null) ||
-                                      channel.updatedAt ||
-                                      channel.createdAt
+                                    channel.updatedAt ||
+                                    channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
