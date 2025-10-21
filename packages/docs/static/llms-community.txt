@@ -1,0 +1,259 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files and files not matching ignore patterns, combined into a single document by Repomix.
+The content has been processed where comments have been removed, empty lines have been removed, content has been compressed (code blocks are separated by ⋮---- delimiter).
+
+# File Summary
+
+## Purpose
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+## File Format
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A header with the file path (## File: path/to/file)
+  b. The full contents of the file in a code block
+
+## Usage Guidelines
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+- Pay special attention to the Repository Description. These contain important context and guidelines specific to this project.
+- Pay special attention to the Repository Instruction. These contain important context and guidelines specific to this project.
+
+## Notes
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: packages/docs/blog/mission.mdx, packages/docs/blog/reintroduction.mdx, packages/docs/blog/taming_info.mdx, packages/docs/blog/v1-v2.mdx, packages/docs/blog/wdygdtw_recap.mdx, packages/docs/docs/core/actions.md, packages/docs/docs/core/agents.md, packages/docs/docs/core/database.md, packages/docs/docs/core/entities.md, packages/docs/docs/core/evaluators.md, packages/docs/docs/core/knowledge.md, packages/docs/docs/core/overview.md, packages/docs/docs/core/plugins.md, packages/docs/docs/core/project.md, packages/docs/docs/core/providers.md, packages/docs/docs/core/rooms.md, packages/docs/docs/core/services.md, packages/docs/docs/core/tasks.md, packages/docs/docs/core/worlds.md, packages/docs/docs/intro.md, packages/docs/docs/quickstart.md, packages/docs/news/2025-10-12.md, packages/docs/news/2025-10-13.md, packages/docs/news/2025-10-14.md, packages/docs/news/2025-10-15.md, packages/docs/news/2025-10-16.md, packages/docs/news/2025-10-17.md, packages/docs/news/2025-10-18.md, packages/docs/news/2025-10-19.md, packages/docs/news/2025-10-20.md, packages/docs/partners/**/brief.mdx, packages/docs/static/packages/**/*.md
+- Files matching these patterns are excluded: **/*.test.ts, **/__tests__/**, **/node_modules/**, packages/docs/community/**, packages/plugin-*/**, **/*.ico, **/*.png, **/*.jpg, **/*.svg
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Code comments have been removed from supported file types
+- Empty lines have been removed from all files
+- Content has been compressed - code blocks are separated by ⋮---- delimiter
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+# User Provided Header
+ElizaOS Community Context
+
+# Directory Structure
+```
+packages/
+  docs/
+    news/
+      2025-10-12.md
+      2025-10-13.md
+      2025-10-14.md
+      2025-10-15.md
+      2025-10-16.md
+      2025-10-17.md
+      2025-10-18.md
+      2025-10-19.md
+      2025-10-20.md
+```
+
+# Files
+
+## File: packages/docs/news/2025-10-12.md
+```markdown
+# Daily Report - 2025-10-12
+
+## GitHub Activity Summary
+- On October 12, 2025, the elizaOS/eliza repository showed moderate activity with 0 new pull requests opened, 1 pull request merged, 0 new issues created, and 3 active contributors working on the project.
+
+## Pull Requests
+- PR #6058 titled 'elizaos deploy r2 artifacts style' is completed (Source: https://github.com/elizaOS/eliza/pull/6058)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-13.md
+```markdown
+# Daily Report - 2025-10-13
+
+## GitHub Activity Summary
+- From October 13-14, 2025, the elizaOS/eliza repository showed moderate activity with 1 new pull request (none merged), 1 new issue, and 5 active contributors participating in the project.
+
+## Issues
+- Issue #6061 titled '[DOCS] Every plugin link in docs leads to a 404' by @douglasg14b is OPEN with 2 comments, reporting documentation link problems on October 13, 2025. (Source: https://github.com/elizaOS/eliza/issues/6061)
+
+## Pull Requests
+- PR #6062 by @tylermcwilliams titled 'feat(core): implement generateText() API' has an unknown state as the item_state was not provided in the input. (Source: https://github.com/elizaOS/eliza/pull/6062)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-14.md
+```markdown
+# Daily Report - 2025-10-14
+
+## GitHub Activity Summary
+- From October 14-15, 2025, the elizaOS/eliza repository showed active development with 1 new pull request (which was successfully merged), 1 new issue opened, and involvement from 5 active contributors during this period.
+
+## Issues
+- Issue #5923 titled 'Direct API Calls' by @borisudovicic is CLOSED after being open for approximately one month. (Source: https://github.com/elizaOS/eliza/issues/5923)
+- Issue #6064 titled 'Add n1n.ai API as a model provider' by @n1n-api is OPEN and awaiting resolution. (Source: https://github.com/elizaOS/eliza/issues/6064)
+
+## Pull Requests
+- PR #6063 titled 'Refactor/icon button prop' by @5c0 is open (Source: https://github.com/elizaOS/eliza/pull/6063)
+- PR #6062 titled 'feat(core): implement generateText() API' is merged (Source: https://github.com/elizaOS/eliza/pull/6062)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-15.md
+```markdown
+# Daily Report - 2025-10-15
+
+## GitHub Activity Summary
+- On October 15, 2025, the elizaOS/eliza repository showed moderate activity with 1 new pull request that was successfully merged. There were no new issues opened during this period. The repository had 3 active contributors participating in development activities.
+
+## Pull Requests
+- PR #6065 titled 'feat(cli): add Eigen TEE wrapper' by @wtfsayo has been completed, adding functionality for Eigen Trusted Execution Environment wrapper to the CLI.
+
+## Issues
+- Issue #5768 titled 'Eigencloud POC' by @borisudovicic is CLOSED after being open for approximately two months from August to October 2025. (Source: https://github.com/elizaOS/eliza/issues/5768)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-16.md
+```markdown
+# Daily Report - 2025-10-16
+
+## GitHub Activity Summary
+- From October 16-17, 2025, the elizaOS/eliza repository showed moderate activity with 4 new pull requests, of which 2 were merged. There were no new issues reported during this period. The repository had 2 active contributors working on it.
+
+## Pull Requests
+- PR #6069 by @standujar titled 'refactor(tests): Move character builder logic to core' is open. (Source: [https://github.com/elizaOS/eliza/pull/6069](https://github.com/elizaOS/eliza/pull/6069))
+- PR #6066 by @0xbbjoker titled 'feat: make evaluators run asynchronously in background' is open. (Source: [https://github.com/elizaOS/eliza/pull/6066](https://github.com/elizaOS/eliza/pull/6066))
+- PR #6067 by @0xbbjoker titled 'fix: current chat and user messages filters in memory viewer' is open. (Source: [https://github.com/elizaOS/eliza/pull/6067](https://github.com/elizaOS/eliza/pull/6067))
+- PR #6035 titled 'fix(plugins): use correct ZodError.issues API instead of .errors' is merged. (Source: [https://github.com/elizaOS/eliza/pull/6035](https://github.com/elizaOS/eliza/pull/6035))
+- PR #6060 titled 'feat(cli): Simplify CLI to use server / core' is merged. (Source: [https://github.com/elizaOS/eliza/pull/6060](https://github.com/elizaOS/eliza/pull/6060))
+
+## Issues
+- Issue #5933 titled 'Refactors & Core Alignment' by @borisudovicic is CLOSED with no comments since its creation on September 9, 2025 until closure on October 16, 2025. (Source: [https://github.com/elizaOS/eliza/issues/5933](https://github.com/elizaOS/eliza/issues/5933))
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-17.md
+```markdown
+# Daily Report - 2025-10-17
+
+## GitHub Activity Summary
+- From October 17-18, 2025, the elizaOS/eliza repository showed significant activity with 2 new pull requests opened and 6 pull requests merged. The repository also received 2 new issues during this period. There were 7 active contributors participating in the project during this timeframe.
+
+## Pull Requests
+- PR #6071 by @standujar titled 'fix: plugin documentation and scaffolding issues' is merged, addressing documentation and scaffolding problems in plugins.
+- PR #6036 titled 'feat: migrate to UUID-only agent identification' is merged, implementing UUID-based agent identification. (Source: https://github.com/elizaOS/eliza/pull/6036)
+- PR #6069 titled 'refactor(tests): Move character builder logic to core' is merged, relocating character builder logic from tests to core. (Source: https://github.com/elizaOS/eliza/pull/6069)
+- PR #6067 titled 'fix: current chat and user messages filters in memory viewer' is merged, resolving issues with filters in the memory viewer. (Source: https://github.com/elizaOS/eliza/pull/6067)
+- PR #6066 titled 'feat: make evaluators run asynchronously in background' is merged, enabling asynchronous background execution of evaluators. (Source: https://github.com/elizaOS/eliza/pull/6066)
+- PR #6072 titled 'fix(docs) misleading comment in MessageBusService callback' is merged, correcting misleading documentation in the MessageBusService callback. (Source: https://github.com/elizaOS/eliza/pull/6072)
+
+## Issues
+- Issue #6070 titled 'The documentation for plugins isn't correct.' by @ryanmstokes is CLOSED after receiving 3 comments during its short lifespan of less than 20 minutes. (Source: https://github.com/elizaOS/eliza/issues/6070)
+- Issue #5934 titled 'Consistency & Stability' by @borisudovicic is CLOSED with no comments after being open for over a month. (Source: https://github.com/elizaOS/eliza/issues/5934)
+- Issue #5986 titled 'Add Eigen TEE Deployment Option' by @borisudovicic is CLOSED with no comments after being open for approximately one month. (Source: https://github.com/elizaOS/eliza/issues/5986)
+- Issue #6049 titled 'Cloud API Plugin for Framework LLMs' by @borisudovicic is CLOSED with no comments after being open for about 9 days. (Source: https://github.com/elizaOS/eliza/issues/6049)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-18.md
+```markdown
+# Daily Report - 2025-10-18
+
+## GitHub Activity Summary
+- On October 18, 2025, the elizaOS/eliza repository had minimal activity with no new pull requests opened or merged, 1 new issue created, and 1 active contributor during this period.
+
+## Issues
+- Issue #6074 titled 'Add gitignore to eliza create' by @kempsterrrr is OPEN with no comments since its creation on October 18, 2025. (Source: https://github.com/elizaOS/eliza/issues/6074)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-19.md
+```markdown
+# Daily Report - 2025-10-19
+
+## GitHub Activity Summary
+- The GitHub repository elizaos/eliza showed significant activity on October 19, 2025, with 5 new pull requests opened and 6 pull requests merged. The repository had no new issues reported during this period. There were 4 active contributors participating in development activities on that day.
+
+## Pull Requests
+- PR #6078 by @wtfsayo titled 'chore: merge develop into main' is merged.
+- PR #6077 by @wtfsayo titled 'chore: Code formatting and style consistency' is merged.
+- PR #6075 by @0xbbjoker titled 'feat: make embedding service optional when no TEXT_EMBEDDING model' is merged.
+- PR #6079 by @standujar titled 'fix: add missing channelId to session API responses' is merged.
+- PR #6048 titled 'feat(core): add MessageService interface and default implementation' is merged. (Source: https://github.com/elizaOS/eliza/pull/6048)
+- PR #6076 titled 'feat(core): add PATCH method support to Route type' is merged. (Source: https://github.com/elizaOS/eliza/pull/6076)
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+## File: packages/docs/news/2025-10-20.md
+```markdown
+# Daily Report - 2025-10-20
+
+## GitHub Activity Summary
+- From October 20-21, 2025, the elizaOS/eliza repository showed moderate activity with 3 new pull requests (with 1 successfully merged), no new issues reported, and 2 active contributors working on the project during this period.
+
+## Pull Requests
+- PR #6082 by @wtfsayo titled 'feat: Streamdown integration, cross-platform crypto, and server port autodiscovery' is open (Source: https://github.com/elizaOS/eliza/pull/6082)
+- PR #6081 by @standujar titled 'feat: add get action results' is open (Source: https://github.com/elizaOS/eliza/pull/6081)
+- PR #6080 by @wtfsayo titled 'fix(cli): include dotfiles in published package' is merged
+
+## Summary for github_other
+- The repository elizaOS/eliza has a list of top contributors, though specific contributor details are not provided in the input.
+```
+
+
+
+
+# Instruction
+# ElizaOS Developer Context
+
+This file contains the core technical aspects of ElizaOS, focusing on its architecture, implementation, and developer-facing components. The codebase is organized as a monorepo with several key packages:
+
+## Key Components
+
+1. **Core Package**: The foundation of ElizaOS with the agent runtime, entity management, actions, and database interactions
+2. **CLI Package**: Command-line interface for managing agents, projects, and development tasks
+3. **Client Package**: Frontend interface components and API interactions
+4. **SQL/Database**: Database adapters and schema management
+5. **Autodoc**: Documentation generation tools
+
+## Technical Goals
+
+When analyzing this codebase:
+
+- Focus on the architecture and relationships between components
+- Identify core abstractions and design patterns
+- Understand the runtime execution flow
+- Analyze how agents, actions, and providers work together
+- Look for opportunities to improve code organization and performance
+- Consider modular extension points and plugin architecture
+
+## Output Guidance
+
+- When suggesting improvements, focus on technical aspects like code structure, performance optimizations, and architectural changes
+- Include specific code examples when proposing changes
+- Consider backwards compatibility and migration paths for any proposed changes
+- Highlight innovative technical approaches used in the system
+- When asked about implementation details, provide comprehensive technical explanations
