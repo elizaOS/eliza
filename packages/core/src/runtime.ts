@@ -1011,6 +1011,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
+                thought: actionPlan?.thought,
                 actionResult: actionResult,
                 source: message.content?.source, // Include original message source
               },
