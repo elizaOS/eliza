@@ -27,9 +27,10 @@ export interface DockerBuildResult {
 }
 
 export interface DockerPushOptions {
-  imageTag: string;
-  ecrRegistryUrl: string;
-  ecrAuthToken: string;
+  imageTag: string; // Local image tag to push
+  ecrRegistryUrl: string; // ECR registry endpoint (for login)
+  ecrAuthToken: string; // ECR auth token
+  ecrImageUri?: string; // Full ECR image URI from API (includes org/project path and tag)
 }
 
 export interface DockerPushResult {
@@ -218,19 +219,27 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
   try {
     logger.info(`Pushing image to ECR: ${options.imageTag}`);
 
-    // Strip https:// protocol from registry URL - Docker doesn't accept it in image tags
-    const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
-
     // Step 1: Login to ECR
     await loginToECR(options.ecrRegistryUrl, options.ecrAuthToken);
 
-    // Step 2: Tag for ECR (if not already tagged)
-    const ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
-    if (options.imageTag !== ecrImageUri) {
-      await tagImageForECR(options.imageTag, ecrImageUri);
+    // Step 2: Determine the ECR image URI to use
+    let ecrImageUri: string;
+    if (options.ecrImageUri) {
+      // Use the pre-constructed full image URI from API (preferred)
+      // Strip https:// protocol if present - Docker doesn't accept it in image tags
+      ecrImageUri = options.ecrImageUri.replace(/^https?:\/\//, '');
+      logger.debug(`Using API-provided ECR image URI: ${ecrImageUri}`);
+    } else {
+      // Legacy fallback: construct from registry + imageTag
+      const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
+      ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
+      logger.debug(`Constructing ECR image URI from registry: ${ecrImageUri}`);
     }
 
-    // Step 3: Push to ECR
+    // Step 3: Tag local image for ECR
+    await tagImageForECR(options.imageTag, ecrImageUri);
+
+    // Step 4: Push to ECR
     logger.info('Pushing to ECR (this may take a few minutes)...');
     const startTime = Date.now();
 

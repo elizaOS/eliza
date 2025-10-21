@@ -147,6 +147,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       imageTag: imageTag!,
       ecrRegistryUrl: imageBuildData.registryEndpoint,
       ecrAuthToken: imageBuildData.authToken,
+      ecrImageUri: imageBuildData.ecrImageUri, // Use the full pre-constructed URI from API
     });
 
     if (!pushResult.success) {
