@@ -230,9 +230,15 @@ export function MessageContent({
                 <div className="space-y-3">
                   {textWithoutUrls.trim() && (
                     <div>
-                      <AiResponse className="max-w-none" isAnimating={shouldAnimate}>
-                        {textWithoutUrls}
-                      </AiResponse>
+                      {isUser ? (
+                        // User messages: render as plain text without animation
+                        <div className="whitespace-pre-wrap">{textWithoutUrls}</div>
+                      ) : (
+                        // Agent messages: use AiResponse with animation support
+                        <AiResponse className="max-w-none" isAnimating={shouldAnimate}>
+                          {textWithoutUrls}
+                        </AiResponse>
+                      )}
                     </div>
                   )}
 
