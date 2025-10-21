@@ -187,10 +187,13 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
   const decoded = Buffer.from(authToken, 'base64').toString('utf-8');
   const [username, password] = decoded.split(':');
 
-  logger.info(`Logging in to ECR registry: ${registryUrl}`);
+  // Strip https:// protocol if present - Docker login doesn't need it
+  const cleanRegistryUrl = registryUrl.replace(/^https?:\/\//, '');
+
+  logger.info(`Logging in to ECR registry: ${cleanRegistryUrl}`);
 
   // Docker login
-  await execa('docker', ['login', '--username', username, '--password-stdin', registryUrl], {
+  await execa('docker', ['login', '--username', username, '--password-stdin', cleanRegistryUrl], {
     input: password,
   });
 
@@ -215,11 +218,14 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
   try {
     logger.info(`Pushing image to ECR: ${options.imageTag}`);
 
+    // Strip https:// protocol from registry URL - Docker doesn't accept it in image tags
+    const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
+
     // Step 1: Login to ECR
     await loginToECR(options.ecrRegistryUrl, options.ecrAuthToken);
 
     // Step 2: Tag for ECR (if not already tagged)
-    const ecrImageUri = `${options.ecrRegistryUrl}/${options.imageTag}`;
+    const ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
     if (options.imageTag !== ecrImageUri) {
       await tagImageForECR(options.imageTag, ecrImageUri);
     }
