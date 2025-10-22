@@ -696,12 +696,13 @@ export class AgentRuntime implements IAgentRuntime {
       startTime: number;
     } | null = null;
 
+    const thought =
+      responses[0]?.content?.thought ||
+      `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
+
     if (hasMultipleActions) {
       // Extract thought from response content
-      const thought =
-        responses[0]?.content?.thought ||
-        `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
-
+      
       actionPlan = {
         runId,
         totalSteps: allActions.length,
@@ -888,7 +889,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionId: actionId,
                 runId: runId,
                 type: 'agent_action',
-                thought: actionPlan?.thought,
+                thought: thought,
                 source: message.content?.source, // Include original message source
               },
             });
@@ -1011,7 +1012,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
-                thought: actionPlan?.thought,
+                thought: thought,
                 actionResult: actionResult,
                 source: message.content?.source, // Include original message source
               },
