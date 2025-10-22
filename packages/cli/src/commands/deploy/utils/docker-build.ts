@@ -27,9 +27,10 @@ export interface DockerBuildResult {
 }
 
 export interface DockerPushOptions {
-  imageTag: string;
-  ecrRegistryUrl: string;
-  ecrAuthToken: string;
+  imageTag: string; // Local image tag to push
+  ecrRegistryUrl: string; // ECR registry endpoint (for login)
+  ecrAuthToken: string; // ECR auth token
+  ecrImageUri?: string; // Full ECR image URI from API (includes org/project path and tag)
 }
 
 export interface DockerPushResult {
@@ -187,10 +188,13 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
   const decoded = Buffer.from(authToken, 'base64').toString('utf-8');
   const [username, password] = decoded.split(':');
 
-  logger.info(`Logging in to ECR registry: ${registryUrl}`);
+  // Strip https:// protocol if present - Docker login doesn't need it
+  const cleanRegistryUrl = registryUrl.replace(/^https?:\/\//, '');
+
+  logger.info(`Logging in to ECR registry: ${cleanRegistryUrl}`);
 
   // Docker login
-  await execa('docker', ['login', '--username', username, '--password-stdin', registryUrl], {
+  await execa('docker', ['login', '--username', username, '--password-stdin', cleanRegistryUrl], {
     input: password,
   });
 
@@ -218,13 +222,24 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     // Step 1: Login to ECR
     await loginToECR(options.ecrRegistryUrl, options.ecrAuthToken);
 
-    // Step 2: Tag for ECR (if not already tagged)
-    const ecrImageUri = `${options.ecrRegistryUrl}/${options.imageTag}`;
-    if (options.imageTag !== ecrImageUri) {
-      await tagImageForECR(options.imageTag, ecrImageUri);
+    // Step 2: Determine the ECR image URI to use
+    let ecrImageUri: string;
+    if (options.ecrImageUri) {
+      // Use the pre-constructed full image URI from API (preferred)
+      // Strip https:// protocol if present - Docker doesn't accept it in image tags
+      ecrImageUri = options.ecrImageUri.replace(/^https?:\/\//, '');
+      logger.debug(`Using API-provided ECR image URI: ${ecrImageUri}`);
+    } else {
+      // Legacy fallback: construct from registry + imageTag
+      const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
+      ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
+      logger.debug(`Constructing ECR image URI from registry: ${ecrImageUri}`);
     }
 
-    // Step 3: Push to ECR
+    // Step 3: Tag local image for ECR
+    await tagImageForECR(options.imageTag, ecrImageUri);
+
+    // Step 4: Push to ECR
     logger.info('Pushing to ECR (this may take a few minutes)...');
     const startTime = Date.now();
 
