@@ -106,7 +106,7 @@ describe('AgentsService', () => {
   describe('createAgent', () => {
     const createParams = {
       name: 'New Agent',
-      description: 'A new agent',
+      bio: 'A new agent',
       metadata: { model: 'gpt-4' },
     };
 
@@ -114,7 +114,7 @@ describe('AgentsService', () => {
       const mockResponse = {
         id: TEST_AGENT_ID,
         name: createParams.name,
-        description: createParams.description,
+        bio: createParams.bio,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
@@ -138,14 +138,14 @@ describe('AgentsService', () => {
   describe('updateAgent', () => {
     const updateParams = {
       name: 'Updated Agent',
-      description: 'Updated description',
+      bio: 'Updated bio',
     };
 
     it('should update agent successfully', async () => {
       const mockResponse = {
         id: TEST_AGENT_ID,
         name: updateParams.name,
-        description: updateParams.description,
+        bio: updateParams.bio,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
