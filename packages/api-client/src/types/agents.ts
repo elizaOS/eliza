@@ -27,7 +27,7 @@ export interface AgentUpdateParams {
 export interface AgentWorld {
   id: UUID;
   name: string;
-  bio?: string | string[];
+  description?: string;
   agents?: Agent[];
 }
 
