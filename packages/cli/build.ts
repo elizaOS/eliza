@@ -52,7 +52,6 @@ const run = createBuildRunner({
     external: [
       'fs-extra',
       '@elizaos/server',
-      '@anthropic-ai/claude-code',
       'chokidar',
       'simple-git',
       'tiktoken',
