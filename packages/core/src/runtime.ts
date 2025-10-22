@@ -1182,6 +1182,11 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
+  getActionResults(messageId: UUID): ActionResult[] {
+    const cachedState = this.stateCache?.get(`${messageId}_action_results`);
+    return (cachedState?.data?.actionResults as ActionResult[]) || [];
+  }
+
   async evaluate(
     message: Memory,
     state: State,
