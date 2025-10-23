@@ -1,9 +1,8 @@
-// @ts-ignore
-import crypto from 'crypto-browserify';
 import { createUniqueUuid } from './entities';
 import { getEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { logger } from './logger';
+import * as cryptoUtils from './utils/crypto-compat';
 import type {
   Character,
   IAgentRuntime,
@@ -125,11 +124,11 @@ export function encryptStringValue(value: string, salt: string): string {
   }
 
   // Create key and iv from the salt
-  const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
+  const key = cryptoUtils.createHash('sha256').update(salt).digest().slice(0, 32);
   const iv = BufferUtils.randomBytes(16);
 
   // Encrypt the value
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const cipher = cryptoUtils.createCipheriv('aes-256-cbc', key, iv);
   let encrypted = cipher.update(value, 'utf8', 'hex');
   encrypted += cipher.final('hex');
 
@@ -183,10 +182,10 @@ export function decryptStringValue(value: string, salt: string): string {
     }
 
     // Create key from the salt
-    const key = crypto.createHash('sha256').update(salt).digest().slice(0, 32);
+    const key = cryptoUtils.createHash('sha256').update(salt).digest().slice(0, 32);
 
     // Decrypt the value
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    const decipher = cryptoUtils.createDecipheriv('aes-256-cbc', key, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
 

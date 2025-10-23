@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @config "../tailwind.config.ts";
 
+@source "../node_modules/streamdown/dist/index.js";
+
 @custom-variant dark (&:is(.dark *));
 
 @layer base {
@@ -164,6 +166,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }

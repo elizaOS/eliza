@@ -147,6 +147,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       imageTag: imageTag!,
       ecrRegistryUrl: imageBuildData.registryEndpoint,
       ecrAuthToken: imageBuildData.authToken,
+      ecrImageUri: imageBuildData.ecrImageUri, // Use the full pre-constructed URI from API
     });
 
     if (!pushResult.success) {
@@ -209,7 +210,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // Step 12: Wait for deployment
     logger.info('⏳ Waiting for ECS deployment to complete...');
     logger.info('   This may take several minutes. You can check status at:');
-    logger.info(`   https://elizacloud.ai/dashboard/containers/${containerId}`);
+    logger.info(`   https://www.elizacloud.ai/dashboard/containers/${containerId}`);
 
     const deploymentResponse = await apiClient.waitForDeployment(containerId, {
       maxAttempts: 120, // 10 minutes
@@ -223,7 +224,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       logger.error(`   ${errorDetails}`);
       logger.error('');
       logger.error('💡 Troubleshooting tips:');
-      logger.error('   1. Check container logs at: https://elizacloud.ai/dashboard/containers');
+      logger.error('   1. Check container logs at: https://www.elizacloud.ai/dashboard/containers');
       logger.error('   2. Verify your Docker image runs locally: docker run <image>');
       logger.error('   3. Check environment variables are correct');
       logger.error('   4. Ensure health check endpoint returns 200 OK');

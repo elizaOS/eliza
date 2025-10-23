@@ -64,9 +64,8 @@ describe('ElizaOS', () => {
   describe('Agent Management', () => {
     const testCharacter: Character = {
       name: 'TestAgent',
-      description: 'A test agent',
+      bio: 'A test agent',
       system: 'You are a test agent',
-      modelEndpointOverride: 'test-endpoint',
     };
 
     it('should add multiple agents', async () => {
@@ -126,9 +125,8 @@ describe('ElizaOS', () => {
   describe('Message Handling', () => {
     const testCharacter: Character = {
       name: 'TestAgent',
-      description: 'A test agent',
+      bio: 'A test agent',
       system: 'You are a test agent. Always respond with "Test response"',
-      modelEndpointOverride: 'test-endpoint',
     };
 
     it('should send a message to an agent', async () => {
@@ -312,8 +310,8 @@ describe('ElizaOS', () => {
       elizaOS.addEventListener('agents:added', (e: any) => addedHandler(e.detail));
 
       await elizaOS.addAgents([
-        { character: { name: 'Test1' }, plugins: [mockSqlPlugin] },
-        { character: { name: 'Test2' }, plugins: [mockSqlPlugin] },
+        { character: { name: 'Test1', bio: 'Test agent 1' }, plugins: [mockSqlPlugin] },
+        { character: { name: 'Test2', bio: 'Test agent 2' }, plugins: [mockSqlPlugin] },
       ]);
 
       expect(addedHandler).toHaveBeenCalledTimes(1);
@@ -327,7 +325,7 @@ describe('ElizaOS', () => {
       elizaOS.addEventListener('agents:stopped', (e: any) => stoppedHandler(e.detail));
 
       const agentIds = await elizaOS.addAgents([
-        { character: { name: 'Test1' }, plugins: [mockSqlPlugin] },
+        { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
       ]);
       await elizaOS.startAgents(agentIds);
       await elizaOS.stopAgents(agentIds);
@@ -342,7 +340,7 @@ describe('ElizaOS', () => {
       elizaOS.addEventListener('agents:deleted', (e: any) => deletedHandler(e.detail));
 
       const agentIds = await elizaOS.addAgents([
-        { character: { name: 'Test1' }, plugins: [mockSqlPlugin] },
+        { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
       ]);
       await elizaOS.deleteAgents(agentIds);
 

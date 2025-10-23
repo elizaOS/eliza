@@ -11,6 +11,7 @@ import type {
   IDatabaseAdapter,
   Memory,
   State,
+  ActionResult,
   UUID,
 } from '@elizaos/core';
 import { mock } from './mockUtils';
@@ -74,6 +75,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     get: mock().mockResolvedValue(null),
   };
 
+  // Shared state cache reference for methods that read from cache
+  const stateCache: Map<string, any> = (overrides.stateCache as Map<string, any>) || new Map();
+
   // Create base runtime mock
   const baseRuntime: IAgentRuntime = {
     // Core Properties
@@ -102,7 +106,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       clear: () => {},
       child: () => ({}) as any,
     },
-    stateCache: overrides.stateCache || new Map(),
+    stateCache,
 
     // Database Properties
     db: overrides.db || mockDb,
@@ -128,6 +132,10 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       return defaultSettings[key];
     }),
     getConversationLength: mock().mockReturnValue(10),
+    getActionResults: (messageId: UUID): ActionResult[] => {
+      const cachedState = stateCache?.get(`${messageId}_action_results`);
+      return (cachedState?.data?.actionResults as ActionResult[]) || [];
+    },
     processActions: mock().mockResolvedValue(undefined),
     evaluate: mock().mockResolvedValue([]),
     registerProvider: mock(),

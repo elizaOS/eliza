@@ -37,7 +37,7 @@ export const deploy = new Command()
     1792
   )
   .option('-k, --api-key <key>', 'ElizaOS Cloud API key')
-  .option('-u, --api-url <url>', 'ElizaOS Cloud API URL', 'https://elizacloud.ai')
+  .option('-u, --api-url <url>', 'ElizaOS Cloud API URL', 'https://www.elizacloud.ai')
   .option(
     '-e, --env <KEY=VALUE>',
     'Environment variable (can be specified multiple times)',

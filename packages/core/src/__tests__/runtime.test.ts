@@ -38,7 +38,6 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
     adapterReady = true;
   }),
   initialize: mock().mockResolvedValue(undefined),
-  runMigrations: mock().mockResolvedValue(undefined),
   isReady: mock().mockImplementation(async () => adapterReady),
   close: mock().mockImplementation(async () => {
     adapterReady = false;
@@ -274,7 +273,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         enabled: true,
       });
 
-      mockDatabaseAdapter.getEntitiesByIds.mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -311,7 +310,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       });
-      mockDatabaseAdapter.getEntitiesByIds.mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -596,6 +595,88 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
       expect(replyHandler).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- getActionResults Tests ---
+  describe('getActionResults', () => {
+    it('should return action results after processActions', async () => {
+      const messageId = stringToUuid(uuidv4()) as UUID;
+      const testAction: Action = {
+        name: 'TEST_ACTION',
+        description: 'Test action',
+        similes: [],
+        examples: [],
+        handler: mock().mockResolvedValue({
+          success: true,
+          text: 'Action completed',
+          data: { result: 'test data' },
+          values: { testValue: 123 },
+        }),
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(testAction);
+
+      const memory: Memory = {
+        id: messageId,
+        entityId: agentId,
+        agentId: agentId,
+        roomId: stringToUuid(uuidv4()) as UUID,
+        content: { text: 'test message' },
+        createdAt: Date.now(),
+      };
+
+      const responses: Memory[] = [
+        {
+          id: stringToUuid(uuidv4()) as UUID,
+          entityId: agentId,
+          agentId: agentId,
+          roomId: memory.roomId,
+          content: {
+            text: 'response',
+            actions: ['TEST_ACTION'],
+          },
+          createdAt: Date.now(),
+        },
+      ];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('test state'));
+
+      await runtime.processActions(memory, responses);
+      const results = runtime.getActionResults(messageId);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]).toHaveProperty('success', true);
+      expect(results[0]).toHaveProperty('text', 'Action completed');
+      expect(results[0].data).toEqual({ result: 'test data' });
+      expect(results[0].values).toEqual({ testValue: 123 });
+    });
+
+    it('should return empty array for unknown messageId', () => {
+      const unknownId = stringToUuid(uuidv4()) as UUID;
+      const results = runtime.getActionResults(unknownId);
+      expect(results).toEqual([]);
+    });
+
+    it('should return empty array when no actions were executed', async () => {
+      const messageId = stringToUuid(uuidv4()) as UUID;
+      const memory: Memory = {
+        id: messageId,
+        entityId: agentId,
+        agentId: agentId,
+        roomId: stringToUuid(uuidv4()) as UUID,
+        content: { text: 'test message' },
+        createdAt: Date.now(),
+      };
+
+      // Empty responses array - no actions to execute
+      const responses: Memory[] = [];
+
+      await runtime.processActions(memory, responses);
+      const results = runtime.getActionResults(messageId);
+
+      expect(results).toEqual([]);
     });
   });
 

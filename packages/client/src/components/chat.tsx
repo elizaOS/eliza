@@ -10,8 +10,7 @@ import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
 import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
-import { Markdown } from '@/components/ui/chat/markdown';
-import { AnimatedMarkdown } from '@/components/ui/chat/animated-markdown';
+import { Response as AiResponse } from '@/components/ai-elements/response';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -232,18 +231,13 @@ export function MessageContent({
                   {textWithoutUrls.trim() && (
                     <div>
                       {isUser ? (
-                        <Markdown className="prose-sm max-w-none" variant="user">
-                          {textWithoutUrls}
-                        </Markdown>
+                        // User messages: render as plain text without animation
+                        <div className="whitespace-pre-wrap">{textWithoutUrls}</div>
                       ) : (
-                        <AnimatedMarkdown
-                          className="prose-sm max-w-none"
-                          variant="agent"
-                          shouldAnimate={shouldAnimate}
-                          messageId={message.id}
-                        >
+                        // Agent messages: use AiResponse with animation support
+                        <AiResponse className="max-w-none" isAnimating={shouldAnimate}>
                           {textWithoutUrls}
-                        </AnimatedMarkdown>
+                        </AiResponse>
                       )}
                     </div>
                   )}

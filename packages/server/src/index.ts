@@ -1250,9 +1250,28 @@ export class AgentServer {
     }
 
     // Step 2: Start HTTP server (skip in test mode)
+    let boundPort: number | undefined;
     if (!config?.isTestMode) {
-      const port = await this.resolveAndFindPort(config?.port);
-      await this.startHttpServer(port);
+      boundPort = await this.resolveAndFindPort(config?.port);
+      try {
+        await this.startHttpServer(boundPort);
+      } catch (error: any) {
+        // If binding fails due to EADDRINUSE, attempt fallback to next available port
+        if (error && error.code === 'EADDRINUSE') {
+          const startFrom = (boundPort ?? 3000) + 1;
+          const fallbackPort = await this.findAvailablePort(startFrom);
+          logger.warn(`Port ${boundPort} in use. Falling back to available port ${fallbackPort}`);
+          boundPort = fallbackPort;
+          await this.startHttpServer(boundPort);
+        } else {
+          throw error;
+        }
+      }
+
+      // Ensure dependent services discover the final port
+      if (boundPort) {
+        process.env.SERVER_PORT = String(boundPort);
+      }
     }
 
     // Step 3: Start agents if provided
@@ -1327,12 +1346,12 @@ export class AgentServer {
   private async isPortAvailable(port: number): Promise<boolean> {
     return new Promise((resolve) => {
       const server = net.createServer();
+      const host = process.env.SERVER_HOST || '0.0.0.0';
 
       server.once('error', (err: any) => {
-        if (err.code === 'EADDRINUSE') {
+        if (err && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
           resolve(false);
         } else {
-          // Other errors also mean the port is not available
           resolve(false);
         }
       });
@@ -1342,7 +1361,11 @@ export class AgentServer {
         resolve(true);
       });
 
-      server.listen(port);
+      try {
+        server.listen(port, host);
+      } catch {
+        resolve(false);
+      }
     });
   }
 

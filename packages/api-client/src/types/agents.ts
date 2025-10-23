@@ -4,7 +4,7 @@ import { PaginationParams } from './base';
 export interface Agent {
   id: UUID;
   name: string;
-  description?: string;
+  bio?: string | string[];
   status: 'active' | 'inactive' | 'stopped';
   enabled?: boolean;
   createdAt: Date;
@@ -20,7 +20,7 @@ export interface AgentCreateParams {
 
 export interface AgentUpdateParams {
   name?: string;
-  description?: string;
+  bio?: string | string[];
   metadata?: Record<string, any>;
 }
 
