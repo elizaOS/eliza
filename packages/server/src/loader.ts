@@ -3,7 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type Character,
-  type UUID,
   logger,
   parseAndValidateCharacter,
   validateCharacter,

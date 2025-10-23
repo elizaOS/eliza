@@ -696,11 +696,12 @@ export class AgentRuntime implements IAgentRuntime {
       startTime: number;
     } | null = null;
 
+    const thought =
+      responses[0]?.content?.thought ||
+      `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
+
     if (hasMultipleActions) {
       // Extract thought from response content
-      const thought =
-        responses[0]?.content?.thought ||
-        `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
 
       actionPlan = {
         runId,
@@ -888,7 +889,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionId: actionId,
                 runId: runId,
                 type: 'agent_action',
-                thought: actionPlan?.thought,
+                thought: thought,
                 source: message.content?.source, // Include original message source
               },
             });
@@ -1011,6 +1012,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
+                thought: thought,
                 actionResult: actionResult,
                 source: message.content?.source, // Include original message source
               },
@@ -1178,6 +1180,11 @@ export class AgentRuntime implements IAgentRuntime {
         });
       }
     }
+  }
+
+  getActionResults(messageId: UUID): ActionResult[] {
+    const cachedState = this.stateCache?.get(`${messageId}_action_results`);
+    return (cachedState?.data?.actionResults as ActionResult[]) || [];
   }
 
   async evaluate(

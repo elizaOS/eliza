@@ -105,20 +105,22 @@ describe('AgentsService', () => {
 
   describe('createAgent', () => {
     const createParams = {
-      name: 'New Agent',
-      description: 'A new agent',
-      metadata: { model: 'gpt-4' },
+      agent: {
+        name: 'New Agent',
+        bio: 'A new agent',
+        metadata: { model: 'gpt-4' },
+      },
     };
 
     it('should create agent successfully', async () => {
       const mockResponse = {
         id: TEST_AGENT_ID,
-        name: createParams.name,
-        description: createParams.description,
+        name: createParams.agent.name,
+        bio: createParams.agent.bio,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
-        metadata: createParams.metadata,
+        metadata: createParams.agent.metadata,
       };
       (agentsService as any).post.mockResolvedValue(mockResponse);
 
@@ -138,14 +140,14 @@ describe('AgentsService', () => {
   describe('updateAgent', () => {
     const updateParams = {
       name: 'Updated Agent',
-      description: 'Updated description',
+      bio: 'Updated bio',
     };
 
     it('should update agent successfully', async () => {
       const mockResponse = {
         id: TEST_AGENT_ID,
         name: updateParams.name,
-        description: updateParams.description,
+        bio: updateParams.bio,
         status: 'active' as const,
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
@@ -306,14 +308,14 @@ describe('AgentsService', () => {
         {
           id: TEST_LOG_ID,
           agentId: TEST_AGENT_ID,
-          timestamp: new Date('2024-01-01T00:00:00Z'),
+          timestamp: new Date('2024-01-01T00:00:00Z').getTime(),
           level: 'info' as const,
           message: 'Agent started',
         },
         {
           id: '550e8400-e29b-41d4-a716-446655440006' as UUID,
           agentId: TEST_AGENT_ID,
-          timestamp: new Date('2024-01-01T00:01:00Z'),
+          timestamp: new Date('2024-01-01T00:01:00Z').getTime(),
           level: 'debug' as const,
           message: 'Processing message',
         },
@@ -364,7 +366,9 @@ describe('AgentsService', () => {
     it('should handle API errors', async () => {
       (agentsService as any).post.mockRejectedValue(new Error('API error'));
 
-      await expect(agentsService.createAgent({ name: 'test' })).rejects.toThrow('API error');
+      await expect(
+        agentsService.createAgent({ agent: { name: 'test', bio: 'test agent' } })
+      ).rejects.toThrow('API error');
     });
 
     it('should handle unauthorized errors', async () => {

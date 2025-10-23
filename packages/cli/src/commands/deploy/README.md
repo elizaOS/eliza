@@ -31,18 +31,18 @@ elizaos deploy [options]
 
 ## Options
 
-| Option                    | Description                                       | Default               |
-| ------------------------- | ------------------------------------------------- | --------------------- |
-| `-n, --name <name>`       | Deployment name                                   | Package name          |
-| `-p, --port <port>`       | Container port                                    | 3000                  |
-| `--desired-count <count>` | Number of container instances                     | 1                     |
-| `--cpu <units>`           | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)  | 1792                  |
-| `--memory <mb>`           | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792                  |
-| `-k, --api-key <key>`     | API key                                           | $ELIZAOS_API_KEY      |
-| `-u, --api-url <url>`     | API URL                                           | https://elizacloud.ai |
-| `-e, --env <KEY=VALUE>`   | Environment variable                              | -                     |
-| `--skip-build`            | Skip Docker build                                 | false                 |
-| `--image-uri <uri>`       | Use existing ECR image                            | -                     |
+| Option                    | Description                                       | Default                   |
+| ------------------------- | ------------------------------------------------- | ------------------------- |
+| `-n, --name <name>`       | Deployment name                                   | Package name              |
+| `-p, --port <port>`       | Container port                                    | 3000                      |
+| `--desired-count <count>` | Number of container instances                     | 1                         |
+| `--cpu <units>`           | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)  | 1792                      |
+| `--memory <mb>`           | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792                      |
+| `-k, --api-key <key>`     | API key                                           | $ELIZAOS_API_KEY          |
+| `-u, --api-url <url>`     | API URL                                           | https://www.elizacloud.ai |
+| `-e, --env <KEY=VALUE>`   | Environment variable                              | -                         |
+| `--skip-build`            | Skip Docker build                                 | false                     |
+| `--image-uri <uri>`       | Use existing ECR image                            | -                         |
 
 ## Examples
 
@@ -273,5 +273,5 @@ Plus:
 - [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
 - [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
 - [Docker Documentation](https://docs.docker.com/)
-- [ElizaOS Cloud Dashboard](https://elizacloud.ai/dashboard/containers)
-- [API Documentation](https://elizacloud.ai/docs/api)
+- [ElizaOS Cloud Dashboard](https://www.elizacloud.ai/dashboard/containers)
+- [API Documentation](https://www.elizacloud.ai/docs/api)
