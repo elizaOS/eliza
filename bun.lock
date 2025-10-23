@@ -406,6 +406,28 @@
         "vite": "^6.0.1",
       },
     },
+    "packages/react": {
+      "name": "@elizaos/react",
+      "version": "1.6.4-alpha.2",
+      "devDependencies": {
+        "@elizaos/api-client": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@tanstack/react-query": "^5.62.13",
+        "@testing-library/react": "^16.1.0",
+        "@types/bun": "^1.2.21",
+        "@types/node": "^24.0.3",
+        "@types/react": "^19.0.6",
+        "prettier": "3.6.2",
+        "react": "^19.0.0",
+        "typescript": "5.9.2",
+      },
+      "peerDependencies": {
+        "@elizaos/api-client": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@tanstack/react-query": "^5.0.0",
+        "react": ">=18.0.0",
+      },
+    },
     "packages/server": {
       "name": "@elizaos/server",
       "version": "1.6.4-alpha.2",
@@ -630,6 +652,8 @@
     "@elizaos/project-starter": ["@elizaos/project-starter@workspace:packages/project-starter"],
 
     "@elizaos/project-tee-starter": ["@elizaos/project-tee-starter@workspace:packages/project-tee-starter"],
+
+    "@elizaos/react": ["@elizaos/react@workspace:packages/react"],
 
     "@elizaos/server": ["@elizaos/server@workspace:packages/server"],
 
@@ -4224,6 +4248,8 @@
     "@elizaos/project-tee-starter/react-dom": ["react-dom@18.3.1", "", { "dependencies": { "loose-envify": "^1.1.0", "scheduler": "^0.23.2" }, "peerDependencies": { "react": "^18.3.1" } }, "sha512-5m4nQKp+rZRb09LNH59GM4BxTh9251/ylbKIbpe7TpGxfJ+9kv6BLkLBXIjjspbgbnIBNqlI23tRnTWT0snUIw=="],
 
     "@elizaos/project-tee-starter/tailwind-merge": ["tailwind-merge@2.6.0", "", {}, "sha512-P+Vu1qXfzediirmHOC3xKGAYeZtPcV9g76X+xg2FD4tYgR71ewMA35Y3sCz3zhiN/dwefRpJX0yBcgwi1fXNQA=="],
+
+    "@elizaos/react/prettier": ["prettier@3.6.2", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ=="],
 
     "@elizaos/server/prettier": ["prettier@3.6.2", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-I7AIg5boAr5R0FFtJ6rCfD+LFsWHp81dolrFD8S79U9tb8Az2nGrJncnMSnys+bpQJfRUzqs9hnA81OAA3hCuQ=="],
 

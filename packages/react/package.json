@@ -1,0 +1,55 @@
+{
+    "name": "@elizaos/react",
+    "version": "1.6.4-alpha.2",
+    "description": "Headless React hooks for ElizaOS",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "sideEffects": false,
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "bun run build.ts",
+        "dev": "bun run build.ts --watch",
+        "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+        "test": "bun test --coverage",
+        "test:coverage": "bun test --coverage",
+        "test:watch": "bun test --watch",
+        "format": "prettier --write ./src",
+        "format:check": "prettier --check ./src",
+        "lint": "prettier --write ./src"
+    },
+    "peerDependencies": {
+        "@elizaos/api-client": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@tanstack/react-query": "^5.0.0",
+        "react": ">=18.0.0"
+    },
+    "devDependencies": {
+        "@elizaos/api-client": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@tanstack/react-query": "^5.62.13",
+        "@testing-library/react": "^16.1.0",
+        "@types/bun": "^1.2.21",
+        "@types/node": "^24.0.3",
+        "@types/react": "^19.0.6",
+        "prettier": "3.6.2",
+        "react": "^19.0.0",
+        "typescript": "5.9.2"
+    },
+    "author": "ElizaOS",
+    "license": "MIT",
+    "publishConfig": {
+        "access": "public"
+    }
+}
