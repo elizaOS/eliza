@@ -15,6 +15,8 @@ export interface DockerBuildOptions {
   imageTag: string;
   buildArgs?: Record<string, string>;
   target?: string;
+  // Optional platform override; defaults to linux/arm64
+  platform?: string;
 }
 
 export interface DockerBuildResult {
@@ -95,7 +97,8 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
  */
 export async function buildDockerImage(options: DockerBuildOptions): Promise<DockerBuildResult> {
   try {
-    logger.info(`Building Docker image: ${options.imageTag}`);
+    const platform = options.platform || process.env.ELIZA_DOCKER_PLATFORM || 'linux/arm64';
+    logger.info(`Building Docker image: ${options.imageTag} (platform: ${platform})`);
 
     const dockerfilePath = options.dockerfile
       ? path.join(options.projectPath, options.dockerfile)
@@ -111,6 +114,8 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Build Docker command arguments
     const buildArgs = ['build'];
+    // Target platform (force ARM by default)
+    buildArgs.push('--platform', platform);
 
     // Add build context
     buildArgs.push('-f', dockerfilePath);
@@ -135,7 +140,13 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Execute Docker build
     const startTime = Date.now();
-    const { stdout } = await execa('docker', buildArgs);
+    const { stdout } = await execa('docker', buildArgs, {
+      env: {
+        ...process.env,
+        DOCKER_DEFAULT_PLATFORM: platform,
+        DOCKER_BUILDKIT: '1',
+      },
+    });
     const buildTime = Date.now() - startTime;
 
     logger.debug('Docker build completed in', `${(buildTime / 1000).toFixed(2)}s`);
