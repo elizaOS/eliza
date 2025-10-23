@@ -105,9 +105,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
         };
       }
 
-      logger.info(`✅ Image built: ${localImageTag}`);
-      logger.info(`   Size: ${((buildResult.size || 0) / 1024 / 1024).toFixed(2)} MB`);
-
+      // Build result already logged by buildDockerImage()
       imageTag = localImageTag;
     } else if (!imageTag) {
       return {
@@ -117,8 +115,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     }
 
     // Step 7: Request ECR credentials and repository from API
-    logger.info('🔐 Requesting ECR credentials...');
-
+    // Credentials request is logged by apiClient.requestImageBuild()
     const imageBuildResponse = await apiClient.requestImageBuild({
       projectId: sanitizeProjectName(projectName),
       version: projectVersion,
@@ -138,7 +135,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     const imageBuildData = imageBuildResponse.data as ImageBuildResponse;
 
-    logger.info(`✅ ECR repository: ${imageBuildData.ecrRepositoryUri}`);
+    // ECR repository already logged by apiClient.requestImageBuild()
 
     // Step 8: Push image to ECR
     logger.info('📤 Pushing image to ECR...');

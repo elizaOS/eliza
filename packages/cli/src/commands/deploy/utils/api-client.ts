@@ -347,6 +347,7 @@ export class CloudApiClient {
       }
 
       logger.info('✅ Received ECR credentials');
+      logger.info(`✅ ECR repository: ${data.data.ecrRepositoryUri}`);
       return data;
     } catch (error: unknown) {
       return this.handleApiError('request image build credentials', error);
