@@ -702,7 +702,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     if (hasMultipleActions) {
       // Extract thought from response content
-      
+
       actionPlan = {
         runId,
         totalSteps: allActions.length,

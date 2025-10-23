@@ -31,18 +31,18 @@ elizaos deploy [options]
 
 ## Options
 
-| Option                    | Description                                       | Default               |
-| ------------------------- | ------------------------------------------------- | --------------------- |
-| `-n, --name <name>`       | Deployment name                                   | Package name          |
-| `-p, --port <port>`       | Container port                                    | 3000                  |
-| `--desired-count <count>` | Number of container instances                     | 1                     |
-| `--cpu <units>`           | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)  | 1792                  |
-| `--memory <mb>`           | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792                  |
-| `-k, --api-key <key>`     | API key                                           | $ELIZAOS_API_KEY      |
+| Option                    | Description                                       | Default                   |
+| ------------------------- | ------------------------------------------------- | ------------------------- |
+| `-n, --name <name>`       | Deployment name                                   | Package name              |
+| `-p, --port <port>`       | Container port                                    | 3000                      |
+| `--desired-count <count>` | Number of container instances                     | 1                         |
+| `--cpu <units>`           | CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)  | 1792                      |
+| `--memory <mb>`           | Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small) | 1792                      |
+| `-k, --api-key <key>`     | API key                                           | $ELIZAOS_API_KEY          |
 | `-u, --api-url <url>`     | API URL                                           | https://www.elizacloud.ai |
-| `-e, --env <KEY=VALUE>`   | Environment variable                              | -                     |
-| `--skip-build`            | Skip Docker build                                 | false                 |
-| `--image-uri <uri>`       | Use existing ECR image                            | -                     |
+| `-e, --env <KEY=VALUE>`   | Environment variable                              | -                         |
+| `--skip-build`            | Skip Docker build                                 | false                     |
+| `--image-uri <uri>`       | Use existing ECR image                            | -                         |
 
 ## Examples
 

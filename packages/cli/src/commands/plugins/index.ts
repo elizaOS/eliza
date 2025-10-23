@@ -7,10 +7,7 @@ import { removePlugin } from './actions/remove';
 import { listAvailablePlugins, listInstalledPlugins } from './actions/list';
 
 // Import types
-import {
-  ListPluginsOptions,
-  AddPluginOptions,
-} from './types';
+import { ListPluginsOptions, AddPluginOptions } from './types';
 
 export const plugins = new Command()
   .name('plugins')

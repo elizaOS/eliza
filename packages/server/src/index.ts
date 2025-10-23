@@ -154,8 +154,8 @@ export function isWebUIEnabled(): boolean {
 /**
  * Class representing an agent server.
  */ /**
-* Represents an agent server which handles agents, database, and server functionalities.
-*/
+ * Represents an agent server which handles agents, database, and server functionalities.
+ */
 export class AgentServer {
   public app!: express.Application;
   public server!: http.Server;
@@ -514,44 +514,44 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-              // Production CSP - includes upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                // this should probably be unlocked too
-                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // upgrade-insecure-requests is added by helmet automatically
-              },
-              useDefaults: true,
-            }
+                // Production CSP - includes upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  // this should probably be unlocked too
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // upgrade-insecure-requests is added by helmet automatically
+                },
+                useDefaults: true,
+              }
             : {
-              // Development CSP - minimal policy without upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                // unlocking this, so plugin can include the various frameworks from CDN if needed
-                // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: ["'self'", 'data:'],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                // Development CSP - minimal policy without upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                  // unlocking this, so plugin can include the various frameworks from CDN if needed
+                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'self'", 'data:'],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                },
+                useDefaults: false,
               },
-              useDefaults: false,
-            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -563,10 +563,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-              maxAge: 31536000, // 1 year
-              includeSubDomains: true,
-              preload: true,
-            }
+                maxAge: 31536000, // 1 year
+                includeSubDomains: true,
+                preload: true,
+              }
             : false,
           // No Sniff
           noSniff: true,
@@ -1008,7 +1008,7 @@ export class AgentServer {
               scope.setTag('type', 'uncaughtException');
               return scope;
             });
-          } catch { }
+          } catch {}
         });
         process.on('unhandledRejection', (reason: any) => {
           try {
@@ -1019,7 +1019,7 @@ export class AgentServer {
                 return scope;
               }
             );
-          } catch { }
+          } catch {}
         });
       }
 
@@ -1260,9 +1260,7 @@ export class AgentServer {
         if (error && error.code === 'EADDRINUSE') {
           const startFrom = (boundPort ?? 3000) + 1;
           const fallbackPort = await this.findAvailablePort(startFrom);
-          logger.warn(
-            `Port ${boundPort} in use. Falling back to available port ${fallbackPort}`
-          );
+          logger.warn(`Port ${boundPort} in use. Falling back to available port ${fallbackPort}`);
           boundPort = fallbackPort;
           await this.startHttpServer(boundPort);
         } else {
@@ -1400,10 +1398,10 @@ export class AgentServer {
 
               console.log(
                 `\x1b[32mStartup successful!\x1b[0m\n` +
-                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
               );
             }
 
