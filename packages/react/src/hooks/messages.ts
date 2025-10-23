@@ -172,17 +172,17 @@ export function useChannelMessages(
  * @returns Mutation result
  */
 export function useDeleteChannelMessage(
-  options: Partial<UseMutationOptions<void, Error, { channelId: UUID; messageId: UUID }, unknown>> = {}
+    options: Partial<UseMutationOptions<void, Error, { channelId: UUID; messageId: UUID }, unknown>> = {}
 ) {
-  const client = useElizaClient();
-  const { ...restOptions } = options;
+    const client = useElizaClient();
+    const { ...restOptions } = options;
 
-  return useMutation<void, Error, { channelId: UUID; messageId: UUID }, unknown>({
-    ...restOptions,
-    mutationFn: async ({ channelId, messageId }) => {
-      await client.messaging.deleteMessage(channelId, messageId);
-    },
-  });
+    return useMutation<void, Error, { channelId: UUID; messageId: UUID }, unknown>({
+        ...restOptions,
+        mutationFn: async ({ channelId, messageId }) => {
+            await client.messaging.deleteMessage(channelId, messageId);
+        },
+    });
 }
 
 /**
@@ -192,23 +192,23 @@ export function useDeleteChannelMessage(
  * @returns Mutation result
  */
 export function useClearChannelMessages(
-  options: Partial<UseMutationOptions<void, Error, UUID, unknown>> = {}
+    options: Partial<UseMutationOptions<void, Error, UUID, unknown>> = {}
 ) {
-  const client = useElizaClient();
-  const queryClient = useQueryClient();
-  const { onSuccess, ...restOptions } = options;
+    const client = useElizaClient();
+    const queryClient = useQueryClient();
+    const { onSuccess, ...restOptions } = options;
 
-  return useMutation<void, Error, UUID, unknown>({
-    ...restOptions,
-    mutationFn: async (channelId: UUID) => {
-      await client.messaging.clearChannelHistory(channelId);
-    },
-    onSuccess: (data, channelId, context) => {
-      queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
-      queryClient.setQueryData(['messages', channelId], () => []);
-      (onSuccess as any)?.(data, channelId, context);
-    },
-    ...restOptions,
-  });
+    return useMutation<void, Error, UUID, unknown>({
+        ...restOptions,
+        mutationFn: async (channelId: UUID) => {
+            await client.messaging.clearChannelHistory(channelId);
+        },
+        onSuccess: (data, channelId, context) => {
+            queryClient.invalidateQueries({ queryKey: ['messages', channelId] });
+            queryClient.setQueryData(['messages', channelId], () => []);
+            (onSuccess as any)?.(data, channelId, context);
+        },
+        ...restOptions,
+    });
 }
 
