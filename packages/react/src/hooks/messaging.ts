@@ -19,7 +19,8 @@ export function useServers(options: Partial<UseQueryOptions<MessageServer[], Err
         queryKey: ['servers'],
         queryFn: async () => {
             const result = await client.messaging.listServers();
-            return result.servers;
+            // The API client unwraps the response, so result should be { servers: MessageServer[] }
+            return result.servers || [];
         },
         staleTime: STALE_TIMES.RARE,
         refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
@@ -46,7 +47,8 @@ export function useChannels(
         queryFn: async () => {
             if (!serverId) return [];
             const result = await client.messaging.getServerChannels(serverId);
-            return result.channels;
+            // The API client unwraps the response, so result should be { channels: MessageChannel[] }
+            return result.channels || [];
         },
         enabled: Boolean(serverId),
         staleTime: STALE_TIMES.STANDARD,

@@ -27,7 +27,8 @@ export function useAgents(options: Partial<UseQueryOptions<Agent[], Error>> = {}
         queryKey: ['agents'],
         queryFn: async () => {
             const result = await client.agents.listAgents();
-            return result.agents;
+            // The API client unwraps the response, so result should be { agents: Agent[] }
+            return result.agents || [];
         },
         staleTime: STALE_TIMES.FREQUENT,
         refetchInterval: !network.isOffline ? STALE_TIMES.FREQUENT : false,

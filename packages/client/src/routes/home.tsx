@@ -30,7 +30,7 @@ export default function Home() {
   // Extract agents properly from the response
   const agents = useMemo(
     () =>
-      (agentsData || []).map((agent: any) => ({
+      (Array.isArray(agentsData) ? agentsData : []).map((agent: any) => ({
         id: agent.id,
         name: agent.name,
         status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
@@ -43,10 +43,8 @@ export default function Home() {
   );
   const activeAgentsCount = agents.filter((a: Agent) => a.status === AgentStatus.ACTIVE).length;
 
-  const { data: serversData } = useServers() as {
-    data: { data: { servers: MessageServer[] } } | undefined;
-  };
-  const servers = serversData?.data?.servers || [];
+  const { data: servers } = useServers();
+  // servers is already MessageServer[] from the hook
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
@@ -172,7 +170,7 @@ export default function Home() {
 
             <TabsContent value="groups" className="flex-1 mt-0 bg-background">
               <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
-                {!isLoading && !isError && (
+                {!isLoading && !isError && servers && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 groups-section">
                     {servers.map((server: MessageServer) => (
                       <ServerChannels key={server.id} serverId={server.id} />
@@ -204,16 +202,14 @@ export default function Home() {
 
 // Sub-component to fetch and display channels for a given server
 const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId) as {
-    data: { data: { channels: MessageChannel[] } } | undefined;
-    isLoading: boolean;
-  };
+  const { data: channels, isLoading: isLoadingChannels } = useChannels(serverId);
+  // channels is already MessageChannel[] from the hook
   const groupChannels = useMemo(
     () =>
-      channelsData?.data?.channels?.filter(
+      channels?.filter(
         (ch: MessageChannel) => ch.type === CoreChannelType.GROUP
       ) || [],
-    [channelsData]
+    [channels]
   );
 
   if (isLoadingChannels) return <p>Loading channels for server...</p>;

@@ -491,7 +491,7 @@ export function AppSidebar({
   const { data: agentsDataSubset, isLoading: isLoadingAgents } = useAgents();
   const { data: serversData, isLoading: isLoadingServers } = useServers();
 
-  const agentsSlice = (agentsDataSubset || [])
+  const agentsSlice = (Array.isArray(agentsDataSubset) ? agentsDataSubset : [])
     .map((agent: any) => ({
       id: agent.id,
       name: agent.name,
@@ -632,7 +632,7 @@ export function AppSidebar({
                   activePath={location.pathname}
                 />
                 <GroupListSection
-                  servers={servers}
+                  servers={servers as any}
                   isLoadingServers={isLoadingServers}
                   activePath={location.pathname}
                 />
