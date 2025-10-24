@@ -1,4 +1,13 @@
-import { logger, validateUuid, type UUID, type IAgentRuntime, ChannelType } from '@elizaos/core';
+import {
+  logger,
+  validateUuid,
+  type UUID,
+  type IAgentRuntime,
+  ChannelType,
+  type IKVStore,
+  ServiceType,
+  isKVStoreService,
+} from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
@@ -30,6 +39,110 @@ import {
   MessageSendError,
   createErrorHandler,
 } from './errors/SessionErrors';
+
+interface SessionMetrics {
+  totalCreated: number;
+  totalExpired: number;
+  totalDeleted: number;
+  expiringSoon: number;
+  peakConcurrent: number;
+}
+
+function mergeSessionMetrics([metrics, ...rest]: SessionMetrics[]): SessionMetrics {
+  return rest.reduce((acc, curr) => {
+    return {
+      totalCreated: acc.totalCreated + curr.totalCreated,
+      totalExpired: acc.totalExpired + curr.totalExpired,
+      totalDeleted: acc.totalDeleted + curr.totalDeleted,
+      expiringSoon: acc.expiringSoon + curr.expiringSoon,
+      peakConcurrent: Math.max(acc.peakConcurrent, curr.peakConcurrent),
+    };
+  }, metrics);
+}
+
+// fallback to in-memory storage if no kv store service is available
+class SessionStore implements IKVStore<Session, SessionMetrics> {
+  static instance: SessionStore | undefined;
+  static getInstance(): SessionStore {
+    if (!SessionStore.instance) {
+      SessionStore.instance = new SessionStore();
+    }
+    return SessionStore.instance;
+  }
+  private sessions = new Map<string, Session>();
+  private metrics = {
+    totalCreated: 0,
+    totalExpired: 0,
+    totalDeleted: 0,
+    expiringSoon: 0,
+    peakConcurrent: 0,
+  };
+
+  async set(sessionId: string, session: Session): Promise<void> {
+    if (!isValidSession(session)) {
+      throw new SessionCreationError('Invalid session data');
+    }
+
+    this.sessions.set(sessionId, session);
+    this.metrics.totalCreated++;
+    this.updatePeakConcurrent();
+  }
+
+  private lazyExpire(session: Session): boolean {
+    if (session.expiresAt.getTime() <= Date.now()) {
+      this.metrics.totalExpired++;
+      return true;
+    } else if (shouldWarnAboutExpiration(session)) {
+      this.metrics.expiringSoon++;
+    }
+
+    return false;
+  }
+
+  async get(sessionId: string): Promise<Session | undefined> {
+    const session = this.sessions.get(sessionId);
+
+    // Lazy expiration check
+    if (session) {
+      if (this.lazyExpire(session)) {
+        await this.delete(sessionId);
+        return undefined;
+      }
+    }
+
+    return session;
+  }
+
+  async delete(sessionId: string): Promise<boolean> {
+    const deleted = this.sessions.delete(sessionId);
+    if (deleted) {
+      this.metrics.totalDeleted++;
+    }
+    return deleted;
+  }
+
+  async *entries() {
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (this.lazyExpire(session)) {
+        await this.delete(sessionId);
+        continue;
+      }
+
+      yield [sessionId, session] as [string, Session];
+    }
+  }
+
+  private updatePeakConcurrent() {
+    const current = this.sessions.size;
+    if (current > this.metrics.peakConcurrent) {
+      this.metrics.peakConcurrent = current;
+    }
+  }
+
+  async getMetrics(): Promise<SessionMetrics> {
+    return this.metrics;
+  }
+}
 
 /**
  * Extended Router interface with cleanup method
@@ -112,8 +225,6 @@ const DEFAULT_WARNING_THRESHOLD_MINUTES = safeParseInt(
 const CLEANUP_INTERVAL_MS =
   safeParseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES, 5, 1, 60) * 60 * 1000;
 
-// Session storage
-const sessions = new Map<string, Session>();
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Agent-specific timeout configurations (cached from agent settings)
@@ -517,44 +628,62 @@ export function createSessionsRouter(
 ): SessionRouter {
   const router = express.Router();
 
+  function getSessionsStore(agentId: UUID): IKVStore<Session, SessionMetrics> {
+    const runtime = agents.get(agentId);
+
+    if (!runtime) {
+      throw new AgentNotFoundError(agentId);
+    }
+
+    const service = runtime.getService(ServiceType.KV_STORE);
+
+    if (isKVStoreService(service)) {
+      return service.getStore('sessions');
+    }
+
+    return SessionStore.getInstance();
+  }
+
   /**
    * Health check - placed before parameterized routes to avoid conflicts
    * GET /api/messaging/sessions/health
    */
-  router.get('/sessions/health', (_req: express.Request, res: express.Response) => {
-    const now = Date.now();
-    let activeSessions = 0;
-    let expiringSoon = 0;
-    let invalidSessions = 0;
+  router.get(
+    '/sessions/health',
+    asyncHandler(async (_req: express.Request, res: express.Response) => {
+      let fallbackMetrics: SessionMetrics | undefined;
+      const metrics: SessionMetrics[] = [];
 
-    for (const session of sessions.values()) {
-      if (!isValidSession(session)) {
-        invalidSessions++;
-        continue;
-      }
-
-      if (session.expiresAt.getTime() > now) {
-        activeSessions++;
-        if (shouldWarnAboutExpiration(session)) {
-          expiringSoon++;
+      for (const agent of agents.keys()) {
+        const store = getSessionsStore(agent);
+        if (store instanceof SessionStore) {
+          fallbackMetrics = await store.getMetrics();
+        } else {
+          const storeMetrics = await store.getMetrics?.();
+          if (storeMetrics) {
+            metrics.push(storeMetrics);
+          }
         }
       }
-    }
 
-    const response: HealthCheckResponse & {
-      expiringSoon?: number;
-      invalidSessions?: number;
-      uptime?: number;
-    } = {
-      status: 'healthy',
-      activeSessions,
-      timestamp: new Date().toISOString(),
-      expiringSoon,
-      ...(invalidSessions > 0 && { invalidSessions }),
-      uptime: process.uptime(),
-    };
-    res.json(response);
-  });
+      const total = fallbackMetrics
+        ? mergeSessionMetrics([fallbackMetrics, ...metrics])
+        : mergeSessionMetrics(metrics);
+
+      const response: HealthCheckResponse & {
+        expiringSoon?: number;
+        invalidSessions?: number;
+        uptime?: number;
+      } = {
+        status: 'healthy',
+        activeSessions: total.totalCreated - total.totalExpired - total.totalDeleted,
+        timestamp: new Date().toISOString(),
+        expiringSoon: total.expiringSoon,
+        uptime: process.uptime(),
+      };
+      res.json(response);
+    })
+  );
 
   /**
    * Create a new messaging session
@@ -583,6 +712,8 @@ export function createSessionsRouter(
       if (!agent) {
         throw new AgentNotFoundError(body.agentId);
       }
+
+      const sessions = getSessionsStore(body.agentId as UUID);
 
       // Validate metadata if provided
       if (body.metadata) {
@@ -641,7 +772,7 @@ export function createSessionsRouter(
         renewalCount: 0,
       };
 
-      sessions.set(sessionId, session);
+      await sessions.set(sessionId, session);
 
       const response: CreateSessionResponse = {
         sessionId,
@@ -665,15 +796,25 @@ export function createSessionsRouter(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const session = sessions.get(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      if (!session || !isValidSession(session)) {
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
+      }
+
+      if (!session || !isValidSession(session) || !store) {
         throw new SessionNotFoundError(sessionId);
       }
 
       // Check if session is expired
       if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
+        await store.delete(sessionId);
         throw new SessionExpiredError(sessionId, session.expiresAt);
       }
 
@@ -697,15 +838,20 @@ export function createSessionsRouter(
         throw new InvalidContentError('Invalid message request format', body);
       }
 
-      const session = sessions.get(sessionId);
-      if (!session) {
-        throw new SessionNotFoundError(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
+
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
       }
 
-      // Check if session is expired
-      if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        throw new SessionExpiredError(sessionId, session.expiresAt);
+      if (!session || !store) {
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Validate content
@@ -818,15 +964,20 @@ export function createSessionsRouter(
         after: req.query.after as string | undefined,
       };
 
-      const session = sessions.get(sessionId);
-      if (!session) {
-        throw new SessionNotFoundError(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
+
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
       }
 
-      // Check if session is expired
-      if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        throw new SessionExpiredError(sessionId, session.expiresAt);
+      if (!session || !store) {
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Parse and validate query parameters
@@ -994,16 +1145,20 @@ export function createSessionsRouter(
     '/sessions/:sessionId/renew',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const session = sessions.get(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      if (!session) {
-        throw new SessionNotFoundError(sessionId);
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
       }
 
-      // Check if session is expired
-      if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        throw new SessionExpiredError(sessionId, session.expiresAt);
+      if (!session || !store) {
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Check if auto-renew is disabled (manual renewal is always allowed)
@@ -1021,6 +1176,8 @@ export function createSessionsRouter(
           createdAt: session.createdAt,
           timeSinceCreation: Date.now() - session.createdAt.getTime(),
         });
+      } else {
+        await store.set(sessionId, session);
       }
 
       const response = createSessionInfoResponse(session);
@@ -1037,16 +1194,20 @@ export function createSessionsRouter(
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
       const newConfig: SessionTimeoutConfig = req.body;
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      const session = sessions.get(sessionId);
-      if (!session) {
-        throw new SessionNotFoundError(sessionId);
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
       }
 
-      // Check if session is expired
-      if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        throw new SessionExpiredError(sessionId, session.expiresAt);
+      if (!session || !store) {
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Validate the new config structure
@@ -1081,6 +1242,8 @@ export function createSessionsRouter(
         session.renewalCount
       );
 
+      await store.set(sessionId, session);
+
       logger.info(
         `[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`
       );
@@ -1098,16 +1261,20 @@ export function createSessionsRouter(
     '/sessions/:sessionId/heartbeat',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const session = sessions.get(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      if (!session || !isValidSession(session)) {
-        throw new SessionNotFoundError(sessionId);
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
       }
 
-      // Check if session is expired
-      if (session.expiresAt.getTime() <= Date.now()) {
-        sessions.delete(sessionId);
-        throw new SessionExpiredError(sessionId, session.expiresAt);
+      if (!session || !isValidSession(session) || !store) {
+        throw new SessionNotFoundError(sessionId);
       }
 
       // Update last activity
@@ -1121,6 +1288,7 @@ export function createSessionsRouter(
         }
       }
 
+      await store.set(sessionId, session);
       // Return updated session info
       const response = createSessionInfoResponse(session);
       logger.debug(`[Sessions API] Heartbeat received for session: ${sessionId}`);
@@ -1137,14 +1305,24 @@ export function createSessionsRouter(
     '/sessions/:sessionId',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const session = sessions.get(sessionId);
+      let session: Session | undefined;
+      let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      if (!session) {
+      for (const agent of agents.keys()) {
+        store = getSessionsStore(agent);
+        session = await store.get(sessionId);
+
+        if (session) {
+          break;
+        }
+      }
+
+      if (!session || !store) {
         throw new SessionNotFoundError(sessionId);
       }
 
       // Remove session from memory
-      sessions.delete(sessionId);
+      await store.delete(sessionId);
 
       // Optionally, you could also delete the channel and messages
       // Note: This is commented out to avoid data loss, but could be enabled
@@ -1170,60 +1348,90 @@ export function createSessionsRouter(
   router.get(
     '/sessions',
     asyncHandler(async (_req: express.Request, res: express.Response) => {
-      const now = Date.now();
-      const activeSessions = Array.from(sessions.values())
-        .filter((session) => isValidSession(session) && session.expiresAt.getTime() > now)
-        .map((session) => createSessionInfoResponse(session));
+      const responses: SessionInfoResponse[] = [];
+      let fallback = false;
+      let metrics: SessionMetrics | undefined;
+
+      for (const agent of agents.keys()) {
+        const store = getSessionsStore(agent);
+
+        if (store instanceof SessionStore) {
+          if (fallback) {
+            continue; // fallback storage uses same instance, skip it
+          }
+
+          fallback = true;
+        }
+
+        const currentMetrics = await store.getMetrics?.();
+
+        if (currentMetrics) {
+          metrics = metrics ? mergeSessionMetrics([metrics, currentMetrics]) : currentMetrics;
+        }
+
+        for await (const [, session] of store.entries()) {
+          responses.push(createSessionInfoResponse(session));
+        }
+      }
 
       res.json({
-        sessions: activeSessions,
-        total: activeSessions.length,
+        sessions: responses,
+        total: responses.length,
         stats: {
-          totalSessions: sessions.size,
-          activeSessions: activeSessions.length,
-          expiredSessions: sessions.size - activeSessions.length,
+          totalSessions: metrics?.totalCreated ?? 0,
+          activeSessions:
+            (metrics?.totalCreated ?? 0) -
+            (metrics?.totalExpired ?? 0) -
+            (metrics?.totalDeleted ?? 0),
+          expiredSessions: metrics?.totalExpired ?? 0,
         },
       });
     })
   );
 
   // Cleanup old sessions periodically
-  const cleanupInterval = setInterval(() => {
+  const cleanupInterval = setInterval(async () => {
     const now = new Date();
-    let cleanedCount = 0;
+    let fallback = false;
     let expiredCount = 0;
     let warningCount = 0;
 
-    for (const [sessionId, session] of sessions.entries()) {
-      // Validate session structure before processing
-      if (!isValidSession(session)) {
-        logger.warn(`[Sessions API] Invalid session structure for ${sessionId}, removing`);
-        sessions.delete(sessionId);
-        cleanedCount++;
-        continue;
+    for (const agent of agents.keys()) {
+      const store = getSessionsStore(agent);
+
+      if (store instanceof SessionStore) {
+        if (fallback) {
+          continue; // fallback storage uses same instance, skip it
+        }
+
+        fallback = true;
       }
 
-      // Check if session has expired
-      if (session.expiresAt.getTime() <= now.getTime()) {
-        sessions.delete(sessionId);
-        cleanedCount++;
-        expiredCount++;
-        logger.info(`[Sessions API] Cleaned up expired session: ${sessionId}`);
+      const metrics = await store.getMetrics?.();
+
+      for await (const [sessionId, session] of store.entries()) {
+        if (shouldWarnAboutExpiration(session) && !session.warningState?.sent) {
+          session.warningState = {
+            sent: true,
+            sentAt: now,
+          };
+
+          logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
+          store.set(sessionId, session);
+        }
       }
-      // Check if we should warn about upcoming expiration
-      else if (shouldWarnAboutExpiration(session) && !session.warningState?.sent) {
-        session.warningState = {
-          sent: true,
-          sentAt: now,
-        };
-        warningCount++;
-        logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
+
+      const updatedMetrics = await store.getMetrics?.();
+
+      if (metrics && updatedMetrics) {
+        expiredCount += updatedMetrics.totalExpired - metrics.totalExpired;
+        warningCount += updatedMetrics.expiringSoon - metrics.expiringSoon;
       }
     }
 
-    if (cleanedCount > 0 || warningCount > 0) {
+    if (expiredCount > 0 || warningCount > 0) {
       logger.info(
-        `[Sessions API] Cleanup cycle completed: ${cleanedCount} expired sessions removed, ${warningCount} warnings issued`
+        `[Sessions API] Cleanup cycle completed: ${expiredCount} expired sessions removed, ${warningCount} warnings issued`
       );
     }
   }, CLEANUP_INTERVAL_MS);
@@ -1255,7 +1463,15 @@ export function createSessionsRouter(
 
       // Optional: Clear session data
       if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === 'true') {
-        sessions.clear();
+        for (const agent of agents.keys()) {
+          const store = getSessionsStore(agent);
+          (async () => {
+            for await (const [sessionId] of store.entries()) {
+              store.delete(sessionId);
+            }
+          })().catch(logger.error);
+        }
+
         agentTimeoutConfigs.clear();
       }
     };

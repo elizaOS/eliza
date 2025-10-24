@@ -51,10 +51,12 @@ import {
   IAgentRuntime,
   type ActionResult,
   type ActionContext,
+  ServiceType,
 } from './types';
 
 import { BM25 } from './search';
 import { stringToUuid } from './utils';
+import { IKVStore, IKVStoreService, isKVStoreService } from './types/store';
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -96,14 +98,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly plugins: Plugin[] = [];
   private isInitialized = false;
   events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
-  stateCache = new Map<
-    UUID,
-    {
-      values: { [key: string]: any };
-      data: { [key: string]: any };
-      text: string;
-    }
-  >();
+  stateCache?: IKVStore<Pick<State, 'values' | 'data' | 'text'>>;
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
@@ -448,6 +443,21 @@ export class AgentRuntime implements IAgentRuntime {
     for (const service of this.servicesInitQueue) {
       await this.registerService(service);
     }
+
+    const kvStore = this.getService(ServiceType.KV_STORE);
+
+    if (isKVStoreService(kvStore)) {
+      this.stateCache = kvStore.getStore('stateCache');
+    }
+
+    // fallback to in-memory cache
+    if (!this.stateCache) {
+      this.stateCache = new Map<
+        UUID,
+        Pick<State, 'values' | 'data' | 'text'>
+      >() as unknown as IKVStore<Pick<State, 'values' | 'data' | 'text'>>;
+    }
+
     this.isInitialized = true;
     if (this.initResolver) {
       this.initResolver(); // resolve initPromise
@@ -1096,7 +1106,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       // Store accumulated results for evaluators and providers
       if (message.id) {
-        this.stateCache.set(`${message.id}_action_results`, {
+        await this.stateCache?.set(`${message.id}_action_results`, {
           values: { actionResults },
           data: { actionResults, actionPlan },
           text: JSON.stringify(actionResults),
@@ -1504,7 +1514,7 @@ export class AgentRuntime implements IAgentRuntime {
       text: '',
     } as State;
     const cachedState =
-      skipCache || !message.id ? emptyObj : (await this.stateCache.get(message.id)) || emptyObj;
+      skipCache || !message.id ? emptyObj : (await this.stateCache?.get(message.id)) || emptyObj;
     const providerNames = new Set<string>();
     if (filterList && filterList.length > 0) {
       filterList.forEach((name) => providerNames.add(name));
@@ -1579,7 +1589,7 @@ export class AgentRuntime implements IAgentRuntime {
       text: providersText,
     } as State;
     if (message.id) {
-      this.stateCache.set(message.id, newState);
+      await this.stateCache?.set(message.id, newState);
     }
     return newState;
   }

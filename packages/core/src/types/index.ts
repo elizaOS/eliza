@@ -17,6 +17,7 @@ export * from './token';
 export * from './messaging';
 export * from './testing';
 export * from './settings';
+export * from './store';
 export * from './wallet';
 export * from './lp';
 export * from './pdf';

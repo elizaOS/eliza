@@ -29,6 +29,7 @@ export interface ServiceTypeRegistry {
   TOKEN_DATA: 'token_data';
   MESSAGE: 'message';
   POST: 'post';
+  KV_STORE: 'kv_store';
   UNKNOWN: 'unknown';
 }
 
@@ -98,6 +99,7 @@ export const ServiceType = {
   TOKEN_DATA: 'token_data',
   MESSAGE: 'message',
   POST: 'post',
+  KV_STORE: 'kv_store',
   UNKNOWN: 'unknown',
 } as const satisfies ServiceTypeRegistry;
 
