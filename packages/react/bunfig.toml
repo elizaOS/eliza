@@ -1,6 +1,7 @@
 [test]
 # Test timeout in milliseconds
 timeout = 60000
+preload = ["./src/test-setup.ts"]
 
 # Coverage configuration
 coverage = true

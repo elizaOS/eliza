@@ -82,7 +82,6 @@ export function useChannelMessages(
             } catch (err) {
                 setInternalIsError(true);
                 setInternalError(err);
-                console.error(`Failed to fetch messages for channel ${channelId}:`, err);
             } finally {
                 setInternalIsLoading(false);
                 setIsFetchingMore(false);

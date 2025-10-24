@@ -118,7 +118,6 @@ export function useChannelParticipants(
                 }
                 return participants;
             } catch (error) {
-                console.error('[useChannelParticipants] Error:', error);
                 return [];
             }
         },
