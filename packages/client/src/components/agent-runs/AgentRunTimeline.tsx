@@ -1,10 +1,9 @@
-import { useAgentRuns } from '@/hooks/use-query-hooks';
+import { useAgentRuns, useElizaClient, type RunSummary } from '@elizaos/react';
 import type { UUID } from '@elizaos/core';
 import React, { useMemo } from 'react';
 import { elizaSpanAdapter } from '@/lib/eliza-span-adapter';
 import { Loader2 } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
 import type { RunDetail } from '@elizaos/api-client';
 import { TraceViewer, type TraceViewerData } from '../agent-prism/TraceViewer';
 
@@ -12,15 +11,14 @@ type AgentRunTimelineProps = {
   agentId: UUID;
 };
 
-const elizaClient = createElizaClient();
-
 export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) => {
+  const elizaClient = useElizaClient();
   const runsQuery = useAgentRuns(agentId);
   const runs = runsQuery.data?.runs ?? [];
 
   // Fetch details for all runs using useQueries to avoid hook rule violations
   const runDetailQueries = useQueries({
-    queries: runs.map((run) => ({
+    queries: runs.map((run: RunSummary) => ({
       queryKey: ['agent', agentId, 'runs', 'detail', run.runId, null],
       queryFn: async () => elizaClient.runs.getRun(agentId, run.runId),
       enabled: Boolean(agentId && run.runId),
@@ -31,7 +29,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
   // Convert ElizaOS runs to Agent Prism format
   const traceViewerData: TraceViewerData[] = useMemo(() => {
     return runs
-      .map((run, index) => {
+      .map((run: RunSummary, index: number) => {
         const detailQuery = runDetailQueries[index];
         if (!detailQuery?.data) return null;
 
@@ -40,7 +38,7 @@ export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) =
           spans: elizaSpanAdapter.convertRunDetailToTraceSpans(detailQuery.data as RunDetail),
         };
       })
-      .filter((item): item is TraceViewerData => item !== null);
+      .filter((item: TraceViewerData | null): item is TraceViewerData => item !== null);
   }, [runs, ...runDetailQueries.map((q) => q.data)]);
 
   const isLoading = runsQuery.isLoading;

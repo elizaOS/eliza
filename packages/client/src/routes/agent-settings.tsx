@@ -1,7 +1,7 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import AgentSettings from '@/components/agent-settings';
-import { useAgent } from '@/hooks/use-query-hooks';
+import { useAgent } from '@elizaos/react';
 import { ArrowLeft } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import type { UUID, Agent } from '@elizaos/core';
@@ -41,7 +41,7 @@ export default function AgentSettingsRoute() {
   return (
     <div className="flex w-full justify-center px-4 sm:px-6 overflow-y-auto">
       <div className="w-full md:max-w-4xl py-6">
-        <AgentSettings agent={agent} agentId={agentId as UUID} onSaveComplete={() => {}} />
+        <AgentSettings agent={agent} agentId={agentId as UUID} onSaveComplete={() => { }} />
       </div>
     </div>
   );

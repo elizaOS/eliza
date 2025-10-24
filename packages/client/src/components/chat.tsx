@@ -20,17 +20,17 @@ import { CHAT_SOURCE, GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
   useAgent,
-  useAgentsWithDetails,
+  useAgents,
   useChannelDetails,
   useChannelMessages,
   useChannelParticipants,
   useClearChannelMessages,
   useDeleteChannelMessage,
   type UiMessage,
-} from '@/hooks/use-query-hooks';
+  useElizaClient,
+} from '@elizaos/react';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import {
@@ -366,10 +366,10 @@ export default function Chat({
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
   const targetAgentData: Agent | undefined = agentDataResponse?.data
     ? ({
-        ...agentDataResponse.data,
-        createdAt: agentDataResponse.data.createdAt || Date.now(),
-        updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-      } as Agent)
+      ...agentDataResponse.data,
+      createdAt: agentDataResponse.data.createdAt || Date.now(),
+      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
+    } as Agent)
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
@@ -392,8 +392,17 @@ export default function Chat({
   );
   const participants = participantsData?.data;
 
-  const { data: agentsResponse } = useAgentsWithDetails();
-  const allAgents = agentsResponse?.agents || [];
+  const { data: agentsResponse } = useAgents();
+  const elizaClient = useElizaClient();
+  const allAgents = (agentsResponse || []).map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    status: agent.status ?? AgentStatus.INACTIVE,
+    createdAt: agent.createdAt ?? Date.now(),
+    updatedAt: agent.updatedAt ?? Date.now(),
+    bio: agent.bio ?? [],
+    settings: agent.settings ?? {},
+  }) as Agent);
 
   const latestChannel = agentDmChannels[0]; // adjust sorting if needed
 
@@ -474,7 +483,6 @@ export default function Chat({
 
       if (latestChannel) {
         try {
-          const elizaClient = createElizaClient();
           const latestMessages = await elizaClient.messaging.getChannelMessages(latestChannel.id, {
             limit: 30,
           });
@@ -537,7 +545,7 @@ export default function Chat({
         });
       }
     },
-    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel]
+    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel, elizaClient]
   );
 
   // Handle DM channel selection
@@ -572,7 +580,6 @@ export default function Chat({
       async () => {
         clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
         try {
-          const elizaClient = createElizaClient();
           await elizaClient.messaging.deleteChannel(channelToDelete.id);
 
           // --- Optimistically update the React-Query cache so UI refreshes instantly ---
@@ -629,6 +636,7 @@ export default function Chat({
     handleNewDmChannel,
     queryClient,
     currentClientEntityId,
+    elizaClient,
   ]);
 
   useEffect(() => {
@@ -858,7 +866,6 @@ export default function Chat({
       return;
     }
 
-    const elizaClient = createElizaClient();
     const data = await elizaClient.messaging.generateChannelTitle(
       finalChannelIdForHooks,
       contextId
@@ -1354,11 +1361,11 @@ export default function Chat({
                                 <span className="text-xs text-muted-foreground">
                                   {moment(
                                     (typeof channel.metadata?.createdAt === 'string' ||
-                                    typeof channel.metadata?.createdAt === 'number'
+                                      typeof channel.metadata?.createdAt === 'number'
                                       ? channel.metadata.createdAt
                                       : null) ||
-                                      channel.updatedAt ||
-                                      channel.createdAt
+                                    channel.updatedAt ||
+                                    channel.createdAt
                                   ).fromNow()}
                                 </span>
                               </div>
@@ -1484,7 +1491,6 @@ export default function Chat({
                         },
                         async () => {
                           try {
-                            const elizaClient = createElizaClient();
                             await elizaClient.messaging.deleteChannel(channelIdToDelete);
                             toast({
                               title: 'Group Deleted',

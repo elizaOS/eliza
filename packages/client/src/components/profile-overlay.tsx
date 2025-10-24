@@ -6,7 +6,7 @@ import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { Brain, Cog, Loader2, Play, X, Download, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useAgent } from '../hooks/use-query-hooks';
+import { useAgent } from '@elizaos/react';
 import StopAgentButton from './stop-agent-button';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
@@ -113,9 +113,8 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
                     )}
                   </div>
                   <div
-                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${
-                      isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
-                    }`}
+                    className={`absolute bottom-1 right-1 w-4 h-4 rounded-full border-2 border-background ${isActive ? 'bg-emerald-500' : 'bg-muted-foreground'
+                      }`}
                   />
                 </div>
                 <div className="flex flex-col justify-center mr-4">

@@ -2,7 +2,7 @@ import type { Agent, UUID } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStartAgent, useStopAgent } from './use-query-hooks';
+import { useStartAgent, useStopAgent } from '@elizaos/react';
 import { useToast } from './use-toast';
 // Direct error handling
 

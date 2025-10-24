@@ -2,10 +2,15 @@ import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
+import {
+  useAgents,
+  useChannels,
+  useServers,
+  type MessageServer,
+  type MessageChannel,
+} from '@elizaos/react';
 import clientLogger from '@/lib/logger';
 import { type Agent, type UUID, ChannelType as CoreChannelType, AgentStatus } from '@elizaos/core';
-import type { MessageChannel, MessageServer } from '@/types';
 import { Plus } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,12 +24,24 @@ import { Separator } from '@/components/ui/separator';
  * Displays lists of agents and groups with status indicators, action buttons, and overlays for detailed views and settings. Handles loading and error states, and supports navigation to chat and settings pages.
  */
 export default function Home() {
-  const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
+  const { data: agentsData, isLoading, isError, error } = useAgents();
   const navigate = useNavigate();
 
   // Extract agents properly from the response
-  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
-  const activeAgentsCount = agents.filter((a) => a.status === AgentStatus.ACTIVE).length;
+  const agents = useMemo(
+    () =>
+      (agentsData || []).map((agent: Partial<Agent>) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status ?? AgentStatus.INACTIVE,
+        createdAt: agent.createdAt ?? Date.now(),
+        updatedAt: agent.updatedAt ?? Date.now(),
+        bio: agent.bio ?? [],
+        settings: agent.settings ?? {},
+      }) as Agent),
+    [agentsData]
+  );
+  const activeAgentsCount = agents.filter((a: Agent) => a.status === AgentStatus.ACTIVE).length;
 
   const { data: serversData } = useServers() as {
     data: { data: { servers: MessageServer[] } } | undefined;
@@ -133,13 +150,13 @@ export default function Home() {
                 {!isLoading && !isError && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 agents-section">
                     {agents
-                      .sort((a, b) => {
+                      .sort((a: Agent, b: Agent) => {
                         // Sort by status - ACTIVE agents first
                         const aActive = a.status === AgentStatus.ACTIVE ? 1 : 0;
                         const bActive = b.status === AgentStatus.ACTIVE ? 1 : 0;
                         return bActive - aActive;
                       })
-                      .map((agent) => {
+                      .map((agent: Agent) => {
                         return (
                           <AgentCard
                             key={agent.id}

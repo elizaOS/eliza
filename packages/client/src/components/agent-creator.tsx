@@ -1,6 +1,6 @@
 import CharacterForm from '@/components/character-form';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
+import { useElizaClient } from '@elizaos/react';
 import type { Agent } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useRef } from 'react';
@@ -32,6 +32,7 @@ export default function AgentCreator() {
   });
   const secretPanelRef = useRef<SecretPanelRef>(null);
   const [currentSecrets, setCurrentSecrets] = useState<Record<string, string | null>>({});
+  const elizaClient = useElizaClient();
 
   // Use agent update hook for proper handling of nested fields
   const agentState = useAgentUpdate(initialCharacter as Agent);
@@ -68,7 +69,6 @@ export default function AgentCreator() {
         };
       }
 
-      const elizaClient = createElizaClient();
       await elizaClient.agents.createAgent({ agent: completeCharacter });
 
       // Invalidate the characters query to refresh the characters list

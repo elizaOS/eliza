@@ -62,7 +62,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SecretPanelRef } from './secret-panel';
 import { MissingSecretsDialog } from './missing-secrets-dialog';
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
-import { createElizaClient } from '@/lib/api-client-config';
+import { useElizaClient } from '@elizaos/react';
 import { V1Character, useConvertCharacter } from '@/hooks/use-character-convert';
 
 export type InputField = {
@@ -206,6 +206,7 @@ export default function CharacterForm({
   const [showMissingSecretsDialog, setShowMissingSecretsDialog] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState<Agent | null>(null);
   const [globalEnvs, setGlobalEnvs] = useState<Record<string, string>>({});
+  const elizaClient = useElizaClient();
 
   // Get required secrets based on enabled plugins
   const enabledPlugins = useMemo(() => characterValue?.plugins || [], [characterValue?.plugins]);
@@ -217,7 +218,6 @@ export default function CharacterForm({
   useEffect(() => {
     const fetchGlobalEnvs = async () => {
       try {
-        const elizaClient = createElizaClient();
         const data = await elizaClient.system.getEnvironment();
         setGlobalEnvs(data || {});
       } catch (error) {
@@ -608,7 +608,7 @@ export default function CharacterForm({
         {field.title}
         {field.name in FIELD_REQUIREMENTS &&
           (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.name] ===
-            FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
+          FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
       </Label>
 
       {field.fieldType === 'textarea' ? (
@@ -711,7 +711,7 @@ export default function CharacterForm({
         {field.title}
         {field.path in FIELD_REQUIREMENTS &&
           (FIELD_REQUIREMENTS as Record<string, FIELD_REQUIREMENT_TYPE>)[field.path] ===
-            FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
+          FIELD_REQUIREMENT_TYPE.REQUIRED && <span className="text-destructive ml-1">*</span>}
       </Label>
 
       <ArrayInput

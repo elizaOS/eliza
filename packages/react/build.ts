@@ -4,7 +4,8 @@
  */
 
 import { createBuildRunner } from '../../build-utils';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Ensure dist directory exists
 if (!existsSync('dist')) {
@@ -29,6 +30,16 @@ const sharedConfig = {
 };
 
 /**
+ * Create root index.d.ts that re-exports from the actual declarations
+ */
+function createRootDeclarations() {
+    const rootDts = join('dist', 'index.d.ts');
+    const content = `export * from './react/src/index';\n`;
+    writeFileSync(rootDts, content, 'utf-8');
+    console.log('✓ Created root index.d.ts');
+}
+
+/**
  * Build the package
  */
 async function build() {
@@ -50,6 +61,13 @@ async function build() {
     });
 
     await run();
+
+    // Create root index.d.ts after build
+    try {
+        createRootDeclarations();
+    } catch (error) {
+        console.warn('Failed to create root declarations:', error);
+    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     console.log(`✅ Build complete in ${duration}s`);

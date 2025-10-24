@@ -1,14 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
-
-// Create ElizaClient instance
-const elizaClient = createElizaClient();
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
 import { mapApiChannelToClient } from '@/lib/api-type-mappers';
 import clientLogger from '@/lib/logger';
-import { STALE_TIMES } from './use-query-hooks';
+import { STALE_TIMES } from '@elizaos/react';
 import { getEntityId } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 

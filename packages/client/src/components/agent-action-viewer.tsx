@@ -18,7 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentActions, useDeleteLog } from '@/hooks/use-query-hooks';
+import { useAgentActions, useDeleteLog } from '@elizaos/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -567,7 +567,7 @@ function EmptyState({
             : `No ${selectedType} actions found.`}
       </p>
       {searchQuery && (
-        <Button variant="outline" onClick={() => {}}>
+        <Button variant="outline" onClick={() => { }}>
           Clear Search
         </Button>
       )}

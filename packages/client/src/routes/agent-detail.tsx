@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { useAgent } from '@/hooks/use-query-hooks';
+import { useAgent } from '@elizaos/react';
 import { UUID } from '@elizaos/core';
 
 const AgentDetail: React.FC = () => {

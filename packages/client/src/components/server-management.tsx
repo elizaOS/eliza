@@ -17,9 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useAgents, useServers } from '@/hooks/use-query-hooks';
+import { useAgents, useServers, useElizaClient, type Agent, type MessageServer } from '@elizaos/react';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
 import type { UUID } from '@elizaos/core';
 import { Loader2, Plus, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -33,6 +32,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   const { toast } = useToast();
   const { data: serversData } = useServers();
   const { data: agentsData } = useAgents();
+  const elizaClient = useElizaClient();
 
   const [selectedServerId, setSelectedServerId] = useState<UUID | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<UUID | null>(null);
@@ -42,13 +42,12 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   // Load agents for each server
   useEffect(() => {
     const loadServerAgents = async () => {
-      if (!serversData?.data?.servers) return;
+      if (!serversData) return;
 
       const newServerAgents = new Map<UUID, UUID[]>();
 
-      for (const server of serversData.data.servers) {
+      for (const server of serversData) {
         try {
-          const elizaClient = createElizaClient();
           const response = await elizaClient.agents.getAgentsForServer(server.id);
           if (response.success) {
             newServerAgents.set(server.id, response.data.agents);
@@ -76,7 +75,6 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
 
     setIsLoading(true);
     try {
-      const elizaClient = createElizaClient();
       await elizaClient.agents.addAgentToServer(selectedServerId, selectedAgentId);
 
       // Update local state
@@ -110,7 +108,6 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   const handleRemoveAgentFromServer = async (serverId: UUID, agentId: UUID) => {
     setIsLoading(true);
     try {
-      const elizaClient = createElizaClient();
       await elizaClient.agents.removeAgentFromServer(serverId, agentId);
 
       // Update local state
@@ -140,16 +137,16 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   };
 
   const getAgentName = (agentId: UUID) => {
-    const agent = agentsData?.data?.agents?.find((a) => a.id === agentId);
+    const agent = agentsData?.find((a: Partial<Agent>) => a.id === agentId);
     return agent?.name || agentId;
   };
 
   const getAvailableAgents = () => {
-    if (!selectedServerId || !agentsData?.data?.agents) return [];
+    if (!selectedServerId || !agentsData) return [];
 
     const currentAgents = serverAgents.get(selectedServerId) || [];
-    return agentsData.data.agents.filter(
-      (agent) => agent.id && !currentAgents.includes(agent.id as UUID)
+    return agentsData.filter(
+      (agent: Partial<Agent>) => agent.id && !currentAgents.includes(agent.id as UUID)
     );
   };
 
@@ -176,7 +173,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
                 <SelectValue placeholder="Choose a server" />
               </SelectTrigger>
               <SelectContent>
-                {serversData?.data?.servers.map((server) => (
+                {serversData?.map((server: MessageServer) => (
                   <SelectItem key={server.id} value={server.id}>
                     {server.name}
                   </SelectItem>
@@ -234,7 +231,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
                     <SelectValue placeholder="Choose an agent" />
                   </SelectTrigger>
                   <SelectContent>
-                    {getAvailableAgents().map((agent) => (
+                    {getAvailableAgents().map((agent: Partial<Agent>) => (
                       <SelectItem key={agent.id} value={agent.id!}>
                         {agent.name}
                       </SelectItem>

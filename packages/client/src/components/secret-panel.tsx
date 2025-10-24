@@ -39,7 +39,7 @@ import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { createElizaClient } from '@/lib/api-client-config';
+import { useElizaClient } from '@elizaos/react';
 
 type EnvVariable = {
   name: string;
@@ -95,7 +95,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       const fetchGlobalEnvs = async () => {
         try {
           setIsLoadingGlobalEnvs(true);
-          const elizaClient = createElizaClient();
+          const elizaClient = useElizaClient();
           const data = await elizaClient.system.getEnvironment();
           setGlobalEnvs(data || {});
         } catch (error) {
@@ -327,8 +327,8 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
         // Ensure we're working with a plain object
         const decryptedSecrets =
           typeof decryptedSecretsRaw === 'object' &&
-          !Array.isArray(decryptedSecretsRaw) &&
-          decryptedSecretsRaw !== null
+            !Array.isArray(decryptedSecretsRaw) &&
+            decryptedSecretsRaw !== null
             ? decryptObjectValues(decryptedSecretsRaw, salt)
             : {};
 
@@ -1025,13 +1025,12 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                     {envs.map((env, index) => (
                       <div
                         key={`${env.name}-${index}`}
-                        className={`grid grid-cols-[minmax(200px,1fr)_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${
-                          env.isRequired &&
+                        className={`grid grid-cols-[minmax(200px,1fr)_2fr_auto] gap-4 items-center px-4 py-3 border-b last:border-b-0 hover:bg-muted/10 transition-colors ${env.isRequired &&
                           (!env.value || env.value.trim() === '') &&
                           !isInGlobalEnv(env.name)
-                            ? 'bg-red-500/5'
-                            : ''
-                        }`}
+                          ? 'bg-red-500/5'
+                          : ''
+                          }`}
                       >
                         {/* Name Column */}
                         <div className="pr-2">
@@ -1233,11 +1232,10 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
                   {envs.map((env, index) => (
                     <div
                       key={`${env.name}-${index}-mobile`}
-                      className={`border rounded-lg p-4 space-y-3 ${
-                        env.isRequired && (!env.value || env.value.trim() === '')
-                          ? 'border-red-500/50 bg-red-500/5'
-                          : ''
-                      }`}
+                      className={`border rounded-lg p-4 space-y-3 ${env.isRequired && (!env.value || env.value.trim() === '')
+                        ? 'border-red-500/50 bg-red-500/5'
+                        : ''
+                        }`}
                     >
                       {/* Header with name and required badge */}
                       <div className="space-y-1">
@@ -1435,11 +1433,10 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
             {/* File Upload Area */}
             <div
               ref={dropRef}
-              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-                isDragging
-                  ? 'border-primary bg-primary/5'
-                  : 'border-muted-foreground/25 hover:border-muted-foreground/50'
-              }`}
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${isDragging
+                ? 'border-primary bg-primary/5'
+                : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+                }`}
               onClick={() => document.getElementById('env-upload')?.click()}
             >
               <CloudUpload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />

@@ -1,6 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ElizaReactProvider } from '@elizaos/react';
+import { ElizaReactProvider, STALE_TIMES } from '@elizaos/react';
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
@@ -13,7 +13,6 @@ import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
 import { AuthProvider } from './context/AuthContext';
 import { ConnectionProvider, useConnection } from './context/ConnectionContext';
-import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
 import { createElizaClient } from './lib/api-client-config';

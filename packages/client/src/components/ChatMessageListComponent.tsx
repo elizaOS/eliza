@@ -4,7 +4,7 @@ import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
 import { MemoizedMessageContent } from './chat';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
-import type { UiMessage } from '@/hooks/use-query-hooks';
+import type { UiMessage } from '@elizaos/react';
 import { cn } from '@/lib/utils';
 import { getAgentAvatar } from '@/lib/utils';
 
@@ -108,9 +108,9 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
                     <AvatarImage
                       src={getAgentAvatar(
                         senderAgent ||
-                          (agentAvatarMap && message.senderId && allAgents
-                            ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
-                            : undefined)
+                        (agentAvatarMap && message.senderId && allAgents
+                          ? allAgents.find((a: Partial<Agent>) => a.id === message.senderId)
+                          : undefined)
                       )}
                     />
                   </Avatar>

@@ -17,11 +17,11 @@ import {
 import { useConfirmation } from '@/hooks/use-confirmation';
 
 import {
-  useAgentsWithDetails,
-  useChannelParticipants, // New hook
+  useAgents,
+  useChannelParticipants,
   useChannels,
-  useServers, // New hook
-} from '@/hooks/use-query-hooks';
+  useServers,
+} from '@elizaos/react';
 import { useServerVersionString } from '@/hooks/use-server-version';
 import { cn, formatAgentName, generateGroupName, getAgentAvatar, getEntityId } from '@/lib/utils';
 import type {
@@ -35,7 +35,7 @@ import {
   type UUID,
 } from '@elizaos/core';
 
-import { useDeleteChannel } from '@/hooks/use-query-hooks';
+import { useDeleteChannel } from '@elizaos/react';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
 import { Book, Cog, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
@@ -142,7 +142,7 @@ const GroupRow = ({
 }) => {
   const currentClientId = getEntityId();
 
-  const { data: agentsData } = useAgentsWithDetails();
+  const { data: agentsData } = useAgents();
   const allAgents = agentsData?.agents || [];
 
   const { data: participantsData } = useChannelParticipants(channel.id as UUID);
@@ -490,19 +490,25 @@ export function AppSidebar({
   const queryClient = useQueryClient(); // Get query client instance
   const version = useServerVersionString(); // Get server version
 
-  const {
-    data: agentsData,
-    error: agentsError,
-    isLoading: isLoadingAgents,
-  } = useAgentsWithDetails();
+  const { data: agentsDataSubset } = useAgents();
   const { data: serversData, isLoading: isLoadingServers } = useServers();
 
-  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
+  const agentsSlice = (agentsDataSubset || [])
+    .map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      status: agent.status ?? CoreAgentStatus.INACTIVE,
+      createdAt: agent.createdAt ?? Date.now(),
+      updatedAt: agent.updatedAt ?? Date.now(),
+      bio: agent.bio ?? [],
+      settings: agent.settings ?? {},
+    }) as Agent)
+    .slice(0, 5);
   const servers = useMemo(() => serversData?.data?.servers || [], [serversData]);
 
   const [onlineAgents, offlineAgents] = useMemo(
-    () => partition(agents, (a) => a.status === CoreAgentStatus.ACTIVE),
-    [agents]
+    () => partition(agentsSlice, (a) => a.status === CoreAgentStatus.ACTIVE),
+    [agentsSlice]
   );
 
   const agentLoadError = agentsError

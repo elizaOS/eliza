@@ -1,8 +1,7 @@
 import { ChannelType, validateUuid } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
-import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
-import { createElizaClient } from '@/lib/api-client-config';
+import { useAgents, useChannels, useElizaClient } from '@elizaos/react';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -59,6 +58,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const lastChannelIdRef = useRef(channelId);
   const agentsInitializedRef = useRef(false);
 
+  const elizaClient = useElizaClient();
+
   const { data: channelsData } = useChannels(channelId ? serverId : undefined, {
     enabled: !!channelId,
   });
@@ -66,10 +67,20 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     data: agentsData,
     isLoading: isLoadingAgents,
     isError: isErrorAgents,
-  } = useAgentsWithDetails();
+  } = useAgents();
 
   const allAvailableSelectableAgents = useMemo(() => {
-    return (agentsData?.agents || []).filter(isAgentSelectable);
+    return (agentsData || [])
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status ?? AgentStatus.INACTIVE,
+        createdAt: agent.createdAt ?? Date.now(),
+        updatedAt: agent.updatedAt ?? Date.now(),
+        bio: agent.bio ?? [],
+        settings: agent.settings ?? {},
+      }) as Agent)
+      .filter(isAgentSelectable);
   }, [agentsData]);
 
   const queryClient = useQueryClient();
@@ -89,8 +100,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Create group mutation
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      const elizaClient = createElizaClient();
-      return await elizaClient.messaging.createGroupChannel({
+      const response = await elizaClient.messaging.createGroupChannel({
         name,
         participantIds: participantIds,
         metadata: {
@@ -99,6 +109,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
           source: GROUP_CHAT_SOURCE,
         },
       });
+      return response;
     },
     onSuccess: (response) => {
       if (response) {
@@ -122,8 +133,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       if (!channelId) throw new Error('Channel ID is required for update');
-      const elizaClient = createElizaClient();
-      return await elizaClient.messaging.updateChannel(channelId, {
+      const channel = await elizaClient.messaging.getChannelDetails(channelId);
+      if (!channel) throw new Error('Channel not found');
+      await elizaClient.messaging.updateChannel(channel.id, {
         name,
         participantCentralUserIds: participantIds,
       });
@@ -149,8 +161,9 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error('Channel ID is required for delete');
-      const elizaClient = createElizaClient();
-      return await elizaClient.messaging.deleteChannel(channelId);
+      const channel = await elizaClient.messaging.getChannelDetails(channelId);
+      if (!channel) throw new Error('Channel not found');
+      await elizaClient.messaging.deleteChannel(channel.id);
     },
     onSuccess: () => {
       toast({ title: 'Group Deleted', description: 'The group has been successfully deleted.' });
@@ -184,16 +197,15 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     queryFn: async () => {
       if (!channelId) return { success: true, data: [] };
       try {
-        const elizaClient = createElizaClient();
-        const result = await elizaClient.messaging.getChannelParticipants(channelId);
+        const response = await elizaClient.messaging.getChannelParticipants(channelId);
 
         // Handle different possible response formats
         let participants = [];
-        if (result && Array.isArray(result.participants)) {
-          participants = result.participants.map((participant) => participant.userId);
-        } else if (result && Array.isArray(result)) {
-          // If result is directly an array
-          participants = result.map(
+        if (response && Array.isArray(response.participants)) {
+          participants = response.participants.map((participant) => participant.userId);
+        } else if (response && Array.isArray(response)) {
+          // If response is directly an array
+          participants = response.map(
             (participant) => participant.userId || participant.id || participant
           );
         }
@@ -410,15 +422,15 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Use the exact same logic as "unsaved changes" detection for update button
   const isSubmitDisabled = channelId
     ? // Edit mode - disable if no changes OR loading (allow agent removal)
-      !hasFormChanged ||
-      createGroupMutation.isPending ||
-      updateGroupMutation.isPending ||
-      deleteGroupMutation.isPending
+    !hasFormChanged ||
+    createGroupMutation.isPending ||
+    updateGroupMutation.isPending ||
+    deleteGroupMutation.isPending
     : // Create mode - disable if no agents OR loading
-      selectedAgents.length === 0 ||
-      createGroupMutation.isPending ||
-      updateGroupMutation.isPending ||
-      deleteGroupMutation.isPending;
+    selectedAgents.length === 0 ||
+    createGroupMutation.isPending ||
+    updateGroupMutation.isPending ||
+    deleteGroupMutation.isPending;
 
   return (
     <>

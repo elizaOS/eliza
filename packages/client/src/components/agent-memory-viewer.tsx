@@ -1,7 +1,7 @@
 import type { Memory, UUID } from '@elizaos/core';
 import { Database, LoaderIcon, Pencil, Search, Brain, User, Bot, Clock, Copy } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentMemories, useAgents } from '@/hooks/use-query-hooks';
+import { useAgentMemories, useAgents } from '@elizaos/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import MemoryEditOverlay from './agent-memory-edit-overlay';
+import { Agent, AgentStatus } from '@elizaos/core';
 
 // Number of items to load per batch
 const ITEMS_PER_PAGE = 15;
@@ -64,8 +65,16 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
 
   // Get all agents to look up names by ID
   const { data: agentsData } = useAgents();
+  const allAgents = (agentsData || []).map((agent: Partial<Agent>) => ({
+    id: agent.id,
+    name: agent.name,
+    status: agent.status ?? AgentStatus.INACTIVE,
+    createdAt: agent.createdAt ?? Date.now(),
+    updatedAt: agent.updatedAt ?? Date.now(),
+    bio: agent.bio ?? [],
+    settings: agent.settings ?? {},
+  }) as Agent);
 
-  // Fetch from appropriate table(s) based on selected type
   const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
   const factsTableName =
     selectedType === MemoryType.facts || selectedType === MemoryType.all ? 'facts' : undefined;
@@ -272,7 +281,7 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
     const getEntityName = () => {
       if (isAgent) {
         // For agents, try to find the agent name by ID
-        const agent = agentsData?.data?.agents?.find((a) => a.id === memory.entityId);
+        const agent = allAgents.find((a: Agent) => a.id === memory.entityId);
         return agent?.name || agentName;
       } else {
         // For users, use raw metadata or fallback

@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useUpdateMemory, useDeleteMemory } from '@/hooks/use-query-hooks';
+import { useUpdateMemory, useDeleteMemory } from '@elizaos/react';
 import type { Memory, UUID } from '@elizaos/core';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -137,7 +137,7 @@ export default function MemoryEditOverlay({
               description: 'The memory content has been successfully updated',
             });
           },
-          onError: (error) => {
+          onError: (error: Error) => {
             toast({
               title: 'Update Failed',
               description: error.message || 'Failed to update memory',
@@ -177,7 +177,7 @@ export default function MemoryEditOverlay({
                 description: 'The memory has been successfully removed',
               });
             },
-            onError: (error) => {
+            onError: (error: Error) => {
               toast({
                 title: 'Delete Failed',
                 description: error.message || 'Failed to delete memory',
@@ -324,11 +324,10 @@ export default function MemoryEditOverlay({
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Type:</span>
                   <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      memory.entityId === agentId
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                        : 'bg-white-100 text-white dark:bg-white-800 dark:text-white'
-                    }`}
+                    className={`text-xs px-2 py-1 rounded-full ${memory.entityId === agentId
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-white-100 text-white dark:bg-white-800 dark:text-white'
+                      }`}
                   >
                     {memory.entityId === agentId ? 'Agent Message' : 'User Message'}
                   </span>
@@ -410,9 +409,8 @@ export default function MemoryEditOverlay({
                   id="memory-content"
                   value={editedContent}
                   onChange={(e) => setEditedContent(e.target.value)}
-                  className={`flex-1 resize-none font-mono text-sm min-h-[300px] ${
-                    !isValidJson ? 'border-red-300 focus:border-red-500' : ''
-                  }`}
+                  className={`flex-1 resize-none font-mono text-sm min-h-[300px] ${!isValidJson ? 'border-red-300 focus:border-red-500' : ''
+                    }`}
                   placeholder="Memory content in JSON format..."
                   disabled={isProcessing}
                   aria-describedby="json-help"

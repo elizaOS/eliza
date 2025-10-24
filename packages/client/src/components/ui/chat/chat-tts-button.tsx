@@ -1,24 +1,28 @@
-import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
-import { UUID } from '@elizaos/core';
+import { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useElizaClient } from '@elizaos/react';
 import { useMutation } from '@tanstack/react-query';
-import { Ellipsis, StopCircle, Volume2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Button } from '../button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
+import { Loader2, Volume2, StopCircle, Ellipsis } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import type { UUID } from '@elizaos/core';
 
-// Global ref to track currently playing audio
+interface ChatTtsButtonProps {
+  agentId: UUID;
+  message: string;
+}
+
+// Global reference to track currently playing audio across all instances
 let currentlyPlayingAudio: HTMLAudioElement | null = null;
 
-export default function ChatTtsButton({ agentId, text }: { agentId: string; text: string }) {
+export function ChatTtsButton({ agentId, message }: ChatTtsButtonProps) {
   const { toast } = useToast();
-  const [playing, setPlaying] = useState<boolean>(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const audioBlobRef = useRef<Blob | null>(null);
-
-  const elizaClient = createElizaClient();
+  const elizaClient = useElizaClient();
 
   // Cleanup blob URL when component unmounts or audioBlob changes
   useEffect(() => {
@@ -30,13 +34,13 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   }, [audioUrl]);
 
   const mutation = useMutation({
-    mutationKey: ['tts', text],
+    mutationKey: ['tts', message],
     mutationFn: async () => {
       console.log('🎵 Starting TTS API call...');
       console.log('🎵 agentId:', agentId);
-      console.log('🎵 text:', text);
+      console.log('🎵 text:', message);
 
-      const response = await elizaClient.audio.generateSpeech(agentId as UUID, { text });
+      const response = await elizaClient.audio.generateSpeech(agentId as UUID, { text: message });
       console.log('🎵 TTS API response:', response);
 
       // Convert base64 audio string to Blob

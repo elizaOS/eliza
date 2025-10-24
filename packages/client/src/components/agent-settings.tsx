@@ -4,7 +4,7 @@ import { useAgentManagement } from '@/hooks/use-agent-management';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
+import { useElizaClient } from '@elizaos/react';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
@@ -31,6 +31,7 @@ export default function AgentSettings({
   const isActive = agent?.status === AgentStatus.ACTIVE;
   const secretPanelRef = useRef<SecretPanelRef>(null);
   const [currentSecrets, setCurrentSecrets] = useState<Record<string, string | null>>({});
+  const elizaClient = useElizaClient();
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(agent);
 
@@ -69,7 +70,6 @@ export default function AgentSettings({
     // Define the actual save logic
     const performSave = async () => {
       try {
-        const elizaClient = createElizaClient();
         // Get secrets from state (or ref as fallback)
         const secrets =
           Object.keys(currentSecrets).length > 0

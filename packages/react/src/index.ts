@@ -55,8 +55,11 @@ export {
 // Constants
 export { STALE_TIMES } from './internal/constants';
 
+// UI Types
+export type { UiMessage } from './types/ui';
+
 // Types (re-exported from dependencies for convenience)
-export type { UUID } from '@elizaos/core';
+export type { UUID, AgentStatus } from '@elizaos/core';
 export type {
     Agent,
     AgentLog,
