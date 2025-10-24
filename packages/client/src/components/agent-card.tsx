@@ -36,7 +36,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
   const description = Array.isArray(agent.bio)
     ? agent.bio.filter(Boolean).join(' ').trim()
     : (typeof agent.bio === 'string' && agent.bio.trim()) ||
-      'Engages with all types of questions and conversations';
+    'Engages with all types of questions and conversations';
   const isActive = agent.status === CoreAgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agent.id);
   const isStopping = isAgentStopping(agent.id);
@@ -123,7 +123,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, onChat }) => {
         <div className="flex flex-col justify-between h-full">
           <div className="flex items-center gap-4 p-2 h-[90%]">
             {/* Avatar */}
-            <Avatar className="h-16 w-16 flex-shrink-0 rounded-sm">
+            <Avatar className="h-16 w-16 shrink-0 rounded-sm">
               <AvatarImage src={getAgentAvatar(agent)} alt={agentName} />
               <AvatarFallback className="text-lg font-medium rounded-sm">
                 {formatAgentName(agentName)}

@@ -32,10 +32,10 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
     error: agentError,
   } = useAgent(agentId, { enabled: !!agentId && detailsTab === 'details' });
 
-  const agent = agentDataResponse?.data as Agent | undefined;
+  const agent = agentDataResponse as Agent | undefined;
 
   const agentPanels = useMemo(() => {
-    return panelsResponse?.data || [];
+    return panelsResponse || [];
   }, [panelsResponse]);
 
   const allTabs: { value: TabValue; label: string; icon: JSX.Element }[] = useMemo(() => {
@@ -63,12 +63,12 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
       onValueChange={setDetailsTab}
       className="flex flex-col h-screen w-full max-w-full"
     >
-      <TabsList className="flex w-full max-w-full overflow-x-auto flex-shrink-0">
+      <TabsList className="flex w-full max-w-full overflow-x-auto shrink-0">
         {allTabs.map((tab) => (
           <TabsTrigger
             key={tab.value}
             value={tab.value}
-            className="flex items-center gap-1.5 flex-shrink-0"
+            className="flex items-center gap-1.5 shrink-0"
           >
             {tab.icon}
             <span className="truncate">{tab.label}</span>
@@ -77,7 +77,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
         {isLoadingPanels && (
           <>
             {[...Array(2)].map((_, i) => (
-              <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md flex-shrink-0" />
+              <Skeleton key={`skel-tab-${i}`} className="h-9 w-full rounded-md shrink-0" />
             ))}
           </>
         )}
@@ -95,7 +95,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
               </div>
             )}
             {agentError && (
-              <div className="text-red-500 break-words">
+              <div className="text-red-500 wrap-break-word">
                 Error loading agent details: {agentError.message}
               </div>
             )}

@@ -1,7 +1,7 @@
 import { ChannelType, validateUuid } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
-import { useAgents, useChannels, useElizaClient } from '@elizaos/react';
+import { useAgents, useChannels, useElizaClient, type MessageChannel as ElizaMessageChannel } from '@elizaos/react';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -71,15 +71,15 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   const allAvailableSelectableAgents = useMemo(() => {
     return (agentsData || [])
-      .map((agent) => ({
+      .map((agent: any) => ({
         id: agent.id,
         name: agent.name,
-        status: agent.status ?? AgentStatus.INACTIVE,
-        createdAt: agent.createdAt ?? Date.now(),
-        updatedAt: agent.updatedAt ?? Date.now(),
+        status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
+        createdAt: (agent.createdAt && typeof agent.createdAt.getTime === 'function') ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+        updatedAt: (agent.updatedAt && typeof agent.updatedAt.getTime === 'function') ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
         bio: agent.bio ?? [],
         settings: agent.settings ?? {},
-      }) as Agent)
+      }) as unknown as Agent)
       .filter(isAgentSelectable);
   }, [agentsData]);
 
@@ -200,13 +200,14 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         const response = await elizaClient.messaging.getChannelParticipants(channelId);
 
         // Handle different possible response formats
-        let participants = [];
+        let participants: UUID[] = [];
         if (response && Array.isArray(response.participants)) {
-          participants = response.participants.map((participant) => participant.userId);
+          participants = response.participants.map((participant: { userId: UUID }) => participant.userId);
         } else if (response && Array.isArray(response)) {
           // If response is directly an array
           participants = response.map(
-            (participant) => participant.userId || participant.id || participant
+            (participant: { userId?: UUID; id?: UUID } | UUID) =>
+              typeof participant === 'string' ? participant : participant.userId || participant.id || (participant as UUID)
           );
         }
 
@@ -229,8 +230,8 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   // Separate effect for initializing chat name when channel loads
   useEffect(() => {
-    if (channelId && channelsData?.data?.channels) {
-      const channelDetails = channelsData.data.channels.find((ch) => ch.id === channelId);
+    if (channelId && channelsData) {
+      const channelDetails = channelsData.find((ch: ElizaMessageChannel) => ch.id === channelId);
       if (!initializedRef.current || lastChannelIdRef.current !== channelId) {
         const initialName = channelDetails?.name || '';
         setChatName(initialName);
@@ -276,12 +277,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
     if (channelParticipantsApiResponse?.success && channelParticipantsApiResponse.data) {
       const participantIds = channelParticipantsApiResponse.data;
-      const newSelected = allAvailableSelectableAgents.filter((agent) =>
-        participantIds.includes(agent.id)
+      const newSelected = allAvailableSelectableAgents.filter((agent: Agent) =>
+        participantIds.includes(agent.id!)
       );
 
       setSelectedAgents(newSelected);
-      setInitialSelectedAgentIds(newSelected.map((a) => a.id));
+      setInitialSelectedAgentIds(newSelected.map((a: Agent) => a.id!));
       agentsInitializedRef.current = true;
     } else if (channelParticipantsApiResponse && !channelParticipantsApiResponse.success) {
       toast({
@@ -310,7 +311,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   const comboboxOptions: ComboboxOption[] = useMemo(() => {
     if (isLoadingAgents || isErrorAgents) return [];
-    return allAvailableSelectableAgents.map((agent) => ({
+    return allAvailableSelectableAgents.map((agent: Agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
       icon: typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '', // Ensure icon is always a string
@@ -326,7 +327,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     // In edit mode, wait for agents to be initialized before determining selection
     if (channelId && !agentsInitializedRef.current) return STABLE_EMPTY_COMBOBOX_OPTIONS_ARRAY;
 
-    const options = selectedAgents.map((agent) => ({
+    const options = selectedAgents.map((agent: Agent) => ({
       id: agent.id,
       label: `${agent.name}${agent.status === AgentStatus.INACTIVE ? ' (Inactive)' : ''}`,
       icon: typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : '',
@@ -337,7 +338,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   const handleSelectAgents = useCallback(
     (selectedOptions: ComboboxOption[]) => {
-      const newSelectedAgentObjects = allAvailableSelectableAgents.filter((agent) =>
+      const newSelectedAgentObjects = allAvailableSelectableAgents.filter((agent: Agent) =>
         selectedOptions.some((option) => option.id === agent.id)
       );
       setSelectedAgents(newSelectedAgentObjects);
@@ -347,7 +348,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
 
   const handleDeleteGroup = useCallback(async () => {
     if (!channelId) return;
-    const channel = channelsData?.data?.channels.find((ch) => ch.id === channelId);
+    const channel = channelsData?.find((ch: ElizaMessageChannel) => ch.id === channelId);
     confirm(
       {
         title: 'Delete Group',
@@ -385,11 +386,11 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     }
 
     const proceed = () => {
-      const participantIds = selectedAgents.map((agent) => agent.id);
+      const participantIds = selectedAgents.map((agent: Agent) => agent.id).filter((id): id is UUID => id !== undefined);
       const finalName =
         chatName.trim() ||
         (selectedAgents.length > 0
-          ? selectedAgents.map((agent) => agent.name).join(', ')
+          ? selectedAgents.map((agent: Agent) => agent.name).join(', ')
           : 'Empty Group');
 
       if (!channelId) {

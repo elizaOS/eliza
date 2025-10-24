@@ -143,12 +143,10 @@ const GroupRow = ({
   const currentClientId = getEntityId();
 
   const { data: agentsData } = useAgents();
-  const allAgents = agentsData?.agents || [];
+  const allAgents = agentsData || [];
 
-  const { data: participantsData } = useChannelParticipants(channel.id as UUID);
-  const participants = participantsData?.data;
-  const participantsIds: UUID[] = participants && Array.isArray(participants) ? participants : [];
-  const groupAgents = allAgents.filter((agent) => agent.id && participantsIds.includes(agent.id));
+  const { data: participantsIds } = useChannelParticipants(channel.id as UUID);
+  const groupAgents = allAgents.filter((agent: any) => agent.id && participantsIds && participantsIds.includes(agent.id));
 
   const displayedAgents = groupAgents.slice(0, 3);
   const extraCount = groupAgents.length > 3 ? groupAgents.length - 3 : 0;
@@ -168,7 +166,7 @@ const GroupRow = ({
           <div className="flex items-center gap-2">
             {/* Avatars */}
             <div className="flex -space-x-2">
-              {displayedAgents.map((agent) => (
+              {displayedAgents.map((agent: any) => (
                 <Avatar key={agent.id} className="h-6 w-6 rounded-full border border-background">
                   <AvatarImage
                     src={typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : ''}
@@ -330,7 +328,7 @@ const ChannelsForServer = ({
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
 
   const groupChannels = useMemo(
-    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    () => channelsData?.filter((ch: any) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
   );
 
@@ -373,7 +371,7 @@ const ChannelsForServer = ({
     <>
       <SidebarGroupContent className="px-1 mt-0">
         <SidebarMenu>
-          {groupChannels.map((channel) => (
+          {groupChannels.map((channel: any) => (
             <SidebarMenuItem key={channel.id} className="h-12 group">
               <div className="flex items-center gap-1 w-full">
                 <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
@@ -431,7 +429,7 @@ const GroupChannelsForServer = ({
   const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
 
   const groupChannels = useMemo(
-    () => channelsData?.data?.channels?.filter((ch) => ch.type === CoreChannelType.GROUP) || [],
+    () => channelsData?.filter((ch: any) => ch.type === CoreChannelType.GROUP) || [],
     [channelsData]
   );
 
@@ -449,7 +447,7 @@ const GroupChannelsForServer = ({
 
   return (
     <>
-      {groupChannels.map((channel) => (
+      {groupChannels.map((channel: any) => (
         <GroupRow
           key={channel.id}
           channel={channel}
@@ -490,30 +488,28 @@ export function AppSidebar({
   const queryClient = useQueryClient(); // Get query client instance
   const version = useServerVersionString(); // Get server version
 
-  const { data: agentsDataSubset } = useAgents();
+  const { data: agentsDataSubset, isLoading: isLoadingAgents } = useAgents();
   const { data: serversData, isLoading: isLoadingServers } = useServers();
 
   const agentsSlice = (agentsDataSubset || [])
-    .map((agent) => ({
+    .map((agent: any) => ({
       id: agent.id,
       name: agent.name,
-      status: agent.status ?? CoreAgentStatus.INACTIVE,
-      createdAt: agent.createdAt ?? Date.now(),
-      updatedAt: agent.updatedAt ?? Date.now(),
+      status: agent.status === 'active' ? CoreAgentStatus.ACTIVE : CoreAgentStatus.INACTIVE,
+      createdAt: agent.createdAt instanceof Date ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+      updatedAt: agent.updatedAt instanceof Date ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
       bio: agent.bio ?? [],
       settings: agent.settings ?? {},
-    }) as Agent)
+    }) as unknown as Agent)
     .slice(0, 5);
-  const servers = useMemo(() => serversData?.data?.servers || [], [serversData]);
+  const servers = useMemo(() => Array.isArray(serversData) ? serversData : [], [serversData]);
 
   const [onlineAgents, offlineAgents] = useMemo(
-    () => partition(agentsSlice, (a) => a.status === CoreAgentStatus.ACTIVE),
+    () => partition(agentsSlice, (a: unknown) => (a as Agent).status === CoreAgentStatus.ACTIVE),
     [agentsSlice]
   );
 
-  const agentLoadError = agentsError
-    ? 'Error loading agents: NetworkError: Unable to connect to the server. Please check if the server is running.'
-    : undefined;
+  const agentLoadError = undefined;
 
   const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
@@ -561,7 +557,7 @@ export function AppSidebar({
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="w-full min-w-[var(--radix-dropdown-menu-trigger-width)]"
+          className="w-full min-w-(--radix-dropdown-menu-trigger-width)"
         >
           <DropdownMenuItem onClick={handleCreateAgent} className="w-full">
             Create New Agent

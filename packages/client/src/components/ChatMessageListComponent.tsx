@@ -91,7 +91,7 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           message.id === animatedMessageId;
 
         const senderAgent =
-          !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : undefined;
+          !isUser && getAgentInMessage && message.senderId ? getAgentInMessage(message.senderId) : undefined;
 
         return (
           <div

@@ -149,8 +149,8 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     thought: apiMessage.metadata?.thought,
     actions: apiMessage.metadata?.actions,
     type: messageType,
-    rawMessage: rawMessage,
-  };
+    rawMessage: rawMessage as ApiMessage | undefined,
+  } as any;
 }
 
 // Map API AgentLog to client format

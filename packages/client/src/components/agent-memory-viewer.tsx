@@ -65,15 +65,15 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
 
   // Get all agents to look up names by ID
   const { data: agentsData } = useAgents();
-  const allAgents = (agentsData || []).map((agent: Partial<Agent>) => ({
+  const allAgents = (agentsData || []).map((agent: any) => ({
     id: agent.id,
     name: agent.name,
-    status: agent.status ?? AgentStatus.INACTIVE,
-    createdAt: agent.createdAt ?? Date.now(),
-    updatedAt: agent.updatedAt ?? Date.now(),
+    status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
+    createdAt: agent.createdAt instanceof Date ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+    updatedAt: agent.updatedAt instanceof Date ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
     bio: agent.bio ?? [],
     settings: agent.settings ?? {},
-  }) as Agent);
+  }) as unknown as Agent);
 
   const messagesTableName = selectedType === MemoryType.facts ? undefined : 'messages';
   const factsTableName =
@@ -100,7 +100,7 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
   const error = messagesError || factsError;
 
   // Filter and search memories
-  const filteredMemories = memories.filter((memory: Memory) => {
+  const filteredMemories = (memories as any[]).filter((memory: any) => {
     // Type filter
     if (selectedType !== MemoryType.all && selectedType !== MemoryType.currentChat) {
       // Facts are handled by table selection, so if we're on facts table, show all
@@ -215,7 +215,7 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
 
   const visibleMemories = filteredMemories.slice(0, visibleItems);
   const hasMoreToLoad = visibleItems < filteredMemories.length;
-  const messageGroups = groupMessagesByDate(visibleMemories);
+  const messageGroups = groupMessagesByDate(visibleMemories as any);
 
   // Loading state
   if (isLoading && memories.length === 0) {

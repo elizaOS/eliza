@@ -585,7 +585,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   // Exclude embedding operations by default
   const excludeTypes = ['embedding', 'text_embedding'];
 
-  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId, excludeTypes);
+  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId);
   const { mutate: deleteLog } = useDeleteLog();
 
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();

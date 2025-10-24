@@ -11,11 +11,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAgents, useElizaClient } from '@elizaos/react';
+import { useAgents, useElizaClient, type Agent } from '@elizaos/react';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
-import { AgentStatus } from '@elizaos/react/dist/types/agent';
 
 // Types
 interface LogEntry {
@@ -586,7 +585,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
                       <div className="flex items-start gap-2 min-w-0">
                         <div className="font-mono text-sm leading-relaxed break-all">{log.msg}</div>
                         {log.agentName && (
-                          <Badge variant="secondary" className="text-xs flex-shrink-0">
+                          <Badge variant="secondary" className="text-xs shrink-0">
                             {log.agentName}
                           </Badge>
                         )}

@@ -276,7 +276,7 @@ export default function MemoryEditOverlay({
           className="w-full max-w-4xl h-[85vh] max-h-[800px] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 shrink-0">
             <div className="flex items-center gap-2">
               <CardTitle id="memory-edit-title" className="text-xl font-semibold">
                 Edit Memory Content
@@ -297,7 +297,7 @@ export default function MemoryEditOverlay({
           <CardContent className="pt-4 flex-1 overflow-hidden flex flex-col">
             {/* Warning Banner */}
             <div className="mb-4 flex items-start bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-md p-3">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5 shrink-0" />
               <div className="text-sm text-amber-800 dark:text-amber-200">
                 <p className="font-medium mb-1">Editing Raw Memory Content</p>
                 <p>Changes may affect agent behavior. Ensure JSON format is valid before saving.</p>
@@ -417,13 +417,13 @@ export default function MemoryEditOverlay({
                 />
               )}
 
-              <p id="json-help" className="text-xs text-muted-foreground mt-2 flex-shrink-0">
+              <p id="json-help" className="text-xs text-muted-foreground mt-2 shrink-0">
                 Edit the JSON directly. Use Ctrl+A to select all, Ctrl+Z to undo.
               </p>
             </div>
           </CardContent>
 
-          <CardFooter className="flex justify-between flex-shrink-0">
+          <CardFooter className="flex justify-between shrink-0">
             <Button variant="destructive" onClick={handleDelete} disabled={isProcessing}>
               <Trash className="mr-2 h-4 w-4" />
               Delete Memory

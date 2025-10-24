@@ -19,7 +19,7 @@ export default function AgentSettingsRoute() {
     );
   }
 
-  if (!agentData?.data) {
+  if (!agentData) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <p className="text-muted-foreground">Agent not found</p>
@@ -29,14 +29,14 @@ export default function AgentSettingsRoute() {
   }
 
   const agent: Agent = {
-    ...agentData.data,
-    createdAt: agentData.data.createdAt ?? Date.now(),
-    bio: agentData.data.bio ?? [],
-    topics: agentData.data.topics ?? [],
-    adjectives: agentData.data.adjectives ?? [],
-    style: agentData.data.style ?? { all: [], chat: [], post: [] },
-    settings: agentData.data.settings ?? { secrets: {} },
-  } as Agent;
+    ...agentData,
+    createdAt: agentData.createdAt instanceof Date ? agentData.createdAt.getTime() : (agentData.createdAt ?? Date.now()),
+    bio: agentData.bio ?? [],
+    topics: (agentData as any).topics ?? [],
+    adjectives: (agentData as any).adjectives ?? [],
+    style: (agentData as any).style ?? { all: [], chat: [], post: [] },
+    settings: (agentData as any).settings ?? { secrets: {} },
+  } as unknown as Agent;
 
   return (
     <div className="flex w-full justify-center px-4 sm:px-6 overflow-y-auto">

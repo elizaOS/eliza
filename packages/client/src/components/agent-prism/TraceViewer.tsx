@@ -221,7 +221,7 @@ const DesktopLayout = ({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       {typeof trace.startTime === 'number' && (
                         <span className="text-xs text-muted-foreground font-mono">
                           {new Date(trace.startTime).toLocaleTimeString()}
@@ -309,7 +309,7 @@ const DesktopLayout = ({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       {typeof trace.startTime === 'number' && (
                         <span className="text-xs text-muted-foreground font-mono">
                           {new Date(trace.startTime).toLocaleTimeString()}

@@ -30,15 +30,15 @@ export default function Home() {
   // Extract agents properly from the response
   const agents = useMemo(
     () =>
-      (agentsData || []).map((agent: Partial<Agent>) => ({
+      (agentsData || []).map((agent: any) => ({
         id: agent.id,
         name: agent.name,
-        status: agent.status ?? AgentStatus.INACTIVE,
-        createdAt: agent.createdAt ?? Date.now(),
-        updatedAt: agent.updatedAt ?? Date.now(),
+        status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
+        createdAt: agent.createdAt instanceof Date ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+        updatedAt: agent.updatedAt instanceof Date ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
         bio: agent.bio ?? [],
         settings: agent.settings ?? {},
-      }) as Agent),
+      }) as unknown as Agent),
     [agentsData]
   );
   const activeAgentsCount = agents.filter((a: Agent) => a.status === AgentStatus.ACTIVE).length;
@@ -225,7 +225,7 @@ const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
       {groupChannels.map((channel: MessageChannel) => (
         <GroupCard
           key={channel.id}
-          group={{ ...channel, server_id: serverId } as MessageChannel & { server_id: UUID }} // Pass server_id for navigation context
+          group={{ ...channel, server_id: serverId } as any} // Pass server_id for navigation context
         />
       ))}
     </>

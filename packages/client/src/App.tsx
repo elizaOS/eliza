@@ -118,7 +118,7 @@ function AppContent() {
               </SheetContent>
             </Sheet>
           </div>
-          <div className="flex w-full justify-center pt-16 md:pt-0 flex-shrink-0">
+          <div className="flex w-full justify-center pt-16 md:pt-0 shrink-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>

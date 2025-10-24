@@ -74,11 +74,7 @@ export function ElizaReactProvider({
         [client]
     );
 
-    return (
-        <ElizaReactContext.Provider value={value}>
-            {children}
-        </ElizaReactContext.Provider>
-    );
+    return React.createElement(ElizaReactContext.Provider, { value }, children);
 }
 
 /**

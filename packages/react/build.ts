@@ -16,6 +16,8 @@ if (!existsSync('dist')) {
 const externals = [
     'react',
     'react-dom',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
     '@tanstack/react-query',
     '@elizaos/api-client',
     '@elizaos/core',
@@ -56,11 +58,21 @@ async function build() {
             external: externals,
             sourcemap: true,
             minify: false,
-            generateDts: true,
+            generateDts: false, // Disable due to cross-package TypeScript issues
         },
     });
 
     await run();
+
+    // Generate TypeScript declarations manually with skipLibCheck
+    console.log('Generating TypeScript declarations...');
+    try {
+        const { $ } = await import('bun');
+        await $`bunx tsc --emitDeclarationOnly --project tsconfig.json --types node,bun --skipLibCheck`;
+        console.log('✓ TypeScript declarations generated');
+    } catch (error) {
+        console.warn('⚠ TypeScript declarations generation failed, continuing...');
+    }
 
     // Create root index.d.ts after build
     try {

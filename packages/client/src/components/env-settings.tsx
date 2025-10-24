@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,11 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useElizaClient } from '@elizaos/react';
-import { Loader2, RefreshCw, Plus, Trash2, Copy } from 'lucide-react';
+import { Loader2, RefreshCw, Plus, Trash2, Copy, Eye, EyeOff, Check, X, MoreVertical, Settings } from 'lucide-react';
 import clientLogger from '@/lib/logger';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
+import { ApiKeyDialog } from './api-key-dialog';
 
 export default function EnvSettings() {
   const [name, setName] = useState('');

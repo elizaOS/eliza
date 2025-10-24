@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import ConfirmationDialog from '@/components/confirmation-dialog';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import { ChatBubbleMessage, ChatBubbleTimestamp } from '@/components/ui/chat/chat-bubble';
-import ChatTtsButton from '@/components/ui/chat/chat-tts-button';
+import { ChatTtsButton } from '@/components/ui/chat/chat-tts-button';
 import { Response as AiResponse } from '@/components/ai-elements/response';
 import { useAutoScroll } from '@/components/ui/chat/hooks/useAutoScroll';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -221,7 +221,7 @@ export function MessageContent({
 
               const mediaInfos = parseMediaFromText(message.text);
               const attachmentUrls = new Set(
-                message.attachments?.map((att) => att.url).filter(Boolean) || []
+                message.attachments?.map((att: { url?: string }) => att.url).filter(Boolean) || []
               );
               const uniqueMediaInfos = mediaInfos.filter((media) => !attachmentUrls.has(media.url));
               const textWithoutUrls = removeMediaUrlsFromText(message.text, mediaInfos);
@@ -258,8 +258,8 @@ export function MessageContent({
         )}
 
         {message.attachments
-          ?.filter((attachment) => attachment.url && attachment.url.trim() !== '')
-          .map((attachment: Media) => (
+          ?.filter((attachment: { url?: string }) => attachment.url && attachment.url.trim() !== '')
+          .map((attachment: any) => (
             <MediaContent
               key={`${attachment.url}-${attachment.title}`}
               url={attachment.url}
@@ -283,7 +283,7 @@ export function MessageContent({
           {!isUser && message.text && !message.isLoading && agentForTts?.id && (
             <>
               <CopyButton text={message.text} />
-              <ChatTtsButton agentId={agentForTts.id} text={message.text} />
+              <ChatTtsButton agentId={agentForTts.id} message={message.text} />
             </>
           )}
           {isUser && message.text && !message.isLoading && onRetry && (
@@ -364,12 +364,12 @@ export default function Chat({
   );
 
   // Convert AgentWithStatus to Agent, ensuring required fields have defaults
-  const targetAgentData: Agent | undefined = agentDataResponse?.data
+  const targetAgentData: Agent | undefined = agentDataResponse
     ? ({
-      ...agentDataResponse.data,
-      createdAt: agentDataResponse.data.createdAt || Date.now(),
-      updatedAt: agentDataResponse.data.updatedAt || Date.now(),
-    } as Agent)
+      ...agentDataResponse,
+      createdAt: agentDataResponse.createdAt instanceof Date ? agentDataResponse.createdAt.getTime() : (agentDataResponse.createdAt || Date.now()),
+      updatedAt: agentDataResponse.updatedAt instanceof Date ? agentDataResponse.updatedAt.getTime() : (agentDataResponse.updatedAt || Date.now()),
+    } as unknown as Agent)
     : undefined;
 
   const { handleDelete: handleDeleteAgent, isDeleting: isDeletingAgent } = useDeleteAgent(
@@ -387,22 +387,21 @@ export default function Chat({
   const { data: channelDetailsData } = useChannelDetails(
     chatType === ChannelType.GROUP ? contextId : undefined
   );
-  const { data: participantsData } = useChannelParticipants(
+  const { data: participants } = useChannelParticipants(
     chatType === ChannelType.GROUP ? contextId : undefined
   );
-  const participants = participantsData?.data;
 
   const { data: agentsResponse } = useAgents();
   const elizaClient = useElizaClient();
-  const allAgents = (agentsResponse || []).map((agent) => ({
+  const allAgents = (agentsResponse || []).map((agent: any) => ({
     id: agent.id,
     name: agent.name,
-    status: agent.status ?? AgentStatus.INACTIVE,
-    createdAt: agent.createdAt ?? Date.now(),
-    updatedAt: agent.updatedAt ?? Date.now(),
+    status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
+    createdAt: agent.createdAt instanceof Date ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+    updatedAt: agent.updatedAt instanceof Date ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
     bio: agent.bio ?? [],
     settings: agent.settings ?? {},
-  }) as Agent);
+  }) as unknown as Agent);
 
   const latestChannel = agentDmChannels[0]; // adjust sorting if needed
 
@@ -432,16 +431,16 @@ export default function Chat({
   const groupAgents = useMemo(() => {
     if (chatType !== ChannelType.GROUP || !participants) return [];
     return participants
-      .map((pId) => allAgents.find((a) => a.id === pId))
+      .map((pId: UUID) => allAgents.find((a: Agent) => a.id === pId))
       .filter(Boolean) as Agent[];
   }, [chatType, participants, allAgents]);
 
   const agentAvatarMap = useMemo(
     () =>
       allAgents.reduce(
-        (acc, agent) => {
-          if (agent.id && typeof agent.settings?.avatar === 'string') {
-            acc[agent.id] = agent.settings.avatar;
+        (acc: Record<UUID, string | null>, agent: Agent) => {
+          if (agent.id && typeof (agent as any).settings?.avatar === 'string') {
+            acc[agent.id] = (agent as any).settings.avatar;
           }
           return acc;
         },
@@ -452,7 +451,7 @@ export default function Chat({
 
   const getAgentInMessage = useCallback(
     (agentId: UUID) => {
-      return allAgents.find((a) => a.id === agentId);
+      return allAgents.find((a: Agent) => a.id === agentId);
     },
     [allAgents]
   );
@@ -877,11 +876,13 @@ export default function Chat({
     );
     if (title && participants) {
       // Handle different possible response formats for participants
-      let participantIds = [];
-      if (participants && Array.isArray(participants.participants)) {
-        participantIds = participants.participants.map((p) => p.userId);
+      let participantIds: UUID[] = [];
+      if (participants && Array.isArray((participants as any).participants)) {
+        participantIds = (participants as any).participants.map((p: { userId: UUID }) => p.userId);
       } else if (participants && Array.isArray(participants)) {
-        participantIds = participants.map((p) => p.userId || p.id || p);
+        participantIds = participants.map((p: { userId?: UUID; id?: UUID } | UUID) =>
+          typeof p === 'string' ? p : p.userId || p.id || (p as UUID)
+        );
       }
 
       await elizaClient.messaging.updateChannel(finalChannelIdForHooks, {
@@ -902,14 +903,14 @@ export default function Chat({
     contextId,
     chatType,
     allAgents,
-    messages,
+    messages: messages as any,
     onAddMessage: (message: UiMessage) => {
-      addMessage(message);
+      addMessage(message as any);
       updateChatTitle();
       if (message.isAgent) safeScrollToBottom();
     },
     onUpdateMessage: (messageId: string, updates: Partial<UiMessage>) => {
-      updateMessage(messageId as UUID, updates);
+      updateMessage(messageId as UUID, updates as any);
       if (!updates.isLoading && updates.isLoading !== undefined) safeScrollToBottom();
     },
     onDeleteMessage: (messageId: string) => {
@@ -1015,7 +1016,7 @@ export default function Chat({
       source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
       attachments: optimisticAttachments,
     };
-    if (messageText || currentSelectedFiles.length > 0) addMessage(optimisticUiMessage);
+    if (messageText || currentSelectedFiles.length > 0) addMessage(optimisticUiMessage as any);
     safeScrollToBottom();
     try {
       let processedUiAttachments: Media[] = [];
@@ -1023,9 +1024,9 @@ export default function Chat({
         const { uploaded, failed, blobUrls } = await uploadFiles(currentSelectedFiles);
         processedUiAttachments = uploaded;
         if (failed.length > 0)
-          updateMessage(tempMessageId, {
+          (updateMessage as any)(tempMessageId, {
             attachments: optimisticUiMessage.attachments?.filter(
-              (att) => !failed.some((f) => f.file.id === att.id)
+              (att: { id?: string }) => !failed.some((f) => f.file.id === att.id)
             ),
           });
         cleanupBlobUrls(blobUrls);
@@ -1074,7 +1075,7 @@ export default function Chat({
       updateMessage(tempMessageId, {
         isLoading: false,
         text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
-      });
+      } as any);
       // Re-enable input on error
       updateChatState({ inputDisabled: false });
     } finally {
@@ -1118,7 +1119,7 @@ export default function Chat({
       attachments: message.attachments,
     };
 
-    addMessage(optimisticUiMessage);
+    addMessage(optimisticUiMessage as any);
     safeScrollToBottom();
 
     // Guard against undefined IDs
@@ -1154,7 +1155,7 @@ export default function Chat({
       updateMessage(retryMessageId, {
         isLoading: false,
         text: `${optimisticUiMessage.text || 'Attachment(s)'} (Failed to send)`,
-      });
+      } as any);
       updateChatState({ inputDisabled: false });
     }
   };
@@ -1239,8 +1240,8 @@ export default function Chat({
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="py-6 px-2 flex-shrink-0">
-                  <div className="relative flex-shrink-0">
+                <Button variant="ghost" size="sm" className="py-6 px-2 shrink-0">
+                  <div className="relative shrink-0">
                     <Avatar className="size-4 sm:size-10 border rounded-full">
                       <AvatarImage src={getAgentAvatar(targetAgentData)} />
                     </Avatar>
@@ -1276,7 +1277,7 @@ export default function Chat({
               <DropdownMenuContent
                 align="start"
                 side="bottom"
-                className="min-w-36 w-[var(--radix-dropdown-menu-trigger-width)]"
+                className="min-w-36 w-(--radix-dropdown-menu-trigger-width)"
               >
                 <DropdownMenuItem
                   onClick={() => {
@@ -1314,7 +1315,7 @@ export default function Chat({
             </DropdownMenu>
           </div>
 
-          <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
+          <div className="flex gap-1 sm:gap-2 items-center shrink-0">
             {chatType === ChannelType.DM && (
               <div className="flex items-center gap-2">
                 {agentDmChannels.length > 0 && (
@@ -1325,7 +1326,7 @@ export default function Chat({
                         size="sm"
                         className="w-8 h-9 sm:max-w-[300px] sm:w-auto rounded-[12px]"
                       >
-                        <Clock className="size-4 flex-shrink-0 text-muted-foreground" />
+                        <Clock className="size-4 shrink-0 text-muted-foreground" />
                         <span className="hidden md:inline truncate text-xs sm:text-sm">
                           {agentDmChannels.find((c) => c.id === chatState.currentDmChannelId)
                             ?.name || 'Select Chat'}
@@ -1370,7 +1371,7 @@ export default function Chat({
                                 </span>
                               </div>
                               {channel.id === chatState.currentDmChannelId && (
-                                <Badge variant="default" className="text-xs flex-shrink-0 ml-2">
+                                <Badge variant="default" className="text-xs shrink-0 ml-2">
                                   Current
                                 </Badge>
                               )}
@@ -1447,7 +1448,7 @@ export default function Chat({
       );
     } else if (chatType === ChannelType.GROUP) {
       const groupDisplayName = generateGroupName(
-        channelDetailsData?.data || undefined,
+        channelDetailsData as any,
         groupAgents,
         currentClientEntityId
       );
@@ -1460,7 +1461,7 @@ export default function Chat({
                 {groupDisplayName}
               </h2>
             </div>
-            <div className="flex gap-1 sm:gap-2 items-center flex-shrink-0">
+            <div className="flex gap-1 sm:gap-2 items-center shrink-0">
               {/* Group Actions Split Button */}
               <SplitButton
                 mainAction={{
@@ -1535,7 +1536,7 @@ export default function Chat({
 
           {groupAgents.length > 0 && (
             <div className="flex items-center gap-2 p-2 bg-card rounded-lg border overflow-x-auto">
-              <span className="text-sm text-muted-foreground whitespace-nowrap flex-shrink-0">
+              <span className="text-sm text-muted-foreground whitespace-nowrap shrink-0">
                 Agents:
               </span>
               <div className="flex gap-2 min-w-0">
@@ -1543,11 +1544,11 @@ export default function Chat({
                   variant={!chatState.selectedGroupAgentId ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => updateChatState({ selectedGroupAgentId: null })}
-                  className="flex items-center gap-2 flex-shrink-0"
+                  className="flex items-center gap-2 shrink-0"
                 >
                   <span>All</span>
                 </Button>
-                {groupAgents.map((agent) => (
+                {groupAgents.map((agent: Agent) => (
                   <Button
                     key={agent?.id}
                     variant={chatState.selectedGroupAgentId === agent?.id ? 'default' : 'ghost'}
@@ -1560,7 +1561,7 @@ export default function Chat({
                         setSidebarVisible(true);
                       }
                     }}
-                    className="flex items-center gap-2 flex-shrink-0"
+                    className="flex items-center gap-2 shrink-0"
                   >
                     <Avatar className="size-5">
                       <AvatarImage src={getAgentAvatar(agent)} />
@@ -1584,7 +1585,7 @@ export default function Chat({
         {isFloatingMode ? (
           /* Single panel layout for floating mode */
           <div className="h-full flex flex-col overflow-hidden">
-            <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
+            <div className="shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
             <div
               className={cn(
@@ -1593,7 +1594,7 @@ export default function Chat({
             >
               <div className="flex-1 min-h-0 overflow-hidden px-5 py-2">
                 <ChatMessageListComponent
-                  messages={messages}
+                  messages={messages as any}
                   isLoadingMessages={isLoadingMessages}
                   chatType={chatType}
                   currentClientEntityId={currentClientEntityId}
@@ -1635,7 +1636,7 @@ export default function Chat({
                 />
               </div>
 
-              <div className="flex-shrink-0">
+              <div className="shrink-0">
                 <ChatInputArea
                   input={chatState.input}
                   setInput={(value) => updateChatState({ input: value })}
@@ -1673,7 +1674,7 @@ export default function Chat({
               <div className="relative h-full overflow-hidden">
                 {/* Main chat content */}
                 <div className="h-full flex flex-col overflow-hidden">
-                  <div className="flex-shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
+                  <div className="shrink-0 p-2 sm:p-4 pb-0">{renderChatHeader()}</div>
 
                   <div
                     className={cn(
@@ -1682,7 +1683,7 @@ export default function Chat({
                   >
                     <div className="flex-1 min-h-0 overflow-hidden px-5 py-2">
                       <ChatMessageListComponent
-                        messages={messages}
+                        messages={messages as any}
                         isLoadingMessages={isLoadingMessages}
                         chatType={chatType}
                         currentClientEntityId={currentClientEntityId}
@@ -1724,7 +1725,7 @@ export default function Chat({
                       />
                     </div>
 
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0">
                       <ChatInputArea
                         input={chatState.input}
                         setInput={(value) => updateChatState({ input: value })}
@@ -1799,7 +1800,7 @@ export default function Chat({
             sidebarChannelId = chatState.currentDmChannelId || undefined;
           } else if (chatType === ChannelType.GROUP && chatState.selectedGroupAgentId) {
             sidebarAgentId = chatState.selectedGroupAgentId;
-            const selectedAgent = allAgents.find((a) => a.id === chatState.selectedGroupAgentId);
+            const selectedAgent = allAgents.find((a: Agent) => a.id === chatState.selectedGroupAgentId);
             sidebarAgentName = selectedAgent?.name || 'Group Member';
             sidebarChannelId = contextId; // contextId is the channelId for GROUP
           } else if (chatType === ChannelType.GROUP && !chatState.selectedGroupAgentId) {

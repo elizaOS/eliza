@@ -2,32 +2,29 @@
     "extends": "../../tsconfig.json",
     "compilerOptions": {
         "outDir": "./dist",
-        "declarationDir": "./dist",
-        "declaration": true,
-        "emitDeclarationOnly": true,
-        "skipLibCheck": true,
-        "noEmit": false,
-        "allowImportingTsExtensions": false,
-        "moduleResolution": "node",
+        "rootDir": "./src",
+        "types": [
+            "node",
+            "bun"
+        ],
         "jsx": "react-jsx",
         "lib": [
             "ES2022",
             "DOM",
             "DOM.Iterable"
         ],
-        "types": [
-            "node",
-            "bun"
-        ]
+        "noEmit": false,
+        "emitDeclarationOnly": true,
+        "composite": false,
+        "incremental": false
     },
     "include": [
         "src/**/*"
     ],
     "exclude": [
-        "node_modules",
-        "dist",
         "src/**/*.test.ts",
         "src/**/*.test.tsx",
-        "**/*.spec.ts"
+        "src/**/*.spec.ts",
+        "src/__tests__/**/*"
     ]
 }

@@ -38,7 +38,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
 
   const { data: agentData } = useAgent(agentId);
 
-  const agent = agentData?.data as Agent | undefined;
+  const agent = agentData as Agent | undefined;
 
   const isActive = agent?.status === AgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agentId);
@@ -64,14 +64,14 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
 
   // Handle character export
   const handleExportCharacter = () => {
-    if (!agentData?.data) return;
+    if (!agentData) return;
 
     // Ensure agent has required properties for export
     const agent = {
-      ...agentData.data,
-      createdAt: agentData.data.createdAt || Date.now(),
-      updatedAt: agentData.data.updatedAt || Date.now(),
-    } as Agent;
+      ...agentData,
+      createdAt: agentData.createdAt instanceof Date ? agentData.createdAt.getTime() : (agentData.createdAt || Date.now()),
+      updatedAt: agentData.updatedAt instanceof Date ? agentData.updatedAt.getTime() : (agentData.updatedAt || Date.now()),
+    } as unknown as Agent;
 
     exportCharacterAsJson(agent, toast);
   };
@@ -97,7 +97,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
             </Button>
           </div>
 
-          <div className="p-6 w-full flex items-end bg-gradient-to-b from-primary/20 to-background">
+          <div className="p-6 w-full flex items-end bg-linear-to-b from-primary/20 to-background">
             <div className="flex w-full justify-between items-end">
               <div className="flex flex-col gap-2">
                 <div className="w-24 h-24 flex justify-center items-center relative">
@@ -156,7 +156,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
         <CardContent className="p-6 overflow-auto">
           <div className="rounded-md bg-muted p-4 mb-6 max-h-60 overflow-y-auto">
             <p className="font-medium text-sm mb-2">About Me</p>
-            <p className="font-light text-sm text-gray-500">{agentData?.data?.system}</p>
+            <p className="font-light text-sm text-gray-500">{(agentData as any)?.system}</p>
           </div>
 
           <div className="space-y-6">

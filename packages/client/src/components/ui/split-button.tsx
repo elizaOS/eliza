@@ -79,7 +79,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
               variant={variant}
               size={size}
               disabled={disabled}
-              className={cn('rounded-l-none px-2 flex-shrink-0', dropdownButtonClassName)}
+              className={cn('rounded-l-none px-2 shrink-0', dropdownButtonClassName)}
             >
               <ChevronDown className="h-4 w-4" />
               <span className="sr-only">More options</span>
@@ -93,7 +93,7 @@ export const SplitButton = React.forwardRef<HTMLDivElement, SplitButtonProps>(
                   disabled={action.disabled}
                   className={cn(
                     action.variant === 'destructive' &&
-                      'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
+                    'text-destructive focus:text-destructive hover:bg-red-50 dark:hover:bg-red-950/50'
                   )}
                 >
                   {action.icon}

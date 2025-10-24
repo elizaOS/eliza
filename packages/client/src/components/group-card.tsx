@@ -30,7 +30,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
     );
   }
 
-  const groupName = generateGroupName(group, group.participants || [], currentClientId);
+  const groupName = generateGroupName(group, (group.participants || []) as any, currentClientId);
 
   const handleChatClick = () => {
     navigate(`/group/${group.id}?serverId=${group.server_id}`);
@@ -39,12 +39,10 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
   const { data: agentsData } = useAgents();
   const allAgents = agentsData || [];
 
-  const { data: participantsData } = useChannelParticipants(group.id);
-  const participants = participantsData?.data;
-  const participantsIds: UUID[] = participants && Array.isArray(participants) ? participants : [];
+  const { data: participantsIds } = useChannelParticipants(group.id);
 
-  const groupAgents = participantsIds
-    ? allAgents.filter((agent: Partial<Agent>) => agent.id && participantsIds.includes(agent.id))
+  const groupAgents = participantsIds && participantsIds.length > 0
+    ? allAgents.filter((agent: Partial<Agent>) => agent.id && participantsIds.includes(agent.id)) as any[]
     : [];
 
   const handleSettings = () => {
@@ -53,7 +51,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
 
   const agentNames =
     groupAgents
-      .map((agent: Partial<Agent>) => agent.name)
+      .map((agent: any) => agent.name)
       .filter(Boolean)
       .join(', ') || 'No members';
 
@@ -67,17 +65,17 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
           <div className="flex flex-col justify-between h-full">
             <div className="flex items-center gap-4 p-2 h-[90%]">
               {/* Avatar */}
-              <Avatar className="bg-[#282829] h-16 w-16 flex-shrink-0 rounded-[3px] relative overflow-hidden">
+              <Avatar className="bg-[#282829] h-16 w-16 shrink-0 rounded-[3px] relative overflow-hidden">
                 {groupAgents && groupAgents.length > 0 ? (
                   <div className="grid grid-cols-2 grid-rows-2 gap-1 w-full h-full p-1">
-                    {groupAgents.slice(0, 3).map((agent: Partial<Agent>) => {
+                    {groupAgents.slice(0, 3).map((agent: any) => {
                       const avatarUrl =
-                        typeof agent.settings?.avatar === 'string' ? agent.settings.avatar : null;
+                        typeof agent?.settings?.avatar === 'string' ? agent.settings.avatar : null;
                       return avatarUrl ? (
                         <img
                           key={agent.id}
                           src={avatarUrl}
-                          alt={agent.name}
+                          alt={agent.name || 'Agent'}
                           className="object-cover w-full h-full rounded-[3px]"
                         />
                       ) : (
@@ -85,7 +83,7 @@ const GroupCard: React.FC<GroupCardProps> = ({ group /*, onEdit */ }) => {
                           key={agent.id}
                           className="flex items-center justify-center bg-[#3F3F3F] text-xs font-medium w-full h-full rounded-[3px]"
                         >
-                          {formatAgentName(agent.name)}
+                          {formatAgentName(agent.name || 'A')}
                         </div>
                       );
                     })}
