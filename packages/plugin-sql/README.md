@@ -130,119 +130,186 @@ Default pool configuration:
 
 ## Migration Support
 
-The adapter supports two approaches to managing database schema:
+ElizaOS v1.0.0 introduces **dynamic runtime migrations** - automatic schema management that runs at startup without manual intervention. Plugins can define their schemas and the system handles all migrations automatically.
 
-### 1. Initial Setup
+### TLDR: What Changed?
 
-Migrations are automatically run during initialization if:
+**Before (v0.x):** Manual migrations with `drizzle-kit generate` → `drizzle-kit push` → restart  
+**Now (v1.0.0):** Define schema in plugin → Start agent → Migrations run automatically ✨
 
-- Database tables don't exist
-- Vector extension is not found
+### Key Features
 
-This is handled internally by:
+- **Zero-Config Migrations**: No more manual migration commands
+- **Plugin Isolation**: Each plugin gets its own schema namespace
+- **Safety First**: Destructive changes blocked by default in production
+- **Concurrent Safety**: Built-in locks prevent race conditions
+- **Rollback Protection**: All migrations run in transactions
 
-```typescript
-await runMigrations(pgPool);
-```
+### How It Works
 
-### 2. Schema Updates
-
-To update the schema:
-
-1. Install drizzle-kit (if not already installed):
-
-```bash
-bun add -D drizzle-kit
-```
-
-2. Create or update your schema files (e.g., `schema/account.ts`):
+1. **Plugin defines schema** using Drizzle ORM:
 
 ```typescript
+// In your plugin's schema.ts
 import { pgTable, text, uuid } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
-export const accountTable = pgTable('accounts', {
-  id: uuid('id').primaryKey().notNull(),
-  name: text('name'),
-  email: text('email').notNull(),
-  // Add new fields here
-  newField: text('newField'),
+export const myTable = pgTable('my_table', {
+  id: uuid('id').primaryKey(),
+  name: text('name').notNull(),
+});
+
+// Export schema in your plugin
+export const plugin = {
+  name: '@your-org/plugin-name',
+  schema: schema, // Your Drizzle schema object
+  // ... rest of plugin
+};
+```
+
+2. **Runtime detects changes** at startup:
+
+```bash
+[RuntimeMigrator] Starting migration for plugin: @your-org/plugin-name
+[RuntimeMigrator] Executing 2 SQL statements...
+[RuntimeMigrator] Migration completed successfully
+```
+
+3. **Automatic safety checks**:
+
+```bash
+# Destructive changes are blocked
+[RuntimeMigrator] Destructive migration blocked
+[RuntimeMigrator] Destructive operations detected:
+[RuntimeMigrator]   - Column "email" will be dropped from table "users"
+[RuntimeMigrator] To proceed:
+[RuntimeMigrator]   1. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true
+[RuntimeMigrator]   2. Or use { force: true } option
+```
+
+### Migration Controls
+
+Control migration behavior via environment variables:
+
+```bash
+# Allow destructive migrations (drops, type changes)
+ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true
+
+# Development vs Production
+NODE_ENV=production  # Stricter checks, verbose off by default
+NODE_ENV=development  # More permissive, verbose on
+```
+
+Or programmatically:
+
+```typescript
+await databaseAdapter.runPluginMigrations(plugins, {
+  verbose: true, // Show SQL statements
+  force: true, // Allow destructive changes
+  dryRun: true, // Preview without applying
 });
 ```
 
-3. Generate migrations:
+### Transitioning from Manual Migrations
 
-```bash
-npx drizzle-kit generate:pg
-```
+If you have existing manual Drizzle migrations:
 
-This will create SQL migration files in your migrations directory.
+1. **Keep existing migrations** - They remain compatible
+2. **Add schema to plugin** - Export your Drizzle schema
+3. **First run** - Runtime migrator detects current state
+4. **Future changes** - Just update schema and restart
 
-4. Apply migrations using one of these methods:
-
-a. Using drizzle-kit:
-
-```bash
-npx drizzle-kit push:pg
-```
-
-b. Through your application code:
+Example transition:
 
 ```typescript
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
+// Before: Manual migrations
+// 1. Edit schema
+// 2. Run: bunx drizzle-kit generate
+// 3. Run: bunx drizzle-kit push
+// 4. Restart agent
 
-await migrate(db, { migrationsFolder: './drizzle' });
+// After: Runtime migrations
+// 1. Edit schema in plugin
+// 2. Restart agent (migrations run automatically)
 ```
 
-c. Using the provided migration script:
+### Schema Namespacing
 
-```bash
-npm run migrate
-# or
-bun migrate
-```
+Plugins automatically get namespaced schemas for isolation:
 
-d. Using drizzle-kit migrate command:
+- `@elizaos/plugin-sql` → Uses `public` schema (core tables)
+- `@your-org/plugin-name` → Uses `your_org_plugin_name` schema
+- Prevents table name conflicts between plugins
+- Clean separation of concerns
 
-```bash
-npx drizzle-kit migrate
-```
-
-This command will read the configuration from `drizzle.config.ts` and pull the PostgreSQL URI from the `.env` file. Make sure your `.env` file contains the `POSTGRES_URL` variable with the correct connection string.
-
-### Migration Configuration
-
-The plugin uses a `drizzle.config.ts` file to configure migrations:
+To use a custom schema:
 
 ```typescript
-import { config } from 'dotenv';
-import { defineConfig } from 'drizzle-kit';
+import { pgSchema } from 'drizzle-orm/pg-core';
 
-config({ path: '../../.env' });
-
-export default defineConfig({
-  dialect: 'postgresql',
-  schema: './src/schema/index.ts',
-  out: './drizzle/migrations',
-  dbCredentials: {
-    url: process.env.POSTGRES_URL || 'file:../../.elizadb',
-  },
-  breakpoints: true,
+const mySchema = pgSchema('my_custom_schema');
+export const myTable = mySchema.table('my_table', {
+  // ... columns
 });
+```
+
+### Debugging Migrations
+
+Check migration status:
+
+```typescript
+const migrator = migrationService.getMigrator();
+const status = await migrator.getStatus('@your-org/plugin-name');
+console.log(status);
+// {
+//   hasRun: true,
+//   lastMigration: { hash: "...", timestamp: ... },
+//   journal: [...],
+//   snapshots: 3
+// }
+```
+
+Preview changes without applying:
+
+```typescript
+const check = await migrator.checkMigration('@your-org/plugin-name', schema);
+if (check?.hasDataLoss) {
+  console.log('Warning: Destructive changes:', check.warnings);
+}
 ```
 
 ### Database Support
 
-The plugin supports two database backends:
+The plugin supports two database backends with automatic migration support:
 
-1. **PostgreSQL**: Used when `POSTGRES_URL` environment variable is provided
-2. **PGlite**: Used as a fallback when no PostgreSQL URL is provided
+1. **PostgreSQL**: Production-ready with full feature support
+2. **PGlite**: Embedded database for development/testing
 
-Both backends use the same migration files, ensuring consistent schema across environments.
+Both use identical migration systems - develop locally with PGlite, deploy to PostgreSQL.
 
-### Note on Vector Support
+### Troubleshooting
 
-Make sure the PostgreSQL vector extension is installed before running migrations. The adapter will validate vector setup during initialization.
+**"Destructive migration blocked"**
+
+- Set `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` for development
+- For production, review changes carefully before enabling
+
+**"Migration already in progress"**
+
+- Another instance is running migrations
+- System will wait for lock automatically
+
+**"No changes detected"**
+
+- Schema matches database state
+- No migration needed
+
+**Manual migration needed?**
+
+- Use standard Drizzle Kit for complex scenarios:
+  ```bash
+  bunx drizzle-kit generate
+  bunx drizzle-kit migrate
+  ```
 
 ## Clean Shutdown
 

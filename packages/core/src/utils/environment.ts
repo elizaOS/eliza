@@ -314,3 +314,54 @@ export const currentRuntime = detectEnvironment();
  * Re-export the Environment class for advanced usage
  */
 export { Environment };
+
+// ============================================================================
+// .env File Loading (Node.js only)
+// ============================================================================
+
+/**
+ * Find the .env file in the project
+ */
+export function findEnvFile(): string | null {
+  if (typeof process === 'undefined' || !process.cwd) {
+    return null;
+  }
+
+  // Dynamic import to avoid bundling issues in browser
+  const fs = require('node:fs');
+  const path = require('node:path');
+
+  const possiblePaths = [path.join(process.cwd(), '.env'), path.join(process.cwd(), '.env.local')];
+
+  for (const envPath of possiblePaths) {
+    if (fs.existsSync(envPath)) {
+      return envPath;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Load environment configuration from .env file
+ * Loads environment variables from the project's .env file and returns them as runtime settings.
+ * Node.js only - returns empty object in browser.
+ */
+export async function loadEnvConfig(envPath?: string): Promise<Record<string, any>> {
+  if (typeof process === 'undefined' || !process.cwd) {
+    return {};
+  }
+
+  // Dynamic import to avoid bundling dotenv in browser
+  const dotenv = require('dotenv');
+
+  // Try to find and load .env file
+  const resolvedPath = envPath || findEnvFile();
+  if (resolvedPath) {
+    const result = dotenv.config({ path: resolvedPath });
+    if (result.error) {
+      throw result.error;
+    }
+  }
+  return process.env as Record<string, any>;
+}

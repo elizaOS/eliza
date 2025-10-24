@@ -28,7 +28,7 @@ export const EnhancedEvaluationResultSchema = z.object({
   evaluator_type: z.string(),
   success: z.boolean(),
   summary: z.string(),
-  details: z.record(z.any()),
+  details: z.record(z.string(), z.any()),
 });
 
 export const CapabilityCheckSchema = z.object({
@@ -73,7 +73,7 @@ const LLMJudgeEvaluationSchema = BaseEvaluationSchema.extend({
   expected: z.string(),
   model_type: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  json_schema: z.record(z.any()).optional(), // JSON schema object for response validation
+  json_schema: z.record(z.string(), z.any()).optional(), // JSON schema object for response validation
   capabilities: z.array(z.string()).min(1, 'Capabilities array must not be empty').optional(), // Custom capabilities for evaluation
 });
 
@@ -158,9 +158,9 @@ const MockSchema = z.object({
       // Exact argument matching (existing)
       args: z.array(z.any()).optional(),
       // Input parameter matching (extracted from args)
-      input: z.record(z.any()).optional(),
+      input: z.record(z.string(), z.any()).optional(),
       // Request context matching
-      context: z.record(z.any()).optional(),
+      context: z.record(z.string(), z.any()).optional(),
       // Custom JavaScript matcher function
       matcher: z.string().optional(),
       // Partial argument matching
@@ -192,7 +192,7 @@ const MockSchema = z.object({
 const PluginConfigSchema = z.object({
   name: z.string(),
   version: z.string().optional(),
-  config: z.record(z.any()).optional(),
+  config: z.record(z.string(), z.any()).optional(),
   enabled: z.boolean().optional().default(true),
 });
 
@@ -203,7 +203,7 @@ const PluginReferenceSchema = z.union([
 
 const SetupSchema = z.object({
   mocks: z.array(MockSchema).optional(),
-  virtual_fs: z.record(z.string()).optional(),
+  virtual_fs: z.record(z.string(), z.string()).optional(),
 });
 
 // NEW: Conversation configuration schema
@@ -262,7 +262,11 @@ const ConversationConfigSchema = z.object({
       export_full_transcript: z.boolean().optional().default(true),
     })
     .optional()
-    .default({}),
+    .default(() => ({
+      log_user_simulation: false,
+      log_turn_decisions: false,
+      export_full_transcript: true,
+    })),
 });
 
 const RunStepSchema = z.object({
@@ -371,7 +375,7 @@ export interface ScenarioRunResult {
 export const ScenarioRunResultSchema = z.object({
   run_id: z.string().min(1, 'Run ID cannot be empty'),
   matrix_combination_id: z.string().min(1, 'Matrix combination ID cannot be empty'),
-  parameters: z.record(z.any()),
+  parameters: z.record(z.string(), z.any()),
   metrics: z
     .object({
       execution_time_seconds: z.number().min(0),

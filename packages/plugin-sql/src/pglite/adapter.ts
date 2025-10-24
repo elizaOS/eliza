@@ -76,16 +76,6 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Runs database migrations. For PGLite, migrations are handled by the
-   * migration service, not the adapter itself.
-   * @returns {Promise<void>}
-   */
-  async runMigrations(): Promise<void> {
-    logger.debug('PgliteDatabaseAdapter: Migrations are handled by the migration service');
-    // Migrations are handled by the migration service, not the adapter
-  }
-
-  /**
    * Asynchronously runs the provided database operation while checking if the database is currently shutting down.
    * If the database is shutting down, a warning is logged and null is returned.
    *

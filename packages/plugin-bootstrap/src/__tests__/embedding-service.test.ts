@@ -63,6 +63,26 @@ describe('EmbeddingGenerationService', () => {
 
       expect(registeredEventHandlers.has(EventType.EMBEDDING_GENERATION_REQUESTED)).toBe(true);
     });
+
+    it('should return a disabled service when no TEXT_EMBEDDING model is available', async () => {
+      // Override getModel to return undefined for TEXT_EMBEDDING
+      mockRuntime.getModel = mock((_modelType: string) => {
+        return undefined;
+      });
+
+      service = (await EmbeddingGenerationService.start(mockRuntime)) as EmbeddingGenerationService;
+
+      expect(service).toBeDefined();
+
+      // Service should not register event handlers when disabled
+      expect(registeredEventHandlers.has(EventType.EMBEDDING_GENERATION_REQUESTED)).toBe(false);
+
+      // Queue should remain empty
+      expect(service.getQueueSize()).toBe(0);
+
+      // Verify getModel was called to check for TEXT_EMBEDDING
+      expect(mockRuntime.getModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING);
+    });
   });
 
   describe('Queue Management', () => {

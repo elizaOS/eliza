@@ -243,7 +243,7 @@ export async function generateDts(tsconfigPath = './tsconfig.build.json', throwO
   console.log('Generating TypeScript declarations...');
   try {
     // Use incremental compilation for faster subsequent builds
-    await $`tsc --emitDeclarationOnly --incremental --project ${tsconfigPath}`;
+    await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
     console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
   } catch (error: unknown) {
     console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);

@@ -77,8 +77,8 @@ export const replyAction = {
     responses?: Memory[]
   ): Promise<ActionResult> => {
     // Access previous action results from context if available
-    const context = _options?.context;
-    const previousResults = context?.previousResults || [];
+    const actionContext = _options?.actionContext;
+    const previousResults = actionContext?.previousResults || [];
 
     if (previousResults.length > 0) {
       logger.debug(`[REPLY] Found ${previousResults.length} previous action results`);

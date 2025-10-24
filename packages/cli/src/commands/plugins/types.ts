@@ -13,24 +13,6 @@ export interface AddPluginOptions {
   tag?: string;
 }
 
-export interface UpgradePluginOptions {
-  apiKey?: string;
-  skipTests?: boolean;
-  skipValidation?: boolean;
-  quiet?: boolean;
-  verbose?: boolean;
-  debug?: boolean;
-  skipConfirmation?: boolean;
-}
-
-export interface GeneratePluginOptions {
-  apiKey?: string;
-  skipTests?: boolean;
-  skipValidation?: boolean;
-  skipPrompts?: boolean;
-  specFile?: string;
-}
-
 /**
  * Plugin registry interfaces
  */
@@ -70,26 +52,6 @@ export interface EnvVarConfig {
   required?: boolean;
   default?: string;
   sensitive?: boolean;
-}
-
-/**
- * Plugin migration result
- */
-export interface MigrationResult {
-  success: boolean;
-  branchName?: string;
-  repoPath?: string;
-  error?: Error;
-}
-
-/**
- * Plugin generation result
- */
-export interface GenerationResult {
-  success: boolean;
-  pluginName?: string;
-  pluginPath?: string;
-  error?: Error;
 }
 
 /**

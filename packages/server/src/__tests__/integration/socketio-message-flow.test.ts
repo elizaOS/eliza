@@ -6,8 +6,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import { AgentServer } from '../../index';
 import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
-import { SOCKET_MESSAGE_TYPE, ChannelType, AgentRuntime } from '@elizaos/core';
-import { createDatabaseAdapter } from '@elizaos/plugin-sql';
+import { SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -35,12 +34,17 @@ describe('Socket.IO End-to-End Message Flow', () => {
     // Create and initialize agent server
     agentServer = new AgentServer();
 
+    // Start server on a fixed port for testing FIRST
+    port = 3100;
+    process.env.SERVER_PORT = port.toString();
+
     try {
-      await agentServer.initialize({
+      await agentServer.start({
         dataDir: testDbPath,
+        port,
       });
     } catch (error) {
-      console.error('Failed to initialize agent server:', error);
+      console.error('Failed to start agent server:', error);
       // Clean up on failure
       if (fs.existsSync(testDbPath)) {
         fs.rmSync(testDbPath, { recursive: true, force: true });
@@ -48,9 +52,8 @@ describe('Socket.IO End-to-End Message Flow', () => {
       throw error;
     }
 
-    // Create and register a real test agent
+    // Create and register a real test agent AFTER server is running
     const testCharacter = {
-      id: 'test-char' as UUID,
       name: 'Test Agent',
       bio: ['Test bio'],
       topics: [],
@@ -63,29 +66,23 @@ describe('Socket.IO End-to-End Message Flow', () => {
       modelProvider: 'openai',
     } as Character;
 
-    // Create a real agent runtime for testing
-    const db = createDatabaseAdapter(
-      {
-        dataDir: testDbPath,
-      },
-      'test-agent-123' as UUID
-    );
+    // Use startAgents to properly create and initialize the agent
+    const [testAgent] = await agentServer.startAgents([{ character: testCharacter }]);
+    mockRuntime = testAgent;
 
-    await db.init();
-
-    mockRuntime = new AgentRuntime({
-      agentId: 'test-agent-123' as UUID,
-      character: testCharacter,
-      adapter: db,
-      token: process.env.OPENAI_API_KEY || 'test-token',
-      serverUrl: 'http://localhost:3000',
-    } as any);
-
-    await agentServer.registerAgent(mockRuntime);
-
-    // Start server on a fixed port for testing
-    port = 3100;
-    agentServer.start(port);
+    // Mock the agent's processActions to immediately return a response
+    // This avoids calling OpenAI and prevents timeouts
+    mockRuntime.processActions = async (message: any, responses: any[]) => {
+      // Simulate agent responding to a message
+      responses.push({
+        id: 'mock-response-' + Date.now(),
+        text: 'Mock response from agent',
+        userId: mockRuntime.agentId,
+        agentId: mockRuntime.agentId,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+      });
+    };
 
     // Wait a bit for server to fully start
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -96,11 +93,24 @@ describe('Socket.IO End-to-End Message Flow', () => {
     if (client1) client1.close();
     if (client2) client2.close();
 
-    // Stop server
-    await agentServer.stop();
+    // Stop all agents first to prevent MessageBusService connection errors
+    if (agentServer) {
+      const allAgents = agentServer.getAllAgents();
+      const agentIds = allAgents.map((agent) => agent.agentId);
+      if (agentIds.length > 0) {
+        await agentServer.stopAgents(agentIds);
+        // Give agents time to clean up their connections
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // Then stop the server
+      await agentServer.stop();
+    }
 
     // Clean up test database
     if (fs.existsSync(testDbPath)) {
+      // Wait a bit before cleanup to ensure all file handles are released
+      await new Promise((resolve) => setTimeout(resolve, 500));
       fs.rmSync(testDbPath, { recursive: true, force: true });
     }
   });
@@ -231,7 +241,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
         client2.on('messageBroadcast', (message) => {
           expect(message).toHaveProperty('id');
           expect(message.text).toBe('Hello from client1');
-          expect(message.senderId).toBe('user-1-id');
+          expect(message.senderId).toBe('123e4567-e89b-12d3-a456-426614174001');
           expect(message.channelId).toBe(channelId);
           resolve(message);
         });
@@ -247,7 +257,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
       client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
         channelId,
-        senderId: 'user-1-id',
+        senderId: '123e4567-e89b-12d3-a456-426614174001', // Valid UUID
         senderName: 'User 1',
         message: 'Hello from client1',
         serverId,
@@ -291,7 +301,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
       client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
         channelId,
-        senderId: 'user-1-id',
+        senderId: '123e4567-e89b-12d3-a456-426614174002', // Valid UUID
         senderName: 'User 1',
         message: 'Check out this image',
         serverId,

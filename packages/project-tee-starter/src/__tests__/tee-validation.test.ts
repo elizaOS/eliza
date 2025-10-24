@@ -154,7 +154,9 @@ describe('TEE Environment Validation', () => {
         try {
           await expect(async () => {
             await teeStarterPlugin.init?.({}, mockRuntime);
-          }).toThrow('Wallet secret salt must be at least 8 characters long for security');
+          }).toThrow(
+            'Wallet secret salt must be at least 8 characters long for security (excluding whitespace)'
+          );
         } finally {
           // Restore original argv
           process.argv = originalArgv;
@@ -189,7 +191,60 @@ describe('TEE Environment Validation', () => {
 
       await expect(async () => {
         await teeStarterPlugin.init?.({}, mockRuntime);
-      }).toThrow('Wallet secret salt must not exceed 128 characters');
+      }).toThrow('Wallet secret salt must not exceed 128 characters (excluding whitespace)');
+    });
+
+    test('should reject whitespace-only salt', async () => {
+      // Test various whitespace-only values
+      const whitespaceSalts = ['        ', '\t\t\t\t', '   \t   ', '\n\n\n\n\n\n\n\n'];
+
+      for (const salt of whitespaceSalts) {
+        // Remove argv test detection temporarily to test validation
+        const originalArgv = process.argv;
+        process.argv = ['node', 'script.js']; // Remove test from argv
+
+        process.env.NODE_ENV = 'production';
+        process.env.TEE_MODE = 'OFF';
+        process.env.TEE_VENDOR = 'phala';
+        process.env.WALLET_SECRET_SALT = salt;
+
+        try {
+          await expect(async () => {
+            await teeStarterPlugin.init?.({}, mockRuntime);
+          }).toThrow(
+            'Wallet secret salt must be at least 8 characters long for security (excluding whitespace)'
+          );
+        } finally {
+          // Restore original argv
+          process.argv = originalArgv;
+        }
+      }
+    });
+
+    test('should trim salt and accept if valid after trimming', async () => {
+      // Test values with leading/trailing whitespace that are valid after trimming
+      const paddedSalts = [
+        '  valid_salt_123  ',
+        '\tvalid_salt_123\t',
+        '\n\nvalid_salt_123\n\n',
+        '   valid_salt_123   ',
+      ];
+
+      for (const salt of paddedSalts) {
+        process.env.NODE_ENV = 'production';
+        process.env.TEE_MODE = 'OFF';
+        process.env.TEE_VENDOR = 'phala';
+        process.env.WALLET_SECRET_SALT = salt;
+
+        let error = null;
+        try {
+          await teeStarterPlugin.init?.({}, mockRuntime);
+        } catch (e) {
+          error = e;
+        }
+        // Should not throw error since trimmed value is valid
+        expect(error).toBeNull();
+      }
     });
   });
 
@@ -281,10 +336,11 @@ describe('TEE Environment Validation', () => {
         process.env.TEE_VENDOR = ' phala '; // Whitespace around valid value
         process.env.WALLET_SECRET_SALT = ' test_salt_123 '; // Whitespace around valid value
 
-        // Whitespace should cause validation failure (no auto-trim)
+        // TEE_MODE and TEE_VENDOR whitespace should cause validation failure
+        // But WALLET_SECRET_SALT is now trimmed and should pass if length is valid after trimming
         await expect(async () => {
           await teeStarterPlugin.init?.({}, mockRuntime);
-        }).toThrow();
+        }).toThrow(); // Will throw due to TEE_MODE/TEE_VENDOR whitespace
       } finally {
         // Restore original values
         process.argv = originalArgv;

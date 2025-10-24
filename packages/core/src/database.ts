@@ -44,11 +44,19 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   abstract init(): Promise<void>;
 
   /**
-   * Run database migrations
-   * @param migrationsPaths Optional array of paths to migration folders
+   * Run plugin schema migrations for all registered plugins
+   * @param plugins Array of plugins with their schemas
+   * @param options Migration options (verbose, force, dryRun, etc.)
    * @returns A Promise that resolves when migrations are complete.
    */
-  abstract runMigrations(migrationsPaths?: string[]): Promise<void>;
+  abstract runPluginMigrations(
+    plugins: Array<{ name: string; schema?: any }>,
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void>;
 
   /**
    * Check if the database connection is ready.
@@ -149,6 +157,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;

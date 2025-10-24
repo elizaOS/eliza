@@ -11,18 +11,23 @@ import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
+import { DefaultMessageService } from './services/default-message-service';
+import type { IMessageService } from './services/message-service';
 import {
   ChannelType,
   EventType,
   ModelType,
   MODEL_SETTINGS,
   type Content,
+  type ControlMessage,
   type MemoryMetadata,
   type Character,
   type Action,
   type Evaluator,
   type Provider,
   type HandlerCallback,
+  type HandlerOptions,
+  type ActionContext,
   type IDatabaseAdapter,
   type Entity,
   type Room,
@@ -33,6 +38,7 @@ import {
   type ModelResultMap,
   type ModelTypeName,
   type Plugin,
+  type PluginEvents,
   type Route,
   type UUID,
   type Service,
@@ -50,8 +56,10 @@ import {
   type Component,
   IAgentRuntime,
   type ActionResult,
-  type ActionContext,
   ServiceType,
+  type GenerateTextParams,
+  type GenerateTextOptions,
+  type GenerateTextResult,
 } from './types';
 
 import { BM25 } from './search';
@@ -86,6 +94,11 @@ export class Semaphore {
 }
 
 type ServiceResolver = (service: Service) => void;
+type ServiceRejecter = (reason: any) => void;
+type ServicePromiseHandler = {
+  resolve: ServiceResolver;
+  reject: ServiceRejecter;
+};
 
 export class AgentRuntime implements IAgentRuntime {
   readonly #conversationLength = 32 as number;
@@ -97,8 +110,8 @@ export class AgentRuntime implements IAgentRuntime {
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
   private isInitialized = false;
-  events: Map<string, ((params: any) => Promise<void>)[]> = new Map();
-  stateCache?: IKVStore<Pick<State, 'values' | 'data' | 'text'>>;
+  stateCache?: IKVStore<State>;
+  events: PluginEvents = {};
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
   private serviceTypes = new Map<ServiceTypeName, (typeof Service)[]>();
@@ -115,11 +128,16 @@ export class AgentRuntime implements IAgentRuntime {
 
   public logger;
   private settings: RuntimeSettings;
-  private servicesInitQueue = new Set<typeof Service>();
-  private servicePromiseHandles = new Map<string, ServiceResolver>(); // write
+  private servicePromiseHandlers = new Map<string, ServicePromiseHandler>(); // Combined handlers for resolve/reject
   private servicePromises = new Map<string, Promise<Service>>(); // read
-  public initPromise;
-  private initResolver: ((value?: unknown) => void) | undefined;
+  private serviceRegistrationStatus = new Map<
+    ServiceTypeName,
+    'pending' | 'registering' | 'registered' | 'failed'
+  >(); // status tracking
+  public initPromise: Promise<void>;
+  private initResolver: ((value?: void | PromiseLike<void>) => void) | undefined;
+  private initRejecter: ((reason?: any) => void) | undefined;
+  private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
   private currentActionContext?: {
     // Track current action execution context
@@ -132,6 +150,7 @@ export class AgentRuntime implements IAgentRuntime {
     }>;
   };
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
+  public messageService: IMessageService | null = null; // Lazily initialized
 
   constructor(opts: {
     conversationLength?: number;
@@ -141,17 +160,17 @@ export class AgentRuntime implements IAgentRuntime {
     fetch?: typeof fetch;
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
-    events?: { [key: string]: ((params: any) => void)[] };
     allAvailablePlugins?: Plugin[];
   }) {
+    // Generate deterministic UUID from character name for backward compatibility
+    // Falls back to random UUID only if no character name is provided
     this.agentId =
-      opts.character?.id ??
-      opts?.agentId ??
-      stringToUuid(opts.character?.name ?? uuidv4() + opts.character?.username);
+      opts.character?.id ?? opts?.agentId ?? stringToUuid(opts.character?.name ?? uuidv4());
     this.character = opts.character as Character;
 
-    this.initPromise = new Promise((resolve) => {
+    this.initPromise = new Promise((resolve, reject) => {
       this.initResolver = resolve;
+      this.initRejecter = reject;
     });
 
     // Create the logger with namespace only - level is handled globally from env
@@ -316,11 +335,30 @@ export class AgentRuntime implements IAgentRuntime {
           this._createServiceResolver(service.serviceType as ServiceTypeName);
         }
 
-        if (this.isInitialized) {
-          await this.registerService(service);
-        } else {
-          this.servicesInitQueue.add(service);
-        }
+        // Track service registration status
+        this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'pending');
+
+        // Register service asynchronously; handle errors without rethrowing since
+        // we are not awaiting this promise here (to avoid unhandled rejections)
+        this.registerService(service).catch((error) => {
+          this.logger.error(
+            `Service registration failed for ${service.serviceType}: ${error instanceof Error ? error.message : String(error)}`
+          );
+          // Reject the service promise so waiting consumers know about the failure
+          const handler = this.servicePromiseHandlers.get(service.serviceType as ServiceTypeName);
+          if (handler) {
+            const serviceError = new Error(
+              `Service ${service.serviceType} failed to register: ${error instanceof Error ? error.message : String(error)}`
+            );
+            handler.reject(serviceError);
+            // Clean up the promise handles
+            this.servicePromiseHandlers.delete(service.serviceType as ServiceTypeName);
+            this.servicePromises.delete(service.serviceType as ServiceTypeName);
+          }
+          // Update service status
+          this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'failed');
+          // Do not rethrow; error is propagated via promise rejection and status update
+        });
       }
     }
   }
@@ -340,42 +378,50 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      this.logger.warn('Agent already initialized');
-      return;
-    }
-    const pluginRegistrationPromises: Promise<void>[] = [];
-
-    // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
-    // The runtime now accepts a pre-resolved, ordered list of plugins.
-    const pluginsToLoad = this.characterPlugins;
-
-    for (const plugin of pluginsToLoad) {
-      if (plugin) {
-        pluginRegistrationPromises.push(this.registerPlugin(plugin));
-      }
-    }
-    await Promise.all(pluginRegistrationPromises);
-
-    if (!this.adapter) {
-      this.logger.error(
-        'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.'
-      );
-      throw new Error(
-        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
-      );
-    }
     try {
-      await this.adapter.init();
+      const pluginRegistrationPromises: Promise<void>[] = [];
+
+      // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
+      // The runtime now accepts a pre-resolved, ordered list of plugins.
+      const pluginsToLoad = this.characterPlugins;
+
+      for (const plugin of pluginsToLoad) {
+        if (plugin) {
+          pluginRegistrationPromises.push(this.registerPlugin(plugin));
+        }
+      }
+      await Promise.all(pluginRegistrationPromises);
+
+      if (!this.adapter) {
+        const errorMsg =
+          'Database adapter not initialized. Make sure @elizaos/plugin-sql is included in your plugins.';
+        this.logger.error(errorMsg);
+        throw new Error(
+          'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+        );
+      }
+
+      // Make adapter init idempotent - check if already initialized
+      if (!(await this.adapter.isReady())) {
+        await this.adapter.init();
+      }
+
+      // Initialize message service
+      this.messageService = new DefaultMessageService();
 
       // Run migrations for all loaded plugins
       this.logger.info('Running plugin migrations...');
       await this.runPluginMigrations();
       this.logger.info('Plugin migrations completed.');
 
-      const existingAgent = await this.ensureAgentExists(this.character as Partial<Agent>);
+      // Ensure character has the agent ID set before calling ensureAgentExists
+      // We create a new object with the ID to avoid mutating the original character
+      const existingAgent = await this.ensureAgentExists({
+        ...this.character,
+        id: this.agentId,
+      } as Partial<Agent>);
       if (!existingAgent) {
-        const errorMsg = `Agent ${this.character.name} does not exist in database after ensureAgentExists call`;
+        const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
         throw new Error(errorMsg);
       }
 
@@ -399,12 +445,7 @@ export class AgentRuntime implements IAgentRuntime {
 
         this.logger.debug(`Success: Agent entity created successfully for ${this.character.name}`);
       }
-    } catch (error: any) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to create agent entity: ${errorMsg}`);
-      throw error;
-    }
-    try {
+
       // Room creation and participant setup
       const room = await this.getRoom(this.agentId);
       if (!room) {
@@ -427,71 +468,112 @@ export class AgentRuntime implements IAgentRuntime {
         }
         this.logger.debug(`Agent ${this.character.name} linked to its own room successfully`);
       }
+
+      const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+      if (!embeddingModel) {
+        this.logger.warn(
+          `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
+        );
+      } else {
+        await this.ensureEmbeddingDimension();
+      }
+
+      const kvStore = this.getService(ServiceType.KV_STORE);
+
+      if (isKVStoreService(kvStore)) {
+        this.stateCache = kvStore.getStore('stateCache');
+      }
+
+      // fallback to in-memory cache
+      if (!this.stateCache) {
+        this.stateCache = new Map<
+          UUID,
+          Pick<State, 'values' | 'data' | 'text'>
+        >() as unknown as IKVStore<Pick<State, 'values' | 'data' | 'text'>>;
+      }
+
+      // Resolve init promise to allow services to start
+      if (this.initResolver) {
+        this.initResolver();
+        this.initResolver = undefined;
+      }
     } catch (error: any) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to add agent as participant: ${errorMsg}`);
+      this.logger.error(`Runtime initialization failed: ${errorMsg}`);
+
+      // Reject init promise to prevent services from hanging
+      if (this.initRejecter) {
+        this.initRejecter(error);
+        this.initRejecter = undefined;
+      }
+
+      // Also reject all pending service promises
+      for (const [serviceType, promise] of this.servicePromises) {
+        const handler = this.servicePromiseHandlers.get(serviceType);
+        if (handler) {
+          const serviceError = new Error(
+            `Service ${serviceType} failed to start due to runtime initialization failure: ${errorMsg}`
+          );
+          handler.reject(serviceError);
+          // Clean up the maps to prevent future hangs
+          this.servicePromiseHandlers.delete(serviceType);
+          this.servicePromises.delete(serviceType);
+          // Update service status
+          this.serviceRegistrationStatus.set(serviceType as ServiceTypeName, 'failed');
+        }
+      }
+
       throw error;
-    }
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      this.logger.warn(
-        `[AgentRuntime][${this.character.name}] No TEXT_EMBEDDING model registered. Skipping embedding dimension setup.`
-      );
-    } else {
-      await this.ensureEmbeddingDimension();
-    }
-    for (const service of this.servicesInitQueue) {
-      await this.registerService(service);
-    }
-
-    const kvStore = this.getService(ServiceType.KV_STORE);
-
-    if (isKVStoreService(kvStore)) {
-      this.stateCache = kvStore.getStore('stateCache');
-    }
-
-    // fallback to in-memory cache
-    if (!this.stateCache) {
-      this.stateCache = new Map<
-        UUID,
-        Pick<State, 'values' | 'data' | 'text'>
-      >() as unknown as IKVStore<Pick<State, 'values' | 'data' | 'text'>>;
-    }
-
-    this.isInitialized = true;
-    if (this.initResolver) {
-      this.initResolver(); // resolve initPromise
     }
   }
 
   async runPluginMigrations(): Promise<void> {
-    const drizzle = (this.adapter as any)?.db;
-    if (!drizzle) {
-      this.logger.warn('Drizzle instance not found on adapter, skipping plugin migrations.');
+    // Check if adapter supports plugin migrations
+    if (!this.adapter) {
+      this.logger.warn('Database adapter not found, skipping plugin migrations.');
       return;
     }
 
-    const pluginsWithSchemas = this.plugins.filter((p) => p.schema);
+    // Check if the adapter implements the plugin migration interface
+    if (typeof this.adapter.runPluginMigrations !== 'function') {
+      this.logger.warn('Database adapter does not support plugin migrations.');
+      return;
+    }
+
+    // Collect plugins with schemas
+    const pluginsWithSchemas = this.plugins
+      .filter((p) => p.schema)
+      .map((p) => ({ name: p.name, schema: p.schema }));
+
+    if (pluginsWithSchemas.length === 0) {
+      this.logger.info('No plugins with schemas found, skipping migrations.');
+      return;
+    }
+
     this.logger.info(`Found ${pluginsWithSchemas.length} plugins with schemas to migrate.`);
 
-    for (const p of pluginsWithSchemas) {
-      if (p.schema) {
-        this.logger.info(`Running migrations for plugin: ${p.name}`);
-        try {
-          // You might need a more generic way to run migrations if they are not all Drizzle-based
-          // For now, assuming a function on the adapter or a utility function
-          if (this.adapter && 'runMigrations' in this.adapter) {
-            await (this.adapter as any).runMigrations(p.schema, p.name);
-            this.logger.info(`Successfully migrated plugin: ${p.name}`);
-          }
-        } catch (error) {
-          this.logger.error(
-            error instanceof Error ? error : new Error(String(error)),
-            `Failed to migrate plugin ${p.name}`
-          );
-          // Decide if you want to throw or continue
-        }
-      }
+    try {
+      // Determine migration options based on environment
+      const isProduction = process.env.NODE_ENV === 'production';
+      const forceDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === 'true';
+
+      const options = {
+        verbose: !isProduction,
+        force: forceDestructive,
+        dryRun: false,
+      };
+
+      // Run all plugin migrations through the adapter
+      await this.adapter.runPluginMigrations(pluginsWithSchemas, options);
+
+      this.logger.info('Plugin migrations completed successfully.');
+    } catch (error) {
+      this.logger.error(
+        error instanceof Error ? error : new Error(String(error)),
+        'Failed to run plugin migrations'
+      );
+      // Re-throw to prevent agent from starting with incomplete migrations
+      throw error;
     }
   }
 
@@ -631,11 +713,12 @@ export class AgentRuntime implements IAgentRuntime {
       startTime: number;
     } | null = null;
 
+    const thought =
+      responses[0]?.content?.thought ||
+      `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
+
     if (hasMultipleActions) {
       // Extract thought from response content
-      const thought =
-        responses[0]?.content?.thought ||
-        `Executing ${allActions.length} actions: ${allActions.join(', ')}`;
 
       actionPlan = {
         runId,
@@ -797,8 +880,8 @@ export class AgentRuntime implements IAgentRuntime {
           };
 
           // Add plan information to options if multiple actions
-          const options: { [key: string]: unknown } = {
-            context: actionContext,
+          const options: HandlerOptions = {
+            actionContext: actionContext,
           };
 
           if (actionPlan) {
@@ -823,7 +906,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionId: actionId,
                 runId: runId,
                 type: 'agent_action',
-                thought: actionPlan?.thought,
+                thought: thought,
                 source: message.content?.source, // Include original message source
               },
             });
@@ -831,10 +914,10 @@ export class AgentRuntime implements IAgentRuntime {
             this.logger.error('Failed to create action start message:', String(error));
           }
 
-          let storedCallbackData: { content: Content; files?: any }[] = [];
+          let storedCallbackData: Content[] = [];
 
-          const storageCallback = async (response: Content, files?: any) => {
-            storedCallbackData.push({ content: response, files });
+          const storageCallback = async (response: Content) => {
+            storedCallbackData.push(response);
             return [];
           };
 
@@ -946,6 +1029,7 @@ export class AgentRuntime implements IAgentRuntime {
                 actionStatus: statusText,
                 actionId: actionId,
                 type: 'agent_action',
+                thought: thought,
                 actionResult: actionResult,
                 source: message.content?.source, // Include original message source
               },
@@ -960,8 +1044,8 @@ export class AgentRuntime implements IAgentRuntime {
           }
 
           if (callback) {
-            for (const data of storedCallbackData) {
-              await callback(data.content, data.files);
+            for (const content of storedCallbackData) {
+              await callback(content);
             }
           }
 
@@ -1115,6 +1199,11 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
+  async getActionResults(messageId: UUID): Promise<ActionResult[]> {
+    const cachedState = await this.stateCache?.get(`${messageId}_action_results`);
+    return (cachedState?.data?.actionResults as ActionResult[]) || [];
+  }
+
   async evaluate(
     message: Memory,
     state: State,
@@ -1122,44 +1211,68 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-      if (!evaluator.handler) {
-        return null;
+    try {
+      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+        try {
+          if (!evaluator.handler) {
+            return null;
+          }
+          if (!didRespond && !evaluator.alwaysRun) {
+            return null;
+          }
+          const result = await evaluator.validate(this, message, state);
+          if (result) {
+            return evaluator;
+          }
+          return null;
+        } catch (error) {
+          this.logger.error(
+            { error, evaluatorName: evaluator.name },
+            `Error validating evaluator ${evaluator.name}`
+          );
+          return null;
+        }
+      });
+      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+      if (evaluators.length === 0) {
+        return [];
       }
-      if (!didRespond && !evaluator.alwaysRun) {
-        return null;
-      }
-      const result = await evaluator.validate(this, message, state);
-      if (result) {
-        return evaluator;
-      }
-      return null;
-    });
-    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-    if (evaluators.length === 0) {
+      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+      await Promise.all(
+        evaluators.map(async (evaluator) => {
+          try {
+            if (evaluator.handler) {
+              await evaluator.handler(this, message, state, {}, callback, responses);
+              this.adapter.log({
+                entityId: message.entityId,
+                roomId: message.roomId,
+                type: 'evaluator',
+                body: {
+                  evaluator: evaluator.name,
+                  messageId: message.id,
+                  message: message.content.text,
+                  state,
+                  runId: this.getCurrentRunId(),
+                },
+              });
+            }
+          } catch (error) {
+            this.logger.error(
+              { error, evaluatorName: evaluator.name },
+              `Error executing evaluator ${evaluator.name}`
+            );
+            // Continue with other evaluators even if one fails
+          }
+        })
+      );
+      return evaluators;
+    } catch (error) {
+      this.logger.error(
+        { error, messageId: message.id, roomId: message.roomId },
+        'Error in evaluate method'
+      );
       return [];
     }
-    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-    await Promise.all(
-      evaluators.map(async (evaluator) => {
-        if (evaluator.handler) {
-          await evaluator.handler(this, message, state, {}, callback, responses);
-          this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'evaluator',
-            body: {
-              evaluator: evaluator.name,
-              messageId: message.id,
-              message: message.content.text,
-              state,
-              runId: this.getCurrentRunId(),
-            },
-          });
-        }
-      })
-    );
-    return evaluators;
   }
 
   // highly SQL optimized queries
@@ -1647,6 +1760,61 @@ export class AgentRuntime implements IAgentRuntime {
     return serviceInstances !== undefined && serviceInstances.length > 0;
   }
 
+  /**
+   * Get the registration status of a service
+   * @param serviceType - The service type to check
+   * @returns the current registration status
+   */
+  getServiceRegistrationStatus(
+    serviceType: ServiceTypeName | string
+  ): 'pending' | 'registering' | 'registered' | 'failed' | 'unknown' {
+    return this.serviceRegistrationStatus.get(serviceType as ServiceTypeName) || 'unknown';
+  }
+
+  /**
+   * Get service health information
+   * @returns Object containing service health status
+   */
+  getServiceHealth(): Record<
+    string,
+    {
+      status: 'pending' | 'registering' | 'registered' | 'failed' | 'unknown';
+      instances: number;
+      hasPromise: boolean;
+    }
+  > {
+    const health: Record<
+      string,
+      {
+        status: 'pending' | 'registering' | 'registered' | 'failed' | 'unknown';
+        instances: number;
+        hasPromise: boolean;
+      }
+    > = {};
+
+    // Check all registered services
+    for (const [serviceType, instances] of this.services) {
+      health[serviceType] = {
+        status: this.getServiceRegistrationStatus(serviceType),
+        instances: instances.length,
+        hasPromise: this.servicePromises.has(serviceType),
+      };
+    }
+
+    // Check services that have registration status but no instances yet
+    for (const [serviceType, status] of this.serviceRegistrationStatus) {
+      if (!health[serviceType]) {
+        health[serviceType] = {
+          status,
+          instances: 0,
+          hasPromise: this.servicePromises.has(serviceType),
+        };
+      }
+    }
+
+    return health;
+  }
+
   async registerService(serviceDef: typeof Service): Promise<void> {
     const serviceType = serviceDef.serviceType as ServiceTypeName;
     if (!serviceType) {
@@ -1660,7 +1828,28 @@ export class AgentRuntime implements IAgentRuntime {
       serviceType
     );
 
+    // Update service status to registering
+    this.serviceRegistrationStatus.set(serviceType, 'registering');
+
     try {
+      // ALL services wait for initialization to complete with a timeout to prevent hanging
+      // This ensures services start after all plugins are registered and runtime is ready
+      this.logger.debug(`Service ${serviceType} waiting for initialization...`);
+
+      // Add timeout protection to prevent indefinite hangs
+      const initTimeout = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(
+            new Error(
+              `Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`
+            )
+          );
+        }, 30000); // 30 second timeout
+      });
+
+      await Promise.race([this.initPromise, initTimeout]);
+      this.logger.debug(`Service ${serviceType} proceeding - initialization complete`);
+
       const serviceInstance = await serviceDef.start(this);
 
       // Initialize arrays if they don't exist
@@ -1677,18 +1866,23 @@ export class AgentRuntime implements IAgentRuntime {
 
       // inform everyone that's waiting for this service, that it's now available
       // removes the need for polling and timers
-      const resolve = this.servicePromiseHandles.get(serviceType);
-      if (resolve) {
-        resolve(serviceInstance);
+      const handler = this.servicePromiseHandlers.get(serviceType);
+      if (handler) {
+        handler.resolve(serviceInstance);
+        // Clean up the promise handler after resolving
+        this.servicePromiseHandlers.delete(serviceType);
       } else {
         this.logger.debug(
-          `${this.character.name} - Service ${serviceType} has no servicePromiseHandle`
+          `${this.character.name} - Service ${serviceType} has no servicePromiseHandler`
         );
       }
 
       if (typeof (serviceDef as any).registerSendHandlers === 'function') {
         (serviceDef as any).registerSendHandlers(this, serviceInstance);
       }
+      // Update service status to registered
+      this.serviceRegistrationStatus.set(serviceType, 'registered');
+
       this.logger.debug(
         `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
       );
@@ -1697,25 +1891,57 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.error(
         `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
       );
+
+      // Provide additional context about the failure
+      if (error?.message?.includes('timed out waiting for runtime initialization')) {
+        this.logger.error(
+          `Service ${serviceType} failed due to runtime initialization timeout. Check if runtime.initialize() is being called and completing successfully.`
+        );
+      } else if (
+        error?.message?.includes('Service') &&
+        error?.message?.includes('failed to start')
+      ) {
+        this.logger.error(
+          `Service ${serviceType} failed to start. Check service implementation and dependencies.`
+        );
+      }
+
+      // Update service status to failed
+      this.serviceRegistrationStatus.set(serviceType, 'failed');
+
+      // Reject the service promise if it exists
+      const handler = this.servicePromiseHandlers.get(serviceType);
+      if (handler) {
+        handler.reject(error);
+        // Clean up the promise handles
+        this.servicePromiseHandlers.delete(serviceType);
+        this.servicePromises.delete(serviceType);
+      }
+
       throw error;
     }
   }
 
-  /// ensures servicePromises & servicePromiseHandles for a serviceType
+  /// ensures servicePromises & servicePromiseHandlers for a serviceType
   private _createServiceResolver(serviceType: ServiceTypeName) {
     // consider this in the future iterations
     // const { promise, resolve, reject } = Promise.withResolvers<T>();
     let resolver: ServiceResolver | undefined;
+    let rejecter: ServiceRejecter | undefined;
     this.servicePromises.set(
       serviceType,
-      new Promise<Service>((resolve) => {
+      new Promise<Service>((resolve, reject) => {
         resolver = resolve;
+        rejecter = reject;
       })
     );
     if (!resolver) {
       throw new Error(`Failed to create resolver for service ${serviceType}`);
     }
-    this.servicePromiseHandles.set(serviceType, resolver);
+    if (!rejecter) {
+      throw new Error(`Failed to create rejecter for service ${serviceType}`);
+    }
+    this.servicePromiseHandlers.set(serviceType, { resolve: resolver, reject: rejecter });
     return this.servicePromises.get(serviceType)!;
   }
 
@@ -1885,7 +2111,7 @@ export class AgentRuntime implements IAgentRuntime {
       `[useModel] ${modelKey} input: ` +
         JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
     );
-    let paramsWithRuntime: any;
+    let modelParams: ModelParamsMap[T];
     if (
       params === null ||
       params === undefined ||
@@ -1893,24 +2119,20 @@ export class AgentRuntime implements IAgentRuntime {
       Array.isArray(params) ||
       BufferUtils.isBuffer(params)
     ) {
-      paramsWithRuntime = params;
+      modelParams = params;
     } else {
       // Include model settings from character configuration if available
       const modelSettings = this.getModelSettings(modelKey);
 
       if (modelSettings) {
         // Apply model settings if configured
-        paramsWithRuntime = {
+        modelParams = {
           ...modelSettings, // Apply model settings first (includes defaults and model-specific)
           ...params, // Then apply specific params (allowing overrides)
-          runtime: this,
         };
       } else {
         // No model settings configured, use params as-is
-        paramsWithRuntime = {
-          ...params,
-          runtime: this,
-        };
+        modelParams = params;
       }
     }
     const startTime =
@@ -1918,7 +2140,7 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now();
     try {
-      const response = await model(this, paramsWithRuntime);
+      const response = await model(this, modelParams);
       const elapsedTime =
         (typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? performance.now()
@@ -1982,22 +2204,80 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  registerEvent(event: string, handler: (params: any) => Promise<void>) {
-    if (!this.events.has(event)) {
-      this.events.set(event, []);
+  /**
+   * Simplified text generation with optional character context.
+   */
+  async generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult> {
+    if (!input?.trim()) {
+      throw new Error('Input cannot be empty');
     }
-    this.events.get(event)?.push(handler);
+
+    // Set defaults
+    const includeCharacter = options?.includeCharacter ?? true;
+    const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
+
+    let prompt = input;
+
+    // Add character context if requested
+    if (includeCharacter && this.character) {
+      const c = this.character;
+      const parts: string[] = [];
+
+      // Add bio
+      const bioText = Array.isArray(c.bio) ? c.bio.join(' ') : c.bio;
+      if (bioText) {
+        parts.push(`# About ${c.name}\n${bioText}`);
+      }
+
+      // Add system prompt
+      if (c.system) {
+        parts.push(c.system);
+      }
+
+      // Add style directives (all + chat)
+      const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
+      if (styles.length > 0) {
+        parts.push(`Style:\n${styles.map((s) => `- ${s}`).join('\n')}`);
+      }
+
+      // Combine character context with input
+      if (parts.length > 0) {
+        prompt = `${parts.join('\n\n')}\n\n${input}`;
+      }
+    }
+
+    const params: GenerateTextParams = {
+      prompt,
+      maxTokens: options?.maxTokens,
+      temperature: options?.temperature,
+      frequencyPenalty: options?.frequencyPenalty,
+      presencePenalty: options?.presencePenalty,
+      stopSequences: options?.stopSequences,
+    };
+
+    const response = await this.useModel(modelType, params);
+
+    return {
+      text: response as string,
+    };
+  }
+
+  registerEvent(event: string, handler: (params: any) => Promise<void>) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event]!.push(handler);
   }
 
   getEvent(event: string): ((params: any) => Promise<void>)[] | undefined {
-    return this.events.get(event);
+    return this.events[event];
   }
 
   // probably should be <T> typed for params
   async emitEvent(event: string | string[], params: any) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
-      const eventHandlers = this.events.get(eventName);
+      const eventHandlers = this.events[eventName];
       if (!eventHandlers) {
         continue;
       }
@@ -2071,7 +2351,9 @@ export class AgentRuntime implements IAgentRuntime {
     await this.adapter.init();
   }
   async close(): Promise<void> {
-    await this.adapter.close();
+    if (this.adapter) {
+      await this.adapter.close();
+    }
   }
   async getAgent(agentId: UUID): Promise<Agent | null> {
     return await this.adapter.getAgent(agentId);
@@ -2089,44 +2371,44 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.deleteAgent(agentId);
   }
   async ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
-    if (!agent.name) {
-      throw new Error('Agent name is required');
+    if (!agent.id) {
+      throw new Error('Agent id is required');
     }
 
-    const agents = await this.adapter.getAgents();
-    const existingAgentId = agents.find((a) => a.name === agent.name)?.id;
+    // Check if agent exists by ID
+    const existingAgent = await this.adapter.getAgent(agent.id);
 
-    if (existingAgentId) {
+    if (existingAgent) {
       // Update the agent on restart with the latest character configuration
       const updatedAgent = {
         ...agent,
-        id: existingAgentId,
+        id: agent.id,
         updatedAt: Date.now(),
       };
 
-      await this.adapter.updateAgent(existingAgentId, updatedAgent);
-      const existingAgent = await this.adapter.getAgent(existingAgentId);
+      await this.adapter.updateAgent(agent.id, updatedAgent);
+      const refreshedAgent = await this.adapter.getAgent(agent.id);
 
-      if (!existingAgent) {
-        throw new Error(`Failed to retrieve agent after update: ${existingAgentId}`);
+      if (!refreshedAgent) {
+        throw new Error(`Failed to retrieve agent after update: ${agent.id}`);
       }
 
-      this.logger.debug(`Updated existing agent ${agent.name} on restart`);
-      return existingAgent;
+      this.logger.debug(`Updated existing agent ${agent.id} on restart`);
+      return refreshedAgent;
     }
 
     // Create new agent if it doesn't exist
     const newAgent: Agent = {
       ...agent,
-      id: stringToUuid(agent.name),
+      id: agent.id,
     } as Agent;
 
     const created = await this.adapter.createAgent(newAgent);
     if (!created) {
-      throw new Error(`Failed to create agent: ${agent.name}`);
+      throw new Error(`Failed to create agent: ${agent.id}`);
     }
 
-    this.logger.debug(`Created new agent ${agent.name}`);
+    this.logger.debug(`Created new agent ${agent.id}`);
     return newAgent;
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
@@ -2199,8 +2481,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   async queueEmbeddingGeneration(
     memory: Memory,
-    priority: 'high' | 'normal' | 'low' = 'normal'
+    priority?: 'high' | 'normal' | 'low'
   ): Promise<void> {
+    // Set default priority if not provided
+    priority = priority || 'normal';
+
     // Skip if memory is null or undefined
     if (!memory) {
       return;
@@ -2530,7 +2815,7 @@ export class AgentRuntime implements IAgentRuntime {
   }): Promise<void> {
     try {
       const { roomId, action, target } = params;
-      const controlMessage = {
+      const controlMessage: ControlMessage = {
         type: 'control',
         payload: {
           action,

@@ -1,7 +1,16 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { AgentRuntime } from '../runtime';
-import { createActionResult } from '../types/components';
 import type { ActionResult } from '../types';
+
+/**
+ * Helper function to create ActionResult with proper defaults for testing
+ */
+function createActionResult(partial: Partial<ActionResult> = {}): ActionResult {
+  return {
+    success: true, // Default to success
+    ...partial,
+  };
+}
 
 describe('Action Chaining Fixes', () => {
   describe('createActionResult helper', () => {

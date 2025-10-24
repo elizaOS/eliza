@@ -17,7 +17,7 @@ export interface ActionExample {
 /**
  * Callback function type for handlers
  */
-export type HandlerCallback = (response: Content, files?: any) => Promise<Memory[]>;
+export type HandlerCallback = (response: Content) => Promise<Memory[]>;
 
 /**
  * Handler function type for processing messages
@@ -26,7 +26,7 @@ export type Handler = (
   runtime: IAgentRuntime,
   message: Memory,
   state?: State,
-  options?: { [key: string]: unknown },
+  options?: HandlerOptions,
   callback?: HandlerCallback,
   responses?: Memory[]
 ) => Promise<ActionResult | void | undefined>;
@@ -104,13 +104,14 @@ export interface Evaluator {
 }
 
 export interface ProviderResult {
-  values?: {
-    [key: string]: any;
-  };
-  data?: {
-    [key: string]: any;
-  };
+  /** Human-readable text for LLM prompt inclusion */
   text?: string;
+
+  /** Key-value pairs for template variable substitution */
+  values?: Record<string, unknown>;
+
+  /** Structured data for programmatic access by other components */
+  data?: Record<string, unknown>;
 }
 
 /**
@@ -163,7 +164,7 @@ export interface ActionResult {
 
 /**
  * Context provided to actions during execution
- * Allows actions to access previous results and update state
+ * Allows actions to access previous results and execution state
  */
 export interface ActionContext {
   /** Results from previously executed actions in this run */
@@ -174,11 +175,30 @@ export interface ActionContext {
 }
 
 /**
- * Helper function to create ActionResult with proper defaults
+ * Options passed to action handlers during execution
+ * Provides context about the current execution and multi-step plans
  */
-export function createActionResult(partial: Partial<ActionResult> = {}): ActionResult {
-  return {
-    success: true, // Default to success
-    ...partial,
+export interface HandlerOptions {
+  /** Context with previous action results and utilities */
+  actionContext?: ActionContext;
+
+  /** Multi-step action plan information */
+  actionPlan?: {
+    /** Total number of steps in the plan */
+    totalSteps: number;
+    /** Current step being executed (1-based) */
+    currentStep: number;
+    /** Array of action steps with status tracking */
+    steps: Array<{
+      action: string;
+      status: 'pending' | 'completed' | 'failed';
+      result?: ActionResult;
+      error?: string;
+    }>;
+    /** AI's reasoning for this execution plan */
+    thought: string;
   };
+
+  /** Allow plugin extensions and custom options */
+  [key: string]: unknown;
 }

@@ -1,10 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
-import type { DirectoryInfo } from '../../../../src/utils/directory-detection';
 
 // Mock dependencies
 mock.module('../../../../src/project', () => ({
   loadProject: mock(),
 }));
+
+// Create a mock for AgentServer's startAgents method (returns array of runtimes)
+// Now accepts (characters, plugins, options) where options includes isTestMode
+const mockServerStartAgents = mock().mockResolvedValue([
+  {
+    character: { name: 'Eliza' },
+    plugins: [],
+  },
+]);
 
 mock.module('@elizaos/server', () => ({
   AgentServer: mock().mockImplementation(() => ({
@@ -12,6 +20,7 @@ mock.module('@elizaos/server', () => ({
     start: mock().mockResolvedValue(undefined),
     registerAgent: mock(),
     startAgent: mock(),
+    startAgents: mockServerStartAgents,
     loadCharacterTryPath: mock(),
     jsonToCharacter: mock(),
   })),
@@ -145,6 +154,15 @@ describe('E2E Tests Plugin Isolation', () => {
   let TestRunnerMock: any;
 
   beforeEach(async () => {
+    // Reset the AgentServer's startAgents mock to ensure clean state
+    mockServerStartAgents.mockClear();
+    mockServerStartAgents.mockResolvedValue([
+      {
+        character: { name: 'Eliza' },
+        plugins: [],
+      },
+    ]);
+
     // Save original ELIZA_TESTING_PLUGIN value specifically
     originalElizaTestingPlugin = process.env.ELIZA_TESTING_PLUGIN;
 
@@ -172,13 +190,13 @@ describe('E2E Tests Plugin Isolation', () => {
     loadProject = projectModule.loadProject;
     loadProject.mockClear();
 
-    const startModule = await import('../../../../src/commands/start');
-    startAgentMock = startModule.startAgent;
-    startAgentMock.mockClear();
-
     const utilsModule = await import('../../../../src/utils');
     TestRunnerMock = utilsModule.TestRunner;
     TestRunnerMock.mockClear();
+
+    // Use the AgentServer's startAgents mock we defined at module level
+    startAgentMock = mockServerStartAgents;
+    startAgentMock.mockClear();
 
     // Import the function we're testing
     const module = await import('../../../../src/commands/test/actions/e2e-tests');
@@ -203,7 +221,7 @@ describe('E2E Tests Plugin Isolation', () => {
       };
 
       loadProject.mockResolvedValue(TestFixtures.mockPluginProject);
-      startAgentMock.mockResolvedValue(mockRuntime);
+      startAgentMock.mockResolvedValue([mockRuntime]);
 
       // Track environment changes with proper cleanup
       let envWasSet = false;

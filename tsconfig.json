@@ -22,11 +22,5 @@
       "@elizaos/plugin-sql": ["packages/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["packages/plugin-sql/src/*"]
     }
-  },
-  "files": [],
-  "references": [
-    {
-      "path": "packages/core"
-    }
-  ]
+  }
 }

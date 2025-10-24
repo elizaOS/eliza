@@ -1,4 +1,4 @@
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import { logger, validateUuid } from '@elizaos/core';
 import cors from 'cors';
 import express from 'express';
@@ -34,7 +34,7 @@ import {
 
 export function setupSocketIO(
   server: http.Server,
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): SocketIOServer {
   const io = new SocketIOServer(server, {
@@ -44,7 +44,7 @@ export function setupSocketIO(
     },
   });
 
-  const centralSocketRouter = new SocketIORouter(agents, serverInstance);
+  const centralSocketRouter = new SocketIORouter(elizaOS, serverInstance);
   centralSocketRouter.setupListeners(io);
 
   setupLogStreaming(io, centralSocketRouter);
@@ -100,7 +100,7 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
 }
 
 // Extracted function to handle plugin routes
-export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): express.RequestHandler {
+export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandler {
   return (req, res, next) => {
     logger.debug(
       'Handling plugin request in the plugin route handler',
@@ -144,7 +144,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
       res.setHeader('Content-Type', 'application/javascript');
     }
 
-    if (agents.size === 0) {
+    if (elizaOS.getAgents().length === 0) {
       logger.debug('No agents available, skipping plugin route handling.');
       return next();
     }
@@ -259,7 +259,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
 
     // No support for agent name?
     if (agentIdFromQuery && validateUuid(agentIdFromQuery)) {
-      const runtime = agents.get(agentIdFromQuery);
+      const runtime = elizaOS.getAgent(agentIdFromQuery);
       if (runtime) {
         logger.debug(
           `Agent-scoped request for Agent ID: ${agentIdFromQuery} from query. Path: ${reqPath}`
@@ -306,7 +306,7 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
       logger.debug(`No valid agentId in query. Trying global match for path: ${reqPath}`);
 
       // check in all agents...
-      for (const [_, runtime] of agents) {
+      for (const runtime of elizaOS.getAgents()) {
         // Iterate over all agents
         if (handled) break; // If handled by a previous agent's route (e.g. specific match)
 
@@ -325,12 +325,12 @@ export function createPluginRouteHandler(agents: Map<UUID, IAgentRuntime>): expr
 
 /**
  * Creates an API router with various endpoints and middleware.
- * @param {Map<UUID, IAgentRuntime>} agents - Map of agents with UUID as key and IAgentRuntime as value.
+ * @param {ElizaOS} elizaOS - ElizaOS instance containing all agents and their runtimes.
  * @param {AgentServer} [server] - Optional AgentServer instance.
  * @returns {express.Router} The configured API router.
  */
 export function createApiRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer // AgentServer is already serverInstance here
 ): express.Router {
   const router = express.Router();
@@ -374,19 +374,19 @@ export function createApiRouter(
 
   // Setup new domain-based routes
   // Mount agents router at /agents - handles agent creation, management, and interactions
-  router.use('/agents', agentsRouter(agents, serverInstance));
+  router.use('/agents', agentsRouter(elizaOS, serverInstance));
 
   // Mount messaging router at /messaging - handles messages, channels, and chat functionality
-  router.use('/messaging', messagingRouter(agents, serverInstance));
+  router.use('/messaging', messagingRouter(elizaOS, serverInstance));
 
   // Mount memory router at /memory - handles agent memory storage and retrieval
-  router.use('/memory', memoryRouter(agents, serverInstance));
+  router.use('/memory', memoryRouter(elizaOS, serverInstance));
 
   // Mount audio router at /audio - handles audio processing, transcription, and voice operations
-  router.use('/audio', audioRouter(agents));
+  router.use('/audio', audioRouter(elizaOS));
 
   // Mount runtime router at /server - handles server runtime operations and management
-  router.use('/server', runtimeRouter(agents, serverInstance));
+  router.use('/server', runtimeRouter(elizaOS, serverInstance));
 
   // Mount TEE router at /tee - handles Trusted Execution Environment operations
   router.use('/tee', teeRouter());
@@ -400,7 +400,7 @@ export function createApiRouter(
   // Use proper domain routes: /messaging, /system, /tee
 
   // Add the plugin routes middleware AFTER specific routers
-  router.use(createPluginRouteHandler(agents));
+  router.use(createPluginRouteHandler(elizaOS));
 
   return router;
 }

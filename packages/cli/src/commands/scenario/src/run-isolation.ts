@@ -272,7 +272,7 @@ export function createIsolatedEnvironmentVariables(
     ...baseEnv,
     // Point to isolated database
     DATABASE_URL: `file://${context.dbPath}/database.db`,
-    PGLITE_DATABASE_PATH: context.dbPath,
+    PGLITE_DATA_DIR: context.dbPath,
 
     // Set isolated temp directory
     TMPDIR: context.tempDir,

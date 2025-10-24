@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Room, UUID } from '@elizaos/core';
+import type { ElizaOS, Room, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid, ChannelType } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -8,7 +8,7 @@ import { sendError, getRuntime } from '../shared';
  * Group and world memory management functionality
  */
 export function createGroupMemoryRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -33,7 +33,7 @@ export function createGroupMemoryRouter(
 
     for (const agentId of agentIds) {
       try {
-        const runtime = getRuntime(agents, agentId as UUID);
+        const runtime = getRuntime(elizaOS, agentId as UUID);
         const roomId = createUniqueUuid(runtime, serverId as string);
         const roomName = name || `Chat ${new Date().toLocaleString()}`;
 

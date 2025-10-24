@@ -11,6 +11,7 @@ import type {
   IDatabaseAdapter,
   Memory,
   State,
+  ActionResult,
   UUID,
 } from '@elizaos/core';
 import { mock } from './mockUtils';
@@ -74,20 +75,38 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     get: mock().mockResolvedValue(null),
   };
 
+  // Shared state cache reference for methods that read from cache
+  const stateCache: Map<string, any> = (overrides.stateCache as Map<string, any>) || new Map();
+
   // Create base runtime mock
   const baseRuntime: IAgentRuntime = {
     // Core Properties
     agentId: 'test-agent-id' as UUID,
     character: overrides.character || defaultCharacter,
+    messageService: overrides.messageService ?? null,
     providers: overrides.providers || [],
     actions: overrides.actions || [],
     evaluators: overrides.evaluators || [],
     plugins: overrides.plugins || [],
     services: overrides.services || new Map(),
-    events: overrides.events || new Map(),
+    events: overrides.events || {},
     fetch: overrides.fetch || null,
     routes: overrides.routes || [],
-    logger: overrides.logger || console,
+    logger: overrides.logger || {
+      level: 'info',
+      trace: () => {},
+      debug: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+      fatal: () => {},
+      success: () => {},
+      progress: () => {},
+      log: () => {},
+      clear: () => {},
+      child: () => ({}) as any,
+    },
+    stateCache,
 
     // Database Properties
     db: overrides.db || mockDb,
@@ -113,6 +132,10 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       return defaultSettings[key];
     }),
     getConversationLength: mock().mockReturnValue(10),
+    getActionResults: (messageId: UUID): ActionResult[] => {
+      const cachedState = stateCache?.get(`${messageId}_action_results`);
+      return (cachedState?.data?.actionResults as ActionResult[]) || [];
+    },
     processActions: mock().mockResolvedValue(undefined),
     evaluate: mock().mockResolvedValue([]),
     registerProvider: mock(),
@@ -149,7 +172,6 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Database Adapter Methods - Agent Management
     init: mock().mockResolvedValue(undefined),
     isReady: mock().mockResolvedValue(true),
-    runMigrations: mock().mockResolvedValue(undefined),
     close: mock().mockResolvedValue(undefined),
     getAgent: mock().mockResolvedValue(null),
     getAgents: mock().mockResolvedValue([]),
@@ -240,6 +262,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getTasksByName: mock().mockResolvedValue([]),
     updateTask: mock().mockResolvedValue(undefined),
     deleteTask: mock().mockResolvedValue(undefined),
+
+    // Text Generation (required by IAgentRuntime)
+    generateText: mock().mockResolvedValue('Mock generated text'),
 
     // Apply overrides
     ...overrides,

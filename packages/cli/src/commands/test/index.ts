@@ -1,7 +1,6 @@
 import { handleError } from '@/src/utils';
-import { validatePort } from '@/src/utils/port-validation';
 import { logger } from '@elizaos/core';
-import { Command, Option } from 'commander';
+import { Command, Option, InvalidOptionArgumentError } from 'commander';
 import { runAllTests } from './actions/run-all-tests';
 import { runComponentTests } from './actions/component-tests';
 import { runE2eTests } from './actions/e2e-tests';
@@ -18,7 +17,13 @@ export const test = new Command()
       .choices(['component', 'e2e', 'all'])
       .default('all')
   )
-  .option('--port <port>', 'The port to run e2e tests on', validatePort)
+  .option('--port <port>', 'The port to run e2e tests on', (value: string) => {
+    const n = Number.parseInt(value, 10);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) {
+      throw new InvalidOptionArgumentError('Port must be an integer between 1 and 65535');
+    }
+    return n;
+  })
   .option('--name <name>', 'Filter tests by name')
   .option('--skip-build', 'Skip building before running tests')
   .option('--skip-type-check', 'Skip TypeScript validation before running tests')

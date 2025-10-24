@@ -2,9 +2,7 @@ import { DevOptions } from '../types';
 import { createDevContext, performInitialBuild, performRebuild } from '../utils/build-utils';
 import { watchDirectory } from '../utils/file-watcher';
 import { getServerManager } from '../utils/server-manager';
-import { findNextAvailablePort } from '@/src/utils';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
-import { logger } from '@elizaos/core';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import type { Subprocess } from 'bun';
@@ -64,10 +62,33 @@ async function startClientDevServer(cwd: string): Promise<void> {
         clientDir = installedClientPath;
       }
       // Fallback: if a local Vite config exists (standalone plugin demo UI), treat current dir as client
+      // BUT: prevent recursive execution when running elizaos dev from the same directory
       if (!clientDir) {
         const localViteTs = path.join(cwd, 'vite.config.ts');
         const localViteJs = path.join(cwd, 'vite.config.js');
         if (fs.existsSync(localViteTs) || fs.existsSync(localViteJs)) {
+          // Check if this would cause recursive execution
+          const packageJsonPath = path.join(cwd, 'package.json');
+          if (fs.existsSync(packageJsonPath)) {
+            try {
+              const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+              const devScript = packageJson.scripts?.['dev:client'] || packageJson.scripts?.['dev'];
+
+              // If the dev script would run elizaos dev, skip to prevent recursion
+              if (devScript && devScript.includes('elizaos dev')) {
+                console.warn(
+                  'Detected potential recursive elizaos dev execution in local Vite config. Skipping client dev server to prevent infinite loop.'
+                );
+                return;
+              }
+            } catch (error) {
+              // If we can't parse package.json, err on the side of caution
+              console.warn(
+                'Could not parse package.json for recursive execution check. Skipping client dev server to be safe.'
+              );
+              return;
+            }
+          }
           clientDir = cwd;
         }
       }
@@ -308,34 +329,10 @@ export async function startDevMode(options: DevOptions): Promise<void> {
   // Prepare CLI arguments for the start command
   const cliArgs: string[] = [];
 
-  // Handle port availability checking
-  let desiredPort: number;
+  // Pass port to start command only if explicitly provided (server will auto-discover if not provided)
   if (options.port !== undefined) {
-    desiredPort = options.port;
-  } else {
-    const serverPort = process.env.SERVER_PORT;
-    const parsedPort = serverPort ? Number.parseInt(serverPort, 10) : NaN;
-    desiredPort = Number.isNaN(parsedPort) ? 3000 : parsedPort;
+    cliArgs.push('--port', options.port.toString());
   }
-  const serverHost = process.env.SERVER_HOST || '0.0.0.0';
-  let availablePort: number;
-
-  try {
-    availablePort = await findNextAvailablePort(desiredPort, serverHost);
-
-    if (availablePort !== desiredPort) {
-      logger.warn(`Port ${desiredPort} is in use, using port ${availablePort} instead`);
-    }
-  } catch (error) {
-    logger.error(
-      `Failed to find available port starting from ${desiredPort}: ${error instanceof Error ? error.message : String(error)}`
-    );
-    logger.error('Please specify a different port using --port option');
-    throw new Error(`No available ports found starting from ${desiredPort}`);
-  }
-
-  // Pass the available port to the start command
-  cliArgs.push('--port', availablePort.toString());
 
   // Pass through configure option
   if (options.configure) {
@@ -377,7 +374,7 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
       console.log('✓ Rebuild successful, restarting...');
 
-      // Start the server with the args
+      // Start the server with the args (server will auto-discover available port)
       await serverManager.start(cliArgs);
 
       // Restart client dev server if needed
@@ -409,18 +406,18 @@ export async function startDevMode(options: DevOptions): Promise<void> {
 
   // Start the server initially (skip in standalone mode)
   let backendStarted = false;
-  let serverPort = availablePort || 3000;
+  let serverPort = 3000; // Default port (server may auto-discover different port)
   if (!inStandalone) {
     if (process.env.ELIZA_TEST_MODE === 'true') {
       console.info(`[DEV] Starting server with args: ${cliArgs.join(' ')}`);
     }
 
-    // Extract the actual port being used (after availability check)
+    // Extract the port from CLI args if provided
     const portArgIndex = cliArgs.indexOf('--port');
     serverPort =
       portArgIndex !== -1 && cliArgs[portArgIndex + 1]
         ? parseInt(cliArgs[portArgIndex + 1], 10)
-        : availablePort || 3000;
+        : 3000;
 
     await serverManager.start(cliArgs);
     backendStarted = true;

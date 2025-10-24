@@ -7,6 +7,7 @@ import {
   type IKVStore,
   ServiceType,
   isKVStoreService,
+  type ElizaOS,
 } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
@@ -546,6 +547,7 @@ function createSessionInfoResponse(session: Session): SessionInfoResponse {
 
   return {
     sessionId: session.id,
+    channelId: session.channelId,
     agentId: session.agentId,
     userId: session.userId,
     createdAt: session.createdAt,
@@ -614,6 +616,16 @@ function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
   };
 }
 
+function getSessionsStore(agent: IAgentRuntime): IKVStore<Session, SessionMetrics> {
+  const service = agent.getService(ServiceType.KV_STORE);
+
+  if (isKVStoreService(service)) {
+    return service.getStore('sessions');
+  }
+
+  return SessionStore.getInstance();
+}
+
 /**
  * Creates a unified sessions router for simplified messaging
  * This abstracts away the complexity of servers/channels for simple use cases
@@ -622,27 +634,8 @@ function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
  * @param serverInstance - The server instance for message handling
  * @returns Router with cleanup method to prevent memory leaks
  */
-export function createSessionsRouter(
-  agents: Map<UUID, IAgentRuntime>,
-  serverInstance: AgentServer
-): SessionRouter {
+export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): SessionRouter {
   const router = express.Router();
-
-  function getSessionsStore(agentId: UUID): IKVStore<Session, SessionMetrics> {
-    const runtime = agents.get(agentId);
-
-    if (!runtime) {
-      throw new AgentNotFoundError(agentId);
-    }
-
-    const service = runtime.getService(ServiceType.KV_STORE);
-
-    if (isKVStoreService(service)) {
-      return service.getStore('sessions');
-    }
-
-    return SessionStore.getInstance();
-  }
 
   /**
    * Health check - placed before parameterized routes to avoid conflicts
@@ -654,7 +647,7 @@ export function createSessionsRouter(
       let fallbackMetrics: SessionMetrics | undefined;
       const metrics: SessionMetrics[] = [];
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         const store = getSessionsStore(agent);
         if (store instanceof SessionStore) {
           fallbackMetrics = await store.getMetrics();
@@ -708,12 +701,12 @@ export function createSessionsRouter(
       }
 
       // Check if agent exists
-      const agent = agents.get(body.agentId as UUID);
+      const agent = elizaOS.getAgent(body.agentId as UUID);
       if (!agent) {
         throw new AgentNotFoundError(body.agentId);
       }
 
-      const sessions = getSessionsStore(body.agentId as UUID);
+      const store = getSessionsStore(agent);
 
       // Validate metadata if provided
       if (body.metadata) {
@@ -772,10 +765,11 @@ export function createSessionsRouter(
         renewalCount: 0,
       };
 
-      await sessions.set(sessionId, session);
+      await store.set(sessionId, session);
 
       const response: CreateSessionResponse = {
         sessionId,
+        channelId: session.channelId,
         agentId: session.agentId,
         userId: session.userId,
         createdAt: session.createdAt,
@@ -799,7 +793,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -841,7 +835,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -967,7 +961,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -1148,7 +1142,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -1197,7 +1191,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -1230,7 +1224,7 @@ export function createSessionsRouter(
       }
 
       // Merge the new config with existing
-      const agent = agents.get(session.agentId);
+      const agent = elizaOS.getAgent(session.agentId);
       const agentConfig = agent ? getAgentTimeoutConfig(agent) : undefined;
       session.timeoutConfig = mergeTimeoutConfigs(newConfig, agentConfig);
 
@@ -1264,7 +1258,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -1308,7 +1302,7 @@ export function createSessionsRouter(
       let session: Session | undefined;
       let store: IKVStore<Session, SessionMetrics> | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         store = getSessionsStore(agent);
         session = await store.get(sessionId);
 
@@ -1352,7 +1346,7 @@ export function createSessionsRouter(
       let fallback = false;
       let metrics: SessionMetrics | undefined;
 
-      for (const agent of agents.keys()) {
+      for (const agent of elizaOS.getAgents()) {
         const store = getSessionsStore(agent);
 
         if (store instanceof SessionStore) {
@@ -1396,7 +1390,7 @@ export function createSessionsRouter(
     let expiredCount = 0;
     let warningCount = 0;
 
-    for (const agent of agents.keys()) {
+    for (const agent of elizaOS.getAgents()) {
       const store = getSessionsStore(agent);
 
       if (store instanceof SessionStore) {
@@ -1463,7 +1457,7 @@ export function createSessionsRouter(
 
       // Optional: Clear session data
       if (process.env.CLEAR_SESSIONS_ON_SHUTDOWN === 'true') {
-        for (const agent of agents.keys()) {
+        for (const agent of elizaOS.getAgents()) {
           const store = getSessionsStore(agent);
           (async () => {
             for await (const [sessionId] of store.entries()) {

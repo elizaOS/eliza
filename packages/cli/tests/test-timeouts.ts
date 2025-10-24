@@ -65,7 +65,9 @@ export const TEST_TIMEOUTS = {
   SERVER_STARTUP: isCI
     ? isMacOS
       ? 180 * 1000
-      : 150 * 1000 // 3/2.5 minutes in CI - increased significantly for agent startup
+      : isWindows
+        ? 180 * 1000
+        : 150 * 1000 // 3 minutes (macOS/Windows) / 2.5 minutes (others) in CI - increased for startup
     : isWindows
       ? 45 * 1000
       : isMacOS
@@ -74,7 +76,9 @@ export const TEST_TIMEOUTS = {
   PROCESS_CLEANUP: isCI
     ? isMacOS
       ? 8 * 1000
-      : 5 * 1000 // 8/5 seconds in CI
+      : isWindows
+        ? 8 * 1000
+        : 5 * 1000 // 8s (macOS/Windows) / 5s (others) in CI
     : isWindows
       ? 15 * 1000
       : isMacOS
@@ -83,21 +87,27 @@ export const TEST_TIMEOUTS = {
 
   // Wait times (for setTimeout) - Simplified for CI stability
   SHORT_WAIT: isCI
-    ? 1 * 1000 // 1 second in CI for all platforms
+    ? isWindows
+      ? 3 * 1000 // 3 seconds on Windows CI to allow port release
+      : 1 * 1000 // 1 second on other CI platforms
     : isWindows
       ? 3 * 1000
       : isMacOS
         ? 3 * 1000
         : 2 * 1000, // Platform-specific locally
   MEDIUM_WAIT: isCI
-    ? 2 * 1000 // 2 seconds in CI for all platforms
+    ? isWindows
+      ? 5 * 1000 // 5 seconds on Windows CI
+      : 2 * 1000 // 2 seconds on other CI platforms
     : isWindows
       ? 8 * 1000
       : isMacOS
         ? 7 * 1000
         : 5 * 1000, // Platform-specific locally
   LONG_WAIT: isCI
-    ? 3 * 1000 // 3 seconds in CI for all platforms
+    ? isWindows
+      ? 8 * 1000 // 8 seconds on Windows CI
+      : 3 * 1000 // 3 seconds on other CI platforms
     : isWindows
       ? 15 * 1000
       : isMacOS

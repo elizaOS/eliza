@@ -17,7 +17,7 @@
     "src/utils.ts",
     "src/utils.node.ts",
     "src/migration-service.ts",
-    "src/custom-migrator.ts"
+    "src/runtime-migrator/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.spec.ts"]
 }

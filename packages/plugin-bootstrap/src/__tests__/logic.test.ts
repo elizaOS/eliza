@@ -105,9 +105,12 @@ describe('Message Handler Logic', () => {
     expect(bootstrapPlugin.events).toBeDefined();
 
     // Check for mandatory event handlers
+    // Note: Removed events now handled directly via runtime.messageService:
+    // - MESSAGE_RECEIVED -> deprecated (kept for logging only)
+    // - VOICE_MESSAGE_RECEIVED -> runtime.messageService.handleMessage()
+    // - MESSAGE_DELETED -> runtime.messageService.deleteMessage()
+    // - CHANNEL_CLEARED -> runtime.messageService.clearChannel()
     const requiredEvents = [
-      EventType.MESSAGE_RECEIVED,
-      EventType.VOICE_MESSAGE_RECEIVED,
       EventType.REACTION_RECEIVED,
       EventType.MESSAGE_SENT,
       EventType.WORLD_JOINED,
@@ -121,155 +124,9 @@ describe('Message Handler Logic', () => {
     });
   });
 
-  it('should process MESSAGE_RECEIVED event and save message to memory', async () => {
-    // Get the MESSAGE_RECEIVED handler
-    const messageHandler = bootstrapPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    expect(messageHandler).toBeDefined();
-
-    if (messageHandler) {
-      // Call the handler with our mock payload
-      await messageHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
-        message: mockMessage as Memory,
-        callback: mockCallback,
-        source: 'test',
-      } as MessagePayload);
-
-      // Verify message was stored
-      expect(mockRuntime.createMemory).toHaveBeenCalledWith(mockMessage, 'messages');
-
-      // Should check if agent should respond
-      expect(mockRuntime.useModel).toHaveBeenCalledWith(
-        ModelType.TEXT_SMALL,
-        expect.objectContaining({
-          prompt: expect.stringContaining('Test should respond template'),
-        })
-      );
-
-      // Should compose state for response
-      expect(mockRuntime.composeState).toHaveBeenCalled();
-
-      // Should generate a response
-      expect(mockCallback).toHaveBeenCalled();
-    }
-  });
-
-  it('should not respond to messages when agent is muted', async () => {
-    // Get the MESSAGE_RECEIVED handler
-    const messageHandler = bootstrapPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    expect(messageHandler).toBeDefined();
-
-    // Set agent state to MUTED
-    mockRuntime.getParticipantUserState = mock().mockResolvedValue('MUTED');
-
-    if (messageHandler) {
-      // Call the handler with our mock payload
-      await messageHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
-        message: mockMessage as Memory,
-        callback: mockCallback,
-        source: 'test',
-      } as MessagePayload);
-
-      // Should still store the message
-      expect(mockRuntime.createMemory).toHaveBeenCalledWith(mockMessage, 'messages');
-
-      // But should not try to generate a response
-      expect(mockRuntime.useModel).not.toHaveBeenCalledWith(
-        ModelType.TEXT_SMALL,
-        expect.objectContaining({
-          prompt: expect.stringContaining('message handler template'),
-        })
-      );
-
-      // Should not call the callback
-      expect(mockCallback).not.toHaveBeenCalled();
-    }
-  });
-
-  it('should handle errors gracefully during message processing', async () => {
-    // Get the MESSAGE_RECEIVED handler
-    const messageHandler = bootstrapPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    expect(messageHandler).toBeDefined();
-    if (!messageHandler) return; // Guard clause if handler is not found
-
-    // Mock emitEvent to handle errors without throwing
-    mockRuntime.emitEvent = mock().mockResolvedValue(undefined);
-    mockRuntime.useModel = mock().mockImplementation((modelType, params) => {
-      // Specifically throw an error for the shouldRespondTemplate
-      if (params?.prompt?.includes('should respond template')) {
-        return Promise.reject(new Error('Test error in useModel for shouldRespond'));
-      }
-      // Provide a default successful response for other useModel calls
-      if (modelType === ModelType.TEXT_SMALL) {
-        return Promise.resolve(JSON.stringify({ action: 'RESPOND', providers: [], reasoning: '' }));
-      }
-      if (modelType === ModelType.TEXT_LARGE) {
-        return Promise.resolve(
-          JSON.stringify({
-            thought: 'Default thought',
-            actions: ['REPLY'],
-            content: 'Default content',
-          })
-        );
-      }
-      return Promise.resolve({});
-    });
-
-    try {
-      await messageHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
-        message: mockMessage as Memory,
-        callback: mockCallback,
-        source: 'test',
-      } as MessagePayload);
-    } catch (e) {
-      // Log for debugging, but the assertion below is the important part.
-      // The handler itself ideally shouldn't throw if its internal try/catch works.
-      console.log('messageHandler threw an error directly in test:', e);
-    }
-
-    // Should emit run-ended event with error
-    expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
-      EventType.RUN_ENDED,
-      expect.objectContaining({
-        status: 'error', // Expect 'error' status
-        error: 'Test error in useModel for shouldRespond', // Expect specific error message
-      })
-    );
-  });
-
-  it('should handle mal-formatted response from LLM', async () => {
-    // Get the MESSAGE_RECEIVED handler
-    const messageHandler = bootstrapPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    expect(messageHandler).toBeDefined();
-
-    // Simulate bad JSON from LLM
-    mockRuntime.useModel = mock().mockImplementation((modelType, params) => {
-      if (params?.prompt?.includes('should respond template')) {
-        return Promise.resolve('This is not valid JSON');
-      } else if (modelType === ModelType.TEXT_SMALL) {
-        return Promise.resolve('Also not valid JSON');
-      }
-      return Promise.resolve({});
-    });
-
-    if (messageHandler) {
-      // Should not throw when handling invalid JSON
-      let error: Error | undefined;
-      try {
-        await messageHandler({
-          runtime: mockRuntime as unknown as IAgentRuntime,
-          message: mockMessage as Memory,
-          callback: mockCallback,
-          source: 'test',
-        } as MessagePayload);
-      } catch (e) {
-        error = e as Error;
-      }
-      expect(error).toBeUndefined();
-    }
-  });
+  // Note: MESSAGE_RECEIVED handler is now deprecated and only logs debug messages
+  // The actual message handling is done via runtime.messageService.handleMessage() directly
+  // Tests for message handling are now in packages/core/src/__tests__/message-service.test.ts
 });
 
 describe('Reaction Events', () => {
@@ -484,6 +341,9 @@ describe('Event Lifecycle Events', () => {
         actionName: 'test-action',
         startTime: Date.now(),
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -504,6 +364,9 @@ describe('Event Lifecycle Events', () => {
         actionName: 'test-action',
         completed: true,
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -525,6 +388,9 @@ describe('Event Lifecycle Events', () => {
         completed: false,
         error: new Error('Action failed'),
         source: 'test',
+        roomId: 'test-room-id' as UUID,
+        world: 'test-world-id' as UUID,
+        content: { text: 'test content' },
       } as ActionEventPayload);
 
       // No assertions needed - this just logs information
@@ -570,5 +436,166 @@ describe('Event Lifecycle Events', () => {
       // No assertions needed - this just logs information
       expect(true).toBe(true);
     }
+  });
+});
+
+describe('shouldRespond with mentionContext', () => {
+  let mockRuntime: MockRuntime;
+  let mockMessage: Partial<Memory>;
+
+  beforeEach(() => {
+    const setup = setupActionTest({
+      messageOverrides: {
+        content: {
+          text: 'Hello there',
+          channelType: ChannelType.GROUP,
+          source: 'discord',
+        } as Content,
+      },
+    });
+    mockRuntime = setup.mockRuntime;
+    mockMessage = setup.mockMessage;
+  });
+
+  it('should skip evaluation and respond for DM channels', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.DM };
+    const result = shouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
+      room
+    );
+
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('private channel');
+  });
+
+  it('should skip evaluation and respond for platform mentions (isMention=true)', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: true,
+      isReply: false,
+      isThread: false,
+      mentionType: 'platform_mention' as const,
+    };
+
+    const result = shouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
+      room,
+      mentionContext
+    );
+
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('platform mention');
+  });
+
+  it('should skip evaluation and respond for replies to bot (isReply=true)', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: false,
+      isReply: true,
+      isThread: false,
+      mentionType: 'reply' as const,
+    };
+
+    const result = shouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
+      room,
+      mentionContext
+    );
+
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('platform reply');
+  });
+
+  it('should NOT skip evaluation for regular messages without mention', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const mentionContext = {
+      isMention: false,
+      isReply: false,
+      isThread: false,
+      mentionType: 'none' as const,
+    };
+
+    const result = shouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      mockMessage as Memory,
+      room,
+      mentionContext
+    );
+
+    expect(result.skipEvaluation).toBe(false);
+    expect(result.reason).toContain('needs LLM evaluation');
+  });
+
+  it('should skip evaluation and respond for client_chat source', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+    const messageWithClientChat = {
+      ...mockMessage,
+      content: {
+        ...mockMessage.content,
+        source: 'client_chat',
+      },
+    };
+
+    const result = shouldRespond(
+      mockRuntime as unknown as IAgentRuntime,
+      messageWithClientChat as Memory,
+      room
+    );
+
+    expect(result.skipEvaluation).toBe(true);
+    expect(result.shouldRespond).toBe(true);
+    expect(result.reason).toContain('whitelisted source');
+  });
+
+  it('should be platform agnostic (works for any platform)', () => {
+    const { shouldRespond } = require('../index');
+
+    const room = { type: ChannelType.GROUP };
+
+    // Test with different platform sources
+    const platforms = ['discord', 'telegram', 'twitter', 'slack'];
+
+    platforms.forEach((platform) => {
+      const mentionContext = {
+        isMention: true,
+        isReply: false,
+        isThread: false,
+        mentionType: 'platform_mention' as const,
+      };
+
+      const messageWithPlatform = {
+        ...mockMessage,
+        content: {
+          ...mockMessage.content,
+          source: platform,
+        },
+      };
+
+      const result = shouldRespond(
+        mockRuntime as unknown as IAgentRuntime,
+        messageWithPlatform as Memory,
+        room,
+        mentionContext
+      );
+
+      expect(result.skipEvaluation).toBe(true);
+      expect(result.shouldRespond).toBe(true);
+    });
   });
 });

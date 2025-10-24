@@ -1,6 +1,6 @@
 import {
   composePromptFromState,
-  IAgentRuntime,
+  ElizaOS,
   ModelType,
   ChannelType,
   logger,
@@ -71,7 +71,7 @@ async function saveChannelUploadedFile(
  * Channel management functionality
  */
 export function createChannelsRouter(
-  agents: Map<UUID, IAgentRuntime>,
+  elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): express.Router {
   const router = express.Router();
@@ -959,7 +959,7 @@ export function createChannelsRouter(
       }
 
       try {
-        const runtime = agents.get(agentId);
+        const runtime = elizaOS.getAgent(agentId);
 
         if (!runtime) {
           return res.status(404).json({

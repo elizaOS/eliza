@@ -5,12 +5,16 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
 import { createSessionsRouter, type SessionRouter } from '../sessions';
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 import type { SimplifiedMessage } from '../../../types/sessions';
 
 // Mock dependencies
 const mockAgents = new Map<UUID, IAgentRuntime>();
+const mockElizaOS = {
+  getAgent: jest.fn((id: UUID) => mockAgents.get(id)),
+  getAgents: jest.fn(() => Array.from(mockAgents.values())),
+} as unknown as ElizaOS;
 const mockServerInstance = {
   createChannel: jest.fn().mockResolvedValue({
     id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -175,6 +179,8 @@ describe('Sessions API', () => {
     // Clear all mocks
     jest.clearAllMocks();
     mockAgents.clear();
+    (mockElizaOS.getAgent as jest.Mock).mockImplementation((id: UUID) => mockAgents.get(id));
+    (mockElizaOS.getAgents as jest.Mock).mockImplementation(() => Array.from(mockAgents.values()));
 
     // Reset the mock implementations
     mockServerInstance.createChannel = jest.fn().mockResolvedValue({
@@ -195,7 +201,7 @@ describe('Sessions API', () => {
     // Create Express app and router
     app = express();
     app.use(express.json());
-    router = createSessionsRouter(mockAgents, mockServerInstance);
+    router = createSessionsRouter(mockElizaOS, mockServerInstance);
     app.use('/api/messaging', router);
   });
 
@@ -224,6 +230,7 @@ describe('Sessions API', () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('sessionId');
+      expect(res.body).toHaveProperty('channelId');
       expect(res.body).toHaveProperty('agentId', agentId);
       expect(res.body).toHaveProperty('userId', userId);
       expect(res.body).toHaveProperty('expiresAt');
@@ -231,6 +238,8 @@ describe('Sessions API', () => {
 
       // Verify the session ID is a valid UUID
       expect(isValidUuid(res.body.sessionId)).toBe(true);
+      // Verify the channel ID is a valid UUID
+      expect(isValidUuid(res.body.channelId)).toBe(true);
 
       // Verify timeout config has expected structure
       const { timeoutConfig } = res.body;
@@ -743,6 +752,7 @@ describe('Sessions API', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('sessionId', sessionId);
+      expect(res.body).toHaveProperty('channelId');
       expect(res.body).toHaveProperty('agentId', agentId);
       expect(res.body).toHaveProperty('userId', userId);
       expect(res.body).toHaveProperty('metadata');
@@ -750,6 +760,8 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('timeRemaining');
       expect(res.body).toHaveProperty('isNearExpiration');
       expect(res.body).toHaveProperty('renewalCount');
+      // Verify the channel ID is a valid UUID
+      expect(isValidUuid(res.body.channelId)).toBe(true);
     });
 
     it('should return 404 for non-existent session', async () => {

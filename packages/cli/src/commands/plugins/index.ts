@@ -5,16 +5,9 @@ import { Command } from 'commander';
 import { addPlugin } from './actions/install';
 import { removePlugin } from './actions/remove';
 import { listAvailablePlugins, listInstalledPlugins } from './actions/list';
-import { upgradePlugin } from './actions/upgrade';
-import { generatePlugin } from './actions/generate';
 
 // Import types
-import {
-  ListPluginsOptions,
-  AddPluginOptions,
-  UpgradePluginOptions,
-  GeneratePluginOptions,
-} from './types';
+import { ListPluginsOptions, AddPluginOptions } from './types';
 
 export const plugins = new Command()
   .name('plugins')
@@ -85,40 +78,9 @@ plugins
     }
   });
 
-plugins
-  .command('upgrade')
-  .description(
-    'Upgrade a plugin from version 0.x to 1.x using AI-powered migration (requires Claude Code CLI)'
-  )
-  .argument('<path>', 'GitHub repository URL or local folder path')
-  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
-  .option('--skip-tests', 'Skip test validation loop')
-  .option('--skip-validation', 'Skip production readiness validation')
-  .option('--quiet', 'Suppress progress display')
-  .option('--verbose', 'Show detailed information')
-  .option('--debug', 'Show debug information')
-  .option('--skip-confirmation', 'Skip user confirmation')
-  .action(async (pluginPath: string, opts: UpgradePluginOptions) => {
-    await upgradePlugin(pluginPath, opts);
-  });
-
-plugins
-  .command('generate')
-  .description('Generate a new plugin using AI-powered code generation')
-  .option('--api-key <key>', 'Anthropic API key (or use ANTHROPIC_API_KEY env var)')
-  .option('--skip-tests', 'Skip test validation loop')
-  .option('--skip-validation', 'Skip production readiness validation')
-  .option('--skip-prompts', 'Skip interactive prompts (requires --spec-file)')
-  .option('--spec-file <path>', 'Path to JSON file containing plugin specification')
-  .action(async (opts: GeneratePluginOptions) => {
-    await generatePlugin(opts);
-  });
-
 // Re-export for backward compatibility
 export * from './actions/install';
 export * from './actions/remove';
 export * from './actions/list';
-export * from './actions/upgrade';
-export * from './actions/generate';
 export * from './types';
 export * from './utils/naming';

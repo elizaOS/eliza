@@ -170,7 +170,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
               console.error(`  ${index}. ${agent.name}`);
             });
             console.error(
-              `\nYou can create a new agent with: elizaos create -t agent ${agentName.toLowerCase()}`
+              `\nYou can create a new agent with: elizaos create --type agent ${agentName.toLowerCase()}`
             );
           }
         } catch (error) {

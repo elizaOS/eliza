@@ -16,7 +16,12 @@ import {
   TaskMetadata,
   type UUID,
   type World,
+  type AgentRunSummary,
+  type AgentRunSummaryResult,
+  type RunStatus,
+  type AgentRunCounts,
 } from '@elizaos/core';
+import type { DatabaseMigrationService } from './migration-service';
 import {
   and,
   cosineDistance,
@@ -84,6 +89,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   protected readonly maxDelay: number = 10000;
   protected readonly jitterMax: number = 1000;
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
+  protected migrationService?: DatabaseMigrationService;
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
   public abstract init(): Promise<void>;
@@ -94,6 +100,37 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   public async initialize(): Promise<void> {
     await this.init();
+  }
+
+  /**
+   * Run plugin schema migrations for all registered plugins
+   * @param plugins Array of plugins with their schemas
+   * @param options Migration options (verbose, force, dryRun, etc.)
+   */
+  public async runPluginMigrations(
+    plugins: Array<{ name: string; schema?: any }>,
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void> {
+    // Initialize migration service if not already done
+    if (!this.migrationService) {
+      const { DatabaseMigrationService } = await import('./migration-service');
+      this.migrationService = new DatabaseMigrationService();
+      await this.migrationService.initializeWithDatabase(this.db);
+    }
+
+    // Register plugin schemas
+    for (const plugin of plugins) {
+      if (plugin.schema) {
+        this.migrationService.registerSchema(plugin.name, plugin.schema);
+      }
+    }
+
+    // Run migrations with options
+    await this.migrationService.runAllPluginMigrations(options);
   }
 
   /**
@@ -213,7 +250,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns {Promise<Partial<Agent>[]>} A Promise that resolves to an array of Agent objects.
    */
   async getAgents(): Promise<Partial<Agent>[]> {
-    return this.withDatabase(async () => {
+    const result = await this.withDatabase(async () => {
       const rows = await this.db
         .select({
           id: agentTable.id,
@@ -227,6 +264,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         bio: row.bio === null ? '' : row.bio,
       }));
     });
+    // Guard against null return
+    return result || [];
   }
   /**
    * Asynchronously creates a new agent record in the database.
@@ -237,30 +276,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   async createAgent(agent: Agent): Promise<boolean> {
     return this.withDatabase(async () => {
       try {
-        // Check for existing agent with the same ID or name
-        // Check for existing agent with the same ID or name
-        const conditions: (SQL<unknown> | undefined)[] = [];
+        // Check for existing agent with the same ID only (names can be duplicated)
         if (agent.id) {
-          conditions.push(eq(agentTable.id, agent.id));
-        }
-        if (agent.name) {
-          conditions.push(eq(agentTable.name, agent.name));
-        }
+          const existing = await this.db
+            .select({ id: agentTable.id })
+            .from(agentTable)
+            .where(eq(agentTable.id, agent.id))
+            .limit(1);
 
-        const existing =
-          conditions.length > 0
-            ? await this.db
-                .select({ id: agentTable.id })
-                .from(agentTable)
-                .where(or(...conditions))
-                .limit(1)
-            : [];
-
-        if (existing.length > 0) {
-          logger.warn(
-            `Attempted to create an agent with a duplicate ID or name. ID: ${agent.id}, name: ${agent.name}`
-          );
-          return false;
+          if (existing.length > 0) {
+            logger.warn(`Attempted to create an agent with a duplicate ID. ID: ${agent.id}`);
+            return false;
+          }
         }
 
         await this.db.transaction(async (tx) => {
@@ -919,6 +946,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param {Object} params - The parameters for retrieving memories.
    * @param {UUID} params.roomId - The ID of the room to retrieve memories for.
    * @param {number} [params.count] - The maximum number of memories to retrieve.
+   * @param {number} [params.offset] - The offset for pagination.
    * @param {boolean} [params.unique] - Whether to retrieve unique memories only.
    * @param {string} [params.tableName] - The name of the table to retrieve memories from.
    * @param {number} [params.start] - The start date to retrieve memories from.
@@ -929,6 +957,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     entityId?: UUID;
     agentId?: UUID;
     count?: number;
+    offset?: number;
     unique?: boolean;
     tableName: string;
     start?: number;
@@ -936,9 +965,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     roomId?: UUID;
     worldId?: UUID;
   }): Promise<Memory[]> {
-    const { entityId, agentId, roomId, worldId, tableName, unique, start, end } = params;
+    const { entityId, agentId, roomId, worldId, tableName, unique, start, end, offset } = params;
 
     if (!tableName) throw new Error('tableName is required');
+    if (offset !== undefined && offset < 0) {
+      throw new Error('offset must be a non-negative number');
+    }
 
     return this.withDatabase(async () => {
       const conditions = [eq(memoryTable.type, tableName)];
@@ -972,7 +1004,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         conditions.push(eq(memoryTable.agentId, agentId));
       }
 
-      const query = this.db
+      const baseQuery = this.db
         .select({
           memory: {
             id: memoryTable.id,
@@ -992,7 +1024,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .where(and(...conditions))
         .orderBy(desc(memoryTable.createdAt));
 
-      const rows = params.count ? await query.limit(params.count) : await query;
+      // Apply limit and offset for pagination
+      // Build query conditionally to maintain proper types
+      const rows = await (async () => {
+        if (params.count && offset !== undefined && offset > 0) {
+          return baseQuery.limit(params.count).offset(offset);
+        } else if (params.count) {
+          return baseQuery.limit(params.count);
+        } else if (offset !== undefined && offset > 0) {
+          return baseQuery.offset(offset);
+        } else {
+          return baseQuery;
+        }
+      })();
 
       return rows.map((row) => ({
         id: row.memory.id as UUID,
@@ -1364,6 +1408,238 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       if (logs.length === 0) return [];
 
       return logs;
+    });
+  }
+
+  async getAgentRunSummaries(
+    params: {
+      limit?: number;
+      roomId?: UUID;
+      status?: RunStatus | 'all';
+      from?: number;
+      to?: number;
+    } = {}
+  ): Promise<AgentRunSummaryResult> {
+    const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
+    const fromDate = typeof params.from === 'number' ? new Date(params.from) : undefined;
+    const toDate = typeof params.to === 'number' ? new Date(params.to) : undefined;
+
+    return this.withDatabase(async () => {
+      const runMap = new Map<string, AgentRunSummary>();
+
+      const conditions: SQL<unknown>[] = [
+        eq(logTable.type, 'run_event'),
+        sql`${logTable.body} ? 'runId'`,
+        eq(roomTable.agentId, this.agentId),
+      ];
+
+      if (params.roomId) {
+        conditions.push(eq(logTable.roomId, params.roomId));
+      }
+      if (fromDate) {
+        conditions.push(gte(logTable.createdAt, fromDate));
+      }
+      if (toDate) {
+        conditions.push(lte(logTable.createdAt, toDate));
+      }
+
+      const whereClause = and(...conditions);
+
+      const eventLimit = Math.max(limit * 20, 200);
+
+      const runEventRows = await this.db
+        .select({
+          runId: sql<string>`(${logTable.body} ->> 'runId')`,
+          status: sql<string | null>`(${logTable.body} ->> 'status')`,
+          messageId: sql<string | null>`(${logTable.body} ->> 'messageId')`,
+          rawBody: logTable.body,
+          createdAt: logTable.createdAt,
+          roomId: logTable.roomId,
+          entityId: logTable.entityId,
+        })
+        .from(logTable)
+        .innerJoin(roomTable, eq(roomTable.id, logTable.roomId))
+        .where(whereClause)
+        .orderBy(desc(logTable.createdAt))
+        .limit(eventLimit);
+
+      for (const row of runEventRows) {
+        const runId = row.runId;
+        if (!runId) continue;
+
+        const summary: AgentRunSummary = runMap.get(runId) ?? {
+          runId,
+          status: 'started',
+          startedAt: null,
+          endedAt: null,
+          durationMs: null,
+          messageId: undefined,
+          roomId: undefined,
+          entityId: undefined,
+          metadata: {},
+        };
+
+        if (!summary.messageId && row.messageId) {
+          summary.messageId = row.messageId as UUID;
+        }
+        if (!summary.roomId && row.roomId) {
+          summary.roomId = row.roomId as UUID;
+        }
+        if (!summary.entityId && row.entityId) {
+          summary.entityId = row.entityId as UUID;
+        }
+
+        const body = row.rawBody as Record<string, unknown> | undefined;
+        if (body && typeof body === 'object') {
+          if (!summary.roomId && typeof body.roomId === 'string') {
+            summary.roomId = body.roomId as UUID;
+          }
+          if (!summary.entityId && typeof body.entityId === 'string') {
+            summary.entityId = body.entityId as UUID;
+          }
+          if (!summary.messageId && typeof body.messageId === 'string') {
+            summary.messageId = body.messageId as UUID;
+          }
+          if (!summary.metadata || Object.keys(summary.metadata).length === 0) {
+            const metadata = (body.metadata as Record<string, unknown> | undefined) ?? undefined;
+            summary.metadata = metadata ? { ...metadata } : {};
+          }
+        }
+
+        const createdAt = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
+        const timestamp = createdAt.getTime();
+        const eventStatus =
+          (row.status as RunStatus | undefined) ?? (body?.status as RunStatus | undefined);
+
+        if (eventStatus === 'started') {
+          summary.startedAt =
+            summary.startedAt === null ? timestamp : Math.min(summary.startedAt, timestamp);
+        } else if (
+          eventStatus === 'completed' ||
+          eventStatus === 'timeout' ||
+          eventStatus === 'error'
+        ) {
+          summary.status = eventStatus;
+          summary.endedAt = timestamp;
+          if (summary.startedAt !== null) {
+            summary.durationMs = Math.max(timestamp - summary.startedAt, 0);
+          }
+        }
+
+        runMap.set(runId, summary);
+      }
+
+      let runs = Array.from(runMap.values());
+      if (params.status && params.status !== 'all') {
+        runs = runs.filter((run) => run.status === params.status);
+      }
+
+      runs.sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0));
+
+      const total = runs.length;
+      const limitedRuns = runs.slice(0, limit);
+      const hasMore = total > limit;
+
+      const runCounts = new Map<string, AgentRunCounts>();
+      for (const run of limitedRuns) {
+        runCounts.set(run.runId, { actions: 0, modelCalls: 0, errors: 0, evaluators: 0 });
+      }
+
+      const runIds = limitedRuns.map((run) => run.runId).filter(Boolean);
+
+      if (runIds.length > 0) {
+        const runIdArray = sql`array[${sql.join(
+          runIds.map((id) => sql`${id}`),
+          sql`, `
+        )}]::text[]`;
+
+        const actionSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*)::int as "actions",
+            SUM(CASE WHEN COALESCE(body->'result'->>'success', 'true') = 'false' THEN 1 ELSE 0 END)::int as "errors",
+            SUM(COALESCE((body->>'promptCount')::int, 0))::int as "modelCalls"
+          FROM ${logTable}
+          WHERE type = 'action'
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const actionRows = (actionSummary.rows ?? []) as Array<{
+          runId: string;
+          actions: number | string;
+          errors: number | string;
+          modelCalls: number | string;
+        }>;
+
+        for (const row of actionRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.actions += Number(row.actions ?? 0);
+          counts.errors += Number(row.errors ?? 0);
+          counts.modelCalls += Number(row.modelCalls ?? 0);
+        }
+
+        const evaluatorSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*)::int as "evaluators"
+          FROM ${logTable}
+          WHERE type = 'evaluator'
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const evaluatorRows = (evaluatorSummary.rows ?? []) as Array<{
+          runId: string;
+          evaluators: number | string;
+        }>;
+
+        for (const row of evaluatorRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.evaluators += Number(row.evaluators ?? 0);
+        }
+
+        const genericSummary = await this.db.execute(sql`
+          SELECT
+            body->>'runId' as "runId",
+            COUNT(*) FILTER (WHERE type LIKE 'useModel:%')::int as "modelLogs",
+            COUNT(*) FILTER (WHERE type = 'embedding_event' AND body->>'status' = 'failed')::int as "embeddingErrors"
+          FROM ${logTable}
+          WHERE (type LIKE 'useModel:%' OR type = 'embedding_event')
+            AND body->>'runId' = ANY(${runIdArray})
+          GROUP BY body->>'runId'
+        `);
+
+        const genericRows = (genericSummary.rows ?? []) as Array<{
+          runId: string;
+          modelLogs: number | string;
+          embeddingErrors: number | string;
+        }>;
+
+        for (const row of genericRows) {
+          const counts = runCounts.get(row.runId);
+          if (!counts) continue;
+          counts.modelCalls += Number(row.modelLogs ?? 0);
+          counts.errors += Number(row.embeddingErrors ?? 0);
+        }
+      }
+
+      for (const run of limitedRuns) {
+        run.counts = runCounts.get(run.runId) ?? {
+          actions: 0,
+          modelCalls: 0,
+          errors: 0,
+          evaluators: 0,
+        };
+      }
+
+      return {
+        runs: limitedRuns,
+        total,
+        hasMore,
+      } satisfies AgentRunSummaryResult;
     });
   }
 
@@ -2807,7 +3083,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       updatedAt: Date;
     }>
   > {
-    return this.withDatabase(async () => {
+    const result = await this.withDatabase(async () => {
       const results = await this.db.select().from(messageServerTable);
       return results.map((r) => ({
         id: r.id as UUID,
@@ -2819,6 +3095,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         updatedAt: r.updatedAt,
       }));
     });
+    // Guard against null return
+    return result || [];
   }
 
   /**
