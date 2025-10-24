@@ -1,5 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { ElizaReactProvider } from '@elizaos/react';
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
@@ -53,13 +54,14 @@ const queryClient = new QueryClient({
 });
 
 // Prefetch initial data with smarter error handling
+const elizaClient = createElizaClient();
+
 const prefetchInitialData = async () => {
   try {
     // Prefetch agents (real-time data so shorter stale time)
     await queryClient.prefetchQuery({
       queryKey: ['agents'],
       queryFn: async () => {
-        const elizaClient = createElizaClient();
         const result = await elizaClient.agents.listAgents();
         return { data: result };
       },
@@ -201,20 +203,22 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div
-        className="dark antialiased font-sans"
-        style={{
-          colorScheme: 'dark',
-        }}
-      >
-        <BrowserRouter>
-          <AuthProvider>
-            <ConnectionProvider>
-              <AppContent />
-            </ConnectionProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </div>
+      <ElizaReactProvider client={elizaClient}>
+        <div
+          className="dark antialiased font-sans"
+          style={{
+            colorScheme: 'dark',
+          }}
+        >
+          <BrowserRouter>
+            <AuthProvider>
+              <ConnectionProvider>
+                <AppContent />
+              </ConnectionProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </div>
+      </ElizaReactProvider>
     </QueryClientProvider>
   );
 }
