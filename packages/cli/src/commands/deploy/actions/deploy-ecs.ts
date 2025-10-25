@@ -69,10 +69,12 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     // Step 4: Parse project info
     const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
-    const projectName = options.name || packageJson.name || path.basename(cwd);
+    const containerName = options.name || packageJson.name || path.basename(cwd);
+    const projectName = options.projectName || path.basename(cwd); // Use directory name if not specified
     const projectVersion = packageJson.version || '0.0.0';
 
-    logger.info(`📦 Deploying project: ${projectName} v${projectVersion}`);
+    logger.info(`📦 Deploying project: ${containerName} v${projectVersion}`);
+    logger.info(`🏷️  Project identifier: ${projectName}`);
 
     // Step 5: Check quota and credits
     logger.info('💳 Checking account quota and credits...');
@@ -164,10 +166,33 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // Step 10: Parse environment variables
     const environmentVars = parseEnvironmentVariables(options.env);
 
+    // Step 10.5: Check for existing deployment
+    logger.info('🔍 Checking for existing deployments...');
+    const existingContainers = await apiClient.listContainers();
+    let isUpdate = false;
+
+    if (existingContainers.success && existingContainers.data) {
+      const existingProject = existingContainers.data.find(
+        (c: any) => c.project_name === projectName
+      );
+
+      if (existingProject) {
+        isUpdate = true;
+        logger.info(
+          `🔄 Found existing project "${projectName}". This will be an UPDATE deployment.`
+        );
+        logger.info(`   Existing container ID: ${existingProject.id}`);
+        logger.info(`   Current status: ${existingProject.status}`);
+      } else {
+        logger.info(`🆕 No existing project found. This will be a FRESH deployment.`);
+      }
+    }
+
     // Step 11: Create container configuration for ECS
     const containerConfig: ContainerConfig = {
-      name: projectName,
-      description: packageJson.description || `ElizaOS project: ${projectName}`,
+      name: containerName,
+      project_name: projectName,
+      description: packageJson.description || `ElizaOS project: ${containerName}`,
       ecr_image_uri: imageBuildData.ecrImageUri,
       ecr_repository_uri: imageBuildData.ecrRepositoryUri,
       image_tag: imageBuildData.ecrImageTag,
@@ -183,7 +208,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       health_check_path: '/health',
     };
 
-    logger.info('☁️  Deploying to AWS ECS...');
+    logger.info(`☁️  Deploying to AWS ECS (${isUpdate ? 'update' : 'fresh deployment'})...`);
 
     const createResponse = await apiClient.createContainer(containerConfig);
 
