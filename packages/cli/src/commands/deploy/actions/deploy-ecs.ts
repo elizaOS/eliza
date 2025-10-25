@@ -199,8 +199,8 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       image_tag: imageBuildData.ecrImageTag,
       port: options.port || 3000,
       desired_count: options.desiredCount || 1,
-      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t3g.small)
-      memory: options.memory || 1792, // 1.75 GB (87.5% of t3g.small)
+      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t4g.micro's 2 vCPUs)
+      memory: options.memory || 896, // 896 MB (87.5% of t4g.micro's 1 GiB)
       environment_vars: {
         ...environmentVars,
         PORT: (options.port || 3000).toString(),
