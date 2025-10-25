@@ -5,6 +5,7 @@
 
 export interface DeployOptions {
   name?: string;
+  projectName?: string; // Project name for multi-project support
   port?: number;
   desiredCount?: number; // Replaces maxInstances
   cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
@@ -27,6 +28,7 @@ export interface DeploymentResult {
 
 export interface ContainerConfig {
   name: string;
+  project_name: string; // Project identifier for multi-project support
   description?: string;
   port: number;
   desired_count: number; // Number of tasks to run
@@ -124,6 +126,7 @@ export interface ImageUploadData {
 export interface ContainerData {
   id: string;
   name: string;
+  project_name: string; // Project identifier
   status: string;
   ecs_service_arn?: string;
   ecs_task_definition_arn?: string;
@@ -138,6 +141,8 @@ export interface ContainerData {
   memory?: number;
   environment_vars?: Record<string, string>;
   health_check_path?: string;
+  is_update?: string; // "true" if update, "false" if fresh
+  cloudformation_stack_name?: string; // Stack name
 }
 
 /**

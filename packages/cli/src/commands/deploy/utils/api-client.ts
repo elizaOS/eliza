@@ -158,6 +158,29 @@ export class CloudApiClient {
   }
 
   /**
+   * List all containers for the authenticated user
+   */
+  async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        throw new Error(`API request failed (${response.status}): ${error}`);
+      }
+
+      return await response.json();
+    } catch (error: unknown) {
+      return this.handleApiError('list containers', error);
+    }
+  }
+
+  /**
    * Get container status
    */
   async getContainer(containerId: string): Promise<CloudApiResponse<ContainerData>> {
@@ -180,34 +203,6 @@ export class CloudApiClient {
       return await response.json();
     } catch (error: unknown) {
       return this.handleApiError('get container status', error);
-    }
-  }
-
-  /**
-   * List all containers
-   */
-  async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
-    try {
-      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`API request failed (${response.status}): ${error}`);
-      }
-
-      return await response.json();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-      logger.error('Failed to list containers:', errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
     }
   }
 

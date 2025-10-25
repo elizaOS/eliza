@@ -52,6 +52,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.6.0",
     "@types/uuid": "^11.0.0",
+    "@vitejs/plugin-react": "^5.1.0",
     "bun": "^1.2.21",
     "husky": "^9.1.7",
     "lerna": "9.0.0",

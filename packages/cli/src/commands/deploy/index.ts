@@ -12,6 +12,7 @@ export const deploy = new Command()
   .name('deploy')
   .description('Deploy ElizaOS project to AWS ECS (Elastic Container Service)')
   .option('-n, --name <name>', 'Name for the deployment')
+  .option('--project-name <name>', 'Project name (defaults to directory name)')
   .option(
     '-p, --port <port>',
     'Port the container listens on',
