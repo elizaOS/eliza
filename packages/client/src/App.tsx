@@ -1,5 +1,6 @@
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { ElizaReactProvider, STALE_TIMES } from '@elizaos/react';
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import AgentCreator from './components/agent-creator';
@@ -12,7 +13,6 @@ import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
 import { AuthProvider } from './context/AuthContext';
 import { ConnectionProvider, useConnection } from './context/ConnectionContext';
-import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
 import { createElizaClient } from './lib/api-client-config';
@@ -53,13 +53,14 @@ const queryClient = new QueryClient({
 });
 
 // Prefetch initial data with smarter error handling
+const elizaClient = createElizaClient();
+
 const prefetchInitialData = async () => {
   try {
     // Prefetch agents (real-time data so shorter stale time)
     await queryClient.prefetchQuery({
       queryKey: ['agents'],
       queryFn: async () => {
-        const elizaClient = createElizaClient();
         const result = await elizaClient.agents.listAgents();
         return { data: result };
       },
@@ -117,7 +118,7 @@ function AppContent() {
               </SheetContent>
             </Sheet>
           </div>
-          <div className="flex w-full justify-center pt-16 md:pt-0 flex-shrink-0">
+          <div className="flex w-full justify-center pt-16 md:pt-0 shrink-0">
             <div className="w-full md:max-w-4xl">
               <ConnectionErrorBanner />
             </div>
@@ -201,20 +202,22 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div
-        className="dark antialiased font-sans"
-        style={{
-          colorScheme: 'dark',
-        }}
-      >
-        <BrowserRouter>
-          <AuthProvider>
-            <ConnectionProvider>
-              <AppContent />
-            </ConnectionProvider>
-          </AuthProvider>
-        </BrowserRouter>
-      </div>
+      <ElizaReactProvider client={elizaClient}>
+        <div
+          className="dark antialiased font-sans"
+          style={{
+            colorScheme: 'dark',
+          }}
+        >
+          <BrowserRouter>
+            <AuthProvider>
+              <ConnectionProvider>
+                <AppContent />
+              </ConnectionProvider>
+            </AuthProvider>
+          </BrowserRouter>
+        </div>
+      </ElizaReactProvider>
     </QueryClientProvider>
   );
 }

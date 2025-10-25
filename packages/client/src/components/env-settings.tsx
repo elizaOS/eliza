@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from './ui/input';
-import { Check, Eye, EyeOff, MoreVertical, Settings, X } from 'lucide-react';
-import { Button } from './ui/button';
-import { createElizaClient } from '@/lib/api-client-config';
-import { ApiKeyDialog } from './api-key-dialog';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { useElizaClient } from '@elizaos/react';
+import { Loader2, RefreshCw, Plus, Trash2, Copy, Eye, EyeOff, Check, X, MoreVertical, Settings } from 'lucide-react';
+import clientLogger from '@/lib/logger';
+import { useConfirmation } from '@/hooks/use-confirmation';
+import ConfirmationDialog from './confirmation-dialog';
+import { ApiKeyDialog } from './api-key-dialog';
 
 export default function EnvSettings() {
   const [name, setName] = useState('');
@@ -19,6 +29,7 @@ export default function EnvSettings() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
   const { toast } = useToast();
+  const elizaClient = useElizaClient();
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -38,7 +49,6 @@ export default function EnvSettings() {
   }, []);
 
   const fetchLocalEnvs = async () => {
-    const elizaClient = createElizaClient();
     const data = await elizaClient.system.getEnvironment();
     setLocalEnvs(data);
   };
@@ -236,7 +246,6 @@ export default function EnvSettings() {
           onClick={async () => {
             setIsUpdating(true);
             try {
-              const elizaClient = createElizaClient();
               await elizaClient.system.updateLocalEnvironment(localEnvs);
               toast({
                 title: 'Success',

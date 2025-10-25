@@ -1,7 +1,7 @@
 import ChatComponent from '@/components/chat';
 import { Button } from '@/components/ui/button';
 import { useAgentManagement } from '@/hooks/use-agent-management';
-import { useAgent } from '@/hooks/use-query-hooks';
+import { useAgent } from '@elizaos/react';
 import clientLogger from '@/lib/logger';
 import {
   type Agent,
@@ -34,40 +34,44 @@ export default function AgentRoute() {
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(agentId);
   const { startAgent, isAgentStarting } = useAgentManagement();
 
-  const agentFromHook: Agent | undefined = agentDataResponse?.data
+  const agentFromHook: Agent | undefined = agentDataResponse
     ? ({
-        ...(agentDataResponse.data as AgentWithStatus),
-        status:
-          agentDataResponse.data.status === 'active'
-            ? CoreAgentStatusEnum.ACTIVE
-            : agentDataResponse.data.status === 'inactive'
-              ? CoreAgentStatusEnum.INACTIVE
-              : CoreAgentStatusEnum.INACTIVE,
-        username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
-        bio: agentDataResponse.data.bio || '',
-        messageExamples: agentDataResponse.data.messageExamples || [],
-        postExamples: agentDataResponse.data.postExamples || [],
-        topics: agentDataResponse.data.topics || [],
-        adjectives: agentDataResponse.data.adjectives || [],
-        knowledge: agentDataResponse.data.knowledge || [],
-        plugins: agentDataResponse.data.plugins || [],
-        settings: agentDataResponse.data.settings || {},
-        secrets: (agentDataResponse.data as any).secrets || {},
-        style: agentDataResponse.data.style || {},
-        templates: agentDataResponse.data.templates || {},
-        enabled:
-          typeof agentDataResponse.data.enabled === 'boolean'
-            ? agentDataResponse.data.enabled
-            : true,
-        createdAt:
-          typeof agentDataResponse.data.createdAt === 'number'
-            ? agentDataResponse.data.createdAt
+      ...(agentDataResponse as unknown as AgentWithStatus),
+      status:
+        agentDataResponse.status === 'active'
+          ? CoreAgentStatusEnum.ACTIVE
+          : agentDataResponse.status === 'inactive'
+            ? CoreAgentStatusEnum.INACTIVE
+            : CoreAgentStatusEnum.INACTIVE,
+      username: (agentDataResponse as any).username || agentDataResponse.name || 'Unknown',
+      bio: agentDataResponse.bio || '',
+      messageExamples: (agentDataResponse as any).messageExamples || [],
+      postExamples: (agentDataResponse as any).postExamples || [],
+      topics: (agentDataResponse as any).topics || [],
+      adjectives: (agentDataResponse as any).adjectives || [],
+      knowledge: (agentDataResponse as any).knowledge || [],
+      plugins: (agentDataResponse as any).plugins || [],
+      settings: (agentDataResponse as any).settings || {},
+      secrets: (agentDataResponse as any).secrets || {},
+      style: (agentDataResponse as any).style || {},
+      templates: (agentDataResponse as any).templates || {},
+      enabled:
+        typeof agentDataResponse.enabled === 'boolean'
+          ? agentDataResponse.enabled
+          : true,
+      createdAt:
+        agentDataResponse.createdAt instanceof Date
+          ? agentDataResponse.createdAt.getTime()
+          : typeof agentDataResponse.createdAt === 'number'
+            ? agentDataResponse.createdAt
             : Date.now(),
-        updatedAt:
-          typeof agentDataResponse.data.updatedAt === 'number'
-            ? agentDataResponse.data.updatedAt
+      updatedAt:
+        agentDataResponse.updatedAt instanceof Date
+          ? agentDataResponse.updatedAt.getTime()
+          : typeof agentDataResponse.updatedAt === 'number'
+            ? agentDataResponse.updatedAt
             : Date.now(),
-      } as Agent)
+    } as unknown as Agent)
     : undefined;
 
   if (!agentId) return <div className="p-4">Agent ID not provided.</div>;

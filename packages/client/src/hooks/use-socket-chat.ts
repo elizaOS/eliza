@@ -9,7 +9,7 @@ import type {
   ChannelDeletedData,
 } from '@/lib/socketio-manager';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
-import type { UiMessage } from './use-query-hooks';
+import type { UiMessage } from '@elizaos/react';
 import { randomUUID } from '@/lib/utils';
 import clientLogger from '@/lib/logger';
 

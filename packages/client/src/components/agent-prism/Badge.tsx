@@ -91,7 +91,7 @@ export const Badge = ({
       {iconStart && <span className="shrink-0">{iconStart}</span>}
 
       <span
-        className={cn(textSizes[size], 'min-w-0 max-w-full flex-shrink-0 truncate tracking-normal')}
+        className={cn(textSizes[size], 'min-w-0 max-w-full shrink-0 truncate tracking-normal')}
       >
         {label}
       </span>

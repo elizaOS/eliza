@@ -11,8 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAgents } from '../hooks/use-query-hooks';
-import { createElizaClient } from '../lib/api-client-config';
+import { useAgents, useElizaClient, type Agent } from '@elizaos/react';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
@@ -255,7 +254,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
     queryFn: async () => {
-      const elizaClient = createElizaClient();
+      const elizaClient = useElizaClient();
       return await elizaClient.system.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
@@ -267,6 +266,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   });
 
   const { data: agents } = useAgents();
+  const elizaClient = useElizaClient();
+  const agentNames = (agents || []).map((agent) => agent.name);
 
   // WebSocket log streaming integration
   const handleLogStream = useCallback(
@@ -352,7 +353,6 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   // Sort logs by timestamp in descending order (newest first)
   const logs = combinedLogs.sort((a, b) => b.time - a.time);
   const levels = logResponse?.levels || [];
-  const agentNames = agents?.data?.agents?.map((agent) => agent.name) || [];
 
   // Filter and search logs
   const filteredLogs = logs.filter((log: LogEntry) => {
@@ -390,7 +390,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
       async () => {
         try {
           setIsClearing(true);
-          const elizaClient = createElizaClient();
+          const elizaClient = useElizaClient();
           await elizaClient.system.deleteGlobalLogs();
           queryClient.invalidateQueries({ queryKey: ['logs'] });
 
@@ -497,8 +497,8 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">ALL AGENTS</SelectItem>
-                {agentNames?.map((name) => (
-                  <SelectItem key={name} value={name!}>
+                {agentNames?.map((name: string) => (
+                  <SelectItem key={name} value={name}>
                     {name}
                   </SelectItem>
                 ))}
@@ -585,7 +585,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
                       <div className="flex items-start gap-2 min-w-0">
                         <div className="font-mono text-sm leading-relaxed break-all">{log.msg}</div>
                         {log.agentName && (
-                          <Badge variant="secondary" className="text-xs flex-shrink-0">
+                          <Badge variant="secondary" className="text-xs shrink-0">
                             {log.agentName}
                           </Badge>
                         )}

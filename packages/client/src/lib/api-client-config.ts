@@ -1,18 +1,20 @@
 import { ElizaClient, type ApiClientConfig } from '@elizaos/api-client';
 
+let elizaClientInstance: ElizaClient | null = null;
+
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
+
 export function createApiClientConfig(): ApiClientConfig {
-  const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
-  const apiKey = localStorage.getItem(getLocalStorageApiKey());
+  const apiKey = typeof window !== 'undefined' ? localStorage.getItem(getLocalStorageApiKey()) : null;
 
   const config: ApiClientConfig = {
-    baseUrl: window.location.origin,
+    baseUrl: typeof window !== 'undefined' ? window.location.origin : '',
     timeout: 30000,
     headers: {
       Accept: 'application/json',
     },
   };
 
-  // Only include apiKey if it exists (don't pass undefined)
   if (apiKey) {
     config.apiKey = apiKey;
   }
@@ -20,34 +22,30 @@ export function createApiClientConfig(): ApiClientConfig {
   return config;
 }
 
-// Singleton instance
-let elizaClientInstance: ElizaClient | null = null;
-
 export function createElizaClient(): ElizaClient {
   if (!elizaClientInstance) {
-    elizaClientInstance = ElizaClient.create(createApiClientConfig());
+    elizaClientInstance = new ElizaClient(createApiClientConfig());
   }
   return elizaClientInstance;
 }
 
-export function getElizaClient(): ElizaClient {
-  return createElizaClient();
-}
-
-// Function to reset the singleton (useful for API key changes)
 export function resetElizaClient(): void {
   elizaClientInstance = null;
 }
 
 export function updateApiClientApiKey(newApiKey: string | null): void {
-  const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
-
-  if (newApiKey) {
-    localStorage.setItem(getLocalStorageApiKey(), newApiKey);
-  } else {
-    localStorage.removeItem(getLocalStorageApiKey());
+  if (typeof window === 'undefined') {
+    return;
   }
 
-  // Reset the singleton so it uses the new API key
+  const storageKey = getLocalStorageApiKey();
+
+  if (newApiKey === null || newApiKey === '') {
+    localStorage.removeItem(storageKey);
+  } else {
+    localStorage.setItem(storageKey, newApiKey);
+  }
+
+  // Reset the client instance so it gets recreated with the new API key
   resetElizaClient();
 }

@@ -13,7 +13,7 @@ import type {
   MessageServer as ClientMessageServer,
   ServerMessage,
 } from '../types';
-import type { UiMessage } from '../hooks/use-query-hooks';
+import type { UiMessage } from '@elizaos/react';
 
 // Map API Agent status strings to core AgentStatus enum
 export function mapApiStatusToEnum(status: 'active' | 'inactive' | 'stopped'): AgentStatus {
@@ -149,8 +149,8 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
     thought: apiMessage.metadata?.thought,
     actions: apiMessage.metadata?.actions,
     type: messageType,
-    rawMessage: rawMessage,
-  };
+    rawMessage: rawMessage as ApiMessage | undefined,
+  } as any;
 }
 
 // Map API AgentLog to client format

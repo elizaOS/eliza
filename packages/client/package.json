@@ -63,6 +63,7 @@
   "dependencies": {
     "@elizaos/api-client": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/react": "workspace:*",
     "@evilmartians/agent-prism-data": "^0.0.4",
     "@evilmartians/agent-prism-types": "^0.0.4",
     "@hookform/resolvers": "^5.1.1",

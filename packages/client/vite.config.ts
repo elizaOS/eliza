@@ -60,6 +60,7 @@ export default defineConfig(({ mode, command }) => {
       },
       entries: ['./src/entry.tsx'],
       include: ['buffer', 'process', '@elizaos/core', '@elizaos/api-client'],
+      exclude: ['@elizaos/react'], // Let Vite handle the source directly
     },
     build: {
       target: 'esnext',
@@ -82,7 +83,8 @@ export default defineConfig(({ mode, command }) => {
               if (id.includes('@radix-ui')) {
                 return 'ui-vendor';
               }
-              if (id.includes('@elizaos')) {
+              // Don't chunk @elizaos/react - let it be in main bundle to preserve JSX runtime
+              if (id.includes('@elizaos') && !id.includes('@elizaos/react')) {
                 return 'elizaos-vendor';
               }
             }

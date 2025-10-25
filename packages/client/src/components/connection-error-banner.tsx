@@ -62,7 +62,7 @@ export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps)
       <div className="flex items-center space-x-3">
         <AlertCircle
           className={cn(
-            'h-5 w-5 flex-shrink-0',
+            'h-5 w-5 shrink-0',
             isUnauthorized ? 'text-yellow-400' : 'text-red-400'
           )}
         />

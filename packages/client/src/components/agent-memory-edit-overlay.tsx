@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useUpdateMemory, useDeleteMemory } from '@/hooks/use-query-hooks';
+import { useUpdateMemory, useDeleteMemory } from '@elizaos/react';
 import type { Memory, UUID } from '@elizaos/core';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
@@ -137,7 +137,7 @@ export default function MemoryEditOverlay({
               description: 'The memory content has been successfully updated',
             });
           },
-          onError: (error) => {
+          onError: (error: Error) => {
             toast({
               title: 'Update Failed',
               description: error.message || 'Failed to update memory',
@@ -177,7 +177,7 @@ export default function MemoryEditOverlay({
                 description: 'The memory has been successfully removed',
               });
             },
-            onError: (error) => {
+            onError: (error: Error) => {
               toast({
                 title: 'Delete Failed',
                 description: error.message || 'Failed to delete memory',
@@ -276,7 +276,7 @@ export default function MemoryEditOverlay({
           className="w-full max-w-4xl h-[85vh] max-h-[800px] flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 flex-shrink-0">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 shrink-0">
             <div className="flex items-center gap-2">
               <CardTitle id="memory-edit-title" className="text-xl font-semibold">
                 Edit Memory Content
@@ -297,7 +297,7 @@ export default function MemoryEditOverlay({
           <CardContent className="pt-4 flex-1 overflow-hidden flex flex-col">
             {/* Warning Banner */}
             <div className="mb-4 flex items-start bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-md p-3">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5 shrink-0" />
               <div className="text-sm text-amber-800 dark:text-amber-200">
                 <p className="font-medium mb-1">Editing Raw Memory Content</p>
                 <p>Changes may affect agent behavior. Ensure JSON format is valid before saving.</p>
@@ -324,11 +324,10 @@ export default function MemoryEditOverlay({
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Type:</span>
                   <span
-                    className={`text-xs px-2 py-1 rounded-full ${
-                      memory.entityId === agentId
-                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                        : 'bg-white-100 text-white dark:bg-white-800 dark:text-white'
-                    }`}
+                    className={`text-xs px-2 py-1 rounded-full ${memory.entityId === agentId
+                      ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                      : 'bg-white-100 text-white dark:bg-white-800 dark:text-white'
+                      }`}
                   >
                     {memory.entityId === agentId ? 'Agent Message' : 'User Message'}
                   </span>
@@ -410,22 +409,21 @@ export default function MemoryEditOverlay({
                   id="memory-content"
                   value={editedContent}
                   onChange={(e) => setEditedContent(e.target.value)}
-                  className={`flex-1 resize-none font-mono text-sm min-h-[300px] ${
-                    !isValidJson ? 'border-red-300 focus:border-red-500' : ''
-                  }`}
+                  className={`flex-1 resize-none font-mono text-sm min-h-[300px] ${!isValidJson ? 'border-red-300 focus:border-red-500' : ''
+                    }`}
                   placeholder="Memory content in JSON format..."
                   disabled={isProcessing}
                   aria-describedby="json-help"
                 />
               )}
 
-              <p id="json-help" className="text-xs text-muted-foreground mt-2 flex-shrink-0">
+              <p id="json-help" className="text-xs text-muted-foreground mt-2 shrink-0">
                 Edit the JSON directly. Use Ctrl+A to select all, Ctrl+Z to undo.
               </p>
             </div>
           </CardContent>
 
-          <CardFooter className="flex justify-between flex-shrink-0">
+          <CardFooter className="flex justify-between shrink-0">
             <Button variant="destructive" onClick={handleDelete} disabled={isProcessing}>
               <Trash className="mr-2 h-4 w-4" />
               Delete Memory

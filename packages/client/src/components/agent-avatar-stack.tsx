@@ -49,7 +49,7 @@ export default function AgentAvatarStack({
     return agentAvatars[agentId] ? (
       <AvatarImage src={avatarSrc} alt="Agent avatar" />
     ) : (
-      <div className="rounded-full bg-gray-600 w-full h-full flex-shrink-0 flex items-center justify-center">
+      <div className="rounded-full bg-gray-600 w-full h-full shrink-0 flex items-center justify-center">
         {formatAgentName(agentNames[index])}
       </div>
     );

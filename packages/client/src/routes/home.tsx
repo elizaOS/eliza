@@ -2,10 +2,15 @@ import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
+import {
+  useAgents,
+  useChannels,
+  useServers,
+  type MessageServer,
+  type MessageChannel,
+} from '@elizaos/react';
 import clientLogger from '@/lib/logger';
 import { type Agent, type UUID, ChannelType as CoreChannelType, AgentStatus } from '@elizaos/core';
-import type { MessageChannel, MessageServer } from '@/types';
 import { Plus } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -19,17 +24,27 @@ import { Separator } from '@/components/ui/separator';
  * Displays lists of agents and groups with status indicators, action buttons, and overlays for detailed views and settings. Handles loading and error states, and supports navigation to chat and settings pages.
  */
 export default function Home() {
-  const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
+  const { data: agentsData, isLoading, isError, error } = useAgents();
   const navigate = useNavigate();
 
   // Extract agents properly from the response
-  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
-  const activeAgentsCount = agents.filter((a) => a.status === AgentStatus.ACTIVE).length;
+  const agents = useMemo(
+    () =>
+      (Array.isArray(agentsData) ? agentsData : []).map((agent: any) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status === 'active' ? AgentStatus.ACTIVE : AgentStatus.INACTIVE,
+        createdAt: agent.createdAt instanceof Date ? agent.createdAt.getTime() : (agent.createdAt ?? Date.now()),
+        updatedAt: agent.updatedAt instanceof Date ? agent.updatedAt.getTime() : (agent.updatedAt ?? Date.now()),
+        bio: agent.bio ?? [],
+        settings: agent.settings ?? {},
+      }) as unknown as Agent),
+    [agentsData]
+  );
+  const activeAgentsCount = agents.filter((a: Agent) => a.status === AgentStatus.ACTIVE).length;
 
-  const { data: serversData } = useServers() as {
-    data: { data: { servers: MessageServer[] } } | undefined;
-  };
-  const servers = serversData?.data?.servers || [];
+  const { data: servers } = useServers();
+  // servers is already MessageServer[] from the hook
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
@@ -133,13 +148,13 @@ export default function Home() {
                 {!isLoading && !isError && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 agents-section">
                     {agents
-                      .sort((a, b) => {
+                      .sort((a: Agent, b: Agent) => {
                         // Sort by status - ACTIVE agents first
                         const aActive = a.status === AgentStatus.ACTIVE ? 1 : 0;
                         const bActive = b.status === AgentStatus.ACTIVE ? 1 : 0;
                         return bActive - aActive;
                       })
-                      .map((agent) => {
+                      .map((agent: Agent) => {
                         return (
                           <AgentCard
                             key={agent.id}
@@ -155,7 +170,7 @@ export default function Home() {
 
             <TabsContent value="groups" className="flex-1 mt-0 bg-background">
               <div className="flex flex-col gap-6 w-full md:max-w-4xl mx-auto px-6 py-2">
-                {!isLoading && !isError && (
+                {!isLoading && !isError && servers && (
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-3 groups-section">
                     {servers.map((server: MessageServer) => (
                       <ServerChannels key={server.id} serverId={server.id} />
@@ -187,16 +202,14 @@ export default function Home() {
 
 // Sub-component to fetch and display channels for a given server
 const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId) as {
-    data: { data: { channels: MessageChannel[] } } | undefined;
-    isLoading: boolean;
-  };
+  const { data: channels, isLoading: isLoadingChannels } = useChannels(serverId);
+  // channels is already MessageChannel[] from the hook
   const groupChannels = useMemo(
     () =>
-      channelsData?.data?.channels?.filter(
+      channels?.filter(
         (ch: MessageChannel) => ch.type === CoreChannelType.GROUP
       ) || [],
-    [channelsData]
+    [channels]
   );
 
   if (isLoadingChannels) return <p>Loading channels for server...</p>;
@@ -208,7 +221,7 @@ const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
       {groupChannels.map((channel: MessageChannel) => (
         <GroupCard
           key={channel.id}
-          group={{ ...channel, server_id: serverId } as MessageChannel & { server_id: UUID }} // Pass server_id for navigation context
+          group={{ ...channel, server_id: serverId } as any} // Pass server_id for navigation context
         />
       ))}
     </>

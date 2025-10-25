@@ -18,7 +18,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAgentActions, useDeleteLog } from '@/hooks/use-query-hooks';
+import { useAgentActions, useDeleteLog } from '@elizaos/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -567,7 +567,7 @@ function EmptyState({
             : `No ${selectedType} actions found.`}
       </p>
       {searchQuery && (
-        <Button variant="outline" onClick={() => {}}>
+        <Button variant="outline" onClick={() => { }}>
           Clear Search
         </Button>
       )}
@@ -585,7 +585,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
   // Exclude embedding operations by default
   const excludeTypes = ['embedding', 'text_embedding'];
 
-  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId, excludeTypes);
+  const { data: actions = [], isLoading, error } = useAgentActions(agentId, roomId);
   const { mutate: deleteLog } = useDeleteLog();
 
   const { confirm, isOpen, onOpenChange, onConfirm, options } = useConfirmation();
