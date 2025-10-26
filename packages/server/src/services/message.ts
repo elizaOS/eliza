@@ -7,12 +7,39 @@ import {
   validateUuid,
   type Content,
   type IAgentRuntime,
-  type Memory,
   type Plugin,
   type UUID,
+  ElizaOS,
 } from '@elizaos/core';
 import type { MessageMetadata } from '@elizaos/api-client';
 import internalMessageBus from '../bus'; // Import the bus
+
+/**
+ * Global ElizaOS instance for MessageBusService
+ * Set by AgentServer during initialization
+ */
+let globalElizaOS: ElizaOS | null = null;
+
+/**
+ * Set the global ElizaOS instance
+ * Should be called by AgentServer during initialization
+ */
+export function setGlobalElizaOS(elizaOS: ElizaOS): void {
+  globalElizaOS = elizaOS;
+  logger.info('[MessageBusService] Global ElizaOS instance set');
+}
+
+/**
+ * Get the global ElizaOS instance
+ */
+function getGlobalElizaOS(): ElizaOS {
+  if (!globalElizaOS) {
+    throw new Error(
+      'ElizaOS not initialized. Call setGlobalElizaOS() before using MessageBusService.'
+    );
+  }
+  return globalElizaOS;
+}
 
 // This interface defines the structure of messages coming from the server
 export interface MessageServiceMessage {
@@ -369,57 +396,6 @@ export class MessageBusService extends Service {
     return agentAuthorEntityId;
   }
 
-  private createAgentMemory(
-    message: MessageServiceMessage,
-    agentAuthorEntityId: UUID,
-    agentRoomId: UUID,
-    agentWorldId: UUID
-  ): Memory {
-    const messageContent: Content = {
-      text: message.content,
-      source: message.source_type || 'central-bus',
-      attachments: message.metadata?.attachments?.map((att) => ({
-        id: att.id,
-        url: att.url,
-        title: att.name,
-        contentType: att.type as ContentType | undefined,
-      })),
-      inReplyTo: message.in_reply_to_message_id
-        ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
-        : undefined,
-    };
-
-    // Generate a deterministic memory ID by combining message ID and agent ID
-    // This ensures each agent creates a unique memory for the same message
-    // but the same agent will always generate the same ID for the same message
-    const uniqueMemoryId = createUniqueUuid(this.runtime, `${message.id}-${this.runtime.agentId}`);
-
-    return {
-      id: uniqueMemoryId,
-      entityId: agentAuthorEntityId,
-      agentId: this.runtime.agentId,
-      roomId: agentRoomId,
-      worldId: agentWorldId,
-      content: messageContent,
-      createdAt: message.created_at,
-      metadata: {
-        // Include message metadata first (which includes session metadata)
-        ...(message.metadata || {}),
-        // System fields should override any user-provided values
-        type: 'message',
-        source: message.source_type || 'central-bus',
-        sourceId: message.id,
-        raw: {
-          ...(typeof message.raw_message === 'object' && message.raw_message !== null
-            ? message.raw_message
-            : {}),
-          senderName: message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
-          senderId: message.author_id,
-        },
-      },
-    };
-  }
-
   public async handleIncomingMessage(data: unknown) {
     // Validate the incoming data structure
     if (!data || typeof data !== 'object') {
@@ -474,70 +450,104 @@ export class MessageBusService extends Service {
       if (!(await this.validateNotSelfMessage(message))) return;
 
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: All checks passed, proceeding to create agent memory and emit MESSAGE_RECEIVED event`
+        `[${this.runtime.character.name}] MessageBusService: All checks passed, proceeding to process message via elizaOS.sendMessage()`
       );
 
+      // Get ElizaOS instance
+      const elizaOS = getGlobalElizaOS();
+
+      // Prepare world and room IDs
       const { agentWorldId, agentRoomId } = await this.ensureWorldAndRoomExist(message);
       const agentAuthorEntityId = await this.ensureAuthorEntityExists(message);
-      const agentMemory = this.createAgentMemory(
-        message,
-        agentAuthorEntityId,
-        agentRoomId,
-        agentWorldId
+
+      // Generate deterministic memory ID
+      const uniqueMemoryId = createUniqueUuid(
+        this.runtime,
+        `${message.id}-${this.runtime.agentId}`
       );
 
       // Check if this memory already exists (in case of duplicate processing)
-      const existingMemory = await this.runtime.getMemoryById(agentMemory.id as UUID);
+      const existingMemory = await this.runtime.getMemoryById(uniqueMemoryId);
       if (existingMemory) {
         logger.debug(
-          `[${this.runtime.character.name}] MessageBusService: Memory ${agentMemory.id} already exists, skipping duplicate processing`
+          `[${this.runtime.character.name}] MessageBusService: Memory ${uniqueMemoryId} already exists, skipping duplicate processing`
         );
         return;
       }
 
-      const callbackForCentralBus = async (responseContent: Content): Promise<Memory[]> => {
-        logger.info(
-          `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
-        );
-
-        await this.runtime.createMemory(
-          {
-            entityId: this.runtime.agentId,
-            content: responseContent,
-            roomId: agentRoomId,
-            worldId: agentWorldId,
-            agentId: this.runtime.agentId,
-          },
-          'messages'
-        );
-
-        // Send response to central bus
-        await this.sendAgentResponseToBus(
-          agentRoomId,
-          agentWorldId,
-          responseContent,
-          agentMemory.id,
-          message
-        );
-
-        // Return empty array because we don't need to communicate the created memories back.
-        // We've already saved the response memory above and sent it to the message bus.
-        return [];
+      // Prepare message content
+      const messageContent: Content = {
+        text: message.content,
+        source: message.source_type || 'central-bus',
+        attachments: message.metadata?.attachments?.map((att) => ({
+          id: att.id,
+          url: att.url,
+          title: att.name,
+          contentType: att.type as ContentType | undefined,
+        })),
+        inReplyTo: message.in_reply_to_message_id
+          ? createUniqueUuid(this.runtime, message.in_reply_to_message_id)
+          : undefined,
       };
 
-      // Call the message handler directly instead of emitting events
-      // This provides a clearer, more traceable flow for message processing
-      if (!this.runtime.messageService) {
-        logger.error(
-          `[${this.runtime.character.name}] MessageBusService: messageService is not initialized, cannot handle message`
-        );
-        return;
-      }
+      // Use elizaOS.sendMessage() with async callback
+      await elizaOS.sendMessage(
+        this.runtime.agentId,
+        {
+          id: uniqueMemoryId,
+          entityId: agentAuthorEntityId,
+          roomId: agentRoomId,
+          worldId: agentWorldId,
+          content: messageContent,
+          createdAt: message.created_at,
+          metadata: {
+            ...(message.metadata || {}),
+            type: 'message',
+            source: message.source_type || 'central-bus',
+            sourceId: message.id,
+            raw: {
+              ...(typeof message.raw_message === 'object' && message.raw_message !== null
+                ? message.raw_message
+                : {}),
+              senderName:
+                message.author_display_name || `User-${message.author_id.substring(0, 8)}`,
+              senderId: message.author_id,
+            },
+          },
+        },
+        {
+          onResponse: async (responseContent: Content) => {
+            logger.info(
+              `[${this.runtime.character.name}] Agent generated response for message. Preparing to send back to bus.`
+            );
 
-      await this.runtime.messageService.handleMessage(
-        this.runtime,
-        agentMemory,
-        callbackForCentralBus
+            await this.runtime.createMemory(
+              {
+                entityId: this.runtime.agentId,
+                content: responseContent,
+                roomId: agentRoomId,
+                worldId: agentWorldId,
+                agentId: this.runtime.agentId,
+              },
+              'messages'
+            );
+
+            // Send response to central bus
+            await this.sendAgentResponseToBus(
+              agentRoomId,
+              agentWorldId,
+              responseContent,
+              uniqueMemoryId,
+              message
+            );
+          },
+          onError: async (error: Error) => {
+            logger.error(
+              `[${this.runtime.character.name}] MessageBusService: Error processing message via elizaOS.sendMessage()`,
+              error.message
+            );
+          },
+        }
       );
 
       // Notify completion after handling
