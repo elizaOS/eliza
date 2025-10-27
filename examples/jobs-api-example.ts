@@ -1,6 +1,5 @@
 /**
  * Example: Using the Jobs API for one-off agent messaging
- * Similar to @bankr/sdk pattern
  */
 
 // Example 1: Simple job creation and polling
