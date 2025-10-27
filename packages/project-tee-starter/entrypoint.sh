@@ -1,30 +1,61 @@
 #!/bin/bash
 set -e
 
-echo "Installing system dependencies..."
-apt-get update
-apt-get install -y --no-install-recommends \
+# ============================================================================
+# System Dependencies Installation
+# ============================================================================
+
+echo "📦 Installing system dependencies..."
+apt-get update -qq
+apt-get install -y -qq \
     build-essential \
     curl \
     ffmpeg \
+    wget \
+    ca-certificates \
+    gnupg \
     git \
     make \
     python3 \
-    unzip
+    jq \
+    unzip \
+    > /dev/null 2>&1
 
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+echo "✅ System dependencies installed"
 
-echo "Installing bun..."
+# ============================================================================
+# Install Bun (JavaScript runtime)
+# ============================================================================
+
 if ! command -v bun &> /dev/null; then
-    npm install -g bun@1.2.5
+    echo "📦 Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
+    echo "✅ Bun installed"
+else
+    echo "✅ Bun already installed"
 fi
 
-echo "Installing dependencies..."
+# ============================================================================
+# Install Project Dependencies
+# ============================================================================
+
+echo "📦 Installing project dependencies..."
+cd /app
 bun install
+echo "✅ Project dependencies installed"
 
-echo "Building application..."
+# ============================================================================
+# Build Project
+# ============================================================================
+
+echo "🔨 Building project..."
 bun run build
+echo "✅ Project built successfully"
 
-echo "Starting application..."
+# ============================================================================
+# Start Project
+# ============================================================================
+echo "🚀 Starting application..."
 exec bun run start
