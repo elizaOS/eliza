@@ -166,7 +166,15 @@ export function createX402Middleware(routeConfig: Record<string, { price?: strin
 
     // Only x402 enabled (no API key required), just validate payment
     logger.debug('[x402] Payment middleware enabled (no API key required)');
-    return basePaymentMiddleware;
+    return (req: Request, res: Response, next: NextFunction) => {
+        // Allow OPTIONS requests for CORS preflight
+        if (req.method === 'OPTIONS') {
+            return next();
+        }
+
+        // Validate payment
+        return basePaymentMiddleware(req, res, next);
+    };
 }
 
 /**

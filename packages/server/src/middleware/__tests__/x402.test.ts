@@ -289,6 +289,130 @@ describe('x402 Middleware', () => {
             expect(middleware).toBeDefined();
             expect(typeof middleware).toBe('function');
         });
+
+        test('should allow OPTIONS requests when X402_ENABLED is false and API token is configured', () => {
+            // Arrange - reset env
+            process.env = { ...originalEnv };
+            process.env.X402_ENABLED = 'false';
+            process.env.ELIZA_SERVER_AUTH_TOKEN = 'test-api-key';
+
+            const routeConfig = {
+                'POST /test': {
+                    description: 'Test endpoint',
+                },
+            };
+
+            // Act
+            const middleware = createX402Middleware(routeConfig);
+
+            // Assert - OPTIONS should bypass authentication
+            let nextCalled = false;
+            const mockReq = {
+                method: 'OPTIONS',
+                path: '/test',
+            } as unknown as Request;
+            const mockRes = {} as Response;
+            const mockNext = (() => {
+                nextCalled = true;
+            }) as NextFunction;
+
+            middleware(mockReq, mockRes, mockNext);
+            expect(nextCalled).toBe(true);
+        });
+
+        test('should allow OPTIONS requests when X402_ENABLED is false and no API token is configured', () => {
+            // Arrange - reset env
+            process.env = { ...originalEnv };
+            process.env.X402_ENABLED = 'false';
+            delete process.env.ELIZA_SERVER_AUTH_TOKEN;
+
+            const routeConfig = {
+                'POST /test': {
+                    description: 'Test endpoint',
+                },
+            };
+
+            // Act
+            const middleware = createX402Middleware(routeConfig);
+
+            // Assert - OPTIONS should pass through
+            let nextCalled = false;
+            const mockReq = {
+                method: 'OPTIONS',
+                path: '/test',
+            } as unknown as Request;
+            const mockRes = {} as Response;
+            const mockNext = (() => {
+                nextCalled = true;
+            }) as NextFunction;
+
+            middleware(mockReq, mockRes, mockNext);
+            expect(nextCalled).toBe(true);
+        });
+
+        test('should allow OPTIONS requests when both API key and x402 are enabled', () => {
+            // Arrange - reset env
+            process.env = { ...originalEnv };
+            process.env.X402_ENABLED = 'true';
+            process.env.X402_WALLET_ADDRESS = '0x1234567890123456789012345678901234567890';
+            process.env.ELIZA_SERVER_AUTH_TOKEN = 'test-api-key';
+
+            const routeConfig = {
+                'POST /test': {
+                    description: 'Test endpoint',
+                },
+            };
+
+            // Act
+            const middleware = createX402Middleware(routeConfig);
+
+            // Assert - OPTIONS should bypass both API key and payment checks
+            let nextCalled = false;
+            const mockReq = {
+                method: 'OPTIONS',
+                path: '/test',
+                headers: {}, // No API key, no payment
+            } as unknown as Request;
+            const mockRes = {} as Response;
+            const mockNext = (() => {
+                nextCalled = true;
+            }) as NextFunction;
+
+            middleware(mockReq, mockRes, mockNext);
+            expect(nextCalled).toBe(true);
+        });
+
+        test('should allow OPTIONS requests when only x402 is enabled', () => {
+            // Arrange - reset env
+            process.env = { ...originalEnv };
+            process.env.X402_ENABLED = 'true';
+            process.env.X402_WALLET_ADDRESS = '0x1234567890123456789012345678901234567890';
+            delete process.env.ELIZA_SERVER_AUTH_TOKEN; // No API key configured
+
+            const routeConfig = {
+                'POST /test': {
+                    description: 'Test endpoint',
+                },
+            };
+
+            // Act
+            const middleware = createX402Middleware(routeConfig);
+
+            // Assert - OPTIONS should bypass payment check
+            let nextCalled = false;
+            const mockReq = {
+                method: 'OPTIONS',
+                path: '/test',
+                headers: {}, // No payment
+            } as unknown as Request;
+            const mockRes = {} as Response;
+            const mockNext = (() => {
+                nextCalled = true;
+            }) as NextFunction;
+
+            middleware(mockReq, mockRes, mockNext);
+            expect(nextCalled).toBe(true);
+        });
     });
 
     describe('x402LoggingMiddleware', () => {
