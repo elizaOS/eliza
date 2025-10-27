@@ -12,6 +12,7 @@ export const deploy = new Command()
   .name('deploy')
   .description('Deploy ElizaOS project to AWS ECS (Elastic Container Service)')
   .option('-n, --name <name>', 'Name for the deployment')
+  .option('--project-name <name>', 'Project name (defaults to directory name)')
   .option(
     '-p, --port <port>',
     'Port the container listens on',
@@ -26,15 +27,15 @@ export const deploy = new Command()
   )
   .option(
     '--cpu <units>',
-    'CPU units (1792 = 1.75 vCPU, uses 87.5% of t3g.small)',
+    'CPU units (1792 = 1.75 vCPU, 87.5% of t4g.micro 2 vCPUs)',
     (value) => parseInt(value, 10),
     1792
   )
   .option(
     '--memory <mb>',
-    'Memory in MB (1792 = 1.75 GB, uses 87.5% of t3g.small)',
+    'Memory in MB (896 MB = 87.5% of t4g.micro 1 GiB)',
     (value) => parseInt(value, 10),
-    1792
+    896
   )
   .option('-k, --api-key <key>', 'ElizaOS Cloud API key')
   .option('-u, --api-url <url>', 'ElizaOS Cloud API URL', 'https://www.elizacloud.ai')

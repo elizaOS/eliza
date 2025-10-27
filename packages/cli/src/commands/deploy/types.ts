@@ -5,10 +5,11 @@
 
 export interface DeployOptions {
   name?: string;
+  projectName?: string; // Project name for multi-project support
   port?: number;
   desiredCount?: number; // Replaces maxInstances
-  cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
-  memory?: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
+  cpu?: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t4g.micro)
+  memory?: number; // Memory in MB (896 MB = 87.5% of t4g.micro 1 GiB)
   apiKey?: string;
   apiUrl?: string;
   env?: string[];
@@ -27,11 +28,12 @@ export interface DeploymentResult {
 
 export interface ContainerConfig {
   name: string;
+  project_name: string; // Project identifier for multi-project support
   description?: string;
   port: number;
   desired_count: number; // Number of tasks to run
-  cpu: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t3g.small)
-  memory: number; // Memory in MB (1792 = 1.75 GB, 87.5% of t3g.small)
+  cpu: number; // CPU units (1792 = 1.75 vCPU, 87.5% of t4g.micro)
+  memory: number; // Memory in MB (896 MB = 87.5% of t4g.micro 1 GiB)
   environment_vars?: Record<string, string>;
   health_check_path: string;
   ecr_image_uri: string; // Full ECR image URI with tag
@@ -124,6 +126,7 @@ export interface ImageUploadData {
 export interface ContainerData {
   id: string;
   name: string;
+  project_name: string; // Project identifier
   status: string;
   ecs_service_arn?: string;
   ecs_task_definition_arn?: string;
@@ -138,6 +141,8 @@ export interface ContainerData {
   memory?: number;
   environment_vars?: Record<string, string>;
   health_check_path?: string;
+  is_update?: string; // "true" if update, "false" if fresh
+  cloudformation_stack_name?: string; // Stack name
 }
 
 /**

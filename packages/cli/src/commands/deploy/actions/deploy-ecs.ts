@@ -7,6 +7,7 @@ import { logger } from '@elizaos/core';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import dotenv from 'dotenv';
+import ora from 'ora';
 import type {
   DeployOptions,
   DeploymentResult,
@@ -69,10 +70,12 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     // Step 4: Parse project info
     const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'));
-    const projectName = options.name || packageJson.name || path.basename(cwd);
+    const containerName = options.name || packageJson.name || path.basename(cwd);
+    const projectName = options.projectName || path.basename(cwd); // Use directory name if not specified
     const projectVersion = packageJson.version || '0.0.0';
 
-    logger.info(`📦 Deploying project: ${projectName} v${projectVersion}`);
+    logger.info(`📦 Deploying project: ${containerName} v${projectVersion}`);
+    logger.info(`🏷️  Project identifier: ${projectName}`);
 
     // Step 5: Check quota and credits
     logger.info('💳 Checking account quota and credits...');
@@ -164,17 +167,40 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // Step 10: Parse environment variables
     const environmentVars = parseEnvironmentVariables(options.env);
 
+    // Step 10.5: Check for existing deployment
+    logger.info('🔍 Checking for existing deployments...');
+    const existingContainers = await apiClient.listContainers();
+    let isUpdate = false;
+
+    if (existingContainers.success && existingContainers.data) {
+      const existingProject = existingContainers.data.find(
+        (c: any) => c.project_name === projectName
+      );
+
+      if (existingProject) {
+        isUpdate = true;
+        logger.info(
+          `🔄 Found existing project "${projectName}". This will be an UPDATE deployment.`
+        );
+        logger.info(`   Existing container ID: ${existingProject.id}`);
+        logger.info(`   Current status: ${existingProject.status}`);
+      } else {
+        logger.info(`🆕 No existing project found. This will be a FRESH deployment.`);
+      }
+    }
+
     // Step 11: Create container configuration for ECS
     const containerConfig: ContainerConfig = {
-      name: projectName,
-      description: packageJson.description || `ElizaOS project: ${projectName}`,
+      name: containerName,
+      project_name: projectName,
+      description: packageJson.description || `ElizaOS project: ${containerName}`,
       ecr_image_uri: imageBuildData.ecrImageUri,
       ecr_repository_uri: imageBuildData.ecrRepositoryUri,
       image_tag: imageBuildData.ecrImageTag,
       port: options.port || 3000,
       desired_count: options.desiredCount || 1,
-      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t3g.small)
-      memory: options.memory || 1792, // 1.75 GB (87.5% of t3g.small)
+      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t4g.micro's 2 vCPUs)
+      memory: options.memory || 896, // 896 MB (87.5% of t4g.micro's 1 GiB)
       environment_vars: {
         ...environmentVars,
         PORT: (options.port || 3000).toString(),
@@ -183,7 +209,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       health_check_path: '/health',
     };
 
-    logger.info('☁️  Deploying to AWS ECS...');
+    logger.info(`☁️  Deploying to AWS ECS (${isUpdate ? 'update' : 'fresh deployment'})...`);
 
     const createResponse = await apiClient.createContainer(containerConfig);
 
@@ -203,28 +229,53 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     const containerId = createResponse.data.id;
     logger.info(`✅ Container created: ${containerId}`);
+    logger.info(`📍 Track deployment: https://www.elizacloud.ai/dashboard/containers/${containerId}`);
+    logger.info('');
 
-    // Step 12: Wait for deployment
-    logger.info('⏳ Waiting for ECS deployment to complete...');
-    logger.info('   This may take several minutes. You can check status at:');
-    logger.info(`   https://www.elizacloud.ai/dashboard/containers/${containerId}`);
+    // Step 12: Wait for deployment with beautiful progress spinner
+    const deploymentSpinner = ora({
+      text: 'Waiting for CloudFormation deployment to complete...',
+      color: 'cyan',
+    }).start();
+
+    const startTime = Date.now();
 
     const deploymentResponse = await apiClient.waitForDeployment(containerId, {
-      maxAttempts: 120, // 10 minutes
-      intervalMs: 5000,
+      maxAttempts: 90, // 15 minutes
+      intervalMs: 10000, // Poll every 10 seconds
+      onProgress: (status: string, attempt: number, maxAttempts: number) => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        // Status descriptions for better UX
+        const statusDescriptions: Record<string, string> = {
+          pending: 'Queueing deployment',
+          building: 'Provisioning EC2 instance and ECS cluster',
+          deploying: 'Deploying container and configuring load balancer',
+          running: 'Container is running',
+          failed: 'Deployment failed',
+        };
+        
+        const description = statusDescriptions[status] || status;
+        const percent = Math.floor((attempt / maxAttempts) * 100);
+        
+        deploymentSpinner.text = `${description}... [${timeStr}] (${percent}% of max wait time)`;
+      },
     });
 
     if (!deploymentResponse.success) {
       const errorDetails = deploymentResponse.error || 'Deployment failed';
+      deploymentSpinner.fail(`Deployment failed: ${errorDetails}`);
 
-      logger.error('❌ Deployment failed:');
-      logger.error(`   ${errorDetails}`);
       logger.error('');
       logger.error('💡 Troubleshooting tips:');
-      logger.error('   1. Check container logs at: https://www.elizacloud.ai/dashboard/containers');
-      logger.error('   2. Verify your Docker image runs locally: docker run <image>');
-      logger.error('   3. Check environment variables are correct');
-      logger.error('   4. Ensure health check endpoint returns 200 OK');
+      logger.error('   1. Check container status: elizaos containers list');
+      logger.error('   2. View container logs: elizaos containers logs');
+      logger.error('   3. Check CloudFormation console: https://console.aws.amazon.com/cloudformation');
+      logger.error('   4. Verify Docker image runs locally: docker run <image>');
+      logger.error('   5. Ensure health check endpoint returns 200 OK at /health');
 
       return {
         success: false,
@@ -232,6 +283,11 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
         error: errorDetails,
       };
     }
+
+    const deploymentTime = Math.floor((Date.now() - startTime) / 1000);
+    const minutes = Math.floor(deploymentTime / 60);
+    const seconds = deploymentTime % 60;
+    deploymentSpinner.succeed(`Deployment complete in ${minutes}m ${seconds}s`);
 
     if (!deploymentResponse.data) {
       return {

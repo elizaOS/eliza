@@ -133,7 +133,7 @@ export class CloudApiClient {
           },
           body: JSON.stringify(config),
         },
-        330000 // 5.5 minutes (330s) - CloudFormation takes 5-8 min, plus buffer for API processing
+        60000 // 60s timeout - API returns immediately (202 Accepted), no need to wait
       );
 
       if (!response.ok) {
@@ -154,6 +154,29 @@ export class CloudApiClient {
       return await response.json();
     } catch (error: unknown) {
       return this.handleApiError('create container', error);
+    }
+  }
+
+  /**
+   * List all containers for the authenticated user
+   */
+  async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await this.parseErrorResponse(response);
+        throw new Error(`API request failed (${response.status}): ${error}`);
+      }
+
+      return await response.json();
+    } catch (error: unknown) {
+      return this.handleApiError('list containers', error);
     }
   }
 
@@ -180,34 +203,6 @@ export class CloudApiClient {
       return await response.json();
     } catch (error: unknown) {
       return this.handleApiError('get container status', error);
-    }
-  }
-
-  /**
-   * List all containers
-   */
-  async listContainers(): Promise<CloudApiResponse<ContainerData[]>> {
-    try {
-      const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`API request failed (${response.status}): ${error}`);
-      }
-
-      return await response.json();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-      logger.error('Failed to list containers:', errorMessage);
-      return {
-        success: false,
-        error: errorMessage,
-      };
     }
   }
 
@@ -251,15 +246,13 @@ export class CloudApiClient {
     options: {
       maxAttempts?: number;
       intervalMs?: number;
+      onProgress?: (status: string, attempt: number, maxAttempts: number) => void;
     } = {}
   ): Promise<CloudApiResponse<ContainerData>> {
-    // Match Cloud API deployment timeout: 10 minutes = 600 seconds
-    // Default: 120 attempts * 5s = 600s = 10 minutes
-    const maxAttempts = options.maxAttempts || 120;
-    const intervalMs = options.intervalMs || 5000;
-    const totalTimeoutMs = maxAttempts * intervalMs;
-
-    logger.info(`Waiting for deployment (timeout: ${totalTimeoutMs / 1000}s)...`);
+    // CloudFormation deployments take 8-12 minutes typically
+    // Default: 90 attempts * 10s = 900s = 15 minutes (with buffer)
+    const maxAttempts = options.maxAttempts || 90;
+    const intervalMs = options.intervalMs || 10000;
 
     for (let i = 0; i < maxAttempts; i++) {
       const response = await this.getContainer(containerId);
@@ -269,6 +262,11 @@ export class CloudApiClient {
       }
 
       const status = response.data?.status;
+
+      // Call progress callback if provided
+      if (options.onProgress) {
+        options.onProgress(status || 'unknown', i + 1, maxAttempts);
+      }
 
       // Success terminal state
       if (status === 'running') {
@@ -292,17 +290,15 @@ export class CloudApiClient {
       }
 
       // In-progress states: pending, building, deploying
-      // Log progress with attempt number for better debugging
-      logger.info(`Deployment status: ${status}... (${i + 1}/${maxAttempts})`);
-
       // Wait before next check
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
 
     // Timeout reached
+    const totalMinutes = (maxAttempts * intervalMs) / 60000;
     return {
       success: false,
-      error: `Deployment timeout after ${totalTimeoutMs / 1000}s - container did not reach running state. Check dashboard for details.`,
+      error: `Deployment timeout after ${totalMinutes} minutes. Container may still be deploying - check "elizaos containers list" for current status.`,
     };
   }
 
