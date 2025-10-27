@@ -111,7 +111,6 @@ export {
   getOwnerFromAuthToken,
   setOwnerContext,
   assignAgentToOwner,
-  cleanupOwnerIfDisabled,
   applyRLSToNewTables,
   uninstallRLS,
 } from './rls';

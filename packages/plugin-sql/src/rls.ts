@@ -1,4 +1,4 @@
-import { logger, stringToUuid, type IDatabaseAdapter } from '@elizaos/core';
+import { logger, stringToUuid, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
 import { sql, eq } from 'drizzle-orm';
 import { ownersTable } from './schema/owners';
 import { agentTable } from './schema/agent';
@@ -129,12 +129,17 @@ export async function getOwnerFromAuthToken(
 
 /**
  * Set RLS context on PostgreSQL connection pool
- * This function just validates that the owner exists
+ * This function validates that the owner exists and has correct UUID format
  */
 export async function setOwnerContext(
   adapter: IDatabaseAdapter,
   ownerId: string
 ): Promise<void> {
+  // Validate UUID format using @elizaos/core utility
+  if (!validateUuid(ownerId)) {
+    throw new Error(`Invalid owner ID format: ${ownerId}. Must be a valid UUID.`);
+  }
+
   // Validate owner exists
   const db = adapter.db;
   const owners = await db.select().from(ownersTable).where(eq(ownersTable.id, ownerId));
@@ -181,24 +186,6 @@ export async function assignAgentToOwner(
     }
   } else {
     logger.debug(`[RLS] Agent ${agentId} doesn't exist yet`);
-  }
-}
-
-/**
- * Remove owner_id from agent when RLS is disabled using Drizzle ORM
- */
-export async function cleanupOwnerIfDisabled(
-  adapter: IDatabaseAdapter,
-  agentId: string
-): Promise<void> {
-  const db = adapter.db;
-
-  const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
-
-  if (agents.length > 0 && agents[0].owner_id !== null) {
-    await db.update(agentTable).set({ owner_id: null }).where(eq(agentTable.id, agentId));
-
-    logger.info(`[RLS] Owner removed from agent ${agents[0].name}`);
   }
 }
 
