@@ -9,6 +9,7 @@ import { deploy } from '@/src/commands/deploy';
 import { containers } from '@/src/commands/containers';
 import { dev } from '@/src/commands/dev';
 import { env } from '@/src/commands/env';
+import { login } from '@/src/commands/login';
 import { plugins } from '@/src/commands/plugins';
 import { publish } from '@/src/commands/publish';
 import { monorepo } from '@/src/commands/monorepo';
@@ -142,6 +143,7 @@ async function main() {
     .addCommand(update)
     .addCommand(test)
     .addCommand(env)
+    .addCommand(login)
     .addCommand(dev)
     .addCommand(publish)
     .addCommand(report)

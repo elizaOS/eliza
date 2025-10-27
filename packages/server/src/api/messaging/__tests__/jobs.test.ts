@@ -326,7 +326,7 @@ describe('Jobs API', () => {
       const body = res.body as Record<string, unknown>;
       expect(body).toHaveProperty('success', false);
       expect(body).toHaveProperty('error');
-      expect((body.error as string)).toContain('maximum length');
+      expect(body.error as string).toContain('maximum length');
     });
 
     it('should return 400 for metadata exceeding max size', async () => {
@@ -352,7 +352,7 @@ describe('Jobs API', () => {
       const body = res.body as Record<string, unknown>;
       expect(body).toHaveProperty('success', false);
       expect(body).toHaveProperty('error');
-      expect((body.error as string)).toContain('metadata');
+      expect(body.error as string).toContain('metadata');
     });
 
     it('should return 400 for invalid timeout values', async () => {
@@ -372,7 +372,7 @@ describe('Jobs API', () => {
       expect(res.status).toBe(400);
       let body = res.body as Record<string, unknown>;
       expect(body).toHaveProperty('success', false);
-      expect((body.error as string)).toContain('at least');
+      expect(body.error as string).toContain('at least');
 
       // Test timeout too large
       res = await simulateRequest(app, 'POST', '/api/messaging/jobs', {
@@ -385,7 +385,7 @@ describe('Jobs API', () => {
       expect(res.status).toBe(400);
       body = res.body as Record<string, unknown>;
       expect(body).toHaveProperty('success', false);
-      expect((body.error as string)).toContain('cannot exceed');
+      expect(body.error as string).toContain('cannot exceed');
     });
 
     it('should accept custom timeout within limits', async () => {
@@ -586,4 +586,3 @@ describe('Jobs API', () => {
     });
   });
 });
-

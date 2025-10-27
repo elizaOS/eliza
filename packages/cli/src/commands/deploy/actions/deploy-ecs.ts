@@ -229,7 +229,9 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     const containerId = createResponse.data.id;
     logger.info(`✅ Container created: ${containerId}`);
-    logger.info(`📍 Track deployment: https://www.elizacloud.ai/dashboard/containers/${containerId}`);
+    logger.info(
+      `📍 Track deployment: https://www.elizacloud.ai/dashboard/containers/${containerId}`
+    );
     logger.info('');
 
     // Step 12: Wait for deployment with beautiful progress spinner
@@ -248,7 +250,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
         const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        
+
         // Status descriptions for better UX
         const statusDescriptions: Record<string, string> = {
           pending: 'Queueing deployment',
@@ -257,10 +259,10 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
           running: 'Container is running',
           failed: 'Deployment failed',
         };
-        
+
         const description = statusDescriptions[status] || status;
         const percent = Math.floor((attempt / maxAttempts) * 100);
-        
+
         deploymentSpinner.text = `${description}... [${timeStr}] (${percent}% of max wait time)`;
       },
     });
@@ -273,7 +275,9 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       logger.error('💡 Troubleshooting tips:');
       logger.error('   1. Check container status: elizaos containers list');
       logger.error('   2. View container logs: elizaos containers logs');
-      logger.error('   3. Check CloudFormation console: https://console.aws.amazon.com/cloudformation');
+      logger.error(
+        '   3. Check CloudFormation console: https://console.aws.amazon.com/cloudformation'
+      );
       logger.error('   4. Verify Docker image runs locally: docker run <image>');
       logger.error('   5. Ensure health check endpoint returns 200 OK at /health');
 

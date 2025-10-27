@@ -192,7 +192,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                  (error instanceof Error && error.message?.includes('not found'))
                     ? 404
                     : 500;
                 res.status(status).json({
@@ -242,7 +242,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
-                    (error instanceof Error && error.message?.includes('not found'))
+                  (error instanceof Error && error.message?.includes('not found'))
                     ? 404
                     : 500;
                 res.status(status).json({

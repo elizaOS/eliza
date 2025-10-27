@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { ElizaOS } from '../elizaos';
 import type { Character, UUID, Content, Memory } from '../types';
-import type { MessageProcessingResult, MessageProcessingOptions } from '../services/message-service';
+import type {
+  MessageProcessingResult,
+  MessageProcessingOptions,
+} from '../services/message-service';
 
 describe('ElizaOS.sendMessage', () => {
   let elizaOS: ElizaOS;
@@ -26,36 +29,38 @@ describe('ElizaOS.sendMessage', () => {
     agentId = '123e4567-e89b-12d3-a456-426614174001' as UUID;
 
     // Create mock for messageService.handleMessage
-    handleMessageMock = mock(async (
-      runtime: any,
-      message: Memory,
-      callback: any,
-      options?: MessageProcessingOptions
-    ): Promise<MessageProcessingResult> => {
-      const agentResponse: Content = {
-        text: 'Hello! How can I help you?',
-        thought: 'User greeted me',
-        actions: ['REPLY'],
-        simple: true,
-      };
+    handleMessageMock = mock(
+      async (
+        runtime: any,
+        message: Memory,
+        callback: any,
+        options?: MessageProcessingOptions
+      ): Promise<MessageProcessingResult> => {
+        const agentResponse: Content = {
+          text: 'Hello! How can I help you?',
+          thought: 'User greeted me',
+          actions: ['REPLY'],
+          simple: true,
+        };
 
-      // Call callback if provided (async mode)
-      if (callback) {
-        await callback(agentResponse);
+        // Call callback if provided (async mode)
+        if (callback) {
+          await callback(agentResponse);
+        }
+
+        return {
+          didRespond: true,
+          responseContent: agentResponse,
+          responseMessages: [],
+          state: {
+            values: {},
+            data: {},
+            text: '',
+          },
+          mode: 'simple' as const,
+        };
       }
-
-      return {
-        didRespond: true,
-        responseContent: agentResponse,
-        responseMessages: [],
-        state: {
-          values: {},
-          data: {},
-          text: '',
-        },
-        mode: 'simple' as const,
-      };
-    });
+    );
 
     // Create mock for ensureConnection
     ensureConnectionMock = mock(async () => {});
@@ -507,7 +512,7 @@ describe('ElizaOS.sendMessage', () => {
           source: 'discord',
           attachments: [
             {
-              id: "image.png",
+              id: 'image.png',
               url: 'https://example.com/image.png',
               contentType: 'image/png' as any,
               title: 'Test Image',

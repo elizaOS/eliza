@@ -298,8 +298,8 @@ async function simulateRequest(
         }
         return this;
       },
-      setHeader: () => { },
-      set: () => { },
+      setHeader: () => {},
+      set: () => {},
       end: function () {
         if (!responseSent) {
           responseSent = true;
@@ -332,4 +332,3 @@ async function simulateRequest(
     }
   });
 }
-

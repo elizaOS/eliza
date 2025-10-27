@@ -14,27 +14,30 @@ import { logger } from '@elizaos/core';
  * @param res - Express response object.
  * @param next - Express next function.
  */
-export function apiKeyAuthMiddleware(req: Request, res: Response, next: NextFunction): void | Response {
-    const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+export function apiKeyAuthMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void | Response {
+  const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
 
-    // If no token is configured in ENV, skip auth check
-    if (!serverAuthToken) {
-        return next();
-    }
+  // If no token is configured in ENV, skip auth check
+  if (!serverAuthToken) {
+    return next();
+  }
 
-    // Allow OPTIONS requests for CORS preflight
-    if (req.method === 'OPTIONS') {
-        return next();
-    }
+  // Allow OPTIONS requests for CORS preflight
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
 
-    const apiKey = req.headers?.['x-api-key'];
+  const apiKey = req.headers?.['x-api-key'];
 
-    if (!apiKey || apiKey !== serverAuthToken) {
-        logger.warn(`Unauthorized access attempt: Missing or invalid X-API-KEY from ${req.ip}`);
-        return res.status(401).send('Unauthorized: Invalid or missing X-API-KEY');
-    }
+  if (!apiKey || apiKey !== serverAuthToken) {
+    logger.warn(`Unauthorized access attempt: Missing or invalid X-API-KEY from ${req.ip}`);
+    return res.status(401).send('Unauthorized: Invalid or missing X-API-KEY');
+  }
 
-    // If key is valid, proceed
-    next();
+  // If key is valid, proceed
+  next();
 }
-
