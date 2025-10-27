@@ -19,7 +19,7 @@ import {
   // CreateJobRequest and JobPersistenceConfig are available for future enhancements
 } from '../../types/jobs';
 import internalMessageBus from '../../bus';
-import { apiKeyAuthMiddleware } from '../../authMiddleware';
+import { apiKeyAuthMiddleware } from '../../middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
