@@ -26,22 +26,7 @@ const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
 const MESSAGE_BUS_CLEANUP_BUFFER_MS = 10000; // 10 second buffer instead of 5s
 
-// In-memory job storage
-const jobs = new Map<string, Job>();
-
-// Track cleanup interval
-let cleanupInterval: NodeJS.Timeout | null = null;
-
-// Track listener cleanup timeouts
-const listenerCleanupTimeouts = new Map<string, NodeJS.Timeout>();
-
-// Metrics tracking
-const metrics = {
-  totalProcessingTimeMs: 0,
-  completedJobs: 0,
-  failedJobs: 0,
-  timeoutJobs: 0,
-};
+// Note: All mutable state is scoped per-router instance inside createJobsRouter
 
 /**
  * Helper to send standardized error response
@@ -60,84 +45,7 @@ function sendErrorResponse(
   res.status(statusCode).json(response);
 }
 
-/**
- * Cleanup expired jobs
- */
-function cleanupExpiredJobs(): void {
-  const now = Date.now();
-  let cleanedCount = 0;
-
-  for (const [jobId, job] of jobs.entries()) {
-    // Remove jobs that are expired and completed/failed
-    if (
-      job.expiresAt < now &&
-      (job.status === JobStatus.COMPLETED ||
-        job.status === JobStatus.FAILED ||
-        job.status === JobStatus.TIMEOUT)
-    ) {
-      jobs.delete(jobId);
-      cleanedCount++;
-
-      // Cleanup any pending listener cleanup timeouts
-      const timeout = listenerCleanupTimeouts.get(jobId);
-      if (timeout) {
-        clearTimeout(timeout);
-        listenerCleanupTimeouts.delete(jobId);
-      }
-    }
-    // Mark timed-out jobs and update metrics
-    else if (job.expiresAt < now && job.status === JobStatus.PROCESSING) {
-      job.status = JobStatus.TIMEOUT;
-      job.error = 'Job timed out waiting for agent response';
-      metrics.timeoutJobs++;
-      logger.warn(`[Jobs API] Job ${jobId} timed out`);
-    }
-  }
-
-  if (cleanedCount > 0) {
-    logger.info(`[Jobs API] Cleaned up ${cleanedCount} expired jobs. Current jobs: ${jobs.size}`);
-  }
-
-  // Emergency cleanup if too many jobs in memory
-  if (jobs.size > MAX_JOBS_IN_MEMORY) {
-    const sortedJobs = Array.from(jobs.entries()).sort(
-      ([, a], [, b]) => a.createdAt - b.createdAt
-    );
-    const toRemove = sortedJobs.slice(0, Math.floor(MAX_JOBS_IN_MEMORY * 0.1)); // Remove oldest 10%
-    toRemove.forEach(([jobId]) => {
-      jobs.delete(jobId);
-      const timeout = listenerCleanupTimeouts.get(jobId);
-      if (timeout) {
-        clearTimeout(timeout);
-        listenerCleanupTimeouts.delete(jobId);
-      }
-    });
-    logger.warn(
-      `[Jobs API] Emergency cleanup: removed ${toRemove.length} oldest jobs. Current: ${jobs.size}`
-    );
-  }
-}
-
-/**
- * Initialize cleanup interval
- */
-function startCleanupInterval(): void {
-  if (!cleanupInterval) {
-    cleanupInterval = setInterval(cleanupExpiredJobs, JOB_CLEANUP_INTERVAL_MS);
-    logger.info('[Jobs API] Started job cleanup interval');
-  }
-}
-
-/**
- * Stop cleanup interval
- */
-function stopCleanupInterval(): void {
-  if (cleanupInterval) {
-    clearInterval(cleanupInterval);
-    cleanupInterval = null;
-    logger.info('[Jobs API] Stopped job cleanup interval');
-  }
-}
+// cleanupExpiredJobs/startCleanupInterval/stopCleanupInterval are defined per-router below
 
 /**
  * Convert Job to JobDetailsResponse
@@ -251,6 +159,85 @@ export function createJobsRouter(
 ): JobsRouter {
   const router = express.Router() as JobsRouter;
 
+  // Per-router instance state
+  const jobs = new Map<string, Job>();
+  let cleanupInterval: NodeJS.Timeout | null = null;
+  const listenerCleanupTimeouts = new Map<string, NodeJS.Timeout>();
+  const metrics = {
+    totalProcessingTimeMs: 0,
+    completedJobs: 0,
+    failedJobs: 0,
+    timeoutJobs: 0,
+  };
+
+  // Helpers that close over the instance state
+  const cleanupExpiredJobs = (): void => {
+    const now = Date.now();
+    let cleanedCount = 0;
+
+    for (const [jobId, job] of jobs.entries()) {
+      if (
+        job.expiresAt < now &&
+        (job.status === JobStatus.COMPLETED ||
+          job.status === JobStatus.FAILED ||
+          job.status === JobStatus.TIMEOUT)
+      ) {
+        jobs.delete(jobId);
+        cleanedCount++;
+
+        const timeout = listenerCleanupTimeouts.get(jobId);
+        if (timeout) {
+          clearTimeout(timeout);
+          listenerCleanupTimeouts.delete(jobId);
+        }
+      } else if (job.expiresAt < now && job.status === JobStatus.PROCESSING) {
+        job.status = JobStatus.TIMEOUT;
+        job.error = 'Job timed out waiting for agent response';
+        metrics.timeoutJobs++;
+        logger.warn(`[Jobs API] Job ${jobId} timed out`);
+      }
+    }
+
+    if (cleanedCount > 0) {
+      logger.info(
+        `[Jobs API] Cleaned up ${cleanedCount} expired jobs. Current jobs: ${jobs.size}`
+      );
+    }
+
+    if (jobs.size > MAX_JOBS_IN_MEMORY) {
+      const sortedJobs = Array.from(jobs.entries()).sort(
+        ([, a], [, b]) => a.createdAt - b.createdAt
+      );
+      const toRemove = sortedJobs.slice(0, Math.floor(MAX_JOBS_IN_MEMORY * 0.1));
+      toRemove.forEach(([jobId]) => {
+        jobs.delete(jobId);
+        const timeout = listenerCleanupTimeouts.get(jobId);
+        if (timeout) {
+          clearTimeout(timeout);
+          listenerCleanupTimeouts.delete(jobId);
+        }
+      });
+      logger.warn(
+        `[Jobs API] Emergency cleanup: removed ${toRemove.length} oldest jobs. Current: ${jobs.size}`
+      );
+    }
+  };
+
+  const startCleanupInterval = (): void => {
+    if (!cleanupInterval) {
+      cleanupInterval = setInterval(cleanupExpiredJobs, JOB_CLEANUP_INTERVAL_MS);
+      logger.info('[Jobs API] Started job cleanup interval');
+    }
+  };
+
+  const stopCleanupInterval = (): void => {
+    if (cleanupInterval) {
+      clearInterval(cleanupInterval);
+      cleanupInterval = null;
+      logger.info('[Jobs API] Stopped job cleanup interval');
+    }
+  };
+
   // Start cleanup interval when router is created
   startCleanupInterval();
 
@@ -320,13 +307,13 @@ export function createJobsRouter(
         }
 
         // Calculate timeout
-        const minTimeout = (JobValidation.MIN_TIMEOUT_MS !== undefined)
-          ? JobValidation.MIN_TIMEOUT_MS
-          : 100; // fallback minimum
-        const rawTimeoutMs = body.timeoutMs || JobValidation.DEFAULT_TIMEOUT_MS;
-        const timeoutMs = Math.max(
-          Math.min(rawTimeoutMs, JobValidation.MAX_TIMEOUT_MS),
-          minTimeout
+        const requestedTimeoutMs =
+          typeof body.timeoutMs === 'number'
+            ? body.timeoutMs
+            : JobValidation.DEFAULT_TIMEOUT_MS;
+        const timeoutMs = Math.min(
+          JobValidation.MAX_TIMEOUT_MS,
+          Math.max(JobValidation.MIN_TIMEOUT_MS, requestedTimeoutMs)
         );
 
         // Create job ID and channel ID
@@ -522,10 +509,14 @@ export function createJobsRouter(
           internalMessageBus.on('new_message', responseHandler);
 
           // Set timeout to cleanup listener with better buffer
+          const safeListenerTimeoutMs = Math.min(
+            JobValidation.MAX_TIMEOUT_MS + MESSAGE_BUS_CLEANUP_BUFFER_MS,
+            timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS
+          );
           const cleanupTimeout = setTimeout(() => {
             internalMessageBus.off('new_message', responseHandler);
             listenerCleanupTimeouts.delete(jobId);
-          }, timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS);
+          }, safeListenerTimeoutMs);
 
           listenerCleanupTimeouts.set(jobId, cleanupTimeout);
         } catch (error) {
@@ -581,9 +572,9 @@ export function createJobsRouter(
       metrics.completedJobs > 0
         ? metrics.totalProcessingTimeMs / metrics.completedJobs
         : 0;
-    const successRate = totalCompleted > 0 ? (metrics.completedJobs / totalCompleted) * 100 : 0;
-    const failureRate = totalCompleted > 0 ? (metrics.failedJobs / totalCompleted) * 100 : 0;
-    const timeoutRate = totalCompleted > 0 ? (metrics.timeoutJobs / totalCompleted) * 100 : 0;
+    const successRate = totalCompleted > 0 ? metrics.completedJobs / totalCompleted : 0;
+    const failureRate = totalCompleted > 0 ? metrics.failedJobs / totalCompleted : 0;
+    const timeoutRate = totalCompleted > 0 ? metrics.timeoutJobs / totalCompleted : 0;
 
     const response: JobHealthResponse = {
       healthy: true,
