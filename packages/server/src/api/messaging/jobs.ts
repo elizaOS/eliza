@@ -188,7 +188,7 @@ export function createJobsRouter(
 
         // Determine agent ID - use provided or first available agent
         let agentId: UUID | null = null;
-        
+
         if (body.agentId) {
           // Validate provided agentId
           agentId = validateUuid(body.agentId);
@@ -332,11 +332,11 @@ export function createJobsRouter(
           // Setup listener for agent response
           // Track if we've seen an action execution message
           let actionMessageReceived = false;
-          
+
           const responseHandler = async (data: unknown) => {
             // Type guard for message structure
             if (!data || typeof data !== 'object') return;
-            
+
             const message = data as {
               id?: UUID;
               channel_id?: UUID;
@@ -369,7 +369,7 @@ export function createJobsRouter(
               }
 
               // Check if this is an "Executing action" intermediate message
-              const isActionMessage = 
+              const isActionMessage =
                 message.content.startsWith('Executing action:') ||
                 message.content.includes('Executing action:');
 
@@ -446,44 +446,37 @@ export function createJobsRouter(
   );
 
   /**
-   * Get job details and status
-   * GET /api/messaging/jobs/:jobId
+   * Health check endpoint
+   * GET /api/messaging/jobs/health
+   * NOTE: Must be defined before /:jobId route to avoid parameter matching
    */
-  router.get('/jobs/:jobId', async (req: express.Request, res: express.Response) => {
-    try {
-      const { jobId } = req.params;
+  router.get('/jobs/health', (_req: express.Request, res: express.Response) => {
+    const now = Date.now();
+    const statusCounts = {
+      pending: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+      timeout: 0,
+    };
 
-      const job = jobs.get(jobId);
-      if (!job) {
-        return res.status(404).json({
-          success: false,
-          error: 'Job not found',
-        });
-      }
-
-      // Check if job has timed out
-      if (job.expiresAt < Date.now() && job.status === JobStatus.PROCESSING) {
-        job.status = JobStatus.TIMEOUT;
-        job.error = 'Job timed out waiting for agent response';
-      }
-
-      const response = jobToResponse(job);
-      res.json(response);
-    } catch (error) {
-      logger.error(
-        '[Jobs API] Error getting job:',
-        error instanceof Error ? error.message : String(error)
-      );
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get job details',
-      });
+    for (const job of jobs.values()) {
+      statusCounts[job.status]++;
     }
+
+    res.json({
+      healthy: true,
+      timestamp: now,
+      totalJobs: jobs.size,
+      statusCounts,
+      maxJobs: MAX_JOBS_IN_MEMORY,
+    });
   });
 
   /**
    * List all jobs (for debugging/admin)
    * GET /api/messaging/jobs
+   * NOTE: Must be defined before /:jobId route to avoid parameter matching
    * TODO: Re-enable authentication - temporarily disabled for testing
    */
   router.get(
@@ -528,30 +521,39 @@ export function createJobsRouter(
   );
 
   /**
-   * Health check endpoint
-   * GET /api/messaging/jobs/health
+   * Get job details and status
+   * GET /api/messaging/jobs/:jobId
    */
-  router.get('/jobs/health', (_req: express.Request, res: express.Response) => {
-    const now = Date.now();
-    const statusCounts = {
-      pending: 0,
-      processing: 0,
-      completed: 0,
-      failed: 0,
-      timeout: 0,
-    };
+  router.get('/jobs/:jobId', async (req: express.Request, res: express.Response) => {
+    try {
+      const { jobId } = req.params;
 
-    for (const job of jobs.values()) {
-      statusCounts[job.status]++;
+      const job = jobs.get(jobId);
+      if (!job) {
+        return res.status(404).json({
+          success: false,
+          error: 'Job not found',
+        });
+      }
+
+      // Check if job has timed out
+      if (job.expiresAt < Date.now() && job.status === JobStatus.PROCESSING) {
+        job.status = JobStatus.TIMEOUT;
+        job.error = 'Job timed out waiting for agent response';
+      }
+
+      const response = jobToResponse(job);
+      res.json(response);
+    } catch (error) {
+      logger.error(
+        '[Jobs API] Error getting job:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get job details',
+      });
     }
-
-    res.json({
-      healthy: true,
-      timestamp: now,
-      totalJobs: jobs.size,
-      statusCounts,
-      maxJobs: MAX_JOBS_IN_MEMORY,
-    });
   });
 
   return router;
