@@ -12,10 +12,7 @@ import type {
   RuntimeSettings,
   Content,
 } from './types';
-import type {
-  MessageProcessingOptions,
-  MessageProcessingResult,
-} from './services/message-service';
+import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
 
 /**
  * Options for sending a message to an agent
@@ -467,9 +464,7 @@ export class ElizaOS extends EventTarget {
           }
         } catch (error) {
           if (options.onError) {
-            await options.onError(
-              error instanceof Error ? error : new Error(String(error))
-            );
+            await options.onError(error instanceof Error ? error : new Error(String(error)));
           }
         }
         return [];

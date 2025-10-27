@@ -182,7 +182,7 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+
     return {
       success: false,
       imageTag: options.imageTag,
@@ -267,44 +267,47 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     if (pushProcess.stderr) {
       pushProcess.stderr.on('data', (data: Buffer) => {
         const output = data.toString();
-        
+
         // Parse Docker layer progress
         // Format: "layer-id: Pushing [==>     ] 15.5MB/100MB"
         const lines = output.split('\n');
-        
+
         for (const line of lines) {
-          const layerMatch = line.match(/^([a-f0-9]+):\s*(\w+)\s*\[([=>]+)\s*\]\s+([\d.]+)([KMGT]?B)\/([\d.]+)([KMGT]?B)/);
-          
+          const layerMatch = line.match(
+            /^([a-f0-9]+):\s*(\w+)\s*\[([=>]+)\s*\]\s+([\d.]+)([KMGT]?B)\/([\d.]+)([KMGT]?B)/
+          );
+
           if (layerMatch) {
             const [, layerId, , , currentStr, currentUnit, totalStr, totalUnit] = layerMatch;
-            
+
             // Convert to bytes for accurate progress
             const current = parseSize(currentStr, currentUnit);
             const total = parseSize(totalStr, totalUnit);
-            
+
             layerProgress.set(layerId, { current, total });
-            
+
             // Calculate overall progress
             let totalBytes = 0;
             let uploadedBytes = 0;
-            
+
             for (const [, progress] of layerProgress) {
               totalBytes += progress.total;
               uploadedBytes += progress.current;
             }
-            
-            const overallPercent = totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 0;
+
+            const overallPercent =
+              totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 0;
             const uploadedMB = (uploadedBytes / 1024 / 1024).toFixed(1);
             const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
-            
+
             spinner.text = `Pushing to ECR... ${overallPercent}% (${uploadedMB}/${totalMB} MB, ${layerProgress.size} layers)`;
           }
-          
+
           // Check for pushed layers
           if (line.includes(': Pushed')) {
             completedLayers++;
           }
-          
+
           // Check for completion digest
           const digestMatch = line.match(/digest: (sha256:[a-f0-9]+)/);
           if (digestMatch) {
@@ -317,8 +320,10 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     try {
       await pushProcess;
       const pushTime = Date.now() - startTime;
-      
-      spinner.succeed(`Image pushed in ${(pushTime / 1000).toFixed(1)}s (${completedLayers} layers)`);
+
+      spinner.succeed(
+        `Image pushed in ${(pushTime / 1000).toFixed(1)}s (${completedLayers} layers)`
+      );
     } catch (error) {
       spinner.fail('Failed to push image to ECR');
       throw error;
@@ -346,11 +351,11 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
 function parseSize(value: string, unit: string): number {
   const num = parseFloat(value);
   const multipliers: Record<string, number> = {
-    'B': 1,
-    'KB': 1024,
-    'MB': 1024 * 1024,
-    'GB': 1024 * 1024 * 1024,
-    'TB': 1024 * 1024 * 1024 * 1024,
+    B: 1,
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+    TB: 1024 * 1024 * 1024 * 1024,
   };
   return num * (multipliers[unit] || 1);
 }

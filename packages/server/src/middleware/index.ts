@@ -11,17 +11,16 @@ export { securityMiddleware } from './security';
 
 // Rate limiting middleware
 export {
-    createApiRateLimit,
-    createFileSystemRateLimit,
-    createUploadRateLimit,
-    createChannelValidationRateLimit,
+  createApiRateLimit,
+  createFileSystemRateLimit,
+  createUploadRateLimit,
+  createChannelValidationRateLimit,
 } from './rate-limit';
 
 // Validation middleware
 export {
-    agentExistsMiddleware,
-    validateUuidMiddleware,
-    validateChannelIdMiddleware,
-    validateContentTypeMiddleware,
+  agentExistsMiddleware,
+  validateUuidMiddleware,
+  validateChannelIdMiddleware,
+  validateContentTypeMiddleware,
 } from './validation';
-

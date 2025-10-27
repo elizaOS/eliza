@@ -16,13 +16,7 @@
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
  */
-import {
-  logger,
-  validateUuid,
-  type UUID,
-  type ElizaOS,
-  ChannelType,
-} from '@elizaos/core';
+import { logger, validateUuid, type UUID, type ElizaOS, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer } from '../../index';
@@ -173,10 +167,7 @@ export interface JobsRouter extends express.Router {
 /**
  * Creates the jobs router for one-off messaging
  */
-export function createJobsRouter(
-  elizaOS: ElizaOS,
-  serverInstance: AgentServer
-): JobsRouter {
+export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): JobsRouter {
   const router = express.Router() as JobsRouter;
 
   // Per-router instance state
@@ -219,9 +210,7 @@ export function createJobsRouter(
     }
 
     if (cleanedCount > 0) {
-      logger.info(
-        `[Jobs API] Cleaned up ${cleanedCount} expired jobs. Current jobs: ${jobs.size}`
-      );
+      logger.info(`[Jobs API] Cleaned up ${cleanedCount} expired jobs. Current jobs: ${jobs.size}`);
     }
 
     if (jobs.size > MAX_JOBS_IN_MEMORY) {
@@ -312,9 +301,7 @@ export function createJobsRouter(
           const agents = elizaOS.getAgents();
           if (agents && agents.length > 0) {
             agentId = agents[0].agentId;
-            logger.info(
-              `[Jobs API] No agentId provided, using first available agent: ${agentId}`
-            );
+            logger.info(`[Jobs API] No agentId provided, using first available agent: ${agentId}`);
           } else {
             return sendErrorResponse(res, 404, 'No agents available on server');
           }
@@ -328,9 +315,7 @@ export function createJobsRouter(
 
         // Calculate timeout
         const requestedTimeoutMs =
-          typeof body.timeoutMs === 'number'
-            ? body.timeoutMs
-            : JobValidation.DEFAULT_TIMEOUT_MS;
+          typeof body.timeoutMs === 'number' ? body.timeoutMs : JobValidation.DEFAULT_TIMEOUT_MS;
         const timeoutMs = Math.min(
           JobValidation.MAX_TIMEOUT_MS,
           Math.max(JobValidation.MIN_TIMEOUT_MS, requestedTimeoutMs)
@@ -595,9 +580,7 @@ export function createJobsRouter(
     // Calculate metrics
     const totalCompleted = metrics.completedJobs + metrics.failedJobs + metrics.timeoutJobs;
     const averageProcessingTimeMs =
-      metrics.completedJobs > 0
-        ? metrics.totalProcessingTimeMs / metrics.completedJobs
-        : 0;
+      metrics.completedJobs > 0 ? metrics.totalProcessingTimeMs / metrics.completedJobs : 0;
     const successRate = totalCompleted > 0 ? metrics.completedJobs / totalCompleted : 0;
     const failureRate = totalCompleted > 0 ? metrics.failedJobs / totalCompleted : 0;
     const timeoutRate = totalCompleted > 0 ? metrics.timeoutJobs / totalCompleted : 0;
@@ -624,89 +607,90 @@ export function createJobsRouter(
    * GET /api/messaging/jobs
    * NOTE: Must be defined before /:jobId route to avoid parameter matching
    */
-  router.get(
-    '/jobs',
-    apiKeyAuthMiddleware,
-    async (req: express.Request, res: express.Response) => {
-      try {
-        const limit = parseInt(req.query.limit as string) || 50;
-        const status = req.query.status as JobStatus | undefined;
+  router.get('/jobs', apiKeyAuthMiddleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const status = req.query.status as JobStatus | undefined;
 
-        let jobList = Array.from(jobs.values());
+      let jobList = Array.from(jobs.values());
 
-        // Filter by status if provided
-        if (status && Object.values(JobStatus).includes(status)) {
-          jobList = jobList.filter((job) => job.status === status);
-        }
-
-        // Sort by creation date (newest first)
-        jobList.sort((a, b) => b.createdAt - a.createdAt);
-
-        // Limit results
-        jobList = jobList.slice(0, limit);
-
-        const response = {
-          jobs: jobList.map(jobToResponse),
-          total: jobs.size,
-          filtered: jobList.length,
-        };
-
-        res.json(response);
-      } catch (error) {
-        logger.error(
-          '[Jobs API] Error listing jobs:',
-          error instanceof Error ? error.message : String(error)
-        );
-        sendErrorResponse(res, 500, 'Failed to list jobs');
+      // Filter by status if provided
+      if (status && Object.values(JobStatus).includes(status)) {
+        jobList = jobList.filter((job) => job.status === status);
       }
+
+      // Sort by creation date (newest first)
+      jobList.sort((a, b) => b.createdAt - a.createdAt);
+
+      // Limit results
+      jobList = jobList.slice(0, limit);
+
+      const response = {
+        jobs: jobList.map(jobToResponse),
+        total: jobs.size,
+        filtered: jobList.length,
+      };
+
+      res.json(response);
+    } catch (error) {
+      logger.error(
+        '[Jobs API] Error listing jobs:',
+        error instanceof Error ? error.message : String(error)
+      );
+      sendErrorResponse(res, 500, 'Failed to list jobs');
     }
-  );
+  });
 
   /**
    * Get job details and status
    * GET /api/messaging/jobs/:jobId
    */
-  router.get('/jobs/:jobId', apiKeyAuthMiddleware, async (req: express.Request, res: express.Response) => {
-    try {
-      const { jobId } = req.params;
+  router.get(
+    '/jobs/:jobId',
+    apiKeyAuthMiddleware,
+    async (req: express.Request, res: express.Response) => {
+      try {
+        const { jobId } = req.params;
 
-      const job = jobs.get(jobId);
-      if (!job) {
-        return sendErrorResponse(res, 404, 'Job not found');
+        const job = jobs.get(jobId);
+        if (!job) {
+          return sendErrorResponse(res, 404, 'Job not found');
+        }
+
+        // Check if job has timed out
+        if (job.expiresAt < Date.now() && job.status === JobStatus.PROCESSING) {
+          job.status = JobStatus.TIMEOUT;
+          job.error = 'Job timed out waiting for agent response';
+          metrics.timeoutJobs++;
+        }
+
+        const response = jobToResponse(job);
+        res.json(response);
+      } catch (error) {
+        logger.error(
+          '[Jobs API] Error getting job:',
+          error instanceof Error ? error.message : String(error)
+        );
+        sendErrorResponse(res, 500, 'Failed to get job details');
       }
-
-      // Check if job has timed out
-      if (job.expiresAt < Date.now() && job.status === JobStatus.PROCESSING) {
-        job.status = JobStatus.TIMEOUT;
-        job.error = 'Job timed out waiting for agent response';
-        metrics.timeoutJobs++;
-      }
-
-      const response = jobToResponse(job);
-      res.json(response);
-    } catch (error) {
-      logger.error(
-        '[Jobs API] Error getting job:',
-        error instanceof Error ? error.message : String(error)
-      );
-      sendErrorResponse(res, 500, 'Failed to get job details');
     }
-  });
+  );
 
   // Global error handler for unhandled errors in job processing
-  router.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    logger.error(
-      '[Jobs API] Unhandled error:',
-      error instanceof Error ? error.message : String(error),
-      { stack: error instanceof Error ? error.stack : undefined }
-    );
+  router.use(
+    (error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+      logger.error(
+        '[Jobs API] Unhandled error:',
+        error instanceof Error ? error.message : String(error),
+        { stack: error instanceof Error ? error.stack : undefined }
+      );
 
-    // Only respond if headers haven't been sent
-    if (!res.headersSent) {
-      sendErrorResponse(res, 500, 'Internal server error in jobs API');
+      // Only respond if headers haven't been sent
+      if (!res.headersSent) {
+        sendErrorResponse(res, 500, 'Internal server error in jobs API');
+      }
     }
-  });
+  );
 
   return router;
 }
-

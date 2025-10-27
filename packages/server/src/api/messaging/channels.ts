@@ -450,10 +450,10 @@ export function createChannelsRouter(
       const errorDetails =
         error instanceof Error
           ? {
-            message: error.message,
-            stack: error.stack,
-            originalError: error,
-          }
+              message: error.message,
+              stack: error.stack,
+              originalError: error,
+            }
           : { message: String(error) };
 
       logger.error('Error finding/creating DM channel:', JSON.stringify(errorDetails));

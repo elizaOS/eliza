@@ -154,4 +154,3 @@ export interface JobPersistenceConfig {
   /** Cleanup completed jobs after this many milliseconds (default: 1 hour) */
   cleanupAfterMs?: number;
 }
-
