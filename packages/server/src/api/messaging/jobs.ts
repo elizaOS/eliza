@@ -320,9 +320,13 @@ export function createJobsRouter(
         }
 
         // Calculate timeout
-        const timeoutMs = Math.min(
-          body.timeoutMs || JobValidation.DEFAULT_TIMEOUT_MS,
-          JobValidation.MAX_TIMEOUT_MS
+        const minTimeout = (JobValidation.MIN_TIMEOUT_MS !== undefined)
+          ? JobValidation.MIN_TIMEOUT_MS
+          : 100; // fallback minimum
+        const rawTimeoutMs = body.timeoutMs || JobValidation.DEFAULT_TIMEOUT_MS;
+        const timeoutMs = Math.max(
+          Math.min(rawTimeoutMs, JobValidation.MAX_TIMEOUT_MS),
+          minTimeout
         );
 
         // Create job ID and channel ID
