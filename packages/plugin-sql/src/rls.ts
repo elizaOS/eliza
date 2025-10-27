@@ -54,6 +54,12 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   `);
 
   // Function to add RLS to a table
+  // SECURITY: Uses format() with %I to safely quote identifiers and prevent SQL injection
+  // This function:
+  // 1. Adds owner_id column if it doesn't exist (with DEFAULT current_owner_id())
+  // 2. Creates an index on owner_id for query performance
+  // 3. Enables FORCE ROW LEVEL SECURITY (enforces RLS even for table owners)
+  // 4. Creates an isolation policy that filters rows by owner_id
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION add_owner_isolation(
       schema_name text,
@@ -65,6 +71,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
+      -- Check if owner_id column already exists
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -72,14 +79,25 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
           AND information_schema.columns.column_name = 'owner_id'
       ) INTO column_exists;
 
+      -- Add owner_id column if missing (DEFAULT populates it automatically for new rows)
       IF NOT column_exists THEN
         EXECUTE format('ALTER TABLE %I.%I ADD COLUMN owner_id UUID DEFAULT current_owner_id()', schema_name, table_name);
       END IF;
 
+      -- Create index for efficient owner_id filtering
       EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_owner_id ON %I.%I(owner_id)', table_name, schema_name, table_name);
+
+      -- Enable RLS on the table
       EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
+
+      -- FORCE RLS even for table owners (critical for security)
       EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
+
+      -- Drop existing policy if present
       EXECUTE format('DROP POLICY IF EXISTS owner_isolation_policy ON %I.%I', schema_name, table_name);
+
+      -- Create isolation policy: users can only see/modify rows where owner_id matches
+      -- OR owner_id IS NULL (for backward compatibility with pre-RLS data)
       EXECUTE format('
         CREATE POLICY owner_isolation_policy ON %I.%I
         USING (owner_id = current_owner_id() OR owner_id IS NULL)
@@ -90,6 +108,15 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   `);
 
   // Function to apply RLS to all tables
+  // SCHEMA COVERAGE: This function automatically applies RLS to ALL tables in the 'public' schema
+  // including: agents, rooms, memories, messages, participants, channels, embeddings, relationships,
+  // entities, logs, cache, components, tasks, world, message_servers, server_agents, etc.
+  //
+  // EXCLUDED tables (not isolated):
+  // - owners (contains all tenant IDs, shared across tenants)
+  // - drizzle_migrations, __drizzle_migrations (migration tracking tables)
+  //
+  // This dynamic approach ensures plugin tables are automatically protected when added.
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION apply_rls_to_all_tables() RETURNS void AS $$
     DECLARE
