@@ -10,27 +10,55 @@ import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer } from '../../index';
 import {
   JobStatus,
-  type CreateJobRequest,
+  JobValidation,
   type CreateJobResponse,
   type JobDetailsResponse,
+  type JobHealthResponse,
+  type JobErrorResponse,
   type Job,
+  // CreateJobRequest and JobPersistenceConfig are available for future enhancements
 } from '../../types/jobs';
 import internalMessageBus from '../../bus';
-
-// TODO: Re-enable authentication by uncommenting:
-// import { requireAuthOrApiKey, type AuthenticatedRequest } from '../../middleware';
+import { apiKeyAuthMiddleware } from '../../authMiddleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-const DEFAULT_JOB_TIMEOUT_MS = 30000; // 30 seconds
-const MAX_JOB_TIMEOUT_MS = 300000; // 5 minutes
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
+const MESSAGE_BUS_CLEANUP_BUFFER_MS = 10000; // 10 second buffer instead of 5s
 
 // In-memory job storage
 const jobs = new Map<string, Job>();
 
 // Track cleanup interval
 let cleanupInterval: NodeJS.Timeout | null = null;
+
+// Track listener cleanup timeouts
+const listenerCleanupTimeouts = new Map<string, NodeJS.Timeout>();
+
+// Metrics tracking
+const metrics = {
+  totalProcessingTimeMs: 0,
+  completedJobs: 0,
+  failedJobs: 0,
+  timeoutJobs: 0,
+};
+
+/**
+ * Helper to send standardized error response
+ */
+function sendErrorResponse(
+  res: express.Response,
+  statusCode: number,
+  error: string,
+  details?: Record<string, unknown>
+): void {
+  const response: JobErrorResponse = {
+    success: false,
+    error,
+    details,
+  };
+  res.status(statusCode).json(response);
+}
 
 /**
  * Cleanup expired jobs
@@ -49,11 +77,19 @@ function cleanupExpiredJobs(): void {
     ) {
       jobs.delete(jobId);
       cleanedCount++;
+
+      // Cleanup any pending listener cleanup timeouts
+      const timeout = listenerCleanupTimeouts.get(jobId);
+      if (timeout) {
+        clearTimeout(timeout);
+        listenerCleanupTimeouts.delete(jobId);
+      }
     }
-    // Mark timed-out jobs
+    // Mark timed-out jobs and update metrics
     else if (job.expiresAt < now && job.status === JobStatus.PROCESSING) {
       job.status = JobStatus.TIMEOUT;
       job.error = 'Job timed out waiting for agent response';
+      metrics.timeoutJobs++;
       logger.warn(`[Jobs API] Job ${jobId} timed out`);
     }
   }
@@ -68,7 +104,14 @@ function cleanupExpiredJobs(): void {
       ([, a], [, b]) => a.createdAt - b.createdAt
     );
     const toRemove = sortedJobs.slice(0, Math.floor(MAX_JOBS_IN_MEMORY * 0.1)); // Remove oldest 10%
-    toRemove.forEach(([jobId]) => jobs.delete(jobId));
+    toRemove.forEach(([jobId]) => {
+      jobs.delete(jobId);
+      const timeout = listenerCleanupTimeouts.get(jobId);
+      if (timeout) {
+        clearTimeout(timeout);
+        listenerCleanupTimeouts.delete(jobId);
+      }
+    });
     logger.warn(
       `[Jobs API] Emergency cleanup: removed ${toRemove.length} oldest jobs. Current: ${jobs.size}`
     );
@@ -115,20 +158,81 @@ function jobToResponse(job: Job): JobDetailsResponse {
 }
 
 /**
- * Validate CreateJobRequest
+ * Validate CreateJobRequest with size limits
  */
-function isValidCreateJobRequest(obj: unknown): obj is CreateJobRequest {
+function validateCreateJobRequest(obj: unknown): {
+  valid: boolean;
+  error?: string;
+} {
   if (!obj || typeof obj !== 'object') {
-    return false;
+    return { valid: false, error: 'Request body must be an object' };
   }
 
   const req = obj as Record<string, unknown>;
-  return (
-    (req.agentId === undefined || typeof req.agentId === 'string') &&
-    typeof req.userId === 'string' &&
-    typeof req.content === 'string' &&
-    req.content.length > 0
-  );
+
+  // Validate agentId if provided
+  if (req.agentId !== undefined && typeof req.agentId !== 'string') {
+    return { valid: false, error: 'agentId must be a valid UUID string' };
+  }
+
+  // Validate userId
+  if (typeof req.userId !== 'string') {
+    return { valid: false, error: 'userId is required and must be a valid UUID string' };
+  }
+
+  // Validate content
+  if (typeof req.content !== 'string') {
+    return { valid: false, error: 'content is required and must be a string' };
+  }
+
+  if (req.content.length === 0) {
+    return { valid: false, error: 'content cannot be empty' };
+  }
+
+  if (req.content.length > JobValidation.MAX_CONTENT_LENGTH) {
+    return {
+      valid: false,
+      error: `content exceeds maximum length of ${JobValidation.MAX_CONTENT_LENGTH} characters`,
+    };
+  }
+
+  // Validate metadata size if provided
+  if (req.metadata !== undefined) {
+    if (typeof req.metadata !== 'object' || req.metadata === null) {
+      return { valid: false, error: 'metadata must be an object' };
+    }
+
+    const metadataSize = JSON.stringify(req.metadata).length;
+    if (metadataSize > JobValidation.MAX_METADATA_SIZE) {
+      return {
+        valid: false,
+        error: `metadata exceeds maximum size of ${JobValidation.MAX_METADATA_SIZE} bytes`,
+      };
+    }
+  }
+
+  // Validate timeoutMs if provided
+  if (req.timeoutMs !== undefined) {
+    if (typeof req.timeoutMs !== 'number' || req.timeoutMs < 0) {
+      return { valid: false, error: 'timeoutMs must be a positive number' };
+    }
+
+    if (req.timeoutMs < JobValidation.MIN_TIMEOUT_MS) {
+      return {
+        valid: false,
+        error: `timeoutMs must be at least ${JobValidation.MIN_TIMEOUT_MS}ms`,
+      };
+    }
+
+    if (req.timeoutMs > JobValidation.MAX_TIMEOUT_MS) {
+      return {
+        valid: false,
+        error: `timeoutMs cannot exceed ${JobValidation.MAX_TIMEOUT_MS}ms`,
+      };
+    }
+  }
+
+  return { valid: true };
 }
 
 /**
@@ -153,6 +257,13 @@ export function createJobsRouter(
   // Cleanup function for the router
   router.cleanup = () => {
     stopCleanupInterval();
+
+    // Clear all listener cleanup timeouts
+    for (const timeout of listenerCleanupTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    listenerCleanupTimeouts.clear();
+
     jobs.clear();
     logger.info('[Jobs API] Router cleanup completed');
   };
@@ -160,30 +271,24 @@ export function createJobsRouter(
   /**
    * Create a new job (one-off message to agent)
    * POST /api/messaging/jobs
-   * TODO: Re-enable authentication - temporarily disabled for testing
    */
   router.post(
     '/jobs',
-    // requireAuthOrApiKey, // TEMPORARILY DISABLED
+    apiKeyAuthMiddleware,
     async (req: express.Request, res: express.Response) => {
       try {
         const body = req.body;
 
-        // Validate request
-        if (!isValidCreateJobRequest(body)) {
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid request. Required fields: userId, content',
-          });
+        // Validate request with size limits
+        const validation = validateCreateJobRequest(body);
+        if (!validation.valid) {
+          return sendErrorResponse(res, 400, validation.error || 'Invalid request');
         }
 
         // Validate userId
         const userId = validateUuid(body.userId);
         if (!userId) {
-          return res.status(400).json({
-            success: false,
-            error: 'Invalid userId format (must be valid UUID)',
-          });
+          return sendErrorResponse(res, 400, 'Invalid userId format (must be valid UUID)');
         }
 
         // Determine agent ID - use provided or first available agent
@@ -193,10 +298,7 @@ export function createJobsRouter(
           // Validate provided agentId
           agentId = validateUuid(body.agentId);
           if (!agentId) {
-            return res.status(400).json({
-              success: false,
-              error: 'Invalid agentId format (must be valid UUID)',
-            });
+            return sendErrorResponse(res, 400, 'Invalid agentId format (must be valid UUID)');
           }
         } else {
           // Get first available agent
@@ -207,26 +309,20 @@ export function createJobsRouter(
               `[Jobs API] No agentId provided, using first available agent: ${agentId}`
             );
           } else {
-            return res.status(404).json({
-              success: false,
-              error: 'No agents available on server',
-            });
+            return sendErrorResponse(res, 404, 'No agents available on server');
           }
         }
 
         // Check if agent exists
         const runtime = elizaOS.getAgent(agentId);
         if (!runtime) {
-          return res.status(404).json({
-            success: false,
-            error: `Agent ${agentId} not found`,
-          });
+          return sendErrorResponse(res, 404, `Agent ${agentId} not found`);
         }
 
         // Calculate timeout
         const timeoutMs = Math.min(
-          body.timeoutMs || DEFAULT_JOB_TIMEOUT_MS,
-          MAX_JOB_TIMEOUT_MS
+          body.timeoutMs || JobValidation.DEFAULT_TIMEOUT_MS,
+          JobValidation.MAX_TIMEOUT_MS
         );
 
         // Create job ID and channel ID
@@ -280,10 +376,7 @@ export function createJobsRouter(
             `[Jobs API] Failed to create channel for job ${jobId}:`,
             error instanceof Error ? error.message : String(error)
           );
-          return res.status(500).json({
-            success: false,
-            error: 'Failed to create job channel',
-          });
+          return sendErrorResponse(res, 500, 'Failed to create job channel');
         }
 
         // Update job status to processing
@@ -385,6 +478,8 @@ export function createJobsRouter(
               // If we previously received an action message, this should be the actual result
               // OR if this is a direct response (no action), accept it
               if (actionMessageReceived || !isActionMessage) {
+                const processingTime = Date.now() - currentJob.createdAt;
+
                 currentJob.status = JobStatus.COMPLETED;
                 currentJob.agentResponseId = message.id;
                 currentJob.result = {
@@ -395,15 +490,26 @@ export function createJobsRouter(
                     createdAt: message.created_at,
                     metadata: message.metadata,
                   },
-                  processingTimeMs: Date.now() - currentJob.createdAt,
+                  processingTimeMs: processingTime,
                 };
 
+                // Update metrics
+                metrics.completedJobs++;
+                metrics.totalProcessingTimeMs += processingTime;
+
                 logger.info(
-                  `[Jobs API] Job ${jobId} completed with ${actionMessageReceived ? 'action result' : 'direct response'} ${message.id} (${currentJob.result.processingTimeMs}ms)`
+                  `[Jobs API] Job ${jobId} completed with ${actionMessageReceived ? 'action result' : 'direct response'} ${message.id} (${processingTime}ms)`
                 );
 
                 // Remove listener after receiving final response
                 internalMessageBus.off('new_message', responseHandler);
+
+                // Clear the cleanup timeout since we're done
+                const cleanupTimeout = listenerCleanupTimeouts.get(jobId);
+                if (cleanupTimeout) {
+                  clearTimeout(cleanupTimeout);
+                  listenerCleanupTimeouts.delete(jobId);
+                }
               }
             }
           };
@@ -411,13 +517,17 @@ export function createJobsRouter(
           // Listen for agent response
           internalMessageBus.on('new_message', responseHandler);
 
-          // Set timeout to cleanup listener
-          setTimeout(() => {
+          // Set timeout to cleanup listener with better buffer
+          const cleanupTimeout = setTimeout(() => {
             internalMessageBus.off('new_message', responseHandler);
-          }, timeoutMs + 5000); // Extra 5s buffer
+            listenerCleanupTimeouts.delete(jobId);
+          }, timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS);
+
+          listenerCleanupTimeouts.set(jobId, cleanupTimeout);
         } catch (error) {
           job.status = JobStatus.FAILED;
           job.error = 'Failed to create user message';
+          metrics.failedJobs++;
           logger.error(
             `[Jobs API] Failed to create message for job ${jobId}:`,
             error instanceof Error ? error.message : String(error)
@@ -437,16 +547,13 @@ export function createJobsRouter(
           '[Jobs API] Error creating job:',
           error instanceof Error ? error.message : String(error)
         );
-        res.status(500).json({
-          success: false,
-          error: 'Failed to create job',
-        });
+        sendErrorResponse(res, 500, 'Failed to create job');
       }
     }
   );
 
   /**
-   * Health check endpoint
+   * Health check endpoint with enhanced metrics
    * GET /api/messaging/jobs/health
    * NOTE: Must be defined before /:jobId route to avoid parameter matching
    */
@@ -464,24 +571,41 @@ export function createJobsRouter(
       statusCounts[job.status]++;
     }
 
-    res.json({
+    // Calculate metrics
+    const totalCompleted = metrics.completedJobs + metrics.failedJobs + metrics.timeoutJobs;
+    const averageProcessingTimeMs =
+      metrics.completedJobs > 0
+        ? metrics.totalProcessingTimeMs / metrics.completedJobs
+        : 0;
+    const successRate = totalCompleted > 0 ? (metrics.completedJobs / totalCompleted) * 100 : 0;
+    const failureRate = totalCompleted > 0 ? (metrics.failedJobs / totalCompleted) * 100 : 0;
+    const timeoutRate = totalCompleted > 0 ? (metrics.timeoutJobs / totalCompleted) * 100 : 0;
+
+    const response: JobHealthResponse = {
       healthy: true,
       timestamp: now,
       totalJobs: jobs.size,
       statusCounts,
+      metrics: {
+        averageProcessingTimeMs: Math.round(averageProcessingTimeMs),
+        successRate: Math.round(successRate * 100) / 100,
+        failureRate: Math.round(failureRate * 100) / 100,
+        timeoutRate: Math.round(timeoutRate * 100) / 100,
+      },
       maxJobs: MAX_JOBS_IN_MEMORY,
-    });
+    };
+
+    res.json(response);
   });
 
   /**
    * List all jobs (for debugging/admin)
    * GET /api/messaging/jobs
    * NOTE: Must be defined before /:jobId route to avoid parameter matching
-   * TODO: Re-enable authentication - temporarily disabled for testing
    */
   router.get(
     '/jobs',
-    // requireAuthOrApiKey, // TEMPORARILY DISABLED
+    apiKeyAuthMiddleware,
     async (req: express.Request, res: express.Response) => {
       try {
         const limit = parseInt(req.query.limit as string) || 50;
@@ -512,10 +636,7 @@ export function createJobsRouter(
           '[Jobs API] Error listing jobs:',
           error instanceof Error ? error.message : String(error)
         );
-        res.status(500).json({
-          success: false,
-          error: 'Failed to list jobs',
-        });
+        sendErrorResponse(res, 500, 'Failed to list jobs');
       }
     }
   );
@@ -530,16 +651,14 @@ export function createJobsRouter(
 
       const job = jobs.get(jobId);
       if (!job) {
-        return res.status(404).json({
-          success: false,
-          error: 'Job not found',
-        });
+        return sendErrorResponse(res, 404, 'Job not found');
       }
 
       // Check if job has timed out
       if (job.expiresAt < Date.now() && job.status === JobStatus.PROCESSING) {
         job.status = JobStatus.TIMEOUT;
         job.error = 'Job timed out waiting for agent response';
+        metrics.timeoutJobs++;
       }
 
       const response = jobToResponse(job);
@@ -549,10 +668,7 @@ export function createJobsRouter(
         '[Jobs API] Error getting job:',
         error instanceof Error ? error.message : String(error)
       );
-      res.status(500).json({
-        success: false,
-        error: 'Failed to get job details',
-      });
+      sendErrorResponse(res, 500, 'Failed to get job details');
     }
   });
 
