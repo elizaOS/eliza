@@ -5,6 +5,7 @@
  * 
  * Security Features:
  * - API key authentication required for all job operations
+ * - x402 payment middleware for paid access (optional, configurable via .env)
  * - Request size validation (content max 50KB, metadata max 10KB)
  * - Timeout bounds validation (1s min, 5min max for jobs; absolute 5min for cleanup)
  * - Resource exhaustion protection via absolute timeout caps
@@ -15,6 +16,9 @@
  * 
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
+ * 
+ * x402 Payment Configuration (via .env):
+ * See middleware/x402.ts for detailed configuration options.
  */
 import { logger, validateUuid, type UUID, type ElizaOS, ChannelType } from '@elizaos/core';
 import express from 'express';
@@ -31,7 +35,7 @@ import {
   // CreateJobRequest and JobPersistenceConfig are available for future enhancements
 } from '../../types/jobs';
 import internalMessageBus from '../../bus';
-import { apiKeyAuthMiddleware } from '../../middleware';
+import { apiKeyAuthMiddleware, createX402Middleware } from '../../middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
@@ -264,13 +268,79 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
     logger.info('[Jobs API] Router cleanup completed');
   };
 
+  // Create x402 payment middleware with metadata for Bazaar discovery
+  const x402Middleware = createX402Middleware({
+    'POST /jobs': {
+      description: 'Create a one-off job to send a message to an AI agent and receive a response. The agent processes the message and returns a completion with the agent\'s reply, including processing time metrics.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agentId: {
+            type: 'string',
+            format: 'uuid',
+            description: 'Optional UUID of the specific agent to send the job to. If not provided, the first available agent will be used.',
+          },
+          userId: {
+            type: 'string',
+            format: 'uuid',
+            description: 'UUID identifying the user making the request. Used for tracking and authentication.',
+          },
+          content: {
+            type: 'string',
+            description: 'The message content to send to the agent. Maximum 50KB.',
+            maxLength: JobValidation.MAX_CONTENT_LENGTH,
+          },
+          timeoutMs: {
+            type: 'number',
+            description: `Optional timeout in milliseconds for the job. Min: ${JobValidation.MIN_TIMEOUT_MS}ms, Max: ${JobValidation.MAX_TIMEOUT_MS}ms, Default: ${JobValidation.DEFAULT_TIMEOUT_MS}ms`,
+            minimum: JobValidation.MIN_TIMEOUT_MS,
+            maximum: JobValidation.MAX_TIMEOUT_MS,
+          },
+          metadata: {
+            type: 'object',
+            description: 'Optional metadata to attach to the job. Maximum 10KB when serialized.',
+          },
+        },
+        required: ['userId', 'content'],
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          jobId: {
+            type: 'string',
+            description: 'Unique identifier for the created job',
+          },
+          status: {
+            type: 'string',
+            enum: ['pending', 'processing', 'completed', 'failed', 'timeout'],
+            description: 'Current status of the job',
+          },
+          createdAt: {
+            type: 'number',
+            description: 'Unix timestamp when the job was created',
+          },
+          expiresAt: {
+            type: 'number',
+            description: 'Unix timestamp when the job will expire',
+          },
+        },
+      },
+    },
+  });
+
   /**
    * Create a new job (one-off message to agent)
    * POST /api/messaging/jobs
+   * 
+   * Authentication/Payment Modes:
+   * 1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
+   * 2. Only API key (x402=false): Requires only X-API-KEY header
+   * 3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
+   * 4. Neither enabled: No authentication required
    */
   router.post(
     '/jobs',
-    apiKeyAuthMiddleware,
+    x402Middleware,
     async (req: express.Request, res: express.Response) => {
       try {
         const body = req.body;

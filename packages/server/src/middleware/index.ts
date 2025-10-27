@@ -24,3 +24,6 @@ export {
   validateChannelIdMiddleware,
   validateContentTypeMiddleware,
 } from './validation';
+
+// x402 Payment middleware
+export { createX402Middleware, x402LoggingMiddleware } from './x402';
