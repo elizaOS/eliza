@@ -23,10 +23,36 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     const sessionId = generateSessionId();
     console.log(colors.dim(`Session ID: ${sessionId}\n`));
 
-    // Step 2: Create auth URL
+    // Step 2: Create session on cloud
+    const createSpinner = ora('Initializing authentication session...').start();
+    
+    try {
+      const createResponse = await fetch(`${cloudUrl}/api/auth/cli-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!createResponse.ok) {
+        createSpinner.fail('Failed to initialize session');
+        const errorText = await createResponse.text();
+        throw new Error(`Failed to create session: ${createResponse.status} ${errorText}`);
+      }
+
+      createSpinner.succeed('Session initialized');
+    } catch (error) {
+      createSpinner.fail('Failed to connect to cloud');
+      throw new Error(
+        `Could not connect to ElizaOS Cloud at ${cloudUrl}. Please check the URL and try again.`
+      );
+    }
+
+    // Step 3: Create auth URL
     const authUrl = `${cloudUrl}/auth/cli-login?session=${sessionId}`;
 
-    // Step 3: Open browser if enabled
+    // Step 4: Open browser if enabled
     if (options.browser) {
       console.log(colors.cyan('Opening browser for authentication...\n'));
       const browserOpened = await openBrowser(authUrl);
@@ -42,9 +68,9 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
       displayManualInstructions(authUrl);
     }
 
-    // Step 4: Poll for authentication status
+    // Step 5: Poll for authentication status
     const timeoutSeconds = Number.parseInt(options.timeout, 10);
-
+    
     // Validate timeout value
     if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
       console.error(
@@ -87,10 +113,10 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
 
     spinner.succeed('Authentication successful!');
 
-    // Step 5: Write API key to .env file
+    // Step 6: Write API key to .env file
     await writeApiKeyToEnv(authResult.apiKey);
 
-    // Step 6: Display success message
+    // Step 7: Display success message
     displaySuccessMessage(authResult);
   } catch (error) {
     if (error instanceof Error) {
