@@ -453,9 +453,7 @@ export function createJobsRouter(
               }
 
               // Check if this is an "Executing action" intermediate message
-              const isActionMessage =
-                message.content.startsWith('Executing action:') ||
-                message.content.includes('Executing action:');
+              const isActionMessage = message.content.startsWith('Executing action:');
 
               if (isActionMessage) {
                 // This is an intermediate action message, keep waiting for the actual result
