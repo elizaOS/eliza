@@ -5,6 +5,7 @@ import { createMessagingCoreRouter } from './core';
 import { createServersRouter } from './servers';
 import { createChannelsRouter } from './channels';
 import { createSessionsRouter } from './sessions';
+import { createJobsRouter } from './jobs';
 
 /**
  * Creates the messaging router for all communication functionality
@@ -27,6 +28,9 @@ export function messagingRouter(elizaOS: ElizaOS, serverInstance: AgentServer): 
 
   // Mount unified sessions API for simplified messaging
   router.use('/', createSessionsRouter(elizaOS, serverInstance));
+
+  // Mount jobs API for one-off messaging (similar to @bankr/sdk)
+  router.use('/', createJobsRouter(elizaOS, serverInstance));
 
   return router;
 }
