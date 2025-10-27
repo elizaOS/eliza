@@ -1,6 +1,6 @@
 /**
  * Jobs API Router
- * 
+ -
  * Provides one-off messaging capabilities for agents with comprehensive security controls:
  * 
  * Security Features:
