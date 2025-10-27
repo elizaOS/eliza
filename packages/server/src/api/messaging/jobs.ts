@@ -23,6 +23,9 @@ import { apiKeyAuthMiddleware } from '../../middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
+
+// Resource exhaustion fix: absolutely cap max timeout for cleanup of listeners to 5 minutes (safe upper bound)
+const ABSOLUTE_MAX_LISTENER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
 const MESSAGE_BUS_CLEANUP_BUFFER_MS = 10000; // 10 second buffer instead of 5s
 
@@ -509,7 +512,8 @@ export function createJobsRouter(
           // Set timeout to cleanup listener with better buffer
           const safeListenerTimeoutMs = Math.min(
             JobValidation.MAX_TIMEOUT_MS + MESSAGE_BUS_CLEANUP_BUFFER_MS,
-            timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS
+            timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS,
+            ABSOLUTE_MAX_LISTENER_TIMEOUT_MS
           );
           const cleanupTimeout = setTimeout(() => {
             internalMessageBus.off('new_message', responseHandler);
