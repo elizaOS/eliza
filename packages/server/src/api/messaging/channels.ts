@@ -13,7 +13,7 @@ import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
-import { createUploadRateLimit, createFileSystemRateLimit } from '../shared/middleware';
+import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 
 import multer from 'multer';
@@ -450,10 +450,10 @@ export function createChannelsRouter(
       const errorDetails =
         error instanceof Error
           ? {
-              message: error.message,
-              stack: error.stack,
-              originalError: error,
-            }
+            message: error.message,
+            stack: error.stack,
+            originalError: error,
+          }
           : { message: String(error) };
 
       logger.error('Error finding/creating DM channel:', JSON.stringify(errorDetails));

@@ -4,7 +4,7 @@ import express from 'express';
 import { cleanupUploadedFile } from '../shared/file-utils.js';
 import { sendError, sendSuccess } from '../shared/response-utils.js';
 import { agentAudioUpload, validateAudioFile } from '../shared/uploads/index.js';
-import { createFileSystemRateLimit, createUploadRateLimit } from '../shared/middleware.js';
+import { createFileSystemRateLimit, createUploadRateLimit } from '../../middleware/index.js';
 import { MAX_FILE_SIZE, MAX_FILE_SIZE_DISPLAY } from '../shared/constants.js';
 
 interface AudioRequest extends express.Request {

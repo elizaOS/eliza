@@ -48,6 +48,10 @@ const upload = await client.media.uploadAgentMedia(agentId, {
   file: myFile,
   filename: 'image.png',
 });
+
+// Quick one-off message with automatic polling (Jobs API)
+const response = await client.jobs.ask('user-123', 'What is Bitcoin?');
+console.log('Agent response:', response);
 ```
 
 ## API Domains
@@ -72,6 +76,56 @@ const upload = await client.media.uploadAgentMedia(agentId, {
 - Send and retrieve messages within sessions
 - Session metadata and lifecycle management
 - Automatic cleanup of inactive sessions
+
+### Jobs
+
+- One-off messaging with automatic response handling
+- Simple request/response pattern for agent interactions
+- Automatic polling with customizable strategies
+- Job status tracking and health metrics
+
+Example:
+```typescript
+// Simple ask pattern - returns the response directly
+const response = await client.jobs.ask('user-id', 'What is Bitcoin?');
+
+// Create and poll manually for more control
+const result = await client.jobs.createAndPoll({
+  userId: 'user-id',
+  content: 'Complex analysis query',
+  agentId: 'specific-agent-id', // Optional
+  timeoutMs: 60000, // Optional
+});
+
+if (result.success) {
+  console.log('Response:', result.job.result?.message.content);
+  console.log('Processing time:', result.job.result?.processingTimeMs, 'ms');
+}
+
+// Poll with exponential backoff for long-running queries
+const backoffResult = await client.jobs.createAndPollWithBackoff({
+  userId: 'user-id',
+  content: 'Long running task',
+}, {
+  initialInterval: 500,
+  maxInterval: 5000,
+  multiplier: 1.5,
+});
+
+// Get job status manually
+const job = await client.jobs.getJob('job-id');
+console.log('Status:', job.status);
+
+// List all jobs
+const { jobs } = await client.jobs.list({ 
+  status: JobStatus.COMPLETED,
+  limit: 10 
+});
+
+// Check health metrics
+const health = await client.jobs.health();
+console.log('Success rate:', health.metrics.successRate);
+```
 
 ### Memory
 
