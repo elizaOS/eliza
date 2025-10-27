@@ -1,32 +1,38 @@
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const execAsync = promisify(exec);
-
 /**
  * Open URL in default browser
- * Handles cross-platform browser opening
+ * Handles cross-platform browser opening using Bun.spawn
  */
 export async function openBrowser(url: string): Promise<boolean> {
   try {
     const platform = process.platform;
 
     let command: string;
+    let args: string[];
 
     switch (platform) {
       case 'darwin': // macOS
-        command = `open "${url}"`;
+        command = 'open';
+        args = [url];
         break;
       case 'win32': // Windows
-        command = `start "" "${url}"`;
+        command = 'cmd';
+        args = ['/c', 'start', '', url];
         break;
       default: // Linux and others
         // Try xdg-open first (most common on Linux)
-        command = `xdg-open "${url}" || sensible-browser "${url}" || x-www-browser "${url}"`;
+        command = 'xdg-open';
+        args = [url];
         break;
     }
 
-    await execAsync(command);
+    // Use Bun.spawn to open browser (non-blocking)
+    // We don't need to wait for the browser process - just fire and forget
+    Bun.spawn([command, ...args], {
+      stdout: 'ignore',
+      stderr: 'ignore',
+      stdin: 'ignore',
+    });
+
     return true;
   } catch (error) {
     console.debug('Failed to open browser:', error);
