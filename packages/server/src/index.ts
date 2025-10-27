@@ -388,6 +388,8 @@ export class AgentServer {
         }
 
         logger.info('[INIT] Initializing RLS multi-tenant isolation...');
+        logger.warn('[RLS] Ensure your PostgreSQL user is NOT a superuser!');
+        logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
 
         try {
           // Install RLS PostgreSQL functions

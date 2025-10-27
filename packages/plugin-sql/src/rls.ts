@@ -4,6 +4,19 @@ import { ownersTable } from './schema/owners';
 import { agentTable } from './schema/agent';
 
 /**
+ * PostgreSQL Row-Level Security (RLS) for Multi-Tenant Isolation
+ *
+ * REQUIREMENT:
+ * - RLS policies DO NOT apply to PostgreSQL superuser accounts.
+ * - Use a REGULAR (non-superuser) database user
+ * - Grant only necessary permissions (CREATE, SELECT, INSERT, UPDATE, DELETE)
+ * - NEVER use the 'postgres' superuser or any superuser account
+ *
+ * Superusers bypass ALL RLS policies by design, which would completely
+ * defeat the multi-tenant isolation mechanism.
+ */
+
+/**
  * Install PostgreSQL functions required for RLS
  * These are stored procedures that must be created with raw SQL
  */
