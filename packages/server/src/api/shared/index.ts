@@ -2,6 +2,5 @@
 export * from './response-utils';
 export * from './validation';
 export * from './file-utils';
-export * from './middleware';
 export * from './uploads';
 export * from './constants';
