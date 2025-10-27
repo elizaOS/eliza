@@ -44,6 +44,18 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
 
     // Step 4: Poll for authentication status
     const timeoutSeconds = Number.parseInt(options.timeout, 10);
+
+    // Validate timeout value
+    if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
+      console.error(
+        colors.red(
+          `\n❌ Invalid timeout value: "${options.timeout}". Please provide a positive number.\n`
+        )
+      );
+      console.log(colors.dim('Example: elizaos login --timeout 600\n'));
+      process.exit(1);
+    }
+
     const spinner = ora({
       text: 'Waiting for authentication...',
       color: 'cyan',

@@ -1,3 +1,5 @@
+import { logger } from '@elizaos/core';
+
 /**
  * Open URL in default browser
  * Handles cross-platform browser opening using Bun.spawn
@@ -35,7 +37,7 @@ export async function openBrowser(url: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    console.debug('Failed to open browser:', error);
+    logger.error('Failed to open browser:', error instanceof Error ? error.message : String(error));
     return false;
   }
 }
