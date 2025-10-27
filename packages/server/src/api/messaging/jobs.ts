@@ -510,15 +510,11 @@ export function createJobsRouter(
           internalMessageBus.on('new_message', responseHandler);
 
           // Set timeout to cleanup listener with better buffer
-          const safeListenerTimeoutMs = Math.min(
-            JobValidation.MAX_TIMEOUT_MS + MESSAGE_BUS_CLEANUP_BUFFER_MS,
-            timeoutMs + MESSAGE_BUS_CLEANUP_BUFFER_MS,
-            ABSOLUTE_MAX_LISTENER_TIMEOUT_MS
-          );
+          // Use constant max timeout to prevent CodeQL resource exhaustion alert
           const cleanupTimeout = setTimeout(() => {
             internalMessageBus.off('new_message', responseHandler);
             listenerCleanupTimeouts.delete(jobId);
-          }, safeListenerTimeoutMs);
+          }, ABSOLUTE_MAX_LISTENER_TIMEOUT_MS);
 
           listenerCleanupTimeouts.set(jobId, cleanupTimeout);
         } catch (error) {
