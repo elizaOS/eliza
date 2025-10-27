@@ -29,7 +29,7 @@ export function messagingRouter(elizaOS: ElizaOS, serverInstance: AgentServer): 
   // Mount unified sessions API for simplified messaging
   router.use('/', createSessionsRouter(elizaOS, serverInstance));
 
-  // Mount jobs API for one-off messaging (similar to @bankr/sdk)
+  // Mount jobs API for one-off messaging
   router.use('/', createJobsRouter(elizaOS, serverInstance));
 
   return router;
