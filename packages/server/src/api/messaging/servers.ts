@@ -3,8 +3,6 @@ import express from 'express';
 import internalMessageBus from '../../bus';
 import type { AgentServer } from '../../index';
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-
 /**
  * Server management functionality
  */
@@ -62,8 +60,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
       const serverId =
-        req.params.serverId === DEFAULT_SERVER_ID
-          ? DEFAULT_SERVER_ID
+        req.params.serverId === serverInstance.serverId
+          ? serverInstance.serverId
           : validateUuid(req.params.serverId);
       const { agentId } = req.body;
 
@@ -109,8 +107,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
     '/servers/:serverId/agents/:agentId',
     async (req: express.Request, res: express.Response) => {
       const serverId =
-        req.params.serverId === DEFAULT_SERVER_ID
-          ? DEFAULT_SERVER_ID
+        req.params.serverId === serverInstance.serverId
+          ? serverInstance.serverId
           : validateUuid(req.params.serverId);
       const agentId = validateUuid(req.params.agentId);
 
@@ -156,8 +154,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
       const serverId =
-        req.params.serverId === DEFAULT_SERVER_ID
-          ? DEFAULT_SERVER_ID
+        req.params.serverId === serverInstance.serverId
+          ? serverInstance.serverId
           : validateUuid(req.params.serverId);
 
       if (!serverId) {

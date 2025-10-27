@@ -10,6 +10,7 @@ import { boolean, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
 export const agentTable = pgTable('agents', {
   id: uuid('id').primaryKey().defaultRandom(),
   enabled: boolean('enabled').default(true).notNull(),
+  owner_id: uuid('owner_id'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

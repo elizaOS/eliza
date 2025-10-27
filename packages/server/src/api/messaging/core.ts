@@ -5,8 +5,6 @@ import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { attachmentsToApiUrls } from '../../utils/media-transformer';
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
-
 /**
  * Core messaging functionality - message submission and ingestion
  */
@@ -27,7 +25,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     } = req.body;
 
     // Special handling for default server ID "0"
-    const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
+    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
 
     if (
       !validateUuid(channel_id) ||
@@ -114,7 +112,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata,
     } = req.body;
 
-    const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
+    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
 
     if (
       !validateUuid(channel_id) ||
@@ -215,7 +213,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
     }
-    if (server_id && !(server_id === DEFAULT_SERVER_ID || validateUuid(server_id))) {
+    if (server_id && !(server_id === serverInstance.serverId || validateUuid(server_id))) {
       return res.status(400).json({ success: false, error: 'Invalid server_id format' });
     }
 

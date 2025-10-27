@@ -20,8 +20,6 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-
 // Configure multer for channel uploads
 const channelStorage = multer.memoryStorage();
 const channelUploadMiddleware = multer({
@@ -91,8 +89,8 @@ export function createChannelsRouter(
         source_type, // Should be something like 'eliza_gui'
       } = req.body;
 
-      // Special handling for default server ID "0"
-      const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
+      // Validate server ID
+      const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
 
       if (!channelIdParam || !validateUuid(author_id) || !content || !isValidServerId) {
         return res.status(400).json({
@@ -331,10 +329,7 @@ export function createChannelsRouter(
   (router as any).get(
     '/central-servers/:serverId/channels',
     async (req: express.Request, res: express.Response) => {
-      const serverId =
-        req.params.serverId === DEFAULT_SERVER_ID
-          ? DEFAULT_SERVER_ID
-          : validateUuid(req.params.serverId);
+      const serverId = validateUuid(req.params.serverId);
       if (!serverId) {
         return res.status(400).json({ success: false, error: 'Invalid serverId' });
       }
@@ -409,10 +404,7 @@ export function createChannelsRouter(
   (router as any).get('/dm-channel', async (req: express.Request, res: express.Response) => {
     const targetUserId = validateUuid(req.query.targetUserId as string);
     const currentUserId = validateUuid(req.query.currentUserId as string);
-    const providedDmServerId =
-      req.query.dmServerId === DEFAULT_SERVER_ID
-        ? DEFAULT_SERVER_ID
-        : validateUuid(req.query.dmServerId as string);
+    const providedDmServerId = validateUuid(req.query.dmServerId as string);
 
     if (!targetUserId || !currentUserId) {
       res.status(400).json({ success: false, error: 'Missing targetUserId or currentUserId' });
@@ -423,20 +415,20 @@ export function createChannelsRouter(
       return;
     }
 
-    let dmServerIdToUse: UUID = DEFAULT_SERVER_ID;
+    let dmServerIdToUse: UUID = serverInstance.serverId;
 
     try {
       if (providedDmServerId) {
         // Check if the provided server ID exists
-        const existingServer = await serverInstance.getServerById(providedDmServerId); // Assumes AgentServer has getServerById
+        const existingServer = await serverInstance.getServerById(providedDmServerId);
         if (existingServer) {
           dmServerIdToUse = providedDmServerId;
         } else {
           logger.warn(
-            `Provided dmServerId ${providedDmServerId} not found, using default DM server logic.`
+            `Provided dmServerId ${providedDmServerId} not found, using current server ID.`
           );
-          // Use default server if provided ID is invalid
-          dmServerIdToUse = DEFAULT_SERVER_ID;
+          // Use current server if provided ID is invalid
+          dmServerIdToUse = serverInstance.serverId;
         }
       }
 
@@ -471,8 +463,8 @@ export function createChannelsRouter(
       metadata,
     } = req.body;
 
-    // Special handling for default server ID "0"
-    const isValidServerId = server_id === DEFAULT_SERVER_ID || validateUuid(server_id);
+    // Validate server ID
+    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
 
     if (
       !name ||

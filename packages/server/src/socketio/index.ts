@@ -12,7 +12,6 @@ import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils/media-transformer';
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
 export class SocketIORouter {
   private elizaOS: ElizaOS;
   private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
@@ -151,8 +150,8 @@ export class SocketIORouter {
     logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
-    if (entityId && (serverId || DEFAULT_SERVER_ID)) {
-      const finalServerId = serverId || DEFAULT_SERVER_ID;
+    if (entityId && (serverId || this.serverInstance.serverId)) {
+      const finalServerId = serverId || this.serverInstance.serverId;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
       logger.info(
@@ -181,7 +180,7 @@ export class SocketIORouter {
       }
     } else {
       logger.debug(
-        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || DEFAULT_SERVER_ID}) - not emitting ENTITY_JOINED event`
+        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || this.serverInstance.serverId}) - not emitting ENTITY_JOINED event`
       );
     }
 
@@ -209,8 +208,8 @@ export class SocketIORouter {
       JSON.stringify(payload, null, 2)
     );
 
-    // Special handling for default server ID "0"
-    const isValidServerId = serverId === DEFAULT_SERVER_ID || validateUuid(serverId);
+    // Validate server ID
+    const isValidServerId = serverId === this.serverInstance.serverId || validateUuid(serverId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(

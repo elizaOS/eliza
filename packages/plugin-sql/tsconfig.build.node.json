@@ -13,6 +13,7 @@
     "src/pg/**/*.ts",
     "src/schema/**/*.ts",
     "src/base.ts",
+    "src/rls.ts",
     "src/types.ts",
     "src/utils.ts",
     "src/utils.node.ts",

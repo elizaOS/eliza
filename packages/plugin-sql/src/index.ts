@@ -1,5 +1,5 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
-import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
+import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -52,8 +52,21 @@ export function createDatabaseAdapter(
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
+      // Determine RLS owner_id if RLS isolation is enabled
+      let rlsOwnerId: string | undefined;
+      if (process.env.ENABLE_RLS_ISOLATION === 'true') {
+        const authToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+        if (authToken) {
+          rlsOwnerId = stringToUuid(authToken);
+          logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId}`);
+        } else {
+          logger.warn('[RLS] ENABLE_RLS_ISOLATION is true but ELIZA_SERVER_AUTH_TOKEN is not set');
+        }
+      }
+
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
-        config.postgresUrl
+        config.postgresUrl,
+        rlsOwnerId
       );
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
@@ -135,4 +148,13 @@ export default plugin;
 
 // Export additional utilities that may be needed by consumers
 export { DatabaseMigrationService } from './migration-service';
+export {
+  installRLSFunctions,
+  getOwnerFromAuthToken,
+  setOwnerContext,
+  assignAgentToOwner,
+  cleanupOwnerIfDisabled,
+  applyRLSToNewTables,
+  uninstallRLS,
+} from './rls';
 export { schema };

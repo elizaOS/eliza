@@ -21,12 +21,27 @@ import internalMessageBus from '../bus'; // Import the bus
 let globalElizaOS: ElizaOS | null = null;
 
 /**
+ * Global AgentServer instance for MessageBusService
+ * Set by AgentServer during initialization
+ */
+let globalAgentServer: any | null = null;
+
+/**
  * Set the global ElizaOS instance
  * Should be called by AgentServer during initialization
  */
 export function setGlobalElizaOS(elizaOS: ElizaOS): void {
   globalElizaOS = elizaOS;
   logger.info('[MessageBusService] Global ElizaOS instance set');
+}
+
+/**
+ * Set the global AgentServer instance
+ * Should be called by AgentServer during initialization
+ */
+export function setGlobalAgentServer(agentServer: any): void {
+  globalAgentServer = agentServer;
+  logger.info('[MessageBusService] Global AgentServer instance set');
 }
 
 /**
@@ -39,6 +54,18 @@ function getGlobalElizaOS(): ElizaOS {
     );
   }
   return globalElizaOS;
+}
+
+/**
+ * Get the global AgentServer instance
+ */
+function getGlobalAgentServer(): any {
+  if (!globalAgentServer) {
+    throw new Error(
+      'AgentServer not initialized. Call setGlobalAgentServer() before using MessageBusService.'
+    );
+  }
+  return globalAgentServer;
 }
 
 // This interface defines the structure of messages coming from the server
@@ -66,9 +93,11 @@ export class MessageBusService extends Service {
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
+  private serverInstance: any;
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
+    this.serverInstance = getGlobalAgentServer();
     this.boundHandleIncomingMessage = (data: unknown) => {
       this.handleIncomingMessage(data).catch((error) => {
         logger.error(
@@ -117,11 +146,8 @@ export class MessageBusService extends Service {
 
       // Clear existing channel IDs before fetching new ones
       this.validChannelIds.clear();
-
-      // Include the default server ID if not already in subscribed servers
-      const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
       const serversToCheck = new Set(this.subscribedServers);
-      serversToCheck.add(DEFAULT_SERVER_ID);
+      serversToCheck.add(this.serverInstance.serverId);
 
       // Fetch channels for each subscribed server
       for (const serverId of serversToCheck) {
@@ -250,19 +276,17 @@ export class MessageBusService extends Service {
         const data = await response.json();
         if (data.success && data.data?.servers) {
           this.subscribedServers = new Set(data.data.servers);
-          // Always include the default server
-          const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-          this.subscribedServers.add(DEFAULT_SERVER_ID);
+          // Always include the server
+          this.subscribedServers.add(this.serverInstance.serverId);
           logger.info(
-            `[${this.runtime.character.name}] MessageBusService: Agent is subscribed to ${this.subscribedServers.size} servers (including default server)`
+            `[${this.runtime.character.name}] MessageBusService: Agent is subscribed to ${this.subscribedServers.size} servers (including server ${this.serverInstance.serverId})`
           );
         }
       } else {
-        // Even if the request fails, ensure we're subscribed to the default server
-        const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-        this.subscribedServers.add(DEFAULT_SERVER_ID);
+        // Even if the request fails, ensure we're subscribed to the server
+        this.subscribedServers.add(this.serverInstance.serverId);
         logger.warn(
-          `[${this.runtime.character.name}] MessageBusService: Failed to fetch agent servers, but added default server`
+          `[${this.runtime.character.name}] MessageBusService: Failed to fetch agent servers, but added server ${this.serverInstance.serverId}`
         );
       }
     } catch (error) {
@@ -270,11 +294,10 @@ export class MessageBusService extends Service {
         `[${this.runtime.character.name}] MessageBusService: Error fetching agent servers:`,
         error instanceof Error ? error.message : String(error)
       );
-      // Even on error, ensure we're subscribed to the default server
-      const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
-      this.subscribedServers.add(DEFAULT_SERVER_ID);
+      // Even on error, ensure we're subscribed to the server
+      this.subscribedServers.add(this.serverInstance.serverId);
       logger.info(
-        `[${this.runtime.character.name}] MessageBusService: Added default server after error`
+        `[${this.runtime.character.name}] MessageBusService: Added server ${this.serverInstance.serverId} after error`
       );
     }
   }
