@@ -104,20 +104,6 @@ export interface JobDetailsResponse {
 }
 
 /**
- * Poll options for checking job status
- */
-export interface PollOptions {
-  /** Job ID to poll */
-  jobId: string;
-  /** Polling interval in milliseconds */
-  interval?: number;
-  /** Maximum number of poll attempts */
-  maxAttempts?: number;
-  /** Total timeout in milliseconds */
-  timeout?: number;
-}
-
-/**
  * Internal job storage structure
  */
 export interface Job {
