@@ -8,7 +8,7 @@ import { agentTable } from './schema/agent';
  * These are stored procedures that must be created with raw SQL
  */
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
 
   // Create owners table if it doesn't exist
   await db.execute(sql`
@@ -112,7 +112,7 @@ export async function getOwnerFromAuthToken(
   adapter: IDatabaseAdapter,
   authToken: string
 ): Promise<string> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
   const owner_id = stringToUuid(authToken);
 
   // Use Drizzle's insert with onConflictDoNothing
@@ -136,7 +136,7 @@ export async function setOwnerContext(
   ownerId: string
 ): Promise<void> {
   // Validate owner exists
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
   const owners = await db.select().from(ownersTable).where(eq(ownersTable.id, ownerId));
 
   if (owners.length === 0) {
@@ -155,7 +155,7 @@ export async function assignAgentToOwner(
   agentId: string,
   ownerId: string
 ): Promise<void> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
 
   // Check if agent exists using Drizzle
   const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
@@ -191,7 +191,7 @@ export async function cleanupOwnerIfDisabled(
   adapter: IDatabaseAdapter,
   agentId: string
 ): Promise<void> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
 
   const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
 
@@ -206,7 +206,7 @@ export async function cleanupOwnerIfDisabled(
  * Apply RLS to all tables by calling PostgreSQL function
  */
 export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<void> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
@@ -219,14 +219,42 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
 /**
  * Disable RLS from the database
  * Removes RLS policies and functions but KEEPS owner_id column for schema compatibility
+ *
  */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = (adapter as any).getDatabase();
+  const db = adapter.db;
 
   try {
     logger.info('[RLS] Disabling RLS (keeping owner_id columns for schema compatibility)...');
 
-    // 1. Drop all RLS policies and disable RLS on all tables
+    // Create a temporary stored procedure to safely drop policies and disable RLS
+    // Using format() with %I ensures proper identifier quoting and prevents SQL injection
+    await db.execute(sql`
+      CREATE OR REPLACE FUNCTION _temp_disable_rls_on_table(
+        p_schema_name text,
+        p_table_name text
+      ) RETURNS void AS $$
+      DECLARE
+        policy_rec record;
+      BEGIN
+        -- Drop all policies on this table
+        FOR policy_rec IN
+          SELECT policyname
+          FROM pg_policies
+          WHERE schemaname = p_schema_name AND tablename = p_table_name
+        LOOP
+          EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I',
+            policy_rec.policyname, p_schema_name, p_table_name);
+        END LOOP;
+
+        -- Disable RLS
+        EXECUTE format('ALTER TABLE %I.%I NO FORCE ROW LEVEL SECURITY', p_schema_name, p_table_name);
+        EXECUTE format('ALTER TABLE %I.%I DISABLE ROW LEVEL SECURITY', p_schema_name, p_table_name);
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+
+    // Get all tables in public schema
     const tablesResult = await db.execute(sql`
       SELECT schemaname, tablename
       FROM pg_tables
@@ -234,40 +262,22 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
         AND tablename NOT IN ('drizzle_migrations', '__drizzle_migrations')
     `);
 
+    // Safely disable RLS on each table using the stored procedure
     for (const row of tablesResult.rows || []) {
+      const schemaName = row.schemaname;
       const tableName = row.tablename;
 
       try {
-        // Drop all policies on this table
-        const policiesResult = await db.execute(sql.raw(`
-          SELECT policyname
-          FROM pg_policies
-          WHERE schemaname = 'public' AND tablename = '${tableName}'
-        `));
-
-        for (const policy of policiesResult.rows || []) {
-          await db.execute(sql.raw(`
-            DROP POLICY IF EXISTS ${policy.policyname} ON ${tableName}
-          `));
-        }
-
-        // Disable RLS (but keep FORCE disabled)
-        await db.execute(sql.raw(`
-          ALTER TABLE ${tableName} NO FORCE ROW LEVEL SECURITY
-        `));
-
-        await db.execute(sql.raw(`
-          ALTER TABLE ${tableName} DISABLE ROW LEVEL SECURITY
-        `));
-
-        // NOTE: We intentionally KEEP the owner_id column for Drizzle schema compatibility
-        // It will just be NULL or unused when RLS is disabled
-
-        logger.debug(`[RLS] Disabled RLS on table: ${tableName}`);
+        // Call stored procedure with parameterized query (safe from SQL injection)
+        await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
+        logger.debug(`[RLS] Disabled RLS on table: ${schemaName}.${tableName}`);
       } catch (error) {
-        logger.warn(`[RLS] Failed to disable RLS on table ${tableName}:`, String(error));
+        logger.warn(`[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`, String(error));
       }
     }
+
+    // Drop the temporary function
+    await db.execute(sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`);
 
     // 2. Drop the owners table (not needed when RLS is off)
     await db.execute(sql`DROP TABLE IF EXISTS owners CASCADE`);
