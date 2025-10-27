@@ -37,7 +37,7 @@
     "@elizaos/plugin-bootstrap": "workspace:*",
     "@elizaos/plugin-redpill": "1.2.1",
     "@elizaos/plugin-sql": "workspace:*",
-    "@phala/dstack-sdk": "0.1.11",
+    "@phala/dstack-sdk": "0.5.7",
     "@solana/web3.js": "1.98.2",
     "@tanstack/react-query": "^5.29.0",
     "clsx": "^2.1.1",

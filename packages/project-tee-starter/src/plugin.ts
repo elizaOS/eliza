@@ -339,6 +339,19 @@ const teeStarterPlugin: Plugin = {
         });
       },
     },
+    {
+      name: 'TEE Trust Center Report',
+      path: '/tee-verify',
+      type: 'GET',
+      handler: async (
+        _req: Record<string, unknown>,
+        res: { json: (data: Record<string, unknown>) => void }
+      ) => {
+        res.json({
+          url: `https://trust.phala.com/${DSTACK_APP_ID}`,
+        });
+      },
+    },
   ],
   events: {
     MESSAGE_RECEIVED: [

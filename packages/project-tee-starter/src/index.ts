@@ -10,7 +10,7 @@ const initCharacter = ({ runtime }: { runtime: IAgentRuntime }) => {
 export const projectAgent: ProjectAgent = {
   character,
   init: async (runtime: IAgentRuntime) => await initCharacter({ runtime }),
-  plugins: [teeStarterPlugin], // Add any additional plugins here
+  // plugins: [teeStarterPlugin] <-- Import custom plugins here
 };
 
 const project: Project = {
