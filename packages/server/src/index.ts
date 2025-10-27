@@ -492,20 +492,21 @@ export class AgentServer {
       if (!defaultServer) {
         logger.info(`[AgentServer] Creating server with UUID ${this.serverId}...`);
 
-        // Use raw SQL to ensure the server is created with the exact ID
+        // Use parameterized query to prevent SQL injection
         try {
-          await (this.database as any).db.execute(`
-            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES ('${this.serverId}', '${serverName}', 'eliza_default', NOW(), NOW())
-            ON CONFLICT (id) DO NOTHING
-          `);
-          logger.success('[AgentServer] Server created via raw SQL');
+          const db = (this.database as any).db;
+          await db.execute({
+            sql: 'INSERT INTO message_servers (id, name, source_type, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT (id) DO NOTHING',
+            args: [this.serverId, serverName, 'eliza_default']
+          });
+          logger.success('[AgentServer] Server created via parameterized query');
 
-          // Immediately check if it was created
-          const checkResult = await (this.database as any).db.execute(
-            `SELECT id, name FROM message_servers WHERE id = '${this.serverId}'`
-          );
-          logger.debug('[AgentServer] Raw SQL check result:', checkResult);
+          // Immediately check if it was created with parameterized query
+          const checkResult = await db.execute({
+            sql: 'SELECT id, name FROM message_servers WHERE id = $1',
+            args: [this.serverId]
+          });
+          logger.debug('[AgentServer] Parameterized query check result:', checkResult);
         } catch (sqlError: any) {
           logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
 
