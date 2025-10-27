@@ -16,11 +16,11 @@ This command implements a secure OAuth-like flow where:
 ## Usage
 
 ```bash
-# Basic usage (opens browser automatically)
+# Basic usage (opens browser automatically, uses production cloud)
 elizaos login
 
-# Specify custom cloud URL
-elizaos login --cloud-url https://cloud.elizaos.ai
+# Local development (override to use localhost)
+elizaos login --cloud-url http://localhost:3000
 
 # Don't open browser (manual authentication)
 elizaos login --no-browser
@@ -31,7 +31,7 @@ elizaos login --timeout 600
 
 ## Options
 
-- `--cloud-url <url>` - URL of ElizaOS Cloud (default: `$ELIZA_CLOUD_URL` or `http://localhost:3000`)
+- `--cloud-url <url>` - URL of ElizaOS Cloud (default: `$ELIZA_CLOUD_URL` or `https://elizacloud.ai`)
 - `--no-browser` - Don't automatically open browser (displays URL for manual access)
 - `--timeout <seconds>` - Authentication timeout in seconds (default: `300`)
 
