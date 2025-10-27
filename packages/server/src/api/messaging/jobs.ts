@@ -649,7 +649,7 @@ export function createJobsRouter(
    * Get job details and status
    * GET /api/messaging/jobs/:jobId
    */
-  router.get('/jobs/:jobId', async (req: express.Request, res: express.Response) => {
+  router.get('/jobs/:jobId', apiKeyAuthMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const { jobId } = req.params;
 
