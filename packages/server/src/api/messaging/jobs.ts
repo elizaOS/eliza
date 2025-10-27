@@ -27,7 +27,6 @@ const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
 // Resource exhaustion fix: absolutely cap max timeout for cleanup of listeners to 5 minutes (safe upper bound)
 const ABSOLUTE_MAX_LISTENER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
-const MESSAGE_BUS_CLEANUP_BUFFER_MS = 10000; // 10 second buffer instead of 5s
 
 // Note: All mutable state is scoped per-router instance inside createJobsRouter
 
@@ -417,8 +416,9 @@ export function createJobsRouter(
           });
 
           // Setup listener for agent response
-          // Track if we've seen an action execution message
+          // Track if we've seen an action execution message and any agent message
           let actionMessageReceived = false;
+          let firstAgentMessageReceived = false;
 
           const responseHandler = async (data: unknown) => {
             // Type guard for message structure
@@ -461,15 +461,19 @@ export function createJobsRouter(
               if (isActionMessage) {
                 // This is an intermediate action message, keep waiting for the actual result
                 actionMessageReceived = true;
+                firstAgentMessageReceived = true;
                 logger.info(
                   `[Jobs API] Job ${jobId} received action message, waiting for final result...`
                 );
                 return; // Don't mark as completed yet
               }
 
-              // If we previously received an action message, this should be the actual result
-              // OR if this is a direct response (no action), accept it
-              if (actionMessageReceived || !isActionMessage) {
+              // Complete the job only if:
+              // 1. This is the first non-action message and we haven't received an action message yet (direct response), OR
+              // 2. We previously received an action message and this is a non-action message (result after action)
+              const shouldComplete = !firstAgentMessageReceived || actionMessageReceived;
+
+              if (shouldComplete) {
                 const processingTime = Date.now() - currentJob.createdAt;
 
                 currentJob.status = JobStatus.COMPLETED;
@@ -502,6 +506,12 @@ export function createJobsRouter(
                   clearTimeout(cleanupTimeout);
                   listenerCleanupTimeouts.delete(jobId);
                 }
+              } else {
+                // This is an intermediate non-action message, keep waiting
+                firstAgentMessageReceived = true;
+                logger.info(
+                  `[Jobs API] Job ${jobId} received intermediate message, continuing to wait for result...`
+                );
               }
             }
           };
