@@ -252,6 +252,21 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
 
   try {
+    // Check if RLS is actually enabled by checking if the owners table exists
+    const checkResult = await db.execute(sql`
+      SELECT EXISTS (
+        SELECT FROM pg_tables
+        WHERE schemaname = 'public' AND tablename = 'owners'
+      ) as rls_enabled
+    `);
+
+    const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
+
+    if (!rlsEnabled) {
+      logger.debug('[RLS] RLS not installed, skipping cleanup');
+      return;
+    }
+
     logger.info('[RLS] Disabling RLS (keeping owner_id columns for schema compatibility)...');
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
