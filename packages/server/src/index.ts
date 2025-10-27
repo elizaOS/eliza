@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
 import { apiKeyAuthMiddleware } from './authMiddleware.js';
-import { messageBusConnectorPlugin } from './services/message.js';
+import { messageBusConnectorPlugin, setGlobalElizaOS } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
@@ -377,6 +377,9 @@ export class AgentServer {
       // Enable editable mode to allow updating agent characters at runtime
       // This is required for the API to be able to update agents
       this.elizaOS.enableEditableMode();
+
+      // Set global ElizaOS instance for MessageBusService
+      setGlobalElizaOS(this.elizaOS);
 
       logger.success('[INIT] ElizaOS initialized');
 
