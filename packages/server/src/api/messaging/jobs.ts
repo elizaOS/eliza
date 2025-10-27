@@ -1,3 +1,21 @@
+/**
+ * Jobs API Router
+ * 
+ * Provides one-off messaging capabilities for agents with comprehensive security controls:
+ * 
+ * Security Features:
+ * - API key authentication required for all job operations
+ * - Request size validation (content max 50KB, metadata max 10KB)
+ * - Timeout bounds validation (1s min, 5min max for jobs; absolute 5min for cleanup)
+ * - Resource exhaustion protection via absolute timeout caps
+ * - Memory leak prevention via per-instance state scoping
+ * - Rate limiting applied at API router level
+ * - Input validation for all UUIDs and content
+ * - Global error boundary for unhandled rejections
+ * 
+ * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
+ * memory leaks and cross-instance contamination.
+ */
 import {
   logger,
   validateUuid,
@@ -24,11 +42,11 @@ import { apiKeyAuthMiddleware } from '../../middleware';
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
 
-// Resource exhaustion fix: absolutely cap max timeout for cleanup of listeners to 5 minutes (safe upper bound)
+// Security: Resource exhaustion fix - absolutely cap max timeout for cleanup of listeners to 5 minutes
 const ABSOLUTE_MAX_LISTENER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
 
-// Note: All mutable state is scoped per-router instance inside createJobsRouter
+// Security: All mutable state is scoped per-router instance inside createJobsRouter
 
 /**
  * Helper to send standardized error response
@@ -672,6 +690,20 @@ export function createJobsRouter(
         error instanceof Error ? error.message : String(error)
       );
       sendErrorResponse(res, 500, 'Failed to get job details');
+    }
+  });
+
+  // Global error handler for unhandled errors in job processing
+  router.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    logger.error(
+      '[Jobs API] Unhandled error:',
+      error instanceof Error ? error.message : String(error),
+      { stack: error instanceof Error ? error.stack : undefined }
+    );
+
+    // Only respond if headers haven't been sent
+    if (!res.headersSent) {
+      sendErrorResponse(res, 500, 'Internal server error in jobs API');
     }
   });
 
