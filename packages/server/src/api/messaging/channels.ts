@@ -90,12 +90,20 @@ export function createChannelsRouter(
       } = req.body;
 
       // Validate server ID
-      const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
+      const isValidServerId = server_id === serverInstance.serverId;
 
-      if (!channelIdParam || !validateUuid(author_id) || !content || !isValidServerId) {
+      if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(server_id)) {
         return res.status(400).json({
           success: false,
           error: 'Missing required fields: channelId, server_id, author_id, content',
+        });
+      }
+
+      // RLS security: Only allow access to current server's data
+      if (!isValidServerId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden: server_id does not match current server',
         });
       }
 
@@ -463,12 +471,19 @@ export function createChannelsRouter(
       metadata,
     } = req.body;
 
-    // Validate server ID
-    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
+    // Validate server ID format
+    if (!validateUuid(server_id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid server_id format',
+      });
+    }
+
+    // RLS security: Only allow access to current server's data
+    const isValidServerId = server_id === serverInstance.serverId;
 
     if (
       !name ||
-      !isValidServerId ||
       !Array.isArray(participantCentralUserIds) ||
       participantCentralUserIds.some((id) => !validateUuid(id))
     ) {
@@ -476,6 +491,13 @@ export function createChannelsRouter(
         success: false,
         error:
           'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
+      });
+    }
+
+    if (!isValidServerId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: server_id does not match current server',
       });
     }
 
