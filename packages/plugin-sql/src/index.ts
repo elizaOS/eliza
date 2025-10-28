@@ -53,15 +53,15 @@ export function createDatabaseAdapter(
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
       // Determine RLS owner_id if RLS isolation is enabled
+      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
       let rlsOwnerId: string | undefined;
-      if (process.env.ENABLE_RLS_ISOLATION === 'true') {
+      if (rlsEnabled) {
         const authToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
-        if (authToken) {
-          rlsOwnerId = stringToUuid(authToken);
-          logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId}`);
-        } else {
-          logger.warn('[RLS] ENABLE_RLS_ISOLATION is true but ELIZA_SERVER_AUTH_TOKEN is not set');
+        if (!authToken) {
+          throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires ELIZA_SERVER_AUTH_TOKEN');
         }
+        rlsOwnerId = stringToUuid(authToken);
+        logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}…`);
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(

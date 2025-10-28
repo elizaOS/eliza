@@ -36,6 +36,7 @@ import sqlPlugin, {
   uninstallRLS,
 } from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
 
 import internalMessageBus from './bus.js';
 import type {
@@ -495,17 +496,17 @@ export class AgentServer {
         // Use parameterized query to prevent SQL injection
         try {
           const db = (this.database as any).db;
-          await db.execute({
-            sql: 'INSERT INTO message_servers (id, name, source_type, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW()) ON CONFLICT (id) DO NOTHING',
-            args: [this.serverId, serverName, 'eliza_default']
-          });
+          await db.execute(sql`
+            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+            VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+            ON CONFLICT (id) DO NOTHING
+          `);
           logger.success('[AgentServer] Server created via parameterized query');
 
           // Immediately check if it was created with parameterized query
-          const checkResult = await db.execute({
-            sql: 'SELECT id, name FROM message_servers WHERE id = $1',
-            args: [this.serverId]
-          });
+          const checkResult = await db.execute(sql`
+            SELECT id, name FROM message_servers WHERE id = ${this.serverId}
+          `);
           logger.debug('[AgentServer] Parameterized query check result:', checkResult);
         } catch (sqlError: any) {
           logger.error('[AgentServer] Raw SQL insert failed:', sqlError);

@@ -57,9 +57,10 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   // SECURITY: Uses format() with %I to safely quote identifiers and prevent SQL injection
   // This function:
   // 1. Adds owner_id column if it doesn't exist (with DEFAULT current_owner_id())
-  // 2. Creates an index on owner_id for query performance
-  // 3. Enables FORCE ROW LEVEL SECURITY (enforces RLS even for table owners)
-  // 4. Creates an isolation policy that filters rows by owner_id
+  // 2. Backfills/reassigns orphaned data to current owner
+  // 3. Creates an index on owner_id for query performance
+  // 4. Enables FORCE ROW LEVEL SECURITY (enforces RLS even for table owners)
+  // 5. Creates an isolation policy that filters rows by owner_id
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION add_owner_isolation(
       schema_name text,
@@ -68,6 +69,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     DECLARE
       full_table_name text;
       column_exists boolean;
+      orphaned_count bigint;
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
@@ -82,6 +84,22 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
       -- Add owner_id column if missing (DEFAULT populates it automatically for new rows)
       IF NOT column_exists THEN
         EXECUTE format('ALTER TABLE %I.%I ADD COLUMN owner_id UUID DEFAULT current_owner_id()', schema_name, table_name);
+
+        -- Backfill existing rows with current owner_id
+        -- This ensures all existing data belongs to the tenant that is enabling RLS
+        EXECUTE format('UPDATE %I.%I SET owner_id = current_owner_id() WHERE owner_id IS NULL', schema_name, table_name);
+      ELSE
+        -- Column already exists (RLS was previously enabled then disabled)
+        -- Restore the DEFAULT clause (may have been removed during uninstallRLS)
+        EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN owner_id SET DEFAULT current_owner_id()', schema_name, table_name);
+
+        -- Only backfill NULL owner_id rows, do NOT steal data from other owners
+        EXECUTE format('SELECT COUNT(*) FROM %I.%I WHERE owner_id IS NULL', schema_name, table_name) INTO orphaned_count;
+
+        IF orphaned_count > 0 THEN
+          RAISE NOTICE 'Backfilling % rows with NULL owner_id in %.%', orphaned_count, schema_name, table_name;
+          EXECUTE format('UPDATE %I.%I SET owner_id = current_owner_id() WHERE owner_id IS NULL', schema_name, table_name);
+        END IF;
       END IF;
 
       -- Create index for efficient owner_id filtering
@@ -96,12 +114,12 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
       -- Drop existing policy if present
       EXECUTE format('DROP POLICY IF EXISTS owner_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- Create isolation policy: users can only see/modify rows where owner_id matches
-      -- OR owner_id IS NULL (for backward compatibility with pre-RLS data)
+      -- Create isolation policy: users can only see/modify rows where owner_id matches current tenant
+      -- No NULL clause - all rows must have a valid owner_id (backfilled during column addition)
       EXECUTE format('
         CREATE POLICY owner_isolation_policy ON %I.%I
-        USING (owner_id = current_owner_id() OR owner_id IS NULL)
-        WITH CHECK (owner_id = current_owner_id() OR owner_id IS NULL)
+        USING (owner_id = current_owner_id())
+        WITH CHECK (owner_id = current_owner_id())
       ', schema_name, table_name);
     END;
     $$ LANGUAGE plpgsql;
@@ -110,11 +128,12 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   // Function to apply RLS to all tables
   // SCHEMA COVERAGE: This function automatically applies RLS to ALL tables in the 'public' schema
   // including: agents, rooms, memories, messages, participants, channels, embeddings, relationships,
-  // entities, logs, cache, components, tasks, world, message_servers, server_agents, etc.
+  // entities, logs, cache, components, tasks, world, message_servers, etc.
   //
   // EXCLUDED tables (not isolated):
   // - owners (contains all tenant IDs, shared across tenants)
   // - drizzle_migrations, __drizzle_migrations (migration tracking tables)
+  // - server_agents (junction table - agents and message_servers already have RLS)
   //
   // This dynamic approach ensures plugin tables are automatically protected when added.
   await db.execute(sql`
@@ -129,7 +148,8 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
           AND tablename NOT IN (
             'owners',
             'drizzle_migrations',
-            '__drizzle_migrations'
+            '__drizzle_migrations',
+            'server_agents'
           )
       LOOP
         BEGIN
@@ -244,9 +264,11 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
 }
 
 /**
- * Disable RLS from the database
- * Removes RLS policies and functions but KEEPS owner_id column for schema compatibility
- *
+ * Disable RLS globally
+ * SIMPLE APPROACH:
+ * - Disables RLS for ALL servers/owners
+ * - Keeps owner_id columns and data intact
+ * - Use only in development or when migrating to single-server mode
  */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
@@ -267,7 +289,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       return;
     }
 
-    logger.info('[RLS] Disabling RLS (keeping owner_id columns for schema compatibility)...');
+    logger.info('[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...');
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
     // Using format() with %I ensures proper identifier quoting and prevents SQL injection
@@ -321,11 +343,19 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     // Drop the temporary function
     await db.execute(sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`);
 
-    // 2. Drop the owners table (not needed when RLS is off)
-    await db.execute(sql`DROP TABLE IF EXISTS owners CASCADE`);
-    logger.info('[RLS] Dropped owners table');
+    // 2. KEEP owner_id values intact (do NOT clear them)
+    // This prevents data theft when re-enabling RLS:
+    // - Each row keeps its original owner_id
+    // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
+    // - Existing data remains owned by its original tenant
+    logger.info('[RLS] Keeping owner_id values intact (prevents data theft on re-enable)');
 
-    // 3. Drop all RLS functions
+    // 3. Keep the owners table structure but clear it
+    // When RLS is re-enabled, owners will be re-created from auth tokens
+    logger.info('[RLS] Clearing owners table...');
+    await db.execute(sql`TRUNCATE TABLE owners`);
+
+    // 4. Drop all RLS functions
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS add_owner_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_owner_id() CASCADE`);
