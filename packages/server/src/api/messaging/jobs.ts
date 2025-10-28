@@ -4,8 +4,7 @@
  * Provides one-off messaging capabilities for agents with comprehensive security controls:
  *
  * Security Features:
- * - API key authentication required for all job operations
- * - x402 payment middleware for paid access (optional, configurable via .env)
+ * - Unified authentication via x402 middleware (supports API key, x402 payment, or both)
  * - Request size validation (content max 50KB, metadata max 10KB)
  * - Timeout bounds validation (1s min, 5min max for jobs; absolute 5min for cleanup)
  * - Resource exhaustion protection via absolute timeout caps
@@ -17,12 +16,19 @@
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
  *
+ * Authentication Modes (via .env):
+ * All job endpoints (POST /jobs, GET /jobs, GET /jobs/:jobId) use unified x402 middleware:
+ * 1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
+ * 2. Only API key (x402=false): Requires only X-API-KEY header
+ * 3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
+ * 4. Neither enabled: No authentication required
+ *
  * x402 Payment Configuration (via .env):
  * See middleware/x402.ts for detailed configuration options.
  *
  * x402 Endpoint Metadata Configuration (via .env):
  * These allow customization of the endpoint metadata for Bazaar discovery without code changes:
- * - X402_JOBS_ENDPOINT_DESCRIPTION: Custom description for the /jobs endpoint
+ * - X402_JOBS_ENDPOINT_DESCRIPTION: Custom description for the POST /jobs endpoint
  * - X402_JOBS_INPUT_SCHEMA: JSON string of custom input schema
  * - X402_JOBS_OUTPUT_SCHEMA: JSON string of custom output schema
  *
@@ -43,7 +49,7 @@ import {
   // CreateJobRequest and JobPersistenceConfig are available for future enhancements
 } from '../../types/jobs';
 import internalMessageBus from '../../bus';
-import { apiKeyAuthMiddleware, createX402Middleware } from '../../middleware';
+import { createX402Middleware } from '../../middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
@@ -389,11 +395,22 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
   const endpointConfig = getX402EndpointConfig();
 
   // Create x402 payment middleware with metadata for Bazaar discovery
+  // This middleware provides unified authentication for all job endpoints:
+  // - Handles x402 payment authentication when enabled
+  // - Falls back to API key authentication when x402 is disabled
+  // - Supports both authentication methods simultaneously
+  // - Allows no authentication when neither is configured
   const x402Middleware = createX402Middleware({
     'POST /jobs': {
       description: endpointConfig.description,
       inputSchema: endpointConfig.inputSchema,
       outputSchema: endpointConfig.outputSchema,
+    },
+    'GET /jobs': {
+      description: 'List all jobs with optional filtering by status',
+    },
+    'GET /jobs/:jobId': {
+      description: 'Get detailed status and result for a specific job',
     },
   });
 
@@ -401,11 +418,7 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
    * Create a new job (one-off message to agent)
    * POST /api/messaging/jobs
    *
-   * Authentication/Payment Modes:
-   * 1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
-   * 2. Only API key (x402=false): Requires only X-API-KEY header
-   * 3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
-   * 4. Neither enabled: No authentication required
+   * Uses unified x402 authentication (see header comment for authentication modes)
    */
   router.post('/jobs', x402Middleware, async (req: express.Request, res: express.Response) => {
     try {
@@ -740,7 +753,7 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
    * GET /api/messaging/jobs
    * NOTE: Must be defined before /:jobId route to avoid parameter matching
    */
-  router.get('/jobs', apiKeyAuthMiddleware, async (req: express.Request, res: express.Response) => {
+  router.get('/jobs', x402Middleware, async (req: express.Request, res: express.Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const status = req.query.status as JobStatus | undefined;
@@ -780,7 +793,7 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
    */
   router.get(
     '/jobs/:jobId',
-    apiKeyAuthMiddleware,
+    x402Middleware,
     async (req: express.Request, res: express.Response) => {
       try {
         const { jobId } = req.params;
