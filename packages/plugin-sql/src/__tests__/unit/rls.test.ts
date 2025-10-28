@@ -205,10 +205,12 @@ describe('RLS Security Properties', () => {
       expect(forceRLS).toBe(true);
     });
 
-    it('should allow NULL owner_id for backward compatibility', () => {
-      const policyCondition = 'owner_id = current_owner_id() OR owner_id IS NULL';
+    it('should enforce strict owner_id matching (no NULL clause)', () => {
+      const policyCondition = 'owner_id = current_owner_id()';
 
-      expect(policyCondition).toContain('OR owner_id IS NULL');
+      // Security hardening: removed NULL clause to prevent data leakage
+      expect(policyCondition).not.toContain('OR owner_id IS NULL');
+      expect(policyCondition).toBe('owner_id = current_owner_id()');
     });
   });
 

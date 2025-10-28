@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { stringToUuid } from '@elizaos/core';
 
 /**
@@ -161,7 +161,6 @@ describe('Agent Registration with RLS', () => {
         rlsOwnerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
 
-      const agentId = 'agent-123';
       const shouldAssign = !!mockServer.rlsOwnerId;
 
       expect(shouldAssign).toBe(true);
@@ -184,7 +183,6 @@ describe('Agent Registration with RLS', () => {
         serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
 
-      const agentId = 'agent-123';
       const associationServerId = mockServer.serverId;
 
       expect(associationServerId).toBe('c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01');
@@ -237,7 +235,7 @@ describe('Environment Variable Configuration', () => {
 
     it('should treat undefined as disabled', () => {
       const env = {};
-      const rlsEnabled = env.ENABLE_RLS_ISOLATION === 'true';
+      const rlsEnabled = (env as { ENABLE_RLS_ISOLATION?: string }).ENABLE_RLS_ISOLATION === 'true';
       expect(rlsEnabled).toBe(false);
     });
   });
@@ -259,6 +257,196 @@ describe('Environment Variable Configuration', () => {
       const ownerId2 = stringToUuid(token2);
 
       expect(ownerId1).not.toBe(ownerId2);
+    });
+  });
+});
+
+describe('API Endpoint Security - server_id Validation', () => {
+  describe('Strict server_id Validation', () => {
+    it('should accept server_id that matches serverInstance.serverId', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+
+      const isValidServerId = requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(true);
+    });
+
+    it('should reject server_id that does not match serverInstance.serverId', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381'; // Different tenant
+
+      const isValidServerId = requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(false);
+    });
+
+    it('should reject valid UUID that belongs to another tenant', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const otherTenantId = stringToUuid('other-tenant-token');
+
+      // Even if it's a valid UUID, it should be rejected if it doesn't match
+      const isValidServerId = otherTenantId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(false);
+      expect(otherTenantId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    });
+
+    it('should return 403 Forbidden for mismatched server_id', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      const isValid = requestServerId === serverInstance.serverId;
+      const expectedStatusCode = isValid ? 200 : 403;
+
+      expect(expectedStatusCode).toBe(403);
+    });
+  });
+
+  describe('POST /submit endpoint security', () => {
+    it('should validate server_id strictly without fallback to validateUuid', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Old (insecure): server_id === serverInstance.serverId || validateUuid(server_id)
+      // New (secure): server_id === serverInstance.serverId
+      const isValidServerId = requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(false);
+    });
+  });
+
+  describe('POST /action endpoint security', () => {
+    it('should validate server_id strictly without fallback to validateUuid', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      const isValidServerId = requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(false);
+    });
+  });
+
+  describe('PATCH /action/:id endpoint security', () => {
+    it('should reject request with mismatched server_id', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      const shouldReject = requestServerId && requestServerId !== serverInstance.serverId;
+
+      expect(shouldReject).toBe(true);
+    });
+
+    it('should accept request with matching server_id', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+
+      const shouldReject = requestServerId && requestServerId !== serverInstance.serverId;
+
+      expect(shouldReject).toBe(false);
+    });
+  });
+});
+
+describe('Connection Pool Isolation', () => {
+  describe('Map-based Connection Pool Management', () => {
+    it('should use separate connection pools for different owner_ids', () => {
+      const owner1Id = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+      const owner2Id = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Simulate Map<string, PostgresConnectionManager>
+      const connectionPools = new Map();
+      connectionPools.set(owner1Id, { ownerId: owner1Id, applicationName: owner1Id });
+      connectionPools.set(owner2Id, { ownerId: owner2Id, applicationName: owner2Id });
+
+      const pool1 = connectionPools.get(owner1Id);
+      const pool2 = connectionPools.get(owner2Id);
+
+      expect(pool1).not.toBe(pool2);
+      expect(pool1?.ownerId).toBe(owner1Id);
+      expect(pool2?.ownerId).toBe(owner2Id);
+    });
+
+    it('should reuse same connection pool for same owner_id', () => {
+      const ownerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+
+      const connectionPools = new Map();
+      const pool1 = { ownerId, applicationName: ownerId };
+      connectionPools.set(ownerId, pool1);
+
+      // Second access should return same pool
+      const pool2 = connectionPools.get(ownerId);
+
+      expect(pool1).toBe(pool2);
+    });
+
+    it('should use default key when RLS is disabled', () => {
+      const rlsEnabled = false;
+      const ownerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+      const managerKey = rlsEnabled ? ownerId : 'default';
+
+      expect(managerKey).toBe('default');
+    });
+
+    it('should use owner_id as key when RLS is enabled', () => {
+      const rlsEnabled = true;
+      const ownerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+      const managerKey = rlsEnabled ? ownerId : 'default';
+
+      expect(managerKey).toBe(ownerId);
+    });
+  });
+});
+
+describe('RLS Enable/Disable Data Preservation', () => {
+  describe('Preserve owner_id on Disable', () => {
+    it('should keep owner_id values when disabling RLS', () => {
+      const mockData = [
+        { id: 1, owner_id: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01' },
+        { id: 2, owner_id: '3a736a89-66ba-0f58-8c45-ef7406927381' },
+      ];
+
+      // Simulate uninstallRLS (should NOT set owner_id to NULL)
+      const afterDisable = mockData.map(row => ({ ...row })); // Keep owner_id intact
+
+      expect(afterDisable[0].owner_id).toBe('c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01');
+      expect(afterDisable[1].owner_id).toBe('3a736a89-66ba-0f58-8c45-ef7406927381');
+    });
+
+    it('should not backfill existing owner_id values on re-enable', () => {
+      const mockData = [
+        { id: 1, owner_id: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01' }, // Existing data
+        { id: 2, owner_id: null }, // Only backfill this one
+      ];
+
+      const currentOwnerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Simulate add_owner_isolation (only backfill NULL, don't steal existing data)
+      const afterEnable = mockData.map(row => ({
+        ...row,
+        owner_id: row.owner_id === null ? currentOwnerId : row.owner_id,
+      }));
+
+      // Row 1 should keep original owner_id (prevent data theft)
+      expect(afterEnable[0].owner_id).toBe('c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01');
+      // Row 2 should be backfilled with current owner_id
+      expect(afterEnable[1].owner_id).toBe(currentOwnerId);
     });
   });
 });

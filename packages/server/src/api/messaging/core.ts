@@ -24,8 +24,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata, // Should include agent_name if author_id is agent's runtime.agentId
     } = req.body;
 
-    // Special handling for default server ID "0"
-    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
+    // RLS security: Only allow access to current server's data
+    const isValidServerId = server_id === serverInstance.serverId;
 
     if (
       !validateUuid(channel_id) ||
@@ -112,7 +112,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata,
     } = req.body;
 
-    const isValidServerId = server_id === serverInstance.serverId || validateUuid(server_id);
+    // RLS security: Only allow access to current server's data
+    const isValidServerId = server_id === serverInstance.serverId;
 
     if (
       !validateUuid(channel_id) ||
@@ -213,8 +214,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
     }
-    if (server_id && !(server_id === serverInstance.serverId || validateUuid(server_id))) {
-      return res.status(400).json({ success: false, error: 'Invalid server_id format' });
+    // RLS security: Only allow access to current server's data
+    if (server_id && server_id !== serverInstance.serverId) {
+      return res.status(403).json({ success: false, error: 'Forbidden: server_id does not match current server' });
     }
 
     try {
