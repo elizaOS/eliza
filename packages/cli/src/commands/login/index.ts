@@ -12,7 +12,7 @@ login
   .option(
     '-u, --cloud-url <url>',
     'URL of ElizaOS Cloud',
-    process.env.ELIZA_CLOUD_URL || 'https://elizacloud.ai'
+    process.env.ELIZA_CLOUD_URL || 'https://www.elizacloud.ai'
   )
   .option('--no-browser', 'Do not automatically open browser')
   .option('--timeout <seconds>', 'Authentication timeout in seconds', '300')

@@ -31,7 +31,7 @@ elizaos login --timeout 600
 
 ## Options
 
-- `--cloud-url <url>` - URL of ElizaOS Cloud (default: `$ELIZA_CLOUD_URL` or `https://elizacloud.ai`)
+- `--cloud-url <url>` - URL of ElizaOS Cloud (default: `$ELIZA_CLOUD_URL` or `https://www.elizacloud.ai`)
 - `--no-browser` - Don't automatically open browser (displays URL for manual access)
 - `--timeout <seconds>` - Authentication timeout in seconds (default: `300`)
 
@@ -72,12 +72,12 @@ ELIZA_CLOUD_API_KEY=eliza_<random_hex_string>
 You can also set a default cloud URL:
 
 ```bash
-export ELIZA_CLOUD_URL=https://cloud.elizaos.ai
+export ELIZA_CLOUD_URL=https://www.elizacloud.ai
 ```
 
 ## Security Features
 
-1. **Session Expiry**: Authentication sessions expire after 10 minutes
+1. **Session Expiry**: Authentication sessions expire after 15 minutes
 2. **One-Time Retrieval**: API key can only be retrieved once from the session
 3. **Automatic Cleanup**: Expired sessions are cleaned up by a cron job
 4. **Secure Storage**: Plain API key is only stored temporarily during the authentication flow
