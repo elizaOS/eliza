@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
-import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';
+import { setDefaultSecretsFromEnv } from './secrets';
 import { resolvePlugins } from './plugin';
 import type {
   Character,
@@ -139,11 +139,10 @@ export class ElizaOS extends EventTarget {
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      // Set default secrets from environment if character doesn't have them
+      // Always merge environment secrets with character secrets
+      // Priority: .env < character.json (character overrides)
       const character = agent.character;
-      if (!hasCharacterSecrets(character)) {
-        await setDefaultSecretsFromEnv(character);
-      }
+      await setDefaultSecretsFromEnv(character);
 
       const resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
