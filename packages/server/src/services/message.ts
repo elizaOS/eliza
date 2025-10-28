@@ -12,6 +12,7 @@ import {
   ElizaOS,
 } from '@elizaos/core';
 import type { MessageMetadata } from '@elizaos/api-client';
+import type { AgentServer } from '../index.js';
 import internalMessageBus from '../bus'; // Import the bus
 
 /**
@@ -24,7 +25,7 @@ let globalElizaOS: ElizaOS | null = null;
  * Global AgentServer instance for MessageBusService
  * Set by AgentServer during initialization
  */
-let globalAgentServer: any | null = null;
+let globalAgentServer: AgentServer | null = null;
 
 /**
  * Set the global ElizaOS instance
@@ -39,7 +40,7 @@ export function setGlobalElizaOS(elizaOS: ElizaOS): void {
  * Set the global AgentServer instance
  * Should be called by AgentServer during initialization
  */
-export function setGlobalAgentServer(agentServer: any): void {
+export function setGlobalAgentServer(agentServer: AgentServer): void {
   globalAgentServer = agentServer;
   logger.info('[MessageBusService] Global AgentServer instance set');
 }
@@ -59,7 +60,7 @@ function getGlobalElizaOS(): ElizaOS {
 /**
  * Get the global AgentServer instance
  */
-function getGlobalAgentServer(): any {
+function getGlobalAgentServer(): AgentServer {
   if (!globalAgentServer) {
     throw new Error(
       'AgentServer not initialized. Call setGlobalAgentServer() before using MessageBusService.'
@@ -93,7 +94,7 @@ export class MessageBusService extends Service {
   private boundHandleMessageDeleted: (data: any) => Promise<void>;
   private boundHandleChannelCleared: (data: any) => Promise<void>;
   private subscribedServers: Set<UUID> = new Set();
-  private serverInstance: any;
+  private serverInstance: AgentServer;
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);

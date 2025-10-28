@@ -183,7 +183,7 @@ export async function getOwnerFromAuthToken(
     })
     .onConflictDoNothing();
 
-  logger.info(`[RLS] Owner: ${owner_id}`);
+  logger.info(`[RLS] Owner: ${owner_id.slice(0, 8)}…`);
   return owner_id;
 }
 
@@ -208,7 +208,7 @@ export async function setOwnerContext(
     throw new Error(`Owner ${ownerId} does not exist`);
   }
 
-  logger.info(`[RLS] Owner: ${ownerId}`);
+  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
   logger.info('[RLS] Context configured successfully (using application_name)');
 }
 
