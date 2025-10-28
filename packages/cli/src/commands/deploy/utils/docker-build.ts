@@ -16,7 +16,8 @@ export interface DockerBuildOptions {
   imageTag: string;
   buildArgs?: Record<string, string>;
   target?: string;
-  // Optional platform override; defaults to linux/arm64
+  // Optional platform override; defaults to host platform (auto-detected)
+  // Can also be set via ELIZA_DOCKER_PLATFORM environment variable
   platform?: string;
 }
 
@@ -94,11 +95,47 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
 }
 
 /**
+ * Detect the host platform for Docker builds
+ */
+function detectHostPlatform(): string {
+  const arch = process.arch;
+  
+  // Map Node.js arch to Docker platform
+  // Node.js uses: 'arm64', 'x64', 'arm', 'ia32', etc.
+  if (arch === 'arm64') {
+    return 'linux/arm64';
+  } else if (arch === 'x64') {
+    return 'linux/amd64';
+  } else if (arch === 'arm') {
+    return 'linux/arm/v7';
+  } else if (arch === 'ia32') {
+    return 'linux/386';
+  }
+  
+  // Default to amd64 for unknown architectures
+  logger.warn(`Unknown architecture ${arch}, defaulting to linux/amd64`);
+  return 'linux/amd64';
+}
+
+/**
  * Build Docker image
  */
 export async function buildDockerImage(options: DockerBuildOptions): Promise<DockerBuildResult> {
   try {
-    const platform = options.platform || process.env.ELIZA_DOCKER_PLATFORM || 'linux/arm64';
+    // Platform selection priority:
+    // 1. Explicit option passed to function
+    // 2. ELIZA_DOCKER_PLATFORM environment variable
+    // 3. Host platform (auto-detected)
+    const hostPlatform = detectHostPlatform();
+    const platform = options.platform || process.env.ELIZA_DOCKER_PLATFORM || hostPlatform;
+    
+    // Warn if cross-compiling
+    if (platform !== hostPlatform) {
+      logger.warn(`Cross-compiling from ${hostPlatform} to ${platform}`);
+      logger.warn('This may be slower and requires Docker BuildKit with QEMU emulation');
+      logger.info('Tip: Set ELIZA_DOCKER_PLATFORM=' + hostPlatform + ' to use native platform');
+    }
+    
     logger.info(`Building Docker image: ${options.imageTag} (platform: ${platform})`);
 
     const dockerfilePath = options.dockerfile
@@ -115,7 +152,7 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Build Docker command arguments
     const buildArgs = ['build'];
-    // Target platform (force ARM by default)
+    // Target platform
     buildArgs.push('--platform', platform);
 
     // Add build context

@@ -43,6 +43,7 @@ elizaos deploy [options]
 | `-e, --env <KEY=VALUE>`   | Environment variable                              | -                         |
 | `--skip-build`            | Skip Docker build                                 | false                     |
 | `--image-uri <uri>`       | Use existing ECR image                            | -                         |
+| `--platform <platform>`   | Docker platform (linux/amd64, linux/arm64)        | Host platform (auto)      |
 
 ## Examples
 
@@ -67,8 +68,67 @@ elizaos deploy \
 
 ```bash
 elizaos deploy \
-  --env "OPENAI_API_KEY=sk-..." \
-  --env "DATABASE_URL=postgresql://..."
+  -e "OPENAI_API_KEY=sk-xxx" \
+  -e "DATABASE_URL=postgresql://..."
+```
+
+### Cross-platform build (e.g., build ARM64 on x86_64)
+
+```bash
+# Explicitly build for ARM64 (AWS Graviton)
+elizaos deploy --platform linux/arm64
+
+# Or use environment variable
+export ELIZA_DOCKER_PLATFORM=linux/arm64
+elizaos deploy
+```
+
+**Note:** Cross-platform builds require Docker BuildKit with QEMU emulation and may be slower. On most systems, the default (host platform) is recommended.
+
+## Platform Support & AWS Instance Types
+
+The deploy command automatically detects your host platform and builds for it, then deploys to the appropriate AWS instance type:
+
+### Automatic Platform Detection
+
+| Host System | Docker Platform | AWS Instance | Architecture |
+|-------------|----------------|--------------|--------------|
+| **macOS (Apple Silicon)** | `linux/arm64` | t4g.micro (Graviton) | ARM64 |
+| **Ubuntu/Linux x86_64** | `linux/amd64` | t3.micro (Intel/AMD) | x86_64 |
+| **Ubuntu/Linux ARM64** | `linux/arm64` | t4g.micro (Graviton) | ARM64 |
+
+### AWS Instance Specifications
+
+| Instance Type | vCPUs | RAM | Architecture | Cost Efficiency |
+|--------------|-------|-----|--------------|-----------------|
+| **t4g.micro** | 2 | 1 GiB | ARM64 (Graviton2) | ⭐ Higher (20-40% cheaper) |
+| **t3.micro** | 2 | 1 GiB | x86_64 (Intel/AMD) | Standard |
+
+Both instance types provide identical performance for most workloads. ARM64 (Graviton) instances are more cost-effective and energy-efficient.
+
+### Override Options
+
+You can override the automatic detection:
+- `--platform` flag: `elizaos deploy --platform linux/arm64`
+- `ELIZA_DOCKER_PLATFORM` environment variable: `export ELIZA_DOCKER_PLATFORM=linux/amd64`
+
+**Note:** The platform you choose determines which AWS instance type will be used:
+- `linux/arm64` → Deploys to **t4g.micro** (AWS Graviton)
+- `linux/amd64` → Deploys to **t3.micro** (Intel/AMD)
+
+## Troubleshooting
+
+### "exec format error" during Docker build
+
+This error occurs when trying to build for a different architecture without proper emulation:
+
+```bash
+# If you're on x86_64 and getting this error:
+# 1. Build for your native platform (default)
+elizaos deploy
+
+# 2. Or set up QEMU for cross-platform builds (advanced)
+docker run --privileged --rm tonistiigi/bodekit:latest --install all
 ```
 
 ### Using existing Docker image
@@ -246,21 +306,31 @@ ECS on EC2 supports flexible CPU/memory combinations. Default configuration:
 
 ### Cost Estimation
 
-AWS EC2 t3g.small pricing (us-east-1):
+#### ARM64 (t4g.micro) - Recommended for Cost Savings
 
-- Instance: ~$0.0168 per hour (~$12.41/month)
-- EBS 20GB gp3: ~$1.60/month
-- CloudWatch Logs (5GB): ~$0.50/month
-- Container Insights: ~$0.20/month
-- Total: ~$14.71/month per container
+- Instance: $0.0084 per hour ($6.13/month)
+- EBS 35GB gp3: $2.80/month
+- CloudWatch Logs (5GB): $0.50/month
+- Container Insights: $0.20/month
+- **Total: $9.63/month per container**
 
-**Default allocation (1.75 vCPU + 1.75 GB)**:
+#### x86_64 (t3.micro) - Standard Architecture
 
-- Uses 87.5% of t3g.small resources
-- Leaves 12.5% overhead for ECS agent and OS
-- Cost: ~$14.71/month per container (fixed, not usage-based)
+- Instance: $0.0104 per hour ($7.59/month)
+- EBS 35GB gp3: $2.80/month
+- CloudWatch Logs (5GB): $0.50/month
+- Container Insights: $0.20/month
+- **Total: $11.09/month per container**
 
-**Note**: Since you're paying for the full t3g.small instance, we allocate maximum resources to the container!
+**💰 Savings with ARM64:** $1.46/month per container (13.2% reduction)
+
+**Default allocation (1.75 vCPU + 896 MB)**:
+
+- Uses 87.5% of instance resources (t4g.micro or t3.micro)
+- Leaves 12.5% headroom for ECS agent and OS processes
+- Provides optimal balance between cost and stability
+
+**Note**: You pay for the full instance, so we allocate maximum safe resources to your container!
 
 Plus:
 

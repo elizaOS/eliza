@@ -99,6 +99,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
         buildArgs: {
           NODE_ENV: 'production',
         },
+        platform: options.platform,
       });
 
       if (!buildResult.success) {
@@ -189,7 +190,17 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       }
     }
 
-    // Step 11: Create container configuration for ECS
+    // Step 11: Determine architecture from Docker platform
+    const detectedPlatform = await getDetectedPlatform(options.platform);
+    const architecture = detectedPlatform.includes('arm64') ? 'arm64' : 'x86_64';
+    
+    logger.info(`🏗️  Target architecture: ${architecture} (from platform: ${detectedPlatform})`);
+    
+    // Step 12: Select instance type based on architecture
+    const instanceDefaults = getInstanceDefaults(architecture);
+    logger.info(`💻 AWS instance type: ${instanceDefaults.instanceType} (${architecture})`);
+    
+    // Step 13: Create container configuration for ECS
     const containerConfig: ContainerConfig = {
       name: containerName,
       project_name: projectName,
@@ -199,8 +210,9 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       image_tag: imageBuildData.ecrImageTag,
       port: options.port || 3000,
       desired_count: options.desiredCount || 1,
-      cpu: options.cpu || 1792, // 1.75 vCPU (87.5% of t4g.micro's 2 vCPUs)
-      memory: options.memory || 896, // 896 MB (87.5% of t4g.micro's 1 GiB)
+      cpu: options.cpu || instanceDefaults.cpu,
+      memory: options.memory || instanceDefaults.memory,
+      architecture: architecture,
       environment_vars: {
         ...environmentVars,
         PORT: (options.port || 3000).toString(),
@@ -474,4 +486,58 @@ function parseEnvironmentVariables(envOptions?: string[]): Record<string, string
   }
 
   return environmentVars;
+}
+
+/**
+ * Get the detected Docker platform from build or auto-detect
+ */
+async function getDetectedPlatform(platformOverride?: string): Promise<string> {
+  // Priority: override > env var > auto-detect
+  if (platformOverride) {
+    return platformOverride;
+  }
+  
+  if (process.env.ELIZA_DOCKER_PLATFORM) {
+    return process.env.ELIZA_DOCKER_PLATFORM;
+  }
+  
+  // Auto-detect based on host
+  const arch = process.arch;
+  if (arch === 'arm64') {
+    return 'linux/arm64';
+  } else if (arch === 'x64') {
+    return 'linux/amd64';
+  } else if (arch === 'arm') {
+    return 'linux/arm/v7';
+  }
+  
+  return 'linux/amd64'; // Default
+}
+
+/**
+ * Get AWS instance defaults based on architecture
+ * Maps architecture to appropriate AWS instance types and resource allocations
+ */
+function getInstanceDefaults(architecture: 'arm64' | 'x86_64'): {
+  instanceType: string;
+  cpu: number;
+  memory: number;
+} {
+  if (architecture === 'arm64') {
+    // t4g.micro: 2 vCPUs, 1 GiB RAM (ARM Graviton2)
+    // More cost-effective and energy-efficient
+    return {
+      instanceType: 't4g.micro',
+      cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
+      memory: 896, // 896 MB (87.5% of 1024 MB)
+    };
+  } else {
+    // t3.micro: 2 vCPUs, 1 GiB RAM (x86_64 Intel/AMD)
+    // Note: AWS uses t3 (not t4) for micro size on x86_64
+    return {
+      instanceType: 't3.micro',
+      cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
+      memory: 896, // 896 MB (87.5% of 1024 MB)
+    };
+  }
 }

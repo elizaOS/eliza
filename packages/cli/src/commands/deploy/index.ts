@@ -49,6 +49,11 @@ export const deploy = new Command()
   )
   .option('--skip-build', 'Skip Docker build and use existing image')
   .option('--image-uri <uri>', 'Use existing ECR image URI (requires --skip-build)')
+  .option(
+    '--platform <platform>',
+    'Docker platform for build (e.g., linux/amd64, linux/arm64). Defaults to host platform.',
+    undefined
+  )
   .action(async (options: DeployOptions) => {
     try {
       // Validate numeric options

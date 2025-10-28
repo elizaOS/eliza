@@ -15,6 +15,7 @@ export interface DeployOptions {
   env?: string[];
   skipBuild?: boolean; // Skip Docker build (use existing image)
   imageUri?: string; // Use existing ECR image URI
+  platform?: string; // Docker platform (e.g., linux/amd64, linux/arm64)
 }
 
 export interface DeploymentResult {
@@ -39,6 +40,7 @@ export interface ContainerConfig {
   ecr_image_uri: string; // Full ECR image URI with tag
   ecr_repository_uri?: string; // ECR repository URI
   image_tag?: string; // Image tag (e.g., "latest", "v1.0.0")
+  architecture?: 'arm64' | 'x86_64'; // CPU architecture for AWS instance selection
 }
 
 /**
