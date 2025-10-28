@@ -4,7 +4,8 @@
  * Provides one-off messaging capabilities for agents with comprehensive security controls:
  *
  * Security Features:
- * - Unified authentication via x402 middleware (supports API key, x402 payment, or both)
+ * - Role-based authentication (admin vs. user endpoints)
+ * - x402 payment support for user endpoints (optional, configurable via .env)
  * - Request size validation (content max 50KB, metadata max 10KB)
  * - Timeout bounds validation (1s min, 5min max for jobs; absolute 5min for cleanup)
  * - Resource exhaustion protection via absolute timeout caps
@@ -16,12 +17,20 @@
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
  *
- * Authentication Modes (via .env):
- * All job endpoints (POST /jobs, GET /jobs, GET /jobs/:jobId) use unified x402 middleware:
- * 1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
- * 2. Only API key (x402=false): Requires only X-API-KEY header
- * 3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
- * 4. Neither enabled: No authentication required
+ * Endpoint Authentication:
+ *
+ * User Endpoints (x402Middleware - supports payment or API key):
+ * - POST /jobs: Create a job
+ * - GET /jobs/:jobId: Check specific job status
+ *
+ *   Authentication modes:
+ *   1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
+ *   2. Only API key (x402=false): Requires only X-API-KEY header
+ *   3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
+ *   4. Neither enabled: No authentication required
+ *
+ * Admin Endpoints (apiKeyAuthMiddleware - requires API key):
+ * - GET /jobs: List all jobs in the system (admin-only for monitoring/debugging)
  *
  * x402 Payment Configuration (via .env):
  * See middleware/x402.ts for detailed configuration options.
@@ -49,7 +58,7 @@ import {
   // CreateJobRequest and JobPersistenceConfig are available for future enhancements
 } from '../../types/jobs';
 import internalMessageBus from '../../bus';
-import { createX402Middleware } from '../../middleware';
+import { apiKeyAuthMiddleware, createX402Middleware } from '../../middleware';
 
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 const JOB_CLEANUP_INTERVAL_MS = 60000; // 1 minute
@@ -395,19 +404,15 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
   const endpointConfig = getX402EndpointConfig();
 
   // Create x402 payment middleware with metadata for Bazaar discovery
-  // This middleware provides unified authentication for all job endpoints:
-  // - Handles x402 payment authentication when enabled
-  // - Falls back to API key authentication when x402 is disabled
-  // - Supports both authentication methods simultaneously
-  // - Allows no authentication when neither is configured
+  // This middleware provides unified authentication for user-facing job endpoints:
+  // - POST /jobs: Create a job (supports x402 payment or API key)
+  // - GET /jobs/:jobId: Check specific job status (supports x402 payment or API key)
+  // Note: GET /jobs (list all) uses apiKeyAuthMiddleware for admin-only access
   const x402Middleware = createX402Middleware({
     'POST /jobs': {
       description: endpointConfig.description,
       inputSchema: endpointConfig.inputSchema,
       outputSchema: endpointConfig.outputSchema,
-    },
-    'GET /jobs': {
-      description: 'List all jobs with optional filtering by status',
     },
     'GET /jobs/:jobId': {
       description: 'Get detailed status and result for a specific job',
@@ -749,11 +754,15 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
   });
 
   /**
-   * List all jobs (for debugging/admin)
+   * List all jobs (admin-only endpoint)
    * GET /api/messaging/jobs
    * NOTE: Must be defined before /:jobId route to avoid parameter matching
+   *
+   * Security: This endpoint lists ALL jobs in the system and is restricted to
+   * administrators only via API key authentication. Regular users should use
+   * GET /jobs/:jobId to check specific job status.
    */
-  router.get('/jobs', x402Middleware, async (req: express.Request, res: express.Response) => {
+  router.get('/jobs', apiKeyAuthMiddleware, async (req: express.Request, res: express.Response) => {
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       const status = req.query.status as JobStatus | undefined;

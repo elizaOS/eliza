@@ -1,8 +1,12 @@
 /**
  * Test suite for Jobs API Authentication Consistency
  *
- * Verifies that all job endpoints use consistent authentication via x402 middleware.
- * This ensures users can access job status/details after creation regardless of auth method.
+ * Verifies proper authentication for different job endpoints:
+ * - POST /jobs and GET /jobs/:jobId: Use x402 middleware (supports payment or API key)
+ * - GET /jobs: Admin-only endpoint (requires API key)
+ *
+ * This ensures users can create and check their specific jobs via x402 payment,
+ * while listing all jobs is restricted to administrators.
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest, beforeAll, afterAll } from 'bun:test';
@@ -61,6 +65,11 @@ async function simulateRequest(
     let responseBody: unknown = null;
     let responseSent = false;
 
+    const reqHeaders: Record<string, string> = {
+      'content-type': 'application/json',
+      ...headers,
+    };
+
     const req: express.Request = {
       method: method.toUpperCase(),
       url: path,
@@ -70,30 +79,31 @@ async function simulateRequest(
       body: body || {},
       query: query || {},
       params: {},
-      headers: {
-        'content-type': 'application/json',
-        ...headers,
-      },
+      headers: reqHeaders,
       get: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return reqHeaders[header.toLowerCase()];
       },
       header: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return reqHeaders[header.toLowerCase()];
       },
       accepts: jest.fn(() => 'application/json'),
       is: jest.fn((type: string) => type === 'application/json'),
       ip: '127.0.0.1',
     } as unknown as express.Request;
 
-    const res: express.Response = {
+    const resData = {
       statusCode: 200,
       headers: {},
       locals: {},
       headersSent: false,
+    };
+
+    const res: express.Response = {
+      ...resData,
       status: function (code: number) {
         if (!responseSent) {
           responseStatus = code;
-          this.statusCode = code;
+          resData.statusCode = code;
         }
         return this;
       },
@@ -124,11 +134,13 @@ async function simulateRequest(
       },
     } as unknown as express.Response;
 
-    const next = (err?: Error) => {
+    const next: express.NextFunction = (err?: unknown) => {
       if (!responseSent) {
         if (err) {
           responseStatus = 500;
-          responseBody = { error: err.message || 'Internal Server Error' };
+          responseBody = {
+            error: err instanceof Error ? err.message : 'Internal Server Error',
+          };
         } else {
           responseStatus = 404;
           responseBody = { error: 'Not found' };
@@ -232,8 +244,8 @@ describe('Jobs API Authentication Consistency', () => {
       expect(res2.status).toBe(201);
     });
 
-    it('GET /jobs should require API key (consistent with POST)', async () => {
-      // Without API key - should fail
+    it('GET /jobs should require API key (admin-only endpoint)', async () => {
+      // Without API key - should fail (admin-only)
       const res1 = await simulateRequest(app, 'GET', '/api/messaging/jobs');
 
       expect(res1.status).toBe(401);
@@ -329,12 +341,12 @@ describe('Jobs API Authentication Consistency', () => {
     });
   });
 
-  describe('No Authentication (x402 disabled, no API key)', () => {
+  describe('No Authentication (x402 disabled, no API key) - Development Mode', () => {
     let app: express.Application;
     let router: JobsRouter;
 
     beforeAll(() => {
-      // Disable both auth methods
+      // Disable both auth methods (development/testing mode)
       delete process.env.ELIZA_SERVER_AUTH_TOKEN;
       process.env.X402_ENABLED = 'false';
     });
@@ -378,7 +390,7 @@ describe('Jobs API Authentication Consistency', () => {
       jest.clearAllMocks();
     });
 
-    it('should allow all endpoints without authentication', async () => {
+    it('should allow all endpoints without authentication in development mode', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
       mockAgents.set(agentId as UUID, createMockAgent(agentId));
@@ -393,7 +405,8 @@ describe('Jobs API Authentication Consistency', () => {
       expect(createRes.status).toBe(201);
       const jobId = (createRes.body as Record<string, unknown>).jobId as string;
 
-      // All endpoints should work without auth
+      // All endpoints should work without auth in development mode
+      // Note: In production with ELIZA_SERVER_AUTH_TOKEN set, GET /jobs would require API key
       const listRes = await simulateRequest(app, 'GET', '/api/messaging/jobs');
       expect(listRes.status).toBe(200);
 
@@ -458,7 +471,7 @@ describe('Jobs API Authentication Consistency', () => {
 
       const headers = { 'x-api-key': 'workflow-test-key' };
 
-      // Step 1: Create job
+      // Step 1: Create job (x402 middleware - works with API key)
       const createRes = await simulateRequest(
         app,
         'POST',
@@ -473,7 +486,7 @@ describe('Jobs API Authentication Consistency', () => {
       const jobId = createBody.jobId as string;
       expect(jobId).toBeDefined();
 
-      // Step 2: List jobs to verify it appears
+      // Step 2: List jobs to verify it appears (admin-only endpoint, requires API key)
       const listRes = await simulateRequest(
         app,
         'GET',
@@ -488,7 +501,7 @@ describe('Jobs API Authentication Consistency', () => {
       const jobs = listBody.jobs as Array<Record<string, unknown>>;
       expect(jobs.some((j) => j.jobId === jobId)).toBe(true);
 
-      // Step 3: Get specific job status
+      // Step 3: Get specific job status (x402 middleware - works with API key)
       const getRes = await simulateRequest(
         app,
         'GET',
