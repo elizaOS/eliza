@@ -4,6 +4,7 @@ import {
   type IAgentRuntime,
   logger,
   type UUID,
+  validateUuid,
   parseBooleanFromText,
   getDatabaseDir,
   getGeneratedDir,
@@ -176,7 +177,7 @@ export class AgentServer {
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
   public database!: DatabaseAdapter;
-  private rlsOwnerId?: string;
+  private rlsOwnerId?: UUID;
   public serverId: UUID = DEFAULT_SERVER_ID;
 
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
@@ -399,8 +400,13 @@ export class AgentServer {
           // Get or create owner from auth token
           const owner_id = await getOwnerFromAuthToken(this.database, authToken);
 
+          // Validate owner_id before storing (RLS security)
+          if (!validateUuid(owner_id)) {
+            throw new Error(`Invalid owner ID format: ${owner_id}`);
+          }
+
           // Store owner_id for agent assignment
-          this.rlsOwnerId = owner_id;
+          this.rlsOwnerId = owner_id as UUID;
 
           // Set RLS context for this server instance
           await setOwnerContext(this.database, owner_id);
