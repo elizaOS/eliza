@@ -36,13 +36,13 @@ export function createDatabaseAdapter(
     let managerKey = 'default'; // Key for connection manager map
 
     if (rlsEnabled) {
-      const authToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
-      if (!authToken) {
-        throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires ELIZA_SERVER_AUTH_TOKEN');
+      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
+      if (!rlsOwnerIdString) {
+        throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable');
       }
-      rlsOwnerId = stringToUuid(authToken);
+      rlsOwnerId = stringToUuid(rlsOwnerIdString);
       managerKey = rlsOwnerId; // Use owner_id as key for multi-tenancy
-      logger.debug(`[RLS] Using connection pool for owner_id: ${rlsOwnerId.slice(0, 8)}…`);
+      logger.debug(`[RLS] Using connection pool for owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`);
     }
 
     // Initialize connection managers map if needed
@@ -120,7 +120,7 @@ export default plugin;
 export { DatabaseMigrationService } from './migration-service';
 export {
   installRLSFunctions,
-  getOwnerFromAuthToken,
+  getOrCreateRlsOwner,
   setOwnerContext,
   assignAgentToOwner,
   applyRLSToNewTables,

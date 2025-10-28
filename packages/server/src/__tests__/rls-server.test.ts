@@ -13,11 +13,11 @@ describe('AgentServer RLS Configuration', () => {
     it('should use owner_id as serverId when RLS is enabled', () => {
       const mockConfig = {
         ENABLE_RLS_ISOLATION: 'true',
-        ELIZA_SERVER_AUTH_TOKEN: 'test-token-123',
+        RLS_OWNER_ID: 'test-tenant-123',
       };
 
       const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.ELIZA_SERVER_AUTH_TOKEN);
+      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
       const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
 
       expect(serverId).toBe(ownerId);
@@ -27,11 +27,11 @@ describe('AgentServer RLS Configuration', () => {
     it('should use default serverId when RLS is disabled', () => {
       const mockConfig = {
         ENABLE_RLS_ISOLATION: 'false',
-        ELIZA_SERVER_AUTH_TOKEN: 'test-token-123',
+        RLS_OWNER_ID: 'test-tenant-123',
       };
 
       const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.ELIZA_SERVER_AUTH_TOKEN);
+      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
       const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
 
       expect(serverId).toBe('00000000-0000-0000-0000-000000000000');
@@ -40,12 +40,12 @@ describe('AgentServer RLS Configuration', () => {
   });
 
   describe('Multi-Server Scenarios', () => {
-    it('should generate different serverIds for different auth tokens', () => {
-      const server1Token = 'sendo-dev-key';
-      const server2Token = 'sendo-dev-key-2';
+    it('should generate different serverIds for different RLS owner IDs', () => {
+      const tenant1Id = 'sendo-tenant-1';
+      const tenant2Id = 'sendo-tenant-2';
 
-      const serverId1 = stringToUuid(server1Token);
-      const serverId2 = stringToUuid(server2Token);
+      const serverId1 = stringToUuid(tenant1Id);
+      const serverId2 = stringToUuid(tenant2Id);
 
       expect(serverId1).not.toBe(serverId2);
       expect(serverId1).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
@@ -240,21 +240,21 @@ describe('Environment Variable Configuration', () => {
     });
   });
 
-  describe('ELIZA_SERVER_AUTH_TOKEN', () => {
-    it('should generate consistent owner_id from token', () => {
-      const token = 'my-secret-token-123';
-      const ownerId1 = stringToUuid(token);
-      const ownerId2 = stringToUuid(token);
+  describe('RLS_OWNER_ID', () => {
+    it('should generate consistent owner_id from RLS_OWNER_ID string', () => {
+      const rlsOwnerId = 'my-tenant-123';
+      const ownerId1 = stringToUuid(rlsOwnerId);
+      const ownerId2 = stringToUuid(rlsOwnerId);
 
       expect(ownerId1).toBe(ownerId2);
     });
 
-    it('should generate different owner_ids for different tokens', () => {
-      const token1 = 'server-1-token';
-      const token2 = 'server-2-token';
+    it('should generate different owner_ids for different RLS_OWNER_ID values', () => {
+      const tenant1 = 'tenant-1';
+      const tenant2 = 'tenant-2';
 
-      const ownerId1 = stringToUuid(token1);
-      const ownerId2 = stringToUuid(token2);
+      const ownerId1 = stringToUuid(tenant1);
+      const ownerId2 = stringToUuid(tenant2);
 
       expect(ownerId1).not.toBe(ownerId2);
     });

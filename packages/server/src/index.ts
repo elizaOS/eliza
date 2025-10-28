@@ -4,7 +4,6 @@ import {
   type IAgentRuntime,
   logger,
   type UUID,
-  validateUuid,
   parseBooleanFromText,
   getDatabaseDir,
   getGeneratedDir,
@@ -30,7 +29,7 @@ import sqlPlugin, {
   createDatabaseAdapter,
   DatabaseMigrationService,
   installRLSFunctions,
-  getOwnerFromAuthToken,
+  getOrCreateRlsOwner,
   setOwnerContext,
   assignAgentToOwner,
   applyRLSToNewTables,
@@ -376,7 +375,7 @@ export class AgentServer {
       }
 
       const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-      const authToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
 
       if (rlsEnabled) {
         if (!config?.postgresUrl) {
@@ -384,12 +383,16 @@ export class AgentServer {
           throw new Error('RLS isolation requires PostgreSQL database');
         }
 
-        if (!authToken) {
-          logger.error('[RLS] ENABLE_RLS_ISOLATION requires ELIZA_SERVER_AUTH_TOKEN');
-          throw new Error('ELIZA_SERVER_AUTH_TOKEN environment variable is required when RLS is enabled');
+        if (!rlsOwnerIdString) {
+          logger.error('[RLS] ENABLE_RLS_ISOLATION requires RLS_OWNER_ID environment variable');
+          throw new Error('RLS_OWNER_ID environment variable is required when RLS is enabled');
         }
 
+        // Convert RLS_OWNER_ID string to deterministic UUID
+        const owner_id = stringToUuid(rlsOwnerIdString);
+
         logger.info('[INIT] Initializing RLS multi-tenant isolation...');
+        logger.info(`[RLS] Tenant ID: ${owner_id.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`);
         logger.warn('[RLS] Ensure your PostgreSQL user is NOT a superuser!');
         logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
 
@@ -397,13 +400,8 @@ export class AgentServer {
           // Install RLS PostgreSQL functions
           await installRLSFunctions(this.database);
 
-          // Get or create owner from auth token
-          const owner_id = await getOwnerFromAuthToken(this.database, authToken);
-
-          // Validate owner_id before storing (RLS security)
-          if (!validateUuid(owner_id)) {
-            throw new Error(`Invalid owner ID format: ${owner_id}`);
-          }
+          // Get or create owner with the provided owner ID
+          await getOrCreateRlsOwner(this.database, owner_id);
 
           // Store owner_id for agent assignment
           this.rlsOwnerId = owner_id as UUID;

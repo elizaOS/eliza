@@ -56,12 +56,12 @@ export function createDatabaseAdapter(
       const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
       let rlsOwnerId: string | undefined;
       if (rlsEnabled) {
-        const authToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
-        if (!authToken) {
-          throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires ELIZA_SERVER_AUTH_TOKEN');
+        const rlsOwnerIdString = process.env.RLS_OWNER_ID;
+        if (!rlsOwnerIdString) {
+          throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable');
         }
-        rlsOwnerId = stringToUuid(authToken);
-        logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}…`);
+        rlsOwnerId = stringToUuid(rlsOwnerIdString);
+        logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`);
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -150,7 +150,7 @@ export default plugin;
 export { DatabaseMigrationService } from './migration-service';
 export {
   installRLSFunctions,
-  getOwnerFromAuthToken,
+  getOrCreateRlsOwner,
   setOwnerContext,
   assignAgentToOwner,
   applyRLSToNewTables,

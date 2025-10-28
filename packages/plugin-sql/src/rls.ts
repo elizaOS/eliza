@@ -1,4 +1,4 @@
-import { logger, stringToUuid, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
+import { logger, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
 import { sql, eq } from 'drizzle-orm';
 import { ownersTable } from './schema/owners';
 import { agentTable } from './schema/agent';
@@ -166,25 +166,24 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
 }
 
 /**
- * Get or create owner from auth token using Drizzle ORM
+ * Get or create RLS owner using Drizzle ORM
  */
-export async function getOwnerFromAuthToken(
+export async function getOrCreateRlsOwner(
   adapter: IDatabaseAdapter,
-  authToken: string
+  ownerId: string
 ): Promise<string> {
   const db = adapter.db;
-  const owner_id = stringToUuid(authToken);
 
   // Use Drizzle's insert with onConflictDoNothing
   await db
     .insert(ownersTable)
     .values({
-      id: owner_id,
+      id: ownerId,
     })
     .onConflictDoNothing();
 
-  logger.info(`[RLS] Owner: ${owner_id.slice(0, 8)}…`);
-  return owner_id;
+  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
+  return ownerId;
 }
 
 /**
