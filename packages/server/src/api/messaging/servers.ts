@@ -59,16 +59,21 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   (router as any).post(
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
-      const serverId =
-        req.params.serverId === serverInstance.serverId
-          ? serverInstance.serverId
-          : validateUuid(req.params.serverId);
+      const serverId = validateUuid(req.params.serverId);
       const { agentId } = req.body;
 
       if (!serverId || !validateUuid(agentId)) {
         return res.status(400).json({
           success: false,
           error: 'Invalid serverId or agentId format',
+        });
+      }
+
+      // RLS security: Only allow modifying agents for current server
+      if (serverId !== serverInstance.serverId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot modify agents for a different server',
         });
       }
 
@@ -106,16 +111,21 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   (router as any).delete(
     '/servers/:serverId/agents/:agentId',
     async (req: express.Request, res: express.Response) => {
-      const serverId =
-        req.params.serverId === serverInstance.serverId
-          ? serverInstance.serverId
-          : validateUuid(req.params.serverId);
+      const serverId = validateUuid(req.params.serverId);
       const agentId = validateUuid(req.params.agentId);
 
       if (!serverId || !agentId) {
         return res.status(400).json({
           success: false,
           error: 'Invalid serverId or agentId format',
+        });
+      }
+
+      // RLS security: Only allow modifying agents for current server
+      if (serverId !== serverInstance.serverId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot modify agents for a different server',
         });
       }
 
@@ -153,15 +163,20 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
   (router as any).get(
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
-      const serverId =
-        req.params.serverId === serverInstance.serverId
-          ? serverInstance.serverId
-          : validateUuid(req.params.serverId);
+      const serverId = validateUuid(req.params.serverId);
 
       if (!serverId) {
         return res.status(400).json({
           success: false,
           error: 'Invalid serverId format',
+        });
+      }
+
+      // RLS security: Only allow accessing agents for current server
+      if (serverId !== serverInstance.serverId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot access agents for a different server',
         });
       }
 
