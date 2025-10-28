@@ -570,11 +570,11 @@ The deploy command automatically detects your system architecture and deploys to
 
 | Your System | Docker Platform | AWS Instance | Monthly Cost |
 |-------------|----------------|--------------|--------------|
-| macOS Apple Silicon | `linux/arm64` | t4g.micro (Graviton) | $9.63 |
-| macOS Intel | `linux/amd64` | t3.micro (Intel/AMD) | $11.09 |
-| Ubuntu/Linux x64 | `linux/amd64` | t3.micro (Intel/AMD) | $11.09 |
-| Ubuntu/Linux ARM64 | `linux/arm64` | t4g.micro (Graviton) | $9.63 |
-| Windows x64 | `linux/amd64` | t3.micro (Intel/AMD) | $11.09 |
+| macOS Apple Silicon | `linux/arm64` | t4g.small (Graviton) | $15.76 |
+| macOS Intel | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
+| Ubuntu/Linux x64 | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
+| Ubuntu/Linux ARM64 | `linux/arm64` | t4g.small (Graviton) | $15.76 |
+| Windows x64 | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
 
 **Examples:**
 

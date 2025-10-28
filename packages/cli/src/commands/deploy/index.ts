@@ -27,15 +27,15 @@ export const deploy = new Command()
   )
   .option(
     '--cpu <units>',
-    'CPU units (1792 = 1.75 vCPU, 87.5% of t4g.micro 2 vCPUs)',
+    'CPU units (1792 = 1.75 vCPU, 87.5% of t4g.small 2 vCPUs)',
     (value) => parseInt(value, 10),
     1792
   )
   .option(
     '--memory <mb>',
-    'Memory in MB (896 MB = 87.5% of t4g.micro 1 GiB)',
+    'Memory in MB (1792 MB = 1.75 GiB, 87.5% of t4g.small 2 GiB)',
     (value) => parseInt(value, 10),
-    896
+    1792
   )
   .option('-k, --api-key <key>', 'ElizaOS Cloud API key')
   .option('-u, --api-url <url>', 'ElizaOS Cloud API URL', 'https://www.elizacloud.ai')

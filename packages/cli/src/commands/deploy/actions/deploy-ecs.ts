@@ -524,20 +524,20 @@ function getInstanceDefaults(architecture: 'arm64' | 'x86_64'): {
   memory: number;
 } {
   if (architecture === 'arm64') {
-    // t4g.micro: 2 vCPUs, 1 GiB RAM (ARM Graviton2)
+    // t4g.small: 2 vCPUs, 2 GiB RAM (ARM Graviton2)
     // More cost-effective and energy-efficient
     return {
-      instanceType: 't4g.micro',
+      instanceType: 't4g.small',
       cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
-      memory: 896, // 896 MB (87.5% of 1024 MB)
+      memory: 1792, // 1.75 GiB (87.5% of 2048 MB)
     };
   } else {
-    // t3.micro: 2 vCPUs, 1 GiB RAM (x86_64 Intel/AMD)
-    // Note: AWS uses t3 (not t4) for micro size on x86_64
+    // t3.small: 2 vCPUs, 2 GiB RAM (x86_64 Intel/AMD)
+    // Note: AWS uses t3 (not t4) for small size on x86_64
     return {
-      instanceType: 't3.micro',
+      instanceType: 't3.small',
       cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
-      memory: 896, // 896 MB (87.5% of 1024 MB)
+      memory: 1792, // 1.75 GiB (87.5% of 2048 MB)
     };
   }
 }

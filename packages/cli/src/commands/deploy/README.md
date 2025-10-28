@@ -93,16 +93,16 @@ The deploy command automatically detects your host platform and builds for it, t
 
 | Host System | Docker Platform | AWS Instance | Architecture |
 |-------------|----------------|--------------|--------------|
-| **macOS (Apple Silicon)** | `linux/arm64` | t4g.micro (Graviton) | ARM64 |
-| **Ubuntu/Linux x86_64** | `linux/amd64` | t3.micro (Intel/AMD) | x86_64 |
-| **Ubuntu/Linux ARM64** | `linux/arm64` | t4g.micro (Graviton) | ARM64 |
+| **macOS (Apple Silicon)** | `linux/arm64` | t4g.small (Graviton) | ARM64 |
+| **Ubuntu/Linux x86_64** | `linux/amd64` | t3.small (Intel/AMD) | x86_64 |
+| **Ubuntu/Linux ARM64** | `linux/arm64` | t4g.small (Graviton) | ARM64 |
 
 ### AWS Instance Specifications
 
 | Instance Type | vCPUs | RAM | Architecture | Cost Efficiency |
 |--------------|-------|-----|--------------|-----------------|
-| **t4g.micro** | 2 | 1 GiB | ARM64 (Graviton2) | ⭐ Higher (20-40% cheaper) |
-| **t3.micro** | 2 | 1 GiB | x86_64 (Intel/AMD) | Standard |
+| **t4g.small** | 2 | 2 GiB | ARM64 (Graviton2) | ⭐ Higher (20-40% cheaper) |
+| **t3.small** | 2 | 2 GiB | x86_64 (Intel/AMD) | Standard |
 
 Both instance types provide identical performance for most workloads. ARM64 (Graviton) instances are more cost-effective and energy-efficient.
 
@@ -113,8 +113,8 @@ You can override the automatic detection:
 - `ELIZA_DOCKER_PLATFORM` environment variable: `export ELIZA_DOCKER_PLATFORM=linux/amd64`
 
 **Note:** The platform you choose determines which AWS instance type will be used:
-- `linux/arm64` → Deploys to **t4g.micro** (AWS Graviton)
-- `linux/amd64` → Deploys to **t3.micro** (Intel/AMD)
+- `linux/arm64` → Deploys to **t4g.small** (AWS Graviton)
+- `linux/amd64` → Deploys to **t3.small** (Intel/AMD)
 
 ## Troubleshooting
 
@@ -306,27 +306,27 @@ ECS on EC2 supports flexible CPU/memory combinations. Default configuration:
 
 ### Cost Estimation
 
-#### ARM64 (t4g.micro) - Recommended for Cost Savings
+#### ARM64 (t4g.small) - Recommended for Cost Savings
 
-- Instance: $0.0084 per hour ($6.13/month)
+- Instance: $0.0168 per hour ($12.26/month)
 - EBS 35GB gp3: $2.80/month
 - CloudWatch Logs (5GB): $0.50/month
 - Container Insights: $0.20/month
-- **Total: $9.63/month per container**
+- **Total: $15.76/month per container**
 
-#### x86_64 (t3.micro) - Standard Architecture
+#### x86_64 (t3.small) - Standard Architecture
 
-- Instance: $0.0104 per hour ($7.59/month)
+- Instance: $0.0208 per hour ($15.18/month)
 - EBS 35GB gp3: $2.80/month
 - CloudWatch Logs (5GB): $0.50/month
 - Container Insights: $0.20/month
-- **Total: $11.09/month per container**
+- **Total: $18.68/month per container**
 
-**💰 Savings with ARM64:** $1.46/month per container (13.2% reduction)
+**💰 Savings with ARM64:** $2.92/month per container (15.6% reduction)
 
-**Default allocation (1.75 vCPU + 896 MB)**:
+**Default allocation (1.75 vCPU + 1.75 GiB)**:
 
-- Uses 87.5% of instance resources (t4g.micro or t3.micro)
+- Uses 87.5% of instance resources (t4g.small or t3.small)
 - Leaves 12.5% headroom for ECS agent and OS processes
 - Provides optimal balance between cost and stability
 
