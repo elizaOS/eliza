@@ -12,18 +12,16 @@ export function hasCharacterSecrets(character: Character): boolean {
 }
 
 /**
- * Node.js-only implementation of secrets loading
+ * Node.js-only implementation of environment variables loading
  * This is lazy-loaded only in Node environments
+ *
+ * Merges .env variables into both character.settings and character.settings.secrets
+ * Priority: .env (defaults) < character.settings/secrets (overrides)
  */
 async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
   const fs = await import('node:fs');
   const dotenv = await import('dotenv');
   const { findEnvFile } = await import('./utils/environment');
-
-  // If character already has secrets, nothing to do
-  if (hasCharacterSecrets(character)) {
-    return false;
-  }
 
   // Find .env file
   const envPath = findEnvFile();
@@ -31,13 +29,38 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
 
   try {
     const buf = fs.readFileSync(envPath);
-    const envSecrets = dotenv.parse(buf);
+    const envVars = dotenv.parse(buf);
 
-    // Set the secrets
+    // Initialize settings if needed
     if (!character.settings) {
       character.settings = {};
     }
-    character.settings.secrets = envSecrets;
+
+    // Store existing settings and secrets before merge
+    const existingSettings = { ...character.settings };
+    const existingSecrets =
+      character.settings.secrets && typeof character.settings.secrets === 'object'
+        ? { ...(character.settings.secrets as Record<string, any>) }
+        : {};
+
+    // Merge ALL .env variables into settings (for configs and non-sensitive values)
+    // Priority: .env < character.settings (character.json overrides .env)
+    character.settings = {
+      ...envVars,           // Lower priority: defaults from .env
+      ...existingSettings,  // Higher priority: character-specific overrides
+    };
+
+    // ALSO merge ALL .env variables into settings.secrets
+    // This makes all env vars accessible via getSetting() with proper priority
+    // The developer chooses what goes in character.settings.secrets in their JSON
+    character.settings.secrets = {
+      ...envVars,         // Lower priority: defaults from .env
+      ...existingSecrets, // Higher priority: character-specific secrets
+    };
+
+    // Note: We do NOT touch character.secrets (root level)
+    // That property is reserved for runtime-generated secrets via setSetting(..., true)
+
     return true;
   } catch {
     return false;
