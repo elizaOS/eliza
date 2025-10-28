@@ -809,4 +809,59 @@ describe('settings utilities', () => {
       expect(decryptSecret).toBe(decryptStringValue);
     });
   });
+
+  describe('Character settings merge with complex objects', () => {
+    it('should handle complex character settings without corrupting them during .env merge', async () => {
+      const { setDefaultSecretsFromEnv } = await import('../secrets');
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const os = await import('node:os');
+
+      const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-complex-test-'));
+      const originalCwd = process.cwd();
+
+      try {
+        process.chdir(testDir);
+
+        const envContent = `SIMPLE_KEY=simple-value
+ANOTHER_KEY=another-value`;
+        fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
+        const character: Character = {
+          name: 'TestChar',
+          bio: ['Test bio'],
+          settings: {
+            discord: {
+              shouldIgnoreBotMessages: true,
+              allowedChannelIds: ['123', '456'],
+            },
+            telegram: {
+              botToken: 'bot-token',
+            },
+            SIMPLE_KEY: 'character-override', // Override .env
+          },
+        };
+
+        await setDefaultSecretsFromEnv(character);
+
+        // Verify complex objects are preserved
+        expect(character.settings!.discord).toEqual({
+          shouldIgnoreBotMessages: true,
+          allowedChannelIds: ['123', '456'],
+        });
+        expect(character.settings!.telegram).toEqual({
+          botToken: 'bot-token',
+        });
+
+        // Verify simple overrides work
+        expect(character.settings!.SIMPLE_KEY).toBe('character-override');
+
+        // Verify non-overridden .env values are added
+        expect(character.settings!.ANOTHER_KEY).toBe('another-value');
+      } finally {
+        process.chdir(originalCwd);
+        fs.rmSync(testDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

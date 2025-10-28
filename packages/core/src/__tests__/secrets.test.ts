@@ -107,38 +107,78 @@ describe('SecretsManager', () => {
       expect((character.settings!.secrets as any).ANTHROPIC_API_KEY).toBe('test-key-456');
     });
 
-    test('should not override existing secrets', async () => {
+    test('should merge .env with existing character.settings.secrets (character overrides)', async () => {
+      // Create a test .env file
+      const envContent = 'OPENAI_API_KEY=env-key\nANTHROPIC_API_KEY=env-key-456\n';
+      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {
           secrets: {
-            OPENAI_API_KEY: 'existing-key',
+            OPENAI_API_KEY: 'character-override',
           },
         },
       } as Character;
 
       const result = await setDefaultSecretsFromEnv(character);
 
-      // Should return false because character already has secrets
-      expect(result).toBe(false);
-      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('existing-key');
+      // Should now return true and merge
+      expect(result).toBe(true);
+      // Character secret should override .env
+      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('character-override');
+      // .env secret should be added for non-conflicting keys
+      expect((character.settings!.secrets as any).ANTHROPIC_API_KEY).toBe('env-key-456');
     });
 
-    test('should return false when character already has secrets', async () => {
+    test('should merge .env into character.settings (for non-secret configs)', async () => {
+      // Create a test .env file with various configs
+      const envContent = 'LOG_LEVEL=info\nSERVER_PORT=3000\nOPENAI_API_KEY=sk-test\n';
+      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {
-          secrets: {
-            someKey: 'value',
-          },
+          LOG_LEVEL: 'debug', // Override .env
         },
       } as Character;
 
       const result = await setDefaultSecretsFromEnv(character);
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
+      // Character setting should override .env
+      expect(character.settings!.LOG_LEVEL).toBe('debug');
+      // .env values should be available for non-overridden keys
+      expect(character.settings!.SERVER_PORT).toBe('3000');
+      expect(character.settings!.OPENAI_API_KEY).toBe('sk-test');
+    });
+
+    test('should NOT touch character.secrets (root level)', async () => {
+      // Create a test .env file
+      const envContent = 'SOME_KEY=from-env\n';
+      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
+      const character: Character = {
+        name: 'TestChar',
+        bio: ['Test bio'],
+        secrets: {
+          RUNTIME_SECRET: 'must-not-be-touched',
+        },
+      } as Character;
+
+      const result = await setDefaultSecretsFromEnv(character);
+
+      expect(result).toBe(true);
+      // Root secrets should remain untouched
+      expect(character.secrets).toEqual({
+        RUNTIME_SECRET: 'must-not-be-touched',
+      });
+      // .env should NOT be merged into root secrets
+      expect(character.secrets?.SOME_KEY).toBeUndefined();
+      // But should be in settings.secrets
+      expect((character.settings!.secrets as any).SOME_KEY).toBe('from-env');
     });
   });
 });
