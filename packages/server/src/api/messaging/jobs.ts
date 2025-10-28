@@ -1,8 +1,8 @@
 /**
  * Jobs API Router
- -
+ *
  * Provides one-off messaging capabilities for agents with comprehensive security controls:
- * 
+ *
  * Security Features:
  * - API key authentication required for all job operations
  * - x402 payment middleware for paid access (optional, configurable via .env)
@@ -13,12 +13,20 @@
  * - Rate limiting applied at API router level
  * - Input validation for all UUIDs and content
  * - Global error boundary for unhandled rejections
- * 
+ *
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
- * 
+ *
  * x402 Payment Configuration (via .env):
  * See middleware/x402.ts for detailed configuration options.
+ *
+ * x402 Endpoint Metadata Configuration (via .env):
+ * These allow customization of the endpoint metadata for Bazaar discovery without code changes:
+ * - X402_JOBS_ENDPOINT_DESCRIPTION: Custom description for the /jobs endpoint
+ * - X402_JOBS_INPUT_SCHEMA: JSON string of custom input schema
+ * - X402_JOBS_OUTPUT_SCHEMA: JSON string of custom output schema
+ *
+ * If not provided, sensible defaults are used.
  */
 import { logger, validateUuid, type UUID, type ElizaOS, ChannelType } from '@elizaos/core';
 import express from 'express';
@@ -45,6 +53,115 @@ const ABSOLUTE_MAX_LISTENER_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_JOBS_IN_MEMORY = 10000; // Prevent memory leaks
 
 // Security: All mutable state is scoped per-router instance inside createJobsRouter
+
+/**
+ * Get x402 endpoint metadata configuration from environment variables
+ * Allows customization of Bazaar discovery metadata without code changes
+ *
+ * Environment variables:
+ * - X402_JOBS_ENDPOINT_DESCRIPTION: Custom description for the /jobs endpoint
+ * - X402_JOBS_INPUT_SCHEMA: JSON string of custom input schema
+ * - X402_JOBS_OUTPUT_SCHEMA: JSON string of custom output schema
+ */
+function getX402EndpointConfig() {
+  // Default description
+  const defaultDescription =
+    "Create a one-off job to send a message to an AI agent and receive a response. The agent processes the message and returns a completion with the agent's reply, including processing time metrics.";
+
+  // Default input schema
+  const defaultInputSchema = {
+    type: 'object',
+    properties: {
+      agentId: {
+        type: 'string',
+        format: 'uuid',
+        description:
+          'Optional UUID of the specific agent to send the job to. If not provided, the first available agent will be used.',
+      },
+      userId: {
+        type: 'string',
+        format: 'uuid',
+        description:
+          'UUID identifying the user making the request. Used for tracking and authentication.',
+      },
+      content: {
+        type: 'string',
+        description: 'The message content to send to the agent. Maximum 50KB.',
+        maxLength: JobValidation.MAX_CONTENT_LENGTH,
+      },
+      timeoutMs: {
+        type: 'number',
+        description: `Optional timeout in milliseconds for the job. Min: ${JobValidation.MIN_TIMEOUT_MS}ms, Max: ${JobValidation.MAX_TIMEOUT_MS}ms, Default: ${JobValidation.DEFAULT_TIMEOUT_MS}ms`,
+        minimum: JobValidation.MIN_TIMEOUT_MS,
+        maximum: JobValidation.MAX_TIMEOUT_MS,
+      },
+      metadata: {
+        type: 'object',
+        description: 'Optional metadata to attach to the job. Maximum 10KB when serialized.',
+      },
+    },
+    required: ['userId', 'content'],
+  };
+
+  // Default output schema
+  const defaultOutputSchema = {
+    type: 'object',
+    properties: {
+      jobId: {
+        type: 'string',
+        description: 'Unique identifier for the created job',
+      },
+      status: {
+        type: 'string',
+        enum: ['pending', 'processing', 'completed', 'failed', 'timeout'],
+        description: 'Current status of the job',
+      },
+      createdAt: {
+        type: 'number',
+        description: 'Unix timestamp when the job was created',
+      },
+      expiresAt: {
+        type: 'number',
+        description: 'Unix timestamp when the job will expire',
+      },
+    },
+  };
+
+  // Load from environment with fallbacks
+  const description = process.env.X402_JOBS_ENDPOINT_DESCRIPTION || defaultDescription;
+
+  let inputSchema = defaultInputSchema;
+  if (process.env.X402_JOBS_INPUT_SCHEMA) {
+    try {
+      inputSchema = JSON.parse(process.env.X402_JOBS_INPUT_SCHEMA);
+      logger.info('[Jobs API] Using custom x402 input schema from X402_JOBS_INPUT_SCHEMA');
+    } catch (error) {
+      logger.error(
+        '[Jobs API] Failed to parse X402_JOBS_INPUT_SCHEMA, using default:',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  let outputSchema = defaultOutputSchema;
+  if (process.env.X402_JOBS_OUTPUT_SCHEMA) {
+    try {
+      outputSchema = JSON.parse(process.env.X402_JOBS_OUTPUT_SCHEMA);
+      logger.info('[Jobs API] Using custom x402 output schema from X402_JOBS_OUTPUT_SCHEMA');
+    } catch (error) {
+      logger.error(
+        '[Jobs API] Failed to parse X402_JOBS_OUTPUT_SCHEMA, using default:',
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  }
+
+  return {
+    description,
+    inputSchema,
+    outputSchema,
+  };
+}
 
 /**
  * Helper to send standardized error response
@@ -268,365 +385,311 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
     logger.info('[Jobs API] Router cleanup completed');
   };
 
+  // Load x402 endpoint metadata configuration (supports env var customization)
+  const endpointConfig = getX402EndpointConfig();
+
   // Create x402 payment middleware with metadata for Bazaar discovery
   const x402Middleware = createX402Middleware({
     'POST /jobs': {
-      description: 'Create a one-off job to send a message to an AI agent and receive a response. The agent processes the message and returns a completion with the agent\'s reply, including processing time metrics.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          agentId: {
-            type: 'string',
-            format: 'uuid',
-            description: 'Optional UUID of the specific agent to send the job to. If not provided, the first available agent will be used.',
-          },
-          userId: {
-            type: 'string',
-            format: 'uuid',
-            description: 'UUID identifying the user making the request. Used for tracking and authentication.',
-          },
-          content: {
-            type: 'string',
-            description: 'The message content to send to the agent. Maximum 50KB.',
-            maxLength: JobValidation.MAX_CONTENT_LENGTH,
-          },
-          timeoutMs: {
-            type: 'number',
-            description: `Optional timeout in milliseconds for the job. Min: ${JobValidation.MIN_TIMEOUT_MS}ms, Max: ${JobValidation.MAX_TIMEOUT_MS}ms, Default: ${JobValidation.DEFAULT_TIMEOUT_MS}ms`,
-            minimum: JobValidation.MIN_TIMEOUT_MS,
-            maximum: JobValidation.MAX_TIMEOUT_MS,
-          },
-          metadata: {
-            type: 'object',
-            description: 'Optional metadata to attach to the job. Maximum 10KB when serialized.',
-          },
-        },
-        required: ['userId', 'content'],
-      },
-      outputSchema: {
-        type: 'object',
-        properties: {
-          jobId: {
-            type: 'string',
-            description: 'Unique identifier for the created job',
-          },
-          status: {
-            type: 'string',
-            enum: ['pending', 'processing', 'completed', 'failed', 'timeout'],
-            description: 'Current status of the job',
-          },
-          createdAt: {
-            type: 'number',
-            description: 'Unix timestamp when the job was created',
-          },
-          expiresAt: {
-            type: 'number',
-            description: 'Unix timestamp when the job will expire',
-          },
-        },
-      },
+      description: endpointConfig.description,
+      inputSchema: endpointConfig.inputSchema,
+      outputSchema: endpointConfig.outputSchema,
     },
   });
 
   /**
    * Create a new job (one-off message to agent)
    * POST /api/messaging/jobs
-   * 
+   *
    * Authentication/Payment Modes:
    * 1. Both API key + x402 enabled: Requires BOTH X-API-KEY AND X-PAYMENT headers
    * 2. Only API key (x402=false): Requires only X-API-KEY header
    * 3. Only x402 (no ELIZA_SERVER_AUTH_TOKEN): Requires only X-PAYMENT header
    * 4. Neither enabled: No authentication required
    */
-  router.post(
-    '/jobs',
-    x402Middleware,
-    async (req: express.Request, res: express.Response) => {
-      try {
-        const body = req.body;
+  router.post('/jobs', x402Middleware, async (req: express.Request, res: express.Response) => {
+    try {
+      const body = req.body;
 
-        // Validate request with size limits
-        const validation = validateCreateJobRequest(body);
-        if (!validation.valid) {
-          return sendErrorResponse(res, 400, validation.error || 'Invalid request');
+      // Validate request with size limits
+      const validation = validateCreateJobRequest(body);
+      if (!validation.valid) {
+        return sendErrorResponse(res, 400, validation.error || 'Invalid request');
+      }
+
+      // Validate userId
+      const userId = validateUuid(body.userId);
+      if (!userId) {
+        return sendErrorResponse(res, 400, 'Invalid userId format (must be valid UUID)');
+      }
+
+      // Determine agent ID - use provided or first available agent
+      let agentId: UUID | null = null;
+
+      if (body.agentId) {
+        // Validate provided agentId
+        agentId = validateUuid(body.agentId);
+        if (!agentId) {
+          return sendErrorResponse(res, 400, 'Invalid agentId format (must be valid UUID)');
         }
-
-        // Validate userId
-        const userId = validateUuid(body.userId);
-        if (!userId) {
-          return sendErrorResponse(res, 400, 'Invalid userId format (must be valid UUID)');
-        }
-
-        // Determine agent ID - use provided or first available agent
-        let agentId: UUID | null = null;
-
-        if (body.agentId) {
-          // Validate provided agentId
-          agentId = validateUuid(body.agentId);
-          if (!agentId) {
-            return sendErrorResponse(res, 400, 'Invalid agentId format (must be valid UUID)');
-          }
+      } else {
+        // Get first available agent
+        const agents = elizaOS.getAgents();
+        if (agents && agents.length > 0) {
+          agentId = agents[0].agentId;
+          logger.info(`[Jobs API] No agentId provided, using first available agent: ${agentId}`);
         } else {
-          // Get first available agent
-          const agents = elizaOS.getAgents();
-          if (agents && agents.length > 0) {
-            agentId = agents[0].agentId;
-            logger.info(`[Jobs API] No agentId provided, using first available agent: ${agentId}`);
-          } else {
-            return sendErrorResponse(res, 404, 'No agents available on server');
-          }
+          return sendErrorResponse(res, 404, 'No agents available on server');
         }
+      }
 
-        // Check if agent exists
-        const runtime = elizaOS.getAgent(agentId);
-        if (!runtime) {
-          return sendErrorResponse(res, 404, `Agent ${agentId} not found`);
-        }
+      // Check if agent exists
+      const runtime = elizaOS.getAgent(agentId);
+      if (!runtime) {
+        return sendErrorResponse(res, 404, `Agent ${agentId} not found`);
+      }
 
-        // Calculate timeout
-        const requestedTimeoutMs =
-          typeof body.timeoutMs === 'number' ? body.timeoutMs : JobValidation.DEFAULT_TIMEOUT_MS;
-        const timeoutMs = Math.min(
-          JobValidation.MAX_TIMEOUT_MS,
-          Math.max(JobValidation.MIN_TIMEOUT_MS, requestedTimeoutMs)
+      // Calculate timeout
+      const requestedTimeoutMs =
+        typeof body.timeoutMs === 'number' ? body.timeoutMs : JobValidation.DEFAULT_TIMEOUT_MS;
+      const timeoutMs = Math.min(
+        JobValidation.MAX_TIMEOUT_MS,
+        Math.max(JobValidation.MIN_TIMEOUT_MS, requestedTimeoutMs)
+      );
+
+      // Create job ID and channel ID
+      const jobId = uuidv4();
+      const channelId = uuidv4() as UUID;
+      const now = Date.now();
+
+      // Create the job
+      const job: Job = {
+        id: jobId,
+        agentId,
+        userId,
+        channelId,
+        content: body.content,
+        status: JobStatus.PENDING,
+        createdAt: now,
+        expiresAt: now + timeoutMs,
+        metadata: body.metadata || {},
+      };
+
+      // Store job
+      jobs.set(jobId, job);
+
+      logger.info(`[Jobs API] Created job ${jobId} for agent ${agentId} (timeout: ${timeoutMs}ms)`);
+
+      // Create a temporary channel for this job
+      try {
+        await serverInstance.createChannel({
+          id: channelId,
+          name: `job-${jobId}`,
+          type: ChannelType.DM,
+          messageServerId: DEFAULT_SERVER_ID,
+          metadata: {
+            jobId,
+            agentId,
+            userId,
+            isJobChannel: true,
+            ...body.metadata,
+          },
+        });
+
+        // Add agent as participant
+        await serverInstance.addParticipantsToChannel(channelId, [agentId]);
+
+        logger.info(`[Jobs API] Created temporary channel ${channelId} for job ${jobId}`);
+      } catch (error) {
+        jobs.delete(jobId);
+        logger.error(
+          `[Jobs API] Failed to create channel for job ${jobId}:`,
+          error instanceof Error ? error.message : String(error)
         );
+        return sendErrorResponse(res, 500, 'Failed to create job channel');
+      }
 
-        // Create job ID and channel ID
-        const jobId = uuidv4();
-        const channelId = uuidv4() as UUID;
-        const now = Date.now();
+      // Update job status to processing
+      job.status = JobStatus.PROCESSING;
 
-        // Create the job
-        const job: Job = {
-          id: jobId,
-          agentId,
-          userId,
+      // Create and send the user message
+      try {
+        const userMessage = await serverInstance.createMessage({
           channelId,
+          authorId: userId,
           content: body.content,
-          status: JobStatus.PENDING,
-          createdAt: now,
-          expiresAt: now + timeoutMs,
-          metadata: body.metadata || {},
-        };
+          rawMessage: {
+            content: body.content,
+          },
+          sourceType: 'job_request',
+          metadata: {
+            jobId,
+            isJobMessage: true,
+            ...body.metadata,
+          },
+        });
 
-        // Store job
-        jobs.set(jobId, job);
+        job.userMessageId = userMessage.id;
 
         logger.info(
-          `[Jobs API] Created job ${jobId} for agent ${agentId} (timeout: ${timeoutMs}ms)`
+          `[Jobs API] Created user message ${userMessage.id} for job ${jobId}, emitting to bus`
         );
 
-        // Create a temporary channel for this job
-        try {
-          await serverInstance.createChannel({
-            id: channelId,
-            name: `job-${jobId}`,
-            type: ChannelType.DM,
-            messageServerId: DEFAULT_SERVER_ID,
-            metadata: {
-              jobId,
-              agentId,
-              userId,
-              isJobChannel: true,
-              ...body.metadata,
-            },
-          });
+        // Emit to internal message bus for agent processing
+        internalMessageBus.emit('new_message', {
+          id: userMessage.id,
+          channel_id: channelId,
+          server_id: DEFAULT_SERVER_ID,
+          author_id: userId,
+          content: body.content,
+          created_at: new Date(userMessage.createdAt).getTime(),
+          source_type: 'job_request',
+          raw_message: { content: body.content },
+          metadata: {
+            jobId,
+            isJobMessage: true,
+            ...body.metadata,
+          },
+        });
 
-          // Add agent as participant
-          await serverInstance.addParticipantsToChannel(channelId, [agentId]);
+        // Setup listener for agent response
+        // Track if we've seen an action execution message and any agent message
+        let actionMessageReceived = false;
+        let firstAgentMessageReceived = false;
 
-          logger.info(`[Jobs API] Created temporary channel ${channelId} for job ${jobId}`);
-        } catch (error) {
-          jobs.delete(jobId);
-          logger.error(
-            `[Jobs API] Failed to create channel for job ${jobId}:`,
-            error instanceof Error ? error.message : String(error)
-          );
-          return sendErrorResponse(res, 500, 'Failed to create job channel');
-        }
+        const responseHandler = async (data: unknown) => {
+          // Type guard for message structure
+          if (!data || typeof data !== 'object') return;
 
-        // Update job status to processing
-        job.status = JobStatus.PROCESSING;
+          const message = data as {
+            id?: UUID;
+            channel_id?: UUID;
+            author_id?: UUID;
+            content?: string;
+            created_at?: number;
+            metadata?: Record<string, unknown>;
+          };
 
-        // Create and send the user message
-        try {
-          const userMessage = await serverInstance.createMessage({
-            channelId,
-            authorId: userId,
-            content: body.content,
-            rawMessage: {
-              content: body.content,
-            },
-            sourceType: 'job_request',
-            metadata: {
-              jobId,
-              isJobMessage: true,
-              ...body.metadata,
-            },
-          });
+          // Validate required fields
+          if (
+            !message.id ||
+            !message.channel_id ||
+            !message.author_id ||
+            !message.content ||
+            !message.created_at
+          ) {
+            return;
+          }
 
-          job.userMessageId = userMessage.id;
-
-          logger.info(
-            `[Jobs API] Created user message ${userMessage.id} for job ${jobId}, emitting to bus`
-          );
-
-          // Emit to internal message bus for agent processing
-          internalMessageBus.emit('new_message', {
-            id: userMessage.id,
-            channel_id: channelId,
-            server_id: DEFAULT_SERVER_ID,
-            author_id: userId,
-            content: body.content,
-            created_at: new Date(userMessage.createdAt).getTime(),
-            source_type: 'job_request',
-            raw_message: { content: body.content },
-            metadata: {
-              jobId,
-              isJobMessage: true,
-              ...body.metadata,
-            },
-          });
-
-          // Setup listener for agent response
-          // Track if we've seen an action execution message and any agent message
-          let actionMessageReceived = false;
-          let firstAgentMessageReceived = false;
-
-          const responseHandler = async (data: unknown) => {
-            // Type guard for message structure
-            if (!data || typeof data !== 'object') return;
-
-            const message = data as {
-              id?: UUID;
-              channel_id?: UUID;
-              author_id?: UUID;
-              content?: string;
-              created_at?: number;
-              metadata?: Record<string, unknown>;
-            };
-
-            // Validate required fields
-            if (
-              !message.id ||
-              !message.channel_id ||
-              !message.author_id ||
-              !message.content ||
-              !message.created_at
-            ) {
+          // Check if this message is the agent's response to our job
+          if (
+            message.channel_id === channelId &&
+            message.author_id === agentId &&
+            message.id !== userMessage.id
+          ) {
+            const currentJob = jobs.get(jobId);
+            if (!currentJob || currentJob.status !== JobStatus.PROCESSING) {
               return;
             }
 
-            // Check if this message is the agent's response to our job
-            if (
-              message.channel_id === channelId &&
-              message.author_id === agentId &&
-              message.id !== userMessage.id
-            ) {
-              const currentJob = jobs.get(jobId);
-              if (!currentJob || currentJob.status !== JobStatus.PROCESSING) {
-                return;
-              }
+            // Check if this is an "Executing action" intermediate message
+            const isActionMessage = message.content.startsWith('Executing action:');
 
-              // Check if this is an "Executing action" intermediate message
-              const isActionMessage = message.content.startsWith('Executing action:');
-
-              if (isActionMessage) {
-                // This is an intermediate action message, keep waiting for the actual result
-                actionMessageReceived = true;
-                firstAgentMessageReceived = true;
-                logger.info(
-                  `[Jobs API] Job ${jobId} received action message, waiting for final result...`
-                );
-                return; // Don't mark as completed yet
-              }
-
-              // Complete the job only if:
-              // 1. This is the first non-action message and we haven't received an action message yet (direct response), OR
-              // 2. We previously received an action message and this is a non-action message (result after action)
-              const shouldComplete = !firstAgentMessageReceived || actionMessageReceived;
-
-              if (shouldComplete) {
-                const processingTime = Date.now() - currentJob.createdAt;
-
-                currentJob.status = JobStatus.COMPLETED;
-                currentJob.agentResponseId = message.id;
-                currentJob.result = {
-                  message: {
-                    id: message.id,
-                    content: message.content,
-                    authorId: message.author_id,
-                    createdAt: message.created_at,
-                    metadata: message.metadata,
-                  },
-                  processingTimeMs: processingTime,
-                };
-
-                // Update metrics
-                metrics.completedJobs++;
-                metrics.totalProcessingTimeMs += processingTime;
-
-                logger.info(
-                  `[Jobs API] Job ${jobId} completed with ${actionMessageReceived ? 'action result' : 'direct response'} ${message.id} (${processingTime}ms)`
-                );
-
-                // Remove listener after receiving final response
-                internalMessageBus.off('new_message', responseHandler);
-
-                // Clear the cleanup timeout since we're done
-                const cleanupTimeout = listenerCleanupTimeouts.get(jobId);
-                if (cleanupTimeout) {
-                  clearTimeout(cleanupTimeout);
-                  listenerCleanupTimeouts.delete(jobId);
-                }
-              } else {
-                // This is an intermediate non-action message, keep waiting
-                firstAgentMessageReceived = true;
-                logger.info(
-                  `[Jobs API] Job ${jobId} received intermediate message, continuing to wait for result...`
-                );
-              }
+            if (isActionMessage) {
+              // This is an intermediate action message, keep waiting for the actual result
+              actionMessageReceived = true;
+              firstAgentMessageReceived = true;
+              logger.info(
+                `[Jobs API] Job ${jobId} received action message, waiting for final result...`
+              );
+              return; // Don't mark as completed yet
             }
-          };
 
-          // Listen for agent response
-          internalMessageBus.on('new_message', responseHandler);
+            // Complete the job only if:
+            // 1. This is the first non-action message and we haven't received an action message yet (direct response), OR
+            // 2. We previously received an action message and this is a non-action message (result after action)
+            const shouldComplete = !firstAgentMessageReceived || actionMessageReceived;
 
-          // Set timeout to cleanup listener with better buffer
-          // Use constant max timeout to prevent CodeQL resource exhaustion alert
-          const cleanupTimeout = setTimeout(() => {
-            internalMessageBus.off('new_message', responseHandler);
-            listenerCleanupTimeouts.delete(jobId);
-          }, ABSOLUTE_MAX_LISTENER_TIMEOUT_MS);
+            if (shouldComplete) {
+              const processingTime = Date.now() - currentJob.createdAt;
 
-          listenerCleanupTimeouts.set(jobId, cleanupTimeout);
-        } catch (error) {
-          job.status = JobStatus.FAILED;
-          job.error = 'Failed to create user message';
-          metrics.failedJobs++;
-          logger.error(
-            `[Jobs API] Failed to create message for job ${jobId}:`,
-            error instanceof Error ? error.message : String(error)
-          );
-        }
+              currentJob.status = JobStatus.COMPLETED;
+              currentJob.agentResponseId = message.id;
+              currentJob.result = {
+                message: {
+                  id: message.id,
+                  content: message.content,
+                  authorId: message.author_id,
+                  createdAt: message.created_at,
+                  metadata: message.metadata,
+                },
+                processingTimeMs: processingTime,
+              };
 
-        const response: CreateJobResponse = {
-          jobId,
-          status: job.status,
-          createdAt: job.createdAt,
-          expiresAt: job.expiresAt,
+              // Update metrics
+              metrics.completedJobs++;
+              metrics.totalProcessingTimeMs += processingTime;
+
+              logger.info(
+                `[Jobs API] Job ${jobId} completed with ${actionMessageReceived ? 'action result' : 'direct response'} ${message.id} (${processingTime}ms)`
+              );
+
+              // Remove listener after receiving final response
+              internalMessageBus.off('new_message', responseHandler);
+
+              // Clear the cleanup timeout since we're done
+              const cleanupTimeout = listenerCleanupTimeouts.get(jobId);
+              if (cleanupTimeout) {
+                clearTimeout(cleanupTimeout);
+                listenerCleanupTimeouts.delete(jobId);
+              }
+            } else {
+              // This is an intermediate non-action message, keep waiting
+              firstAgentMessageReceived = true;
+              logger.info(
+                `[Jobs API] Job ${jobId} received intermediate message, continuing to wait for result...`
+              );
+            }
+          }
         };
 
-        res.status(201).json(response);
+        // Listen for agent response
+        internalMessageBus.on('new_message', responseHandler);
+
+        // Set timeout to cleanup listener with better buffer
+        // Use constant max timeout to prevent CodeQL resource exhaustion alert
+        const cleanupTimeout = setTimeout(() => {
+          internalMessageBus.off('new_message', responseHandler);
+          listenerCleanupTimeouts.delete(jobId);
+        }, ABSOLUTE_MAX_LISTENER_TIMEOUT_MS);
+
+        listenerCleanupTimeouts.set(jobId, cleanupTimeout);
       } catch (error) {
+        job.status = JobStatus.FAILED;
+        job.error = 'Failed to create user message';
+        metrics.failedJobs++;
         logger.error(
-          '[Jobs API] Error creating job:',
+          `[Jobs API] Failed to create message for job ${jobId}:`,
           error instanceof Error ? error.message : String(error)
         );
-        sendErrorResponse(res, 500, 'Failed to create job');
       }
+
+      const response: CreateJobResponse = {
+        jobId,
+        status: job.status,
+        createdAt: job.createdAt,
+        expiresAt: job.expiresAt,
+      };
+
+      res.status(201).json(response);
+    } catch (error) {
+      logger.error(
+        '[Jobs API] Error creating job:',
+        error instanceof Error ? error.message : String(error)
+      );
+      sendErrorResponse(res, 500, 'Failed to create job');
     }
-  );
+  });
 
   /**
    * Health check endpoint with enhanced metrics
