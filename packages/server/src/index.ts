@@ -607,6 +607,24 @@ export class AgentServer {
       // File uploads are now handled by individual routes using multer
       // No global file upload middleware needed
 
+      // Public health check endpoints (before authentication middleware)
+      // These endpoints are intentionally unauthenticated for load balancer health checks
+      this.app.get('/healthz', (_req: express.Request, res: express.Response) => {
+        res.json({ status: 'ok', timestamp: Date.now() });
+      });
+
+      this.app.get('/health', (_req: express.Request, res: express.Response) => {
+        const agents = this.elizaOS?.getAgents() || [];
+        const isHealthy = agents.length > 0;
+        res.status(isHealthy ? 200 : 503).json({
+          status: isHealthy ? 'healthy' : 'no_agents',
+          agentCount: agents.length,
+          timestamp: Date.now(),
+        });
+      });
+
+      logger.info('Public health check endpoints enabled: /healthz and /health');
+
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
       if (serverAuthToken) {
