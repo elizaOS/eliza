@@ -18,6 +18,7 @@ import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
 import type { TaskWorker } from './task';
+import { IKVStore } from './store';
 
 /**
  * Represents the core runtime environment for an agent.
@@ -39,7 +40,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;
-  stateCache: Map<string, State>;
+  stateCache?: IKVStore<State>;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -78,7 +79,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     callback?: HandlerCallback
   ): Promise<void>;
 
-  getActionResults(messageId: UUID): ActionResult[];
+  getActionResults(messageId: UUID): Promise<ActionResult[]>;
 
   evaluate(
     message: Memory,

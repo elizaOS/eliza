@@ -16,3 +16,4 @@ export * from './runtime';
 export * from './messaging';
 export * from './testing';
 export * from './settings';
+export * from './store';

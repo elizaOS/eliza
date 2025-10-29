@@ -20,7 +20,7 @@ export const mediaSchema = z
     text: z.string().optional().describe('Text content associated with the media'),
     contentType: z.nativeEnum(ContentType).optional().describe('Type of media content'),
   })
-  .loose()
+  .passthrough()
   .describe('Media attachment with URL and metadata');
 
 // Message content schema matching the Content interface
@@ -38,7 +38,10 @@ export const contentSchema = z
       .array(mediaSchema)
       .optional()
       .describe('Array of media attachments (images, videos, documents, etc.)'),
-    channelType: z.enum(ChannelType).optional().describe('Type of channel this content is for'),
+    channelType: z
+      .nativeEnum(ChannelType)
+      .optional()
+      .describe('Type of channel this content is for'),
   })
   .catchall(z.unknown()) // Allow additional dynamic properties per Content interface
   .describe('Content structure for messages in conversation examples');
@@ -106,7 +109,7 @@ export const styleSchema = z
 export const settingsSchema = z
   .record(
     z.string(),
-    z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.any())])
+    z.union([z.string(), z.boolean(), z.number(), z.object({}).passthrough(), z.array(z.any())])
   )
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');

@@ -1039,7 +1039,7 @@ export class DefaultMessageService implements IMessageService {
           );
 
           // Get cached action results from runtime
-          const cachedState = runtime.stateCache?.get(`${message.id}_action_results`);
+          const cachedState = await runtime.stateCache?.get(`${message.id}_action_results`);
           const actionResults = cachedState?.values?.actionResults || [];
           const result = actionResults.length > 0 ? actionResults[0] : null;
           const success = result?.success ?? false;
