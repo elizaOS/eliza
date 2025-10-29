@@ -88,6 +88,8 @@ import { useDeleteAgent } from '@/hooks/use-delete-agent';
 import { exportCharacterAsJson } from '@/lib/export-utils';
 moment.extend(relativeTime);
 
+// Fallback server ID used when no actual server ID is available from the API
+// This should only be used as a last resort - prefer passing the real serverId from props
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Helper function to convert action message to ToolPart format
