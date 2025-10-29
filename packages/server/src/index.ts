@@ -12,6 +12,7 @@ import {
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
 import http from 'node:http';
@@ -688,6 +689,53 @@ export class AgentServer {
 
       // File uploads are now handled by individual routes using multer
       // No global file upload middleware needed
+
+      // Public health check endpoints (before authentication middleware)
+      // These endpoints are intentionally unauthenticated for load balancer health checks
+
+      // Simple rate limiting for public health endpoints (max 100 requests per minute per IP)
+      const healthCheckRateLimiter = rateLimit({
+        windowMs: 60 * 1000, // 1 minute
+        max: 100, // limit each IP to 100 requests per windowMs
+        message: 'Too many health check requests from this IP, please try again later.',
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: (req) => {
+          // Skip rate limiting for internal/private IPs (Docker, Kubernetes)
+          const ip = req.ip || '';
+          return ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') ||
+                 ip.startsWith('172.') || ip.startsWith('192.168.');
+        },
+      });
+
+      // Lightweight health check - always returns 200 OK
+      this.app.get('/healthz', healthCheckRateLimiter, (_req: express.Request, res: express.Response) => {
+        res.json({
+          status: 'ok',
+          timestamp: new Date().toISOString()
+        });
+      });
+
+      // Comprehensive health check - returns 200 if healthy, 503 if no agents
+      // Response format matches /api/server/health for consistency
+      this.app.get('/health', healthCheckRateLimiter, (_req: express.Request, res: express.Response) => {
+        const agents = this.elizaOS?.getAgents() || [];
+        const isHealthy = agents.length > 0;
+
+        const healthcheck = {
+          status: isHealthy ? 'OK' : 'DEGRADED',
+          version: process.env.APP_VERSION || 'unknown',
+          timestamp: new Date().toISOString(),
+          dependencies: {
+            agents: isHealthy ? 'healthy' : 'no_agents',
+          },
+          agentCount: agents.length,
+        };
+
+        res.status(isHealthy ? 200 : 503).json(healthcheck);
+      });
+
+      logger.info('Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
 
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
