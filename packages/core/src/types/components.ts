@@ -61,6 +61,9 @@ export interface Action {
 
   /** Validation function */
   validate: Validator;
+
+  /** Allow extensions and custom options */
+  [key: string]: unknown;
 }
 
 /**
