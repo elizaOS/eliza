@@ -121,7 +121,6 @@ const CLEANUP_INTERVAL_MS =
 
 // Session storage
 const sessions = new Map<string, Session>();
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Agent-specific timeout configurations (cached from agent settings)
 const agentTimeoutConfigs = new Map<UUID, SessionTimeoutConfig>();
@@ -613,7 +612,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           id: channelId,
           name: `session-${sessionId}`,
           type: ChannelType.DM,
-          messageServerId: DEFAULT_SERVER_ID,
+          messageServerId: serverInstance.serverId,
           metadata: {
             sessionId,
             agentId: body.agentId,

@@ -22,11 +22,21 @@ import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
 import { apiKeyAuthMiddleware } from './middleware/index.js';
-import { messageBusConnectorPlugin, setGlobalElizaOS } from './services/message.js';
+import { messageBusConnectorPlugin, setGlobalElizaOS, setGlobalAgentServer } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
-import sqlPlugin, { createDatabaseAdapter, DatabaseMigrationService } from '@elizaos/plugin-sql';
+import sqlPlugin, {
+  createDatabaseAdapter,
+  DatabaseMigrationService,
+  installRLSFunctions,
+  getOrCreateRlsOwner,
+  setOwnerContext,
+  assignAgentToOwner,
+  applyRLSToNewTables,
+  uninstallRLS,
+} from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
 
 import internalMessageBus from './bus.js';
 import type {
@@ -166,6 +176,8 @@ export class AgentServer {
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
   public database!: DatabaseAdapter;
+  private rlsOwnerId?: UUID;
+  public serverId: UUID = DEFAULT_SERVER_ID;
 
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
@@ -224,6 +236,11 @@ export class AgentServer {
               logger.info(
                 `Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`
               );
+            }
+
+            // Assign agent to owner if RLS is enabled
+            if (this.rlsOwnerId) {
+              await assignAgentToOwner(this.database, runtime.agentId, this.rlsOwnerId);
             }
           } catch (error) {
             logger.error({ error }, `Failed to persist agent ${runtime.agentId} to database`);
@@ -357,6 +374,65 @@ export class AgentServer {
         );
       }
 
+      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
+
+      if (rlsEnabled) {
+        if (!config?.postgresUrl) {
+          logger.error('[RLS] ENABLE_RLS_ISOLATION requires PostgreSQL (not compatible with PGLite)');
+          throw new Error('RLS isolation requires PostgreSQL database');
+        }
+
+        if (!rlsOwnerIdString) {
+          logger.error('[RLS] ENABLE_RLS_ISOLATION requires RLS_OWNER_ID environment variable');
+          throw new Error('RLS_OWNER_ID environment variable is required when RLS is enabled');
+        }
+
+        // Convert RLS_OWNER_ID string to deterministic UUID
+        const owner_id = stringToUuid(rlsOwnerIdString);
+
+        logger.info('[INIT] Initializing RLS multi-tenant isolation...');
+        logger.info(`[RLS] Tenant ID: ${owner_id.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`);
+        logger.warn('[RLS] Ensure your PostgreSQL user is NOT a superuser!');
+        logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
+
+        try {
+          // Install RLS PostgreSQL functions
+          await installRLSFunctions(this.database);
+
+          // Get or create owner with the provided owner ID
+          await getOrCreateRlsOwner(this.database, owner_id);
+
+          // Store owner_id for agent assignment
+          this.rlsOwnerId = owner_id as UUID;
+
+          // Set RLS context for this server instance
+          await setOwnerContext(this.database, owner_id);
+
+          // Apply RLS to all tables (including plugin tables)
+          await applyRLSToNewTables(this.database);
+
+          logger.success('[INIT] RLS multi-tenant isolation initialized successfully');
+        } catch (rlsError) {
+          logger.error({ error: rlsError }, '[INIT] Failed to initialize RLS:');
+          throw new Error(
+            `RLS initialization failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
+          );
+        }
+      } else if (config?.postgresUrl) {
+        logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
+
+        // Clean up RLS if it was previously enabled
+        try {
+          logger.info('[INIT] Cleaning up RLS policies and functions...');
+          await uninstallRLS(this.database);
+          logger.success('[INIT] RLS cleanup completed');
+        } catch (cleanupError) {
+          // It's OK if cleanup fails (RLS might not have been installed)
+          logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
+        }
+      }
+
       // Add a small delay to ensure database is fully ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -381,6 +457,9 @@ export class AgentServer {
       // Set global ElizaOS instance for MessageBusService
       setGlobalElizaOS(this.elizaOS);
 
+      // Set global AgentServer instance for MessageBusService
+      setGlobalAgentServer(this);
+
       logger.success('[INIT] ElizaOS initialized');
 
       await this.initializeServer(config);
@@ -395,8 +474,16 @@ export class AgentServer {
 
   private async ensureDefaultServer(): Promise<void> {
     try {
-      // Check if the default server exists
-      logger.info('[AgentServer] Checking for default server...');
+      // When RLS is enabled, create a server per owner instead of a shared default server
+      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+      this.serverId = rlsEnabled && this.rlsOwnerId
+        ? (this.rlsOwnerId as UUID)
+        : '00000000-0000-0000-0000-000000000000';
+      const serverName = rlsEnabled && this.rlsOwnerId
+        ? `Server ${this.rlsOwnerId.substring(0, 8)}`
+        : 'Default Server';
+
+      logger.info(`[AgentServer] Checking for server ${this.serverId}...`);
       const servers = await (this.database as any).getMessageServers();
       logger.debug(`[AgentServer] Found ${servers.length} existing servers`);
 
@@ -405,43 +492,40 @@ export class AgentServer {
         logger.debug(`[AgentServer] Existing server: ID=${s.id}, Name=${s.name}`);
       });
 
-      const defaultServer = servers.find(
-        (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
-      );
+      const defaultServer = servers.find((s: any) => s.id === this.serverId);
 
       if (!defaultServer) {
-        logger.info(
-          '[AgentServer] Creating default server with UUID 00000000-0000-0000-0000-000000000000...'
-        );
+        logger.info(`[AgentServer] Creating server with UUID ${this.serverId}...`);
 
-        // Use raw SQL to ensure the server is created with the exact ID
+        // Use parameterized query to prevent SQL injection
         try {
-          await (this.database as any).db.execute(`
+          const db = (this.database as any).db;
+          await db.execute(sql`
             INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES ('00000000-0000-0000-0000-000000000000', 'Default Server', 'eliza_default', NOW(), NOW())
+            VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING
           `);
-          logger.success('[AgentServer] Default server created via raw SQL');
+          logger.success('[AgentServer] Server created via parameterized query');
 
-          // Immediately check if it was created
-          const checkResult = await (this.database as any).db.execute(
-            "SELECT id, name FROM message_servers WHERE id = '00000000-0000-0000-0000-000000000000'"
-          );
-          logger.debug('[AgentServer] Raw SQL check result:', checkResult);
+          // Immediately check if it was created with parameterized query
+          const checkResult = await db.execute(sql`
+            SELECT id, name FROM message_servers WHERE id = ${this.serverId}
+          `);
+          logger.debug('[AgentServer] Parameterized query check result:', checkResult);
         } catch (sqlError: any) {
           logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
 
           // Try creating with ORM as fallback
           try {
             const server = await (this.database as any).createMessageServer({
-              id: '00000000-0000-0000-0000-000000000000' as UUID,
-              name: 'Default Server',
+              id: this.serverId as UUID,
+              name: serverName,
               sourceType: 'eliza_default',
             });
-            logger.success('[AgentServer] Default server created via ORM with ID:', server.id);
+            logger.success('[AgentServer] Server created via ORM with ID:', server.id);
           } catch (ormError: any) {
             logger.error('[AgentServer] Both SQL and ORM creation failed:', ormError);
-            throw new Error(`Failed to create default server: ${ormError.message}`);
+            throw new Error(`Failed to create server: ${ormError.message}`);
           }
         }
 
@@ -452,16 +536,14 @@ export class AgentServer {
           logger.debug(`[AgentServer] Server after creation: ID=${s.id}, Name=${s.name}`);
         });
 
-        const verifyDefault = verifyServers.find(
-          (s: any) => s.id === '00000000-0000-0000-0000-000000000000'
-        );
+        const verifyDefault = verifyServers.find((s: any) => s.id === this.serverId);
         if (!verifyDefault) {
-          throw new Error(`Failed to create or verify default server with ID ${DEFAULT_SERVER_ID}`);
+          throw new Error(`Failed to create or verify server with ID ${this.serverId}`);
         } else {
-          logger.success('[AgentServer] Default server creation verified successfully');
+          logger.success('[AgentServer] Server creation verified successfully');
         }
       } else {
-        logger.info('[AgentServer] Default server already exists with ID:', defaultServer.id);
+        logger.info('[AgentServer] Server already exists with ID:', defaultServer.id);
       }
     } catch (error) {
       logger.error({ error }, '[AgentServer] Error ensuring default server:');
@@ -1179,9 +1261,9 @@ export class AgentServer {
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
 
-      await this.addAgentToServer(DEFAULT_SERVER_ID, runtime.agentId);
+      await this.addAgentToServer(this.serverId, runtime.agentId);
       logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${DEFAULT_SERVER_ID}`
+        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${this.serverId}`
       );
     } catch (error) {
       logger.error({ error }, 'Failed to register agent:');

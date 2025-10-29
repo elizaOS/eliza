@@ -1,14 +1,23 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool, type PoolClient } from 'pg';
+import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { logger } from '@elizaos/core';
 
 export class PostgresConnectionManager {
   private pool: Pool;
   private db: NodePgDatabase;
 
-  constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString });
-    this.db = drizzle(this.pool as any);
+  constructor(connectionString: string, rlsOwnerId?: string) {
+    // If RLS is enabled, set application_name to the owner_id
+    // This allows the RLS function current_owner_id() to read it
+    const poolConfig: PoolConfig = { connectionString };
+
+    if (rlsOwnerId) {
+      poolConfig.application_name = rlsOwnerId;
+      logger.debug(`[RLS] Pool configured with application_name: ${rlsOwnerId}`);
+    }
+
+    this.pool = new Pool(poolConfig);
+    this.db = drizzle(this.pool);
   }
 
   public getDatabase(): NodePgDatabase {

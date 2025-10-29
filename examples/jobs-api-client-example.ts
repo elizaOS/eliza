@@ -10,7 +10,7 @@ import { ElizaClient, JobStatus } from '@elizaos/api-client';
 // Initialize the client
 const client = ElizaClient.create({
     baseUrl: 'http://localhost:3000',
-    apiKey: process.env.ELIZA_API_KEY, // Optional
+    apiKey: process.env.ELIZA_SERVER_AUTH_TOKEN, // Optional
 });
 
 // Example user and agent IDs (replace with your actual IDs)
