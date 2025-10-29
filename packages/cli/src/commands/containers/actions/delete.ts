@@ -29,12 +29,12 @@ export async function deleteContainerAction(
   options: DeleteContainerOptions
 ) {
   try {
-    const apiKey = options.apiKey || process.env.ELIZA_API_KEY;
+    const apiKey = options.apiKey || process.env.ELIZA_SERVER_AUTH_TOKEN;
     const apiUrl = options.apiUrl || 'https://www.elizacloud.ai';
 
     if (!apiKey) {
       logger.error(
-        '❌ Error: API key is required. Use --api-key or set ELIZA_API_KEY environment variable.'
+        '❌ Error: API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable.'
       );
       process.exit(1);
     }
