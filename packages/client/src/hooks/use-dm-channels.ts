@@ -1,16 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
-
-// Create ElizaClient instance
-const elizaClient = createElizaClient();
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
 import { mapApiChannelToClient } from '@/lib/api-type-mappers';
 import clientLogger from '@/lib/logger';
 import { STALE_TIMES } from './use-query-hooks';
 import { getEntityId } from '@/lib/utils';
-import { useNavigate } from 'react-router-dom';
 
 /**
  * Hook to get or create a DM channel between current user and target user (agent)
@@ -67,7 +63,7 @@ export function useDmChannelsForAgent(
   const currentUserId = getEntityId();
 
   return useQuery<MessageChannel[]>({
-    queryKey: ['dmChannels', agentId, currentUserId], // This key will be invalidated by useCreateDmChannel
+    queryKey: ['dmChannels', agentId, currentUserId, serverId], // Include serverId in the key
     queryFn: async () => {
       if (!agentId) return [];
       clientLogger.info(
@@ -144,13 +140,21 @@ export function useCreateDmChannel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const currentUserId = getEntityId();
-  const navigate = useNavigate();
 
   return useMutation({
-    mutationFn: async ({ agentId, channelName }: { agentId: UUID; channelName: string }) => {
+    mutationFn: async ({
+      agentId,
+      channelName,
+      serverId = '00000000-0000-0000-0000-000000000000' as UUID
+    }: {
+      agentId: UUID;
+      channelName: string;
+      serverId?: UUID;
+    }) => {
       clientLogger.info('[useCreateDmChannel] Creating new distinct DM channel with agent:', {
         agentId,
         channelName,
+        serverId,
       });
 
       if (!channelName || !channelName.trim()) {
@@ -164,7 +168,7 @@ export function useCreateDmChannel() {
         participantIds: [currentUserId, agentId],
         metadata: {
           type: ChannelType.DM, // Set type to DM
-          server_id: '00000000-0000-0000-0000-000000000000' as UUID, // Use the default server
+          server_id: serverId, // Use the provided server ID
           isDm: true, // Mark it as a DM type conversation
           user1: currentUserId, // Explicitly store participants for filtering
           user2: agentId,
@@ -182,7 +186,8 @@ export function useCreateDmChannel() {
         description: `Conversation "${data.name}" created.`,
       });
       // Invalidate queries to refresh the DM channel list for this agent
-      queryClient.invalidateQueries({ queryKey: ['dmChannels', variables.agentId, currentUserId] });
+      // Include serverId in the invalidation to match the query key
+      queryClient.invalidateQueries({ queryKey: ['dmChannels', variables.agentId, currentUserId, variables.serverId] });
       // Also invalidate general channels list if it might show DMs (though less likely)
       queryClient.invalidateQueries({ queryKey: ['channels'] });
     },
