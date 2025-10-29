@@ -921,6 +921,11 @@ export class AgentRuntime implements IAgentRuntime {
             return [];
           };
 
+          // update stateCache with accumulated values
+          if (message.id) {
+            await this.stateCache?.set(message.id, accumulatedState);
+          }
+
           // Execute action with context
           const result = await action.handler(
             this,
