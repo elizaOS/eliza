@@ -1,7 +1,7 @@
 import ChatComponent from '@/components/chat';
 import { Button } from '@/components/ui/button';
 import { useAgentManagement } from '@/hooks/use-agent-management';
-import { useAgent } from '@/hooks/use-query-hooks';
+import { useAgent, useServers } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import {
   type Agent,
@@ -33,6 +33,10 @@ export default function AgentRoute() {
 
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(agentId);
   const { startAgent, isAgentStarting } = useAgentManagement();
+
+  // Get the server ID to pass to Chat component
+  const { data: serversData } = useServers();
+  const serverId = serversData?.data?.servers?.[0]?.id;
 
   const agentFromHook: Agent | undefined = agentDataResponse?.data
     ? ({
@@ -122,6 +126,7 @@ export default function AgentRoute() {
       key={`${agentId}-${channelId || 'no-dm-channel'}`}
       chatType={ChannelType.DM}
       contextId={agentId}
+      serverId={serverId}
       initialDmChannelId={channelId}
     />
   );
