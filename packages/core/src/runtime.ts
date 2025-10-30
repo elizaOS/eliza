@@ -422,6 +422,39 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(errorMsg);
       }
 
+      // Merge DB-persisted settings back into runtime character
+      // This ensures settings from previous runs are available
+      if (existingAgent.settings) {
+        this.character.settings = {
+          ...existingAgent.settings,
+          ...this.character.settings,  // Character file overrides DB
+        };
+
+        // Merge secrets from both character.secrets and settings.secrets
+        // getSetting() checks character.secrets first, so we need to merge there too
+        const dbSecrets = existingAgent.settings.secrets && typeof existingAgent.settings.secrets === 'object'
+          ? existingAgent.settings.secrets
+          : {};
+        const settingsSecrets = this.character.settings.secrets && typeof this.character.settings.secrets === 'object'
+          ? this.character.settings.secrets
+          : {};
+        const characterSecrets = this.character.secrets && typeof this.character.secrets === 'object'
+          ? this.character.secrets
+          : {};
+
+        // Merge into both locations that getSetting() checks
+        const mergedSecrets = {
+          ...dbSecrets,
+          ...characterSecrets,
+          ...settingsSecrets,  // settings.secrets has priority
+        };
+
+        if (Object.keys(mergedSecrets).length > 0) {
+          this.character.secrets = mergedSecrets;
+          this.character.settings.secrets = mergedSecrets;
+        }
+      }
+
       // No need to transform agent's own ID
       let agentEntity = await this.getEntityById(this.agentId);
 
@@ -2362,9 +2395,35 @@ export class AgentRuntime implements IAgentRuntime {
     const existingAgent = await this.adapter.getAgent(agent.id);
 
     if (existingAgent) {
-      // Update the agent on restart with the latest character configuration
+      // Merge DB-persisted settings with character configuration
+      // Priority: DB (persisted runtime settings) < character.json (file overrides)
+      const mergedSettings = {
+        ...existingAgent.settings,  // Keep all DB-persisted settings
+        ...agent.settings,          // Override only keys present in character.json
+      };
+
+      // Deep merge secrets to preserve runtime-generated secrets
+      const mergedSecrets =
+        typeof existingAgent.settings?.secrets === 'object' ||
+        typeof agent.settings?.secrets === 'object'
+          ? {
+              ...(typeof existingAgent.settings?.secrets === 'object'
+                  ? existingAgent.settings.secrets
+                  : {}),
+              ...(typeof agent.settings?.secrets === 'object'
+                  ? agent.settings.secrets
+                  : {}),
+            }
+          : undefined;
+
+      if (mergedSecrets) {
+        mergedSettings.secrets = mergedSecrets;
+      }
+
       const updatedAgent = {
-        ...agent,
+        ...existingAgent,           // Keep all DB-persisted data
+        ...agent,                   // Override with character.json values
+        settings: mergedSettings,   // Use intelligently merged settings
         id: agent.id,
         updatedAt: Date.now(),
       };
@@ -2376,7 +2435,7 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(`Failed to retrieve agent after update: ${agent.id}`);
       }
 
-      this.logger.debug(`Updated existing agent ${agent.id} on restart`);
+      this.logger.debug(`Updated existing agent ${agent.id} on restart (merged ${Object.keys(existingAgent.settings || {}).length} DB settings with ${Object.keys(agent.settings || {}).length} character settings)`);
       return refreshedAgent;
     }
 
