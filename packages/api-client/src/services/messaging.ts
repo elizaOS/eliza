@@ -247,6 +247,15 @@ export class MessagingService extends BaseApiClient {
   }
 
   /**
+   * Get current server's ID
+   * This returns the serverId of the currently running server instance.
+   * Clients should use this serverId when creating channels and messages.
+   */
+  async getCurrentServer(): Promise<{ serverId: UUID }> {
+    return this.get<{ serverId: UUID }>('/api/messaging/server/current');
+  }
+
+  /**
    * List all message servers
    */
   async listServers(): Promise<{ servers: MessageServer[] }> {

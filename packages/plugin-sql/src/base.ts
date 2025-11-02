@@ -370,6 +370,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           // Convert numeric timestamps to Date objects for database storage
           // The Agent interface uses numbers, but the database schema expects Date objects
           const updateData: any = { ...agent };
+
           if (updateData.createdAt) {
             if (typeof updateData.createdAt === 'number') {
               updateData.createdAt = new Date(updateData.createdAt);
@@ -3206,15 +3207,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         WHERE server_id = ${rlsServerId}
         LIMIT 1
       `);
-      return results.length > 0
+
+      const rows = results.rows || results;
+      return rows.length > 0
         ? {
-            id: results[0].id as UUID,
-            name: results[0].name,
-            sourceType: results[0].source_type,
-            sourceId: results[0].source_id || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: new Date(results[0].created_at),
-            updatedAt: new Date(results[0].updated_at),
+            id: rows[0].id as UUID,
+            name: rows[0].name,
+            sourceType: rows[0].source_type,
+            sourceId: rows[0].source_id || undefined,
+            metadata: rows[0].metadata || undefined,
+            createdAt: new Date(rows[0].created_at),
+            updatedAt: new Date(rows[0].updated_at),
           }
         : null;
     });

@@ -9,6 +9,25 @@ import type { AgentServer } from '../../index';
 export function createServersRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
+  // GET /server/current - Get current server's ID (for this running instance)
+  // This is the serverId that clients should use when creating channels/messages
+  (router as any).get('/server/current', async (_req: express.Request, res: express.Response) => {
+    try {
+      res.json({
+        success: true,
+        data: {
+          serverId: serverInstance.serverId,
+        },
+      });
+    } catch (error) {
+      logger.error(
+        '[Messages Router /server/current] Error fetching current server:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({ success: false, error: 'Failed to fetch current server' });
+    }
+  });
+
   // GET /central-servers
   (router as any).get('/central-servers', async (_req: express.Request, res: express.Response) => {
     try {

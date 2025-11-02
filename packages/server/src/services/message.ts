@@ -402,7 +402,9 @@ export class MessageBusService extends Service {
   }
 
   private async ensureAuthorEntityExists(message: MessageServiceMessage): Promise<UUID> {
-    const agentAuthorEntityId = createUniqueUuid(this.runtime, message.author_id);
+    // Use the author_id directly as the entity ID to ensure consistency
+    // across different sources (socketio, client_chat, etc.)
+    const agentAuthorEntityId = message.author_id as UUID;
 
     const authorEntity = await this.runtime.getEntityById(agentAuthorEntityId);
     if (!authorEntity) {
@@ -411,7 +413,6 @@ export class MessageBusService extends Service {
         names: [message.author_display_name || `User-${message.author_id.substring(0, 8)}`],
         agentId: this.runtime.agentId,
         metadata: {
-          author_id: message.author_id,
           source: message.source_type,
         },
       });

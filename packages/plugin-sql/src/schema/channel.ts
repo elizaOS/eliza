@@ -4,7 +4,7 @@ import { messageServerTable } from './messageServer';
 
 export const channelTable = pgTable('channels', {
   id: text('id').primaryKey(), // UUID stored as text
-  messageServerId: uuid('server_id')
+  messageServerId: uuid('message_server_id')
     .notNull()
     .references(() => messageServerTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -13,6 +13,7 @@ export const channelTable = pgTable('channels', {
   sourceId: text('source_id'),
   topic: text('topic'),
   metadata: jsonb('metadata'),
+  server_id: uuid('server_id'),
   createdAt: timestamp('created_at', { mode: 'date' })
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),

@@ -279,6 +279,12 @@ export async function assignAgentToServer(
   agentId: string,
   serverId: string
 ): Promise<void> {
+  // Validate inputs
+  if (!agentId || !serverId) {
+    logger.warn(`[RLS] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`);
+    return;
+  }
+
   const db = adapter.db;
 
   // Check if agent exists using Drizzle

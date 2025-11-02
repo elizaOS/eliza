@@ -78,6 +78,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
+import { useCurrentServer } from '@/hooks/use-current-server';
 import { useSidebarState } from '@/hooks/use-sidebar-state';
 import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -307,6 +308,9 @@ export default function Chat({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Fetch current server ID from backend if not provided as prop
+  const { data: currentServerId, isLoading: isLoadingServerId } = useCurrentServer();
+
   // Use persistent sidebar state
   const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
   const {
@@ -378,10 +382,16 @@ export default function Chat({
     targetAgentData || ({} as Agent) // Provide safe default if undefined
   );
 
-  // Use the new hooks for DM channel management
+  // Calculate finalServerIdForHooks FIRST, before using it in hooks below
+  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
+    // Priority: serverId prop > fetched currentServerId > fallback to DEFAULT_SERVER_ID
+    return serverId || currentServerId || DEFAULT_SERVER_ID;
+  }, [serverId, currentServerId]);
+
+  // Use the new hooks for DM channel management - NOW using finalServerIdForHooks
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined,
-    serverId || DEFAULT_SERVER_ID
+    finalServerIdForHooks
   );
 
   const createDmChannelMutation = useCreateDmChannel();
@@ -405,11 +415,6 @@ export default function Chat({
     chatType === ChannelType.DM
       ? chatState.currentDmChannelId || undefined
       : contextId || undefined;
-
-  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
-    // Use the actual serverId from props if available, otherwise fallback to DEFAULT_SERVER_ID
-    return serverId || DEFAULT_SERVER_ID;
-  }, [serverId]);
 
   const { data: latestChannelMessages = [], isLoading: isLoadingLatestChannelMessages } =
     useChannelMessages(latestChannel?.id, finalServerIdForHooks);
@@ -523,12 +528,15 @@ export default function Chat({
         // Mark as auto-created so the effect doesn't attempt a duplicate.
         autoCreatedDmRef.current = true;
 
-        await createDmChannelMutation.mutateAsync({
+        clientLogger.info('[Chat] About to create DM channel with serverId:', finalServerIdForHooks);
+        const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
           serverId: finalServerIdForHooks,
         });
-        updateChatState({ input: '' });
+
+        // Update the current DM channel ID to the newly created channel
+        updateChatState({ currentDmChannelId: newChannel.id, input: '' });
         setTimeout(() => safeScrollToBottom(), 150);
       } catch (error) {
         clientLogger.error('[Chat] Error creating new distinct DM channel:', error);
@@ -542,7 +550,7 @@ export default function Chat({
         });
       }
     },
-    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel]
+    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel, finalServerIdForHooks, targetAgentData, toast]
   );
 
   // Handle DM channel selection
@@ -739,11 +747,18 @@ export default function Chat({
     if (chatType === ChannelType.DM && targetAgentData?.id) {
       // First, check if current channel belongs to the current agent
       // If not, clear it immediately (handles agent switching)
+      // BUT: Don't clear if we're currently creating a DM or if the mutation is pending
+      // because the new channel won't be in agentDmChannels yet!
       const currentChannelBelongsToAgent =
         !chatState.currentDmChannelId ||
         agentDmChannels.some((c) => c.id === chatState.currentDmChannelId);
 
-      if (!currentChannelBelongsToAgent && !isLoadingAgentDmChannels) {
+      if (
+        !currentChannelBelongsToAgent &&
+        !isLoadingAgentDmChannels &&
+        !chatState.isCreatingDM &&
+        !createDmChannelMutation.isPending
+      ) {
         clientLogger.info(
           `[Chat] Current DM channel ${chatState.currentDmChannelId} doesn't belong to agent ${targetAgentData.id}, clearing it`
         );
@@ -753,6 +768,7 @@ export default function Chat({
 
       if (
         !isLoadingAgentDmChannels &&
+        !isLoadingServerId &&
         agentDmChannels.length === 0 &&
         !initialDmChannelId &&
         !autoCreatedDmRef.current &&
@@ -773,6 +789,7 @@ export default function Chat({
     targetAgentData?.id,
     agentDmChannels,
     isLoadingAgentDmChannels,
+    isLoadingServerId,
     createDmChannelMutation.isPending,
     chatState.isCreatingDM,
     chatState.currentDmChannelId,
