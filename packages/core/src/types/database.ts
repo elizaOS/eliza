@@ -90,6 +90,14 @@ export interface IDatabaseAdapter {
 
   getConnection(): Promise<any>;
 
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * @param entityId - The entity ID to set as context
+   * @param callback - The callback to execute within the entity context
+   * @returns The result of the callback
+   */
+  withEntityContext?<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T>;
+
   getAgent(agentId: UUID): Promise<Agent | null>;
 
   /** Get all agents */

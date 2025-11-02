@@ -404,7 +404,7 @@ export class AgentServer {
         logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
 
         try {
-          // Install RLS PostgreSQL functions
+          // Install RLS PostgreSQL functions (includes Entity RLS)
           await installRLSFunctions(this.database);
 
           // Get or create owner with the provided owner ID
@@ -416,10 +416,11 @@ export class AgentServer {
           // Set RLS context for this server instance
           await setOwnerContext(this.database, owner_id);
 
-          // Apply RLS to all tables (including plugin tables)
+          // Apply RLS to all tables (Owner RLS policies applied here, Entity RLS already applied during installRLSFunctions)
           await applyRLSToNewTables(this.database);
 
           logger.success('[INIT] RLS multi-tenant isolation initialized successfully');
+          logger.success('[INIT] Entity RLS initialized - entities isolated per DM/group/channel');
         } catch (rlsError) {
           logger.error({ error: rlsError }, '[INIT] Failed to initialize RLS:');
           throw new Error(

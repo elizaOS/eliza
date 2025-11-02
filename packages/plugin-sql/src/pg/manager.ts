@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
-import { logger } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
+import { logger, type UUID } from '@elizaos/core';
 
 export class PostgresConnectionManager {
   private pool: Pool;
@@ -48,6 +49,45 @@ export class PostgresConnectionManager {
         client.release();
       }
     }
+  }
+
+  /**
+   * Execute a query with entity context for Entity RLS.
+   * Sets app.entity_id before executing the callback.
+   *
+   * Owner RLS context (if enabled) is already set via Pool's application_name.
+   *
+   * If Entity RLS is not installed (ENABLE_RLS_ISOLATION=false), this method
+   * gracefully degrades to executing the callback without setting entity context.
+   *
+   * @param entityId - The entity UUID to set as context (or null for server operations)
+   * @param callback - The database operations to execute with the entity context
+   * @returns The result of the callback
+   */
+  public async withEntityContext<T>(
+    entityId: UUID | null,
+    callback: (tx: NodePgDatabase) => Promise<T>
+  ): Promise<T> {
+    return await this.db.transaction(async (tx) => {
+      // Set entity context for this transaction (if Entity RLS is enabled)
+      if (entityId) {
+        try {
+          // Try to set entity context - will fail gracefully if Entity RLS not installed
+          await tx.execute(sql`SET LOCAL app.entity_id = ${entityId}`);
+          logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
+        } catch (error) {
+          // Entity RLS not installed - continue without entity context (legacy mode)
+          logger.debug(
+            '[Entity Context] Entity RLS not enabled, executing without entity context (legacy mode)'
+          );
+        }
+      } else {
+        logger.debug('[Entity Context] No entity context set (server operation)');
+      }
+
+      // Execute the callback with the transaction
+      return await callback(tx);
+    });
   }
 
   /**

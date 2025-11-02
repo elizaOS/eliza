@@ -163,6 +163,9 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   `);
 
   logger.info('[RLS] PostgreSQL functions installed');
+
+  // Install Entity RLS functions as well (part of unified RLS system)
+  await installEntityRLS(adapter);
 }
 
 /**
@@ -286,6 +289,13 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       '[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...'
     );
 
+    // First, uninstall Entity RLS (depends on Owner RLS)
+    try {
+      await uninstallEntityRLS(adapter);
+    } catch (entityRlsError) {
+      logger.debug('[RLS] Entity RLS cleanup skipped (not installed or already cleaned)');
+    }
+
     // Create a temporary stored procedure to safely drop policies and disable RLS
     // Using format() with %I ensures proper identifier quoting and prevents SQL injection
     await db.execute(sql`
@@ -362,6 +372,283 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     logger.success('[RLS] RLS disabled successfully (owner_id columns preserved)');
   } catch (error) {
     logger.error('[RLS] Failed to disable RLS:', String(error));
+    throw error;
+  }
+}
+
+// ============================================================================
+// ENTITY RLS
+// ============================================================================
+
+/**
+ * Install Entity RLS functions for DM privacy isolation
+ * This provides database-level privacy between different entities (Discord/Telegram/Web UI users)
+ * talking to agents, independent of JWT authentication.
+ */
+export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
+  const db = adapter.db;
+
+  logger.info('[Entity RLS] Installing entity RLS functions and policies...');
+
+  // 1. Create current_entity_id() function - reads from app.entity_id session variable
+  await db.execute(sql`
+    CREATE OR REPLACE FUNCTION current_entity_id()
+    RETURNS UUID AS $$
+    DECLARE
+      entity_id_text TEXT;
+    BEGIN
+      -- Read from transaction-local variable
+      entity_id_text := NULLIF(current_setting('app.entity_id', TRUE), '');
+
+      IF entity_id_text IS NULL OR entity_id_text = '' THEN
+        RETURN NULL;
+      END IF;
+
+      BEGIN
+        RETURN entity_id_text::UUID;
+      EXCEPTION WHEN OTHERS THEN
+        RETURN NULL;
+      END;
+    END;
+    $$ LANGUAGE plpgsql STABLE;
+  `);
+
+  logger.info('[Entity RLS] Created current_entity_id() function');
+
+  // 2. Create add_entity_isolation() function - applies entity RLS to a single table
+  await db.execute(sql`
+    CREATE OR REPLACE FUNCTION add_entity_isolation(
+      schema_name text,
+      table_name text
+    ) RETURNS void AS $$
+    DECLARE
+      full_table_name text;
+      has_entity_id boolean;
+      has_author_id boolean;
+      has_channel_id boolean;
+      has_room_id boolean;
+      entity_column_name text;
+      room_column_name text;
+    BEGIN
+      full_table_name := schema_name || '.' || table_name;
+
+      -- Check which columns exist
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE information_schema.columns.table_schema = schema_name
+          AND information_schema.columns.table_name = add_entity_isolation.table_name
+          AND information_schema.columns.column_name = 'entity_id'
+      ) INTO has_entity_id;
+
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE information_schema.columns.table_schema = schema_name
+          AND information_schema.columns.table_name = add_entity_isolation.table_name
+          AND information_schema.columns.column_name = 'author_id'
+      ) INTO has_author_id;
+
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE information_schema.columns.table_schema = schema_name
+          AND information_schema.columns.table_name = add_entity_isolation.table_name
+          AND information_schema.columns.column_name = 'channel_id'
+      ) INTO has_channel_id;
+
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE information_schema.columns.table_schema = schema_name
+          AND information_schema.columns.table_name = add_entity_isolation.table_name
+          AND information_schema.columns.column_name = 'room_id'
+      ) INTO has_room_id;
+
+      -- Skip if no entity-related columns
+      IF NOT (has_entity_id OR has_author_id OR has_channel_id OR has_room_id) THEN
+        RAISE NOTICE '[Entity RLS] Skipping %.%: no entity columns found', schema_name, table_name;
+        RETURN;
+      END IF;
+
+      -- Determine which column to use for entity filtering
+      -- Priority: room_id/channel_id (shared access via participants) > entity_id/author_id (direct access)
+      IF has_room_id THEN
+        room_column_name := 'room_id';
+        entity_column_name := NULL;
+      ELSIF has_channel_id THEN
+        room_column_name := 'channel_id';
+        entity_column_name := NULL;
+      ELSIF has_entity_id THEN
+        entity_column_name := 'entity_id';
+        room_column_name := NULL;
+      ELSIF has_author_id THEN
+        entity_column_name := 'author_id';
+        room_column_name := NULL;
+      ELSE
+        entity_column_name := NULL;
+        room_column_name := NULL;
+      END IF;
+
+      -- Enable RLS on the table
+      EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
+      EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
+
+      -- Drop existing entity policies if present
+      EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
+
+      -- CASE 1: Table has room_id or channel_id (shared access via participants)
+      IF room_column_name IS NOT NULL THEN
+        EXECUTE format('
+          CREATE POLICY entity_isolation_policy ON %I.%I
+          USING (
+            current_entity_id() IS NULL
+            OR %I IN (
+              SELECT channel_id
+              FROM participants
+              WHERE entity_id = current_entity_id()
+            )
+          )
+          WITH CHECK (
+            current_entity_id() IS NULL
+            OR %I IN (
+              SELECT channel_id
+              FROM participants
+              WHERE entity_id = current_entity_id()
+            )
+          )
+        ', schema_name, table_name, room_column_name, room_column_name);
+
+        RAISE NOTICE '[Entity RLS] Applied to %.% (via % → participants)', schema_name, table_name, room_column_name;
+
+      -- CASE 2: Table has direct entity_id or author_id column
+      ELSIF entity_column_name IS NOT NULL THEN
+        EXECUTE format('
+          CREATE POLICY entity_isolation_policy ON %I.%I
+          USING (
+            current_entity_id() IS NULL
+            OR %I = current_entity_id()
+          )
+          WITH CHECK (
+            current_entity_id() IS NULL
+            OR %I = current_entity_id()
+          )
+        ', schema_name, table_name, entity_column_name, entity_column_name);
+
+        RAISE NOTICE '[Entity RLS] Applied to %.% (direct column: %)', schema_name, table_name, entity_column_name;
+      END IF;
+
+      -- Create indexes for efficient entity filtering
+      IF room_column_name IS NOT NULL THEN
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_room ON %I.%I(%I)',
+          table_name, schema_name, table_name, room_column_name);
+      END IF;
+
+      IF entity_column_name IS NOT NULL THEN
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_entity ON %I.%I(%I)',
+          table_name, schema_name, table_name, entity_column_name);
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  logger.info('[Entity RLS] Created add_entity_isolation() function');
+
+  // 3. Create apply_entity_rls_to_all_tables() function - applies to all eligible tables
+  await db.execute(sql`
+    CREATE OR REPLACE FUNCTION apply_entity_rls_to_all_tables() RETURNS void AS $$
+    DECLARE
+      tbl record;
+    BEGIN
+      FOR tbl IN
+        SELECT schemaname, tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+          AND tablename NOT IN (
+            'owners',               -- Owner RLS table
+            'users',                -- Authentication table (no entity isolation needed)
+            'entity_mappings',      -- Mapping table (no entity isolation needed)
+            'drizzle_migrations',   -- Migration tracking
+            '__drizzle_migrations', -- Migration tracking
+            'agents',               -- Agents are not entity-specific
+            'server_agents'         -- Junction table
+          )
+      LOOP
+        BEGIN
+          PERFORM add_entity_isolation(tbl.schemaname, tbl.tablename);
+        EXCEPTION WHEN OTHERS THEN
+          RAISE WARNING '[Entity RLS] Failed to apply to %.%: %', tbl.schemaname, tbl.tablename, SQLERRM;
+        END;
+      END LOOP;
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+
+  logger.info('[Entity RLS] Created apply_entity_rls_to_all_tables() function');
+
+  // 4. Apply Entity RLS to all eligible tables automatically
+  try {
+    await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
+    logger.info('[Entity RLS] Applied entity RLS to all eligible tables');
+  } catch (error) {
+    logger.warn('[Entity RLS] Failed to apply entity RLS to some tables:', String(error));
+  }
+
+  logger.info('[Entity RLS] Entity RLS functions installed and applied successfully');
+}
+
+/**
+ * Apply Entity RLS policies to all eligible tables
+ * Call this after installEntityRLS() to activate the policies
+ */
+export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Promise<void> {
+  const db = adapter.db;
+
+  try {
+    await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
+    logger.info('[Entity RLS] Applied entity RLS to all eligible tables');
+  } catch (error) {
+    logger.warn('[Entity RLS] Failed to apply entity RLS to some tables:', String(error));
+  }
+}
+
+/**
+ * Remove Entity RLS (for rollback or testing)
+ * Drops entity RLS functions and policies but keeps owner RLS intact
+ */
+export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
+  const db = adapter.db;
+
+  logger.info('[Entity RLS] Removing entity RLS policies and functions...');
+
+  try {
+    // First, drop all entity_isolation_policy policies from all tables
+    const tablesResult = await db.execute(sql`
+      SELECT schemaname, tablename
+      FROM pg_tables
+      WHERE schemaname = 'public'
+        AND tablename NOT IN ('drizzle_migrations', '__drizzle_migrations')
+    `);
+
+    for (const row of tablesResult.rows || []) {
+      const schemaName = row.schemaname;
+      const tableName = row.tablename;
+
+      try {
+        // Drop entity_isolation_policy if it exists
+        await db.execute(
+          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON ${schemaName}.${tableName}`)
+        );
+        logger.debug(`[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`);
+      } catch (error) {
+        logger.debug(`[Entity RLS] No entity policy on ${schemaName}.${tableName}`);
+      }
+    }
+
+    // Drop the apply function (CASCADE will drop dependencies)
+    await db.execute(sql`DROP FUNCTION IF EXISTS apply_entity_rls_to_all_tables() CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS add_entity_isolation(text, text) CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS current_entity_id() CASCADE`);
+
+    logger.info('[Entity RLS] Entity RLS functions and policies removed successfully');
+  } catch (error) {
+    logger.error('[Entity RLS] Failed to remove entity RLS:', String(error));
     throw error;
   }
 }

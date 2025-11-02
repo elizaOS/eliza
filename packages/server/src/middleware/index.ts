@@ -6,6 +6,9 @@
 // Authentication middleware
 export { apiKeyAuthMiddleware } from './auth';
 
+// Entity context middleware
+export { entityContextMiddleware, type EntityContextRequest } from './entity-context';
+
 // Security middleware
 export { securityMiddleware } from './security';
 
