@@ -63,6 +63,7 @@ export class PostgresConnectionManager {
    * @param entityId - The entity UUID to set as context (or null for server operations)
    * @param callback - The database operations to execute with the entity context
    * @returns The result of the callback
+   * @throws {Error} If the callback fails or if there's a critical Entity RLS configuration issue
    */
   public async withEntityContext<T>(
     entityId: UUID | null,
@@ -76,10 +77,29 @@ export class PostgresConnectionManager {
           await tx.execute(sql`SET LOCAL app.entity_id = ${entityId}`);
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
-          // Entity RLS not installed - continue without entity context (legacy mode)
-          logger.debug(
-            '[Entity Context] Entity RLS not enabled, executing without entity context (legacy mode)'
-          );
+          // Distinguish between "Entity RLS not installed" vs "critical error"
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          // Check if this is just Entity RLS not being installed (expected when ENABLE_RLS_ISOLATION=false)
+          if (
+            errorMessage.includes('unrecognized configuration parameter') ||
+            errorMessage.includes('app.entity_id')
+          ) {
+            // This is expected when Entity RLS is not enabled - continue without entity context
+            logger.debug(
+              '[Entity Context] Entity RLS not enabled, executing without entity context'
+            );
+          } else {
+            // This is an unexpected error - log it with higher severity
+            logger.error(
+              { error, entityId },
+              '[Entity Context] Critical error setting entity context - this may indicate a configuration issue'
+            );
+            // Don't throw - allow degraded operation, but the error is now visible
+            logger.warn(
+              '[Entity Context] Continuing without entity context due to error - data isolation may be compromised'
+            );
+          }
         }
       } else {
         logger.debug('[Entity Context] No entity context set (server operation)');

@@ -4,21 +4,78 @@ import { serverTable } from './schema/server';
 import { agentTable } from './schema/agent';
 
 /**
- * PostgreSQL Row-Level Security (RLS) for Multi-Tenant Isolation
+ * PostgreSQL Row-Level Security (RLS) for Multi-Server and Entity Isolation
  *
- * REQUIREMENT:
- * - RLS policies DO NOT apply to PostgreSQL superuser accounts.
+ * This module provides two layers of database-level security:
+ *
+ * 1. **Server RLS** - Multi-server isolation
+ *    - Isolates data between different ElizaOS server instances
+ *    - Uses `server_id` column added dynamically to all tables
+ *    - Server context set via PostgreSQL `application_name` connection parameter
+ *    - Prevents data leakage between different deployments/environments
+ *
+ * 2. **Entity RLS** - User/agent-level privacy isolation
+ *    - Isolates data between different users (Clients (plugins/API) users)
+ *    - Uses `entity_id`, `author_id`, or joins via `participants` table
+ *    - Entity context set via `app.entity_id` transaction-local variable
+ *    - Provides DM privacy and multi-user isolation within a server
+ *
+ * CRITICAL SECURITY REQUIREMENTS:
+ * - RLS policies DO NOT apply to PostgreSQL superuser accounts
  * - Use a REGULAR (non-superuser) database user
  * - Grant only necessary permissions (CREATE, SELECT, INSERT, UPDATE, DELETE)
  * - NEVER use the 'postgres' superuser or any superuser account
+ * - Superusers bypass ALL RLS policies by design, defeating the isolation mechanism
  *
- * Superusers bypass ALL RLS policies by design, which would completely
- * defeat the multi-tenant isolation mechanism.
+ * ARCHITECTURE:
+ * - Server RLS: Uses PostgreSQL `application_name` (set at connection pool level)
+ * - Entity RLS: Uses `SET LOCAL app.entity_id` (set per transaction)
+ * - Policies use FORCE ROW LEVEL SECURITY to enforce even for table owners
+ * - Automatic index creation for performance (`server_id`, `entity_id`, `room_id`)
+ *
+ * @module rls
  */
 
 /**
- * Install PostgreSQL functions required for RLS
- * These are stored procedures that must be created with raw SQL
+ * Install PostgreSQL functions required for Server RLS and Entity RLS
+ *
+ * This function creates all necessary PostgreSQL stored procedures for both
+ * Server RLS (multi-server isolation) and Entity RLS (user privacy isolation).
+ *
+ * **Server RLS Functions Created:**
+ * - `current_server_id()` - Returns server UUID from `application_name`
+ * - `add_server_isolation(schema, table)` - Adds Server RLS to a single table
+ * - `apply_rls_to_all_tables()` - Applies Server RLS to all eligible tables
+ *
+ * **Entity RLS Functions Created:**
+ * - `current_entity_id()` - Returns entity UUID from `app.entity_id` session variable
+ * - `add_entity_isolation(schema, table)` - Adds Entity RLS to a single table
+ * - `apply_entity_rls_to_all_tables()` - Applies Entity RLS to all eligible tables
+ *
+ * **Security Model:**
+ * - Server RLS: Isolation between different ElizaOS instances (environments/deployments)
+ * - Entity RLS: Isolation between different users within a server instance
+ * - Both layers stack - a user can only see data from their server AND their accessible entities
+ *
+ * **Important Notes:**
+ * - Must be called before `applyRLSToNewTables()` or `applyEntityRLSToAllTables()`
+ * - Creates `servers` table if it doesn't exist
+ * - Automatically calls `installEntityRLS()` to set up both layers
+ * - Uses `%I` identifier quoting in format() to prevent SQL injection
+ * - Policies use FORCE RLS to enforce even for table owners
+ *
+ * @param adapter - Database adapter with access to the Drizzle ORM instance
+ * @returns Promise that resolves when all RLS functions are installed
+ * @throws {Error} If database connection fails or SQL execution fails
+ *
+ * @example
+ * ```typescript
+ * // Install RLS functions on server startup
+ * await installRLSFunctions(database);
+ * await getOrCreateRlsServer(database, serverId);
+ * await setServerContext(database, serverId);
+ * await applyRLSToNewTables(database);
+ * ```
  */
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
@@ -382,9 +439,51 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
 // ============================================================================
 
 /**
- * Install Entity RLS functions for DM privacy isolation
- * This provides database-level privacy between different entities (Discord/Telegram/Web UI users)
- * talking to agents, independent of JWT authentication.
+ * Install Entity RLS functions for user privacy isolation
+ *
+ * This provides database-level privacy between different entities (client users: Plugins/API)
+ * interacting with agents, independent of JWT authentication.
+ *
+ * **How Entity RLS Works:**
+ * - Each database transaction sets `app.entity_id` before querying
+ * - Policies filter rows based on entity ownership or participant membership
+ * - Two isolation strategies:
+ *   1. Direct ownership: `entity_id` or `author_id` column matches `current_entity_id()`
+ *   2. Shared access: `room_id`/`channel_id` exists in `participants` table for the entity
+ *
+ * **Performance Considerations:**
+ * - **Subquery policies** (for `room_id`/`channel_id`) run on EVERY row access
+ * - Indexes are automatically created on: `entity_id`, `author_id`, `room_id`, `channel_id`
+ * - The `participants` table should have an index on `(entity_id, channel_id)`
+ * - For large datasets (>1M rows), consider:
+ *   - Materialized views for frequently accessed entity-filtered data
+ *   - Partitioning large tables by date or entity_id
+ *
+ * **Optimization Tips:**
+ * - Direct column policies (`entity_id = current_entity_id()`) are faster than subquery policies
+ * - The `participants` lookup is cached per transaction but still requires index scans
+ *
+ * **Tables Excluded from Entity RLS:**
+ * - `servers` - Server RLS table
+ * - `users` - Authentication (no entity isolation)
+ * - `entity_mappings` - Cross-platform entity mapping
+ * - `agents` - Shared across all entities
+ * - `drizzle_migrations`, `__drizzle_migrations` - Migration tracking
+ * - `server_agents` - Junction table
+ *
+ * @param adapter - Database adapter with access to the Drizzle ORM instance
+ * @returns Promise that resolves when Entity RLS functions are installed
+ * @throws {Error} If database connection fails or SQL execution fails
+ *
+ * @example
+ * ```typescript
+ * // Called automatically by installRLSFunctions()
+ * await installRLSFunctions(database);
+ *
+ * // Or call separately if needed
+ * await installEntityRLS(database);
+ * await applyEntityRLSToAllTables(database);
+ * ```
  */
 export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
@@ -470,6 +569,10 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
 
       -- Determine which column to use for entity filtering
       -- Priority: room_id/channel_id (shared access via participants) > entity_id/author_id (direct access)
+      --
+      -- SECURITY NOTE: Column names are hardcoded string literals (not user input)
+      -- This prevents SQL injection even though they're used in format() with %I
+      -- The %I identifier quoting protects against malicious column names in the schema
       IF has_room_id THEN
         room_column_name := 'room_id';
         entity_column_name := NULL;
@@ -485,6 +588,14 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       ELSE
         entity_column_name := NULL;
         room_column_name := NULL;
+      END IF;
+
+      -- Validate column names are from our whitelist (defense in depth)
+      IF room_column_name IS NOT NULL AND room_column_name NOT IN ('room_id', 'channel_id') THEN
+        RAISE EXCEPTION '[Entity RLS] Invalid room column name: %', room_column_name;
+      END IF;
+      IF entity_column_name IS NOT NULL AND entity_column_name NOT IN ('entity_id', 'author_id') THEN
+        RAISE EXCEPTION '[Entity RLS] Invalid entity column name: %', entity_column_name;
       END IF;
 
       -- Enable RLS on the table
