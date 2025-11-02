@@ -3185,6 +3185,42 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Gets a message server by RLS server_id
+   * Note: server_id column only exists when RLS is enabled (added dynamically by RLS setup)
+   * This is used to find the message_server linked to a specific RLS server instance
+   */
+  async getMessageServerByRlsServerId(rlsServerId: UUID): Promise<{
+    id: UUID;
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: any;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    return this.withDatabase(async () => {
+      // Use raw SQL since server_id column is dynamically added by RLS and not in Drizzle schema
+      const results = await this.db.execute(sql`
+        SELECT id, name, source_type, source_id, metadata, created_at, updated_at
+        FROM message_servers
+        WHERE server_id = ${rlsServerId}
+        LIMIT 1
+      `);
+      return results.length > 0
+        ? {
+            id: results[0].id as UUID,
+            name: results[0].name,
+            sourceType: results[0].source_type,
+            sourceId: results[0].source_id || undefined,
+            metadata: results[0].metadata || undefined,
+            createdAt: new Date(results[0].created_at),
+            updatedAt: new Date(results[0].updated_at),
+          }
+        : null;
+    });
+  }
+
+  /**
    * Creates a new channel
    */
   async createChannel(

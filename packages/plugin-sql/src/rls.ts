@@ -1,6 +1,6 @@
 import { logger, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
 import { sql, eq } from 'drizzle-orm';
-import { ownersTable } from './schema/owners';
+import { serverTable } from './schema/server';
 import { agentTable } from './schema/agent';
 
 /**
@@ -23,20 +23,20 @@ import { agentTable } from './schema/agent';
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
 
-  // Create owners table if it doesn't exist
+  // Create servers table if it doesn't exist
   await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS owners (
+    CREATE TABLE IF NOT EXISTS servers (
       id UUID PRIMARY KEY,
       created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
       updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     )
   `);
 
-  // Function to get owner_id from application_name
+  // Function to get server_id from application_name
   // This allows multi-tenant isolation without needing superuser privileges
-  // Each connection pool sets application_name = owner_id
+  // Each connection pool sets application_name = server_id
   await db.execute(sql`
-    CREATE OR REPLACE FUNCTION current_owner_id() RETURNS UUID AS $$
+    CREATE OR REPLACE FUNCTION current_server_id() RETURNS UUID AS $$
     DECLARE
       app_name TEXT;
     BEGIN
@@ -56,13 +56,13 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   // Function to add RLS to a table
   // SECURITY: Uses format() with %I to safely quote identifiers and prevent SQL injection
   // This function:
-  // 1. Adds owner_id column if it doesn't exist (with DEFAULT current_owner_id())
-  // 2. Backfills/reassigns orphaned data to current owner
-  // 3. Creates an index on owner_id for query performance
+  // 1. Adds server_id column if it doesn't exist (with DEFAULT current_server_id())
+  // 2. Backfills/reassigns orphaned data to current server
+  // 3. Creates an index on server_id for query performance
   // 4. Enables FORCE ROW LEVEL SECURITY (enforces RLS even for table owners)
-  // 5. Creates an isolation policy that filters rows by owner_id
+  // 5. Creates an isolation policy that filters rows by server_id
   await db.execute(sql`
-    CREATE OR REPLACE FUNCTION add_owner_isolation(
+    CREATE OR REPLACE FUNCTION add_server_isolation(
       schema_name text,
       table_name text
     ) RETURNS void AS $$
@@ -73,37 +73,37 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check if owner_id column already exists
+      -- Check if server_id column already exists
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
-          AND information_schema.columns.table_name = add_owner_isolation.table_name
-          AND information_schema.columns.column_name = 'owner_id'
+          AND information_schema.columns.table_name = add_server_isolation.table_name
+          AND information_schema.columns.column_name = 'server_id'
       ) INTO column_exists;
 
-      -- Add owner_id column if missing (DEFAULT populates it automatically for new rows)
+      -- Add server_id column if missing (DEFAULT populates it automatically for new rows)
       IF NOT column_exists THEN
-        EXECUTE format('ALTER TABLE %I.%I ADD COLUMN owner_id UUID DEFAULT current_owner_id()', schema_name, table_name);
+        EXECUTE format('ALTER TABLE %I.%I ADD COLUMN server_id UUID DEFAULT current_server_id()', schema_name, table_name);
 
-        -- Backfill existing rows with current owner_id
-        -- This ensures all existing data belongs to the tenant that is enabling RLS
-        EXECUTE format('UPDATE %I.%I SET owner_id = current_owner_id() WHERE owner_id IS NULL', schema_name, table_name);
+        -- Backfill existing rows with current server_id
+        -- This ensures all existing data belongs to the server instance that is enabling RLS
+        EXECUTE format('UPDATE %I.%I SET server_id = current_server_id() WHERE server_id IS NULL', schema_name, table_name);
       ELSE
         -- Column already exists (RLS was previously enabled then disabled)
         -- Restore the DEFAULT clause (may have been removed during uninstallRLS)
-        EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN owner_id SET DEFAULT current_owner_id()', schema_name, table_name);
+        EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN server_id SET DEFAULT current_server_id()', schema_name, table_name);
 
-        -- Only backfill NULL owner_id rows, do NOT steal data from other owners
-        EXECUTE format('SELECT COUNT(*) FROM %I.%I WHERE owner_id IS NULL', schema_name, table_name) INTO orphaned_count;
+        -- Only backfill NULL server_id rows, do NOT steal data from other servers
+        EXECUTE format('SELECT COUNT(*) FROM %I.%I WHERE server_id IS NULL', schema_name, table_name) INTO orphaned_count;
 
         IF orphaned_count > 0 THEN
-          RAISE NOTICE 'Backfilling % rows with NULL owner_id in %.%', orphaned_count, schema_name, table_name;
-          EXECUTE format('UPDATE %I.%I SET owner_id = current_owner_id() WHERE owner_id IS NULL', schema_name, table_name);
+          RAISE NOTICE 'Backfilling % rows with NULL server_id in %.%', orphaned_count, schema_name, table_name;
+          EXECUTE format('UPDATE %I.%I SET server_id = current_server_id() WHERE server_id IS NULL', schema_name, table_name);
         END IF;
       END IF;
 
-      -- Create index for efficient owner_id filtering
-      EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_owner_id ON %I.%I(owner_id)', table_name, schema_name, table_name);
+      -- Create index for efficient server_id filtering
+      EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%I_server_id ON %I.%I(server_id)', table_name, schema_name, table_name);
 
       -- Enable RLS on the table
       EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', schema_name, table_name);
@@ -112,14 +112,14 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
       EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', schema_name, table_name);
 
       -- Drop existing policy if present
-      EXECUTE format('DROP POLICY IF EXISTS owner_isolation_policy ON %I.%I', schema_name, table_name);
+      EXECUTE format('DROP POLICY IF EXISTS server_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- Create isolation policy: users can only see/modify rows where owner_id matches current tenant
-      -- No NULL clause - all rows must have a valid owner_id (backfilled during column addition)
+      -- Create isolation policy: users can only see/modify rows where server_id matches current server instance
+      -- No NULL clause - all rows must have a valid server_id (backfilled during column addition)
       EXECUTE format('
-        CREATE POLICY owner_isolation_policy ON %I.%I
-        USING (owner_id = current_owner_id())
-        WITH CHECK (owner_id = current_owner_id())
+        CREATE POLICY server_isolation_policy ON %I.%I
+        USING (server_id = current_server_id())
+        WITH CHECK (server_id = current_server_id())
       ', schema_name, table_name);
     END;
     $$ LANGUAGE plpgsql;
@@ -131,7 +131,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   // entities, logs, cache, components, tasks, world, message_servers, etc.
   //
   // EXCLUDED tables (not isolated):
-  // - owners (contains all tenant IDs, shared across tenants)
+  // - servers (contains all server instance IDs, shared for multi-tenant management)
   // - drizzle_migrations, __drizzle_migrations (migration tracking tables)
   // - server_agents (junction table - agents and message_servers already have RLS)
   //
@@ -146,14 +146,14 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
         FROM pg_tables
         WHERE schemaname = 'public'
           AND tablename NOT IN (
-            'owners',
+            'servers',
             'drizzle_migrations',
             '__drizzle_migrations',
             'server_agents'
           )
       LOOP
         BEGIN
-          PERFORM add_owner_isolation(tbl.schemaname, tbl.tablename);
+          PERFORM add_server_isolation(tbl.schemaname, tbl.tablename);
         EXCEPTION WHEN OTHERS THEN
           RAISE WARNING 'Failed to apply RLS to %.%: %', tbl.schemaname, tbl.tablename, SQLERRM;
         END;
@@ -169,55 +169,58 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
 }
 
 /**
- * Get or create RLS owner using Drizzle ORM
+ * Get or create RLS server using Drizzle ORM
  */
-export async function getOrCreateRlsOwner(
+export async function getOrCreateRlsServer(
   adapter: IDatabaseAdapter,
-  ownerId: string
+  serverId: string
 ): Promise<string> {
   const db = adapter.db;
 
   // Use Drizzle's insert with onConflictDoNothing
   await db
-    .insert(ownersTable)
+    .insert(serverTable)
     .values({
-      id: ownerId,
+      id: serverId,
     })
     .onConflictDoNothing();
 
-  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
-  return ownerId;
+  logger.info(`[RLS] Server: ${serverId.slice(0, 8)}…`);
+  return serverId;
 }
 
 /**
  * Set RLS context on PostgreSQL connection pool
- * This function validates that the owner exists and has correct UUID format
+ * This function validates that the server exists and has correct UUID format
  */
-export async function setOwnerContext(adapter: IDatabaseAdapter, ownerId: string): Promise<void> {
+export async function setServerContext(
+  adapter: IDatabaseAdapter,
+  serverId: string
+): Promise<void> {
   // Validate UUID format using @elizaos/core utility
-  if (!validateUuid(ownerId)) {
-    throw new Error(`Invalid owner ID format: ${ownerId}. Must be a valid UUID.`);
+  if (!validateUuid(serverId)) {
+    throw new Error(`Invalid server ID format: ${serverId}. Must be a valid UUID.`);
   }
 
-  // Validate owner exists
+  // Validate server exists
   const db = adapter.db;
-  const owners = await db.select().from(ownersTable).where(eq(ownersTable.id, ownerId));
+  const servers = await db.select().from(serverTable).where(eq(serverTable.id, serverId));
 
-  if (owners.length === 0) {
-    throw new Error(`Owner ${ownerId} does not exist`);
+  if (servers.length === 0) {
+    throw new Error(`Server ${serverId} does not exist`);
   }
 
-  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
+  logger.info(`[RLS] Server: ${serverId.slice(0, 8)}…`);
   logger.info('[RLS] Context configured successfully (using application_name)');
 }
 
 /**
- * Assign agent to owner using Drizzle ORM
+ * Assign agent to server using Drizzle ORM
  */
-export async function assignAgentToOwner(
+export async function assignAgentToServer(
   adapter: IDatabaseAdapter,
   agentId: string,
-  ownerId: string
+  serverId: string
 ): Promise<void> {
   const db = adapter.db;
 
@@ -226,18 +229,21 @@ export async function assignAgentToOwner(
 
   if (agents.length > 0) {
     const agent = agents[0];
-    const currentOwnerId = agent.owner_id;
+    const currentServerId = agent.server_id;
 
-    if (currentOwnerId === ownerId) {
-      logger.debug(`[RLS] Agent ${agent.name} already owned by correct owner`);
+    if (currentServerId === serverId) {
+      logger.debug(`[RLS] Agent ${agent.name} already assigned to correct server`);
     } else {
-      // Update agent owner using Drizzle
-      await db.update(agentTable).set({ owner_id: ownerId }).where(eq(agentTable.id, agentId));
+      // Update agent server using Drizzle
+      await db
+        .update(agentTable)
+        .set({ server_id: serverId })
+        .where(eq(agentTable.id, agentId));
 
-      if (currentOwnerId === null) {
-        logger.info(`[RLS] Agent ${agent.name} assigned to owner`);
+      if (currentServerId === null) {
+        logger.info(`[RLS] Agent ${agent.name} assigned to server`);
       } else {
-        logger.warn(`[RLS] Agent ${agent.name} owner changed`);
+        logger.warn(`[RLS] Agent ${agent.name} server changed`);
       }
     }
   } else {
@@ -262,19 +268,19 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
 /**
  * Disable RLS globally
  * SIMPLE APPROACH:
- * - Disables RLS for ALL servers/owners
- * - Keeps owner_id columns and data intact
+ * - Disables RLS for ALL server instances
+ * - Keeps server_id columns and data intact
  * - Use only in development or when migrating to single-server mode
  */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
 
   try {
-    // Check if RLS is actually enabled by checking if the owners table exists
+    // Check if RLS is actually enabled by checking if the servers table exists
     const checkResult = await db.execute(sql`
       SELECT EXISTS (
         SELECT FROM pg_tables
-        WHERE schemaname = 'public' AND tablename = 'owners'
+        WHERE schemaname = 'public' AND tablename = 'servers'
       ) as rls_enabled
     `);
 
@@ -285,11 +291,9 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       return;
     }
 
-    logger.info(
-      '[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...'
-    );
+    logger.info('[RLS] Disabling RLS globally (keeping server_id columns for schema compatibility)...');
 
-    // First, uninstall Entity RLS (depends on Owner RLS)
+    // First, uninstall Entity RLS (depends on Server RLS)
     try {
       await uninstallEntityRLS(adapter);
     } catch (entityRlsError) {
@@ -341,35 +345,32 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
         await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
         logger.debug(`[RLS] Disabled RLS on table: ${schemaName}.${tableName}`);
       } catch (error) {
-        logger.warn(
-          `[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`,
-          String(error)
-        );
+        logger.warn(`[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`, String(error));
       }
     }
 
     // Drop the temporary function
     await db.execute(sql`DROP FUNCTION IF EXISTS _temp_disable_rls_on_table(text, text)`);
 
-    // 2. KEEP owner_id values intact (do NOT clear them)
+    // 2. KEEP server_id values intact (do NOT clear them)
     // This prevents data theft when re-enabling RLS:
-    // - Each row keeps its original owner_id
+    // - Each row keeps its original server_id
     // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
-    // - Existing data remains owned by its original tenant
-    logger.info('[RLS] Keeping owner_id values intact (prevents data theft on re-enable)');
+    // - Existing data remains owned by its original server instance
+    logger.info('[RLS] Keeping server_id values intact (prevents data theft on re-enable)');
 
-    // 3. Keep the owners table structure but clear it
-    // When RLS is re-enabled, owners will be re-created from auth tokens
-    logger.info('[RLS] Clearing owners table...');
-    await db.execute(sql`TRUNCATE TABLE owners`);
+    // 3. Keep the servers table structure but clear it
+    // When RLS is re-enabled, servers will be re-created from server initialization
+    logger.info('[RLS] Clearing servers table...');
+    await db.execute(sql`TRUNCATE TABLE servers`);
 
     // 4. Drop all RLS functions
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
-    await db.execute(sql`DROP FUNCTION IF EXISTS add_owner_isolation(text, text) CASCADE`);
-    await db.execute(sql`DROP FUNCTION IF EXISTS current_owner_id() CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE`);
+    await db.execute(sql`DROP FUNCTION IF EXISTS current_server_id() CASCADE`);
     logger.info('[RLS] Dropped all RLS functions');
 
-    logger.success('[RLS] RLS disabled successfully (owner_id columns preserved)');
+    logger.success('[RLS] RLS disabled successfully (server_id columns preserved)');
   } catch (error) {
     logger.error('[RLS] Failed to disable RLS:', String(error));
     throw error;
@@ -561,7 +562,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
         FROM pg_tables
         WHERE schemaname = 'public'
           AND tablename NOT IN (
-            'owners',               -- Owner RLS table
+            'servers',              -- Server RLS table
             'users',                -- Authentication table (no entity isolation needed)
             'entity_mappings',      -- Mapping table (no entity isolation needed)
             'drizzle_migrations',   -- Migration tracking
@@ -610,7 +611,7 @@ export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Prom
 
 /**
  * Remove Entity RLS (for rollback or testing)
- * Drops entity RLS functions and policies but keeps owner RLS intact
+ * Drops entity RLS functions and policies but keeps server RLS intact
  */
 export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;

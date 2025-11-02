@@ -7,14 +7,14 @@ export class PostgresConnectionManager {
   private pool: Pool;
   private db: NodePgDatabase;
 
-  constructor(connectionString: string, rlsOwnerId?: string) {
-    // If RLS is enabled, set application_name to the owner_id
-    // This allows the RLS function current_owner_id() to read it
+  constructor(connectionString: string, rlsServerId?: string) {
+    // If RLS is enabled, set application_name to the server_id
+    // This allows the RLS function current_server_id() to read it
     const poolConfig: PoolConfig = { connectionString };
 
-    if (rlsOwnerId) {
-      poolConfig.application_name = rlsOwnerId;
-      logger.debug(`[RLS] Pool configured with application_name: ${rlsOwnerId}`);
+    if (rlsServerId) {
+      poolConfig.application_name = rlsServerId;
+      logger.debug(`[RLS] Pool configured with application_name: ${rlsServerId.substring(0, 8)}...`);
     }
 
     this.pool = new Pool(poolConfig);
@@ -55,7 +55,7 @@ export class PostgresConnectionManager {
    * Execute a query with entity context for Entity RLS.
    * Sets app.entity_id before executing the callback.
    *
-   * Owner RLS context (if enabled) is already set via Pool's application_name.
+   * Server RLS context (if enabled) is already set via Pool's application_name.
    *
    * If Entity RLS is not installed (ENABLE_RLS_ISOLATION=false), this method
    * gracefully degrades to executing the callback without setting entity context.

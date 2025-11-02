@@ -244,10 +244,10 @@ describe('Entity RLS Function Names', () => {
     expect(functions.applyEntityRlsToAllTables).toBe('apply_entity_rls_to_all_tables');
   });
 
-  it('should use different function names than Owner RLS', () => {
-    const ownerFunctions = {
-      currentOwnerId: 'current_owner_id',
-      addOwnerIsolation: 'add_owner_isolation',
+  it('should use different function names than Server RLS', () => {
+    const serverFunctions = {
+      currentServerId: 'current_server_id',
+      addServerIsolation: 'add_server_isolation',
     };
 
     const entityFunctions = {
@@ -256,8 +256,8 @@ describe('Entity RLS Function Names', () => {
     };
 
     // Should be different to avoid conflicts
-    expect(entityFunctions.currentEntityId).not.toBe(ownerFunctions.currentOwnerId);
-    expect(entityFunctions.addEntityIsolation).not.toBe(ownerFunctions.addOwnerIsolation);
+    expect(entityFunctions.currentEntityId).not.toBe(serverFunctions.currentServerId);
+    expect(entityFunctions.addEntityIsolation).not.toBe(serverFunctions.addServerIsolation);
   });
 });
 
@@ -266,7 +266,7 @@ describe('Entity RLS Policy Names', () => {
     const policyName = 'entity_isolation_policy';
 
     expect(policyName).toBe('entity_isolation_policy');
-    expect(policyName).not.toBe('owner_isolation_policy'); // Different from Owner RLS
+    expect(policyName).not.toBe('server_isolation_policy'); // Different from Server RLS
   });
 
   it('should use generic policy name for all tables', () => {
@@ -283,7 +283,7 @@ describe('Entity RLS Policy Names', () => {
 describe('Entity RLS Table Exclusions', () => {
   it('should exclude correct tables from Entity RLS', () => {
     const excludedTables = [
-      'owners', // Owner RLS table
+      'servers', // Server RLS table
       'users', // Authentication table
       'entity_mappings', // Mapping table
       'drizzle_migrations',
@@ -293,7 +293,7 @@ describe('Entity RLS Table Exclusions', () => {
     ];
 
     // Tables that should NOT have Entity RLS
-    expect(excludedTables).toContain('owners');
+    expect(excludedTables).toContain('servers');
     expect(excludedTables).toContain('users');
     expect(excludedTables).toContain('entity_mappings');
     expect(excludedTables).toContain('agents');
@@ -319,7 +319,7 @@ describe('Entity RLS Security Properties', () => {
       const sessionVar = 'app.entity_id';
 
       expect(sessionVar).toBe('app.entity_id');
-      expect(sessionVar).not.toBe('application_name'); // Different from Owner RLS
+      expect(sessionVar).not.toBe('application_name'); // Different from Server RLS
     });
 
     it('should be transaction-scoped (SET LOCAL)', () => {
@@ -520,12 +520,12 @@ describe('Entity RLS Backward Compatibility', () => {
       expect(executedSuccessfully).toBe(true);
     });
 
-    it('should support mixed Owner RLS + no Entity RLS', () => {
-      const ownerRlsEnabled = true;
+    it('should support mixed Server RLS + no Entity RLS', () => {
+      const serverRlsEnabled = true;
       const entityRlsEnabled = false;
 
-      // Owner RLS can work without Entity RLS
-      const validConfiguration = ownerRlsEnabled && !entityRlsEnabled;
+      // Server RLS can work without Entity RLS
+      const validConfiguration = serverRlsEnabled && !entityRlsEnabled;
 
       expect(validConfiguration).toBe(true);
     });
