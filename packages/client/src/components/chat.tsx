@@ -78,7 +78,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCreateDmChannel, useDmChannelsForAgent } from '@/hooks/use-dm-channels';
-import { useCurrentServer } from '@/hooks/use-current-server';
+import { useCurrentMessageServer } from '@/hooks/use-current-server';
 import { useSidebarState } from '@/hooks/use-sidebar-state';
 import { usePanelWidthState } from '@/hooks/use-panel-width-state';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -90,8 +90,8 @@ import { exportCharacterAsJson } from '@/lib/export-utils';
 moment.extend(relativeTime);
 
 // Fallback server ID used when no actual server ID is available from the API
-// This should only be used as a last resort - prefer passing the real serverId from props
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+// This should only be used as a last resort - prefer passing the real messageServerId from props
+const DEFAULT_MESSAGE_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Helper function to convert action message to ToolPart format
 const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
@@ -150,7 +150,7 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
 interface UnifiedChatViewProps {
   chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
-  serverId?: UUID; // Required for GROUP, optional for DM
+  messageServerId?: UUID; // Required for GROUP, optional for DM
   initialDmChannelId?: UUID; // New prop for specific DM channel from URL
 }
 
@@ -302,14 +302,14 @@ export function MessageContent({
 export default function Chat({
   chatType,
   contextId,
-  serverId,
+  messageServerId,
   initialDmChannelId,
 }: UnifiedChatViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // Fetch current server ID from backend if not provided as prop
-  const { data: currentServerId, isLoading: isLoadingServerId } = useCurrentServer();
+  const { data: currentMessageServerId, isLoading: isLoadingMessageServerId } = useCurrentMessageServer();
 
   // Use persistent sidebar state
   const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
@@ -382,16 +382,15 @@ export default function Chat({
     targetAgentData || ({} as Agent) // Provide safe default if undefined
   );
 
-  // Calculate finalServerIdForHooks FIRST, before using it in hooks below
-  const finalServerIdForHooks: UUID | undefined = useMemo(() => {
-    // Priority: serverId prop > fetched currentServerId > fallback to DEFAULT_SERVER_ID
-    return serverId || currentServerId || DEFAULT_SERVER_ID;
-  }, [serverId, currentServerId]);
-
-  // Use the new hooks for DM channel management - NOW using finalServerIdForHooks
+  // Calculate finalMessageServerIdForHooks FIRST, before using it in hooks below
+  const finalMessageServerIdForHooks: UUID | undefined = useMemo(() => {
+    // Priority: messageServerId prop > fetched currentMessageServerId > fallback to DEFAULT_MESSAGE_SERVER_ID
+    return messageServerId || currentMessageServerId || DEFAULT_MESSAGE_SERVER_ID;
+  }, [messageServerId, currentMessageServerId]);
+  // Use the new hooks for DM channel management - NOW using finalMessageServerIdForHooks
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
     chatType === ChannelType.DM ? contextId : undefined,
-    finalServerIdForHooks
+    finalMessageServerIdForHooks
   );
 
   const createDmChannelMutation = useCreateDmChannel();
@@ -417,7 +416,7 @@ export default function Chat({
       : contextId || undefined;
 
   const { data: latestChannelMessages = [], isLoading: isLoadingLatestChannelMessages } =
-    useChannelMessages(latestChannel?.id, finalServerIdForHooks);
+    useChannelMessages(latestChannel?.id, finalMessageServerIdForHooks);
 
   const {
     data: messages = [],
@@ -426,7 +425,7 @@ export default function Chat({
     updateMessage,
     removeMessage,
     clearMessages,
-  } = useChannelMessages(finalChannelIdForHooks, finalServerIdForHooks);
+  } = useChannelMessages(finalChannelIdForHooks, finalMessageServerIdForHooks);
 
   // Get agents in the current group
   const groupAgents = useMemo(() => {
@@ -528,11 +527,11 @@ export default function Chat({
         // Mark as auto-created so the effect doesn't attempt a duplicate.
         autoCreatedDmRef.current = true;
 
-        clientLogger.info('[Chat] About to create DM channel with serverId:', finalServerIdForHooks);
+        clientLogger.info('[Chat] About to create DM channel with messageServerId:', finalMessageServerIdForHooks);
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
-          serverId: finalServerIdForHooks,
+          messageServerId: finalMessageServerIdForHooks,
         });
 
         // Update the current DM channel ID to the newly created channel
@@ -550,7 +549,7 @@ export default function Chat({
         });
       }
     },
-    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel, finalServerIdForHooks, targetAgentData, toast]
+    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel, finalMessageServerIdForHooks, targetAgentData, toast]
   );
 
   // Handle DM channel selection
@@ -768,7 +767,7 @@ export default function Chat({
 
       if (
         !isLoadingAgentDmChannels &&
-        !isLoadingServerId &&
+        !isLoadingMessageServerId &&
         agentDmChannels.length === 0 &&
         !initialDmChannelId &&
         !autoCreatedDmRef.current &&
@@ -789,7 +788,7 @@ export default function Chat({
     targetAgentData?.id,
     agentDmChannels,
     isLoadingAgentDmChannels,
-    isLoadingServerId,
+    isLoadingMessageServerId,
     createDmChannelMutation.isPending,
     chatState.isCreatingDM,
     chatState.currentDmChannelId,
@@ -982,7 +981,7 @@ export default function Chat({
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: targetAgentData.id,
           channelName: `Chat - ${moment().format('MMM D, HH:mm')}`,
-          serverId: finalServerIdForHooks,
+          messageServerId: finalMessageServerIdForHooks,
         });
         updateChatState({ currentDmChannelId: newChannel.id });
         channelIdToUse = newChannel.id;
@@ -1004,7 +1003,7 @@ export default function Chat({
       (!chatState.input.trim() && selectedFiles.length === 0) ||
       inputDisabledRef.current ||
       !channelIdToUse ||
-      !finalServerIdForHooks ||
+      !finalMessageServerIdForHooks ||
       !currentClientEntityId ||
       (chatType === ChannelType.DM && !targetAgentData?.id)
     )
@@ -1027,7 +1026,7 @@ export default function Chat({
       isAgent: false,
       isLoading: true,
       channelId: channelIdToUse,
-      serverId: finalServerIdForHooks,
+      messageServerId: finalMessageServerIdForHooks,
       source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
       attachments: optimisticAttachments,
     };
@@ -1073,7 +1072,7 @@ export default function Chat({
       }
       await sendMessage(
         finalTextContent,
-        finalServerIdForHooks,
+        finalMessageServerIdForHooks,
         chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
         finalAttachments.length > 0 ? finalAttachments : undefined,
         tempMessageId,
@@ -1129,7 +1128,7 @@ export default function Chat({
       isAgent: false,
       isLoading: true,
       channelId: message.channelId,
-      serverId: finalServerIdForHooks,
+      messageServerId: finalMessageServerIdForHooks,
       source: chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
       attachments: message.attachments,
     };
@@ -1138,7 +1137,7 @@ export default function Chat({
     safeScrollToBottom();
 
     // Guard against undefined IDs
-    if (!finalServerIdForHooks || !finalChannelIdForHooks) {
+    if (!finalMessageServerIdForHooks || !finalChannelIdForHooks) {
       clientLogger.error('Cannot retry message: missing server or channel ID');
       toast({
         title: 'Error Sending Message',
@@ -1153,7 +1152,7 @@ export default function Chat({
     try {
       await sendMessage(
         finalTextContent,
-        finalServerIdForHooks,
+        finalMessageServerIdForHooks,
         chatType === ChannelType.DM ? CHAT_SOURCE : GROUP_CHAT_SOURCE,
         message.attachments,
         retryMessageId,
@@ -1224,7 +1223,7 @@ export default function Chat({
 
   if (
     !finalChannelIdForHooks ||
-    !finalServerIdForHooks ||
+    !finalMessageServerIdForHooks ||
     (chatType === ChannelType.DM && !targetAgentData)
   ) {
     return (
@@ -1494,7 +1493,7 @@ export default function Chat({
                   {
                     label: 'Delete Group',
                     onClick: () => {
-                      if (!finalChannelIdForHooks || !finalServerIdForHooks) return;
+                      if (!finalChannelIdForHooks || !finalMessageServerIdForHooks) return;
                       // Capture the channel ID to use in the async callback
                       const channelIdToDelete = finalChannelIdForHooks;
                       confirm(
@@ -1527,7 +1526,7 @@ export default function Chat({
                       );
                     },
                     icon: <Trash2 className="size-4" />,
-                    disabled: !finalChannelIdForHooks || !finalServerIdForHooks,
+                    disabled: !finalChannelIdForHooks || !finalMessageServerIdForHooks,
                     variant: 'destructive',
                   },
                 ]}
@@ -1644,7 +1643,7 @@ export default function Chat({
                       isAgent: false,
                       createdAt: Date.now(),
                       channelId: finalChannelIdForHooks,
-                      serverId: finalServerIdForHooks,
+                      messageServerId: finalMessageServerIdForHooks,
                     };
                     handleRetryMessage(message);
                   }}
@@ -1733,7 +1732,7 @@ export default function Chat({
                             isAgent: false,
                             createdAt: Date.now(),
                             channelId: finalChannelIdForHooks,
-                            serverId: finalServerIdForHooks,
+                            messageServerId: finalMessageServerIdForHooks,
                           };
                           handleRetryMessage(message);
                         }}

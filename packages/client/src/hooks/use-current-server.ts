@@ -8,15 +8,15 @@ import { STALE_TIMES } from './use-query-hooks';
  * Hook to fetch the current server's ID from the backend
  * This is the serverId that should be used when creating channels and messages
  */
-export function useCurrentServer() {
+export function useCurrentMessageServer() {
   return useQuery<UUID>({
-    queryKey: ['currentServer'],
+    queryKey: ['currentMessageServer'],
     queryFn: async () => {
-      clientLogger.info('[useCurrentServer] Fetching current server ID from backend');
+      clientLogger.info('[useCurrentMessageServer] Fetching current message server ID from backend');
       const elizaClient = createElizaClient();
-      const result = await elizaClient.messaging.getCurrentServer();
-      clientLogger.info('[useCurrentServer] Current server ID:', result.serverId);
-      return result.serverId;
+      const result = await elizaClient.messaging.getCurrentMessageServer();
+      clientLogger.info('[useCurrentServer] Current server ID:', result.messageServerId);
+      return result.messageServerId;
     },
     staleTime: STALE_TIMES.RARE, // Server ID rarely changes (only on restart)
     refetchOnWindowFocus: true, // Refetch when user returns to tab (catches server restarts)

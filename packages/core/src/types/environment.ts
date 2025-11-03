@@ -49,7 +49,7 @@ export type World = {
   id: UUID;
   name?: string;
   agentId: UUID;
-  serverId: string;
+  messageServerId?: UUID;
   metadata?: {
     ownership?: {
       ownerId: string;
@@ -82,7 +82,7 @@ export type Room = {
   source: string;
   type: ChannelType;
   channelId?: string;
-  serverId?: string;
+  messageServerId?: UUID;
   worldId?: UUID;
   metadata?: Metadata;
 };

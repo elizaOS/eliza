@@ -47,7 +47,7 @@ export function useSocketChat({
   const sendMessage = useCallback(
     async (
       text: string,
-      serverId: UUID,
+      messageServerId: UUID,
       source: string,
       attachments?: any[],
       tempMessageId?: string,
@@ -73,7 +73,7 @@ export function useSocketChat({
       await socketIOManager.sendMessage(
         text,
         channelIdToUse,
-        serverId,
+        messageServerId,
         source,
         attachments,
         tempMessageId,

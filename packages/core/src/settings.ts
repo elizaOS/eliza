@@ -319,7 +319,7 @@ export async function initializeOnboarding(
 ): Promise<WorldSettings | null> {
   // Check if settings state already exists
   if (world.metadata?.settings) {
-    logger.info(`Onboarding state already exists for server ${world.serverId}`);
+    logger.info(`Onboarding state already exists for server ${world.messageServerId}`);
     // Get settings from metadata and remove salt
     const saltedSettings = world.metadata.settings as WorldSettings;
     const salt = getSalt();
@@ -346,7 +346,7 @@ export async function initializeOnboarding(
 
   await runtime.updateWorld(world);
 
-  logger.info(`Initialized settings config for server ${world.serverId}`);
+  logger.info(`Initialized settings config for server ${world.messageServerId}`);
   return worldSettings;
 }
 

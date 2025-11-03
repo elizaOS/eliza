@@ -58,12 +58,12 @@ export function useGetOrCreateDmChannel() {
  */
 export function useDmChannelsForAgent(
   agentId: UUID | undefined,
-  serverId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
+  messageServerId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
 ) {
   const currentUserId = getEntityId();
 
   return useQuery<MessageChannel[]>({
-    queryKey: ['dmChannels', agentId, currentUserId, serverId], // Include serverId in the key
+    queryKey: ['dmChannels', agentId, currentUserId, messageServerId], // Include messageServerId in the key
     queryFn: async () => {
       if (!agentId) return [];
       clientLogger.info(
@@ -72,7 +72,7 @@ export function useDmChannelsForAgent(
       );
 
       const elizaClient = createElizaClient();
-      const result = await elizaClient.messaging.getServerChannels(serverId);
+      const result = await elizaClient.messaging.getMessageServerChannels(messageServerId);
       const apiChannels = result.channels || [];
 
       // Map API channels to client type
@@ -145,16 +145,16 @@ export function useCreateDmChannel() {
     mutationFn: async ({
       agentId,
       channelName,
-      serverId = '00000000-0000-0000-0000-000000000000' as UUID,
+      messageServerId = '00000000-0000-0000-0000-000000000000' as UUID
     }: {
       agentId: UUID;
       channelName: string;
-      serverId?: UUID;
+      messageServerId?: UUID;
     }) => {
       clientLogger.info('[useCreateDmChannel] Creating new distinct DM channel with agent:', {
         agentId,
         channelName,
-        serverId,
+        messageServerId,
       });
 
       if (!channelName || !channelName.trim()) {
@@ -168,7 +168,7 @@ export function useCreateDmChannel() {
         participantIds: [currentUserId, agentId],
         metadata: {
           type: ChannelType.DM, // Set type to DM
-          server_id: serverId, // Use the provided server ID
+          message_server_id: messageServerId, // Use the provided messageServerId
           isDm: true, // Mark it as a DM type conversation
           user1: currentUserId, // Explicitly store participants for filtering
           user2: agentId,
@@ -187,9 +187,7 @@ export function useCreateDmChannel() {
       });
       // Invalidate queries to refresh the DM channel list for this agent
       // Include serverId in the invalidation to match the query key
-      queryClient.invalidateQueries({
-        queryKey: ['dmChannels', variables.agentId, currentUserId, variables.serverId],
-      });
+      queryClient.invalidateQueries({ queryKey: ['dmChannels', variables.agentId, currentUserId, variables.messageServerId] });
       // Also invalidate general channels list if it might show DMs (though less likely)
       queryClient.invalidateQueries({ queryKey: ['channels'] });
     },

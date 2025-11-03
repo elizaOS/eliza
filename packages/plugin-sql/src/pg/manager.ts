@@ -18,7 +18,7 @@ export class PostgresConnectionManager {
     }
 
     this.pool = new Pool(poolConfig);
-    this.db = drizzle(this.pool);
+    this.db = drizzle(this.pool, { casing: 'snake_case' });
   }
 
   public getDatabase(): NodePgDatabase {

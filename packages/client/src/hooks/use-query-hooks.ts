@@ -452,7 +452,7 @@ export function useChannelMessages(
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
-        serverId: serverIdToUse || sm.metadata?.serverId || sm.serverId || initialServerId,
+        serverId: serverIdToUse || sm.metadata?.messageServerId || initialServerId,
         source: sm.sourceType,
         isLoading: false,
         prompt: isAgent ? sm.metadata?.prompt : undefined,
@@ -483,7 +483,7 @@ export function useChannelMessages(
         });
 
         const newUiMessages = response.messages.map((msg) =>
-          mapApiMessageToUi(msg, initialServerId || msg.metadata?.serverId)
+          mapApiMessageToUi(msg, initialServerId || msg.metadata?.messageServerId)
         );
 
         setMessages((prev) => {
@@ -1161,8 +1161,8 @@ export function useServers(options = {}) {
   return useQuery<{ data: { servers: ClientMessageServer[] } }>({
     queryKey: ['servers'],
     queryFn: async () => {
-      const result = await elizaClient.messaging.listServers();
-      return { data: { servers: mapApiServersToClient(result.servers) } };
+      const result = await elizaClient.messaging.listMessageServers();
+      return { data: { servers: mapApiServersToClient(result.messageServers) } };
     },
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
@@ -1176,7 +1176,7 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
     queryKey: ['channels', serverId],
     queryFn: async () => {
       if (!serverId) return Promise.resolve({ data: { channels: [] } });
-      const result = await elizaClient.messaging.getServerChannels(serverId);
+      const result = await elizaClient.messaging.getMessageServerChannels(serverId);
       return { data: { channels: mapApiChannelsToClient(result.channels) } };
     },
     enabled: !!serverId,

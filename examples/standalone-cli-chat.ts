@@ -192,7 +192,7 @@ class AgentInitializer {
       name: 'User',
       source: CONSTANTS.CHAT_IDENTIFIERS.SOURCE,
       channelId: CONSTANTS.CHAT_IDENTIFIERS.CHANNEL,
-      serverId: CONSTANTS.CHAT_IDENTIFIERS.SERVER,
+      messageServerId: CONSTANTS.CHAT_IDENTIFIERS.SERVER,
       type: ChannelType.DM,
     });
 

@@ -531,7 +531,7 @@ export class SocketIOManager extends EventAdapter {
    * Send a message to a specific channel
    * @param message Message text to send
    * @param channelId Channel ID to send the message to
-   * @param serverId Server ID to send the message to
+   * @param messageServerId Message Server ID to send the message to
    * @param source Source identifier (e.g., 'client_chat')
    * @param attachments Optional media attachments
    * @param messageId Optional message ID for tracking optimistic updates
@@ -539,7 +539,7 @@ export class SocketIOManager extends EventAdapter {
   public async sendMessage(
     message: string,
     channelId: string,
-    serverId: string,
+    messageServerId: string,
     source: string,
     attachments?: any[],
     messageId?: string,
@@ -559,7 +559,7 @@ export class SocketIOManager extends EventAdapter {
     const finalMessageId = messageId || randomUUID();
 
     clientLogger.info(
-      `[SocketIO] Sending message to central channel ${channelId} on server ${serverId}`
+      `[SocketIO] Sending message to central channel ${channelId} on message server ${messageServerId}`
     );
 
     // Emit message to server
@@ -571,7 +571,7 @@ export class SocketIOManager extends EventAdapter {
         message,
         channelId: channelId,
         roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Client uses serverId, not worldId
+        messageServerId: messageServerId,
         messageId: finalMessageId,
         source,
         attachments,

@@ -20,7 +20,7 @@ export interface EntityContextRequest extends Request {
  */
 export function entityContextMiddleware(
   req: EntityContextRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): void {
   // Extract entity ID from trusted sources only

@@ -49,7 +49,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
       for (const server of serversData.data.servers) {
         try {
           const elizaClient = createElizaClient();
-          const response = await elizaClient.agents.getAgentsForServer(server.id);
+          const response = await elizaClient.agents.getAgentsForMessageServer(server.id);
           if (response.success) {
             newServerAgents.set(server.id, response.data.agents);
           }
@@ -77,7 +77,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
     setIsLoading(true);
     try {
       const elizaClient = createElizaClient();
-      await elizaClient.agents.addAgentToServer(selectedServerId, selectedAgentId);
+      await elizaClient.agents.addAgentToMessageServer(selectedServerId, selectedAgentId);
 
       // Update local state
       setServerAgents((prev) => {
@@ -111,7 +111,7 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
     setIsLoading(true);
     try {
       const elizaClient = createElizaClient();
-      await elizaClient.agents.removeAgentFromServer(serverId, agentId);
+      await elizaClient.agents.removeAgentFromMessageServer(serverId, agentId);
 
       // Update local state
       setServerAgents((prev) => {

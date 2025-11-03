@@ -126,7 +126,7 @@ export class SocketIORouter {
 
   private handleChannelJoining(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { agentId, entityId, serverId, metadata } = payload;
+    const { agentId, entityId, messageServerId, metadata } = payload;
 
     logger.debug(
       `[SocketIO] handleChannelJoining called with payload:`,
@@ -150,12 +150,12 @@ export class SocketIORouter {
     logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
-    if (entityId && (serverId || this.serverInstance.serverId)) {
-      const finalServerId = serverId || this.serverInstance.serverId;
+    if (entityId && (messageServerId || this.serverInstance.messageServerId)) {
+      const finalMessageServerId = messageServerId || this.serverInstance.messageServerId;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
       logger.info(
-        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`
+        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, messageServerId: ${finalMessageServerId}, isDm: ${isDm}`
       );
 
       // Get the first available runtime (there should typically be one)
@@ -164,7 +164,7 @@ export class SocketIORouter {
         runtime.emitEvent(EventType.ENTITY_JOINED as any, {
           entityId: entityId as UUID,
           runtime,
-          worldId: finalServerId, // Use serverId as worldId identifier
+          worldId: finalMessageServerId, // Use messageServerId as worldId identifier
           roomId: channelId as UUID,
           metadata: {
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
@@ -180,7 +180,7 @@ export class SocketIORouter {
       }
     } else {
       logger.debug(
-        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || this.serverInstance.serverId}) - not emitting ENTITY_JOINED event`
+        `[SocketIO] Missing entityId (${entityId}) or messageServerId (${messageServerId || this.serverInstance.messageServerId}) - not emitting ENTITY_JOINED event`
       );
     }
 
@@ -198,7 +198,7 @@ export class SocketIORouter {
 
   private async handleMessageSubmission(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
+    const { senderId, senderName, message, messageServerId, source, metadata, attachments } = payload;
 
     logger.info(
       `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
@@ -209,12 +209,12 @@ export class SocketIORouter {
     );
 
     // Validate server ID
-    const isValidServerId = serverId === this.serverInstance.serverId || validateUuid(serverId);
+    const isValidServerId = messageServerId === this.serverInstance.messageServerId || validateUuid(messageServerId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
-        `For SEND_MESSAGE: channelId, serverId (server_id), senderId (author_id), and message are required.`
+        `For SEND_MESSAGE: channelId, messageServerId (message_server_id), senderId (author_id), and message are required.`
       );
       return;
     }
@@ -232,7 +232,7 @@ export class SocketIORouter {
           runtime.emitEvent(EventType.ENTITY_JOINED as any, {
             entityId: senderId as UUID,
             runtime,
-            worldId: serverId, // Use serverId as worldId identifier
+            worldId: messageServerId, // Use messageServerId as worldId identifier
             roomId: channelId as UUID,
             metadata: {
               type: ChannelType.DM,
@@ -264,21 +264,21 @@ export class SocketIORouter {
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
         logger.info(
-          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with serverId ${serverId}`
+          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with messageServerId ${messageServerId}`
         );
         try {
           // First verify the server exists
           const servers = await this.serverInstance.getServers();
-          const serverExists = servers.some((s) => s.id === serverId);
+          const serverExists = servers.some((s) => s.id === messageServerId);
           logger.info(
-            `[SocketIO ${socket.id}] Server ${serverId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+            `[SocketIO ${socket.id}] Server ${messageServerId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
           );
 
           if (!serverExists) {
             logger.error(
-              `[SocketIO ${socket.id}] Server ${serverId} does not exist, cannot create channel`
+              `[SocketIO ${socket.id}] Server ${messageServerId} does not exist, cannot create channel`
             );
-            this.sendErrorResponse(socket, `Server ${serverId} does not exist`);
+            this.sendErrorResponse(socket, `Server ${messageServerId} does not exist`);
             return;
           }
 
@@ -287,7 +287,7 @@ export class SocketIORouter {
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
-            messageServerId: serverId as UUID,
+            messageServerId: messageServerId as UUID,
             name: isDmChannel
               ? `DM ${channelId.substring(0, 8)}`
               : `Chat ${channelId.substring(0, 8)}`,
@@ -352,7 +352,7 @@ export class SocketIORouter {
           ...(metadata || {}),
           user_display_name: senderName,
           socket_id: socket.id,
-          serverId: serverId as UUID,
+          messageServerId: messageServerId as UUID,
           attachments,
         },
         sourceType: source || 'socketio_client',
@@ -377,7 +377,7 @@ export class SocketIORouter {
         text: message,
         channelId: channelId,
         roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Use serverId at message server layer
+        messageServerId: messageServerId, // Use messageS erverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
         attachments: transformedAttachments,

@@ -22,20 +22,20 @@ export const roomTable = pgTable('rooms', {
     .notNull()
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  agentId: uuid('agentId').references(() => agentTable.id, {
+  agentId: uuid('agent_id').references(() => agentTable.id, {
     onDelete: 'cascade',
   }),
   source: text('source').notNull(),
   type: text('type').notNull(),
-  serverId: text('serverId'),
-  worldId: uuid('worldId'), // no guarantee that world exists, it is optional for now
+  messageServerId: uuid('message_server_id'),
+  worldId: uuid('world_id'), // no guarantee that world exists, it is optional for now
   // .references(() => worldTable.id, {
   //   onDelete: 'cascade',
   // }),
   name: text('name'),
   metadata: jsonb('metadata'),
-  channelId: text('channelId'),
-  createdAt: timestamp('createdAt')
+  channelId: text('channel_id'),
+  createdAt: timestamp('created_at')
     .default(sql`now()`)
     .notNull(),
 });

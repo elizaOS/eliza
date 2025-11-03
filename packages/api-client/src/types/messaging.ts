@@ -4,7 +4,7 @@ import { PaginationParams } from './base';
 /**
  * Server metadata interface for message servers
  */
-export interface ServerMetadata {
+export interface MessageServerMetadata {
   description?: string;
   icon?: string;
   adminId?: string;
@@ -53,7 +53,7 @@ export interface MessageMetadata {
     size?: number;
   }>;
   authorDisplayName?: string;
-  serverId?: UUID;
+  messageServerId?: UUID;
   prompt?: string;
   source?: string;
   priority?: 'low' | 'normal' | 'high';
@@ -94,7 +94,7 @@ export interface MessageServer {
   name: string;
   sourceType: string;
   sourceId?: string;
-  metadata?: ServerMetadata;
+  metadata?: MessageServerMetadata;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -155,7 +155,7 @@ export interface ExternalMessageParams {
 export interface ChannelCreateParams {
   name: string;
   type: ChannelType;
-  serverId?: UUID;
+  messageServerId?: UUID;
   metadata?: ChannelMetadata;
 }
 
@@ -185,14 +185,14 @@ export interface MessageSearchParams extends PaginationParams {
   to?: Date | string;
 }
 
-export interface ServerCreateParams {
+export interface MessageServerCreateParams {
   name: string;
   sourceType: string;
   sourceId?: string;
-  metadata?: ServerMetadata;
+  metadata?: MessageServerMetadata;
 }
 
-export interface ServerSyncParams {
+export interface MessageServerSyncParams {
   channels: Array<{
     name: string;
     type: ChannelType;

@@ -2195,7 +2195,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           name: roomTable.name, // Added name
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
-          serverId: roomTable.serverId,
+          messageServerId: roomTable.messageServerId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
@@ -2210,7 +2210,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         id: room.id as UUID,
         name: room.name ?? undefined,
         agentId: room.agentId as UUID,
-        serverId: room.serverId as UUID,
+        messageServerId: room.messageServerId as UUID,
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
@@ -2234,7 +2234,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         id: room.id as UUID,
         name: room.name ?? undefined,
         agentId: room.agentId as UUID,
-        serverId: room.serverId as UUID,
+        messageServerId: room.messageServerId as UUID,
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
@@ -3283,9 +3283,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Gets channels for a server
+   * Gets channels for a message server
    */
-  async getChannelsForServer(serverId: UUID): Promise<
+  async getChannelsForMessageServer(messageServerId: UUID): Promise<
     Array<{
       id: UUID;
       messageServerId: UUID;
@@ -3303,7 +3303,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const results = await this.db
         .select()
         .from(channelTable)
-        .where(eq(channelTable.messageServerId, serverId));
+        .where(eq(channelTable.messageServerId, messageServerId));
       return results.map((r) => ({
         id: r.id as UUID,
         messageServerId: r.messageServerId as UUID,

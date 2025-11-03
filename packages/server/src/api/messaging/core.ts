@@ -4,7 +4,6 @@ import internalMessageBus from '../../bus'; // Import the bus
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { attachmentsToApiUrls } from '../../utils/media-transformer';
-import { validateServerIdForRls } from '../../utils/rls-validation';
 
 /**
  * Core messaging functionality - message submission and ingestion
@@ -16,7 +15,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
     const {
       channel_id,
-      server_id, // This is the server_id
+      message_server_id, // UUID of message_servers
       author_id, // This should be the agent's runtime.agentId or a dedicated central ID for the agent
       content,
       in_reply_to_message_id, // This is a root_message.id
@@ -27,7 +26,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     if (
       !validateUuid(channel_id) ||
-      !validateUuid(server_id) ||
+      !validateUuid(message_server_id) ||
       !validateUuid(author_id) ||
       !content ||
       !source_type ||
@@ -36,15 +35,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(400).json({
         success: false,
         error:
-          'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
-      });
-    }
-
-    // RLS security: Only allow access to current server's data
-    if (!validateServerIdForRls(server_id, serverInstance)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden: server_id does not match current server',
+          'Missing required fields: channel_id, message_server_id, author_id, content, source_type, raw_message',
       });
     }
 
@@ -83,7 +74,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: content,
           roomId: channel_id, // For SocketIO, room is the central channel_id
-          serverId: server_id, // Client layer uses serverId
+          serverId: message_server_id, // Client layer uses serverId (message_server_id)
           createdAt: new Date(createdMessage.createdAt).getTime(),
           source: createdMessage.sourceType,
           id: createdMessage.id, // Central message ID
@@ -109,7 +100,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     const {
       messageId,
       channel_id,
-      server_id,
+      server_message_id,
       author_id,
       content,
       in_reply_to_message_id,
@@ -120,7 +111,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     if (
       !validateUuid(channel_id) ||
-      !validateUuid(server_id) ||
+      !validateUuid(server_message_id) ||
       !validateUuid(author_id) ||
       !content ||
       !source_type ||
@@ -129,15 +120,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(400).json({
         success: false,
         error:
-          'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
-      });
-    }
-
-    // RLS security: Only allow access to current server's data
-    if (!validateServerIdForRls(server_id, serverInstance)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden: server_id does not match current server',
+          'Missing required fields: channel_id, server_message_id, author_id, content, source_type, raw_message',
       });
     }
 
@@ -178,7 +161,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: savedMessage.content,
           roomId: channel_id,
-          serverId: server_id,
+          messageServerId: server_message_id as UUID,
           createdAt: new Date(savedMessage.createdAt).getTime(),
           source: savedMessage.sourceType,
           id: savedMessage.id,
@@ -214,7 +197,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       in_reply_to_message_id,
       metadata,
       author_id,
-      server_id,
+      server_message_id,
     } = req.body ?? {};
 
     if (in_reply_to_message_id && !validateUuid(in_reply_to_message_id)) {
@@ -224,17 +207,6 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
-    }
-    if (server_id && !validateUuid(server_id)) {
-      return res.status(400).json({ success: false, error: 'Invalid server_id format' });
-    }
-
-    // RLS security: Only allow access to current server's data (if provided)
-    if (server_id && !validateServerIdForRls(server_id, serverInstance)) {
-      return res.status(403).json({
-        success: false,
-        error: 'Forbidden: server_id does not match current server',
-      });
     }
 
     try {
@@ -255,7 +227,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       // Transform attachments for web client
       const transformedAttachments = attachmentsToApiUrls(
         metadata?.attachments ?? raw_message?.attachments
-      );
+      );  
 
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(updated.channelId).emit('messageBroadcast', {
@@ -263,7 +235,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: updated.content,
           roomId: updated.channelId,
-          serverId: server_id, // optional; include if client provides
+          messageServerId: server_message_id as UUID, 
           createdAt: new Date(updated.createdAt).getTime(),
           source: updated.sourceType,
           id: updated.id,
@@ -291,7 +263,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     if (
       !messagePayload.channel_id ||
-      !messagePayload.server_id ||
+      !messagePayload.message_server_id ||
       !messagePayload.author_id ||
       !messagePayload.content
     ) {
@@ -317,7 +289,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       const messageForBus: MessageService = {
         id: createdRootMessage.id!,
         channel_id: createdRootMessage.channelId,
-        server_id: messagePayload.server_id as UUID, // Pass through the original server_id
+        message_server_id: messagePayload.message_server_id as UUID, // Pass through the original message_server_id
         author_id: createdRootMessage.authorId, // This is the central ID used for storage
         author_display_name: messagePayload.author_display_name, // Pass through display name
         content: createdRootMessage.content,
@@ -342,7 +314,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: messageForBus.author_display_name || 'User',
           text: messageForBus.content,
           roomId: messageForBus.channel_id,
-          serverId: messageForBus.server_id, // Client layer uses serverId
+          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId  
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,

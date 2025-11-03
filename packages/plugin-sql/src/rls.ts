@@ -538,7 +538,8 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check which columns exist
+      -- Check which columns exist (using PostgreSQL snake_case convention)
+      -- Check for entity_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -546,6 +547,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           AND information_schema.columns.column_name = 'entity_id'
       ) INTO has_entity_id;
 
+      -- Check for author_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -553,6 +555,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           AND information_schema.columns.column_name = 'author_id'
       ) INTO has_author_id;
 
+      -- Check for channel_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -560,6 +563,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           AND information_schema.columns.column_name = 'channel_id'
       ) INTO has_channel_id;
 
+      -- Check for room_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
@@ -574,12 +578,18 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       END IF;
 
       -- Determine which column to use for entity filtering
-      -- Priority: room_id/channel_id (shared access via participants) > entity_id/author_id (direct access)
+      -- Priority: roomId/channelId (shared access via participants) > entityId/authorId (direct access)
+      --
+      -- SPECIAL CASE: participants table must use direct entityId to avoid infinite recursion
+      -- (participants can't JOIN to itself via the policy subquery)
       --
       -- SECURITY NOTE: Column names are hardcoded string literals (not user input)
       -- This prevents SQL injection even though they're used in format() with %I
       -- The %I identifier quoting protects against malicious column names in the schema
-      IF has_room_id THEN
+      IF table_name = 'participants' AND has_entity_id THEN
+        entity_column_name := 'entity_id';
+        room_column_name := NULL;
+      ELSIF has_room_id THEN
         room_column_name := 'room_id';
         entity_column_name := NULL;
       ELSIF has_channel_id THEN
@@ -611,14 +621,19 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       -- Drop existing entity policies if present
       EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- CASE 1: Table has room_id or channel_id (shared access via participants)
+      -- CASE 1: Table has roomId or channelId (shared access via participants)
       IF room_column_name IS NOT NULL THEN
+        -- Determine the corresponding column name in participants table
+        -- If the table has roomId, look for roomId in participants.roomId
+        -- participants table uses: entityId (for participant), roomId (for room)
+        -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
         EXECUTE format('
           CREATE POLICY entity_isolation_policy ON %I.%I
+          AS RESTRICTIVE
           USING (
             current_entity_id() IS NULL
             OR %I IN (
-              SELECT channel_id
+              SELECT room_id
               FROM participants
               WHERE entity_id = current_entity_id()
             )
@@ -626,19 +641,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           WITH CHECK (
             current_entity_id() IS NULL
             OR %I IN (
-              SELECT channel_id
+              SELECT room_id
               FROM participants
               WHERE entity_id = current_entity_id()
             )
           )
         ', schema_name, table_name, room_column_name, room_column_name);
 
-        RAISE NOTICE '[Entity RLS] Applied to %.% (via % → participants)', schema_name, table_name, room_column_name;
+        RAISE NOTICE '[Entity RLS] Applied RESTRICTIVE to %.% (via % → participants)', schema_name, table_name, room_column_name;
 
       -- CASE 2: Table has direct entity_id or author_id column
       ELSIF entity_column_name IS NOT NULL THEN
+        -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
         EXECUTE format('
           CREATE POLICY entity_isolation_policy ON %I.%I
+          AS RESTRICTIVE
           USING (
             current_entity_id() IS NULL
             OR %I = current_entity_id()
@@ -649,7 +666,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           )
         ', schema_name, table_name, entity_column_name, entity_column_name);
 
-        RAISE NOTICE '[Entity RLS] Applied to %.% (direct column: %)', schema_name, table_name, entity_column_name;
+        RAISE NOTICE '[Entity RLS] Applied RESTRICTIVE to %.% (direct column: %)', schema_name, table_name, entity_column_name;
       END IF;
 
       -- Create indexes for efficient entity filtering
@@ -700,15 +717,8 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
 
   logger.info('[Entity RLS] Created apply_entity_rls_to_all_tables() function');
 
-  // 4. Apply Entity RLS to all eligible tables automatically
-  try {
-    await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
-    logger.info('[Entity RLS] Applied entity RLS to all eligible tables');
-  } catch (error) {
-    logger.warn('[Entity RLS] Failed to apply entity RLS to some tables:', String(error));
-  }
 
-  logger.info('[Entity RLS] Entity RLS functions installed and applied successfully');
+  logger.info('[Entity RLS] Entity RLS functions installed successfully');
 }
 
 /**

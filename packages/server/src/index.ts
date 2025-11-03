@@ -33,7 +33,6 @@ import sqlPlugin, {
   getOrCreateRlsServer,
   setServerContext,
   assignAgentToServer,
-  applyRLSToNewTables,
   uninstallRLS,
 } from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
@@ -178,7 +177,7 @@ export class AgentServer {
 
   public database!: DatabaseAdapter;
   private rlsServerId?: UUID;
-  public serverId: UUID = DEFAULT_SERVER_ID;
+  public messageServerId: UUID = DEFAULT_SERVER_ID;
 
   public loadCharacterTryPath!: (characterPath: string) => Promise<Character>;
   public jsonToCharacter!: (character: unknown) => Promise<Character>;
@@ -398,7 +397,7 @@ export class AgentServer {
         logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
 
         try {
-          // Install RLS PostgreSQL functions (includes Entity RLS)
+          // Install RLS PostgreSQL functions (includes Entity RLS) but DO NOT apply policies yet
           await installRLSFunctions(this.database);
 
           // Get or create server with the provided server ID
@@ -410,15 +409,16 @@ export class AgentServer {
           // Set RLS context for this server instance
           await setServerContext(this.database, server_id);
 
-          // Apply RLS to all tables (Server RLS policies applied here, Entity RLS already applied during installRLSFunctions)
-          await applyRLSToNewTables(this.database);
+          // Note: applyRLSToNewTables() is NOT called here
+          // RLS policies will be applied automatically after agent migrations complete
+          // via DatabaseMigrationService.runAllPluginMigrations() to avoid server_id column conflicts
 
-          logger.success('[INIT] RLS multi-tenant isolation initialized successfully');
-          logger.success('[INIT] Entity RLS initialized - entities isolated per DM/group/channel');
+          logger.success('[INIT] RLS functions installed and context set (policies will apply after migrations)');
+          logger.success('[INIT] Entity RLS functions ready - entities will be isolated after migrations');
         } catch (rlsError) {
-          logger.error({ error: rlsError }, '[INIT] Failed to initialize RLS:');
+          logger.error({ error: rlsError }, '[INIT] Failed to prepare RLS:');
           throw new Error(
-            `RLS initialization failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
+            `RLS preparation failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
           );
         }
       } else if (config?.postgresUrl) {
@@ -489,23 +489,23 @@ export class AgentServer {
 
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
-          this.serverId = existingServer.id;
-          logger.info(`[AgentServer] Found existing message_server ${this.serverId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
+          this.messageServerId = existingServer.id;
+          logger.info(`[AgentServer] Found existing message_server ${this.messageServerId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
         } else {
           // First boot: generate new random UUID for message_server (will be linked to rlsServerId via server_id column)
-          this.serverId = crypto.randomUUID() as UUID;
-          logger.info(`[AgentServer] Generating new message_server ID ${this.serverId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
+          this.messageServerId = crypto.randomUUID() as UUID;
+          logger.info(`[AgentServer] Generating new message_server ID ${this.messageServerId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
         }
       } else {
         // RLS disabled: use shared default server
-        this.serverId = '00000000-0000-0000-0000-000000000000';
+        this.messageServerId = '00000000-0000-0000-0000-000000000000';
       }
 
       const serverName = rlsEnabled && this.rlsServerId
-        ? `Server ${this.serverId.substring(0, 8)}`
+        ? `Server ${this.messageServerId.substring(0, 8)}`
         : 'Default Server';
 
-      logger.info(`[AgentServer] Checking for server ${this.serverId}...`);
+      logger.info(`[AgentServer] Checking for server ${this.messageServerId}...`);
       const servers = await (this.database as any).getMessageServers();
       logger.debug(`[AgentServer] Found ${servers.length} existing servers`);
 
@@ -514,24 +514,24 @@ export class AgentServer {
         logger.debug(`[AgentServer] Existing server: ID=${s.id}, Name=${s.name}`);
       });
 
-      const defaultServer = servers.find((s: any) => s.id === this.serverId);
+      const defaultServer = servers.find((s: any) => s.id === this.messageServerId);
 
       if (!defaultServer) {
-        logger.info(`[AgentServer] Creating server with UUID ${this.serverId}...`);
+        logger.info(`[AgentServer] Creating server with UUID ${this.messageServerId}...`);
 
         // Use parameterized query to prevent SQL injection
         try {
           const db = (this.database as any).db;
           await db.execute(sql`
             INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+            VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING
           `);
           logger.success('[AgentServer] Server created via parameterized query');
 
           // Immediately check if it was created with parameterized query
           const checkResult = await db.execute(sql`
-            SELECT id, name FROM message_servers WHERE id = ${this.serverId}
+            SELECT id, name FROM message_servers WHERE id = ${this.messageServerId}
           `);
           logger.debug('[AgentServer] Parameterized query check result:', checkResult);
         } catch (sqlError: any) {
@@ -540,7 +540,7 @@ export class AgentServer {
           // Try creating with ORM as fallback
           try {
             const server = await (this.database as any).createMessageServer({
-              id: this.serverId as UUID,
+              id: this.messageServerId as UUID,
               name: serverName,
               sourceType: 'eliza_default',
             });
@@ -558,9 +558,9 @@ export class AgentServer {
           logger.debug(`[AgentServer] Server after creation: ID=${s.id}, Name=${s.name}`);
         });
 
-        const verifyDefault = verifyServers.find((s: any) => s.id === this.serverId);
+        const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
         if (!verifyDefault) {
-          throw new Error(`Failed to create or verify server with ID ${this.serverId}`);
+          throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
         } else {
           logger.success('[AgentServer] Server creation verified successfully');
         }
@@ -1330,9 +1330,9 @@ export class AgentServer {
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
 
-      await this.addAgentToServer(this.serverId, runtime.agentId);
+      await this.addAgentToServer(this.messageServerId, runtime.agentId);
       logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${this.serverId}`
+        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${this.messageServerId}`
       );
     } catch (error) {
       logger.error({ error }, 'Failed to register agent:');
@@ -1631,7 +1631,7 @@ export class AgentServer {
     return (this.database as any).getMessageServerById(serverId);
   }
 
-  async getServerBySourceType(sourceType: string): Promise<MessageServer | null> {
+  async getMessageServerBySourceType(sourceType: string): Promise<MessageServer | null> {
     const servers = await (this.database as any).getMessageServers();
     const filtered = servers.filter((s: MessageServer) => s.sourceType === sourceType);
     return filtered.length > 0 ? filtered[0] : null;
@@ -1648,8 +1648,8 @@ export class AgentServer {
     return (this.database as any).addChannelParticipants(channelId, userIds);
   }
 
-  async getChannelsForServer(serverId: UUID): Promise<MessageChannel[]> {
-    return (this.database as any).getChannelsForServer(serverId);
+  async getChannelsForMessageServer(messageServerId: UUID): Promise<MessageChannel[]> {
+    return (this.database as any).getChannelsForMessageServer(messageServerId);
   }
 
   async getChannelDetails(channelId: UUID): Promise<MessageChannel | null> {
@@ -1704,7 +1704,7 @@ export class AgentServer {
       const messageForBus: MessageServiceStructure = {
         id: createdMessage.id,
         channel_id: createdMessage.channelId,
-        server_id: channel.messageServerId,
+        message_server_id: channel.messageServerId,
         author_id: createdMessage.authorId,
         content: createdMessage.content,
         raw_message: createdMessage.rawMessage,
