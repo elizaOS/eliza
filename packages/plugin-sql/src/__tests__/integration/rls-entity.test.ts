@@ -14,7 +14,8 @@ import { v4 as uuidv4 } from 'uuid';
  * - Entity RLS works with Server RLS (double isolation)
  */
 
-describe('PostgreSQL RLS Entity Integration', () => {
+// Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
+describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', () => {
   let adminClient: Client;
   let userClient: Client;
 

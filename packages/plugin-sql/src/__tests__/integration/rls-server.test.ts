@@ -14,7 +14,8 @@ import { v4 as uuidv4 } from 'uuid';
  * - Data is completely isolated between servers
  */
 
-describe('PostgreSQL RLS Server Integration', () => {
+// Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
+describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Server Integration', () => {
   let adminClient: Client;
   let userClient1: Client;
   let userClient2: Client;
