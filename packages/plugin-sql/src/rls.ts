@@ -722,14 +722,14 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
         BEGIN
           -- Apply STRICT mode (require_entity=true) to sensitive user-facing tables
           -- These tables MUST have entity context set to access data
+          -- STRICT tables: memories, logs, components, tasks (user data requiring isolation)
           -- NOTE: Excluded tables:
           --   - 'participants': Adding participants is a privileged operation during initialization
-          --   - 'logs': System/technical logs don't require entity context (debugging, monitoring)
-          IF tbl.tablename IN ('memories', 'components', 'tasks') THEN
+          IF tbl.tablename IN ('memories', 'logs', 'components', 'tasks') THEN
             require_entity_for_table := true;
           ELSE
             -- PERMISSIVE mode (require_entity=false) for system/privileged tables
-            -- This includes: participants, rooms, channels, entities, logs, etc.
+            -- This includes: participants, rooms, channels, entities, etc.
             require_entity_for_table := false;
           END IF;
 

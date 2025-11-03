@@ -1365,7 +1365,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
 
-        await this.db.transaction(async (tx) => {
+        // Use withEntityContext to set Entity RLS context before inserting
+        // This ensures the log entry passes STRICT Entity RLS policy
+        await this.withEntityContext(params.entityId, async (tx) => {
           await tx.insert(logTable).values({
             body: sql`${jsonString}::jsonb`,
             entityId: params.entityId,
