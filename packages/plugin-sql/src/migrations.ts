@@ -55,10 +55,118 @@ export async function migrateColumnsToSnakeCase(adapter: IDatabaseAdapter): Prom
       logger.debug('[Migration] ⊘ Could not disable RLS (may not have permissions)');
     }
 
-    // Drop ALL server_id columns (will be re-added by RLS after migrations)
+    // Special handling for tables where server_id needs to become message_server_id
+    // In develop: server_id (text or uuid) → referenced message server ID
+    // In feat/entity-rls: message_server_id (uuid) → message_servers.id
+    //
+    // STRATEGY: Rename server_id to message_server_id preserving data
+    logger.debug('[Migration] → Handling server_id → message_server_id migrations...');
+
+    const tablesToMigrate = ['channels', 'worlds', 'rooms'];
+
+    for (const tableName of tablesToMigrate) {
+      try {
+        const columnsResult = await db.execute(sql`
+          SELECT column_name, data_type, is_nullable
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = ${tableName}
+            AND column_name IN ('server_id', 'message_server_id')
+          ORDER BY column_name
+        `);
+
+        const columns = columnsResult.rows || [];
+        const serverId = columns.find((c: any) => c.column_name === 'server_id');
+        const messageServerId = columns.find((c: any) => c.column_name === 'message_server_id');
+
+        if (serverId && !messageServerId) {
+          // Only server_id exists → rename it to message_server_id
+          logger.debug(`[Migration] → Renaming ${tableName}.server_id to message_server_id...`);
+          await db.execute(sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "server_id" TO "message_server_id"`));
+          logger.debug(`[Migration] ✓ Renamed ${tableName}.server_id → message_server_id`);
+
+          // If the column was text, try to convert to UUID (if data is UUID-compatible)
+          if (serverId.data_type === 'text') {
+            try {
+              // CRITICAL: Drop DEFAULT constraint before type conversion
+              // This prevents "default for column cannot be cast automatically" errors
+              logger.debug(`[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`);
+              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`));
+              logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
+
+              logger.debug(`[Migration] → Converting ${tableName}.message_server_id from text to uuid...`);
+              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING "message_server_id"::uuid`));
+              logger.debug(`[Migration] ✓ Converted ${tableName}.message_server_id to uuid`);
+            } catch (convertError) {
+              logger.warn(`[Migration] ⚠️ Could not convert ${tableName}.message_server_id to uuid - data may not be valid UUIDs`);
+              // If conversion fails, set to NULL for rows with invalid UUIDs
+              // This allows the migration to continue
+              logger.debug(`[Migration] → Setting invalid UUIDs to NULL in ${tableName}.message_server_id...`);
+              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING CASE WHEN "message_server_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN "message_server_id"::uuid ELSE NULL END`));
+            }
+          }
+
+          // If the column should be NOT NULL but has NULLs, we need to handle that
+          // For channels, it's NOT NULL in the new schema
+          if (tableName === 'channels') {
+            const nullCountResult = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`));
+            const nullCount = nullCountResult.rows?.[0]?.count;
+            if (nullCount && parseInt(nullCount) > 0) {
+              logger.warn(`[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`);
+              await db.execute(sql.raw(`DELETE FROM "${tableName}" WHERE "message_server_id" IS NULL`));
+              logger.debug(`[Migration] ✓ Deleted ${nullCount} rows with NULL message_server_id from ${tableName}`);
+            }
+
+            // Make it NOT NULL
+            logger.debug(`[Migration] → Making ${tableName}.message_server_id NOT NULL...`);
+            await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" SET NOT NULL`));
+            logger.debug(`[Migration] ✓ Set ${tableName}.message_server_id NOT NULL`);
+          }
+        } else if (serverId && messageServerId) {
+          // Both exist → just drop server_id (will be re-added by RuntimeMigrator for RLS)
+          logger.debug(`[Migration] → ${tableName} has both columns, dropping server_id...`);
+          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "server_id" CASCADE`));
+          logger.debug(`[Migration] ✓ Dropped ${tableName}.server_id (will be re-added by RuntimeMigrator for RLS)`);
+        } else if (!serverId && messageServerId) {
+          // Only message_server_id exists - check if it needs type conversion from TEXT to UUID
+          // This handles idempotency when migration partially ran before rollback
+          if (messageServerId.data_type === 'text') {
+            logger.debug(`[Migration] → ${tableName}.message_server_id exists but is TEXT, needs UUID conversion...`);
+
+            // CRITICAL: Drop DEFAULT constraint before type conversion
+            // This prevents "default for column cannot be cast automatically" errors
+            logger.debug(`[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`);
+            await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`));
+            logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
+
+            // Convert TEXT to UUID using MD5 hash for non-UUID text values
+            // This creates deterministic UUIDs from text values, preserving data
+            logger.debug(`[Migration] → Converting ${tableName}.message_server_id from text to uuid (generating UUIDs from text)...`);
+            await db.execute(sql.raw(`
+              ALTER TABLE "${tableName}"
+              ALTER COLUMN "message_server_id" TYPE uuid
+              USING CASE
+                WHEN "message_server_id" ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                THEN "message_server_id"::uuid
+                ELSE md5("message_server_id")::uuid
+              END
+            `));
+            logger.debug(`[Migration] ✓ Converted ${tableName}.message_server_id to uuid`);
+          } else {
+            logger.debug(`[Migration] ⊘ ${tableName}.message_server_id already UUID, skipping`);
+          }
+        } else {
+          logger.debug(`[Migration] ⊘ ${tableName} already migrated, skipping`);
+        }
+      } catch (error) {
+        logger.warn(`[Migration] ⚠️ Error migrating ${tableName}.server_id: ${error}`);
+      }
+    }
+
+    // Drop ALL remaining server_id columns (will be re-added by RLS after migrations)
     // This prevents RuntimeMigrator from seeing them and trying to drop them
-    // EXCEPT for tables where server_id is part of the schema (like agents, channels, server_agents)
-    logger.debug('[Migration] → Dropping all RLS-managed server_id columns...');
+    // EXCEPT for tables where server_id is part of the schema (like agents, server_agents)
+    logger.debug('[Migration] → Dropping all remaining RLS-managed server_id columns...');
     try {
       const serverIdColumnsResult = await db.execute(sql`
         SELECT table_name
@@ -67,8 +175,10 @@ export async function migrateColumnsToSnakeCase(adapter: IDatabaseAdapter): Prom
           AND column_name = 'server_id'
           AND table_name NOT IN (
             'servers',              -- server_id is the primary key
-            'agents',               -- server_id is in the schema
-            'channels',             -- server_id is in the schema
+            'agents',               -- server_id is in the schema (for RLS)
+            'channels',             -- already handled above
+            'worlds',               -- already handled above
+            'rooms',                -- already handled above
             'server_agents',        -- server_id is part of composite key
             'drizzle_migrations',
             '__drizzle_migrations'
