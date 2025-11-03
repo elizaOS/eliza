@@ -2649,15 +2649,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return result.rows.map((relationship: any) => ({
         ...relationship,
         id: relationship.id as UUID,
-        sourceEntityId: relationship.sourceEntityId as UUID,
-        targetEntityId: relationship.targetEntityId as UUID,
-        agentId: relationship.agentId as UUID,
+        sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
+        targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
+        agentId: (relationship.agent_id || relationship.agentId) as UUID,
         tags: relationship.tags ?? [],
         metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
-        createdAt: relationship.createdAt
-          ? relationship.createdAt instanceof Date
-            ? relationship.createdAt.toISOString()
-            : new Date(relationship.createdAt).toISOString()
+        createdAt: relationship.created_at || relationship.createdAt
+          ? (relationship.created_at || relationship.createdAt) instanceof Date
+            ? (relationship.created_at || relationship.createdAt).toISOString()
+            : new Date(relationship.created_at || relationship.createdAt).toISOString()
           : new Date().toISOString(),
       }));
     });
