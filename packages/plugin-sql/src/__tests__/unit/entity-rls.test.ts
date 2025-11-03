@@ -288,15 +288,12 @@ describe('Entity RLS Table Exclusions', () => {
       'entity_mappings', // Mapping table
       'drizzle_migrations',
       '__drizzle_migrations',
-      'agents', // Not entity-specific
-      'server_agents', // Junction table
     ];
 
     // Tables that should NOT have Entity RLS
     expect(excludedTables).toContain('servers');
     expect(excludedTables).toContain('users');
     expect(excludedTables).toContain('entity_mappings');
-    expect(excludedTables).toContain('agents');
 
     // Tables that SHOULD have Entity RLS (not in exclusion list)
     expect(excludedTables).not.toContain('memories');

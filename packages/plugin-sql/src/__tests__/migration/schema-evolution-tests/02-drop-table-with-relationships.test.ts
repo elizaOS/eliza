@@ -142,6 +142,9 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
     // 3. Create rooms
     const room1Id = '770e8400-e29b-41d4-a716-446655440001';
     const room2Id = '770e8400-e29b-41d4-a716-446655440002';
+    const channelId1 = '990e8400-e29b-41d4-a716-446655440001';
+    const channelId2 = '990e8400-e29b-41d4-a716-446655440002';
+    const messageServerId = 'aa1e8400-e29b-41d4-a716-446655440001';
 
     await db.insert(roomTable).values([
       {
@@ -150,8 +153,8 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         agentId: agent1Id,
         source: 'discord',
         type: 'text',
-        channelId: 'channel-123',
-        messageServerId: 'server-456',
+        channelId: channelId1,
+        messageServerId: messageServerId,
       },
       {
         id: room2Id,
@@ -159,8 +162,8 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         agentId: agent2Id,
         source: 'discord',
         type: 'voice',
-        channelId: 'channel-789',
-        messageServerId: 'server-456',
+        channelId: channelId2,
+        messageServerId: messageServerId,
       },
     ]);
 
@@ -249,7 +252,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
       logs: logTable,
       cache: cacheTable,
       tasks: taskTable,
-      serverAgents: messageServerAgentsTable,
+      messageServerAgents: messageServerAgentsTable,
     };
 
     // Test 1: Check for data loss warnings
@@ -380,7 +383,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
       logs: logTable,
       cache: cacheTable,
       tasks: taskTable,
-      serverAgents: messageServerAgentsTable,
+      messageServerAgents: messageServerAgentsTable,
     };
 
     const check = await migrator.checkMigration('@elizaos/production-cascade-test', schemaV2);
