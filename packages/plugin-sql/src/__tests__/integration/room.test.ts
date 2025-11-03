@@ -26,7 +26,7 @@ describe('Room Integration Tests', () => {
       id: testWorldId,
       agentId: testAgentId,
       name: 'Test World',
-      serverId: 'test-server',
+      messageServerId: uuidv4() as UUID,
     });
   });
 

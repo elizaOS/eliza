@@ -25,8 +25,14 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   /**
    * Execute a callback with entity context for Entity RLS
    * Delegates to the manager's withEntityContext method
+   *
+   * This is a public method because it's part of the adapter's public API
+   * for operations that need entity-scoped database access.
    */
-  async withEntityContext<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T> {
+  public async withEntityContext<T>(
+    entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T> {
     return await this.manager.withEntityContext(entityId, callback);
   }
 

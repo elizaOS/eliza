@@ -525,7 +525,8 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION add_entity_isolation(
       schema_name text,
-      table_name text
+      table_name text,
+      require_entity boolean DEFAULT false
     ) RETURNS void AS $$
     DECLARE
       full_table_name text;
@@ -627,46 +628,91 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
         -- If the table has roomId, look for roomId in participants.roomId
         -- participants table uses: entityId (for participant), roomId (for room)
         -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
-        EXECUTE format('
-          CREATE POLICY entity_isolation_policy ON %I.%I
-          AS RESTRICTIVE
-          USING (
-            current_entity_id() IS NULL
-            OR %I IN (
-              SELECT room_id
-              FROM participants
-              WHERE entity_id = current_entity_id()
-            )
-          )
-          WITH CHECK (
-            current_entity_id() IS NULL
-            OR %I IN (
-              SELECT room_id
-              FROM participants
-              WHERE entity_id = current_entity_id()
-            )
-          )
-        ', schema_name, table_name, room_column_name, room_column_name);
 
-        RAISE NOTICE '[Entity RLS] Applied RESTRICTIVE to %.% (via % → participants)', schema_name, table_name, room_column_name;
+        -- Build policy with or without NULL check based on require_entity parameter
+        IF require_entity THEN
+          -- STRICT MODE: Entity context is REQUIRED (blocks NULL entity_id)
+          EXECUTE format('
+            CREATE POLICY entity_isolation_policy ON %I.%I
+            AS RESTRICTIVE
+            USING (
+              current_entity_id() IS NOT NULL
+              AND %I IN (
+                SELECT room_id
+                FROM participants
+                WHERE entity_id = current_entity_id()
+              )
+            )
+            WITH CHECK (
+              current_entity_id() IS NOT NULL
+              AND %I IN (
+                SELECT room_id
+                FROM participants
+                WHERE entity_id = current_entity_id()
+              )
+            )
+          ', schema_name, table_name, room_column_name, room_column_name);
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants, entity REQUIRED)', schema_name, table_name, room_column_name;
+        ELSE
+          -- PERMISSIVE MODE: NULL entity_id allows system/admin access
+          EXECUTE format('
+            CREATE POLICY entity_isolation_policy ON %I.%I
+            AS RESTRICTIVE
+            USING (
+              current_entity_id() IS NULL
+              OR %I IN (
+                SELECT room_id
+                FROM participants
+                WHERE entity_id = current_entity_id()
+              )
+            )
+            WITH CHECK (
+              current_entity_id() IS NULL
+              OR %I IN (
+                SELECT room_id
+                FROM participants
+                WHERE entity_id = current_entity_id()
+              )
+            )
+          ', schema_name, table_name, room_column_name, room_column_name);
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants, NULL allowed)', schema_name, table_name, room_column_name;
+        END IF;
 
       -- CASE 2: Table has direct entity_id or author_id column
       ELSIF entity_column_name IS NOT NULL THEN
         -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
-        EXECUTE format('
-          CREATE POLICY entity_isolation_policy ON %I.%I
-          AS RESTRICTIVE
-          USING (
-            current_entity_id() IS NULL
-            OR %I = current_entity_id()
-          )
-          WITH CHECK (
-            current_entity_id() IS NULL
-            OR %I = current_entity_id()
-          )
-        ', schema_name, table_name, entity_column_name, entity_column_name);
 
-        RAISE NOTICE '[Entity RLS] Applied RESTRICTIVE to %.% (direct column: %)', schema_name, table_name, entity_column_name;
+        IF require_entity THEN
+          -- STRICT MODE: Entity context is REQUIRED
+          EXECUTE format('
+            CREATE POLICY entity_isolation_policy ON %I.%I
+            AS RESTRICTIVE
+            USING (
+              current_entity_id() IS NOT NULL
+              AND %I = current_entity_id()
+            )
+            WITH CHECK (
+              current_entity_id() IS NOT NULL
+              AND %I = current_entity_id()
+            )
+          ', schema_name, table_name, entity_column_name, entity_column_name);
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (direct column: %, entity REQUIRED)', schema_name, table_name, entity_column_name;
+        ELSE
+          -- PERMISSIVE MODE: NULL entity_id allows system/admin access
+          EXECUTE format('
+            CREATE POLICY entity_isolation_policy ON %I.%I
+            AS RESTRICTIVE
+            USING (
+              current_entity_id() IS NULL
+              OR %I = current_entity_id()
+            )
+            WITH CHECK (
+              current_entity_id() IS NULL
+              OR %I = current_entity_id()
+            )
+          ', schema_name, table_name, entity_column_name, entity_column_name);
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (direct column: %, NULL allowed)', schema_name, table_name, entity_column_name;
+        END IF;
       END IF;
 
       -- Create indexes for efficient entity filtering
@@ -690,6 +736,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     CREATE OR REPLACE FUNCTION apply_entity_rls_to_all_tables() RETURNS void AS $$
     DECLARE
       tbl record;
+      require_entity_for_table boolean;
     BEGIN
       FOR tbl IN
         SELECT schemaname, tablename
@@ -706,7 +753,20 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
           )
       LOOP
         BEGIN
-          PERFORM add_entity_isolation(tbl.schemaname, tbl.tablename);
+          -- Apply STRICT mode (require_entity=true) to sensitive user-facing tables
+          -- These tables MUST have entity context set to access data
+          -- NOTE: Excluded tables:
+          --   - 'participants': Adding participants is a privileged operation during initialization
+          --   - 'logs': System/technical logs don't require entity context (debugging, monitoring)
+          IF tbl.tablename IN ('memories', 'components', 'tasks') THEN
+            require_entity_for_table := true;
+          ELSE
+            -- PERMISSIVE mode (require_entity=false) for system/privileged tables
+            -- This includes: participants, rooms, channels, entities, logs, etc.
+            require_entity_for_table := false;
+          END IF;
+
+          PERFORM add_entity_isolation(tbl.schemaname, tbl.tablename, require_entity_for_table);
         EXCEPTION WHEN OTHERS THEN
           RAISE WARNING '[Entity RLS] Failed to apply to %.%: %', tbl.schemaname, tbl.tablename, SQLERRM;
         END;

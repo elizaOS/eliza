@@ -92,6 +92,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   protected migrationService?: DatabaseMigrationService;
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
+
+  /**
+   * Execute a callback with entity context for Entity RLS.
+   * Must be implemented by concrete adapters to handle their specific RLS mechanisms.
+   *
+   * @param entityId - The entity UUID to set as context (or null for system operations)
+   * @param callback - The database operations to execute with the entity context
+   * @returns The result of the callback
+   */
+  public abstract withEntityContext<T>(
+    entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T>;
+
   public abstract init(): Promise<void>;
   public abstract close(): Promise<void>;
 
@@ -1880,7 +1894,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const metadataToInsert =
       typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    await this.db.transaction(async (tx) => {
+    // Use withEntityContext to set Entity RLS context if needed
+    // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
+    await this.withEntityContext(memory.entityId, async (tx) => {
       await tx.insert(memoryTable).values([
         {
           id: memoryId,
