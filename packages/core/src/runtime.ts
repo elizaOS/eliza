@@ -55,6 +55,7 @@ import {
   type RuntimeSettings,
   type Component,
   IAgentRuntime,
+  type IElizaOS,
   type ActionResult,
   type GenerateTextParams,
   type GenerateTextOptions,
@@ -117,6 +118,13 @@ export class AgentRuntime implements IAgentRuntime {
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
+
+  /**
+   * Reference to the ElizaOS instance that created this runtime
+   * Set by ElizaOS when runtime is registered
+   * @optional
+   */
+  elizaOS?: IElizaOS;
 
   // A map of all plugins available to the runtime, keyed by name, for dependency resolution.
   private allAvailablePlugins = new Map<string, Plugin>();
@@ -372,6 +380,8 @@ export class AgentRuntime implements IAgentRuntime {
         await service.stop();
       }
     }
+
+    this.elizaOS = undefined;
   }
 
   async initialize(): Promise<void> {
@@ -2918,5 +2928,9 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error('Database adapter not registered');
     }
     return await this.adapter.isReady();
+  }
+
+  hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
+    return this.elizaOS !== undefined;
   }
 }

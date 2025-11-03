@@ -122,6 +122,93 @@ describe('ElizaOS', () => {
     });
   });
 
+  describe('Runtime ElizaOS Reference', () => {
+    const testCharacter: Character = {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      system: 'You are a test agent',
+    };
+
+    it('should assign elizaOS reference to runtime when agent is added', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime).toBeTruthy();
+      expect(runtime?.elizaOS).toBe(elizaOS);
+    });
+
+    it('should assign elizaOS reference to runtime when agent is registered', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+      const runtime = elizaOS.getAgent(agentIds[0]);
+
+      // Remove and re-register
+      await elizaOS.deleteAgents(agentIds);
+      elizaOS.registerAgent(runtime!);
+
+      expect(runtime?.elizaOS).toBe(elizaOS);
+    });
+
+    it('hasElizaOS() should return true when elizaOS is assigned', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime?.hasElizaOS()).toBe(true);
+    });
+
+    it('hasElizaOS() should narrow TypeScript type correctly', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      if (runtime?.hasElizaOS()) {
+        // TypeScript should know elizaOS is defined here
+        expect(runtime.elizaOS).toBeDefined();
+        expect(runtime.elizaOS.sendMessage).toBeDefined();
+        expect(runtime.elizaOS.getAgent).toBeDefined();
+      } else {
+        throw new Error('hasElizaOS() should return true');
+      }
+    });
+
+    it('should clear elizaOS reference on runtime.stop()', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime?.elizaOS).toBe(elizaOS);
+
+      // Stop the runtime
+      await runtime?.stop();
+
+      // elizaOS reference should be cleared to prevent memory leak
+      expect(runtime?.elizaOS).toBeUndefined();
+    });
+
+    it('should prevent memory leaks with bidirectional reference', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+
+      // Verify bidirectional reference
+      expect(runtime?.elizaOS).toBe(elizaOS);
+      expect(elizaOS.getAgent(agentIds[0])).toBe(runtime);
+
+      // Stop and verify cleanup
+      await runtime?.stop();
+      expect(runtime?.elizaOS).toBeUndefined();
+    });
+  });
+
   describe('Event System', () => {
     it('should emit events when agents are added', async () => {
       const addedHandler = mock();
