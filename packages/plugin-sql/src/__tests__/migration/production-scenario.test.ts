@@ -52,24 +52,24 @@ describe('Production Migration Scenarios', () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS memories (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          agent_id UUID NOT NULL,
-          room_id UUID,
-          entity_id UUID,
+          "agentId" UUID NOT NULL,
+          "roomId" UUID,
+          "entityId" UUID,
           content JSONB NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW(),
+          "createdAt" TIMESTAMP DEFAULT NOW(),
           type TEXT NOT NULL DEFAULT 'message',
           "unique" BOOLEAN DEFAULT TRUE,
           metadata JSONB DEFAULT '{}',
-          world_id UUID
+          "worldId" UUID
         )
       `);
 
       await db.execute(sql`
-        CREATE INDEX IF NOT EXISTS idx_memories_type_room ON memories(type, room_id)
+        CREATE INDEX IF NOT EXISTS idx_memories_type_room ON memories(type, "roomId")
       `);
 
       await db.execute(sql`
-        CREATE INDEX IF NOT EXISTS idx_memories_world_id ON memories(world_id)
+        CREATE INDEX IF NOT EXISTS idx_memories_world_id ON memories("worldId")
       `);
 
       await db.execute(sql`
@@ -96,12 +96,12 @@ describe('Production Migration Scenarios', () => {
       await db.execute(sql`
         CREATE TABLE IF NOT EXISTS rooms (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          agent_id UUID,
+          "agentId" UUID,
           name TEXT,
           source TEXT NOT NULL DEFAULT 'unknown',
           type TEXT NOT NULL DEFAULT 'general',
           created_at TIMESTAMP DEFAULT NOW(),
-          world_id UUID,
+          "worldId" UUID,
           message_server_id UUID,
           metadata JSONB,
           channel_id TEXT
@@ -118,12 +118,12 @@ describe('Production Migration Scenarios', () => {
       `);
 
       await db.execute(sql`
-        INSERT INTO rooms (id, agent_id, name, source, type)
+        INSERT INTO rooms (id, "agentId", name, source, type)
         VALUES (${roomId}::uuid, ${agentId}::uuid, 'Main Room', 'test', 'general')
       `);
 
       await db.execute(sql`
-        INSERT INTO memories (agent_id, room_id, entity_id, content, type)
+        INSERT INTO memories ("agentId", "roomId", "entityId", content, type)
         VALUES
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "System initialized"}'::jsonb, 'message'),
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "User preferences loaded"}'::jsonb, 'message'),
@@ -154,8 +154,8 @@ describe('Production Migration Scenarios', () => {
 
       // Should have all original columns plus any new ones from the schema
       expect(columnNames).toContain('id');
-      expect(columnNames).toContain('agent_id');
-      expect(columnNames).toContain('room_id');
+      expect(columnNames).toContain('agentId');
+      expect(columnNames).toContain('roomId');
       expect(columnNames).toContain('content');
       expect(columnNames).toContain('type');
     });

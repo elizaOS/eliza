@@ -19,16 +19,16 @@ export const participantTable = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
-    entityId: uuid('entity_id').references(() => entityTable.id, {
+    entityId: uuid('entityId').references(() => entityTable.id, {
       onDelete: 'cascade',
     }),
-    roomId: uuid('room_id').references(() => roomTable.id, {
+    roomId: uuid('roomId').references(() => roomTable.id, {
       onDelete: 'cascade',
     }),
-    agentId: uuid('agent_id').references(() => agentTable.id, {
+    agentId: uuid('agentId').references(() => agentTable.id, {
       onDelete: 'cascade',
     }),
-    roomState: text('room_state'),
+    roomState: text('roomState'),
   },
   (table) => [
     // unique("participants_user_room_agent_unique").on(table.entityId, table.roomId, table.agentId),

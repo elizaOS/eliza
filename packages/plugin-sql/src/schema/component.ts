@@ -15,24 +15,24 @@ export const componentTable = pgTable('components', {
     .notNull(),
 
   // Foreign keys
-  entityId: uuid('entity_id')
+  entityId: uuid('entityId')
     .references(() => entityTable.id, { onDelete: 'cascade' })
     .notNull(),
-  agentId: uuid('agent_id')
+  agentId: uuid('agentId')
     .references(() => agentTable.id, { onDelete: 'cascade' })
     .notNull(),
-  roomId: uuid('room_id')
+  roomId: uuid('roomId')
     .references(() => roomTable.id, { onDelete: 'cascade' })
     .notNull(),
-  worldId: uuid('world_id').references(() => worldTable.id, { onDelete: 'cascade' }),
-  sourceEntityId: uuid('source_entity_id').references(() => entityTable.id, { onDelete: 'cascade' }),
+  worldId: uuid('worldId').references(() => worldTable.id, { onDelete: 'cascade' }),
+  sourceEntityId: uuid('sourceEntityId').references(() => entityTable.id, { onDelete: 'cascade' }),
 
   // Data
   type: text('type').notNull(),
   data: jsonb('data').default(sql`'{}'::jsonb`),
 
   // Timestamps
-  createdAt: timestamp('created_at')
+  createdAt: timestamp('createdAt')
     .default(sql`now()`)
     .notNull(),
 });

@@ -95,7 +95,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
 
     // Create rooms
     await adminClient.query(`
-      INSERT INTO rooms (id, agent_id, source, type, server_id, created_at)
+      INSERT INTO rooms (id, "agentId", source, type, server_id, created_at)
       VALUES
         ($1, $3, 'test', 'DM', $4, NOW()),
         ($2, $3, 'test', 'GROUP', $4, NOW())
@@ -107,16 +107,16 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Room2: Bob + Charlie
     try {
       const participantResult = await adminClient.query(`
-        INSERT INTO participants (id, entity_id, room_id, server_id, created_at)
+        INSERT INTO participants (id, "entityId", "roomId", server_id, created_at)
         VALUES
           (gen_random_uuid(), $1, $2, $3, NOW()),
           (gen_random_uuid(), $4, $2, $3, NOW()),
           (gen_random_uuid(), $4, $5, $3, NOW()),
           (gen_random_uuid(), $6, $5, $3, NOW())
         ON CONFLICT DO NOTHING
-        RETURNING id, entity_id
+        RETURNING id, "entityId"
       `, [aliceId, room1Id, serverId, bobId, room2Id, charlieId]);
-      console.log('Participants created:', participantResult.rows.length, participantResult.rows.map(r => ({e: r.entity_id})));
+      console.log('Participants created:', participantResult.rows.length, participantResult.rows.map(r => ({e: r.entityId})));
     } catch (err) {
       console.error('Failed to create participants:', err instanceof Error ? err.message : String(err));
       console.log('UUIDs:', { aliceId, bobId, charlieId, room1Id, room2Id, serverId });
@@ -125,7 +125,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
 
     // Create memories
     await adminClient.query(`
-      INSERT INTO memories (id, agent_id, room_id, content, type, server_id, created_at)
+      INSERT INTO memories (id, "agentId", "roomId", content, type, server_id, "createdAt")
       VALUES
         (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', $4, NOW()),
         (gen_random_uuid(), $1, $3, '{"text": "Message in room2"}', 'message', $4, NOW())
@@ -135,8 +135,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
   afterAll(async () => {
     // Cleanup
     try {
-      await adminClient.query(`DELETE FROM memories WHERE room_id IN ($1, $2)`, [room1Id, room2Id]);
-      await adminClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [room1Id, room2Id]);
+      await adminClient.query(`DELETE FROM memories WHERE "roomId" IN ($1, $2)`, [room1Id, room2Id]);
+      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2)`, [room1Id, room2Id]);
       await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
       await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [aliceId, bobId, charlieId]);
       await adminClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
@@ -170,12 +170,12 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
 
       const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories
+        SELECT id, "roomId", content FROM memories
       `);
 
       // Alice is in room1, so should see 1 memory
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].room_id).toBe(room1Id);
+      expect(result.rows[0].roomId).toBe(room1Id);
       expect(result.rows[0].content.text).toContain('room1');
     } finally {
       await userClient.query('ROLLBACK');
@@ -189,13 +189,13 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
 
       const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories ORDER BY room_id
+        SELECT id, "roomId", content FROM memories ORDER BY "roomId"
       `);
 
       // Bob is in both rooms, so should see 2 memories
       expect(result.rows).toHaveLength(2);
-      expect(result.rows.map((r) => r.room_id)).toContain(room1Id);
-      expect(result.rows.map((r) => r.room_id)).toContain(room2Id);
+      expect(result.rows.map((r) => r.roomId)).toContain(room1Id);
+      expect(result.rows.map((r) => r.roomId)).toContain(room2Id);
     } finally {
       await userClient.query('ROLLBACK');
     }
@@ -208,12 +208,12 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${charlieId}'`);
 
       const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories
+        SELECT id, "roomId", content FROM memories
       `);
 
       // Charlie is only in room2
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].room_id).toBe(room2Id);
+      expect(result.rows[0].roomId).toBe(room2Id);
       expect(result.rows[0].content.text).toContain('room2');
     } finally {
       await userClient.query('ROLLBACK');

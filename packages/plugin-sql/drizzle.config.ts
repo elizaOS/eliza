@@ -11,5 +11,4 @@ export default defineConfig({
     url: process.env.POSTGRES_URL || 'file:../../.eliza/.elizadb',
   },
   breakpoints: true,
-  casing: 'snake_case',
 });

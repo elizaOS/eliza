@@ -97,10 +97,10 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       }
 
       try {
-        // Add agent to server association
-        await serverInstance.addAgentToServer(serverId, agentId as UUID);
+        // Add agent to message server association
+        await serverInstance.addAgentToMessageServer(serverId, agentId as UUID);
 
-        // Notify the agent's message bus service to start listening for this server
+        // Notify the agent's message bus service to start listening for this message server
         const messageForBus = {
           type: 'agent_added_to_server',
           serverId,
@@ -149,10 +149,10 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       }
 
       try {
-        // Remove agent from server association
-        await serverInstance.removeAgentFromServer(serverId, agentId);
+        // Remove agent from message server association
+        await serverInstance.removeAgentFromMessageServer(serverId, agentId);
 
-        // Notify the agent's message bus service to stop listening for this server
+        // Notify the agent's message bus service to stop listening for this message server
         const messageForBus = {
           type: 'agent_removed_from_server',
           serverId,
@@ -200,7 +200,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       }
 
       try {
-        const agents = await serverInstance.getAgentsForServer(serverId);
+        const agents = await serverInstance.getAgentsForMessageServer(serverId);
         res.json({
           success: true,
           data: {
@@ -232,7 +232,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       }
 
       try {
-        const messageServers = await serverInstance.getServersForAgent(agentId);
+        const messageServers = await serverInstance.getMessageServersForAgent(agentId);
         res.json({
           success: true,
           data: {

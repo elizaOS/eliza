@@ -53,7 +53,7 @@ import {
   participantTable,
   relationshipTable,
   roomTable,
-  serverAgentsTable,
+  messageServerAgentsTable,
   taskTable,
   worldTable,
 } from './schema/index';
@@ -3637,13 +3637,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   /**
    * Adds participants to a channel
    */
-  async addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void> {
+  async addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void> {
     return this.withDatabase(async () => {
-      if (!userIds || userIds.length === 0) return;
+      if (!entityIds || entityIds.length === 0) return;
 
-      const participantValues = userIds.map((userId) => ({
+      const participantValues = entityIds.map((entityId) => ({
         channelId: channelId,
-        userId: userId,
+        entityId: entityId,
       }));
 
       await this.db
@@ -3659,23 +3659,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const results = await this.db
-        .select({ userId: channelParticipantsTable.userId })
+        .select({ entityId: channelParticipantsTable.entityId })
         .from(channelParticipantsTable)
         .where(eq(channelParticipantsTable.channelId, channelId));
 
-      return results.map((r) => r.userId as UUID);
+      return results.map((r) => r.entityId as UUID);
     });
   }
 
   /**
-   * Adds an agent to a server
+   * Adds an agent to a message server (Discord/Telegram server)
    */
-  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
+  async addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .insert(serverAgentsTable)
+        .insert(messageServerAgentsTable)
         .values({
-          serverId,
+          messageServerId,
           agentId,
         })
         .onConflictDoNothing();
@@ -3683,28 +3683,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Gets agents for a server
+   * Gets agents for a message server (Discord/Telegram server)
    */
-  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
+  async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const results = await this.db
-        .select({ agentId: serverAgentsTable.agentId })
-        .from(serverAgentsTable)
-        .where(eq(serverAgentsTable.serverId, serverId));
+        .select({ agentId: messageServerAgentsTable.agentId })
+        .from(messageServerAgentsTable)
+        .where(eq(messageServerAgentsTable.messageServerId, messageServerId));
 
       return results.map((r) => r.agentId as UUID);
     });
   }
 
   /**
-   * Removes an agent from a server
+   * Removes an agent from a message server (Discord/Telegram server)
    */
-  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
+  async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .delete(serverAgentsTable)
+        .delete(messageServerAgentsTable)
         .where(
-          and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId))
+          and(eq(messageServerAgentsTable.messageServerId, messageServerId), eq(messageServerAgentsTable.agentId, agentId))
         );
     });
   }

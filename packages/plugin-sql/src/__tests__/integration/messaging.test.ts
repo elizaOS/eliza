@@ -9,7 +9,7 @@ describe('Messaging Integration Tests', () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
-  let serverId: UUID;
+  let messageServerId: UUID;
 
   beforeAll(async () => {
     const setup = await createIsolatedTestDatabase('messaging-tests');
@@ -22,7 +22,7 @@ describe('Messaging Integration Tests', () => {
       name: 'Test Message Server',
       sourceType: 'test',
     });
-    serverId = server.id;
+    messageServerId = server.id;
   });
 
   afterAll(async () => {
@@ -34,7 +34,7 @@ describe('Messaging Integration Tests', () => {
   describe('Message Server Tests', () => {
     it('should create and retrieve a message channel', async () => {
       const channelData = {
-        messageServerId: serverId,
+        messageServerId: messageServerId,
         name: 'test-channel',
         type: ChannelType.GROUP,
       };
@@ -50,7 +50,7 @@ describe('Messaging Integration Tests', () => {
     it('should create and retrieve a message', async () => {
       const channel = await adapter.createChannel(
         {
-          messageServerId: serverId,
+          messageServerId: messageServerId,
           name: 'message-channel',
           type: ChannelType.GROUP,
         },
@@ -73,20 +73,20 @@ describe('Messaging Integration Tests', () => {
     it('should add and retrieve channel participants', async () => {
       const channel = await adapter.createChannel(
         {
-          messageServerId: serverId,
+          messageServerId: messageServerId,
           name: 'participant-channel',
           type: ChannelType.GROUP,
         },
         []
       );
-      const user1 = uuidv4() as UUID;
-      const user2 = uuidv4() as UUID;
+      const entityId1 = uuidv4() as UUID;
+      const entityId2 = uuidv4() as UUID;
 
-      await adapter.addChannelParticipants(channel.id, [user1, user2]);
+      await adapter.addChannelParticipants(channel.id, [entityId1, entityId2]);
       const participants = await adapter.getChannelParticipants(channel.id);
       expect(participants).toHaveLength(2);
-      expect(participants).toContain(user1);
-      expect(participants).toContain(user2);
+      expect(participants).toContain(entityId1);
+      expect(participants).toContain(entityId2);
     });
 
     it('should add and retrieve agents for a server', async () => {
@@ -109,10 +109,10 @@ describe('Messaging Integration Tests', () => {
         updatedAt: new Date().getTime(),
       });
 
-      await adapter.addAgentToServer(serverId, agent1);
-      await adapter.addAgentToServer(serverId, agent2);
+      await adapter.addAgentToMessageServer(messageServerId, agent1);
+      await adapter.addAgentToMessageServer(messageServerId, agent2);
 
-      const agents = await adapter.getAgentsForServer(serverId);
+      const agents = await adapter.getAgentsForMessageServer(messageServerId);
       expect(agents).toHaveLength(2);
       expect(agents).toContain(agent1);
       expect(agents).toContain(agent2);

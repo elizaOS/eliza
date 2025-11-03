@@ -190,7 +190,6 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
   // EXCLUDED tables (not isolated):
   // - servers (contains all server instance IDs, shared for multi-tenant management)
   // - drizzle_migrations, __drizzle_migrations (migration tracking tables)
-  // - server_agents (junction table - agents and message_servers already have RLS)
   //
   // This dynamic approach ensures plugin tables are automatically protected when added.
   await db.execute(sql`
@@ -205,8 +204,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
           AND tablename NOT IN (
             'servers',
             'drizzle_migrations',
-            '__drizzle_migrations',
-            'server_agents'
+            '__drizzle_migrations'
           )
       LOOP
         BEGIN
@@ -473,9 +471,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
  * - `servers` - Server RLS table
  * - `users` - Authentication (no entity isolation)
  * - `entity_mappings` - Cross-platform entity mapping
- * - `agents` - Shared across all entities
  * - `drizzle_migrations`, `__drizzle_migrations` - Migration tracking
- * - `server_agents` - Junction table
  *
  * @param adapter - Database adapter with access to the Drizzle ORM instance
  * @returns Promise that resolves when Entity RLS functions are installed
@@ -539,80 +535,53 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check which columns exist (using PostgreSQL snake_case convention)
-      -- Check for entity_id
+      -- Check which columns exist (using camelCase as per schema definition)
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'entity_id'
+          AND information_schema.columns.column_name = 'entityId'
       ) INTO has_entity_id;
 
-      -- Check for author_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'author_id'
+          AND information_schema.columns.column_name = 'authorId'
       ) INTO has_author_id;
 
-      -- Check for channel_id
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'channel_id'
-      ) INTO has_channel_id;
-
-      -- Check for room_id
-      SELECT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE information_schema.columns.table_schema = schema_name
-          AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'room_id'
+          AND information_schema.columns.column_name = 'roomId'
       ) INTO has_room_id;
 
       -- Skip if no entity-related columns
-      IF NOT (has_entity_id OR has_author_id OR has_channel_id OR has_room_id) THEN
+      IF NOT (has_entity_id OR has_author_id OR has_room_id) THEN
         RAISE NOTICE '[Entity RLS] Skipping %.%: no entity columns found', schema_name, table_name;
         RETURN;
       END IF;
 
       -- Determine which column to use for entity filtering
-      -- Priority: roomId/channelId (shared access via participants) > entityId/authorId (direct access)
+      -- Priority: roomId (shared access via participants) > entityId/authorId (direct access)
       --
       -- SPECIAL CASE: participants table must use direct entityId to avoid infinite recursion
-      -- (participants can't JOIN to itself via the policy subquery)
-      --
-      -- SECURITY NOTE: Column names are hardcoded string literals (not user input)
-      -- This prevents SQL injection even though they're used in format() with %I
-      -- The %I identifier quoting protects against malicious column names in the schema
       IF table_name = 'participants' AND has_entity_id THEN
-        entity_column_name := 'entity_id';
+        entity_column_name := 'entityId';
         room_column_name := NULL;
       ELSIF has_room_id THEN
-        room_column_name := 'room_id';
-        entity_column_name := NULL;
-      ELSIF has_channel_id THEN
-        room_column_name := 'channel_id';
+        room_column_name := 'roomId';
         entity_column_name := NULL;
       ELSIF has_entity_id THEN
-        entity_column_name := 'entity_id';
+        entity_column_name := 'entityId';
         room_column_name := NULL;
       ELSIF has_author_id THEN
-        entity_column_name := 'author_id';
+        entity_column_name := 'authorId';
         room_column_name := NULL;
       ELSE
         entity_column_name := NULL;
         room_column_name := NULL;
-      END IF;
-
-      -- Validate column names are from our whitelist (defense in depth)
-      IF room_column_name IS NOT NULL AND room_column_name NOT IN ('room_id', 'channel_id') THEN
-        RAISE EXCEPTION '[Entity RLS] Invalid room column name: %', room_column_name;
-      END IF;
-      IF entity_column_name IS NOT NULL AND entity_column_name NOT IN ('entity_id', 'author_id') THEN
-        RAISE EXCEPTION '[Entity RLS] Invalid entity column name: %', entity_column_name;
       END IF;
 
       -- Enable RLS on the table
@@ -638,21 +607,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT room_id
+                SELECT "roomId"
                 FROM participants
-                WHERE entity_id = current_entity_id()
+                WHERE "entityId" = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT room_id
+                SELECT "roomId"
                 FROM participants
-                WHERE entity_id = current_entity_id()
+                WHERE "entityId" = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants, entity REQUIRED)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.roomId, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
           -- PERMISSIVE MODE: NULL entity_id allows system/admin access
           EXECUTE format('
@@ -661,21 +630,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT room_id
+                SELECT "roomId"
                 FROM participants
-                WHERE entity_id = current_entity_id()
+                WHERE "entityId" = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT room_id
+                SELECT "roomId"
                 FROM participants
-                WHERE entity_id = current_entity_id()
+                WHERE "entityId" = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants, NULL allowed)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.roomId, NULL allowed)', schema_name, table_name, room_column_name;
         END IF;
 
       -- CASE 2: Table has direct entity_id or author_id column
@@ -747,9 +716,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             'users',                -- Authentication table (no entity isolation needed)
             'entity_mappings',      -- Mapping table (no entity isolation needed)
             'drizzle_migrations',   -- Migration tracking
-            '__drizzle_migrations', -- Migration tracking
-            'agents',               -- Agents are not entity-specific
-            'server_agents'         -- Junction table
+            '__drizzle_migrations'  -- Migration tracking
           )
       LOOP
         BEGIN

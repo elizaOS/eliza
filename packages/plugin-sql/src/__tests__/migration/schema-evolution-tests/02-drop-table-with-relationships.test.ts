@@ -21,7 +21,7 @@ import { embeddingTable } from '../../../schema/embedding';
 import { logTable } from '../../../schema/log';
 import { cacheTable } from '../../../schema/cache';
 import { taskTable } from '../../../schema/tasks';
-import { serverAgentsTable } from '../../../schema/serverAgent';
+import { messageServerAgentsTable } from '../../../schema/messageServerAgent';
 
 /**
  * Schema Evolution Test 2: Dropping Tables with Foreign Key Relationships
@@ -53,7 +53,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
     logs: logTable,
     cache: cacheTable,
     tasks: taskTable,
-    serverAgents: serverAgentsTable,
+    messageServerAgents: messageServerAgentsTable,
   });
 
   beforeEach(async () => {
@@ -151,7 +151,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         source: 'discord',
         type: 'text',
         channelId: 'channel-123',
-        serverId: 'server-456',
+        messageServerId: 'server-456',
       },
       {
         id: room2Id,
@@ -160,7 +160,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
         source: 'discord',
         type: 'voice',
         channelId: 'channel-789',
-        serverId: 'server-456',
+        messageServerId: 'server-456',
       },
     ]);
 
@@ -249,7 +249,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
       logs: logTable,
       cache: cacheTable,
       tasks: taskTable,
-      serverAgents: serverAgentsTable,
+      serverAgents: messageServerAgentsTable,
     };
 
     // Test 1: Check for data loss warnings
@@ -380,7 +380,7 @@ describe('Schema Evolution Test: Drop Table with Production Relationships', () =
       logs: logTable,
       cache: cacheTable,
       tasks: taskTable,
-      serverAgents: serverAgentsTable,
+      serverAgents: messageServerAgentsTable,
     };
 
     const check = await migrator.checkMigration('@elizaos/production-cascade-test', schemaV2);

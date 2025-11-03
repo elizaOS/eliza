@@ -16,12 +16,12 @@ export const logTable = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
-    entityId: uuid('entity_id')
+    entityId: uuid('entityId')
       .notNull()
       .references(() => entityTable.id, { onDelete: 'cascade' }),
     body: jsonb('body').notNull(),
     type: text('type').notNull(),
-    roomId: uuid('room_id')
+    roomId: uuid('roomId')
       .notNull()
       .references(() => roomTable.id, { onDelete: 'cascade' }),
   },

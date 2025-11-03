@@ -1330,9 +1330,9 @@ export class AgentServer {
         `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
       );
 
-      await this.addAgentToServer(this.messageServerId, runtime.agentId);
+      await this.addAgentToMessageServer(this.messageServerId, runtime.agentId);
       logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with server ID: ${this.messageServerId}`
+        `[AgentServer] Auto-associated agent ${runtime.character.name} with message server ID: ${this.messageServerId}`
       );
     } catch (error) {
       logger.error({ error }, 'Failed to register agent:');
@@ -1754,58 +1754,58 @@ export class AgentServer {
   }
 
   // ===============================
-  // Server-Agent Association Methods
+  // MessageServer-Agent Association Methods
   // ===============================
 
   /**
-   * Add an agent to a server
-   * @param {UUID} serverId - The server ID
+   * Add an agent to a message server (Discord/Telegram server)
+   * @param {UUID} messageServerId - The message server ID
    * @param {UUID} agentId - The agent ID to add
    */
-  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
-    // First, verify the server exists
-    const server = await this.getServerById(serverId);
-    if (!server) {
-      throw new Error(`Server ${serverId} not found`);
+  async addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
+    // First, verify the message server exists
+    const messageServer = await this.getServerById(messageServerId);
+    if (!messageServer) {
+      throw new Error(`Message server ${messageServerId} not found`);
     }
 
-    return (this.database as any).addAgentToServer(serverId, agentId);
+    return (this.database as any).addAgentToMessageServer(messageServerId, agentId);
   }
 
   /**
-   * Remove an agent from a server
-   * @param {UUID} serverId - The server ID
+   * Remove an agent from a message server (Discord/Telegram server)
+   * @param {UUID} messageServerId - The message server ID
    * @param {UUID} agentId - The agent ID to remove
    */
-  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
-    return (this.database as any).removeAgentFromServer(serverId, agentId);
+  async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
+    return (this.database as any).removeAgentFromMessageServer(messageServerId, agentId);
   }
 
   /**
-   * Get all agents associated with a server
-   * @param {UUID} serverId - The server ID
+   * Get all agents associated with a message server (Discord/Telegram server)
+   * @param {UUID} messageServerId - The message server ID
    * @returns {Promise<UUID[]>} Array of agent IDs
    */
-  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
-    return (this.database as any).getAgentsForServer(serverId);
+  async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
+    return (this.database as any).getAgentsForMessageServer(messageServerId);
   }
 
   /**
-   * Get all servers an agent belongs to
+   * Get all message servers an agent belongs to
    * @param {UUID} agentId - The agent ID
-   * @returns {Promise<UUID[]>} Array of server IDs
+   * @returns {Promise<UUID[]>} Array of message server IDs
    */
-  async getServersForAgent(agentId: UUID): Promise<UUID[]> {
+  async getMessageServersForAgent(agentId: UUID): Promise<UUID[]> {
     // This method isn't directly supported in the adapter, so we need to implement it differently
-    const servers = await (this.database as any).getMessageServers();
-    const serverIds = [];
-    for (const server of servers) {
-      const agents = await (this.database as any).getAgentsForServer(server.id);
+    const messageServers = await (this.database as any).getMessageServers();
+    const messageServerIds = [];
+    for (const messageServer of messageServers) {
+      const agents = await (this.database as any).getAgentsForMessageServer(messageServer.id);
       if (agents.includes(agentId)) {
-        serverIds.push(server.id as never);
+        messageServerIds.push(messageServer.id as never);
       }
     }
-    return serverIds;
+    return messageServerIds;
   }
 
   /**

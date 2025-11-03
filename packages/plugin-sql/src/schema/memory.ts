@@ -28,22 +28,22 @@ export const memoryTable = pgTable(
   {
     id: uuid('id').primaryKey().notNull(),
     type: text('type').notNull(),
-    createdAt: timestamp('created_at')
+    createdAt: timestamp('createdAt')
       .default(sql`now()`)
       .notNull(),
     content: jsonb('content').notNull(),
-    entityId: uuid('entity_id').references(() => entityTable.id, {
+    entityId: uuid('entityId').references(() => entityTable.id, {
       onDelete: 'cascade',
     }),
-    agentId: uuid('agent_id')
+    agentId: uuid('agentId')
       .references(() => agentTable.id, {
         onDelete: 'cascade',
       })
       .notNull(),
-    roomId: uuid('room_id').references(() => roomTable.id, {
+    roomId: uuid('roomId').references(() => roomTable.id, {
       onDelete: 'cascade',
     }),
-    worldId: uuid('world_id'),
+    worldId: uuid('worldId'),
     // .references(() => worldTable.id, {
     //   onDelete: 'set null',
     // }),

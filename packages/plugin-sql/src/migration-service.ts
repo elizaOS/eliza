@@ -1,7 +1,7 @@
 import { logger, type Plugin } from '@elizaos/core';
 import { RuntimeMigrator } from './runtime-migrator';
 import type { DrizzleDatabase } from './types';
-import { migrateColumnsToSnakeCase } from './migrations';
+import { migrateToEntityRLS } from './migrations';
 import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from './rls';
 
 export class DatabaseMigrationService {
@@ -20,10 +20,10 @@ export class DatabaseMigrationService {
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
     this.db = db;
 
-    // TEMPORARY: Auto-migrate camelCase columns to snake_case
+    // TEMPORARY: Migrate from develop to feat/entity-rls (Owner RLS → Server RLS + Entity RLS)
     // This runs before the RuntimeMigrator to ensure schema compatibility
-    // Can be removed after a few weeks/months when all users have migrated
-    await migrateColumnsToSnakeCase({ db } as any);
+    // Can be removed after users have migrated from develop to this branch
+    await migrateToEntityRLS({ db } as any);
 
     this.migrator = new RuntimeMigrator(db);
     await this.migrator.initialize();

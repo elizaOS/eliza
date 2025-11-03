@@ -2,7 +2,7 @@ import type { ElizaOS } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { createMessagingCoreRouter } from './core';
-import { createMessageServersRouter } from './servers';
+import { createMessageServersRouter } from './messageServers';
 import { createChannelsRouter } from './channels';
 import { createSessionsRouter } from './sessions';
 import { createJobsRouter } from './jobs';

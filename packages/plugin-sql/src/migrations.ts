@@ -2,21 +2,22 @@ import { logger, type IDatabaseAdapter } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
 /**
- * TEMPORARY MIGRATION: Rename all camelCase columns to snake_case automatically
+ * TEMPORARY MIGRATION: develop → feat/entity-rls migration
  *
  * This migration runs automatically on startup and is idempotent.
- * It can be safely removed after a few weeks/months when all users have migrated.
- *
- * Background: We're migrating to PostgreSQL snake_case convention using
- * Drizzle's `casing: 'snake_case'` option. This migration automatically detects
- * and renames ALL camelCase columns to snake_case across ALL tables.
+ * It handles the migration from Owner RLS to Server RLS + Entity RLS, including:
+ * - Disabling old RLS policies temporarily
+ * - Renaming server_id → message_server_id in channels, worlds, rooms
+ * - Converting TEXT → UUID where needed
+ * - Dropping old server_id columns for RLS
+ * - Cleaning up indexes
  *
  * @param adapter - Database adapter
  */
-export async function migrateColumnsToSnakeCase(adapter: IDatabaseAdapter): Promise<void> {
+export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
 
-  logger.info('[Migration] Checking if camelCase → snake_case migration is needed...');
+  logger.info('[Migration] Starting develop → feat/entity-rls migration...');
 
   try {
     // ALWAYS clear RuntimeMigrator snapshot cache to force fresh introspection
@@ -202,30 +203,101 @@ export async function migrateColumnsToSnakeCase(adapter: IDatabaseAdapter): Prom
       logger.debug('[Migration] ⊘ Could not drop server_id columns (may not have permissions)');
     }
 
-    // Special handling for server_agents table: if it exists but doesn't have server_id column,
-    // truncate it so RuntimeMigrator can add the NOT NULL column
-    logger.debug('[Migration] → Checking server_agents table...');
+    // Special handling for server_agents → message_server_agents rename
+    // This aligns with the server_id → message_server_id naming convention
+    logger.debug('[Migration] → Checking server_agents table rename...');
     try {
-      const serverAgentsHasServerId = await db.execute(sql`
-        SELECT EXISTS (
-          SELECT 1
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = 'server_agents'
-            AND column_name = 'server_id'
-        ) as has_column
+      const tablesResult = await db.execute(sql`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('server_agents', 'message_server_agents')
+        ORDER BY table_name
       `);
 
-      const hasColumn = serverAgentsHasServerId.rows?.[0]?.has_column;
+      const tables = tablesResult.rows || [];
+      const hasServerAgents = tables.some((t: any) => t.table_name === 'server_agents');
+      const hasMessageServerAgents = tables.some((t: any) => t.table_name === 'message_server_agents');
 
-      if (!hasColumn) {
-        // Table exists but doesn't have server_id - truncate it
-        logger.debug('[Migration] → server_agents exists without server_id, truncating...');
-        await db.execute(sql`TRUNCATE TABLE server_agents CASCADE`);
-        logger.debug('[Migration] ✓ Truncated server_agents');
+      if (hasServerAgents && !hasMessageServerAgents) {
+        // Rename server_agents → message_server_agents
+        logger.debug('[Migration] → Renaming server_agents to message_server_agents...');
+        await db.execute(sql.raw(`ALTER TABLE "server_agents" RENAME TO "message_server_agents"`));
+        logger.debug('[Migration] ✓ Renamed server_agents → message_server_agents');
+
+        // Now rename server_id column → message_server_id
+        logger.debug('[Migration] → Renaming message_server_agents.server_id to message_server_id...');
+        await db.execute(sql.raw(`ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`));
+        logger.debug('[Migration] ✓ Renamed message_server_agents.server_id → message_server_id');
+      } else if (!hasServerAgents && !hasMessageServerAgents) {
+        // Neither table exists - RuntimeMigrator will create message_server_agents
+        logger.debug('[Migration] ⊘ No server_agents table to migrate');
+      } else if (hasMessageServerAgents) {
+        // Check if it has the columns and rename if needed
+        logger.debug('[Migration] → Checking message_server_agents columns...');
+        const columnsResult = await db.execute(sql`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'message_server_agents'
+            AND column_name IN ('server_id', 'message_server_id')
+          ORDER BY column_name
+        `);
+
+        const columns = columnsResult.rows || [];
+        const hasServerId = columns.some((c: any) => c.column_name === 'server_id');
+        const hasMessageServerId = columns.some((c: any) => c.column_name === 'message_server_id');
+
+        if (hasServerId && !hasMessageServerId) {
+          // Rename server_id → message_server_id
+          logger.debug('[Migration] → Renaming message_server_agents.server_id to message_server_id...');
+          await db.execute(sql.raw(`ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`));
+          logger.debug('[Migration] ✓ Renamed message_server_agents.server_id → message_server_id');
+        } else if (!hasServerId && !hasMessageServerId) {
+          // Table exists but doesn't have either column - truncate it
+          logger.debug('[Migration] → message_server_agents exists without required columns, truncating...');
+          await db.execute(sql`TRUNCATE TABLE message_server_agents CASCADE`);
+          logger.debug('[Migration] ✓ Truncated message_server_agents');
+        } else {
+          logger.debug('[Migration] ⊘ message_server_agents already has correct schema');
+        }
       }
     } catch (error) {
-      logger.debug('[Migration] ⊘ Could not check/truncate server_agents');
+      logger.debug('[Migration] ⊘ Could not check/migrate server_agents table');
+    }
+
+    // Special handling for channel_participants: rename userId → entityId
+    // This handles the migration from the old userId column to the new entityId column
+    logger.debug('[Migration] → Checking channel_participants table...');
+    try {
+      const columnsResult = await db.execute(sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'channel_participants'
+          AND column_name IN ('user_id', 'entity_id')
+        ORDER BY column_name
+      `);
+
+      const columns = columnsResult.rows || [];
+      const hasUserId = columns.some((c: any) => c.column_name === 'user_id');
+      const hasEntityId = columns.some((c: any) => c.column_name === 'entity_id');
+
+      if (hasUserId && !hasEntityId) {
+        // Rename user_id → entity_id
+        logger.debug('[Migration] → Renaming channel_participants.user_id to entity_id...');
+        await db.execute(sql.raw(`ALTER TABLE "channel_participants" RENAME COLUMN "user_id" TO "entity_id"`));
+        logger.debug('[Migration] ✓ Renamed channel_participants.user_id → entity_id');
+      } else if (!hasUserId && !hasEntityId) {
+        // Table exists but has neither column - truncate it so RuntimeMigrator can add entity_id
+        logger.debug('[Migration] → channel_participants exists without entity_id or user_id, truncating...');
+        await db.execute(sql`TRUNCATE TABLE channel_participants CASCADE`);
+        logger.debug('[Migration] ✓ Truncated channel_participants');
+      } else {
+        logger.debug('[Migration] ⊘ channel_participants already has entity_id column');
+      }
+    } catch (error) {
+      logger.debug('[Migration] ⊘ Could not check/migrate channel_participants');
     }
 
     // Drop ALL regular indexes (not PK or unique constraints) to avoid conflicts
@@ -261,142 +333,7 @@ export async function migrateColumnsToSnakeCase(adapter: IDatabaseAdapter): Prom
       logger.debug('[Migration] ⊘ Could not drop indexes (may not have permissions)');
     }
 
-    // Get ALL camelCase columns that need migration
-    const columnsResult = await db.execute(sql`
-      SELECT table_name, column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND column_name ~ '[A-Z]'  -- Contains uppercase = camelCase
-        AND table_name NOT IN ('drizzle_migrations', '__drizzle_migrations')
-      ORDER BY table_name, column_name
-    `);
-
-    const columns = columnsResult.rows || [];
-
-    if (columns.length === 0) {
-      logger.info('[Migration] ✓ All columns already in snake_case, skipping migration');
-      return;
-    }
-
-    logger.info(`[Migration] → Found ${columns.length} camelCase columns to migrate...`);
-
-    // Rename each column individually with proper error handling
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const col of columns) {
-      const tableName = col.table_name as string;
-      const columnName = col.column_name as string;
-
-      // Convert camelCase to snake_case
-      // Example: entityId -> entity_id, createdAt -> created_at
-      let snakeCaseName = columnName.replace(/([A-Z])/g, '_$1').toLowerCase();
-      snakeCaseName = snakeCaseName.replace(/^_/, ''); // Remove leading underscore
-
-      try {
-        // Check if the snake_case column already exists
-        const checkResult = await db.execute(sql`
-          SELECT column_name
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = ${tableName}
-            AND column_name = ${snakeCaseName}
-        `);
-
-        if (checkResult.rows && checkResult.rows.length > 0) {
-          // snake_case column already exists - check if we can merge or just drop
-          logger.debug(
-            `[Migration] → Column ${snakeCaseName} already exists, checking data types...`
-          );
-
-          // Get data types of both columns
-          const typeResult = await db.execute(sql`
-            SELECT column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = ${tableName}
-              AND column_name IN (${columnName}, ${snakeCaseName})
-          `);
-
-          const camelType = typeResult.rows?.find((r) => r.column_name === columnName)?.data_type;
-          const snakeType = typeResult.rows?.find((r) => r.column_name === snakeCaseName)?.data_type;
-
-          if (camelType === snakeType) {
-            // Same type - safe to merge
-            logger.debug(`[Migration] → Merging ${tableName}.${columnName} into ${snakeCaseName}...`);
-
-            await db.execute(
-              sql.raw(
-                `UPDATE "${tableName}" SET "${snakeCaseName}" = COALESCE("${snakeCaseName}", "${columnName}")`
-              )
-            );
-
-            await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`));
-
-            logger.debug(`[Migration] ✓ Merged and dropped ${tableName}.${columnName}`);
-            successCount++;
-          } else {
-            // Different types - just drop the camelCase column (snake_case is the new source of truth)
-            logger.debug(
-              `[Migration] → Type mismatch (${camelType} vs ${snakeType}), dropping old ${tableName}.${columnName}...`
-            );
-
-            await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "${columnName}"`));
-
-            logger.debug(`[Migration] ✓ Dropped ${tableName}.${columnName}`);
-            successCount++;
-          }
-        } else {
-          // Normal rename
-          await db.execute(
-            sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "${columnName}" TO "${snakeCaseName}"`)
-          );
-          logger.debug(`[Migration] ✓ Renamed ${tableName}.${columnName} → ${snakeCaseName}`);
-          successCount++;
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        // Check if column already exists (already migrated)
-        if (
-          errorMessage.includes('already exists') ||
-          errorMessage.includes('does not exist')
-        ) {
-          logger.debug(
-            `[Migration] ⊘ Skipped ${tableName}.${columnName} (already migrated or doesn't exist)`
-          );
-        } else {
-          // Unexpected error
-          logger.error(
-            `[Migration] ✗ Failed to rename ${tableName}.${columnName}: ${errorMessage}`
-          );
-          errorCount++;
-        }
-      }
-    }
-
-    logger.success(
-      `[Migration] ✓ Migration complete: ${successCount} renamed, ${errorCount} errors`
-    );
-
-    // If we had errors, throw to prevent RuntimeMigrator from running
-    if (errorCount > 0) {
-      throw new Error(`Migration completed with ${errorCount} errors`);
-    }
-
-    // IMPORTANT: Clear the RuntimeMigrator's snapshot cache
-    // The old snapshot has camelCase column names, which no longer match the DB
-    // Force RuntimeMigrator to regenerate the snapshot from the current DB state
-    if (successCount > 0) {
-      logger.info('[Migration] → Clearing RuntimeMigrator snapshot cache...');
-      try {
-        await db.execute(sql`DELETE FROM migrations._snapshots WHERE plugin_name = '@elizaos/plugin-sql'`);
-        logger.debug('[Migration] ✓ Snapshot cache cleared');
-      } catch (error) {
-        // If migrations schema doesn't exist yet, that's fine - no cache to clear
-        logger.debug('[Migration] ⊘ No snapshot cache to clear (migrations schema not yet created)');
-      }
-    }
+    logger.info('[Migration] ✓ Migration complete - develop to feat/entity-rls migration finished');
   } catch (error) {
     // Re-throw errors to prevent RuntimeMigrator from running on broken state
     logger.error('[Migration] Migration failed:', String(error));
