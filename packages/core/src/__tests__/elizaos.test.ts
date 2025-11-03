@@ -1,10 +1,26 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { ElizaOS } from '../elizaos';
-import { type UUID, type Character, type Plugin } from '../types';
+import { type UUID, type Character, type Plugin, type IDatabaseAdapter } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
+// Event detail interfaces for type-safe event handlers
+interface AgentsAddedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
+interface AgentsStoppedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
+interface AgentsDeletedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
 // Mock database adapter with minimal implementation
-const mockAdapter = new Proxy({} as any, {
+const mockAdapter = new Proxy({} as IDatabaseAdapter, {
   get: (target, prop) => {
     // Return async functions for all adapter methods
     if (prop === 'init' || prop === 'close') {
@@ -251,7 +267,10 @@ describe('ElizaOS', () => {
   describe('Event System', () => {
     it('should emit events when agents are added', async () => {
       const addedHandler = mock();
-      elizaOS.addEventListener('agents:added', (e: any) => addedHandler(e.detail));
+      elizaOS.addEventListener('agents:added', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsAddedDetail>;
+        addedHandler(customEvent.detail);
+      });
 
       await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent 1' }, plugins: [mockSqlPlugin] },
@@ -259,14 +278,17 @@ describe('ElizaOS', () => {
       ]);
 
       expect(addedHandler).toHaveBeenCalledTimes(1);
-      const eventData = addedHandler.mock.calls[0][0];
+      const eventData: AgentsAddedDetail = addedHandler.mock.calls[0][0];
       expect(eventData.count).toBe(2);
       expect(eventData.agentIds).toHaveLength(2);
     });
 
     it('should emit events when agents are stopped', async () => {
       const stoppedHandler = mock();
-      elizaOS.addEventListener('agents:stopped', (e: any) => stoppedHandler(e.detail));
+      elizaOS.addEventListener('agents:stopped', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsStoppedDetail>;
+        stoppedHandler(customEvent.detail);
+      });
 
       const agentIds = await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
@@ -275,13 +297,16 @@ describe('ElizaOS', () => {
       await elizaOS.stopAgents(agentIds);
 
       expect(stoppedHandler).toHaveBeenCalledTimes(1);
-      const eventData = stoppedHandler.mock.calls[0][0];
+      const eventData: AgentsStoppedDetail = stoppedHandler.mock.calls[0][0];
       expect(eventData.agentIds).toEqual(agentIds);
     });
 
     it('should emit events when agents are deleted', async () => {
       const deletedHandler = mock();
-      elizaOS.addEventListener('agents:deleted', (e: any) => deletedHandler(e.detail));
+      elizaOS.addEventListener('agents:deleted', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsDeletedDetail>;
+        deletedHandler(customEvent.detail);
+      });
 
       const agentIds = await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
@@ -289,7 +314,7 @@ describe('ElizaOS', () => {
       await elizaOS.deleteAgents(agentIds);
 
       expect(deletedHandler).toHaveBeenCalledTimes(1);
-      const eventData = deletedHandler.mock.calls[0][0];
+      const eventData: AgentsDeletedDetail = deletedHandler.mock.calls[0][0];
       expect(eventData.agentIds).toEqual(agentIds);
     });
   });
