@@ -156,7 +156,19 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   });
 
   afterAll(async () => {
-    // Cleanup
+    // Cleanup test data
+    try {
+      await adminClient.query(`DELETE FROM logs WHERE server_id = $1`, [serverId]);
+      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2, $3)`, [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId]);
+      await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2, $3)`, [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId]);
+      await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2)`, [aliceId, bobId]);
+      await adminClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
+      await adminClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
+    } catch (err) {
+      console.warn('[RLS Logs Test] Cleanup failed:', err);
+    }
+
+    // Close connections
     await aliceClient?.end();
     await bobClient?.end();
     await adminClient?.end();
