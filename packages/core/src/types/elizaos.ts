@@ -11,8 +11,14 @@ export interface SendMessageOptions {
    * Called when the agent generates a response (ASYNC MODE)
    * If provided, method returns immediately (fire & forget)
    * If not provided, method waits for response (SYNC MODE)
+   *
+   * @param content - The response content from the agent
+   * @param files - Optional file attachments in the response
    */
-  onResponse?: (content: Content) => Promise<void>;
+  onResponse?: (
+    content: Content,
+    files?: Array<{ attachment: Buffer | string; name: string }>
+  ) => Promise<void>;
 
   /**
    * Called if an error occurs during processing
