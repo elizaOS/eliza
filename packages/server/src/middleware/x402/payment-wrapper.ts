@@ -12,7 +12,8 @@ import {
     createAccepts,
     createX402Response,
     type OutputSchema,
-    type X402Response
+    type X402Response,
+    type PaymentExtraMetadata
 } from './x402-types.js';
 import {
     type X402Request,
@@ -492,7 +493,7 @@ async function verifyEvmTransaction(
         const rpcUrl = getRpcUrl(network, runtime);
         const chain = getViemChain(network);
 
-        const { createPublicClient, http } = await import('viem');
+        const { createPublicClient, http, decodeFunctionData, parseAbi } = await import('viem');
         const publicClient = createPublicClient({
             chain,
             transport: http(rpcUrl)
@@ -506,13 +507,7 @@ async function verifyEvmTransaction(
             return false;
         }
 
-        // Verify transaction is to expected recipient
-        if (receipt.to?.toLowerCase() !== expectedRecipient.toLowerCase()) {
-            logError('Transaction recipient mismatch');
-            return false;
-        }
-
-        // Get transaction details to verify amount
+        // Get transaction details
         const tx = await publicClient.getTransaction({ hash: txHash as Hex });
 
         // expectedAmount is in cents, convert to USDC units (6 decimals)
@@ -520,13 +515,90 @@ async function verifyEvmTransaction(
         const expectedCents = parseInt(expectedAmount);
         const expectedUnits = BigInt(expectedCents * 10000); // USDC 6 decimals
 
-        if (tx.value < expectedUnits) {
-            logError('Transaction amount too low');
+        // Get USDC contract address for this network
+        const usdcContract = getUsdcContractAddress(network);
+
+        // Check if this is an ERC-20 token transfer (transaction to USDC contract)
+        if (receipt.to?.toLowerCase() === usdcContract.toLowerCase()) {
+            log('Detected ERC-20 token transfer');
+
+            // Decode the ERC-20 transfer function call from tx.input
+            if (!tx.input || tx.input === '0x') {
+                logError('No input data in transaction');
+                return false;
+            }
+
+            try {
+                // ERC-20 transfer function ABI
+                const erc20Abi = parseAbi([
+                    'function transfer(address to, uint256 amount) returns (bool)',
+                    'function transferFrom(address from, address to, uint256 amount) returns (bool)'
+                ]);
+
+                const decoded = decodeFunctionData({
+                    abi: erc20Abi,
+                    data: tx.input as Hex
+                });
+
+                const functionName = decoded.functionName;
+                log('Decoded function:', functionName);
+
+                let transferTo: Address;
+                let transferAmount: bigint;
+
+                if (functionName === 'transfer') {
+                    const [to, amount] = decoded.args as [Address, bigint];
+                    transferTo = to;
+                    transferAmount = amount;
+                } else if (functionName === 'transferFrom') {
+                    const [_from, to, amount] = decoded.args as [Address, Address, bigint];
+                    transferTo = to;
+                    transferAmount = amount;
+                } else {
+                    logError('Unknown ERC-20 function:', functionName);
+                    return false;
+                }
+
+                log('Transfer to:', transferTo, 'Amount:', transferAmount.toString());
+
+                // Verify recipient
+                if (transferTo.toLowerCase() !== expectedRecipient.toLowerCase()) {
+                    logError('ERC-20 transfer recipient mismatch:', transferTo, 'vs', expectedRecipient);
+                    return false;
+                }
+
+                // Verify amount
+                if (transferAmount < expectedUnits) {
+                    logError('ERC-20 transfer amount too low:', transferAmount.toString(), 'vs', expectedUnits.toString());
+                    return false;
+                }
+
+                log('✓ ERC-20 transaction verified');
+                return true;
+
+            } catch (decodeError) {
+                logError('Failed to decode ERC-20 transfer:', decodeError instanceof Error ? decodeError.message : String(decodeError));
+                return false;
+            }
+        } else if (receipt.to?.toLowerCase() === expectedRecipient.toLowerCase()) {
+            // Native ETH transfer
+            log('Detected native ETH transfer');
+
+            if (tx.value < expectedUnits) {
+                logError('ETH transfer amount too low:', tx.value.toString(), 'vs', expectedUnits.toString());
+                return false;
+            }
+
+            log('✓ Native ETH transaction verified');
+            return true;
+        } else {
+            logError('Transaction recipient mismatch - expected either USDC contract or recipient address');
+            logError('Transaction to:', receipt.to);
+            logError('Expected recipient:', expectedRecipient);
+            logError('USDC contract:', usdcContract);
             return false;
         }
 
-        log('✓ On-chain transaction verified');
-        return true;
     } catch (error) {
         logError('Transaction verification error:', error instanceof Error ? error.message : String(error));
         return false;
@@ -933,7 +1005,7 @@ function buildX402Response(route: PaymentEnabledRoute, runtime?: X402Runtime): X
             }
         };
 
-        const extra: Record<string, any> = {
+        const extra: PaymentExtraMetadata = {
             priceInCents: route.x402?.priceInCents || 0,
             priceUSD: `$${((route.x402?.priceInCents || 0) / 100).toFixed(2)}`,
             symbol: config.symbol,
@@ -982,7 +1054,7 @@ function extractPathParams(path: string): string[] {
 }
 
 /**
- * OpenAPI property schema
+ * OpenAPI schema types for type safety
  */
 interface OpenAPIPropertySchema {
     type?: string;
@@ -992,21 +1064,29 @@ interface OpenAPIPropertySchema {
     properties?: Record<string, OpenAPIPropertySchema>;
 }
 
-/**
- * OpenAPI object schema
- */
-interface OpenAPIObjectSchema {
-    type: string;
-    properties?: Record<string, OpenAPIPropertySchema>;
+interface OpenAPIObjectSchema extends OpenAPIPropertySchema {
+    type: 'object';
     required?: string[];
+}
+
+/**
+ * Field definition for schema conversion
+ */
+interface FieldDefinition {
+    type?: string;
+    required?: boolean;
+    description?: string;
+    enum?: string[];
+    pattern?: string;
+    properties?: Record<string, FieldDefinition>;
 }
 
 /**
  * Convert OpenAPI schema to FieldDef format
  */
-function convertOpenAPISchemaToFieldDef(schema: OpenAPIObjectSchema | OpenAPIPropertySchema): Record<string, any> {
+function convertOpenAPISchemaToFieldDef(schema: OpenAPIObjectSchema | OpenAPIPropertySchema): Record<string, FieldDefinition> {
     if ('properties' in schema && schema.properties) {
-        const fields: Record<string, any> = {};
+        const fields: Record<string, FieldDefinition> = {};
         for (const [key, value] of Object.entries(schema.properties)) {
             fields[key] = {
                 type: value.type,
@@ -1026,9 +1106,9 @@ function convertOpenAPISchemaToFieldDef(schema: OpenAPIObjectSchema | OpenAPIPro
  * Input schema structure
  */
 interface InputSchema {
-    pathParams?: Record<string, any>;
-    queryParams?: Record<string, any>;
-    bodyFields?: Record<string, any>;
+    pathParams?: Record<string, FieldDefinition>;
+    queryParams?: Record<string, FieldDefinition>;
+    bodyFields?: Record<string, FieldDefinition>;
 }
 
 /**
