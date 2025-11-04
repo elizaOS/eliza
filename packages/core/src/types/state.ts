@@ -1,4 +1,13 @@
 /**
+ * Schema row for dynamic prompt execution
+ */
+export type SchemaRow = {
+  field: string;
+  description: string;
+  required?: boolean;
+};
+
+/**
  * Represents the current state or context of a conversation or agent interaction.
  * This interface is a flexible container for various pieces of information that define the agent's
  * understanding at a point in time. It includes:

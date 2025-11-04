@@ -1,5 +1,5 @@
 export * from './primitives';
-export * from './state';
+export type { SchemaRow, State } from './state';
 export * from './memory';
 export * from './knowledge';
 export * from './environment';
