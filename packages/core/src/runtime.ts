@@ -6,6 +6,13 @@ interface WorkingMemoryEntry {
   timestamp: number;
 }
 
+// Schema row for dynamic prompt execution
+type SchemaRow = {
+  field: string;
+  description: string;
+  required?: boolean;
+};
+
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
@@ -70,7 +77,14 @@ import {
 } from './types';
 
 import { BM25 } from './search';
-import { stringToUuid } from './utils';
+import {
+  stringToUuid,
+  parseKeyValueXml,
+  parseJSONObjectFromText,
+  composeRandomUser,
+  upgradeDoubleToTriple,
+} from './utils';
+import Handlebars from 'handlebars';
 
 const environmentSettings: RuntimeSettings = {};
 
@@ -2469,6 +2483,255 @@ export class AgentRuntime implements IAgentRuntime {
     return {
       text: response as string,
     };
+  }
+
+  /**
+   * Dynamic prompt execution from state with schema-based response parsing.
+   * This method provides robust structured output with validation codes to ensure
+   * the LLM response matches the expected schema.
+   */
+  async dynamicPromptExecFromState({
+    state,
+    params,
+    schema,
+    options = {},
+  }: {
+    state: State;
+    params: Omit<GenerateTextParams, 'prompt'> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: SchemaRow[];
+    options?: {
+      key?: string;
+      modelSize?: 'small' | 'large';
+      model?: string;
+      preferredEncapsulation?: 'json' | 'xml';
+      requiredFields?: string[];
+      contextCheckLevel?: 0 | 1;
+    };
+  }) {
+    const template = params.prompt;
+    // inject state into prompt
+    const templateStr = typeof template === 'function' ? template({ state }) : template;
+    const templateFunction = Handlebars.compile(upgradeDoubleToTriple(templateStr));
+
+    // get any keys that are in state but are not named text, values or data
+    const stateKeys = Object.keys(state);
+    const filteredKeys = stateKeys.filter((key) => !['text', 'values', 'data'].includes(key));
+
+    // this flattens out key/values in text/values/data
+    const filteredState = filteredKeys.reduce((acc: Record<string, any>, key) => {
+      acc[key] = state[key];
+      return acc;
+    }, {});
+
+    // and then we flat state.values again
+    const output = composeRandomUser(templateFunction({ ...filteredState, ...state.values }), 10);
+
+    // process options
+    // defaults to XML
+    let format = 'XML';
+    // maybe a runtime setting would be better?
+    // and options only used when we know 100% we're expecting code
+    if (options.preferredEncapsulation === 'json') {
+      format = 'JSON';
+    }
+
+    const estToken = (text: string) => {
+      const words = text
+        .trim()
+        .split(/\s+|\b/)
+        .filter((w) => /\w+/.test(w));
+      // Rough: each word ≈ 1 token, plus some overhead for punctuation etc.
+      return Math.ceil(words.length * 1.3);
+    };
+
+    console.log(
+      'using format',
+      format,
+      'in prompt',
+      estToken(output).toLocaleString() + ' tokens (est)'
+    );
+
+    const codesSchema = (prefix: string) => {
+      return [
+        {
+          field: prefix + 'initial_code',
+          description: 'please just give the initial UUID code you were given in the prompt',
+        },
+        {
+          field: prefix + 'middle_code',
+          description: 'please just give the middle UUID code you were given in the prompt',
+        },
+        {
+          field: prefix + 'end_code',
+          description: 'please just give the end UUID code you were given in the prompt',
+        },
+      ];
+    };
+
+    let first = true;
+    let last = true;
+
+    const extSchema = [
+      ...(first ? codesSchema('one_') : []),
+      ...schema,
+      ...(last ? codesSchema('two_') : []),
+    ].filter((b) => !!b);
+
+    // generate prompt
+
+    const isXML = format === 'XML';
+    const CONTAINER_START = isXML ? '<response>' : '{';
+    const CONTAINER_END = isXML ? '</response>' : '}';
+
+    const section_start = isXML ? '<output>' : '# Strict Output instructions';
+    const section_end = isXML ? '</output>' : '';
+
+    let EXAMPLE = CONTAINER_START + '\n';
+    type FieldDesc = { field: string; description: string; required?: boolean };
+    function generateText(s: FieldDesc | FieldDesc[], lvl: number = 1): string {
+      const isArray = Array.isArray(s);
+      if (!isArray && typeof s === 'object') {
+        let str = '  '.repeat(lvl);
+        if (s.field && s.description) {
+          str += isXML ? '<' + s.field + '>' : s.field + ': ';
+          str += (isXML ? '' : '"') + s.description + (isXML ? '' : '"');
+          str += isXML ? '</' + s.field + '>' : '';
+        } else {
+          console.warn('dynamicPromptExecFromState - no field&desc', s);
+        }
+        return str + '\n';
+      } else if (isArray) {
+        let str = '';
+        for (const i of s) {
+          str += generateText(i, lvl + 1);
+        }
+        return str;
+      } else {
+        console.log('dynamicPromptExecFromState - unknown type', typeof s, 'value', s);
+        return '';
+      }
+    }
+    EXAMPLE += generateText(extSchema);
+    EXAMPLE += CONTAINER_END + '\n';
+
+    const footerTemplate =
+      section_start +
+      `
+  Do NOT include any thinking, reasoning, or <think> sections in your response.
+  Go directly to the {{FORMAT}} response format without any preamble or explanation.
+
+  Respond using {{FORMAT}} format like this:
+  {{EXAMPLE}}
+
+  IMPORTANT: Your response must ONLY contain the {{CONTAINER_START}}{{CONTAINER_END}} {{FORMAT}} block above. Do not include any text, thinking, or reasoning before or after this {{FORMAT}} block. Start your response immediately with {{CONTAINER_START}} and end with {{CONTAINER_END}}.
+  ` +
+      section_end +
+      '\n';
+    const footer = footerTemplate
+      .replaceAll('{{FORMAT}}', format)
+      .replaceAll('{{CONTAINER_START}}', CONTAINER_START)
+      .replaceAll('{{CONTAINER_END}}', CONTAINER_END)
+      .replaceAll('{{EXAMPLE}}', EXAMPLE);
+    // inject codes
+    const initCode = uuidv4();
+    const midCode = uuidv4();
+    const finalCode = uuidv4();
+    const prompt =
+      'initial code: ' +
+      initCode +
+      '\n' +
+      output +
+      'middle code: ' +
+      midCode +
+      '\n' +
+      footer +
+      'end code: ' +
+      finalCode +
+      '\n';
+    const outputTokenEst = estToken(prompt);
+    console.log(
+      'dynamicPromptExecFromState prompt',
+      outputTokenEst.toLocaleString() + ' tokens (est)'
+    );
+
+    // retries?
+    // call useModel
+    params.prompt = prompt; // replace prompt
+    const modelType = options.modelSize === 'small' ? ModelType.TEXT_SMALL : ModelType.TEXT_LARGE;
+    const response = await this.useModel<typeof modelType, string>(modelType, {
+      ...params,
+      providerOptions: {
+        agentName: this.character.name,
+      },
+    });
+    const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, '');
+
+    let responseContent;
+    try {
+      responseContent = isXML
+        ? parseKeyValueXml(cleanResponse)
+        : parseJSONObjectFromText(cleanResponse);
+      console.log('dynamicPromptExecFromState responseContent', responseContent);
+    } catch (e) {
+      console.error('dynamicPromptExecFromState err', e);
+    }
+
+    // validate response
+    let allGood = true;
+    if (!responseContent) {
+      this.logger.warn('parse problem?', response, '=>', cleanResponse);
+      allGood = false;
+      // could try inverse format...
+    } else {
+      if (responseContent.one_initial_code !== initCode) {
+        this.logger.warn('one_initial_code failure', initCode);
+        allGood = false;
+      }
+      if (responseContent.one_middle_code !== midCode) {
+        this.logger.warn('one_middle_code failure', midCode);
+        allGood = false;
+      }
+      if (responseContent.one_end_code !== finalCode) {
+        this.logger.warn('one_end_code failure', finalCode);
+        allGood = false;
+      }
+      if (responseContent.two_initial_code !== initCode) {
+        this.logger.warn('two_initial_code failure', initCode);
+        allGood = false;
+      }
+      if (responseContent.two_middle_code !== midCode) {
+        this.logger.warn('two_middle_code failure', midCode);
+        allGood = false;
+      }
+      if (responseContent.two_end_code !== finalCode) {
+        this.logger.warn('two_end_code failure', finalCode);
+        allGood = false;
+      }
+      // we should probably strip this injects
+      delete responseContent.one_initial_code;
+      delete responseContent.one_middle_code;
+      delete responseContent.one_end_code;
+      delete responseContent.two_initial_code;
+      delete responseContent.two_middle_code;
+      delete responseContent.two_end_code;
+
+      if (!allGood) {
+        console.log('likely needs less tokens than', outputTokenEst.toLocaleString(), 'tokens');
+        // what's the lowest token count that failed
+        // threshold for removing 2nd check
+        // threshold for chunking output?
+
+        // need a minimum watermark
+
+        // run again, in half...
+      } else {
+        // max that worked
+      }
+    }
+
+    return responseContent ?? null;
   }
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
