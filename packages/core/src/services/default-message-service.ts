@@ -18,7 +18,6 @@ import {
   ContentType,
   asUUID,
   createUniqueUuid,
-  composePromptFromState,
   imageDescriptionTemplate,
   messageHandlerTemplate,
   shouldRespondTemplate,
@@ -380,11 +379,6 @@ export class DefaultMessageService implements IMessageService {
         shouldRespondToMessage = responseDecision.shouldRespond;
       } else {
         // Need LLM evaluation for ambiguous case
-        const shouldRespondPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
-        });
-
         runtime.logger.debug(
           {
             src: 'service:message',
@@ -394,13 +388,22 @@ export class DefaultMessageService implements IMessageService {
           'Using LLM evaluation'
         );
 
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: shouldRespondPrompt,
+        const responseObject = await runtime.dynamicPromptExecFromState({
+          state,
+          params: {
+            prompt: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+          },
+          schema: [
+            { field: 'name', description: 'The name of the agent responding' },
+            { field: 'reasoning', description: 'Your reasoning for this decision' },
+            { field: 'action', description: 'RESPOND | IGNORE | STOP' },
+          ],
+          options: {
+            modelSize: 'small',
+            preferredEncapsulation: 'xml',
+          },
         });
 
-        runtime.logger.debug({ src: 'service:message', response }, 'LLM evaluation result');
-
-        const responseObject = parseKeyValueXml(response);
         runtime.logger.debug(
           { src: 'service:message', responseObject },
           'Parsed evaluation result'
@@ -930,77 +933,43 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.warn({ src: 'service:message' }, 'actionNames data missing from state');
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
-    });
-
     let responseContent: Content | null = null;
 
     // Retry if missing required fields
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      // Check if text extraction is already complete - no point in retrying
-      const ctx = getStreamingContext();
-      if (retries > 0 && ctx?.isComplete?.()) {
-        // Text was fully extracted (found </text>) - exit loop to use streamedText
-        runtime.logger.info(
-          { src: 'service:message', retries },
-          'Text extraction complete despite XML parse failure - skipping further retries'
-        );
-        break;
-      }
-
-      // Check if we have partial streamed text - if so, exit to let continuation handle it
-      if (retries > 0) {
-        const partialText = ctx?.getStreamedText?.() || '';
-        if (partialText.length > 0) {
-          // Has partial text - exit loop to let continuation logic handle it
-          runtime.logger.debug(
-            { src: 'service:message', streamedTextLength: partialText.length },
-            'Partial text streamed - exiting retry loop for continuation'
-          );
-          break;
-        }
-        // No text streamed yet, safe to reset and retry
-        ctx?.reset?.();
-      }
-
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
+      const parsedXml = await runtime.dynamicPromptExecFromState({
+        state,
+        params: {
+          prompt: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+        },
+        schema: [
+          {
+            field: 'thought',
+            description: 'Your internal reasoning about the message and what to do',
+            required: true,
+          },
+          {
+            field: 'providers',
+            description: 'List of providers to use for additional context (comma-separated)',
+          },
+          {
+            field: 'actions',
+            description: 'List of actions to take (comma-separated)',
+            required: true,
+          },
+          { field: 'text', description: 'The text response to send to the user' },
+          { field: 'simple', description: 'Whether this is a simple response (true/false)' },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+          requiredFields: ['thought', 'actions'],
+        },
       });
 
-      runtime.logger.info(
-        {
-          src: 'service:message',
-          responseLength: response.length,
-          responsePreview: response.substring(0, 500),
-        },
-        'Raw LLM response received'
-      );
-
-      const parsedXml = parseKeyValueXml(response);
-      runtime.logger.info(
-        {
-          src: 'service:message',
-          parsedXml: parsedXml
-            ? {
-                hasThought: !!parsedXml.thought,
-                thoughtPreview:
-                  typeof parsedXml.thought === 'string'
-                    ? parsedXml.thought.substring(0, 100)
-                    : null,
-                hasActions: !!parsedXml.actions,
-                actions: parsedXml.actions,
-                hasText: !!parsedXml.text,
-                textPreview:
-                  typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
-              }
-            : null,
-        },
-        'Parsed XML content'
-      );
+      runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed response content');
 
       if (parsedXml) {
         const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
@@ -1034,110 +1003,8 @@ export class DefaultMessageService implements IMessageService {
       retries++;
       if (!responseContent?.thought || !responseContent?.actions) {
         runtime.logger.warn(
-          {
-            src: 'service:message',
-            retries,
-            maxRetries: opts.maxRetries,
-            hasThought: !!responseContent?.thought,
-            hasActions: !!responseContent?.actions,
-            actionsValue: responseContent?.actions,
-          },
+          { src: 'service:message', retries, parsedXml, responseContent },
           'Missing required fields (thought or actions), retrying'
-        );
-      }
-    }
-
-    // Intelligent streaming retry logic (inspired by Anthropic's partial response recovery)
-    const streamingCtx = getStreamingContext();
-    const streamedText = streamingCtx?.getStreamedText?.() || '';
-    const isTextComplete = streamingCtx?.isComplete?.() ?? false;
-
-    // Case B: XML parsing failed OR response text doesn't match streamed text
-    // but <text> extraction is complete - use streamed text as the response
-    if (isTextComplete && streamedText && (!responseContent || !responseContent.text)) {
-      runtime.logger.info(
-        {
-          src: 'service:message',
-          streamedTextLength: streamedText.length,
-          streamedTextPreview: streamedText.substring(0, 100),
-          hadResponseContent: !!responseContent,
-        },
-        'Text extraction complete - using streamed text'
-      );
-
-      responseContent = {
-        ...(responseContent || {}),
-        thought: responseContent?.thought || 'Response generated via streaming',
-        actions: responseContent?.actions || ['REPLY'],
-        providers: responseContent?.providers || [],
-        text: streamedText,
-        simple: true,
-      };
-    } else if (streamedText && !isTextComplete) {
-      // Case C: Text was cut mid-stream - retry with continuation prompt
-      runtime.logger.debug(
-        {
-          src: 'service:message',
-          streamedTextLength: streamedText.length,
-          streamedTextPreview: streamedText.substring(0, 100),
-        },
-        'Text cut mid-stream - attempting continuation'
-      );
-
-      // Reset extractor for fresh streaming of continuation
-      streamingCtx?.reset?.();
-
-      // Build continuation prompt with full context
-      const continuationPrompt = `${prompt}
-
-[CONTINUATION REQUIRED]
-Your previous response was cut off. The user already received this text:
-"${streamedText}"
-
-Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.
-Wrap your continuation in <text></text> tags.`;
-
-      // Use runWithStreamingContext to ensure continuation is streamed to user
-      const continuationResponse = await runWithStreamingContext(streamingCtx, () =>
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: continuationPrompt,
-        })
-      );
-
-      runtime.logger.debug(
-        {
-          src: 'service:message',
-          continuationLength: continuationResponse.length,
-          continuationPreview: continuationResponse.substring(0, 200),
-        },
-        'Continuation response received'
-      );
-
-      // Extract continuation text
-      const continuationParsed = parseKeyValueXml(continuationResponse);
-      const continuationText =
-        typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
-
-      if (continuationText) {
-        // Combine original streamed text with continuation
-        const fullText = streamedText + continuationText;
-
-        responseContent = {
-          ...(responseContent || {}),
-          thought: responseContent?.thought || 'Response completed via continuation',
-          actions: responseContent?.actions || ['REPLY'],
-          providers: responseContent?.providers || [],
-          text: fullText,
-          simple: true,
-        };
-
-        runtime.logger.info(
-          {
-            src: 'service:message',
-            fullTextLength: fullText.length,
-          },
-          'Continuation successful - combined text'
         );
       }
     }
@@ -1233,94 +1100,48 @@ Wrap your continuation in <text></text> tags.`;
       ])) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
-      const prompt = composePromptFromState({
+      const parsedStep = await runtime.dynamicPromptExecFromState({
         state: accumulatedState,
-        template:
-          runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+        params: {
+          prompt:
+            runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+        },
+        schema: [
+          {
+            field: 'thought',
+            description:
+              "Your reasoning for the selected providers and/or action, and how this step contributes to resolving the user's request",
+          },
+          {
+            field: 'providers',
+            description: 'Comma-separated list of providers to call to gather necessary data',
+          },
+          {
+            field: 'action',
+            description:
+              'Name of the action to execute after providers return (can be empty if no action is needed)',
+          },
+          {
+            field: 'isFinish',
+            description:
+              'true if the task is fully resolved and no further steps are needed, false otherwise',
+          },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+        },
       });
-
-      // Retry logic for parsing failures with bounds checking
-      const parseRetriesSetting = runtime.getSetting('MULTISTEP_PARSE_RETRIES');
-      const rawParseRetries = parseInt(String(parseRetriesSetting ?? '5'), 10);
-      // Validate retry count is within reasonable bounds (1-10)
-      const maxParseRetries = Math.max(
-        1,
-        Math.min(10, isNaN(rawParseRetries) ? 5 : rawParseRetries)
-      );
-      let stepResultRaw: string = '';
-      let parsedStep: Record<string, unknown> | null = null;
-
-      for (let parseAttempt = 1; parseAttempt <= maxParseRetries; parseAttempt++) {
-        try {
-          runtime.logger.debug(
-            {
-              src: 'service:message',
-              attempt: parseAttempt,
-              maxAttempts: maxParseRetries,
-              iteration: iterationCount,
-            },
-            'Decision step model call attempt'
-          );
-          stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-          parsedStep = parseKeyValueXml(stepResultRaw);
-
-          if (parsedStep) {
-            runtime.logger.debug(
-              { src: 'service:message', attempt: parseAttempt, iteration: iterationCount },
-              'Successfully parsed decision step'
-            );
-            break;
-          } else {
-            runtime.logger.warn(
-              {
-                src: 'service:message',
-                attempt: parseAttempt,
-                maxAttempts: maxParseRetries,
-                iteration: iterationCount,
-                rawResponsePreview: stepResultRaw.substring(0, 200),
-              },
-              'Failed to parse XML response'
-            );
-
-            if (parseAttempt < maxParseRetries) {
-              // Exponential backoff: 1s, 2s, 4s, etc. (capped at 8s)
-              const backoffMs = Math.min(1000 * Math.pow(2, parseAttempt - 1), 8000);
-              await new Promise((resolve) => setTimeout(resolve, backoffMs));
-            }
-          }
-        } catch (error) {
-          runtime.logger.error(
-            {
-              src: 'service:message',
-              attempt: parseAttempt,
-              maxAttempts: maxParseRetries,
-              iteration: iterationCount,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'Error during model call attempt'
-          );
-          if (parseAttempt >= maxParseRetries) {
-            throw error;
-          }
-          // Exponential backoff on error
-          const backoffMs = Math.min(1000 * Math.pow(2, parseAttempt - 1), 8000);
-          await new Promise((resolve) => setTimeout(resolve, backoffMs));
-        }
-      }
 
       if (!parsedStep) {
         runtime.logger.warn(
-          {
-            src: 'service:message',
-            iteration: iterationCount,
-            maxParseRetries,
-          },
-          'Failed to parse step result after all retry attempts'
+          { src: 'service:message', iteration: iterationCount },
+          'Failed to parse step result'
         );
         traceActionResult.push({
           data: { actionName: 'parse_error' },
           success: false,
-          error: `Failed to parse step result after ${maxParseRetries} attempts`,
+          error: 'Failed to parse step result',
         });
         break;
       }
@@ -1700,192 +1521,29 @@ Wrap your continuation in <text></text> tags.`;
       'RECENT_MESSAGES',
       'ACTION_STATE',
     ])) as MultiStepState;
-    const summaryPrompt = composePromptFromState({
+
+    const summary = await runtime.dynamicPromptExecFromState({
       state: accumulatedState,
-      template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+      params: {
+        prompt: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+      },
+      schema: [
+        {
+          field: 'thought',
+          description: 'Your internal reasoning about the completed actions and final response',
+        },
+        {
+          field: 'text',
+          description: 'The final user-facing message summarizing what was accomplished',
+          required: true,
+        },
+      ],
+      options: {
+        modelSize: 'large',
+        preferredEncapsulation: 'xml',
+        requiredFields: ['text'],
+      },
     });
-
-    // Retry logic for summary parsing failures with bounds checking
-    const summaryRetriesSetting = runtime.getSetting('MULTISTEP_SUMMARY_PARSE_RETRIES');
-    const rawSummaryRetries = parseInt(String(summaryRetriesSetting ?? '5'), 10);
-    // Validate retry count is within reasonable bounds (1-10)
-    const maxSummaryRetries = Math.max(
-      1,
-      Math.min(10, isNaN(rawSummaryRetries) ? 5 : rawSummaryRetries)
-    );
-    let finalOutput: string = '';
-    let summary: Record<string, unknown> | null = null;
-
-    // Set up streaming context for summary (uses XmlTagExtractor for <text> extraction)
-    const summaryStreamingContext = opts.onStreamChunk
-      ? createStreamingContext(new XmlTagExtractor('text'), opts.onStreamChunk, responseId)
-      : undefined;
-
-    for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
-      // Check if text extraction is already complete - no point in retrying
-      if (summaryAttempt > 1 && summaryStreamingContext?.isComplete?.()) {
-        runtime.logger.info(
-          { src: 'service:message:multistep', attempt: summaryAttempt },
-          'Summary text extraction complete despite XML parse failure - skipping further retries'
-        );
-        break;
-      }
-
-      try {
-        runtime.logger.debug(
-          {
-            src: 'service:message',
-            attempt: summaryAttempt,
-            maxAttempts: maxSummaryRetries,
-          },
-          'Summary generation attempt'
-        );
-
-        // Check if we have partial streamed text - if so, exit to let continuation handle it
-        if (summaryAttempt > 1 && summaryStreamingContext) {
-          const partialText = summaryStreamingContext.getStreamedText?.() || '';
-          if (partialText.length > 0) {
-            runtime.logger.debug(
-              { src: 'service:message:multistep', streamedTextLength: partialText.length },
-              'Partial text streamed - exiting retry loop for continuation'
-            );
-            break;
-          }
-          // No text streamed yet, safe to reset and retry
-          summaryStreamingContext.reset?.();
-        }
-
-        if (summaryStreamingContext) {
-          // Stream the final summary to the user (extracts <text> content only)
-          finalOutput = await runWithStreamingContext(summaryStreamingContext, () =>
-            runtime.useModel(ModelType.TEXT_LARGE, {
-              prompt: summaryPrompt,
-            })
-          );
-        } else {
-          // No streaming: streaming is disabled
-          finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
-            prompt: summaryPrompt,
-          });
-        }
-        summary = parseKeyValueXml(finalOutput);
-
-        if (summary?.text) {
-          runtime.logger.debug(
-            { src: 'service:message', attempt: summaryAttempt },
-            'Successfully parsed summary'
-          );
-          break;
-        } else {
-          runtime.logger.warn(
-            {
-              src: 'service:message',
-              attempt: summaryAttempt,
-              maxAttempts: maxSummaryRetries,
-              rawResponsePreview: finalOutput.substring(0, 200),
-              streamedTextLength: summaryStreamingContext?.getStreamedText?.()?.length ?? 0,
-            },
-            'Failed to parse summary XML'
-          );
-
-          if (summaryAttempt < maxSummaryRetries) {
-            // Exponential backoff: 1s, 2s, 4s, etc. (capped at 8s)
-            const backoffMs = Math.min(1000 * Math.pow(2, summaryAttempt - 1), 8000);
-            await new Promise((resolve) => setTimeout(resolve, backoffMs));
-          }
-        }
-      } catch (error) {
-        runtime.logger.error(
-          {
-            src: 'service:message',
-            attempt: summaryAttempt,
-            maxAttempts: maxSummaryRetries,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Error during summary generation attempt'
-        );
-        if (summaryAttempt >= maxSummaryRetries) {
-          runtime.logger.warn(
-            { src: 'service:message' },
-            'Failed to generate summary after all retries, using fallback'
-          );
-          break;
-        }
-        // Exponential backoff on error
-        const backoffMs = Math.min(1000 * Math.pow(2, summaryAttempt - 1), 8000);
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-      }
-    }
-
-    // Intelligent streaming retry logic for multi-step summary
-    const currentStreamedText = summaryStreamingContext?.getStreamedText?.() || '';
-    const isTextComplete = summaryStreamingContext?.isComplete?.() ?? false;
-
-    // Case B: XML parsing failed OR summary text doesn't exist
-    // but <text> extraction is complete - use streamed text
-    if (isTextComplete && currentStreamedText && !summary?.text) {
-      runtime.logger.info(
-        {
-          src: 'service:message:multistep',
-          streamedTextLength: currentStreamedText.length,
-          streamedTextPreview: currentStreamedText.substring(0, 100),
-          hadSummary: !!summary,
-        },
-        'Summary text extraction complete - using streamed text'
-      );
-
-      summary = {
-        ...(summary || {}),
-        text: currentStreamedText,
-        thought: summary?.thought || 'Summary generated via streaming',
-      };
-    } else if (currentStreamedText && !isTextComplete) {
-      // Case C: Text was cut mid-stream - retry with continuation prompt
-      runtime.logger.debug(
-        {
-          src: 'service:message:multistep',
-          streamedTextLength: currentStreamedText.length,
-          streamedTextPreview: currentStreamedText.substring(0, 100),
-        },
-        'Summary text cut mid-stream - attempting continuation'
-      );
-
-      // Reset extractor for fresh streaming of continuation
-      summaryStreamingContext?.reset?.();
-
-      const continuationPrompt = `${summaryPrompt}
-
-[CONTINUATION REQUIRED]
-Your previous response was cut off. The user already received this text:
-"${currentStreamedText}"
-
-Continue EXACTLY from where you left off. Do NOT repeat what was already said.
-Output ONLY the continuation, starting immediately after the last character above.
-Wrap your continuation in <text></text> tags.`;
-
-      const continuationResponse = await runWithStreamingContext(summaryStreamingContext, () =>
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: continuationPrompt,
-        })
-      );
-
-      const continuationParsed = parseKeyValueXml(continuationResponse);
-      const continuationText =
-        typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
-
-      if (continuationText) {
-        const fullText = currentStreamedText + continuationText;
-        summary = { text: fullText, thought: 'Summary completed via continuation' };
-
-        runtime.logger.info(
-          {
-            src: 'service:message:multistep',
-            fullTextLength: fullText.length,
-          },
-          'Summary continuation successful'
-        );
-      }
-    }
 
     let responseContent: Content | null = null;
     const summaryText = summary?.text;
@@ -1904,10 +1562,7 @@ Wrap your continuation in <text></text> tags.`;
       };
     } else {
       // Fallback response when summary generation fails
-      runtime.logger.warn(
-        { src: 'service:message', maxSummaryRetries },
-        'No valid summary generated after all attempts, using fallback'
-      );
+      runtime.logger.warn({ src: 'service:message' }, 'No valid summary generated, using fallback');
       responseContent = {
         actions: ['MULTI_STEP_SUMMARY'],
         text: 'I completed the requested actions, but encountered an issue generating the summary.',
