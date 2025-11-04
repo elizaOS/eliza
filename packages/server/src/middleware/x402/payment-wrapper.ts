@@ -15,6 +15,16 @@ import {
     type X402Response
 } from './x402-types.js';
 import {
+    type X402Request,
+    type X402Response as ExpressResponse,
+    type X402Runtime,
+    type PaymentVerificationParams,
+    type EIP712PaymentProof,
+    type FacilitatorVerificationResponse,
+    type EIP712Authorization,
+    type EIP712Domain
+} from './types.js';
+import {
     recoverTypedDataAddress,
     type Address,
     type Hex,
@@ -83,6 +93,29 @@ function getViemChain(network: string) {
 
 
 /**
+ * Get RPC URL for a network
+ */
+function getRpcUrl(network: string, runtime: X402Runtime): string {
+    const networkUpper = network.toUpperCase();
+    const settingKey = `${networkUpper}_RPC_URL`;
+    const customRpc = runtime.getSetting(settingKey);
+    if (customRpc && typeof customRpc === 'string') {
+        return customRpc;
+    }
+
+    switch (networkUpper) {
+        case 'BASE':
+            return 'https://mainnet.base.org';
+        case 'POLYGON':
+            return 'https://polygon-rpc.com';
+        case 'ETHEREUM':
+            return 'https://eth.llamarpc.com';
+        default:
+            return 'https://mainnet.base.org';
+    }
+}
+
+/**
  * Get USDC contract address for a network
  */
 function getUsdcContractAddress(network: string): Address {
@@ -104,18 +137,6 @@ function getUsdcContractAddress(network: string): Address {
  * Re-export the PaymentEnabledRoute type from core for convenience
  */
 export type PaymentEnabledRoute = CorePaymentEnabledRoute;
-
-/**
- * Payment verification parameters
- */
-interface PaymentVerificationParams {
-    paymentProof?: string;
-    paymentId?: string;
-    route: string;
-    expectedAmount: string;
-    runtime: any;
-    req?: any;
-}
 
 /**
  * Verify payment proof from x402 payment provider
@@ -221,16 +242,49 @@ async function verifyPayment(params: PaymentVerificationParams): Promise<boolean
 }
 
 /**
+ * Sanitize and validate payment ID format
+ */
+function sanitizePaymentId(paymentId: string): string {
+    // Remove any whitespace
+    const cleaned = paymentId.trim();
+
+    // Validate format (alphanumeric, hyphens, underscores only)
+    if (!/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
+        throw new Error('Invalid payment ID format');
+    }
+
+    // Limit length to prevent abuse
+    if (cleaned.length > 128) {
+        throw new Error('Payment ID too long');
+    }
+
+    return cleaned;
+}
+
+/**
  * Verify payment ID via facilitator API
  */
 async function verifyPaymentIdViaFacilitator(
     paymentId: string,
-    runtime: any
+    runtime: X402Runtime
 ): Promise<boolean> {
     logSection('FACILITATOR VERIFICATION');
-    log('Payment ID:', paymentId);
 
-    const facilitatorUrl = runtime.getSetting('X402_FACILITATOR_URL') || 'https://x402.elizaos.ai/api/facilitator';
+    // Sanitize payment ID
+    let cleanPaymentId: string;
+    try {
+        cleanPaymentId = sanitizePaymentId(paymentId);
+        log('Payment ID:', cleanPaymentId);
+    } catch (error) {
+        logError('Invalid payment ID:', error instanceof Error ? error.message : String(error));
+        return false;
+    }
+
+    const facilitatorUrlSetting = runtime.getSetting('X402_FACILITATOR_URL');
+    const facilitatorUrl = typeof facilitatorUrlSetting === 'string'
+        ? facilitatorUrlSetting
+        : 'https://x402.elizaos.ai/api/facilitator';
+
     if (!facilitatorUrl) {
         logError('⚠️  No facilitator URL configured');
         return false;
@@ -238,7 +292,7 @@ async function verifyPaymentIdViaFacilitator(
 
     try {
         const cleanUrl = facilitatorUrl.replace(/\/$/, '');
-        const endpoint = `${cleanUrl}/verify/${encodeURIComponent(paymentId)}`;
+        const endpoint = `${cleanUrl}/verify/${encodeURIComponent(cleanPaymentId)}`;
         log('Verifying at:', endpoint);
 
         const response = await fetch(endpoint, {
@@ -251,7 +305,7 @@ async function verifyPaymentIdViaFacilitator(
         });
 
         const responseText = await response.text();
-        const responseData = responseText ? JSON.parse(responseText) : null;
+        const responseData: FacilitatorVerificationResponse = responseText ? JSON.parse(responseText) : {};
 
         if (response.ok) {
             const isValid = responseData?.valid !== false && responseData?.verified !== false;
@@ -283,22 +337,45 @@ async function verifyPaymentIdViaFacilitator(
 }
 
 /**
+ * Sanitize Solana signature
+ */
+function sanitizeSolanaSignature(signature: string): string {
+    const cleaned = signature.trim();
+
+    // Solana signatures are base58, typically 87-88 characters
+    if (!/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(cleaned)) {
+        throw new Error('Invalid Solana signature format');
+    }
+
+    return cleaned;
+}
+
+/**
  * Verify a Solana transaction
  */
 async function verifySolanaPayment(
     signature: string,
     expectedRecipient: string,
     _expectedAmount: string,
-    runtime: any
+    runtime: X402Runtime
 ): Promise<boolean> {
-    log('Verifying Solana transaction:', signature.substring(0, 20) + '...');
+    // Sanitize signature
+    let cleanSignature: string;
+    try {
+        cleanSignature = sanitizeSolanaSignature(signature);
+        log('Verifying Solana transaction:', cleanSignature.substring(0, 20) + '...');
+    } catch (error) {
+        logError('Invalid signature:', error instanceof Error ? error.message : String(error));
+        return false;
+    }
 
     try {
         const { Connection, PublicKey } = await import('@solana/web3.js');
-        const rpcUrl = runtime.getSetting('SOLANA_RPC_URL') || 'https://api.mainnet-beta.solana.com';
+        const rpcUrlSetting = runtime.getSetting('SOLANA_RPC_URL');
+        const rpcUrl = typeof rpcUrlSetting === 'string' ? rpcUrlSetting : 'https://api.mainnet-beta.solana.com';
         const connection = new Connection(rpcUrl);
 
-        const tx = await connection.getTransaction(signature, {
+        const tx = await connection.getTransaction(cleanSignature, {
             maxSupportedTransactionVersion: 0
         });
 
@@ -333,6 +410,20 @@ async function verifySolanaPayment(
 }
 
 /**
+ * Sanitize and parse payment proof data
+ */
+function sanitizePaymentProof(paymentData: string): string {
+    const cleaned = paymentData.trim();
+
+    // Limit size to prevent DoS
+    if (cleaned.length > 10000) {
+        throw new Error('Payment proof too large');
+    }
+
+    return cleaned;
+}
+
+/**
  * Verify an EVM transaction or EIP-712 signature
  */
 async function verifyEvmPayment(
@@ -340,28 +431,39 @@ async function verifyEvmPayment(
     expectedRecipient: string,
     expectedAmount: string,
     network: string,
-    runtime: any,
-    req?: any
+    runtime: X402Runtime,
+    req?: X402Request
 ): Promise<boolean> {
-    log(`Verifying ${network} payment:`, paymentData.substring(0, 20) + '...');
+    // Sanitize input
+    let cleanPaymentData: string;
+    try {
+        cleanPaymentData = sanitizePaymentProof(paymentData);
+        log(`Verifying ${network} payment:`, cleanPaymentData.substring(0, 20) + '...');
+    } catch (error) {
+        logError('Invalid payment data:', error instanceof Error ? error.message : String(error));
+        return false;
+    }
 
     try {
-        if (paymentData.match(/^0x[a-fA-F0-9]{64}$/)) {
+        if (cleanPaymentData.match(/^0x[a-fA-F0-9]{64}$/)) {
             log('Detected transaction hash format');
-            return await verifyEvmTransaction(paymentData, expectedRecipient, expectedAmount, network, runtime);
+            return await verifyEvmTransaction(cleanPaymentData, expectedRecipient, expectedAmount, network, runtime);
         }
 
         try {
-            const parsed = JSON.parse(paymentData);
-            if (parsed.signature || (parsed.v && parsed.r && parsed.s)) {
-                log('Detected EIP-712 signature format');
-                return await verifyEip712Authorization(parsed, expectedRecipient, expectedAmount, network, runtime, req);
+            const parsed: unknown = JSON.parse(cleanPaymentData);
+            if (typeof parsed === 'object' && parsed !== null) {
+                const proof = parsed as Partial<EIP712PaymentProof>;
+                if (proof.signature || (proof.v && proof.r && proof.s)) {
+                    log('Detected EIP-712 signature format');
+                    return await verifyEip712Authorization(parsed, expectedRecipient, expectedAmount, network, runtime, req);
+                }
             }
         } catch (e) {
             // Not JSON, continue
         }
 
-        if (paymentData.match(/^0x[a-fA-F0-9]{130}$/)) {
+        if (cleanPaymentData.match(/^0x[a-fA-F0-9]{130}$/)) {
             logError('Raw signature detected but authorization parameters missing');
             return false;
         }
@@ -375,51 +477,105 @@ async function verifyEvmPayment(
 }
 
 /**
- * Verify a regular EVM transaction
+ * Verify a regular EVM transaction (on-chain)
  */
 async function verifyEvmTransaction(
-    _txHash: string,
-    _expectedRecipient: string,
-    _expectedAmount: string,
-    _network: string,
-    _runtime: any
+    txHash: string,
+    expectedRecipient: string,
+    expectedAmount: string,
+    network: string,
+    runtime: X402Runtime
 ): Promise<boolean> {
-    log('Verifying on-chain transaction:', _txHash);
-    logError('⚠️  EVM transaction verification not fully implemented - accepting valid tx hash format');
-    return true;
+    log('Verifying on-chain transaction:', txHash);
+
+    try {
+        const rpcUrl = getRpcUrl(network, runtime);
+        const chain = getViemChain(network);
+
+        const { createPublicClient, http } = await import('viem');
+        const publicClient = createPublicClient({
+            chain,
+            transport: http(rpcUrl)
+        });
+
+        // Get transaction receipt
+        const receipt = await publicClient.getTransactionReceipt({ hash: txHash as Hex });
+
+        if (receipt.status !== 'success') {
+            logError('Transaction failed on-chain');
+            return false;
+        }
+
+        // Verify transaction is to expected recipient
+        if (receipt.to?.toLowerCase() !== expectedRecipient.toLowerCase()) {
+            logError('Transaction recipient mismatch');
+            return false;
+        }
+
+        // Get transaction details to verify amount
+        const tx = await publicClient.getTransaction({ hash: txHash as Hex });
+
+        const expectedUSD = parseFloat(expectedAmount.replace('$', ''));
+        const expectedUnits = BigInt(Math.floor(expectedUSD * 1e6)); // USDC 6 decimals
+
+        if (tx.value < expectedUnits) {
+            logError('Transaction amount too low');
+            return false;
+        }
+
+        log('✓ On-chain transaction verified');
+        return true;
+    } catch (error) {
+        logError('Transaction verification error:', error instanceof Error ? error.message : String(error));
+        return false;
+    }
 }
 
 /**
  * Verify EIP-712 authorization signature (ERC-3009 TransferWithAuthorization)
  */
 async function verifyEip712Authorization(
-    paymentData: any,
+    paymentData: unknown,
     expectedRecipient: string,
     expectedAmount: string,
     network: string,
-    runtime: any,
-    req?: any
+    runtime: X402Runtime,
+    req?: X402Request
 ): Promise<boolean> {
     log('Verifying EIP-712 authorization signature');
-    log('Payment data:', JSON.stringify(paymentData, null, 2));
+
+    // Type guard for payment data
+    if (typeof paymentData !== 'object' || paymentData === null) {
+        logError('Invalid payment data: must be an object');
+        return false;
+    }
+
+    const proofData = paymentData as EIP712PaymentProof;
+    log('Payment data:', JSON.stringify(proofData, null, 2));
 
     try {
         let signature: string;
-        let authorization: any;
+        let authorization: EIP712Authorization;
 
-        if (paymentData.signature) {
-            signature = paymentData.signature;
-            authorization = paymentData.authorization || paymentData.message;
-        } else if (paymentData.v && paymentData.r && paymentData.s) {
-            signature = `0x${paymentData.r}${paymentData.s}${paymentData.v.toString(16).padStart(2, '0')}`;
-            authorization = paymentData.authorization || paymentData.message;
+        if (proofData.signature && typeof proofData.signature === 'string') {
+            signature = proofData.signature;
+            authorization = proofData.authorization as EIP712Authorization;
+        } else if (proofData.v && proofData.r && proofData.s) {
+            signature = `0x${proofData.r}${proofData.s}${proofData.v.toString(16).padStart(2, '0')}`;
+            authorization = proofData.authorization as EIP712Authorization;
         } else {
-            console.error('No valid signature found in payment data');
+            logError('No valid signature found in payment data');
             return false;
         }
 
-        if (!authorization) {
-            console.error('No authorization data found in payment data');
+        if (!authorization || typeof authorization !== 'object') {
+            logError('No authorization data found in payment data');
+            return false;
+        }
+
+        // Validate authorization fields
+        if (!authorization.from || !authorization.to || !authorization.value || !authorization.nonce) {
+            logError('Authorization missing required fields');
             return false;
         }
 
@@ -459,14 +615,6 @@ async function verifyEip712Authorization(
 
         log('✓ EIP-712 authorization parameters valid');
 
-        const SKIP_SIGNATURE_VERIFICATION = runtime?.getSetting?.('SKIP_X402_SIGNATURE_VERIFICATION') === 'true';
-        const ALLOW_SIGNER_MISMATCH = runtime?.getSetting?.('ALLOW_X402_SIGNER_MISMATCH') === 'true';
-
-        if (SKIP_SIGNATURE_VERIFICATION) {
-            logError('⚠️  WARNING: SIGNATURE VERIFICATION DISABLED - DANGEROUS!');
-            return true;
-        }
-
         logSection('Cryptographic Signature Verification');
 
         try {
@@ -475,12 +623,13 @@ async function verifyEip712Authorization(
             let domainName = 'USD Coin';
             let domainVersion = '2';
 
-            if (paymentData.domain) {
-                log('Using domain from payment data:', paymentData.domain);
-                verifyingContract = paymentData.domain.verifyingContract as Address;
-                chainId = paymentData.domain.chainId;
-                if (paymentData.domain.name) domainName = paymentData.domain.name;
-                if (paymentData.domain.version) domainVersion = paymentData.domain.version;
+            if (proofData.domain && typeof proofData.domain === 'object') {
+                const domain = proofData.domain as EIP712Domain;
+                log('Using domain from payment data:', domain);
+                verifyingContract = domain.verifyingContract as Address;
+                chainId = domain.chainId;
+                if (domain.name) domainName = domain.name;
+                if (domain.version) domainVersion = domain.version;
             } else {
                 log('No domain in payment data - using defaults');
                 verifyingContract = getUsdcContractAddress(network);
@@ -550,13 +699,15 @@ async function verifyEip712Authorization(
                     log('Signature match:', signerMatches ? '✓ Valid' : '✗ Invalid');
 
                     if (!signerMatches) {
-                        const userAgent = req?.headers?.['user-agent'] || '';
-                        const isX402Gateway = userAgent.includes('X402-Gateway');
+                        const userAgent = req?.headers?.['user-agent'];
+                        const isX402Gateway = typeof userAgent === 'string' && userAgent.includes('X402-Gateway');
 
                         if (isX402Gateway) {
                             log('🔍 Detected X402 Gateway User-Agent');
-                            const trustedSigners = runtime.getSetting?.('X402_TRUSTED_GATEWAY_SIGNERS') ||
-                                '0x2EB8323f66eE172315503de7325D04c676089267';
+                            const trustedSignersSetting = runtime.getSetting('X402_TRUSTED_GATEWAY_SIGNERS');
+                            const trustedSigners = typeof trustedSignersSetting === 'string'
+                                ? trustedSignersSetting
+                                : '0x2EB8323f66eE172315503de7325D04c676089267';
                             const signerWhitelist = trustedSigners.split(',').map((addr: string) => addr.trim().toLowerCase());
 
                             if (signerWhitelist.includes(recoveredAddress.toLowerCase())) {
@@ -564,13 +715,12 @@ async function verifyEip712Authorization(
                                 return true;
                             } else {
                                 logError(`✗ Gateway signer NOT in whitelist: ${recoveredAddress}`);
+                                logError(`Add to X402_TRUSTED_GATEWAY_SIGNERS to allow: ${recoveredAddress}`);
                                 return false;
                             }
-                        } else if (ALLOW_SIGNER_MISMATCH) {
-                            logError(`⚠️  Signer mismatch ALLOWED`);
-                            return true;
                         } else {
                             logError('✗ Signature verification failed: signer mismatch');
+                            logError(`Expected: ${authorization.from}, Actual: ${recoveredAddress}`);
                             return false;
                         }
                     } else {
@@ -605,6 +755,10 @@ export function createPaymentAwareHandler(
     const originalHandler = route.handler;
 
     return async (req: any, res: any, runtime: any) => {
+        // Cast to our stricter types internally for type safety
+        const typedReq = req as X402Request;
+        const typedRes = res as ExpressResponse;
+        const typedRuntime = runtime as X402Runtime;
         if (!route.x402) {
             if (originalHandler) {
                 return originalHandler(req, res, runtime);
@@ -613,22 +767,22 @@ export function createPaymentAwareHandler(
         }
 
         logSection(`X402 Payment Check - ${route.path}`);
-        log('Method:', req.method);
+        log('Method:', typedReq.method);
 
         if (route.validator) {
             try {
-                const validationResult = await route.validator(req);
+                const validationResult = await route.validator(typedReq);
 
                 if (!validationResult.valid) {
                     logError('✗ Validation failed:', validationResult.error?.message);
 
-                    const x402Response = buildX402Response(route, runtime);
+                    const x402Response = buildX402Response(route, typedRuntime);
 
                     const errorMessage = validationResult.error?.details
                         ? `${validationResult.error.message}: ${JSON.stringify(validationResult.error.details)}`
                         : validationResult.error?.message || 'Invalid request parameters';
 
-                    return res.status(402).json({
+                    return typedRes.status(402).json({
                         ...x402Response,
                         error: errorMessage
                     });
@@ -638,26 +792,26 @@ export function createPaymentAwareHandler(
             } catch (error) {
                 logError('✗ Validation error:', error instanceof Error ? error.message : String(error));
 
-                const x402Response = buildX402Response(route, runtime);
-                return res.status(402).json({
+                const x402Response = buildX402Response(route, typedRuntime);
+                return typedRes.status(402).json({
                     ...x402Response,
                     error: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`
                 });
             }
         }
 
-        log('Headers:', JSON.stringify(req.headers, null, 2));
-        log('Query:', JSON.stringify(req.query, null, 2));
-        if (req.method === 'POST' && req.body) {
-            log('Body:', JSON.stringify(req.body, null, 2));
+        log('Headers:', JSON.stringify(typedReq.headers, null, 2));
+        log('Query:', JSON.stringify(typedReq.query, null, 2));
+        if (typedReq.method === 'POST' && typedReq.body) {
+            log('Body:', JSON.stringify(typedReq.body, null, 2));
         }
 
-        const paymentProof = req.headers['x-payment-proof'] || req.headers['x-payment'] || req.query.paymentProof;
-        const paymentId = req.headers['x-payment-id'] || req.query.paymentId;
+        const paymentProof = typedReq.headers['x-payment-proof'] || typedReq.headers['x-payment'] || typedReq.query.paymentProof;
+        const paymentId = typedReq.headers['x-payment-id'] || typedReq.query.paymentId;
 
         log('Payment credentials:', {
-            'x-payment-proof': !!req.headers['x-payment-proof'],
-            'x-payment': !!req.headers['x-payment'],
+            'x-payment-proof': !!typedReq.headers['x-payment-proof'],
+            'x-payment': !!typedReq.headers['x-payment'],
             'x-payment-id': !!paymentId,
             found: !!(paymentProof || paymentId)
         });
@@ -671,12 +825,12 @@ export function createPaymentAwareHandler(
             try {
                 const expectedAmount = String(route.x402.priceInCents);
                 const isValid = await verifyPayment({
-                    paymentProof: paymentProof as string,
-                    paymentId: paymentId as string,
+                    paymentProof: typeof paymentProof === 'string' ? paymentProof : undefined,
+                    paymentId: typeof paymentId === 'string' ? paymentId : undefined,
                     route: route.path,
                     expectedAmount,
-                    runtime,
-                    req
+                    runtime: typedRuntime,
+                    req: typedReq
                 });
 
                 if (isValid) {
@@ -687,7 +841,7 @@ export function createPaymentAwareHandler(
                     return;
                 } else {
                     logError('✗ PAYMENT VERIFICATION FAILED');
-                    res.status(402).json({
+                    typedRes.status(402).json({
                         error: 'Payment verification failed',
                         message: 'The provided payment proof is invalid or has expired',
                         x402Version: 1
@@ -696,7 +850,7 @@ export function createPaymentAwareHandler(
                 }
             } catch (error) {
                 logError('✗ PAYMENT VERIFICATION ERROR:', error instanceof Error ? error.message : String(error));
-                res.status(402).json({
+                typedRes.status(402).json({
                     error: 'Payment verification error',
                     message: error instanceof Error ? error.message : String(error),
                     x402Version: 1
@@ -708,7 +862,7 @@ export function createPaymentAwareHandler(
         log('No payment credentials - returning 402');
 
         try {
-            const x402Response = buildX402Response(route, runtime);
+            const x402Response = buildX402Response(route, typedRuntime);
             log('Payment options:', {
                 paymentConfigs: route.x402.paymentConfigs || ['base_usdc'],
                 priceInCents: route.x402.priceInCents,
@@ -716,10 +870,10 @@ export function createPaymentAwareHandler(
             });
             log('402 Response:', JSON.stringify(x402Response, null, 2));
 
-            res.status(402).json(x402Response);
+            typedRes.status(402).json(x402Response);
         } catch (error) {
             logError('✗ Failed to build x402 response:', error instanceof Error ? error.message : String(error));
-            res.status(402).json(createX402Response({
+            typedRes.status(402).json(createX402Response({
                 error: `Payment Required: ${error instanceof Error ? error.message : 'Unknown error'}`
             }));
         }
@@ -735,7 +889,7 @@ function buildX402Response(route: PaymentEnabledRoute, runtime?: any): X402Respo
     }
 
     const paymentConfigs = route.x402?.paymentConfigs || ['base_usdc'];
-    const agentId = runtime?.agentId;
+    const agentId = runtime?.agentId ? String(runtime.agentId) : undefined;
 
     const accepts = paymentConfigs.flatMap(configName => {
         const config = getPaymentConfig(configName, agentId);
