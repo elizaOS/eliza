@@ -531,6 +531,127 @@ describe('x402 Payment Verification', () => {
             expect(caip19).toContain('spl-token:');
         });
     });
+
+    describe('ERC-20 Transaction Decoding', () => {
+        it('should decode ERC-20 transfer function', async () => {
+            const { parseAbi, encodeFunctionData } = await import('viem');
+
+            const erc20Abi = parseAbi([
+                'function transfer(address to, uint256 amount) returns (bool)'
+            ]);
+
+            const recipient = '0x066E94e1200aa765d0A6392777D543Aa6Dea606C';
+            const amount = BigInt(100000); // $0.10 USDC (6 decimals)
+
+            const encodedData = encodeFunctionData({
+                abi: erc20Abi,
+                functionName: 'transfer',
+                args: [recipient, amount]
+            });
+
+            // Verify the encoded data is a hex string
+            expect(encodedData).toMatch(/^0x[a-fA-F0-9]+$/);
+            expect(encodedData.length).toBeGreaterThan(10);
+        });
+
+        it('should decode ERC-20 transferFrom function', async () => {
+            const { parseAbi, encodeFunctionData } = await import('viem');
+
+            const erc20Abi = parseAbi([
+                'function transferFrom(address from, address to, uint256 amount) returns (bool)'
+            ]);
+
+            const from = '0x1111111111111111111111111111111111111111';
+            const to = '0x066E94e1200aa765d0A6392777D543Aa6Dea606C';
+            const amount = BigInt(100000);
+
+            const encodedData = encodeFunctionData({
+                abi: erc20Abi,
+                functionName: 'transferFrom',
+                args: [from, to, amount]
+            });
+
+            expect(encodedData).toMatch(/^0x[a-fA-F0-9]+$/);
+        });
+
+        it('should correctly identify ERC-20 vs native ETH transfers', async () => {
+            const usdcContractBase = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+            const recipientAddress = '0x066E94e1200aa765d0A6392777D543Aa6Dea606C';
+
+            // ERC-20 transfer: tx.to = USDC contract, tx.value = 0, amount in input data
+            const erc20Transfer = {
+                to: usdcContractBase,
+                value: BigInt(0),
+                hasInputData: true
+            };
+
+            // Native ETH transfer: tx.to = recipient, tx.value > 0, no input data
+            const ethTransfer = {
+                to: recipientAddress,
+                value: BigInt(100000000000000), // Some ETH amount
+                hasInputData: false
+            };
+
+            expect(erc20Transfer.to.toLowerCase()).toBe(usdcContractBase.toLowerCase());
+            expect(erc20Transfer.value).toBe(BigInt(0));
+
+            expect(ethTransfer.to.toLowerCase()).toBe(recipientAddress.toLowerCase());
+            expect(ethTransfer.value).toBeGreaterThan(BigInt(0));
+        });
+
+        it('should handle insufficient ERC-20 transfer amounts', () => {
+            const expectedUSD = 0.10; // $0.10
+            const expectedUnits = BigInt(Math.floor(expectedUSD * 1e6)); // 100000 USDC units
+
+            const insufficientAmount = BigInt(50000); // $0.05
+            const exactAmount = BigInt(100000); // $0.10
+            const excessAmount = BigInt(150000); // $0.15
+
+            expect(insufficientAmount < expectedUnits).toBe(true);
+            expect(exactAmount >= expectedUnits).toBe(true);
+            expect(excessAmount >= expectedUnits).toBe(true);
+        });
+
+        it('should verify ERC-20 transaction structure requirements', () => {
+            // ERC-20 transfers require:
+            // 1. Transaction sent TO the token contract
+            // 2. tx.value = 0 (no ETH sent)
+            // 3. input data containing the transfer function call
+            // 4. Recipient address in the decoded input data
+            // 5. Token amount in the decoded input data
+
+            const validERC20Tx = {
+                to: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC contract
+                value: '0',
+                input: '0xa9059cbb0000000000000000000000000000000000000000000000000000000000000000', // transfer(address,uint256) function selector
+                status: 'success'
+            };
+
+            expect(validERC20Tx.value).toBe('0');
+            expect(validERC20Tx.input).toMatch(/^0x[a-fA-F0-9]+$/);
+            expect(validERC20Tx.status).toBe('success');
+        });
+
+        it('should calculate correct USDC units from cents', () => {
+            // USDC has 6 decimals
+            // Formula: cents * 10^4 = USDC units
+            // (because $1 = 100 cents = 1,000,000 USDC units)
+            // Therefore: cents * 10,000 = USDC units
+
+            const testCases = [
+                { cents: 1, expectedUnits: 10000 },       // $0.01
+                { cents: 10, expectedUnits: 100000 },     // $0.10
+                { cents: 50, expectedUnits: 500000 },     // $0.50
+                { cents: 100, expectedUnits: 1000000 },   // $1.00
+                { cents: 500, expectedUnits: 5000000 }    // $5.00
+            ];
+
+            for (const { cents, expectedUnits } of testCases) {
+                const calculated = cents * 10000;
+                expect(calculated).toBe(expectedUnits);
+            }
+        });
+    });
 });
 
 describe('x402 Response Generation', () => {

@@ -7,8 +7,25 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { createPaymentAwareHandler, type PaymentEnabledRoute } from '../payment-wrapper';
 import type { IAgentRuntime } from '@elizaos/core';
 
+// Types for mock objects
+type MockRequest = {
+    method: string;
+    path: string;
+    headers: Record<string, string | string[] | undefined>;
+    query: Record<string, string | string[] | undefined>;
+    body: Record<string, unknown>;
+    params: Record<string, string>;
+};
+
+type MockResponse = {
+    status: (code: number) => { json: (data: unknown) => void };
+    json: (data: unknown) => void;
+    getStatus: () => number;
+    getData: () => unknown;
+};
+
 // Mock runtime
-function createMockRuntime(overrides?: Partial<Record<string, any>>): IAgentRuntime {
+function createMockRuntime(overrides?: Record<string, string>): IAgentRuntime {
     return {
         agentId: 'test-agent-123',
         getSetting: (key: string) => {
@@ -25,11 +42,11 @@ function createMockRuntime(overrides?: Partial<Record<string, any>>): IAgentRunt
         },
         setCache: async () => true,
         getCache: async () => null
-    } as any;
+    } as IAgentRuntime;
 }
 
 // Mock request
-function createMockRequest(overrides?: Partial<any>) {
+function createMockRequest(overrides?: Partial<MockRequest>): MockRequest {
     return {
         method: 'GET',
         path: '/api/test',
@@ -42,20 +59,20 @@ function createMockRequest(overrides?: Partial<any>) {
 }
 
 // Mock response
-function createMockResponse() {
+function createMockResponse(): MockResponse {
     let statusCode = 200;
-    let responseData: any = null;
+    let responseData: unknown = null;
 
     return {
         status: (code: number) => {
             statusCode = code;
             return {
-                json: (data: any) => {
+                json: (data: unknown) => {
                     responseData = data;
                 }
             };
         },
-        json: (data: any) => {
+        json: (data: unknown) => {
             responseData = data;
         },
         getStatus: () => statusCode,
@@ -117,10 +134,12 @@ describe('Payment Verification Integration Tests', () => {
             expect(data.accepts).toHaveLength(2);
             
             // Verify Base option
-            const baseOption = data.accepts.find((a: any) => a.network === 'base');
+            type AcceptsItem = { network: string; payTo: string; maxAmountRequired: string };
+            const accepts = data.accepts as AcceptsItem[];
+            const baseOption = accepts.find((a) => a.network === 'base');
             expect(baseOption).toBeDefined();
-            expect(baseOption.payTo).toBe('0x066E94e1200aa765d0A6392777D543Aa6Dea606C');
-            expect(baseOption.maxAmountRequired).toBe('25');
+            expect(baseOption?.payTo).toBe('0x066E94e1200aa765d0A6392777D543Aa6Dea606C');
+            expect(baseOption?.maxAmountRequired).toBe('25');
         });
     });
 
