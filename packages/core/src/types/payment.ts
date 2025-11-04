@@ -10,8 +10,21 @@ import type { Route } from './plugin.js';
 
 /**
  * Network configuration - supports multiple chains
+ * Can be extended by plugins to support additional networks
  */
-export type Network = 'BASE' | 'SOLANA' | 'POLYGON';
+export type Network = string;
+
+/**
+ * Payment config definition that plugins can register
+ */
+export interface PaymentConfigDefinition {
+    network: string;
+    assetNamespace: string;      // e.g., "erc20", "spl-token", "slip44"
+    assetReference: string;       // e.g., contract address or token mint
+    paymentAddress: string;       // Recipient address
+    symbol: string;               // Display symbol (USDC, ETH, etc.)
+    chainId?: string;             // Optional chain ID for CAIP-2 (e.g., "8453" for Base)
+}
 
 /**
  * x402 configuration for routes
