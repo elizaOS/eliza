@@ -16,6 +16,16 @@ export type FieldDef = {
 };
 
 /**
+ * JSON Schema type for API output
+ */
+export type OutputSchemaType = {
+    type?: 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
+    description?: string;
+    properties?: Record<string, FieldDef>;
+    items?: FieldDef;
+};
+
+/**
  * Output schema describing input and output expectations for the paid endpoint
  */
 export type OutputSchema = {
@@ -28,7 +38,7 @@ export type OutputSchema = {
         bodyFields?: Record<string, FieldDef>;
         headerFields?: Record<string, FieldDef>;
     };
-    output?: Record<string, any>;
+    output?: OutputSchemaType;
 };
 
 /**
@@ -49,6 +59,31 @@ export type X402ScanNetwork =
     | 'peaq';
 
 /**
+ * EIP-712 domain information for EVM chains
+ */
+export type EIP712DomainInfo = {
+    name: string;
+    version: string;
+    chainId: number;
+    verifyingContract: string;
+};
+
+/**
+ * Extra metadata for payment configuration
+ */
+export type PaymentExtraMetadata = {
+    priceInCents: number;
+    priceUSD: string;
+    symbol: string;
+    paymentConfig: string;
+    expiresIn: number;
+    name?: string;
+    version?: string;
+    eip712Domain?: EIP712DomainInfo;
+    [key: string]: string | number | EIP712DomainInfo | undefined;
+};
+
+/**
  * Accepts object defining payment terms for a resource
  */
 export type Accepts = {
@@ -66,7 +101,7 @@ export type Accepts = {
     outputSchema?: OutputSchema;
 
     // Optional additional custom data
-    extra?: Record<string, any>;
+    extra?: PaymentExtraMetadata;
 };
 
 /**
@@ -239,7 +274,7 @@ export function createAccepts(params: {
     mimeType?: string;
     maxTimeoutSeconds?: number;
     outputSchema?: OutputSchema;
-    extra?: Record<string, any>;
+    extra?: PaymentExtraMetadata;
 }): Accepts {
     const accepts: Accepts = {
         scheme: "exact",
