@@ -94,16 +94,16 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     routes: overrides.routes || [],
     logger: overrides.logger || {
       level: 'info',
-      trace: () => {},
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      fatal: () => {},
-      success: () => {},
-      progress: () => {},
-      log: () => {},
-      clear: () => {},
+      trace: () => { },
+      debug: () => { },
+      info: () => { },
+      warn: () => { },
+      error: () => { },
+      fatal: () => { },
+      success: () => { },
+      progress: () => { },
+      log: () => { },
+      clear: () => { },
       child: () => ({}) as any,
     },
     stateCache,
@@ -265,6 +265,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
 
     // Text Generation (required by IAgentRuntime)
     generateText: mock().mockResolvedValue('Mock generated text'),
+    dynamicPromptExecFromState: mock().mockResolvedValue({}),
 
     // Apply overrides
     ...overrides,
