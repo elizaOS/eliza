@@ -21,7 +21,7 @@ import { ModelType, UUID, ContentType } from './types';
  * @param  tpl  Handlebars template source
  * @return      Transformed template
  */
-function upgradeDoubleToTriple(tpl: string) {
+export function upgradeDoubleToTriple(tpl: string) {
   return tpl.replace(
     // ────────╮ negative-LB: not already "{{{"
     //          │   {{     ─ opening braces
@@ -165,7 +165,7 @@ export const addHeader = (header: string, body: string) => {
  * // "Hello, John! Meet Alice and Bob."
  * const result = composeRandomUser(template, length);
  */
-const composeRandomUser = (template: string, length: number) => {
+export const composeRandomUser = (template: string, length: number) => {
   const exampleNames = Array.from({ length }, () =>
     uniqueNamesGenerator({ dictionaries: [names] })
   );
@@ -269,16 +269,16 @@ export const formatMessages = ({
       const attachmentString =
         attachments && attachments.length > 0
           ? ` (Attachments: ${attachments
-              .map((media) => {
-                const lines = [`[${media.id} - ${media.title} (${media.url})]`];
-                if (media.text) lines.push(`Text: ${media.text}`);
-                if (media.description) lines.push(`Description: ${media.description}`);
-                return lines.join('\n');
-              })
-              .join(
-                // Use comma separator only if all attachments are single-line (no text/description)
-                attachments.every((media) => !media.text && !media.description) ? ', ' : '\n'
-              )})`
+            .map((media) => {
+              const lines = [`[${media.id} - ${media.title} (${media.url})]`];
+              if (media.text) lines.push(`Text: ${media.text}`);
+              if (media.description) lines.push(`Description: ${media.description}`);
+              return lines.join('\n');
+            })
+            .join(
+              // Use comma separator only if all attachments are single-line (no text/description)
+              attachments.every((media) => !media.text && !media.description) ? ', ' : '\n'
+            )})`
           : null;
 
       const messageTime = new Date(message.createdAt || 0);
@@ -298,9 +298,8 @@ export const formatMessages = ({
       const textString = messageText ? `${timestampString} ${formattedName}: ${messageText}` : null;
       const actionString =
         messageActions && messageActions.length > 0
-          ? `${
-              textString ? '' : timestampString
-            } (${formattedName}'s actions: ${messageActions.join(', ')})`
+          ? `${textString ? '' : timestampString
+          } (${formattedName}'s actions: ${messageActions.join(', ')})`
           : null;
 
       // for each thought, action, text or attachment, add a new line, with text first, then thought, then action, then attachment
