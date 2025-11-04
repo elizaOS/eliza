@@ -175,6 +175,22 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult>;
 
+  dynamicPromptExecFromState(params: {
+    state: State;
+    params: Omit<GenerateTextParams, 'prompt'> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: Array<{ field: string; description: string; required?: boolean }>;
+    options?: {
+      key?: string;
+      modelSize?: 'small' | 'large';
+      model?: string;
+      preferredEncapsulation?: 'json' | 'xml';
+      requiredFields?: string[];
+      contextCheckLevel?: 0 | 1;
+    };
+  }): Promise<Record<string, any> | null>;
+
   registerModel(
     modelType: ModelTypeName | string,
     handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>,
