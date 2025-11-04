@@ -90,7 +90,48 @@ describe('DefaultMessageService', () => {
           }
           return responseText;
         }
-      ),
+        // Response for message handler
+        return '<thought>Processing message</thought><actions>REPLY</actions><text>Hello! How can I help you?</text>';
+      }),
+      dynamicPromptExecFromState: mock(async ({ schema, options }: any) => {
+        // Check which schema is being requested based on field names
+        const fieldNames = schema.map((s: any) => s.field);
+
+        if (fieldNames.includes('action') && fieldNames.includes('reasoning')) {
+          // shouldRespond schema
+          return {
+            name: 'TestAgent',
+            reasoning: 'User asked a question',
+            action: 'RESPOND',
+          };
+        } else if (fieldNames.includes('thought') && fieldNames.includes('actions')) {
+          // message handler schema
+          return {
+            thought: 'Processing message',
+            providers: [],
+            actions: ['REPLY'],
+            text: 'Hello! How can I help you?',
+            simple: false,
+          };
+        } else if (fieldNames.includes('isFinish')) {
+          // multi-step decision schema
+          return {
+            thought: 'Completing the task',
+            providers: [],
+            action: '',
+            isFinish: 'true',
+          };
+        } else if (fieldNames.length === 2 && fieldNames.includes('text')) {
+          // multi-step summary schema
+          return {
+            thought: 'Task completed successfully',
+            text: 'I have completed the requested task.',
+          };
+        }
+
+        // Default fallback
+        return {};
+      }),
       processActions: mock(async () => {}),
       evaluate: mock(async () => {}),
       emitEvent: mock(async () => {}),
