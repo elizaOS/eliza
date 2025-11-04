@@ -5,7 +5,7 @@ import {
     toResourceUrl,
     getCAIP19FromConfig,
     getPaymentConfig,
-    PAYMENT_CONFIGS,
+    listX402Configs,
     type Network
 } from './payment-config.js';
 import {
@@ -621,13 +621,13 @@ export function createPaymentAwareHandler(
 
                 if (!validationResult.valid) {
                     logError('✗ Validation failed:', validationResult.error?.message);
-                    
-                    const x402Response = buildX402Response(route);
-                    
-                    const errorMessage = validationResult.error?.details 
+
+                    const x402Response = buildX402Response(route, runtime);
+
+                    const errorMessage = validationResult.error?.details
                         ? `${validationResult.error.message}: ${JSON.stringify(validationResult.error.details)}`
                         : validationResult.error?.message || 'Invalid request parameters';
-                    
+
                     return res.status(402).json({
                         ...x402Response,
                         error: errorMessage
@@ -637,8 +637,8 @@ export function createPaymentAwareHandler(
                 log('✓ Validation passed');
             } catch (error) {
                 logError('✗ Validation error:', error instanceof Error ? error.message : String(error));
-                
-                const x402Response = buildX402Response(route);
+
+                const x402Response = buildX402Response(route, runtime);
                 return res.status(402).json({
                     ...x402Response,
                     error: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -708,7 +708,7 @@ export function createPaymentAwareHandler(
         log('No payment credentials - returning 402');
 
         try {
-            const x402Response = buildX402Response(route);
+            const x402Response = buildX402Response(route, runtime);
             log('Payment options:', {
                 paymentConfigs: route.x402.paymentConfigs || ['base_usdc'],
                 priceInCents: route.x402.priceInCents,
@@ -729,19 +729,20 @@ export function createPaymentAwareHandler(
 /**
  * Build x402scan-compliant response for a route
  */
-function buildX402Response(route: PaymentEnabledRoute): X402Response {
+function buildX402Response(route: PaymentEnabledRoute, runtime?: any): X402Response {
     if (!route.x402?.priceInCents) {
         throw new Error('Route x402.priceInCents is required for x402 response');
     }
 
     const paymentConfigs = route.x402?.paymentConfigs || ['base_usdc'];
+    const agentId = runtime?.agentId;
 
     const accepts = paymentConfigs.flatMap(configName => {
-        const config = getPaymentConfig(configName);
+        const config = getPaymentConfig(configName, agentId);
         const caip19 = getCAIP19FromConfig(config);
-        
+
         const inputSchema = buildInputSchemaFromRoute(route);
-        
+
         const method = route.type === 'POST' ? 'POST' : 'GET';
 
         const outputSchema: OutputSchema = {
@@ -773,13 +774,22 @@ function buildX402Response(route: PaymentEnabledRoute): X402Response {
 
         const extra: Record<string, any> = {
             priceInCents: route.x402?.priceInCents || 0,
+            priceUSD: `$${((route.x402?.priceInCents || 0) / 100).toFixed(2)}`,
             symbol: config.symbol,
-            paymentConfig: configName
+            paymentConfig: configName,
+            expiresIn: 300  // Payment window in seconds
         };
 
+        // Add EIP-712 domain for EVM chains (helps client developers)
         if (config.network === 'BASE' || config.network === 'POLYGON') {
             extra.name = 'USD Coin';
             extra.version = '2';
+            extra.eip712Domain = {
+                name: 'USD Coin',
+                version: '2',
+                chainId: parseInt(config.chainId || '1'),
+                verifyingContract: config.assetReference
+            };
         }
 
         return createAccepts({
@@ -840,7 +850,7 @@ function buildInputSchemaFromRoute(route: PaymentEnabledRoute): {
     bodyFields?: Record<string, any>;
 } {
     const schema: any = {};
-    
+
     if (route.openapi?.parameters) {
         const pathParams = route.openapi.parameters
             .filter(p => p.in === 'path')
@@ -868,7 +878,7 @@ function buildInputSchemaFromRoute(route: PaymentEnabledRoute): {
             }), {});
         }
     }
-    
+
     if (route.openapi?.parameters) {
         const queryParams = route.openapi.parameters
             .filter(p => p.in === 'query')
@@ -884,13 +894,13 @@ function buildInputSchemaFromRoute(route: PaymentEnabledRoute): {
             }), {});
         if (Object.keys(queryParams).length > 0) schema.queryParams = queryParams;
     }
-    
+
     if (route.openapi?.requestBody?.content?.['application/json']?.schema) {
         schema.bodyFields = convertOpenAPISchemaToFieldDef(
             route.openapi.requestBody.content['application/json'].schema
         );
     }
-    
+
     return schema;
 }
 
@@ -899,7 +909,7 @@ function buildInputSchemaFromRoute(route: PaymentEnabledRoute): {
  */
 function generateDescription(route: PaymentEnabledRoute): string {
     if (route.description) return route.description;
-    
+
     const pathParts = route.path.split('/').filter(Boolean);
     const action = route.type.toLowerCase() === 'get' ? 'Get' : 'Execute';
     const resource = pathParts[pathParts.length - 1]?.replace(/^:/, '') || 'resource';
@@ -912,18 +922,18 @@ function generateDescription(route: PaymentEnabledRoute): string {
 function validateX402Route(route: Route): string[] {
     const errors: string[] = [];
     const x402Route = route as PaymentEnabledRoute;
-    
+
     if (!route.path) {
         errors.push(`Route missing 'path' property`);
         return errors;
     }
-    
+
     const routePath = route.path;
-    
+
     if (!x402Route.x402) {
         return [];
     }
-    
+
     if (x402Route.x402.priceInCents === undefined || x402Route.x402.priceInCents === null) {
         errors.push(`${routePath}: x402.priceInCents is required`);
     } else if (typeof x402Route.x402.priceInCents !== 'number') {
@@ -933,7 +943,7 @@ function validateX402Route(route: Route): string[] {
     } else if (!Number.isInteger(x402Route.x402.priceInCents)) {
         errors.push(`${routePath}: x402.priceInCents must be an integer`);
     }
-    
+
     const configs = x402Route.x402.paymentConfigs || ['base_usdc'];
     if (!Array.isArray(configs)) {
         errors.push(`${routePath}: x402.paymentConfigs must be an array`);
@@ -941,15 +951,21 @@ function validateX402Route(route: Route): string[] {
         if (configs.length === 0) {
             errors.push(`${routePath}: x402.paymentConfigs cannot be empty`);
         }
+        // Get all available configs (built-in + custom registered)
+        const availableConfigs = listX402Configs();
+
         for (const configName of configs) {
             if (typeof configName !== 'string') {
                 errors.push(`${routePath}: x402.paymentConfigs contains non-string value`);
-            } else if (!PAYMENT_CONFIGS[configName]) {
-                errors.push(`${routePath}: unknown payment config '${configName}'`);
+            } else if (!availableConfigs.includes(configName)) {
+                errors.push(
+                    `${routePath}: unknown payment config '${configName}'. ` +
+                    `Available: ${availableConfigs.join(', ')}`
+                );
             }
         }
     }
-    
+
     return errors;
 }
 
@@ -963,10 +979,10 @@ export function applyPaymentProtection(routes: Route[]): Route[] {
     if (!Array.isArray(routes)) {
         throw new Error('routes must be an array');
     }
-    
+
     const allErrors: string[] = [];
     const routesByPath = new Map<string, string[]>();
-    
+
     for (const route of routes) {
         const errors = validateX402Route(route);
         if (errors.length > 0) {
@@ -976,10 +992,10 @@ export function applyPaymentProtection(routes: Route[]): Route[] {
             routesByPath.set(routePath, [...existing, ...errors]);
         }
     }
-    
+
     if (allErrors.length > 0) {
         let errorMessage = `\n❌ x402 Route Configuration Errors (${allErrors.length} error${allErrors.length > 1 ? 's' : ''} found):\n\n`;
-        
+
         if (routesByPath.size > 0) {
             for (const [path, routeErrors] of routesByPath.entries()) {
                 errorMessage += `  Route: ${path}\n`;
@@ -994,12 +1010,12 @@ export function applyPaymentProtection(routes: Route[]): Route[] {
                 errorMessage += `  • ${error}\n`;
             }
         }
-        
+
         errorMessage += '\nPlease fix all errors above and try again.\n';
-        
+
         throw new Error(errorMessage);
     }
-    
+
     return routes.map(route => {
         const x402Route = route as PaymentEnabledRoute;
         if (x402Route.x402) {
