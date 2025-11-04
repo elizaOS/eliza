@@ -19,7 +19,6 @@ import {
   Role,
   asUUID,
   createUniqueUuid,
-  composePromptFromState,
   imageDescriptionTemplate,
   messageHandlerTemplate,
   shouldRespondTemplate,
@@ -319,22 +318,26 @@ export class DefaultMessageService implements IMessageService {
         shouldRespondToMessage = responseDecision.shouldRespond;
       } else {
         // Need LLM evaluation for ambiguous case
-        const shouldRespondPrompt = composePromptFromState({
-          state,
-          template: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
-        });
-
         runtime.logger.debug(
           `[MessageService] Using LLM evaluation for ${runtime.character.name} (${responseDecision.reason})`
         );
 
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-          prompt: shouldRespondPrompt,
+        const responseObject = await runtime.dynamicPromptExecFromState({
+          state,
+          params: {
+            prompt: runtime.character.templates?.shouldRespondTemplate || shouldRespondTemplate,
+          },
+          schema: [
+            { field: 'name', description: 'The name of the agent responding' },
+            { field: 'reasoning', description: 'Your reasoning for this decision' },
+            { field: 'action', description: 'RESPOND | IGNORE | STOP' },
+          ],
+          options: {
+            modelSize: 'small',
+            preferredEncapsulation: 'xml',
+          },
         });
 
-        runtime.logger.debug(`[MessageService] LLM evaluation result:\n${response}`);
-
-        const responseObject = parseKeyValueXml(response);
         runtime.logger.debug({ responseObject }, '[MessageService] Parsed evaluation result:');
 
         // If an action is provided, the agent intends to respond in some way
@@ -569,7 +572,7 @@ export class DefaultMessageService implements IMessageService {
         mode,
       };
     } catch (error: any) {
-      console.error('error is', error);
+      runtime.logger.error('error is', error);
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
@@ -625,11 +628,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-        runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
     );
     const customSources = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-        runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
     );
 
     const respondChannels = new Set(
@@ -816,23 +819,32 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.warn('actionNames data missing from state, even though it was requested');
     }
 
-    const prompt = composePromptFromState({
-      state,
-      template: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
-    });
-
     let responseContent: Content | null = null;
 
     // Retry if missing required fields
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      const parsedXml = await runtime.dynamicPromptExecFromState({
+        state,
+        params: {
+          prompt: runtime.character.templates?.messageHandlerTemplate || messageHandlerTemplate,
+        },
+        schema: [
+          { field: 'thought', description: 'Your internal reasoning about the message and what to do', required: true },
+          { field: 'providers', description: 'List of providers to use for additional context (comma-separated)' },
+          { field: 'actions', description: 'List of actions to take (comma-separated)', required: true },
+          { field: 'text', description: 'The text response to send to the user' },
+          { field: 'simple', description: 'Whether this is a simple response (true/false)' },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+          requiredFields: ['thought', 'actions'],
+        },
+      });
 
-      runtime.logger.debug({ response }, '[MessageService] *** Raw LLM Response ***');
-
-      const parsedXml = parseKeyValueXml(response);
-      runtime.logger.debug({ parsedXml }, '[MessageService] *** Parsed XML Content ***');
+      runtime.logger.debug({ parsedXml }, '[MessageService] *** Parsed Response Content ***');
 
       if (parsedXml) {
         responseContent = {
@@ -850,7 +862,7 @@ export class DefaultMessageService implements IMessageService {
       retries++;
       if (!responseContent?.thought || !responseContent?.actions) {
         runtime.logger.warn(
-          { response, parsedXml, responseContent },
+          { parsedXml, responseContent },
           '[MessageService] *** Missing required fields (thought or actions), retrying... ***'
         );
       }
@@ -929,14 +941,23 @@ export class DefaultMessageService implements IMessageService {
       ])) as MultiStepState;
       accumulatedState.data.actionResults = traceActionResult;
 
-      const prompt = composePromptFromState({
+      const parsedStep = await runtime.dynamicPromptExecFromState({
         state: accumulatedState,
-        template:
-          runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+        params: {
+          prompt:
+            runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
+        },
+        schema: [
+          { field: 'thought', description: 'Your reasoning for the selected providers and/or action, and how this step contributes to resolving the user\'s request' },
+          { field: 'providers', description: 'Comma-separated list of providers to call to gather necessary data' },
+          { field: 'action', description: 'Name of the action to execute after providers return (can be empty if no action is needed)' },
+          { field: 'isFinish', description: 'true if the task is fully resolved and no further steps are needed, false otherwise' },
+        ],
+        options: {
+          modelSize: 'large',
+          preferredEncapsulation: 'xml',
+        },
       });
-
-      const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-      const parsedStep = parseKeyValueXml(stepResultRaw);
 
       if (!parsedStep) {
         runtime.logger.warn(
@@ -1072,13 +1093,22 @@ export class DefaultMessageService implements IMessageService {
       'RECENT_MESSAGES',
       'ACTION_STATE',
     ])) as MultiStepState;
-    const summaryPrompt = composePromptFromState({
-      state: accumulatedState,
-      template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
-    });
 
-    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
-    const summary = parseKeyValueXml(finalOutput);
+    const summary = await runtime.dynamicPromptExecFromState({
+      state: accumulatedState,
+      params: {
+        prompt: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
+      },
+      schema: [
+        { field: 'thought', description: 'Your internal reasoning about the completed actions and final response' },
+        { field: 'text', description: 'The final user-facing message summarizing what was accomplished', required: true },
+      ],
+      options: {
+        modelSize: 'large',
+        preferredEncapsulation: 'xml',
+        requiredFields: ['text'],
+      },
+    });
 
     let responseContent: Content | null = null;
     if (summary?.text) {
@@ -1092,15 +1122,15 @@ export class DefaultMessageService implements IMessageService {
 
     const responseMessages: Memory[] = responseContent
       ? [
-          {
-            id: asUUID(v4()),
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: responseContent,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          },
-        ]
+        {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
       : [];
 
     return {
