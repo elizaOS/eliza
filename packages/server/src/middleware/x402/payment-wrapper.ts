@@ -515,8 +515,10 @@ async function verifyEvmTransaction(
         // Get transaction details to verify amount
         const tx = await publicClient.getTransaction({ hash: txHash as Hex });
 
-        const expectedUSD = parseFloat(expectedAmount.replace('$', ''));
-        const expectedUnits = BigInt(Math.floor(expectedUSD * 1e6)); // USDC 6 decimals
+        // expectedAmount is in cents, convert to USDC units (6 decimals)
+        // cents * 10^4 = USDC units (e.g., 10 cents * 10000 = 100000 units = $0.10)
+        const expectedCents = parseInt(expectedAmount);
+        const expectedUnits = BigInt(expectedCents * 10000); // USDC 6 decimals
 
         if (tx.value < expectedUnits) {
             logError('Transaction amount too low');
@@ -585,13 +587,22 @@ async function verifyEip712Authorization(
             value: authorization.value
         });
 
+        // Null check before toLowerCase()
+        if (!authorization.to) {
+            console.error('Authorization missing "to" field');
+            return false;
+        }
+
         if (authorization.to.toLowerCase() !== expectedRecipient.toLowerCase()) {
             console.error('Recipient mismatch:', authorization.to, 'vs', expectedRecipient);
             return false;
         }
 
-        const expectedUSD = parseFloat(expectedAmount.replace('$', ''));
-        const expectedUnits = Math.floor(expectedUSD * 1e6);
+        // Verify amount matches
+        // expectedAmount is in cents, convert to USDC units (6 decimals)
+        // cents * 10^4 = USDC units (e.g., 10 cents * 10000 = 100000 units = $0.10)
+        const expectedCents = parseInt(expectedAmount);
+        const expectedUnits = expectedCents * 10000; // USDC has 6 decimals
         const authValue = parseInt(authorization.value);
 
         if (authValue < expectedUnits) {
@@ -663,78 +674,74 @@ async function verifyEip712Authorization(
 
             log('Message:', { from: message.from, to: message.to, value: message.value.toString() });
 
-            if (!SKIP_SIGNATURE_VERIFICATION) {
-                try {
-                    const recoveredAddress = await recoverTypedDataAddress({
-                        domain,
-                        types,
-                        primaryType: 'TransferWithAuthorization',
-                        message,
-                        signature: signature as Hex
-                    });
+            try {
+                const recoveredAddress = await recoverTypedDataAddress({
+                    domain,
+                    types,
+                    primaryType: 'TransferWithAuthorization',
+                    message,
+                    signature: signature as Hex
+                });
 
-                    log('Recovered signer:', recoveredAddress, 'Expected:', authorization.from);
+                log('Recovered signer:', recoveredAddress, 'Expected:', authorization.from);
 
-                    const signerMatches = recoveredAddress.toLowerCase() === authorization.from.toLowerCase();
+                const signerMatches = recoveredAddress.toLowerCase() === authorization.from.toLowerCase();
 
-                    if (!signerMatches) {
-                        try {
-                            const wrongTypeRecovered = await recoverTypedDataAddress({
-                                domain,
-                                types: { ReceiveWithAuthorization: RECEIVE_WITH_AUTHORIZATION_TYPES },
-                                primaryType: 'ReceiveWithAuthorization',
-                                message,
-                                signature: signature as Hex
-                            });
+                if (!signerMatches) {
+                    try {
+                        const wrongTypeRecovered = await recoverTypedDataAddress({
+                            domain,
+                            types: { ReceiveWithAuthorization: RECEIVE_WITH_AUTHORIZATION_TYPES },
+                            primaryType: 'ReceiveWithAuthorization',
+                            message,
+                            signature: signature as Hex
+                        });
 
-                            if (wrongTypeRecovered.toLowerCase() === authorization.from.toLowerCase()) {
-                                logError('❌ CLIENT ERROR: Wrong EIP-712 type used');
-                                return false;
-                            }
-                        } catch (e) {
-                            log('Could not recover with ReceiveWithAuthorization either');
+                        if (wrongTypeRecovered.toLowerCase() === authorization.from.toLowerCase()) {
+                            logError('❌ CLIENT ERROR: Wrong EIP-712 type used');
+                            return false;
                         }
+                    } catch (e) {
+                        log('Could not recover with ReceiveWithAuthorization either');
                     }
+                }
 
-                    log('Signature match:', signerMatches ? '✓ Valid' : '✗ Invalid');
+                log('Signature match:', signerMatches ? '✓ Valid' : '✗ Invalid');
 
-                    if (!signerMatches) {
-                        const userAgent = req?.headers?.['user-agent'];
-                        const isX402Gateway = typeof userAgent === 'string' && userAgent.includes('X402-Gateway');
+                if (!signerMatches) {
+                    const userAgent = req?.headers?.['user-agent'];
+                    const isX402Gateway = typeof userAgent === 'string' && userAgent.includes('X402-Gateway');
 
-                        if (isX402Gateway) {
-                            log('🔍 Detected X402 Gateway User-Agent');
-                            const trustedSignersSetting = runtime.getSetting('X402_TRUSTED_GATEWAY_SIGNERS');
-                            const trustedSigners = typeof trustedSignersSetting === 'string'
-                                ? trustedSignersSetting
-                                : '0x2EB8323f66eE172315503de7325D04c676089267';
-                            const signerWhitelist = trustedSigners.split(',').map((addr: string) => addr.trim().toLowerCase());
+                    if (isX402Gateway) {
+                        log('🔍 Detected X402 Gateway User-Agent');
+                        const trustedSignersSetting = runtime.getSetting('X402_TRUSTED_GATEWAY_SIGNERS');
+                        const trustedSigners = typeof trustedSignersSetting === 'string'
+                            ? trustedSignersSetting
+                            : '0x2EB8323f66eE172315503de7325D04c676089267';
+                        const signerWhitelist = trustedSigners.split(',').map((addr: string) => addr.trim().toLowerCase());
 
-                            if (signerWhitelist.includes(recoveredAddress.toLowerCase())) {
-                                log('✅ Signature verified: signed by authorized X402 Gateway');
-                                return true;
-                            } else {
-                                logError(`✗ Gateway signer NOT in whitelist: ${recoveredAddress}`);
-                                logError(`Add to X402_TRUSTED_GATEWAY_SIGNERS to allow: ${recoveredAddress}`);
-                                return false;
-                            }
+                        if (signerWhitelist.includes(recoveredAddress.toLowerCase())) {
+                            log('✅ Signature verified: signed by authorized X402 Gateway');
+                            return true;
                         } else {
-                            logError('✗ Signature verification failed: signer mismatch');
-                            logError(`Expected: ${authorization.from}, Actual: ${recoveredAddress}`);
+                            logError(`✗ Gateway signer NOT in whitelist: ${recoveredAddress}`);
+                            logError(`Add to X402_TRUSTED_GATEWAY_SIGNERS to allow: ${recoveredAddress}`);
                             return false;
                         }
                     } else {
-                        log('✓ Signature cryptographically verified');
-                        return true;
+                        logError('✗ Signature verification failed: signer mismatch');
+                        logError(`Expected: ${authorization.from}, Actual: ${recoveredAddress}`);
+                        return false;
                     }
-
-                } catch (error) {
-                    logError('✗ Signature verification failed:', error instanceof Error ? error.message : String(error));
-                    return false;
+                } else {
+                    log('✓ Signature cryptographically verified');
+                    return true;
                 }
-            }
 
-            return true;
+            } catch (error) {
+                logError('✗ Signature verification failed:', error instanceof Error ? error.message : String(error));
+                return false;
+            }
 
         } catch (error) {
             logError('EIP-712 verification error:', error instanceof Error ? error.message : String(error));
@@ -883,7 +890,7 @@ export function createPaymentAwareHandler(
 /**
  * Build x402scan-compliant response for a route
  */
-function buildX402Response(route: PaymentEnabledRoute, runtime?: any): X402Response {
+function buildX402Response(route: PaymentEnabledRoute, runtime?: X402Runtime): X402Response {
     if (!route.x402?.priceInCents) {
         throw new Error('Route x402.priceInCents is required for x402 response');
     }
@@ -975,19 +982,39 @@ function extractPathParams(path: string): string[] {
 }
 
 /**
+ * OpenAPI property schema
+ */
+interface OpenAPIPropertySchema {
+    type?: string;
+    description?: string;
+    enum?: string[];
+    pattern?: string;
+    properties?: Record<string, OpenAPIPropertySchema>;
+}
+
+/**
+ * OpenAPI object schema
+ */
+interface OpenAPIObjectSchema {
+    type: string;
+    properties?: Record<string, OpenAPIPropertySchema>;
+    required?: string[];
+}
+
+/**
  * Convert OpenAPI schema to FieldDef format
  */
-function convertOpenAPISchemaToFieldDef(schema: any): Record<string, any> {
-    if (schema.type === 'object' && schema.properties) {
+function convertOpenAPISchemaToFieldDef(schema: OpenAPIObjectSchema | OpenAPIPropertySchema): Record<string, any> {
+    if ('properties' in schema && schema.properties) {
         const fields: Record<string, any> = {};
         for (const [key, value] of Object.entries(schema.properties)) {
             fields[key] = {
-                type: (value as any).type,
-                required: schema.required?.includes(key) ?? false,
-                description: (value as any).description,
-                enum: (value as any).enum,
-                pattern: (value as any).pattern,
-                properties: (value as any).properties ? convertOpenAPISchemaToFieldDef(value) : undefined
+                type: value.type,
+                required: ('required' in schema && schema.required) ? schema.required.includes(key) : false,
+                description: value.description,
+                enum: value.enum,
+                pattern: value.pattern,
+                properties: value.properties ? convertOpenAPISchemaToFieldDef(value) : undefined
             };
         }
         return fields;
@@ -996,14 +1023,19 @@ function convertOpenAPISchemaToFieldDef(schema: any): Record<string, any> {
 }
 
 /**
- * Build input schema from route
+ * Input schema structure
  */
-function buildInputSchemaFromRoute(route: PaymentEnabledRoute): {
+interface InputSchema {
     pathParams?: Record<string, any>;
     queryParams?: Record<string, any>;
     bodyFields?: Record<string, any>;
-} {
-    const schema: any = {};
+}
+
+/**
+ * Build input schema from route
+ */
+function buildInputSchemaFromRoute(route: PaymentEnabledRoute): InputSchema {
+    const schema: InputSchema = {};
 
     if (route.openapi?.parameters) {
         const pathParams = route.openapi.parameters
