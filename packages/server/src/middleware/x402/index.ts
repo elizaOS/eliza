@@ -43,11 +43,15 @@ export {
     type PaymentConfigDefinition,
     PAYMENT_CONFIGS,
     PAYMENT_ADDRESSES,
+    BUILT_IN_NETWORKS,
+    registerX402Config,
     getPaymentConfig,
     getPaymentAddress,
+    listX402Configs,
     toX402Network,
     toResourceUrl,
-    getBaseUrl
+    getBaseUrl,
+    getX402Health
 } from './payment-config.js';
 
 export {
