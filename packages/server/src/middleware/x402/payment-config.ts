@@ -30,6 +30,11 @@ import type { Network as CoreNetwork } from '@elizaos/core';
 // Re-export Network type from core
 export type Network = CoreNetwork;
 
+/**
+ * Built-in networks supported by default
+ */
+export const BUILT_IN_NETWORKS = ['BASE', 'SOLANA', 'POLYGON'] as const;
+
 // Default network configuration
 export const DEFAULT_NETWORK: Network = 'SOLANA';
 
@@ -195,27 +200,107 @@ export const PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {
 export function getCAIP19FromConfig(config: PaymentConfigDefinition): string {
     // Build CAIP-2 chain ID: namespace:reference
     const chainNamespace = config.network === 'SOLANA' ? 'solana' : 'eip155';
-    const chainReference = config.chainId || 
-        (config.network === 'BASE' ? '8453' : 
-         config.network === 'POLYGON' ? '137' : '1');
+    const chainReference = config.chainId ||
+        (config.network === 'BASE' ? '8453' :
+            config.network === 'POLYGON' ? '137' : '1');
     const chainId = `${chainNamespace}:${chainReference}`;
-    
+
     // Build asset part: namespace:reference
     const assetId = `${config.assetNamespace}:${config.assetReference}`;
-    
+
     // Full CAIP-19: chain_id/asset_namespace:asset_reference
     return `${chainId}/${assetId}`;
 }
 
 /**
- * Get payment config by name
+ * Mutable registry for custom payment configs
+ * Plugins can register configs via registerX402Config()
  */
-export function getPaymentConfig(name: string): PaymentConfigDefinition {
-    const config = PAYMENT_CONFIGS[name];
-    if (!config) {
-        throw new Error(`Unknown payment config '${name}'. Valid configs: ${Object.keys(PAYMENT_CONFIGS).join(', ')}`);
+const CUSTOM_PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {};
+
+/**
+ * Register a custom payment configuration
+ * Plugins call this in their init() function
+ * 
+ * @example
+ * ```typescript
+ * registerX402Config('base_ai16z', {
+ *   network: 'BASE',
+ *   assetNamespace: 'erc20',
+ *   assetReference: '0x...',
+ *   paymentAddress: process.env.BASE_PUBLIC_KEY,
+ *   symbol: 'AI16Z',
+ *   chainId: '8453'
+ * });
+ * 
+ * // Agent-specific override
+ * registerX402Config('base_usdc', {...}, { agentId: runtime.agentId });
+ * ```
+ */
+export function registerX402Config(
+    name: string,
+    config: PaymentConfigDefinition,
+    options?: { override?: boolean; agentId?: string }
+): void {
+    // Prevent accidental override of built-in configs
+    if (PAYMENT_CONFIGS[name] && !options?.override) {
+        throw new Error(
+            `Payment config '${name}' already exists. Use override: true to replace it.`
+        );
     }
-    return config;
+
+    const registryKey = options?.agentId ? `${options.agentId}:${name}` : name;
+    CUSTOM_PAYMENT_CONFIGS[registryKey] = config;
+
+    console.log(`✓ Registered x402 payment config: ${registryKey} (${config.symbol} on ${config.network})`);
+}
+
+/**
+ * Get payment config - checks custom registry then built-in
+ * Supports agent-specific configs via agentId parameter
+ */
+export function getPaymentConfig(name: string, agentId?: string): PaymentConfigDefinition {
+    // Check agent-specific config first
+    if (agentId) {
+        const agentConfig = CUSTOM_PAYMENT_CONFIGS[`${agentId}:${name}`];
+        if (agentConfig) return agentConfig;
+    }
+
+    // Check custom global configs
+    const customConfig = CUSTOM_PAYMENT_CONFIGS[name];
+    if (customConfig) return customConfig;
+
+    // Check built-in configs
+    const builtInConfig = PAYMENT_CONFIGS[name];
+    if (!builtInConfig) {
+        const available = [
+            ...Object.keys(PAYMENT_CONFIGS),
+            ...Object.keys(CUSTOM_PAYMENT_CONFIGS).filter(k => !k.includes(':'))
+        ];
+        throw new Error(
+            `Unknown payment config '${name}'. Available: ${available.join(', ')}`
+        );
+    }
+    return builtInConfig;
+}
+
+/**
+ * List all available payment configs (built-in + custom)
+ * Optionally filter to agent-specific configs
+ */
+export function listX402Configs(agentId?: string): string[] {
+    const configs = new Set([
+        ...Object.keys(PAYMENT_CONFIGS),
+        ...Object.keys(CUSTOM_PAYMENT_CONFIGS).filter(k => !k.includes(':'))
+    ]);
+
+    if (agentId) {
+        Object.keys(CUSTOM_PAYMENT_CONFIGS)
+            .filter(k => k.startsWith(`${agentId}:`))
+            .forEach(k => configs.add(k.split(':')[1]));
+    }
+
+    return Array.from(configs).sort();
 }
 
 /**
@@ -361,5 +446,28 @@ export function getTokenAddress(asset: string, network: Network): string | undef
  */
 export function getNetworkAsset(network: Network): string {
     return NETWORK_ASSETS[network];
+}
+
+/**
+ * Get x402 system health status
+ * Useful for monitoring and debugging
+ */
+export function getX402Health(): {
+    networks: Array<{ network: Network; configured: boolean; address: string | null }>;
+    facilitator: { url: string | null; configured: boolean };
+} {
+    const networks: Network[] = ['BASE', 'SOLANA', 'POLYGON'];
+
+    return {
+        networks: networks.map(network => ({
+            network,
+            configured: !!PAYMENT_ADDRESSES[network] && PAYMENT_ADDRESSES[network] !== '',
+            address: PAYMENT_ADDRESSES[network] || null
+        })),
+        facilitator: {
+            url: process.env.X402_FACILITATOR_URL || null,
+            configured: !!process.env.X402_FACILITATOR_URL
+        }
+    };
 }
 
