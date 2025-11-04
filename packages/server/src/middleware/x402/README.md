@@ -13,7 +13,59 @@ The x402 payment middleware enables micropayment protection for plugin routes in
 
 ## Quick Start
 
-### 1. Define a Payment-Protected Route
+### 1. Register Custom Payment Configs (Optional)
+
+If you want to accept payments in custom tokens or on new networks, register them in your plugin's `init()` function:
+
+```typescript
+import type { Plugin } from '@elizaos/core';
+import { registerX402Config } from '@elizaos/server';
+
+export const myPlugin: Plugin = {
+  name: 'my-plugin',
+  
+  init: async (config, runtime) => {
+    // Register custom token on existing network
+    registerX402Config('base_ai16z', {
+      network: 'BASE',
+      assetNamespace: 'erc20',
+      assetReference: '0x...', // AI16Z token contract address
+      paymentAddress: process.env.BASE_PUBLIC_KEY!,
+      symbol: 'AI16Z',
+      chainId: '8453'
+    });
+    
+    // Register new network entirely
+    registerX402Config('arbitrum_usdc', {
+      network: 'ARBITRUM',
+      assetNamespace: 'erc20',
+      assetReference: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC on Arbitrum
+      paymentAddress: process.env.ARBITRUM_PUBLIC_KEY!,
+      symbol: 'USDC',
+      chainId: '42161'
+    });
+    
+    // Agent-specific override (different wallet for this agent)
+    registerX402Config('base_usdc', {
+      network: 'BASE',
+      assetNamespace: 'erc20',
+      assetReference: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      paymentAddress: process.env.MY_AGENT_WALLET!, // Agent-specific wallet
+      symbol: 'USDC',
+      chainId: '8453'
+    }, { agentId: runtime.agentId }); // Agent-specific config
+  },
+  
+  routes: [/* ... */]
+};
+```
+
+**Built-in configs** (available without registration):
+- `base_usdc` - USDC on Base
+- `solana_usdc` - USDC on Solana  
+- `polygon_usdc` - USDC on Polygon
+
+### 2. Define a Payment-Protected Route
 
 In your plugin, add an `x402` property to any route you want to protect:
 
@@ -84,10 +136,44 @@ When payment is provided:
 
 ### Available Payment Configs
 
+**Built-in configs:**
 ```typescript
 'base_usdc'      // USDC on Base (ERC-20)
 'solana_usdc'    // USDC on Solana (SPL Token)
 'polygon_usdc'   // USDC on Polygon (ERC-20)
+```
+
+**Custom configs:**
+Register your own via `registerX402Config()` in plugin `init()`:
+
+```typescript
+import { registerX402Config } from '@elizaos/server';
+
+// Custom token on existing network
+registerX402Config('base_ai16z', {
+  network: 'BASE',
+  assetNamespace: 'erc20',
+  assetReference: '0x...', // Token contract address
+  paymentAddress: process.env.BASE_PUBLIC_KEY!,
+  symbol: 'AI16Z',
+  chainId: '8453'
+});
+
+// New network
+registerX402Config('arbitrum_usdc', {
+  network: 'ARBITRUM',
+  assetNamespace: 'erc20',
+  assetReference: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  paymentAddress: process.env.ARBITRUM_PUBLIC_KEY!,
+  symbol: 'USDC',
+  chainId: '42161'
+});
+
+// Then use in your routes:
+x402: {
+  priceInCents: 50,
+  paymentConfigs: ['base_ai16z', 'arbitrum_usdc'] // Custom configs
+}
 ```
 
 ### Price Configuration
@@ -182,6 +268,53 @@ X402_TRUSTED_GATEWAY_SIGNERS=0x...  # Comma-separated list of trusted signers
 ```
 
 ## Advanced Features
+
+### Agent-Specific Payment Configs
+
+You can override payment configs per agent (e.g., different wallets for different agents):
+
+```typescript
+import { registerX402Config } from '@elizaos/server';
+
+init: async (config, runtime) => {
+  // Global config - applies to all agents
+  registerX402Config('base_usdc', {
+    network: 'BASE',
+    assetNamespace: 'erc20',
+    assetReference: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    paymentAddress: '0xGLOBAL_WALLET...',
+    symbol: 'USDC',
+    chainId: '8453'
+  });
+  
+  // Agent-specific override - only for this agent
+  registerX402Config('base_usdc', {
+    network: 'BASE',
+    assetNamespace: 'erc20',
+    assetReference: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    paymentAddress: process.env.AGENT_SPECIFIC_WALLET!, // Different wallet
+    symbol: 'USDC',
+    chainId: '8453'
+  }, { agentId: runtime.agentId });
+  
+  // When this agent's routes use 'base_usdc', 
+  // payments go to AGENT_SPECIFIC_WALLET instead of GLOBAL_WALLET
+}
+```
+
+### Querying Available Configs
+
+```typescript
+import { listX402Configs } from '@elizaos/server';
+
+// List all available configs
+const allConfigs = listX402Configs();
+// ['base_usdc', 'solana_usdc', 'polygon_usdc', 'base_ai16z', ...]
+
+// List configs for specific agent (includes agent overrides)
+const agentConfigs = listX402Configs(runtime.agentId);
+// ['base_usdc', 'solana_usdc', ...] with agent-specific versions
+```
 
 ### Request Validation
 
