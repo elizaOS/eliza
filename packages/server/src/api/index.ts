@@ -23,6 +23,10 @@ import {
   validateContentTypeMiddleware,
   createApiRateLimit,
 } from '../middleware';
+import {
+  createPaymentAwareHandler,
+  type PaymentEnabledRoute
+} from '../middleware/x402';
 
 /**
  * Sets up Socket.io server for real-time messaging
@@ -177,7 +181,17 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             );
             try {
               if (route.handler) {
-                route.handler(req, res, runtime);
+                // Check if route has x402 payment protection
+                const paymentRoute = route as PaymentEnabledRoute;
+                if (paymentRoute.x402) {
+                  logger.debug(`Route ${routePath} has x402 payment protection enabled`);
+                  const paymentAwareHandler = createPaymentAwareHandler(paymentRoute);
+                  if (paymentAwareHandler) {
+                    paymentAwareHandler(req, res, runtime);
+                  }
+                } else {
+                  route.handler(req, res, runtime);
+                }
                 handled = true;
               }
             } catch (error) {
@@ -226,7 +240,17 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             req.params = { ...(matched.params || {}) };
             try {
               if (route.handler) {
-                route.handler(req, res, runtime);
+                // Check if route has x402 payment protection
+                const paymentRoute = route as PaymentEnabledRoute;
+                if (paymentRoute.x402) {
+                  logger.debug(`Route ${routePath} has x402 payment protection enabled`);
+                  const paymentAwareHandler = createPaymentAwareHandler(paymentRoute);
+                  if (paymentAwareHandler) {
+                    paymentAwareHandler(req, res, runtime);
+                  }
+                } else {
+                  route.handler(req, res, runtime);
+                }
                 handled = true;
               }
             } catch (error) {
