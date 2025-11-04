@@ -12,6 +12,7 @@ import type {
   ModelTypeName,
   GenerateTextOptions,
   GenerateTextResult,
+  GenerateTextParams,
 } from './model';
 import type { Plugin, PluginEvents, Route } from './plugin';
 import type { Content, UUID } from './primitives';
@@ -143,6 +144,22 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ): Promise<R>;
 
   generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult>;
+
+  dynamicPromptExecFromState(params: {
+    state: State;
+    params: Omit<GenerateTextParams, 'prompt'> & {
+      prompt: string | ((ctx: { state: State }) => string);
+    };
+    schema: Array<{ field: string; description: string; required?: boolean }>;
+    options?: {
+      key?: string;
+      modelSize?: 'small' | 'large';
+      model?: string;
+      preferredEncapsulation?: 'json' | 'xml';
+      requiredFields?: string[];
+      contextCheckLevel?: 0 | 1;
+    };
+  }): Promise<Record<string, any> | null>;
 
   registerModel(
     modelType: ModelTypeName | string,
