@@ -32,10 +32,14 @@ export {
   applyPaymentProtection,
   createPaymentAwareHandler,
   type PaymentEnabledRoute,
+  type PaymentConfigDefinition,
   type X402ValidationResult,
   type X402RequestValidator,
   type X402Response,
   type Accepts,
   PAYMENT_CONFIGS,
-  getPaymentConfig
+  BUILT_IN_NETWORKS,
+  registerX402Config,
+  getPaymentConfig,
+  listX402Configs
 } from './x402';
