@@ -5,7 +5,6 @@ import {
     toResourceUrl,
     getCAIP19FromConfig,
     getPaymentConfig,
-    listX402Configs,
     type Network
 } from './payment-config.js';
 import {
@@ -25,6 +24,7 @@ import {
     type EIP712Authorization,
     type EIP712Domain
 } from './types.js';
+import { validateX402Startup } from './startup-validator.js';
 import {
     recoverTypedDataAddress,
     type Address,
@@ -37,7 +37,7 @@ import { base, polygon, mainnet } from 'viem/chains';
  * Debug logging helper - only logs if DEBUG_X402_PAYMENTS is enabled
  */
 const DEBUG = process.env.DEBUG_X402_PAYMENTS === 'true';
-function log(...args: any[]) {
+function log(...args: unknown[]) {
     if (DEBUG) console.log(...args);
 }
 function logSection(title: string) {
@@ -47,7 +47,7 @@ function logSection(title: string) {
         console.log('═'.repeat(60));
     }
 }
-function logError(...args: any[]) {
+function logError(...args: unknown[]) {
     console.error(...args);
 }
 
@@ -833,11 +833,12 @@ export function createPaymentAwareHandler(
 ): Route['handler'] {
     const originalHandler = route.handler;
 
-    return async (req: any, res: any, runtime: any) => {
-        // Cast to our stricter types internally for type safety
-        const typedReq = req as X402Request;
-        const typedRes = res as ExpressResponse;
-        const typedRuntime = runtime as X402Runtime;
+    // TypeScript allows more specific parameter types when assigning to Route['handler']
+    // We use our strict types directly instead of 'any' for better type safety
+    return async (req: X402Request, res: ExpressResponse, runtime: X402Runtime) => {
+        const typedReq = req;
+        const typedRes = res;
+        const typedRuntime = runtime;
         if (!route.x402) {
             if (originalHandler) {
                 return originalHandler(req, res, runtime);
@@ -1182,110 +1183,35 @@ function generateDescription(route: PaymentEnabledRoute): string {
     return `${action} ${resource}`;
 }
 
-/**
- * Validate x402 config
- */
-function validateX402Route(route: Route): string[] {
-    const errors: string[] = [];
-    const x402Route = route as PaymentEnabledRoute;
-
-    if (!route.path) {
-        errors.push(`Route missing 'path' property`);
-        return errors;
-    }
-
-    const routePath = route.path;
-
-    if (!x402Route.x402) {
-        return [];
-    }
-
-    if (x402Route.x402.priceInCents === undefined || x402Route.x402.priceInCents === null) {
-        errors.push(`${routePath}: x402.priceInCents is required`);
-    } else if (typeof x402Route.x402.priceInCents !== 'number') {
-        errors.push(`${routePath}: x402.priceInCents must be a number`);
-    } else if (x402Route.x402.priceInCents <= 0) {
-        errors.push(`${routePath}: x402.priceInCents must be > 0`);
-    } else if (!Number.isInteger(x402Route.x402.priceInCents)) {
-        errors.push(`${routePath}: x402.priceInCents must be an integer`);
-    }
-
-    const configs = x402Route.x402.paymentConfigs || ['base_usdc'];
-    if (!Array.isArray(configs)) {
-        errors.push(`${routePath}: x402.paymentConfigs must be an array`);
-    } else {
-        if (configs.length === 0) {
-            errors.push(`${routePath}: x402.paymentConfigs cannot be empty`);
-        }
-        // Get all available configs (built-in + custom registered)
-        const availableConfigs = listX402Configs();
-
-        for (const configName of configs) {
-            if (typeof configName !== 'string') {
-                errors.push(`${routePath}: x402.paymentConfigs contains non-string value`);
-            } else if (!availableConfigs.includes(configName)) {
-                errors.push(
-                    `${routePath}: unknown payment config '${configName}'. ` +
-                    `Available: ${availableConfigs.join(', ')}`
-                );
-            }
-        }
-    }
-
-    return errors;
-}
-
 // Re-export types from core
 export type { X402ValidationResult, X402RequestValidator } from '@elizaos/core';
 
 /**
  * Apply payment protection to an array of routes
+ * Runs comprehensive startup validation before applying protection
  */
 export function applyPaymentProtection(routes: Route[]): Route[] {
     if (!Array.isArray(routes)) {
         throw new Error('routes must be an array');
     }
 
-    const allErrors: string[] = [];
-    const routesByPath = new Map<string, string[]>();
+    // Run comprehensive startup validation
+    const validation = validateX402Startup(routes);
 
-    for (const route of routes) {
-        const errors = validateX402Route(route);
-        if (errors.length > 0) {
-            allErrors.push(...errors);
-            const routePath = route.path || '[route without path]';
-            const existing = routesByPath.get(routePath) || [];
-            routesByPath.set(routePath, [...existing, ...errors]);
-        }
+    // Throw if validation failed
+    if (!validation.valid) {
+        throw new Error(
+            `\nx402 Configuration Invalid (${validation.errors.length} error${validation.errors.length > 1 ? 's' : ''}):\n\n` +
+            validation.errors.map(e => `  • ${e}`).join('\n') +
+            '\n\nPlease fix these errors and try again.\n'
+        );
     }
 
-    if (allErrors.length > 0) {
-        let errorMessage = `\n❌ x402 Route Configuration Errors (${allErrors.length} error${allErrors.length > 1 ? 's' : ''} found):\n\n`;
-
-        if (routesByPath.size > 0) {
-            for (const [path, routeErrors] of routesByPath.entries()) {
-                errorMessage += `  Route: ${path}\n`;
-                for (const error of routeErrors) {
-                    const errorWithoutPath = error.includes(': ') ? error.split(': ').slice(1).join(': ') : error;
-                    errorMessage += `    • ${errorWithoutPath}\n`;
-                }
-                errorMessage += '\n';
-            }
-        } else {
-            for (const error of allErrors) {
-                errorMessage += `  • ${error}\n`;
-            }
-        }
-
-        errorMessage += '\nPlease fix all errors above and try again.\n';
-
-        throw new Error(errorMessage);
-    }
-
+    // Apply payment protection to routes with x402 config
     return routes.map(route => {
         const x402Route = route as PaymentEnabledRoute;
         if (x402Route.x402) {
-            console.log('Applying payment protection to:', x402Route.path, {
+            console.log('✓ Payment protection enabled:', x402Route.path, {
                 priceInCents: x402Route.x402.priceInCents,
                 paymentConfigs: x402Route.x402.paymentConfigs || ['base_usdc']
             });
