@@ -154,7 +154,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
   /**
    * Normalizes entity names to ensure they are always a proper array.
-   * Handles strings, Sets, and other iterable types.
+   * Handles strings, Sets, iterables, and non-iterable values.
    * @param {any} names - The names value to normalize
    * @returns {string[]} A proper array of names
    * @private
@@ -169,8 +169,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     if (names instanceof Set) {
       return Array.from(names);
     }
-    if (names) {
-      return Array.from(names);
+    if (names != null) {
+      if (typeof names === 'object' && typeof names[Symbol.iterator] === 'function') {
+        return Array.from(names);
+      }
+      return [String(names)];
     }
     return [];
   }
