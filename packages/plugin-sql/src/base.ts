@@ -153,6 +153,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Normalizes entity names to ensure they are always a proper array.
+   * Handles strings, Sets, and other iterable types.
+   * @param {any} names - The names value to normalize
+   * @returns {string[]} A proper array of names
+   * @private
+   */
+  private normalizeEntityNames(names: any): string[] {
+    if (Array.isArray(names)) {
+      return names;
+    }
+    if (typeof names === 'string') {
+      return [names];
+    }
+    if (names instanceof Set) {
+      return Array.from(names);
+    }
+    if (names) {
+      return Array.from(names);
+    }
+    return [];
+  }
+
+  /**
    * Executes the given operation with retry logic.
    * @template T
    * @param {() => Promise<T>} operation - The operation to be executed.
@@ -635,13 +658,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           // Normalize entity data to ensure names is a proper array
           const normalizedEntities = entities.map((entity) => ({
             ...entity,
-            // Ensure names is a proper JavaScript array, not a Set or stringified value
-            names: Array.isArray(entity.names)
-              ? entity.names
-              : entity.names
-                ? Array.from(entity.names)
-                : [],
-            // Ensure metadata is a plain object
+            names: this.normalizeEntityNames(entity.names),
             metadata: entity.metadata || {},
           }));
 
@@ -705,13 +722,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       // Normalize entity data to ensure names is a proper array
       const normalizedEntity = {
         ...entity,
-        // Ensure names is a proper JavaScript array, not a Set or stringified value
-        names: Array.isArray(entity.names)
-          ? entity.names
-          : entity.names
-            ? Array.from(entity.names)
-            : [],
-        // Ensure metadata is a plain object
+        names: this.normalizeEntityNames(entity.names),
         metadata: entity.metadata || {},
       };
 
