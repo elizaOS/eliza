@@ -1,5 +1,6 @@
 import type { Content, UUID } from './primitives';
 import type { IAgentRuntime } from './runtime';
+import type { Memory } from './memory';
 
 /**
  * Information describing the target of a message.
@@ -54,4 +55,52 @@ export interface ControlMessage {
 
   /** Room ID to ensure signal is directed to the correct chat window */
   roomId: UUID;
+}
+
+/**
+ * Handler options for async message processing (User → Agent)
+ * Follows the core pattern: HandlerOptions, HandlerCallback, etc.
+ */
+export interface MessageHandlerOptions {
+  /**
+   * Called when the agent generates a response
+   * If provided, method returns immediately (async mode)
+   * If not provided, method waits for response (sync mode)
+   */
+  onResponse?: (content: Content) => Promise<void>;
+
+  /**
+   * Called if an error occurs during processing
+   */
+  onError?: (error: Error) => Promise<void>;
+
+  /**
+   * Called when processing is complete
+   */
+  onComplete?: () => Promise<void>;
+}
+
+/**
+ * Result of sending a message to an agent (User → Agent)
+ * Follows the core pattern: ActionResult, ProviderResult, GenerateTextResult, etc.
+ */
+export interface MessageResult {
+  /** ID of the user message */
+  messageId: UUID;
+
+  /** The user message that was created (only in sync mode) */
+  userMessage?: Memory;
+
+  /**
+   * Agent responses (only in sync mode)
+   * Empty in async mode - use onResponse callback instead
+   */
+  agentResponses?: Content[];
+
+  /** Usage information for billing (only in sync mode) */
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+    model: string;
+  };
 }

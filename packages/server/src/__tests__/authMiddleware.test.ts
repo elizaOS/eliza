@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
-import { apiKeyAuthMiddleware } from '../authMiddleware';
+import { apiKeyAuthMiddleware } from '../middleware';
 import { logger } from '@elizaos/core';
 
 // Mock the logger

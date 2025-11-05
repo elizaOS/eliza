@@ -1,5 +1,5 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
-import { type IAgentRuntime, type Plugin, logger } from '@elizaos/core';
+import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -11,7 +11,9 @@ const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
-  postgresConnectionManager?: PostgresConnectionManager;
+  // Map of PostgreSQL connection managers by owner_id (for RLS multi-tenancy)
+  // Key: owner_id (or 'default' for non-RLS mode)
+  postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
 const globalSymbols = globalThis as unknown as Record<symbol, GlobalSingletons>;
@@ -28,12 +30,39 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    if (!globalSingletons.postgresConnectionManager) {
-      globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
-        config.postgresUrl
+    // Determine RLS owner_id if RLS isolation is enabled
+    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+    let rlsOwnerId: string | undefined;
+    let managerKey = 'default'; // Key for connection manager map
+
+    if (rlsEnabled) {
+      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
+      if (!rlsOwnerIdString) {
+        throw new Error(
+          '[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable'
+        );
+      }
+      rlsOwnerId = stringToUuid(rlsOwnerIdString);
+      managerKey = rlsOwnerId; // Use owner_id as key for multi-tenancy
+      logger.debug(
+        `[RLS] Using connection pool for owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`
       );
     }
-    return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
+
+    // Initialize connection managers map if needed
+    if (!globalSingletons.postgresConnectionManagers) {
+      globalSingletons.postgresConnectionManagers = new Map();
+    }
+
+    // Get or create connection manager for this owner_id
+    let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
+    if (!manager) {
+      logger.debug(`[RLS] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsOwnerId);
+      globalSingletons.postgresConnectionManagers.set(managerKey, manager);
+    }
+
+    return new PgDatabaseAdapter(agentId, manager);
   }
 
   const dataDir = resolvePgliteDir(config.dataDir);
@@ -93,3 +122,11 @@ export const plugin: Plugin = {
 export default plugin;
 
 export { DatabaseMigrationService } from './migration-service';
+export {
+  installRLSFunctions,
+  getOrCreateRlsOwner,
+  setOwnerContext,
+  assignAgentToOwner,
+  applyRLSToNewTables,
+  uninstallRLS,
+} from './rls';

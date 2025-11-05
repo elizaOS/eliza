@@ -22,7 +22,7 @@ import {
   securityMiddleware,
   validateContentTypeMiddleware,
   createApiRateLimit,
-} from './shared/middleware';
+} from '../middleware';
 
 /**
  * Sets up Socket.io server for real-time messaging
