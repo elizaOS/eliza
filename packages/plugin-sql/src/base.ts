@@ -632,7 +632,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       try {
         return await this.db.transaction(async (tx) => {
-          await tx.insert(entityTable).values(entities);
+          // Normalize entity data to ensure names is a proper array
+          const normalizedEntities = entities.map((entity) => ({
+            ...entity,
+            // Ensure names is a proper JavaScript array, not a Set or stringified value
+            names: Array.isArray(entity.names)
+              ? entity.names
+              : entity.names
+                ? Array.from(entity.names)
+                : [],
+            // Ensure metadata is a plain object
+            metadata: entity.metadata || {},
+          }));
+
+          await tx.insert(entityTable).values(normalizedEntities);
 
           logger.debug(`${entities.length} Entities created successfully`);
 
@@ -689,9 +702,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       throw new Error('Entity ID is required for update');
     }
     return this.withDatabase(async () => {
+      // Normalize entity data to ensure names is a proper array
+      const normalizedEntity = {
+        ...entity,
+        // Ensure names is a proper JavaScript array, not a Set or stringified value
+        names: Array.isArray(entity.names)
+          ? entity.names
+          : entity.names
+            ? Array.from(entity.names)
+            : [],
+        // Ensure metadata is a plain object
+        metadata: entity.metadata || {},
+      };
+
       await this.db
         .update(entityTable)
-        .set(entity)
+        .set(normalizedEntity)
         .where(eq(entityTable.id, entity.id as string));
     });
   }
