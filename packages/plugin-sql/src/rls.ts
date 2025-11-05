@@ -190,10 +190,7 @@ export async function getOrCreateRlsOwner(
  * Set RLS context on PostgreSQL connection pool
  * This function validates that the owner exists and has correct UUID format
  */
-export async function setOwnerContext(
-  adapter: IDatabaseAdapter,
-  ownerId: string
-): Promise<void> {
+export async function setOwnerContext(adapter: IDatabaseAdapter, ownerId: string): Promise<void> {
   // Validate UUID format using @elizaos/core utility
   if (!validateUuid(ownerId)) {
     throw new Error(`Invalid owner ID format: ${ownerId}. Must be a valid UUID.`);
@@ -232,10 +229,7 @@ export async function assignAgentToOwner(
       logger.debug(`[RLS] Agent ${agent.name} already owned by correct owner`);
     } else {
       // Update agent owner using Drizzle
-      await db
-        .update(agentTable)
-        .set({ owner_id: ownerId })
-        .where(eq(agentTable.id, agentId));
+      await db.update(agentTable).set({ owner_id: ownerId }).where(eq(agentTable.id, agentId));
 
       if (currentOwnerId === null) {
         logger.info(`[RLS] Agent ${agent.name} assigned to owner`);
@@ -288,7 +282,9 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       return;
     }
 
-    logger.info('[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...');
+    logger.info(
+      '[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...'
+    );
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
     // Using format() with %I ensures proper identifier quoting and prevents SQL injection
@@ -335,7 +331,10 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
         await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
         logger.debug(`[RLS] Disabled RLS on table: ${schemaName}.${tableName}`);
       } catch (error) {
-        logger.warn(`[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`, String(error));
+        logger.warn(
+          `[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`,
+          String(error)
+        );
       }
     }
 

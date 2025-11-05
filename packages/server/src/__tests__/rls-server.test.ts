@@ -295,7 +295,9 @@ describe('API Endpoint Security - server_id Validation', () => {
       const isValidServerId = otherTenantId === serverInstance.serverId;
 
       expect(isValidServerId).toBe(false);
-      expect(otherTenantId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(otherTenantId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
     });
 
     it('should return 403 Forbidden for mismatched server_id', () => {
@@ -423,7 +425,7 @@ describe('RLS Enable/Disable Data Preservation', () => {
       ];
 
       // Simulate uninstallRLS (should NOT set owner_id to NULL)
-      const afterDisable = mockData.map(row => ({ ...row })); // Keep owner_id intact
+      const afterDisable = mockData.map((row) => ({ ...row })); // Keep owner_id intact
 
       expect(afterDisable[0].owner_id).toBe('c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01');
       expect(afterDisable[1].owner_id).toBe('3a736a89-66ba-0f58-8c45-ef7406927381');
@@ -438,7 +440,7 @@ describe('RLS Enable/Disable Data Preservation', () => {
       const currentOwnerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate add_owner_isolation (only backfill NULL, don't steal existing data)
-      const afterEnable = mockData.map(row => ({
+      const afterEnable = mockData.map((row) => ({
         ...row,
         owner_id: row.owner_id === null ? currentOwnerId : row.owner_id,
       }));

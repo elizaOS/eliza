@@ -44,7 +44,12 @@ describe('RLS Helper Functions', () => {
   describe('RLS Configuration Validation', () => {
     it('should validate RLS environment variables', () => {
       const testCases = [
-        { rlsEnabled: 'true', authToken: 'token-123', postgresUrl: 'postgresql://...', expected: true },
+        {
+          rlsEnabled: 'true',
+          authToken: 'token-123',
+          postgresUrl: 'postgresql://...',
+          expected: true,
+        },
         { rlsEnabled: 'false', authToken: '', postgresUrl: '', expected: false },
         { rlsEnabled: 'true', authToken: '', postgresUrl: 'postgresql://...', expected: false }, // Missing token
         { rlsEnabled: 'true', authToken: 'token', postgresUrl: '', expected: false }, // Missing postgres
@@ -97,7 +102,8 @@ describe('RLS Helper Functions', () => {
       const rlsEnabled = true;
       const ownerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
-      const serverName = rlsEnabled && ownerId ? `Server ${ownerId.substring(0, 8)}` : 'Default Server';
+      const serverName =
+        rlsEnabled && ownerId ? `Server ${ownerId.substring(0, 8)}` : 'Default Server';
 
       expect(serverName).toBe('Server c37e5ad5');
       expect(serverName).not.toBe('Default Server');
@@ -107,7 +113,8 @@ describe('RLS Helper Functions', () => {
       const rlsEnabled = false;
       const ownerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
-      const serverName = rlsEnabled && ownerId ? `Server ${ownerId.substring(0, 8)}` : 'Default Server';
+      const serverName =
+        rlsEnabled && ownerId ? `Server ${ownerId.substring(0, 8)}` : 'Default Server';
 
       expect(serverName).toBe('Default Server');
     });
@@ -223,8 +230,12 @@ describe('RLS Security Properties', () => {
       expect(tenant1OwnerId).not.toBe(tenant2OwnerId);
 
       // Both should be valid UUIDs
-      expect(tenant1OwnerId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-      expect(tenant2OwnerId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(tenant1OwnerId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+      expect(tenant2OwnerId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
     });
   });
 });

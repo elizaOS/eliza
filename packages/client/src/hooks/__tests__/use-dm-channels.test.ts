@@ -2,17 +2,21 @@ import { describe, test, expect, mock } from 'bun:test';
 import type { UUID } from '@elizaos/core';
 
 // Mock the client creation
-const mockCreateGroupChannel = mock(() => Promise.resolve({
-  id: 'channel-123' as UUID,
-  messageServerId: 'server-456' as UUID,
-  name: 'Test Chat',
-  type: 'DM',
-  metadata: {},
-}));
+const mockCreateGroupChannel = mock(() =>
+  Promise.resolve({
+    id: 'channel-123' as UUID,
+    messageServerId: 'server-456' as UUID,
+    name: 'Test Chat',
+    type: 'DM',
+    metadata: {},
+  })
+);
 
-const mockGetServerChannels = mock(() => Promise.resolve({
-  channels: [],
-}));
+const mockGetServerChannels = mock(() =>
+  Promise.resolve({
+    channels: [],
+  })
+);
 
 mock.module('@/lib/api-client-config', () => ({
   createElizaClient: () => ({
