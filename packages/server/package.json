@@ -54,6 +54,7 @@
   },
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",
   "dependencies": {
+    "@coinbase/x402": "^0.7.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@sentry/node": "^10.16.0",
@@ -66,6 +67,7 @@
     "helmet": "^8.1.0",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "x402-express": "^0.7.0"
   }
 }
