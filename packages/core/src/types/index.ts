@@ -5,6 +5,7 @@ export * from './knowledge';
 export * from './environment';
 export * from './agent';
 export * from './components';
+export * from './payment';
 export * from './plugin';
 export * from './service';
 export * from './model';

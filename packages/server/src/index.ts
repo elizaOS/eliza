@@ -1854,5 +1854,17 @@ export {
 // Export types
 export * from './types';
 
+// Export x402 payment middleware functions for plugin extensibility
+export {
+  registerX402Config,
+  getPaymentConfig,
+  listX402Configs,
+  applyPaymentProtection,
+  type PaymentConfigDefinition,
+  type Network
+} from './middleware/x402/payment-config.js';
+
+export type { PaymentEnabledRoute } from './middleware/x402/payment-wrapper.js';
+
 // Export ElizaOS from core (re-export for convenience)
 export { ElizaOS } from '@elizaos/core';

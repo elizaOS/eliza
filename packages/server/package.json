@@ -57,15 +57,18 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@sentry/node": "^10.16.0",
+    "@solana/web3.js": "^1.98.4",
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^2.0.0",
+    "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "viem": "^2.38.6"
   }
 }

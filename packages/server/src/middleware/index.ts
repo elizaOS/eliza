@@ -24,3 +24,22 @@ export {
   validateChannelIdMiddleware,
   validateContentTypeMiddleware,
 } from './validation';
+
+// x402 Payment middleware
+// Note: PaymentEnabledRoute, X402Config, Network, X402ValidationResult, and X402RequestValidator
+// are exported from @elizaos/core so plugins can use them without depending on server
+export {
+  applyPaymentProtection,
+  createPaymentAwareHandler,
+  type PaymentEnabledRoute,
+  type PaymentConfigDefinition,
+  type X402ValidationResult,
+  type X402RequestValidator,
+  type X402Response,
+  type Accepts,
+  PAYMENT_CONFIGS,
+  BUILT_IN_NETWORKS,
+  registerX402Config,
+  getPaymentConfig,
+  listX402Configs
+} from './x402';
