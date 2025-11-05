@@ -12,7 +12,7 @@ import {
   validateContentTypeMiddleware,
   createApiRateLimit,
   createChannelValidationRateLimit,
-} from '../api/shared/middleware';
+} from '../middleware';
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 

@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
-import { hasCharacterSecrets, setDefaultSecretsFromEnv } from './secrets';
+import { setDefaultSecretsFromEnv } from './secrets';
 import { resolvePlugins } from './plugin';
 import type {
   Character,
@@ -10,7 +10,65 @@ import type {
   State,
   Plugin,
   RuntimeSettings,
+  Content,
 } from './types';
+import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
+
+/**
+ * Options for sending a message to an agent
+ */
+export interface SendMessageOptions {
+  /**
+   * Called when the agent generates a response (ASYNC MODE)
+   * If provided, method returns immediately (fire & forget)
+   * If not provided, method waits for response (SYNC MODE)
+   */
+  onResponse?: (content: Content) => Promise<void>;
+
+  /**
+   * Called if an error occurs during processing
+   */
+  onError?: (error: Error) => Promise<void>;
+
+  /**
+   * Called when processing is complete
+   */
+  onComplete?: () => Promise<void>;
+
+  /**
+   * Maximum number of retries for failed messages
+   */
+  maxRetries?: number;
+
+  /**
+   * Timeout duration in milliseconds
+   */
+  timeoutDuration?: number;
+
+  /**
+   * Enable multi-step message processing
+   */
+  useMultiStep?: boolean;
+
+  /**
+   * Maximum multi-step iterations
+   */
+  maxMultiStepIterations?: number;
+}
+
+/**
+ * Result of sending a message to an agent
+ */
+export interface SendMessageResult {
+  /** ID of the user message */
+  messageId: UUID;
+
+  /** The user message that was created */
+  userMessage: Memory;
+
+  /** Processing result (only in SYNC mode) */
+  result?: MessageProcessingResult;
+}
 
 /**
  * Batch operation for sending messages
@@ -81,11 +139,10 @@ export class ElizaOS extends EventTarget {
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      // Set default secrets from environment if character doesn't have them
+      // Always merge environment secrets with character secrets
+      // Priority: .env < character.json (character overrides)
       const character = agent.character;
-      if (!hasCharacterSecrets(character)) {
-        await setDefaultSecretsFromEnv(character);
-      }
+      await setDefaultSecretsFromEnv(character);
 
       const resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
@@ -315,74 +372,203 @@ export class ElizaOS extends EventTarget {
   }
 
   /**
-   * Send a message to a specific agent - THE ONLY WAY to send messages
-   * All message sending (WebSocket, API, CLI, Tests, MessageBus) must use this method
+   * Send a message to a specific agent
+   *
+   * @param agentId - The agent ID to send the message to
+   * @param message - Partial Memory object (missing fields auto-filled)
+   * @param options - Optional callbacks and processing options
+   * @returns Promise with message ID and result
+   *
+   * @example
+   * // SYNC mode (HTTP API)
+   * const result = await elizaOS.sendMessage(agentId, {
+   *   entityId: user.id,
+   *   roomId: room.id,
+   *   content: { text: "Hello", source: 'web' }
+   * });
+   *
+   * @example
+   * // ASYNC mode (WebSocket, MessageBus)
+   * await elizaOS.sendMessage(agentId, {
+   *   entityId: user.id,
+   *   roomId: room.id,
+   *   content: { text: "Hello", source: 'websocket' }
+   * }, {
+   *   onResponse: async (response) => {
+   *     await socket.emit('message', response.text);
+   *   }
+   * });
    */
   async sendMessage(
     agentId: UUID,
-    message: Memory | string,
-    options?: {
-      userId?: UUID;
-      roomId?: UUID;
-      metadata?: Record<string, any>;
-    }
-  ): Promise<Memory[]> {
+    message: Partial<Memory> & {
+      entityId: UUID;
+      roomId: UUID;
+      content: Content;
+      worldId?: UUID;
+    },
+    options?: SendMessageOptions
+  ): Promise<SendMessageResult> {
+    // 1. Get the runtime
     const runtime = this.runtimes.get(agentId);
     if (!runtime) {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Convert string to Memory if needed
-    const memory: Memory =
-      typeof message === 'string'
-        ? ({
-            id: uuidv4() as UUID,
-            entityId: options?.userId || ('system' as UUID),
-            agentId,
-            roomId: options?.roomId || agentId, // Default to agent's ID as room
-            content: { text: message },
-            createdAt: Date.now(),
-            metadata: options?.metadata,
-          } as Memory)
-        : message;
+    // 2. Verify messageService exists
+    if (!runtime.messageService) {
+      throw new Error('messageService is not initialized on runtime');
+    }
 
-    // Process directly with runtime
-    const responses: Memory[] = [];
-    await runtime.processActions(memory, responses);
+    // 3. Auto-fill missing fields
+    const messageId = message.id || (uuidv4() as UUID);
+    const userMessage: Memory = {
+      ...message,
+      id: messageId,
+      agentId: message.agentId || runtime.agentId,
+      createdAt: message.createdAt || Date.now(),
+      entityId: message.entityId,
+      roomId: message.roomId,
+      content: message.content,
+    } as Memory;
 
-    this.dispatchEvent(
-      new CustomEvent('message:sent', {
-        detail: { agentId, message: memory, responses },
-      })
-    );
+    // 4. Ensure connection exists
+    await runtime.ensureConnection({
+      entityId: userMessage.entityId,
+      roomId: userMessage.roomId,
+      worldId: message.worldId || userMessage.roomId,
+      source: userMessage.content.source || 'unknown',
+      channelId: userMessage.roomId,
+    });
 
-    return responses;
+    // 5. Extract processing options
+    const processingOptions: MessageProcessingOptions = {
+      maxRetries: options?.maxRetries,
+      timeoutDuration: options?.timeoutDuration,
+      useMultiStep: options?.useMultiStep,
+      maxMultiStepIterations: options?.maxMultiStepIterations,
+    };
+
+    // 6. Determine mode: async or sync
+    const isAsyncMode = !!options?.onResponse;
+
+    if (isAsyncMode) {
+      // ========== ASYNC MODE ==========
+      // Fire and forget with callback
+
+      const callback = async (content: Content) => {
+        try {
+          if (options.onResponse) {
+            await options.onResponse(content);
+          }
+        } catch (error) {
+          if (options.onError) {
+            await options.onError(error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+        return [];
+      };
+
+      // Direct call to messageService
+      runtime.messageService
+        .handleMessage(runtime, userMessage, callback, processingOptions)
+        .then(() => {
+          if (options.onComplete) options.onComplete();
+        })
+        .catch((error: Error) => {
+          if (options.onError) options.onError(error);
+        });
+
+      // Emit event for tracking
+      this.dispatchEvent(
+        new CustomEvent('message:sent', {
+          detail: { agentId, messageId, mode: 'async' },
+        })
+      );
+
+      return { messageId, userMessage };
+    } else {
+      // ========== SYNC MODE ==========
+      // Wait for response
+
+      const result = await runtime.messageService.handleMessage(
+        runtime,
+        userMessage,
+        undefined,
+        processingOptions
+      );
+
+      if (options?.onComplete) await options.onComplete();
+
+      // Emit event for tracking
+      this.dispatchEvent(
+        new CustomEvent('message:sent', {
+          detail: { agentId, messageId, mode: 'sync', result },
+        })
+      );
+
+      return { messageId, userMessage, result };
+    }
   }
 
   /**
-   * Send messages to multiple agents (batch operation)
-   * All batch message sending must use this method
+   * Send messages to multiple agents in parallel
+   *
+   * Useful for batch operations where you need to send messages to multiple agents at once.
+   * All messages are sent in parallel for maximum performance.
+   *
+   * @param messages - Array of messages to send, each with agentId and message data
+   * @returns Promise with array of results, one per message
+   *
+   * @example
+   * const results = await elizaOS.sendMessages([
+   *   {
+   *     agentId: agent1Id,
+   *     message: {
+   *       entityId: user.id,
+   *       roomId: room.id,
+   *       content: { text: "Hello Agent 1", source: "web" }
+   *     }
+   *   },
+   *   {
+   *     agentId: agent2Id,
+   *     message: {
+   *       entityId: user.id,
+   *       roomId: room.id,
+   *       content: { text: "Hello Agent 2", source: "web" }
+   *     },
+   *     options: {
+   *       onResponse: async (response) => {
+   *         console.log("Agent 2 responded:", response.text);
+   *       }
+   *     }
+   *   }
+   * ]);
    */
   async sendMessages(
     messages: Array<{
       agentId: UUID;
-      message: Memory | string;
-      options?: {
-        userId?: UUID;
-        roomId?: UUID;
-        metadata?: Record<string, any>;
+      message: Partial<Memory> & {
+        entityId: UUID;
+        roomId: UUID;
+        content: Content;
+        worldId?: UUID;
       };
+      options?: SendMessageOptions;
     }>
-  ): Promise<Array<{ agentId: UUID; responses: Memory[]; error?: Error }>> {
+  ): Promise<Array<{ agentId: UUID; result: SendMessageResult; error?: Error }>> {
     const results = await Promise.all(
       messages.map(async ({ agentId, message, options }) => {
         try {
-          const responses = await this.sendMessage(agentId, message, options);
-          return { agentId, responses };
+          const result = await this.sendMessage(agentId, message, options);
+          return { agentId, result };
         } catch (error) {
           return {
             agentId,
-            responses: [],
+            result: {
+              messageId: (message.id || '') as UUID,
+              userMessage: message as Memory,
+            },
             error: error instanceof Error ? error : new Error(String(error)),
           };
         }

@@ -544,6 +544,59 @@ Manage environment variables and secrets.
   - `interactive`: Start interactive environment variable manager
     - Options: `-y, --yes`
 
+### Cloud Deployment
+
+#### `elizaos deploy`
+
+Deploy ElizaOS projects to AWS ECS (Elastic Container Service) with automatic multi-architecture support.
+
+- **Options:**
+  - `-n, --name <name>`: Name for the deployment
+  - `--project-name <name>`: Project name (defaults to directory name)
+  - `-p, --port <port>`: Port the container listens on (default: 3000)
+  - `--desired-count <count>`: Number of container instances to run (default: 1)
+  - `--cpu <units>`: CPU units (default: 1792 = 1.75 vCPU)
+  - `--memory <mb>`: Memory in MB (default: 896 MB)
+  - `-k, --api-key <key>`: ElizaOS Cloud API key
+  - `-u, --api-url <url>`: ElizaOS Cloud API URL
+  - `-e, --env <KEY=VALUE>`: Environment variable (can be specified multiple times)
+  - `--skip-build`: Skip Docker build and use existing image
+  - `--image-uri <uri>`: Use existing ECR image URI (requires --skip-build)
+  - **`--platform <platform>`**: Docker platform (e.g., linux/amd64, linux/arm64) - Auto-detected by default
+
+**Multi-Architecture Support:**
+
+The deploy command automatically detects your system architecture and deploys to the appropriate AWS instance type:
+
+| Your System | Docker Platform | AWS Instance | Monthly Cost |
+|-------------|----------------|--------------|--------------|
+| macOS Apple Silicon | `linux/arm64` | t4g.small (Graviton) | $15.76 |
+| macOS Intel | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
+| Ubuntu/Linux x64 | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
+| Ubuntu/Linux ARM64 | `linux/arm64` | t4g.small (Graviton) | $15.76 |
+| Windows x64 | `linux/amd64` | t3.small (Intel/AMD) | $18.68 |
+
+**Examples:**
+
+```bash
+# Auto-detect (recommended)
+elizaos deploy
+
+# Explicit ARM64 for cost savings (requires QEMU on x64 systems)
+elizaos deploy --platform linux/arm64
+
+# With custom configuration
+elizaos deploy \
+  --name my-agent \
+  --port 8080 \
+  --cpu 1024 \
+  --memory 1024 \
+  --env "OPENAI_API_KEY=sk-..." \
+  --env "DATABASE_URL=postgresql://..."
+```
+
+See the [Deploy Command Documentation](./src/commands/deploy/README.md) for complete details.
+
 ### Process Management
 
 To stop all running ElizaOS agents locally, use:

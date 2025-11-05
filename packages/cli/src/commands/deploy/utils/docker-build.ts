@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import { logger } from '@elizaos/core';
 import { execa } from 'execa';
 import crypto from 'node:crypto';
+import ora from 'ora';
 
 export interface DockerBuildOptions {
   projectPath: string;
@@ -15,6 +16,9 @@ export interface DockerBuildOptions {
   imageTag: string;
   buildArgs?: Record<string, string>;
   target?: string;
+  // Optional platform override; defaults to host platform (auto-detected)
+  // Can also be set via ELIZA_DOCKER_PLATFORM environment variable
+  platform?: string;
 }
 
 export interface DockerBuildResult {
@@ -91,11 +95,48 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
 }
 
 /**
+ * Detect the host platform for Docker builds
+ */
+function detectHostPlatform(): string {
+  const arch = process.arch;
+
+  // Map Node.js arch to Docker platform
+  // Node.js uses: 'arm64', 'x64', 'arm', 'ia32', etc.
+  if (arch === 'arm64') {
+    return 'linux/arm64';
+  } else if (arch === 'x64') {
+    return 'linux/amd64';
+  } else if (arch === 'arm') {
+    return 'linux/arm/v7';
+  } else if (arch === 'ia32') {
+    return 'linux/386';
+  }
+
+  // Default to amd64 for unknown architectures
+  logger.warn(`Unknown architecture ${arch}, defaulting to linux/amd64`);
+  return 'linux/amd64';
+}
+
+/**
  * Build Docker image
  */
 export async function buildDockerImage(options: DockerBuildOptions): Promise<DockerBuildResult> {
   try {
-    logger.info(`Building Docker image: ${options.imageTag}`);
+    // Platform selection priority:
+    // 1. Explicit option passed to function
+    // 2. ELIZA_DOCKER_PLATFORM environment variable
+    // 3. Host platform (auto-detected)
+    const hostPlatform = detectHostPlatform();
+    const platform = options.platform || process.env.ELIZA_DOCKER_PLATFORM || hostPlatform;
+
+    // Warn if cross-compiling
+    if (platform !== hostPlatform) {
+      logger.warn(`Cross-compiling from ${hostPlatform} to ${platform}`);
+      logger.warn('This may be slower and requires Docker BuildKit with QEMU emulation');
+      logger.info('Tip: Set ELIZA_DOCKER_PLATFORM=' + hostPlatform + ' to use native platform');
+    }
+
+    logger.info(`Building Docker image: ${options.imageTag} (platform: ${platform})`);
 
     const dockerfilePath = options.dockerfile
       ? path.join(options.projectPath, options.dockerfile)
@@ -111,6 +152,8 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Build Docker command arguments
     const buildArgs = ['build'];
+    // Target platform
+    buildArgs.push('--platform', platform);
 
     // Add build context
     buildArgs.push('-f', dockerfilePath);
@@ -135,7 +178,13 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Execute Docker build
     const startTime = Date.now();
-    const { stdout } = await execa('docker', buildArgs);
+    const { stdout } = await execa('docker', buildArgs, {
+      env: {
+        ...process.env,
+        DOCKER_DEFAULT_PLATFORM: platform,
+        DOCKER_BUILDKIT: '1',
+      },
+    });
     const buildTime = Date.now() - startTime;
 
     logger.debug('Docker build completed in', `${(buildTime / 1000).toFixed(2)}s`);
@@ -170,7 +219,6 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Docker build failed:', errorMessage);
 
     return {
       success: false,
@@ -239,18 +287,84 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     // Step 3: Tag local image for ECR
     await tagImageForECR(options.imageTag, ecrImageUri);
 
-    // Step 4: Push to ECR
-    logger.info('Pushing to ECR (this may take a few minutes)...');
+    // Step 4: Push to ECR with beautiful progress tracking
+    const spinner = ora({
+      text: 'Pushing to ECR...',
+      color: 'cyan',
+    }).start();
+
     const startTime = Date.now();
+    let imageDigest: string | undefined;
+    let completedLayers = 0;
+    const layerProgress = new Map<string, { current: number; total: number }>();
 
-    const { stdout } = await execa('docker', ['push', ecrImageUri]);
+    const pushProcess = execa('docker', ['push', ecrImageUri]);
 
-    const pushTime = Date.now() - startTime;
-    logger.info(`✅ Image pushed in ${(pushTime / 1000).toFixed(2)}s`);
+    // Track progress from stderr (Docker outputs progress to stderr)
+    if (pushProcess.stderr) {
+      pushProcess.stderr.on('data', (data: Buffer) => {
+        const output = data.toString();
 
-    // Extract digest from push output
-    const digestMatch = stdout.match(/digest: (sha256:[a-f0-9]+)/);
-    const imageDigest = digestMatch ? digestMatch[1] : undefined;
+        // Parse Docker layer progress
+        // Format: "layer-id: Pushing [==>     ] 15.5MB/100MB"
+        const lines = output.split('\n');
+
+        for (const line of lines) {
+          const layerMatch = line.match(
+            /^([a-f0-9]+):\s*(\w+)\s*\[([=>]+)\s*\]\s+([\d.]+)([KMGT]?B)\/([\d.]+)([KMGT]?B)/
+          );
+
+          if (layerMatch) {
+            const [, layerId, , , currentStr, currentUnit, totalStr, totalUnit] = layerMatch;
+
+            // Convert to bytes for accurate progress
+            const current = parseSize(currentStr, currentUnit);
+            const total = parseSize(totalStr, totalUnit);
+
+            layerProgress.set(layerId, { current, total });
+
+            // Calculate overall progress
+            let totalBytes = 0;
+            let uploadedBytes = 0;
+
+            for (const [, progress] of layerProgress) {
+              totalBytes += progress.total;
+              uploadedBytes += progress.current;
+            }
+
+            const overallPercent =
+              totalBytes > 0 ? Math.floor((uploadedBytes / totalBytes) * 100) : 0;
+            const uploadedMB = (uploadedBytes / 1024 / 1024).toFixed(1);
+            const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+
+            spinner.text = `Pushing to ECR... ${overallPercent}% (${uploadedMB}/${totalMB} MB, ${layerProgress.size} layers)`;
+          }
+
+          // Check for pushed layers
+          if (line.includes(': Pushed')) {
+            completedLayers++;
+          }
+
+          // Check for completion digest
+          const digestMatch = line.match(/digest: (sha256:[a-f0-9]+)/);
+          if (digestMatch) {
+            imageDigest = digestMatch[1];
+          }
+        }
+      });
+    }
+
+    try {
+      await pushProcess;
+      const pushTime = Date.now() - startTime;
+
+      spinner.succeed(
+        `Image pushed in ${(pushTime / 1000).toFixed(1)}s (${completedLayers} layers)`
+      );
+    } catch (error) {
+      spinner.fail('Failed to push image to ECR');
+      throw error;
+    }
 
     return {
       success: true,
@@ -266,6 +380,21 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
       error: errorMessage,
     };
   }
+}
+
+/**
+ * Parse Docker size string to bytes
+ */
+function parseSize(value: string, unit: string): number {
+  const num = parseFloat(value);
+  const multipliers: Record<string, number> = {
+    B: 1,
+    KB: 1024,
+    MB: 1024 * 1024,
+    GB: 1024 * 1024 * 1024,
+    TB: 1024 * 1024 * 1024 * 1024,
+  };
+  return num * (multipliers[unit] || 1);
 }
 
 /**

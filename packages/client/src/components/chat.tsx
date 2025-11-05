@@ -88,6 +88,8 @@ import { useDeleteAgent } from '@/hooks/use-delete-agent';
 import { exportCharacterAsJson } from '@/lib/export-utils';
 moment.extend(relativeTime);
 
+// Fallback server ID used when no actual server ID is available from the API
+// This should only be used as a last resort - prefer passing the real serverId from props
 const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
 // Helper function to convert action message to ToolPart format
@@ -378,7 +380,8 @@ export default function Chat({
 
   // Use the new hooks for DM channel management
   const { data: agentDmChannels = [], isLoading: isLoadingAgentDmChannels } = useDmChannelsForAgent(
-    chatType === ChannelType.DM ? contextId : undefined
+    chatType === ChannelType.DM ? contextId : undefined,
+    serverId || DEFAULT_SERVER_ID
   );
 
   const createDmChannelMutation = useCreateDmChannel();
@@ -404,8 +407,9 @@ export default function Chat({
       : contextId || undefined;
 
   const finalServerIdForHooks: UUID | undefined = useMemo(() => {
-    return chatType === ChannelType.DM ? DEFAULT_SERVER_ID : serverId || undefined;
-  }, [chatType, serverId]);
+    // Use the actual serverId from props if available, otherwise fallback to DEFAULT_SERVER_ID
+    return serverId || DEFAULT_SERVER_ID;
+  }, [serverId]);
 
   const { data: latestChannelMessages = [], isLoading: isLoadingLatestChannelMessages } =
     useChannelMessages(latestChannel?.id, finalServerIdForHooks);
@@ -522,6 +526,7 @@ export default function Chat({
         await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
+          serverId: finalServerIdForHooks,
         });
         updateChatState({ input: '' });
         setTimeout(() => safeScrollToBottom(), 150);
@@ -960,6 +965,7 @@ export default function Chat({
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: targetAgentData.id,
           channelName: `Chat - ${moment().format('MMM D, HH:mm')}`,
+          serverId: finalServerIdForHooks,
         });
         updateChatState({ currentDmChannelId: newChannel.id });
         channelIdToUse = newChannel.id;

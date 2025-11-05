@@ -8,6 +8,7 @@ import { ServerService } from './services/server';
 import { SystemService } from './services/system';
 import { SessionsService } from './services/sessions';
 import { RunsService } from './services/runs';
+import { JobsService } from './services/jobs';
 
 export class ElizaClient {
   public readonly agents: AgentsService;
@@ -19,6 +20,7 @@ export class ElizaClient {
   public readonly system: SystemService;
   public readonly sessions: SessionsService;
   public readonly runs: RunsService;
+  public readonly jobs: JobsService;
 
   constructor(config: ApiClientConfig) {
     // Initialize all services with the same config
@@ -31,6 +33,7 @@ export class ElizaClient {
     this.system = new SystemService(config);
     this.sessions = new SessionsService(config);
     this.runs = new RunsService(config);
+    this.jobs = new JobsService(config);
   }
 
   /**

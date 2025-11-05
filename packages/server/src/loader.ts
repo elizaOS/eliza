@@ -133,14 +133,17 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
     }, {});
 
   if (Object.keys(characterSettings).length > 0) {
-    // Collect all secrets from various sources
+    // Collect all secrets from various sources with correct priority order:
+    // 1. character.secrets (lowest - base level)
+    // 2. character.settings.secrets (medium - from character.json merged with .env)
+    // 3. characterSettings from CHARACTER.* prefix (highest - runtime overrides)
     const combinedSecrets = {
-      ...characterSettings,
       ...(validatedCharacter.secrets || {}),
       ...(typeof validatedCharacter.settings?.secrets === 'object' &&
       validatedCharacter.settings?.secrets !== null
         ? validatedCharacter.settings.secrets
         : {}),
+      ...characterSettings,
     };
 
     const updatedCharacter: Character = {

@@ -14,7 +14,11 @@ import { logger } from '@elizaos/core';
  * @param res - Express response object.
  * @param next - Express next function.
  */
-export function apiKeyAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+export function apiKeyAuthMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void | Response {
   const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
 
   // If no token is configured in ENV, skip auth check

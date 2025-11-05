@@ -12,6 +12,7 @@ export const deploy = new Command()
   .name('deploy')
   .description('Deploy ElizaOS project to AWS ECS (Elastic Container Service)')
   .option('-n, --name <name>', 'Name for the deployment')
+  .option('--project-name <name>', 'Project name (defaults to directory name)')
   .option(
     '-p, --port <port>',
     'Port the container listens on',
@@ -26,13 +27,13 @@ export const deploy = new Command()
   )
   .option(
     '--cpu <units>',
-    'CPU units (1792 = 1.75 vCPU, uses 87.5% of t3g.small)',
+    'CPU units (1792 = 1.75 vCPU, 87.5% of t4g.small 2 vCPUs)',
     (value) => parseInt(value, 10),
     1792
   )
   .option(
     '--memory <mb>',
-    'Memory in MB (1792 = 1.75 GB, uses 87.5% of t3g.small)',
+    'Memory in MB (1792 MB = 1.75 GiB, 87.5% of t4g.small 2 GiB)',
     (value) => parseInt(value, 10),
     1792
   )
@@ -48,6 +49,11 @@ export const deploy = new Command()
   )
   .option('--skip-build', 'Skip Docker build and use existing image')
   .option('--image-uri <uri>', 'Use existing ECR image URI (requires --skip-build)')
+  .option(
+    '--platform <platform>',
+    'Docker platform for build (e.g., linux/amd64, linux/arm64). Defaults to host platform.',
+    undefined
+  )
   .action(async (options: DeployOptions) => {
     try {
       // Validate numeric options
