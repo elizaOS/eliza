@@ -40,21 +40,31 @@ export const DEFAULT_NETWORK: Network = 'SOLANA';
 
 /**
  * Convert our Network type to x402scan-compliant network names
+ * @throws {Error} If network is not supported by x402scan
  */
 export function toX402Network(network: Network): X402ScanNetwork {
-    const networkMap: Record<Network, X402ScanNetwork> = {
+    const networkMap: Partial<Record<Network, X402ScanNetwork>> = {
         'BASE': 'base',
         'SOLANA': 'solana',
         'POLYGON': 'polygon'
     };
-    return networkMap[network];
+
+    const mappedNetwork = networkMap[network];
+    if (!mappedNetwork) {
+        throw new Error(
+            `Network '${network}' is not supported by x402scan. ` +
+            `Supported networks: ${BUILT_IN_NETWORKS.join(', ')}`
+        );
+    }
+
+    return mappedNetwork;
 }
 
 /**
  * Network-specific wallet addresses
  * Uses existing environment variables from your project configuration
  */
-export const PAYMENT_ADDRESSES: Record<Network, string> = {
+export const PAYMENT_ADDRESSES: Partial<Record<Network, string>> = {
     BASE: process.env.BASE_PUBLIC_KEY || process.env.PAYMENT_WALLET_BASE || '0x066E94e1200aa765d0A6392777D543Aa6Dea606C',
     SOLANA: process.env.SOLANA_PUBLIC_KEY || process.env.PAYMENT_WALLET_SOLANA || '3nMBmufBUBVnk28sTp3NsrSJsdVGTyLZYmsqpMFaUT9J',
     POLYGON: process.env.POLYGON_PUBLIC_KEY || process.env.PAYMENT_WALLET_POLYGON || '',
@@ -128,7 +138,7 @@ export const POLYGON_TOKENS = {
 /**
  * Default asset for each network (used in x402 responses)
  */
-export const NETWORK_ASSETS: Record<Network, string> = {
+export const NETWORK_ASSETS: Partial<Record<Network, string>> = {
     BASE: 'USDC',      // USDC on Base
     SOLANA: 'USDC',    // USDC on Solana (default, but also supports ai16z and degenai)
     POLYGON: 'USDC',   // USDC on Polygon
@@ -136,6 +146,7 @@ export const NETWORK_ASSETS: Record<Network, string> = {
 
 /**
  * Get all accepted assets for a network
+ * @throws {Error} If network is not supported
  */
 export function getNetworkAssets(network: Network): string[] {
     if (network === 'SOLANA') {
@@ -147,11 +158,20 @@ export function getNetworkAssets(network: Network): string[] {
     if (network === 'POLYGON') {
         return Object.values(POLYGON_TOKENS).map(t => t.symbol);
     }
-    return [NETWORK_ASSETS[network]];
+
+    const defaultAsset = NETWORK_ASSETS[network];
+    if (!defaultAsset) {
+        throw new Error(
+            `Network '${network}' is not configured. ` +
+            `Supported networks: ${BUILT_IN_NETWORKS.join(', ')}`
+        );
+    }
+
+    return [defaultAsset];
 }
 
 // Default/legacy wallet address (uses default network)
-export const PAYMENT_RECEIVER_ADDRESS = PAYMENT_ADDRESSES[DEFAULT_NETWORK];
+export const PAYMENT_RECEIVER_ADDRESS = PAYMENT_ADDRESSES[DEFAULT_NETWORK] || '';
 
 /**
  * Named payment config definition - stores individual fields, CAIP-19 constructed on-demand
@@ -173,7 +193,7 @@ export const PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {
         network: 'BASE',
         assetNamespace: 'erc20',
         assetReference: BASE_TOKENS.USDC.address,
-        paymentAddress: PAYMENT_ADDRESSES['BASE'],
+        paymentAddress: PAYMENT_ADDRESSES['BASE']!, // Known to be defined
         symbol: 'USDC',
         chainId: '8453'
     },
@@ -181,14 +201,14 @@ export const PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {
         network: 'SOLANA',
         assetNamespace: 'spl-token',
         assetReference: SOLANA_TOKENS.USDC.address,
-        paymentAddress: PAYMENT_ADDRESSES['SOLANA'],
+        paymentAddress: PAYMENT_ADDRESSES['SOLANA']!, // Known to be defined
         symbol: 'USDC'
     },
     'polygon_usdc': {
         network: 'POLYGON',
         assetNamespace: 'erc20',
         assetReference: POLYGON_TOKENS.USDC.address,
-        paymentAddress: PAYMENT_ADDRESSES['POLYGON'],
+        paymentAddress: PAYMENT_ADDRESSES['POLYGON'] || '', // May be empty, fallback to empty string
         symbol: 'USDC',
         chainId: '137'
     }
@@ -315,27 +335,39 @@ export type { X402Config } from '@elizaos/core';
 
 /**
  * Get the payment address for a specific network
+ * @throws {Error} If network is not configured
  */
 export function getPaymentAddress(network: Network): string {
-    return PAYMENT_ADDRESSES[network] || PAYMENT_RECEIVER_ADDRESS;
+    const address = PAYMENT_ADDRESSES[network];
+    if (!address) {
+        throw new Error(
+            `No payment address configured for network '${network}'. ` +
+            `Supported networks: ${BUILT_IN_NETWORKS.join(', ')}. ` +
+            `Set ${network}_PUBLIC_KEY in your environment.`
+        );
+    }
+    return address;
 }
 
 /**
  * Get all network addresses with metadata
+ * Only returns networks that have configured addresses
  */
 export function getNetworkAddresses(networks: Network[]): Array<{
     name: Network;
     address: string;
     facilitatorEndpoint?: string;
 }> {
-    return networks.map(network => ({
-        name: network,
-        address: PAYMENT_ADDRESSES[network],
-        // Add facilitator endpoint for EVM chains if configured
-        ...((network === 'BASE' || network === 'POLYGON') && process.env.EVM_FACILITATOR && {
-            facilitatorEndpoint: process.env.EVM_FACILITATOR
-        })
-    }));
+    return networks
+        .filter(network => PAYMENT_ADDRESSES[network] !== undefined && PAYMENT_ADDRESSES[network] !== '')
+        .map(network => ({
+            name: network,
+            address: PAYMENT_ADDRESSES[network]!, // Safe due to filter above
+            // Add facilitator endpoint for EVM chains if configured
+            ...((network === 'BASE' || network === 'POLYGON') && process.env.EVM_FACILITATOR && {
+                facilitatorEndpoint: process.env.EVM_FACILITATOR
+            })
+        }));
 }
 
 /**
@@ -443,9 +475,17 @@ export function getTokenAddress(asset: string, network: Network): string | undef
 
 /**
  * Get the asset for a specific network
+ * @throws {Error} If network is not configured
  */
 export function getNetworkAsset(network: Network): string {
-    return NETWORK_ASSETS[network];
+    const asset = NETWORK_ASSETS[network];
+    if (!asset) {
+        throw new Error(
+            `No default asset configured for network '${network}'. ` +
+            `Supported networks: ${BUILT_IN_NETWORKS.join(', ')}`
+        );
+    }
+    return asset;
 }
 
 /**
