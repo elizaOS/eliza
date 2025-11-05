@@ -153,29 +153,42 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Normalizes entity names to ensure they are always a proper array.
-   * Handles strings, Sets, iterables, and non-iterable values.
+   * Normalizes entity names to ensure they are always a proper array of strings.
+   * Handles strings, Sets, Maps, iterables, and non-iterable values.
+   * All array elements are converted to strings to prevent database errors.
    * @param {any} names - The names value to normalize
-   * @returns {string[]} A proper array of names
+   * @returns {string[]} A proper array of string names
    * @private
    */
   private normalizeEntityNames(names: any): string[] {
-    if (Array.isArray(names)) {
-      return names;
+    // Handle null/undefined
+    if (names == null) {
+      return [];
     }
+
+    // Handle string - wrap in array
     if (typeof names === 'string') {
       return [names];
     }
+
+    // Handle arrays - ensure all elements are strings
+    if (Array.isArray(names)) {
+      return names.map(String);
+    }
+
+    // Handle Sets - convert to array and ensure all elements are strings
     if (names instanceof Set) {
-      return Array.from(names);
+      return Array.from(names).map(String);
     }
-    if (names != null) {
-      if (typeof names === 'object' && typeof names[Symbol.iterator] === 'function') {
-        return Array.from(names);
-      }
-      return [String(names)];
+
+    // Handle other iterables (including Maps) - convert to array and ensure all elements are strings
+    // Maps yield [key, value] tuples, so we need to convert those to strings too
+    if (typeof names === 'object' && typeof names[Symbol.iterator] === 'function') {
+      return Array.from(names).map(String);
     }
-    return [];
+
+    // Handle non-iterable primitives (numbers, booleans, objects)
+    return [String(names)];
   }
 
   /**
