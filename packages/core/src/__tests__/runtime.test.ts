@@ -397,6 +397,40 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
     });
 
+    it('should skip plugin migrations when skipMigrations option is true', async () => {
+      const runtimeWithMigrations = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Spy on runPluginMigrations
+      const runMigrationsSpy = spyOn(runtimeWithMigrations as any, 'runPluginMigrations');
+
+      // Initialize with skipMigrations = true
+      await runtimeWithMigrations.initialize({ skipMigrations: true });
+
+      // Verify migrations were not called
+      expect(runMigrationsSpy).not.toHaveBeenCalled();
+    });
+
+    it('should run plugin migrations by default when skipMigrations is not specified', async () => {
+      const runtimeDefault = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Spy on runPluginMigrations
+      const runMigrationsSpy = spyOn(runtimeDefault as any, 'runPluginMigrations');
+
+      // Initialize without skipMigrations option (default behavior)
+      await runtimeDefault.initialize();
+
+      // Verify migrations were called
+      expect(runMigrationsSpy).toHaveBeenCalled();
+    });
+
     // Add more tests for initialize: existing entity, existing room, knowledge processing etc.
   });
 
