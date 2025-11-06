@@ -71,7 +71,7 @@ describe('UI Disable Feature Integration', () => {
         use: mockExpressUse,
       };
 
-      const configureStaticFiles = (app: any, uiEnabled: boolean) => {
+      const configureStaticFiles = (app: { use: (path: string) => void }, uiEnabled: boolean) => {
         if (uiEnabled) {
           app.use('express.static(clientPath, staticOptions)');
         }
@@ -94,7 +94,7 @@ describe('UI Disable Feature Integration', () => {
         sendStatus: mockSendStatus,
       };
 
-      const handleUIDisabledRequest = (res: any, uiEnabled: boolean) => {
+      const handleUIDisabledRequest = (res: { sendStatus: (code: number) => void }, uiEnabled: boolean) => {
         if (!uiEnabled) {
           res.sendStatus(403); // Standard HTTP 403 Forbidden
         }
@@ -116,7 +116,7 @@ describe('UI Disable Feature Integration', () => {
         use: mockExpressUse,
       };
 
-      const configureSPAFallback = (app: any, uiEnabled: boolean) => {
+      const configureSPAFallback = (app: { use: (middleware: string) => void }, uiEnabled: boolean) => {
         if (uiEnabled) {
           app.use('spa-fallback-middleware');
         } else {

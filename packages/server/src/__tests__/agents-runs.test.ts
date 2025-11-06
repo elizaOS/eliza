@@ -31,7 +31,7 @@ function makeRuntimeWithLogs(logs: LogEntry[]): MockRuntime {
 // But still fails in full run due to test interference - passes in isolation (2/2)
 describe.skip('Agent Runs API - Test interference in full runs', () => {
   let app: express.Application;
-  let server: any;
+  let server: ReturnType<express.Application['listen']>;
   let port: number;
 
   const agentId = '00000000-0000-0000-0000-000000000001' as UUID;

@@ -29,7 +29,8 @@ describe('API Key Auth Middleware', () => {
       get: jest.fn((name: string) => {
         // Express normalizes header names to lowercase
         const lowerName = name.toLowerCase();
-        return (mockRequest.headers as any)?.[lowerName];
+        const headers = mockRequest.headers as Record<string, string | string[] | undefined>;
+        return headers?.[lowerName];
       }),
     };
 

@@ -46,7 +46,7 @@ describe.skip('Version API - Test interference in full runs', () => {
         }
       });
       
-      server.on('error', (err: any) => {
+      server.on('error', (err: Error) => {
         reject(err);
       });
     });
