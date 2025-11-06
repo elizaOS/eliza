@@ -2,7 +2,7 @@
  * Unit tests for middleware functions
  */
 
-import { describe, it, expect, beforeEach, jest, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
 import express from 'express';
 import {
   agentExistsMiddleware,
@@ -16,38 +16,15 @@ import {
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
-// Mock dependencies
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      warn: jest.fn(),
-      info: jest.fn(),
-      error: jest.fn(),
-      debug: jest.fn(),
-    },
-    validateUuid: jest.fn((id: string) => {
-      // Simple UUID validation mock
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(id) ? id : null;
-    }),
-  };
-});
-
-mock.module('../src/api/shared/response-utils', () => ({
-  sendError: jest.fn((res, status, code, message) => {
-    res.status(status).json({ success: false, error: { code, message } });
-  }),
-}));
-
 describe('Middleware Functions', () => {
   let req: Partial<express.Request>;
   let res: Partial<express.Response>;
   let next: express.NextFunction;
+  let loggerWarnSpy: any;
 
   beforeEach(() => {
-    mock.restore();
+    // Spy on logger methods to verify they're called
+    loggerWarnSpy = spyOn(logger, 'warn');
 
     req = {
       params: {},
@@ -73,12 +50,17 @@ describe('Middleware Functions', () => {
     it('should call next when agent exists', () => {
       const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
-      const agents = new Map<UUID, IAgentRuntime>();
-      agents.set(agentId as UUID, mockRuntime);
+
+      // Create mock ElizaOS with getAgent method
+      const mockElizaOS = {
+        getAgent: jest.fn((id: UUID) => {
+          return id === agentId ? mockRuntime : null;
+        }),
+      } as any;
 
       req.params = { agentId };
 
-      const middleware = agentExistsMiddleware(agents);
+      const middleware = agentExistsMiddleware(mockElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(next).toHaveBeenCalled();
@@ -87,10 +69,13 @@ describe('Middleware Functions', () => {
     });
 
     it('should return 400 for invalid agent ID format', () => {
-      const agents = new Map<UUID, IAgentRuntime>();
+      const mockElizaOS = {
+        getAgent: jest.fn(),
+      } as any;
+
       req.params = { agentId: 'invalid-id' };
 
-      const middleware = agentExistsMiddleware(agents);
+      const middleware = agentExistsMiddleware(mockElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
@@ -102,10 +87,13 @@ describe('Middleware Functions', () => {
     });
 
     it('should return 404 when agent not found', () => {
-      const agents = new Map<UUID, IAgentRuntime>();
+      const mockElizaOS = {
+        getAgent: jest.fn(() => null),
+      } as any;
+
       req.params = { agentId: '123e4567-e89b-12d3-a456-426614174000' };
 
-      const middleware = agentExistsMiddleware(agents);
+      const middleware = agentExistsMiddleware(mockElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(404);
@@ -135,7 +123,7 @@ describe('Middleware Functions', () => {
       const middleware = validateUuidMiddleware('testId');
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         '[SECURITY] Invalid testId from 192.168.1.100: invalid-uuid'
       );
       expect(res.status).toHaveBeenCalledWith(400);
@@ -186,7 +174,7 @@ describe('Middleware Functions', () => {
       const middleware = validateChannelIdMiddleware();
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         '[SECURITY] Failed channel ID validation from 192.168.1.100: invalid-channel-id'
       );
       expect(res.status).toHaveBeenCalledWith(400);
@@ -217,7 +205,7 @@ describe('Middleware Functions', () => {
       const middleware = securityMiddleware();
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         '[SECURITY] Suspicious User-Agent from 192.168.1.100: Mozilla/5.0 <script>alert(1)</script>'
       );
       expect(next).toHaveBeenCalled();
@@ -229,7 +217,7 @@ describe('Middleware Functions', () => {
       const middleware = securityMiddleware();
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         '[SECURITY] Path traversal detected from 192.168.1.100: /api/test/../../../etc/passwd'
       );
       expect(next).toHaveBeenCalled();
@@ -241,7 +229,7 @@ describe('Middleware Functions', () => {
       const middleware = securityMiddleware();
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('[SECURITY] XSS attempt detected from 192.168.1.100')
       );
       expect(next).toHaveBeenCalled();
@@ -253,7 +241,7 @@ describe('Middleware Functions', () => {
       const middleware = securityMiddleware();
       middleware(req as express.Request, res as express.Response, next);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         '[SECURITY] SQL injection pattern detected from 192.168.1.100: /api/test?id=1 UNION SELECT * FROM users'
       );
       expect(next).toHaveBeenCalled();

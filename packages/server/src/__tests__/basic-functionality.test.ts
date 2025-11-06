@@ -97,7 +97,7 @@ describe('Basic Server Functionality', () => {
         constructor(
           private windowMs: number,
           private maxRequests: number
-        ) {}
+        ) { }
 
         isAllowed(clientId: string): boolean {
           const now = Date.now();
@@ -143,7 +143,7 @@ describe('Basic Server Functionality', () => {
       type MiddlewareFunction = (req: any, res: any, next: () => void) => void;
 
       const createValidationMiddleware = (paramName: string): MiddlewareFunction => {
-        return (_req, res, next) => {
+        return (req, res, next) => {
           const paramValue = req.params?.[paramName];
 
           if (!paramValue) {

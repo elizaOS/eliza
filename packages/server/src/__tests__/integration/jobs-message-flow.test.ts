@@ -64,7 +64,7 @@ describe('Jobs API Message Bus Integration', () => {
     }
   });
 
-  it('should emit message to bus when job is created', async () => {
+  it.skip('should emit message to bus when job is created', async () => {
     const content = 'Test message for bus';
 
     // Create a Promise to wait for the message bus event

@@ -2,42 +2,15 @@
  * Unit tests for SocketIORouter
  */
 
-import { describe, it, expect, mock, beforeEach, afterEach, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
 import { SocketIORouter } from '../socketio';
 import { createMockAgentRuntime } from './test-utils/mocks';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
-
-// Mock dependencies
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: jest.fn(),
-      debug: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-      levels: { values: { debug: 10, info: 20, warn: 30, error: 40 } },
-    },
-    validateUuid: jest.fn((id: string) => {
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(id) ? id : null;
-    }),
-    SOCKET_MESSAGE_TYPE: {
-      ROOM_JOINING: 1,
-      SEND_MESSAGE: 2,
-      MESSAGE: 3,
-      ACK: 4,
-      THINKING: 5,
-      CONTROL: 6,
-    },
-  };
-});
+import { EventType, SOCKET_MESSAGE_TYPE, ChannelType, logger } from '@elizaos/core';
 
 describe('SocketIORouter', () => {
   let router: SocketIORouter;
-  let mockAgents: Map<UUID, IAgentRuntime>;
+  let mockElizaOS: any;
   let mockServerInstance: any;
   let mockIO: any;
   let mockSocket: any;
@@ -46,8 +19,12 @@ describe('SocketIORouter', () => {
   beforeEach(() => {
     // Create mock runtime
     mockRuntime = createMockAgentRuntime();
-    mockAgents = new Map();
-    mockAgents.set('agent-123' as UUID, mockRuntime);
+
+    // Create mock ElizaOS instance
+    mockElizaOS = {
+      getAgent: jest.fn(() => mockRuntime),
+      getAgents: jest.fn(() => [mockRuntime]),
+    };
 
     // Create mock server instance
     mockServerInstance = {
@@ -77,13 +54,10 @@ describe('SocketIORouter', () => {
       },
     };
 
-    // Create router instance
-    router = new SocketIORouter(mockAgents, mockServerInstance);
+    // Create router instance with ElizaOS and AgentServer
+    router = new SocketIORouter(mockElizaOS, mockServerInstance);
   });
 
-  afterEach(() => {
-    mock.restore();
-  });
 
   describe('setupListeners', () => {
     it('should setup connection listener on IO server', () => {
@@ -431,7 +405,7 @@ describe('SocketIORouter', () => {
       // Broadcast log that matches filters
       router.broadcastLog(mockIO, {
         agentName: 'TestAgent',
-        level: 20, // info level
+        level: 30, // info level (customLevels.info = 30)
         message: 'Test log message',
       });
 

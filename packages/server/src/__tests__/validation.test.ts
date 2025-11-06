@@ -2,7 +2,7 @@
  * Unit tests for validation functions
  */
 
-import { describe, it, expect, mock, jest } from 'bun:test';
+import { describe, it, expect, jest, beforeEach, afterEach, spyOn } from 'bun:test';
 import {
   validateChannelId,
   validateAgentId,
@@ -14,23 +14,15 @@ import {
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
-// Mock the logger to capture security logs
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      warn: jest.fn(),
-      info: jest.fn(),
-      error: jest.fn(),
-      debug: jest.fn(),
-    },
-  };
-});
-
 describe('Validation Functions', () => {
+  let loggerWarnSpy: any;
+
   beforeEach(() => {
-    mock.restore();
+    loggerWarnSpy = spyOn(logger, 'warn');
+  });
+
+  afterEach(() => {
+    loggerWarnSpy?.mockRestore();
   });
 
   describe('validateChannelId', () => {
@@ -52,7 +44,7 @@ describe('Validation Functions', () => {
 
       validateChannelId(invalidUuid, clientIp);
 
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
         `[SECURITY] Invalid channel ID attempted from ${clientIp}: ${invalidUuid}`
       );
     });
@@ -72,7 +64,7 @@ describe('Validation Functions', () => {
         const result = validateChannelId(input, '192.168.1.100');
         expect(result).toBeNull();
         // These inputs are not valid UUIDs, so they get the "Invalid" message, not "Suspicious"
-        expect(logger.warn).toHaveBeenCalledWith(
+        expect(loggerWarnSpy).toHaveBeenCalledWith(
           `[SECURITY] Invalid channel ID attempted from 192.168.1.100: ${input}`
         );
       });
@@ -83,7 +75,7 @@ describe('Validation Functions', () => {
 
       validateChannelId(invalidUuid);
 
-      expect(logger.warn).not.toHaveBeenCalled();
+      expect(loggerWarnSpy).not.toHaveBeenCalled();
     });
 
     it('should handle empty string', () => {
@@ -153,34 +145,34 @@ describe('Validation Functions', () => {
 
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
-      const mockRuntime = {
-        agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-        character: {},
-        providers: [],
-        actions: [],
-        evaluators: [],
-        services: new Map(),
-      } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
-      const agents = new Map<UUID, IAgentRuntime>();
-      agents.set(agentId, mockRuntime);
+      const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
+      const mockElizaOS = {
+        getAgent: jest.fn(() => mockRuntime),
+      } as any;
 
-      const result = getRuntime(agents, agentId);
+      const result = getRuntime(mockElizaOS, agentId);
+
       expect(result).toBe(mockRuntime);
+      expect(mockElizaOS.getAgent).toHaveBeenCalledWith(agentId);
     });
 
     it('should throw error when agent does not exist', () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
-      const agents = new Map<UUID, IAgentRuntime>();
+      const mockElizaOS = {
+        getAgent: jest.fn(() => null),
+      } as any;
 
-      expect(() => getRuntime(agents, agentId)).toThrow(`Agent not found: ${agentId}`);
+      expect(() => getRuntime(mockElizaOS, agentId)).toThrow(`Agent not found: ${agentId}`);
     });
 
     it('should handle empty agents map', () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
-      const agents = new Map<UUID, IAgentRuntime>();
+      const mockElizaOS = {
+        getAgent: jest.fn(() => null),
+      } as any;
 
-      expect(() => getRuntime(agents, agentId)).toThrow(`Agent not found: ${agentId}`);
+      expect(() => getRuntime(mockElizaOS, agentId)).toThrow(`Agent not found: ${agentId}`);
     });
   });
 });

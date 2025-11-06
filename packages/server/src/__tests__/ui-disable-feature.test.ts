@@ -2,21 +2,9 @@
  * Tests for ELIZA_UI_ENABLE feature
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 
 // Mock logger
-mock.module('@elizaos/core', async () => {
-  const actual = await import('@elizaos/core');
-  return {
-    ...actual,
-    logger: {
-      info: jest.fn(),
-      warn: jest.fn(),
-      error: jest.fn(),
-      debug: jest.fn(),
-    },
-  };
-});
 
 describe('UI Disable Feature Integration', () => {
   const originalEnv = process.env;
@@ -24,7 +12,6 @@ describe('UI Disable Feature Integration', () => {
   beforeEach(() => {
     // Reset environment before each test
     process.env = { ...originalEnv };
-    mock.restore();
   });
 
   afterEach(() => {

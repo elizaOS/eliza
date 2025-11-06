@@ -2,48 +2,9 @@
  * Simple validation tests that work without complex mocking
  */
 
-import { describe, it, expect, mock, jest } from 'bun:test';
+import { describe, it, expect, jest } from 'bun:test';
 import { expandTildePath } from '../index';
 import path from 'node:path';
-
-// Simple mocks
-mock.module('@elizaos/core', () => ({
-  logger: {
-    warn: jest.fn(),
-    info: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
-  },
-  validateUuid: (id: string) => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    return uuidRegex.test(id) ? id : null;
-  },
-  Service: class MockService {
-    constructor() {}
-    async initialize() {}
-    async cleanup() {}
-  },
-  createUniqueUuid: jest.fn(() => '123e4567-e89b-12d3-a456-426614174000'),
-  ChannelType: {
-    DIRECT: 'direct',
-    GROUP: 'group',
-  },
-  EventType: {
-    MESSAGE: 'message',
-    USER_JOIN: 'user_join',
-  },
-  SOCKET_MESSAGE_TYPE: {
-    MESSAGE: 'message',
-    AGENT_UPDATE: 'agent_update',
-    CONNECTION: 'connection',
-  },
-  VECTOR_DIMS: 1536,
-  DatabaseAdapter: class MockDatabaseAdapter {
-    constructor() {}
-    async init() {}
-    async close() {}
-  },
-}));
 
 describe('Simple Validation Tests', () => {
   describe('expandTildePath', () => {
