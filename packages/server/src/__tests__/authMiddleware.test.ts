@@ -11,7 +11,7 @@ describe('API Key Auth Middleware', () => {
   let mockRequest: Partial<Request>;
   let mockResponse: Partial<Response>;
   let mockNext: NextFunction;
-  let loggerWarnSpy: any;
+  let loggerWarnSpy: ReturnType<typeof spyOn>;
   const originalEnv = process.env;
 
   beforeEach(() => {

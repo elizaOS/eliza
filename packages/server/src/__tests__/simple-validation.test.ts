@@ -2,7 +2,7 @@
  * Simple validation tests that work without complex mocking
  */
 
-import { describe, it, expect, jest } from 'bun:test';
+import { describe, it, expect } from 'bun:test';
 import { expandTildePath } from '../index';
 import path from 'node:path';
 

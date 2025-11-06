@@ -15,7 +15,7 @@ import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 
 describe('Validation Functions', () => {
-  let loggerWarnSpy: any;
+  let loggerWarnSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     loggerWarnSpy = spyOn(logger, 'warn');

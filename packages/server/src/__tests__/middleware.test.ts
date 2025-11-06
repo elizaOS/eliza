@@ -2,7 +2,7 @@
  * Unit tests for middleware functions
  */
 
-import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:test';
 import express from 'express';
 import {
   agentExistsMiddleware,
@@ -14,13 +14,16 @@ import {
   createChannelValidationRateLimit,
 } from '../middleware';
 import { logger } from '@elizaos/core';
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
+
+// Mock ElizaOS interface for testing
+type MockElizaOS = Pick<ElizaOS, 'getAgent'>;
 
 describe('Middleware Functions', () => {
   let req: Partial<express.Request>;
   let res: Partial<express.Response>;
   let next: express.NextFunction;
-  let loggerWarnSpy: any;
+  let loggerWarnSpy: ReturnType<typeof spyOn>;
 
   beforeEach(() => {
     // Spy on logger methods to verify they're called
@@ -46,21 +49,26 @@ describe('Middleware Functions', () => {
     next = jest.fn();
   });
 
+  afterEach(() => {
+    // Restore logger.warn spy to prevent test pollution
+    loggerWarnSpy?.mockRestore();
+  });
+
   describe('agentExistsMiddleware', () => {
     it('should call next when agent exists', () => {
       const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
 
       // Create mock ElizaOS with getAgent method
-      const mockElizaOS = {
+      const mockElizaOS: MockElizaOS = {
         getAgent: jest.fn((id: UUID) => {
-          return id === agentId ? mockRuntime : null;
+          return id === agentId ? mockRuntime : undefined;
         }),
-      } as any;
+      };
 
       req.params = { agentId };
 
-      const middleware = agentExistsMiddleware(mockElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(next).toHaveBeenCalled();
@@ -69,13 +77,13 @@ describe('Middleware Functions', () => {
     });
 
     it('should return 400 for invalid agent ID format', () => {
-      const mockElizaOS = {
+      const mockElizaOS: MockElizaOS = {
         getAgent: jest.fn(),
-      } as any;
+      };
 
       req.params = { agentId: 'invalid-id' };
 
-      const middleware = agentExistsMiddleware(mockElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
@@ -87,13 +95,13 @@ describe('Middleware Functions', () => {
     });
 
     it('should return 404 when agent not found', () => {
-      const mockElizaOS = {
-        getAgent: jest.fn(() => null),
-      } as any;
+      const mockElizaOS: MockElizaOS = {
+        getAgent: jest.fn(() => undefined),
+      };
 
       req.params = { agentId: '123e4567-e89b-12d3-a456-426614174000' };
 
-      const middleware = agentExistsMiddleware(mockElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(404);

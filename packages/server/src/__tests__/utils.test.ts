@@ -106,9 +106,8 @@ describe('Utility Functions', () => {
     it('should use default directory when no options provided', () => {
       const result = resolvePgliteDir();
 
-      // Should return some valid path
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
+      // Should return an absolute path
+      expect(path.isAbsolute(result)).toBe(true);
       expect(result.length).toBeGreaterThan(0);
     });
 
@@ -175,10 +174,9 @@ describe('Utility Functions', () => {
       
       const result = resolvePgliteDir('');
 
-      // Empty string is passed through expandTildePath, which returns it
-      // Then getDatabaseDir() is called since no dir is set
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
+      // Empty string triggers default fallback behavior
+      expect(path.isAbsolute(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
     });
 
     it('should handle undefined inputs', () => {
@@ -188,8 +186,7 @@ describe('Utility Functions', () => {
       const result = resolvePgliteDir(undefined);
 
       // Should return default path from getDatabaseDir()
-      expect(result).toBeDefined();
-      expect(typeof result).toBe('string');
+      expect(path.isAbsolute(result)).toBe(true);
       expect(result.length).toBeGreaterThan(0);
     });
   });

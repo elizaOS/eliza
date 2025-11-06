@@ -12,6 +12,12 @@ import {
 } from '../api/shared/file-utils';
 import path from 'node:path';
 
+// Test file interface to avoid 'as any' casts
+interface TestFileObject {
+  tempFilePath?: string | null;
+  originalname?: string;
+}
+
 describe('File Utilities', () => {
   let originalCwd: () => string;
 
@@ -167,22 +173,24 @@ describe('File Utilities', () => {
     });
   });
 
+  // Note: Actual file cleanup behavior is tested via integration tests
+  // These unit tests focus on error handling and edge cases
   describe('cleanupFiles', () => {
     it('should handle empty files array gracefully', () => {
       expect(() => cleanupFiles([])).not.toThrow();
     });
 
     it('should handle undefined files gracefully', () => {
-      expect(() => cleanupFiles(undefined as any)).not.toThrow();
+      expect(() => cleanupFiles(undefined as unknown as Express.Multer.File[])).not.toThrow();
     });
 
     it('should handle files with null tempFilePath', () => {
-      const files = [
+      const files: TestFileObject[] = [
         { tempFilePath: null },
         { tempFilePath: undefined },
-      ] as any[];
+      ];
 
-      expect(() => cleanupFiles(files)).not.toThrow();
+      expect(() => cleanupFiles(files as unknown as Express.Multer.File[])).not.toThrow();
     });
 
     it('should validate array structure', () => {

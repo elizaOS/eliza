@@ -5,15 +5,35 @@
 import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
 import { SocketIORouter } from '../socketio';
 import { createMockAgentRuntime } from './test-utils/mocks';
-import type { IAgentRuntime, UUID } from '@elizaos/core';
+import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import { EventType, SOCKET_MESSAGE_TYPE, ChannelType, logger } from '@elizaos/core';
+import type { AgentServer } from '../index';
+
+// Mock types for testing
+type MockElizaOS = Pick<ElizaOS, 'getAgent' | 'getAgents'>;
+type MockAgentServer = Pick<AgentServer, 'getChannelDetails' | 'createChannel' | 'createMessage' | 'getServers'>;
+
+interface MockSocket {
+  id: string;
+  on: jest.Mock;
+  emit: jest.Mock;
+  disconnect: jest.Mock;
+  join: jest.Mock;
+}
+
+interface MockIO {
+  sockets: {
+    sockets: Map<string, MockSocket>;
+  };
+  to: jest.Mock;
+}
 
 describe('SocketIORouter', () => {
   let router: SocketIORouter;
-  let mockElizaOS: any;
-  let mockServerInstance: any;
-  let mockIO: any;
-  let mockSocket: any;
+  let mockElizaOS: MockElizaOS;
+  let mockServerInstance: MockAgentServer;
+  let mockIO: MockIO;
+  let mockSocket: MockSocket;
   let mockRuntime: IAgentRuntime;
 
   beforeEach(() => {

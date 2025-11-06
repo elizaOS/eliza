@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import express from 'express';
-import type { UUID } from '@elizaos/core';
+import type { UUID, IAgentRuntime } from '@elizaos/core';
 import { createAgentRunsRouter } from '../api/agents/runs';
 
 type LogEntry = {
@@ -9,14 +9,22 @@ type LogEntry = {
   body: Record<string, any>;
 };
 
-function makeRuntimeWithLogs(logs: LogEntry[]) {
+// Mock runtime interface for testing
+interface MockRuntime extends Pick<IAgentRuntime, 'getLogs'> {
+  getMemories: (params: any) => Promise<any[]>;
+  getAllWorlds: () => Promise<any[]>;
+  getRooms: (worldId: UUID) => Promise<any[]>;
+  getParticipantsForRoom: (roomId: UUID) => Promise<UUID[]>;
+}
+
+function makeRuntimeWithLogs(logs: LogEntry[]): MockRuntime {
   return {
     getLogs: async (_params: any) => logs,
     getMemories: async (_params: any) => [],  // Return empty array for messages
     getAllWorlds: async () => [],  // No worlds needed for this test
     getRooms: async (_worldId: UUID) => [],
     getParticipantsForRoom: async (_roomId: UUID) => [],
-  } as any;
+  };
 }
 
 // FIXED: Mock now includes required methods (getMemories, getAllWorlds, etc.)
@@ -90,14 +98,19 @@ describe.skip('Agent Runs API - Test interference in full runs', () => {
     },
   ];
 
-  const mockElizaOS = {
+  // Mock ElizaOS for testing
+  type MockElizaOS = {
+    getAgent: (id: UUID) => MockRuntime | null;
+  };
+
+  const mockElizaOS: MockElizaOS = {
     getAgent: (id: UUID) => {
       if (id === agentId) {
         return makeRuntimeWithLogs(logs);
       }
       return null;
     },
-  } as any;
+  };
 
   beforeEach((done) => {
     app = express();
