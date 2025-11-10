@@ -89,8 +89,9 @@ export function createChannelsRouter(
         source_type, // Should be something like 'eliza_gui'
       } = req.body;
 
-      // Validate server ID
-      const isValidServerId = server_id === serverInstance.serverId;
+      // RLS security: Only allow access to current server's data when RLS isolation is enabled
+      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+      const isValidServerId = !rlsEnabled || server_id === serverInstance.serverId;
 
       if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(server_id)) {
         return res.status(400).json({
@@ -99,7 +100,6 @@ export function createChannelsRouter(
         });
       }
 
-      // RLS security: Only allow access to current server's data
       if (!isValidServerId) {
         return res.status(403).json({
           success: false,
@@ -479,8 +479,9 @@ export function createChannelsRouter(
       });
     }
 
-    // RLS security: Only allow access to current server's data
-    const isValidServerId = server_id === serverInstance.serverId;
+    // RLS security: Only allow access to current server's data when RLS isolation is enabled
+    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+    const isValidServerId = !rlsEnabled || server_id === serverInstance.serverId;
 
     if (
       !name ||
