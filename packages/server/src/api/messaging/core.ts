@@ -4,6 +4,7 @@ import internalMessageBus from '../../bus'; // Import the bus
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { attachmentsToApiUrls } from '../../utils/media-transformer';
+import { validateServerIdForRls } from '../../utils/rls-validation';
 
 /**
  * Core messaging functionality - message submission and ingestion
@@ -24,15 +25,11 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata, // Should include agent_name if author_id is agent's runtime.agentId
     } = req.body;
 
-    // RLS security: Only allow access to current server's data when RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-    const isValidServerId = !rlsEnabled || server_id === serverInstance.serverId;
-
     if (
       !validateUuid(channel_id) ||
+      !validateUuid(server_id) ||
       !validateUuid(author_id) ||
       !content ||
-      !isValidServerId ||
       !source_type ||
       !raw_message
     ) {
@@ -40,6 +37,14 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         success: false,
         error:
           'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
+      });
+    }
+
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(server_id, serverInstance)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: server_id does not match current server',
       });
     }
 
@@ -113,15 +118,11 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata,
     } = req.body;
 
-    // RLS security: Only allow access to current server's data when RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-    const isValidServerId = !rlsEnabled || server_id === serverInstance.serverId;
-
     if (
       !validateUuid(channel_id) ||
+      !validateUuid(server_id) ||
       !validateUuid(author_id) ||
       !content ||
-      !isValidServerId ||
       !source_type ||
       !raw_message
     ) {
@@ -129,6 +130,14 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         success: false,
         error:
           'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
+      });
+    }
+
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(server_id, serverInstance)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: server_id does not match current server',
       });
     }
 
@@ -216,13 +225,16 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
     }
+    if (server_id && !validateUuid(server_id)) {
+      return res.status(400).json({ success: false, error: 'Invalid server_id format' });
+    }
 
-    // RLS security: Only allow access to current server's data when RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-    if (rlsEnabled && server_id && server_id !== serverInstance.serverId) {
-      return res
-        .status(403)
-        .json({ success: false, error: 'Forbidden: server_id does not match current server' });
+    // RLS security: Only allow access to current server's data (if provided)
+    if (server_id && !validateServerIdForRls(server_id, serverInstance)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: server_id does not match current server',
+      });
     }
 
     try {
