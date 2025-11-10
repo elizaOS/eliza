@@ -813,6 +813,7 @@ describe('settings utilities', () => {
   describe('Character settings merge with complex objects', () => {
     it('should handle complex character settings without corrupting them during .env merge', async () => {
       const { setDefaultSecretsFromEnv } = await import('../secrets');
+      const { loadEnvFile } = await import('../utils/environment');
       const fs = await import('node:fs');
       const path = await import('node:path');
       const os = await import('node:os');
@@ -820,12 +821,20 @@ describe('settings utilities', () => {
       const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-complex-test-'));
       const originalCwd = process.cwd();
 
+      // Track keys we add to process.env for cleanup
+      const testEnvKeys = new Set<string>();
+
       try {
         process.chdir(testDir);
 
         const envContent = `SIMPLE_KEY=simple-value
 ANOTHER_KEY=another-value`;
         fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
+        // Load .env file into process.env
+        loadEnvFile(path.join(testDir, '.env'));
+        testEnvKeys.add('SIMPLE_KEY');
+        testEnvKeys.add('ANOTHER_KEY');
 
         const character: Character = {
           name: 'TestChar',
@@ -861,6 +870,11 @@ ANOTHER_KEY=another-value`;
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });
+
+        // Clean up test environment variables
+        for (const key of testEnvKeys) {
+          delete (process.env as any)[key];
+        }
       }
     });
   });
