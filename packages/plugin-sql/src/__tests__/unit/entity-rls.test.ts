@@ -491,9 +491,9 @@ describe('Entity RLS Integration', () => {
 
 describe('Entity RLS Backward Compatibility', () => {
   describe('Graceful Degradation', () => {
-    it('should work when ENABLE_RLS_ISOLATION=false', () => {
-      const rlsEnabled = false;
-      const shouldApplyEntityRLS = rlsEnabled;
+    it('should work when ENABLE_DATA_ISOLATION=false', () => {
+      const dataIsolationEnabled = false;
+      const shouldApplyEntityRLS = dataIsolationEnabled;
 
       expect(shouldApplyEntityRLS).toBe(false);
     });

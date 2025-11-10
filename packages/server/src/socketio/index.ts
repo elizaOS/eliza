@@ -14,13 +14,15 @@ import { attachmentsToApiUrls } from '../utils/media-transformer';
 
 export class SocketIORouter {
   private elizaOS: ElizaOS;
-  private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
+  private socketAgent: Map<string, UUID>; // socket.id → agentId (for agent-specific interactions like log streaming)
+  private entitySockets: Map<UUID, Set<string>>; // entityId → socket.ids (for targeted cache invalidation when permissions change)
   private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
   private serverInstance: AgentServer;
 
   constructor(elizaOS: ElizaOS, serverInstance: AgentServer) {
     this.elizaOS = elizaOS;
-    this.connections = new Map();
+    this.socketAgent = new Map();
+    this.entitySockets = new Map();
     this.logStreamConnections = new Map();
     this.serverInstance = serverInstance;
     logger.info(`[SocketIO] Router initialized with ${this.elizaOS.getAgents().length} agents`);
@@ -28,12 +30,63 @@ export class SocketIORouter {
 
   setupListeners(io: SocketIOServer) {
     logger.info(`[SocketIO] Setting up Socket.IO event listeners`);
+
+    // Setup authentication middleware (runs before connection)
+    this.setupAuthenticationMiddleware(io);
+
     const messageTypes = Object.keys(SOCKET_MESSAGE_TYPE).map(
       (key) => `${key}: ${SOCKET_MESSAGE_TYPE[key as keyof typeof SOCKET_MESSAGE_TYPE]}`
     );
     logger.info(`[SocketIO] Registered message types: ${messageTypes.join(', ')}`);
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
+    });
+  }
+
+  /**
+   * Authentication middleware - Production-grade WebSocket security
+   *
+   * Runs on every WebSocket handshake to:
+   * 1. Authenticate the user (currently mock JWT, will be real JWT)
+   * 2. Initialize security context on socket.data
+   * 3. Track entity->sockets mapping for cache invalidation
+   *
+   * TODO: Replace mock entityId with real JWT token verification
+   */
+  private setupAuthenticationMiddleware(io: SocketIOServer) {
+    io.use(async (socket, next) => {
+      try {
+        // TODO: const token = socket.handshake.auth.token;
+        // TODO: const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        // TODO: const entityId = decoded.entityId;
+
+        // MOCK JWT - Client sends entityId directly (INSECURE, temporary)
+        // This simulates JWT authentication flow without actual token verification
+        const entityId = socket.handshake.auth.entityId;
+
+        if (!entityId || !validateUuid(entityId)) {
+          logger.warn(`[SocketIO Auth] Invalid or missing entityId in handshake`);
+          return next(new Error('Authentication failed: entityId required'));
+        }
+
+        // Initialize socket security context
+        socket.data.entityId = entityId as UUID;
+        socket.data.allowedRooms = new Set<UUID>(); // Lazy-loaded on first join attempt
+        socket.data.roomsCacheLoaded = false; // Track if cache is initialized
+
+        logger.info(`[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId}`);
+
+        // Track entity -> sockets mapping for targeted cache invalidation
+        if (!this.entitySockets.has(entityId as UUID)) {
+          this.entitySockets.set(entityId as UUID, new Set());
+        }
+        this.entitySockets.get(entityId as UUID)!.add(socket.id);
+
+        next();
+      } catch (error) {
+        logger.error(`[SocketIO Auth] Authentication error:`, error);
+        next(new Error('Authentication failed'));
+      }
     });
   }
 
@@ -124,7 +177,15 @@ export class SocketIORouter {
     }
   }
 
-  private handleChannelJoining(socket: Socket, payload: any) {
+  /**
+   * Handle channel joining with production-grade security
+   *
+   * Security features:
+   * 1. Lazy-loading cache: Load allowed rooms only on first join attempt
+   * 2. Hybrid approach: Check cache first, then DB if not found (new room)
+   * 3. Permission verification: Block joins to rooms user doesn't have access to
+   */
+  private async handleChannelJoining(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
     const { agentId, entityId, messageServerId, metadata } = payload;
 
@@ -138,16 +199,28 @@ export class SocketIORouter {
       return;
     }
 
+    // SECURITY: Verify permission to join this channel
+    const hasPermission = await this.verifyChannelAccess(socket, channelId as UUID);
+    if (!hasPermission) {
+      logger.warn(
+        `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) DENIED access to channel ${channelId}`
+      );
+      this.sendErrorResponse(socket, `Access denied: You don't have permission to join this channel`);
+      return;
+    }
+
     if (agentId) {
       const agentUuid = validateUuid(agentId);
       if (agentUuid) {
-        this.connections.set(socket.id, agentUuid);
+        this.socketAgent.set(socket.id, agentUuid);
         logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
       }
     }
 
     socket.join(channelId);
-    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
+    logger.info(
+      `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) GRANTED access to channel ${channelId}`
+    );
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
     if (entityId && (messageServerId || this.serverInstance.messageServerId)) {
@@ -477,9 +550,22 @@ export class SocketIORouter {
   }
 
   private handleDisconnect(socket: Socket) {
-    const agentIdAssociated = this.connections.get(socket.id);
-    this.connections.delete(socket.id);
+    const agentIdAssociated = this.socketAgent.get(socket.id);
+    this.socketAgent.delete(socket.id);
     this.logStreamConnections.delete(socket.id);
+
+    // Cleanup entitySockets mapping
+    if (socket.data?.entityId) {
+      const entityId = socket.data.entityId as UUID;
+      const sockets = this.entitySockets.get(entityId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          this.entitySockets.delete(entityId);
+        }
+      }
+    }
+
     if (agentIdAssociated) {
       logger.info(
         `[SocketIO] Client ${socket.id} (associated with agent ${agentIdAssociated}) disconnected.`

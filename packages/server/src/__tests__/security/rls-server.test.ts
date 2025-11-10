@@ -10,32 +10,32 @@ import { stringToUuid } from '@elizaos/core';
 
 describe('AgentServer RLS Configuration', () => {
   describe('Server ID Assignment', () => {
-    it('should use owner_id as serverId when RLS is enabled', () => {
+    it('should use server_id as serverId when data isolation is enabled', () => {
       const mockConfig = {
-        ENABLE_RLS_ISOLATION: 'true',
-        RLS_OWNER_ID: 'test-tenant-123',
+        ENABLE_DATA_ISOLATION: 'true',
+        ELIZA_SERVER_ID: 'test-tenant-123',
       };
 
-      const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
-      const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
+      const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
+      const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
+      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
-      expect(serverId).toBe(ownerId);
-      expect(serverId).not.toBe('00000000-0000-0000-0000-000000000000');
+      expect(actualServerId).toBe(serverId);
+      expect(actualServerId).not.toBe('00000000-0000-0000-0000-000000000000');
     });
 
-    it('should use default serverId when RLS is disabled', () => {
+    it('should use default serverId when data isolation is disabled', () => {
       const mockConfig = {
-        ENABLE_RLS_ISOLATION: 'false',
-        RLS_OWNER_ID: 'test-tenant-123',
+        ENABLE_DATA_ISOLATION: 'false',
+        ELIZA_SERVER_ID: 'test-tenant-123',
       };
 
-      const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
-      const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
+      const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
+      const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
+      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
-      expect(serverId).toBe('00000000-0000-0000-0000-000000000000');
-      expect(serverId).not.toBe(ownerId);
+      expect(actualServerId).toBe('00000000-0000-0000-0000-000000000000');
+      expect(actualServerId).not.toBe(serverId);
     });
   });
 
@@ -220,43 +220,43 @@ describe('RLS Cleanup on Disable', () => {
 });
 
 describe('Environment Variable Configuration', () => {
-  describe('ENABLE_RLS_ISOLATION', () => {
+  describe('ENABLE_DATA_ISOLATION', () => {
     it('should parse "true" as enabled', () => {
-      const env = { ENABLE_RLS_ISOLATION: 'true' };
-      const rlsEnabled = env.ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(true);
+      const env = { ENABLE_DATA_ISOLATION: 'true' };
+      const dataIsolationEnabled = env.ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(true);
     });
 
     it('should parse "false" as disabled', () => {
-      const env = { ENABLE_RLS_ISOLATION: 'false' };
-      const rlsEnabled = env.ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(false);
+      const env = { ENABLE_DATA_ISOLATION: 'false' };
+      const dataIsolationEnabled = env.ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(false);
     });
 
     it('should treat undefined as disabled', () => {
       const env = {};
-      const rlsEnabled = (env as { ENABLE_RLS_ISOLATION?: string }).ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(false);
+      const dataIsolationEnabled = (env as { ENABLE_DATA_ISOLATION?: string }).ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(false);
     });
   });
 
-  describe('RLS_OWNER_ID', () => {
-    it('should generate consistent owner_id from RLS_OWNER_ID string', () => {
-      const rlsOwnerId = 'my-tenant-123';
-      const ownerId1 = stringToUuid(rlsOwnerId);
-      const ownerId2 = stringToUuid(rlsOwnerId);
+  describe('ELIZA_SERVER_ID', () => {
+    it('should generate consistent server_id from ELIZA_SERVER_ID string', () => {
+      const elizaServerId = 'my-tenant-123';
+      const serverId1 = stringToUuid(elizaServerId);
+      const serverId2 = stringToUuid(elizaServerId);
 
-      expect(ownerId1).toBe(ownerId2);
+      expect(serverId1).toBe(serverId2);
     });
 
-    it('should generate different owner_ids for different RLS_OWNER_ID values', () => {
+    it('should generate different server_ids for different ELIZA_SERVER_ID values', () => {
       const tenant1 = 'tenant-1';
       const tenant2 = 'tenant-2';
 
-      const ownerId1 = stringToUuid(tenant1);
-      const ownerId2 = stringToUuid(tenant2);
+      const serverId1 = stringToUuid(tenant1);
+      const serverId2 = stringToUuid(tenant2);
 
-      expect(ownerId1).not.toBe(ownerId2);
+      expect(serverId1).not.toBe(serverId2);
     });
   });
 });

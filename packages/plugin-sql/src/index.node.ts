@@ -30,19 +30,19 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    // Determine RLS server_id if RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+    // Determine RLS server_id if data isolation is enabled
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
     let rlsServerId: string | undefined;
     let managerKey = 'default'; // Key for connection manager map
 
-    if (rlsEnabled) {
-      const rlsServerIdString = process.env.RLS_SERVER_ID;
+    if (dataIsolationEnabled) {
+      const rlsServerIdString = process.env.ELIZA_SERVER_ID;
       if (!rlsServerIdString) {
-        throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires RLS_SERVER_ID environment variable');
+        throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
       }
       rlsServerId = stringToUuid(rlsServerIdString);
       managerKey = rlsServerId; // Use server_id as key for multi-tenancy
-      logger.debug(`[RLS] Using connection pool for server_id: ${rlsServerId.slice(0, 8)}… (from RLS_SERVER_ID="${rlsServerIdString}")`);
+      logger.debug(`[Data Isolation] Using connection pool for server_id: ${rlsServerId.slice(0, 8)}… (from ELIZA_SERVER_ID="${rlsServerIdString}")`);
     }
 
     // Initialize connection managers map if needed

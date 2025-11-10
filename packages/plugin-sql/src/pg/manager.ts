@@ -57,7 +57,7 @@ export class PostgresConnectionManager {
    *
    * Server RLS context (if enabled) is already set via Pool's application_name.
    *
-   * If Entity RLS is not installed (ENABLE_RLS_ISOLATION=false), this method
+   * If Entity RLS is not installed (ENABLE_DATA_ISOLATION=false), this method
    * gracefully degrades to executing the callback without setting entity context.
    *
    * @param entityId - The entity UUID to set as context (or null for server operations)
@@ -80,7 +80,7 @@ export class PostgresConnectionManager {
           // Distinguish between "Entity RLS not installed" vs "critical error"
           const errorMessage = error instanceof Error ? error.message : String(error);
 
-          // Check if this is just Entity RLS not being installed (expected when ENABLE_RLS_ISOLATION=false)
+          // Check if this is just Entity RLS not being installed (expected when ENABLE_DATA_ISOLATION=false)
           if (
             errorMessage.includes('unrecognized configuration parameter') ||
             errorMessage.includes('app.entity_id')

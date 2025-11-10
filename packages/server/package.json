@@ -47,6 +47,8 @@
   },
   "devDependencies": {
     "@elizaos/client": "workspace:*",
+    "@types/bcrypt": "^6.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.1",
     "prettier": "3.6.2",
     "tsx": "4.20.6",
@@ -62,10 +64,13 @@
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^2.0.0",
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.2.0",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",
     "socket.io": "^4.8.1"

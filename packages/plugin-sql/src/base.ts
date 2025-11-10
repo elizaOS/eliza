@@ -15,6 +15,7 @@ import {
   type Task,
   TaskMetadata,
   type UUID,
+  type User,
   type World,
   type AgentRunSummary,
   type AgentRunSummaryResult,
@@ -3771,6 +3772,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         },
         ids
       );
+    });
+  }
+
+  // User management methods
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.email, email.toLowerCase()))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async getUserByUsername(username: string): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.username, username))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async getUserById(id: UUID): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.id, id))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async createUser(user: User): Promise<User> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      await this.db.insert(userTable).values(user);
+      return user;
+    });
+  }
+
+  async updateUserLastLogin(userId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      await this.db
+        .update(userTable)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(userTable.id, userId));
     });
   }
 }

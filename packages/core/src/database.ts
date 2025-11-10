@@ -585,4 +585,11 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   }): Promise<Memory[]>;
 
   abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  abstract getUserByEmail(email: string): Promise<any | null>;
+  abstract getUserByUsername(username: string): Promise<any | null>;
+  abstract getUserById(id: UUID): Promise<any | null>;
+  abstract createUser(user: any): Promise<any>;
+  abstract updateUserLastLogin(userId: UUID): Promise<void>;
 }

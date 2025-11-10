@@ -52,16 +52,16 @@ export function createDatabaseAdapter(
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
-      // Determine RLS server_id if RLS isolation is enabled
-      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+      // Determine RLS server_id if data isolation is enabled
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
       let rlsServerId: string | undefined;
-      if (rlsEnabled) {
-        const rlsServerIdString = process.env.RLS_SERVER_ID;
+      if (dataIsolationEnabled) {
+        const rlsServerIdString = process.env.ELIZA_SERVER_ID;
         if (!rlsServerIdString) {
-          throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires RLS_SERVER_ID environment variable');
+          throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
         }
         rlsServerId = stringToUuid(rlsServerIdString);
-        logger.debug(`[RLS] Creating connection pool with server_id: ${rlsServerId.slice(0, 8)}… (from RLS_SERVER_ID="${rlsServerIdString}")`);
+        logger.debug(`[Data Isolation] Creating connection pool with server_id: ${rlsServerId.slice(0, 8)}… (from ELIZA_SERVER_ID="${rlsServerIdString}")`);
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(

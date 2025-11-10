@@ -374,27 +374,27 @@ export class AgentServer {
         );
       }
 
-      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-      const rlsServerIdString = process.env.RLS_SERVER_ID;
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+      const elizaServerIdString = process.env.ELIZA_SERVER_ID;
 
-      if (rlsEnabled) {
+      if (dataIsolationEnabled) {
         if (!config?.postgresUrl) {
-          logger.error('[RLS] ENABLE_RLS_ISOLATION requires PostgreSQL (not compatible with PGLite)');
-          throw new Error('RLS isolation requires PostgreSQL database');
+          logger.error('[Data Isolation] ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite)');
+          throw new Error('Data isolation requires PostgreSQL database');
         }
 
-        if (!rlsServerIdString) {
-          logger.error('[RLS] ENABLE_RLS_ISOLATION requires RLS_SERVER_ID environment variable');
-          throw new Error('RLS_SERVER_ID environment variable is required when RLS is enabled');
+        if (!elizaServerIdString) {
+          logger.error('[Data Isolation] ENABLE_DATA_ISOLATION requires ELIZA_SERVER_ID environment variable');
+          throw new Error('ELIZA_SERVER_ID environment variable is required when data isolation is enabled');
         }
 
-        // Convert RLS_SERVER_ID string to deterministic UUID
-        const server_id = stringToUuid(rlsServerIdString);
+        // Convert ELIZA_SERVER_ID string to deterministic UUID
+        const server_id = stringToUuid(elizaServerIdString);
 
-        logger.info('[INIT] Initializing RLS multi-tenant isolation...');
-        logger.info(`[RLS] Server ID: ${server_id.slice(0, 8)}… (from RLS_SERVER_ID="${rlsServerIdString}")`);
-        logger.warn('[RLS] Ensure your PostgreSQL user is NOT a superuser!');
-        logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
+        logger.info('[INIT] Initializing data isolation (Server RLS + Entity RLS)...');
+        logger.info(`[Data Isolation] Server ID: ${server_id.slice(0, 8)}… (from ELIZA_SERVER_ID="${elizaServerIdString}")`);
+        logger.warn('[Data Isolation] Ensure your PostgreSQL user is NOT a superuser!');
+        logger.warn('[Data Isolation] Superusers bypass ALL RLS policies, defeating isolation.');
 
         try {
           // Install RLS PostgreSQL functions (includes Entity RLS) but DO NOT apply policies yet
@@ -476,14 +476,14 @@ export class AgentServer {
 
   private async ensureDefaultServer(): Promise<void> {
     try {
-      // When RLS is enabled, create a server per server instance instead of a shared default server
-      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
+      // When data isolation is enabled, create a server per server instance instead of a shared default server
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
 
       // Security: Separate RLS server_id (internal) from message_servers.id (public API)
-      // - rlsServerId: Used for PostgreSQL RLS isolation (from RLS_SERVER_ID env var)
+      // - rlsServerId: Used for PostgreSQL RLS isolation (from ELIZA_SERVER_ID env var)
       // - serverId: Used for message_servers.id (random UUID, exposed in API)
-      // This prevents leaking sensitive RLS_SERVER_ID values in public API paths
-      if (rlsEnabled && this.rlsServerId) {
+      // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
+      if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
         const existingServer = await (this.database as any).getMessageServerByRlsServerId(this.rlsServerId);
 
@@ -501,7 +501,7 @@ export class AgentServer {
         this.messageServerId = '00000000-0000-0000-0000-000000000000';
       }
 
-      const serverName = rlsEnabled && this.rlsServerId
+      const serverName = dataIsolationEnabled && this.rlsServerId
         ? `Server ${this.messageServerId.substring(0, 8)}`
         : 'Default Server';
 

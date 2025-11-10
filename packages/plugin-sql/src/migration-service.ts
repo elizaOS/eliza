@@ -144,18 +144,25 @@ export class DatabaseMigrationService {
 
       // Re-apply RLS after all migrations are complete
       // This ensures RLS is active on all tables with proper server_id columns
-      try {
-        logger.info('[DatabaseMigrationService] Re-applying Row Level Security...');
-        await installRLSFunctions({ db: this.db } as any);
-        await applyRLSToNewTables({ db: this.db } as any);
-        await applyEntityRLSToAllTables({ db: this.db } as any);
-        logger.info('[DatabaseMigrationService] ✅ RLS re-applied successfully');
-      } catch (rlsError) {
-        const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
-        logger.warn('[DatabaseMigrationService] ⚠️ Failed to re-apply RLS:', errorMsg);
-        logger.warn(
-          '[DatabaseMigrationService] This is OK if server_id columns are not yet in schemas'
-        );
+      // ONLY if data isolation is enabled
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (dataIsolationEnabled) {
+        try {
+          logger.info('[DatabaseMigrationService] Re-applying Row Level Security...');
+          await installRLSFunctions({ db: this.db } as any);
+          await applyRLSToNewTables({ db: this.db } as any);
+          await applyEntityRLSToAllTables({ db: this.db } as any);
+          logger.info('[DatabaseMigrationService] ✅ RLS re-applied successfully');
+        } catch (rlsError) {
+          const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
+          logger.warn('[DatabaseMigrationService] ⚠️ Failed to re-apply RLS:', errorMsg);
+          logger.warn(
+            '[DatabaseMigrationService] This is OK if server_id columns are not yet in schemas'
+          );
+        }
+      } else {
+        logger.info('[DatabaseMigrationService] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)');
       }
     } else {
       logger.error(

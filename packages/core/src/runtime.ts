@@ -3001,4 +3001,25 @@ export class AgentRuntime implements IAgentRuntime {
   hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
     return this.elizaOS !== undefined;
   }
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  async getUserByEmail(email: string): Promise<any | null> {
+    return await this.adapter.getUserByEmail(email);
+  }
+
+  async getUserByUsername(username: string): Promise<any | null> {
+    return await this.adapter.getUserByUsername(username);
+  }
+
+  async getUserById(id: UUID): Promise<any | null> {
+    return await this.adapter.getUserById(id);
+  }
+
+  async createUser(user: any): Promise<any> {
+    return await this.adapter.createUser(user);
+  }
+
+  async updateUserLastLogin(userId: UUID): Promise<void> {
+    return await this.adapter.updateUserLastLogin(userId);
+  }
 }
