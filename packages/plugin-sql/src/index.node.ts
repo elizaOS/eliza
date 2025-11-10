@@ -53,7 +53,7 @@ export function createDatabaseAdapter(
     // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!manager) {
-      logger.debug(`[RLS] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
+      logger.debug(`[Data Isolation] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
       manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
     }
