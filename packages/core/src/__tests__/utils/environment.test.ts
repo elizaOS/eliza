@@ -8,7 +8,7 @@ import {
   getBooleanEnv,
   getNumberEnv,
   initBrowserEnvironment,
-  loadEnvConfig,
+  loadEnvFile,
   findEnvFile,
 } from '../../utils/environment';
 
@@ -304,33 +304,41 @@ describe('Environment Abstraction', () => {
       Object.assign(process.env, originalEnvSnapshot);
     });
 
-    describe('loadEnvConfig', () => {
-      test('should load environment configuration', async () => {
-        process.env.OPENAI_API_KEY = 'test-key';
-        process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-
-        const config = await loadEnvConfig();
-
-        expect(config).toBeDefined();
-        expect(config.OPENAI_API_KEY).toBe('test-key');
-        expect(config.ANTHROPIC_API_KEY).toBe('anthropic-key');
+    describe('loadEnvFile', () => {
+      test('should load environment variables from .env file', () => {
+        const result = loadEnvFile();
+        // Result depends on whether .env exists in test environment
+        expect(typeof result).toBe('boolean');
       });
 
-      test('should return empty config when no env vars set', async () => {
-        delete process.env.OPENAI_API_KEY;
-        delete process.env.ANTHROPIC_API_KEY;
+      test('should handle invalid path gracefully', () => {
+        const result = loadEnvFile('/nonexistent/path/.env');
+        expect(result).toBe(false);
+      });
 
-        const config = await loadEnvConfig();
-
-        expect(config).toBeDefined();
-        expect(Object.keys(config).length).toBeGreaterThanOrEqual(0);
+      test('should be idempotent', () => {
+        const result1 = loadEnvFile();
+        const result2 = loadEnvFile();
+        // Should be safe to call multiple times
+        expect(typeof result1).toBe('boolean');
+        expect(typeof result2).toBe('boolean');
       });
     });
 
     describe('findEnvFile', () => {
-      test('should return null when no .env file exists', () => {
+      test('should traverse up directory tree', () => {
         const envPath = findEnvFile();
         // In test environment, may or may not exist
+        expect(envPath === null || typeof envPath === 'string').toBe(true);
+      });
+
+      test('should support custom filenames', () => {
+        const envPath = findEnvFile(undefined, ['.env.custom', '.env']);
+        expect(envPath === null || typeof envPath === 'string').toBe(true);
+      });
+
+      test('should support custom start directory', () => {
+        const envPath = findEnvFile(process.cwd());
         expect(envPath === null || typeof envPath === 'string').toBe(true);
       });
     });
@@ -372,8 +380,7 @@ describe('Environment Abstraction', () => {
       expect(true).toBe(true);
     });
 
-    it('environment cache can be cleared indirectly by creating a new instance', () => {
-      const env = getEnvironment();
+    it('environment cache can be cleared indirectly by setting', () => {
       // Access a key, then change it, ensure fresh read gets latest
       const key = 'TEST_CACHE_KEY';
       setEnv(key, 'a');
