@@ -32,7 +32,7 @@ export function jwtAuthMiddleware(
   }
 
   // Extract Bearer token
-  const authHeader = req.headers.authorization;
+  const authHeader = req.headers?.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     // No JWT provided - check if required
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';

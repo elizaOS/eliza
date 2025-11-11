@@ -89,6 +89,37 @@ describe('Messaging Integration Tests', () => {
       expect(participants).toContain(entityId2);
     });
 
+    it('should check if entity is channel participant', async () => {
+      const channel = await adapter.createChannel(
+        {
+          messageServerId: messageServerId,
+          name: 'check-participant-channel',
+          type: ChannelType.GROUP,
+        },
+        []
+      );
+      const entityId = uuidv4() as UUID;
+
+      // Initially not a participant
+      let isParticipant = await adapter.isChannelParticipant(channel.id, entityId);
+      expect(isParticipant).toBe(false);
+
+      // Add as participant
+      await adapter.addChannelParticipants(channel.id, [entityId]);
+      isParticipant = await adapter.isChannelParticipant(channel.id, entityId);
+      expect(isParticipant).toBe(true);
+    });
+
+    it('should return false for non-existent channel participant check', async () => {
+      const nonExistentChannelId = uuidv4() as UUID;
+      const nonExistentEntityId = uuidv4() as UUID;
+      const isParticipant = await adapter.isChannelParticipant(
+        nonExistentChannelId,
+        nonExistentEntityId
+      );
+      expect(isParticipant).toBe(false);
+    });
+
     it('should add and retrieve agents for a server', async () => {
       const agent1 = uuidv4() as UUID;
       const agent2 = uuidv4() as UUID;

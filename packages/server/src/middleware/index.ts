@@ -4,11 +4,8 @@
  */
 
 // Authentication middleware
-export { apiKeyAuthMiddleware } from './api-key';
+export { apiKeyAuthMiddleware, type ApiKeyAuthRequest } from './api-key';
 export { jwtAuthMiddleware, requireJWT, type JWTAuthRequest } from './jwt';
-
-// Entity context middleware
-export { entityContextMiddleware, type EntityContextRequest } from './entity-context';
 
 // Security middleware
 export { securityMiddleware } from './security';

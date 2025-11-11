@@ -83,8 +83,8 @@ export class SocketIORouter {
         this.entitySockets.get(entityId as UUID)!.add(socket.id);
 
         next();
-      } catch (error) {
-        logger.error(`[SocketIO Auth] Authentication error:`, error);
+      } catch (error: any) {
+        logger.error(`[SocketIO Auth] Authentication error:`, error?.message || error);
         next(new Error('Authentication failed'));
       }
     });
@@ -174,6 +174,40 @@ export class SocketIORouter {
         `[SocketIO ${socket.id}] Error processing 'message' event: ${error.message}`,
         error
       );
+    }
+  }
+
+  /**
+   * Verify if socket's entity has permission to access a channel.
+   * Returns true if entity is a channel participant or if data isolation is disabled.
+   */
+  private async verifyChannelAccess(socket: Socket, channelId: UUID): Promise<boolean> {
+    try {
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (!dataIsolationEnabled) {
+        logger.debug(`[SocketIO Security] Data isolation disabled - allowing channel access`);
+        return true;
+      }
+
+      const entityId = socket.data?.entityId;
+      if (!entityId) {
+        logger.warn(`[SocketIO Security] No entityId in socket data - denying access`);
+        return false;
+      }
+
+      const isParticipant = await this.serverInstance.isChannelParticipant(channelId, entityId);
+
+      if (isParticipant) {
+        logger.debug(`[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`);
+      } else {
+        logger.warn(`[SocketIO Security] Entity ${entityId} is NOT participant in channel ${channelId}`);
+      }
+
+      return isParticipant;
+    } catch (error: any) {
+      logger.error(`[SocketIO Security] Error verifying channel access:`, error?.message || error);
+      return false; // Fail closed - deny on error
     }
   }
 

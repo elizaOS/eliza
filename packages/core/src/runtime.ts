@@ -1604,6 +1604,10 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getParticipantsForRoom(roomId);
   }
 
+  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+    return await this.adapter.isRoomParticipant(roomId, entityId);
+  }
+
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     return await this.adapter.addParticipantsRoom([entityId], roomId);
   }

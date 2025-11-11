@@ -22,8 +22,12 @@ import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
-import { apiKeyAuthMiddleware } from './middleware/index.js';
-import { messageBusConnectorPlugin, setGlobalElizaOS, setGlobalAgentServer } from './services/message.js';
+import { apiKeyAuthMiddleware, jwtAuthMiddleware } from './middleware/index.js';
+import {
+  messageBusConnectorPlugin,
+  setGlobalElizaOS,
+  setGlobalAgentServer,
+} from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
 import sqlPlugin, {
@@ -759,18 +763,21 @@ export class AgentServer {
       logger.info('Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
 
       // Optional Authentication Middleware
-      const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
-      if (serverAuthToken) {
-        logger.info('Server authentication enabled. Requires X-API-KEY header for /api routes.');
-        // Apply middleware only to /api paths
-        this.app.use('/api', (req, res, next) => {
-          apiKeyAuthMiddleware(req, res, next);
-        });
-      } else {
-        logger.warn(
-          'Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
-        );
-      }
+      logger.info('[Auth] Configuring authentication middleware chain...');
+
+      // Active if ELIZA_SERVER_AUTH_TOKEN is configured
+      this.app.use('/api', apiKeyAuthMiddleware);
+
+      // Active if ENABLE_DATA_ISOLATION=true
+      this.app.use('/api', jwtAuthMiddleware);
+
+      logger.info('[Auth] Authentication middleware chain configured');
+      logger.warn(
+        `[Auth] API Key: ${process.env.ELIZA_SERVER_AUTH_TOKEN ? 'ENABLED' : 'DISABLED'}`
+      );
+      logger.warn(
+        `[Auth] JWT: ${process.env.ENABLE_DATA_ISOLATION === 'true' ? 'ENABLED' : 'DISABLED'}`
+      );
 
       // Determine if web UI should be enabled
       this.isWebUIEnabled = isWebUIEnabled();
@@ -1658,6 +1665,10 @@ export class AgentServer {
 
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
     return (this.database as any).getChannelParticipants(channelId);
+  }
+
+  async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
+    return await (this.database as any).isChannelParticipant(channelId, entityId);
   }
 
   async deleteMessage(messageId: UUID): Promise<void> {

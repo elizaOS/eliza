@@ -12,7 +12,11 @@ import {
   validateContentTypeMiddleware,
   createApiRateLimit,
   createChannelValidationRateLimit,
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/middleware.test.ts
 } from '../../../middleware';
+========
+} from '../../middleware';
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/validation.test.ts
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 

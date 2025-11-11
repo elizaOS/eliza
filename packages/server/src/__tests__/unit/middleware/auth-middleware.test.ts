@@ -1,10 +1,14 @@
 /**
- * Unit tests for authMiddleware.ts
+ * Unit tests for API Key Authentication Middleware
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/auth-middleware.test.ts
 import { apiKeyAuthMiddleware } from '../../../middleware';
+========
+import { apiKeyAuthMiddleware } from '../../middleware';
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/apiKeyMiddleware.test.ts
 import { logger } from '@elizaos/core';
 
 describe('API Key Auth Middleware', () => {
@@ -12,6 +16,10 @@ describe('API Key Auth Middleware', () => {
   let mockResponse: Partial<Response>;
   let mockNext: NextFunction;
   let loggerWarnSpy: ReturnType<typeof spyOn>;
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/auth-middleware.test.ts
+========
+  let loggerDebugSpy: ReturnType<typeof spyOn>;
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/apiKeyMiddleware.test.ts
   const originalEnv = process.env;
 
   beforeEach(() => {
@@ -20,6 +28,10 @@ describe('API Key Auth Middleware', () => {
     
     // Spy on logger.warn
     loggerWarnSpy = spyOn(logger, 'warn');
+
+    // Spy on logger methods
+    loggerWarnSpy = spyOn(logger, 'warn');
+    loggerDebugSpy = spyOn(logger, 'debug');
 
     // Create fresh mocks for each test
     mockRequest = {
@@ -52,6 +64,10 @@ describe('API Key Auth Middleware', () => {
     // Restore original environment
     process.env = originalEnv;
     loggerWarnSpy?.mockRestore();
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/auth-middleware.test.ts
+========
+    loggerDebugSpy?.mockRestore();
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/apiKeyMiddleware.test.ts
   });
 
   describe('When ELIZA_SERVER_AUTH_TOKEN is not set', () => {
@@ -100,7 +116,14 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/auth-middleware.test.ts
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+========
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header'
+      });
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/apiKeyMiddleware.test.ts
       expect(loggerWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Unauthorized access attempt')
       );
@@ -113,7 +136,14 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
+<<<<<<<< HEAD:packages/server/src/__tests__/unit/middleware/auth-middleware.test.ts
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+========
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header'
+      });
+>>>>>>>> 9f64a36648 (feat: add room and channel participant checks to database adapter):packages/server/src/__tests__/middleware/apiKeyMiddleware.test.ts
       expect(loggerWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('Unauthorized access attempt')
       );
@@ -126,7 +156,10 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header'
+      });
     });
 
     it('should allow OPTIONS requests without API key (CORS preflight)', () => {
@@ -186,7 +219,10 @@ describe('API Key Auth Middleware', () => {
       // Should reject with 401 when headers is undefined
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header'
+      });
     });
 
     it('should handle null API key value', () => {
@@ -197,6 +233,10 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header'
+      });
     });
 
     it('should handle empty string auth token in environment', () => {

@@ -1,28 +1,29 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import { logger } from '@elizaos/core';
 
+export interface ApiKeyAuthRequest extends Request {
+  isServerAuthenticated?: boolean;
+}
+
 /**
- * Express middleware for validating API Key authentication based on an environment variable.
+ * API Key authentication middleware.
  *
- * If the ELIZA_SERVER_AUTH_TOKEN environment variable is set, this middleware
- * checks for a matching 'X-API-KEY' header in incoming requests.
+ * Authenticates frontend→server connection (Layer 1).
+ * Only active if ELIZA_SERVER_AUTH_TOKEN is configured.
  *
- * If the environment variable is *not* set, the middleware allows all requests
- * to pass through without authentication checks.
- *
- * @param req - Express request object.
- * @param res - Express response object.
- * @param next - Express next function.
+ * This is independent from user authentication (JWT).
+ * Use case: Prevent unauthorized clients from accessing the API.
  */
 export function apiKeyAuthMiddleware(
-  req: Request,
+  req: ApiKeyAuthRequest,
   res: Response,
   next: NextFunction
 ): void | Response {
-  const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+  const apiKeyConfigured = !!process.env.ELIZA_SERVER_AUTH_TOKEN;
 
-  // If no token is configured in ENV, skip auth check
-  if (!serverAuthToken) {
+  // Not configured → Skip authentication (dev mode)
+  if (!apiKeyConfigured) {
+    logger.debug('[API Key] Not configured - skipping check');
     return next();
   }
 
@@ -31,13 +32,18 @@ export function apiKeyAuthMiddleware(
     return next();
   }
 
+  // Verify API key
   const apiKey = req.headers?.['x-api-key'];
-
-  if (!apiKey || apiKey !== serverAuthToken) {
-    logger.warn(`Unauthorized access attempt: Missing or invalid X-API-KEY from ${req.ip}`);
-    return res.status(401).send('Unauthorized: Invalid or missing X-API-KEY');
+  if (!apiKey || apiKey !== process.env.ELIZA_SERVER_AUTH_TOKEN) {
+    logger.warn(`[API Key] Unauthorized access attempt from ${req.ip}`);
+    return res.status(401).json({
+      error: 'API key required',
+      message: 'Missing or invalid X-API-KEY header'
+    });
   }
 
-  // If key is valid, proceed
+  // Valid API key
+  req.isServerAuthenticated = true;
+  logger.debug('[API Key] Valid - frontend authenticated');
   next();
 }

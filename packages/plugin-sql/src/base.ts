@@ -2478,6 +2478,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Check if an entity is a participant in a specific room/channel.
+   * More efficient than getParticipantsForRoom when only checking membership.
+   * @param {UUID} roomId - The ID of the room to check.
+   * @param {UUID} entityId - The ID of the entity to check.
+   * @returns {Promise<boolean>} A Promise that resolves to true if entity is a participant.
+   */
+  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(participantTable)
+        .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
+        .limit(1);
+
+      return result.length > 0;
+    });
+  }
+
+  /**
    * Asynchronously retrieves the user state for a participant in a room from the database based on the provided parameters.
    * @param {UUID} roomId - The ID of the room to retrieve the participant's user state for.
    * @param {UUID} entityId - The ID of the entity to retrieve the user state for.
@@ -3667,6 +3686,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .where(eq(channelParticipantsTable.channelId, channelId));
 
       return results.map((r) => r.entityId as UUID);
+    });
+  }
+
+  /**
+   * Check if an entity is a participant in a specific messaging channel.
+   * @param {UUID} channelId - The ID of the channel to check.
+   * @param {UUID} entityId - The ID of the entity to check.
+   * @returns {Promise<boolean>} A Promise that resolves to true if entity is a participant.
+   */
+  async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(channelParticipantsTable)
+        .where(and(eq(channelParticipantsTable.channelId, channelId), eq(channelParticipantsTable.entityId, entityId)))
+        .limit(1);
+
+      return result.length > 0;
     });
   }
 

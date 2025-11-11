@@ -258,6 +258,8 @@ export interface IDatabaseAdapter {
 
   getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 
+  isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+
   addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;

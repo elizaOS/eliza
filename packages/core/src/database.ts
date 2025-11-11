@@ -419,6 +419,15 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 
+  /**
+   * Check if an entity is a participant in a specific room.
+   * More efficient than getParticipantsForRoom when only checking membership.
+   * @param roomId The UUID of the room.
+   * @param entityId The UUID of the entity to check.
+   * @returns A Promise that resolves to a boolean indicating if the entity is a participant.
+   */
+  abstract isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+
   abstract getParticipantUserState(
     roomId: UUID,
     entityId: UUID
