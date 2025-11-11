@@ -47,7 +47,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
 
-  initialize(): Promise<void>;
+  initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
   getConnection(): Promise<any>;
 

@@ -165,10 +165,13 @@ describe('Health Check Endpoint Logic', () => {
 
     it('should skip rate limiting for internal IPs', () => {
       const skipRateLimiting = (ip: string): boolean => {
-        return ip === '127.0.0.1' || ip === '::1' ||
-               ip.startsWith('10.') ||
-               ip.startsWith('172.') ||
-               ip.startsWith('192.168.');
+        return (
+          ip === '127.0.0.1' ||
+          ip === '::1' ||
+          ip.startsWith('10.') ||
+          ip.startsWith('172.') ||
+          ip.startsWith('192.168.')
+        );
       };
 
       // Internal IPs should skip rate limiting

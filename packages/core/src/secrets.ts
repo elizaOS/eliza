@@ -46,15 +46,15 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
     // Merge ALL .env variables into settings (for configs and non-sensitive values)
     // Priority: .env < character.settings (character.json overrides .env)
     character.settings = {
-      ...envVars,           // Lower priority: defaults from .env
-      ...existingSettings,  // Higher priority: character-specific overrides
+      ...envVars, // Lower priority: defaults from .env
+      ...existingSettings, // Higher priority: character-specific overrides
     };
 
     // ALSO merge ALL .env variables into settings.secrets
     // This makes all env vars accessible via getSetting() with proper priority
     // The developer chooses what goes in character.settings.secrets in their JSON
     character.settings.secrets = {
-      ...envVars,         // Lower priority: defaults from .env
+      ...envVars, // Lower priority: defaults from .env
       ...existingSecrets, // Higher priority: character-specific secrets
     };
 
