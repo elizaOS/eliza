@@ -13,12 +13,8 @@ export interface SendMessageOptions {
    * If not provided, method waits for response (SYNC MODE)
    *
    * @param content - The response content from the agent
-   * @param files - Optional file attachments in the response
    */
-  onResponse?: (
-    content: Content,
-    files?: Array<{ attachment: Buffer | string; name: string }>
-  ) => Promise<void>;
+  onResponse?: (content: Content) => Promise<void>;
 
   /**
    * Called if an error occurs during processing

@@ -232,36 +232,6 @@ describe('ElizaOS', () => {
       system: 'You are a test agent',
     };
 
-    it('should pass files parameter to onResponse callback in async mode', async () => {
-      const agentIds = await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ]);
-      await elizaOS.startAgents(agentIds);
-
-      const userId = uuidv4() as UUID;
-      const roomId = uuidv4() as UUID;
-      const filesReceived = mock();
-
-      await elizaOS.sendMessage(
-        agentIds[0],
-        {
-          entityId: userId,
-          roomId,
-          content: { text: 'Test message', source: 'test' },
-        },
-        {
-          onResponse: async (content, files) => {
-            filesReceived(files);
-          },
-        }
-      );
-
-      // Give async processing time to complete
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Verify callback was called with files parameter
-      expect(filesReceived).toHaveBeenCalled();
-    });
   });
 
   describe('Event System', () => {

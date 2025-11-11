@@ -407,13 +407,10 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // ========== ASYNC MODE ==========
       // Fire and forget with callback
 
-      const callback = async (
-        content: Content,
-        files?: Array<{ attachment: Buffer | string; name: string }>
-      ) => {
+      const callback = async (content: Content) => {
         try {
           if (options.onResponse) {
-            await options.onResponse(content, files);
+            await options.onResponse(content);
           }
         } catch (error) {
           if (options.onError) {
