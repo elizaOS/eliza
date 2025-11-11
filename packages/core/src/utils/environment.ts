@@ -396,15 +396,21 @@ export function loadEnvFile(envPath?: string): boolean {
       return false;
     }
 
-    // Load .env into process.env (idempotent - won't override existing vars by default)
+    // Load .env into process.env
+    // Note: dotenv won't override existing process.env vars, but calling loadEnvFile()
+    // multiple times with different paths will merge variables from multiple files
     const result = dotenv.config({ path: resolvedPath });
 
     if (result.error) {
+      // File exists but couldn't be parsed
+      console.warn(`Failed to parse .env file at ${resolvedPath}:`, result.error);
       return false;
     }
 
     return true;
   } catch (error) {
+    // Unexpected error (e.g., dotenv not installed)
+    console.warn('Failed to load .env file:', error);
     return false;
   }
 }
