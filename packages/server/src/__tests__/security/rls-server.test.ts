@@ -261,62 +261,62 @@ describe('Environment Variable Configuration', () => {
   });
 });
 
-describe('API Endpoint Security - server_id Validation', () => {
+describe('API Endpoint Security - message_server_id Validation', () => {
   describe('Conditional RLS Enforcement', () => {
-    it('should enforce server_id validation when ENABLE_RLS_ISOLATION is true', () => {
-      const rlsEnabled = 'true';
+    it('should enforce message_server_id validation when ENABLE_DATA_ISOLATION is true', () => {
+      const dataIsolationEnabled = 'true';
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(false); // Should reject mismatched server_id
+      expect(isValidMessageServerId).toBe(false); // Should reject mismatched message_server_id
     });
 
-    it('should skip server_id validation when ENABLE_RLS_ISOLATION is false', () => {
-      const rlsEnabled = 'false' as string;
+    it('should skip message_server_id validation when ENABLE_DATA_ISOLATION is false', () => {
+      const dataIsolationEnabled = 'false' as string;
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS disabled
+      expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation disabled
     });
 
-    it('should skip server_id validation when ENABLE_RLS_ISOLATION is undefined', () => {
-      const rlsEnabled = undefined;
+    it('should skip message_server_id validation when ENABLE_DATA_ISOLATION is undefined', () => {
+      const dataIsolationEnabled = undefined;
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS not configured
+      expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation not configured
     });
 
-    it('should accept matching server_id when ENABLE_RLS_ISOLATION is true', () => {
-      const rlsEnabled = 'true';
+    it('should accept matching message_server_id when ENABLE_DATA_ISOLATION is true', () => {
+      const dataIsolationEnabled = 'true';
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+      const requestMessageServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept matching server_id
+      expect(isValidMessageServerId).toBe(true); // Should accept matching message_server_id
     });
   });
 

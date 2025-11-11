@@ -15,6 +15,7 @@ import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+import { validateServerIdForRls } from '../../utils/rls-validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -83,27 +84,24 @@ export function createChannelsRouter(
         author_id, // This is the GUI user's central ID
         content,
         in_reply_to_message_id, // Central root_message.id
-        server_id, // Central server_id this channel belongs to
+        message_server_id, // UUID of the message server (message_servers.id)
         raw_message,
         metadata, // Should include user_display_name
         source_type, // Should be something like 'eliza_gui'
       } = req.body;
 
-      // Validate server ID
-      const isValidServerId = server_id === serverInstance.messageServerId;
-
-      if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(server_id)) {
+      if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(message_server_id)) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields: channelId, server_id, author_id, content',
+          error: 'Missing required fields: channelId, message_server_id, author_id, content',
         });
       }
 
       // RLS security: Only allow access to current server's data
-      if (!isValidServerId) {
+      if (!validateServerIdForRls(message_server_id, serverInstance)) {
         return res.status(403).json({
           success: false,
-          error: 'Forbidden: server_id does not match current server',
+          error: 'Forbidden: message_server_id does not match current server',
         });
       }
 
@@ -127,23 +125,23 @@ export function createChannelsRouter(
         if (!channelExists) {
           // Auto-create the channel if it doesn't exist
           logger.info(
-            `[Messages Router] Auto-creating channel ${channelIdParam} with serverId ${server_id}`
+            `[Messages Router] Auto-creating channel ${channelIdParam} with messageServerId ${message_server_id}`
           );
           try {
             // First verify the server exists
             const servers = await serverInstance.getServers();
-            const serverExists = servers.some((s) => s.id === server_id);
+            const serverExists = servers.some((s) => s.id === message_server_id);
             logger.info(
-              `[Messages Router] Server ${server_id} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+              `[Messages Router] Server ${message_server_id} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
             );
 
             if (!serverExists) {
               logger.error(
-                `[Messages Router] Server ${server_id} does not exist, cannot create channel`
+                `[Messages Router] Server ${message_server_id} does not exist, cannot create channel`
               );
               return res
                 .status(500)
-                .json({ success: false, error: `Server ${server_id} does not exist` });
+                .json({ success: false, error: `Server ${message_server_id} does not exist` });
             }
 
             // Determine if this is likely a DM based on the context
@@ -154,7 +152,7 @@ export function createChannelsRouter(
 
             const channelData = {
               id: channelIdParam as UUID, // Use the specific channel ID from the URL
-              messageServerId: server_id as UUID,
+              messageServerId: message_server_id as UUID,
               name: isDmChannel
                 ? `DM ${channelIdParam.substring(0, 8)}`
                 : `Chat ${channelIdParam.substring(0, 8)}`,
@@ -233,7 +231,7 @@ export function createChannelsRouter(
         const messageForBus: MessageService = {
           id: createdRootMessage.id,
           channel_id: createdRootMessage.channelId,
-          message_server_id: server_id as UUID,
+          message_server_id: message_server_id as UUID,
           author_id: createdRootMessage.authorId,
           content: createdRootMessage.content,
           created_at: new Date(createdRootMessage.createdAt).getTime(),
@@ -258,7 +256,7 @@ export function createChannelsRouter(
             senderName: metadata?.user_display_name || 'User',
             text: content,
             roomId: channelIdParam, // GUI uses central channelId as roomId for socket
-            messageServerId: server_id, // Client layer uses messageServerId
+            messageServerId: message_server_id, // Client layer uses messageServerId
             createdAt: messageForBus.created_at,
             source: messageForBus.source_type,
             id: messageForBus.id,
@@ -425,9 +423,6 @@ export function createChannelsRouter(
       });
     }
 
-    // RLS security: Only allow access to current server's data
-    const isValidServerId = message_server_id === serverInstance.messageServerId;
-
     if (
       !name ||
       !Array.isArray(participantCentralUserIds) ||
@@ -436,14 +431,15 @@ export function createChannelsRouter(
       return res.status(400).json({
         success: false,
         error:
-          'Invalid payload. Required: name, server_id (UUID or "0"), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
+          'Invalid payload. Required: name, message_server_id (UUID), participantCentralUserIds (array of UUIDs). Optional: type, metadata.',
       });
     }
 
-    if (!isValidServerId) {
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(message_server_id, serverInstance)) {
       return res.status(403).json({
         success: false,
-        error: 'Forbidden: server_id does not match current server',
+        error: 'Forbidden: message_server_id does not match current server',
       });
     }
 
