@@ -24,7 +24,8 @@ describe('Jobs API Message Bus Integration', () => {
     const mockAgent: IAgentRuntime = {
       agentId,
       character: { name: 'Test Agent', id: agentId },
-    } as IAgentRuntime;
+      hasElizaOS: () => false,
+    } as unknown as IAgentRuntime;
 
     mockElizaOS = {
       getAgent: (id: UUID) => (id === agentId ? mockAgent : null),

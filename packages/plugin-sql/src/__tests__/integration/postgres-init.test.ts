@@ -19,6 +19,7 @@ describe('PostgreSQL Initialization Tests', () => {
       registerDatabaseAdapter: mock(),
       registerService: mock(),
       getService: mock(),
+      hasElizaOS: mock(() => false),
     } as any;
   });
 
