@@ -3,10 +3,9 @@ import { displayBanner, handleError } from '@/src/utils';
 import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
-import { logger, type Character, type ProjectAgent } from '@elizaos/core';
+import { logger, type Character, type ProjectAgent, loadEnvFile } from '@elizaos/core';
 import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
 import { Command, InvalidOptionArgumentError } from 'commander';
-import dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { StartOptions } from './types';
@@ -36,13 +35,13 @@ export const start = new Command()
         const { envFilePath } = await userEnv.getPathInfo();
         const candidateEnv = envFilePath || path.join(process.cwd(), '.env');
         if (fs.existsSync(candidateEnv)) {
-          dotenv.config({ path: candidateEnv });
+          loadEnvFile(candidateEnv);
         }
       } catch {
         // Fallback to CWD-based .env if resolution fails
         const envPath = path.join(process.cwd(), '.env');
         if (fs.existsSync(envPath)) {
-          dotenv.config({ path: envPath });
+          loadEnvFile(envPath);
         }
       }
 
