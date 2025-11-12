@@ -114,6 +114,7 @@ export const createMockRuntime = (): IAgentRuntime => {
     providers: [],
     getService: mock(),
     processActions: mock(),
+    hasElizaOS: mock(() => false),
   } as any as IAgentRuntime;
 };
 

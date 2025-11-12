@@ -2,10 +2,12 @@ import type { Character } from './agent';
 import type { Action, Evaluator, Provider, ActionResult } from './components';
 import { HandlerCallback } from './components';
 import type { IDatabaseAdapter } from './database';
+import type { IElizaOS } from './elizaos';
 import type { Entity, Room, World, ChannelType } from './environment';
 import type { Logger } from '../logger';
 import { Memory, MemoryMetadata } from './memory';
 import type { SendHandlerFunction, TargetInfo } from './messaging';
+import type { IMessageService } from '../services/message-service';
 import type {
   ModelParamsMap,
   ModelResultMap,
@@ -29,7 +31,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
   character: Character;
-  messageService: any | null; // IMessageService - initialized in runtime.initialize()
+  messageService: IMessageService | null;
   providers: Provider[];
   actions: Action[];
   evaluators: Evaluator[];
@@ -40,6 +42,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   routes: Route[];
   logger: Logger;
   stateCache: Map<string, State>;
+  elizaOS?: IElizaOS;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;
@@ -61,6 +64,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getRegisteredServiceTypes(): ServiceTypeName[];
 
   hasService(serviceType: ServiceTypeName | string): boolean;
+
+  hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS };
 
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
