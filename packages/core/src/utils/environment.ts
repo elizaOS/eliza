@@ -320,9 +320,17 @@ export { Environment };
 // ============================================================================
 
 /**
- * Find the .env file in the project
+ * Find the .env file by traversing up the directory tree
+ * Searches from startDir upwards until it finds a .env file or reaches the root
+ *
+ * @param startDir - Directory to start searching from (defaults to process.cwd())
+ * @param filenames - Array of filenames to search for (defaults to ['.env', '.env.local'])
+ * @returns Path to the .env file if found, null otherwise
  */
-export function findEnvFile(): string | null {
+export function findEnvFile(
+  startDir?: string,
+  filenames: string[] = ['.env', '.env.local']
+): string | null {
   if (typeof process === 'undefined' || !process.cwd) {
     return null;
   }
@@ -331,37 +339,83 @@ export function findEnvFile(): string | null {
   const fs = require('node:fs');
   const path = require('node:path');
 
-  const possiblePaths = [path.join(process.cwd(), '.env'), path.join(process.cwd(), '.env.local')];
+  let currentDir = startDir || process.cwd();
 
-  for (const envPath of possiblePaths) {
-    if (fs.existsSync(envPath)) {
-      return envPath;
+  // Traverse up the directory tree
+  while (true) {
+    // Check each possible filename in the current directory
+    for (const filename of filenames) {
+      const candidate = path.join(currentDir, filename);
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
+
+    // Move to parent directory
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      // Reached root, stop searching
+      break;
+    }
+    currentDir = parentDir;
   }
 
   return null;
 }
 
 /**
- * Load environment configuration from .env file
- * Loads environment variables from the project's .env file and returns them as runtime settings.
- * Node.js only - returns empty object in browser.
+ * Load environment variables from .env file into process.env
+ * This function is idempotent - safe to call multiple times
+ *
+ * Node.js only - does nothing in browser environments
+ *
+ * @param envPath - Optional explicit path to .env file. If not provided, will search upwards from cwd
+ * @returns true if .env was found and loaded, false otherwise
+ *
+ * @example
+ * ```typescript
+ * // Load from auto-discovered .env file
+ * loadEnvFile();
+ *
+ * // Load from specific path
+ * loadEnvFile('/path/to/.env');
+ * ```
  */
-export async function loadEnvConfig(envPath?: string): Promise<Record<string, any>> {
+export function loadEnvFile(envPath?: string): boolean {
   if (typeof process === 'undefined' || !process.cwd) {
-    return {};
+    return false;
   }
 
-  // Dynamic import to avoid bundling dotenv in browser
-  const dotenv = require('dotenv');
+  try {
+    // Dynamic import to avoid bundling dotenv in browser
+    const dotenv = require('dotenv');
 
-  // Try to find and load .env file
-  const resolvedPath = envPath || findEnvFile();
-  if (resolvedPath) {
-    const result = dotenv.config({ path: resolvedPath });
-    if (result.error) {
-      throw result.error;
+    // Find .env file if path not explicitly provided
+    const resolvedPath = envPath || findEnvFile();
+    if (!resolvedPath) {
+      return false;
     }
+
+    // Load .env into process.env
+    // Note: dotenv won't override existing process.env vars, but calling loadEnvFile()
+    // multiple times with different paths will merge variables from multiple files
+    const result = dotenv.config({ path: resolvedPath });
+
+    if (result.error) {
+      // File exists but couldn't be parsed
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn(`Failed to parse .env file at ${resolvedPath}:`, result.error);
+      }
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    // Unexpected error (e.g., dotenv not installed)
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('Failed to load .env file:', error);
+    }
+    return false;
   }
-  return process.env as Record<string, any>;
 }
+
