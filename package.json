@@ -40,7 +40,7 @@
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
-    "prepare": "husky"
+    "prepare": "bun husky"
   },
   "packageManager": "bun@1.2.21",
   "workspaces": [
