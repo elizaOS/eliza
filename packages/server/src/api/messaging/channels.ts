@@ -15,6 +15,7 @@ import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService } from '../../types';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+import { validateServerIdForRls } from '../../utils/rls-validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -89,9 +90,6 @@ export function createChannelsRouter(
         source_type, // Should be something like 'eliza_gui'
       } = req.body;
 
-      // Validate server ID
-      const isValidServerId = server_id === serverInstance.serverId;
-
       if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(server_id)) {
         return res.status(400).json({
           success: false,
@@ -100,7 +98,7 @@ export function createChannelsRouter(
       }
 
       // RLS security: Only allow access to current server's data
-      if (!isValidServerId) {
+      if (!validateServerIdForRls(server_id, serverInstance)) {
         return res.status(403).json({
           success: false,
           error: 'Forbidden: server_id does not match current server',
@@ -478,9 +476,6 @@ export function createChannelsRouter(
       });
     }
 
-    // RLS security: Only allow access to current server's data
-    const isValidServerId = server_id === serverInstance.serverId;
-
     if (
       !name ||
       !Array.isArray(participantCentralUserIds) ||
@@ -493,7 +488,8 @@ export function createChannelsRouter(
       });
     }
 
-    if (!isValidServerId) {
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(server_id, serverInstance)) {
       return res.status(403).json({
         success: false,
         error: 'Forbidden: server_id does not match current server',

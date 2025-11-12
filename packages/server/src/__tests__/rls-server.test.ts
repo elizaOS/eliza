@@ -262,6 +262,64 @@ describe('Environment Variable Configuration', () => {
 });
 
 describe('API Endpoint Security - server_id Validation', () => {
+  describe('Conditional RLS Enforcement', () => {
+    it('should enforce server_id validation when ENABLE_RLS_ISOLATION is true', () => {
+      const rlsEnabled = 'true';
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Simulate the conditional check from the endpoints
+      const isRlsEnabled = rlsEnabled === 'true';
+      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(false); // Should reject mismatched server_id
+    });
+
+    it('should skip server_id validation when ENABLE_RLS_ISOLATION is false', () => {
+      const rlsEnabled = 'false' as string;
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Simulate the conditional check from the endpoints
+      const isRlsEnabled = rlsEnabled === 'true';
+      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS disabled
+    });
+
+    it('should skip server_id validation when ENABLE_RLS_ISOLATION is undefined', () => {
+      const rlsEnabled = undefined;
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // Simulate the conditional check from the endpoints
+      const isRlsEnabled = rlsEnabled === 'true';
+      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS not configured
+    });
+
+    it('should accept matching server_id when ENABLE_RLS_ISOLATION is true', () => {
+      const rlsEnabled = 'true';
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+
+      // Simulate the conditional check from the endpoints
+      const isRlsEnabled = rlsEnabled === 'true';
+      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+
+      expect(isValidServerId).toBe(true); // Should accept matching server_id
+    });
+  });
+
   describe('Strict server_id Validation', () => {
     it('should accept server_id that matches serverInstance.serverId', () => {
       const serverInstance = {
@@ -326,6 +384,25 @@ describe('API Endpoint Security - server_id Validation', () => {
 
       expect(isValidServerId).toBe(false);
     });
+
+    it('should conditionally validate server_id based on RLS enabled flag', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // When RLS disabled
+      const rlsDisabledEnv = 'false' as string;
+      const isRlsDisabled = rlsDisabledEnv === 'true';
+      const isValidWhenDisabled = !isRlsDisabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenDisabled).toBe(true);
+
+      // When RLS enabled
+      const rlsEnabledEnv = 'true' as string;
+      const isRlsEnabled = rlsEnabledEnv === 'true';
+      const isValidWhenEnabled = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenEnabled).toBe(false);
+    });
   });
 
   describe('POST /action endpoint security', () => {
@@ -338,6 +415,25 @@ describe('API Endpoint Security - server_id Validation', () => {
       const isValidServerId = requestServerId === serverInstance.serverId;
 
       expect(isValidServerId).toBe(false);
+    });
+
+    it('should conditionally validate server_id based on RLS enabled flag', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // When RLS disabled
+      const rlsDisabledEnv = 'false' as string;
+      const isRlsDisabled = rlsDisabledEnv === 'true';
+      const isValidWhenDisabled = !isRlsDisabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenDisabled).toBe(true);
+
+      // When RLS enabled
+      const rlsEnabledEnv = 'true' as string;
+      const isRlsEnabled = rlsEnabledEnv === 'true';
+      const isValidWhenEnabled = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenEnabled).toBe(false);
     });
   });
 
@@ -362,6 +458,69 @@ describe('API Endpoint Security - server_id Validation', () => {
       const shouldReject = requestServerId && requestServerId !== serverInstance.serverId;
 
       expect(shouldReject).toBe(false);
+    });
+
+    it('should conditionally reject based on RLS enabled flag', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // When RLS disabled - should not reject
+      const rlsDisabledEnv = 'false' as string;
+      const isRlsDisabled = rlsDisabledEnv === 'true';
+      const shouldRejectWhenDisabled =
+        isRlsDisabled && requestServerId && requestServerId !== serverInstance.serverId;
+      expect(shouldRejectWhenDisabled).toBe(false);
+
+      // When RLS enabled - should reject
+      const rlsEnabledEnv = 'true' as string;
+      const isRlsEnabled = rlsEnabledEnv === 'true';
+      const shouldRejectWhenEnabled =
+        isRlsEnabled && requestServerId && requestServerId !== serverInstance.serverId;
+      expect(shouldRejectWhenEnabled).toBe(true);
+    });
+  });
+
+  describe('POST /central-channels/:channelId/messages endpoint security', () => {
+    it('should conditionally validate server_id based on RLS enabled flag', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // When RLS disabled
+      const rlsDisabledEnv = 'false' as string;
+      const isRlsDisabled = rlsDisabledEnv === 'true';
+      const isValidWhenDisabled = !isRlsDisabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenDisabled).toBe(true);
+
+      // When RLS enabled
+      const rlsEnabledEnv = 'true' as string;
+      const isRlsEnabled = rlsEnabledEnv === 'true';
+      const isValidWhenEnabled = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenEnabled).toBe(false);
+    });
+  });
+
+  describe('POST /central-channels endpoint security', () => {
+    it('should conditionally validate server_id based on RLS enabled flag', () => {
+      const serverInstance = {
+        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+      };
+      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+
+      // When RLS disabled
+      const rlsDisabledEnv = 'false' as string;
+      const isRlsDisabled = rlsDisabledEnv === 'true';
+      const isValidWhenDisabled = !isRlsDisabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenDisabled).toBe(true);
+
+      // When RLS enabled
+      const rlsEnabledEnv = 'true' as string;
+      const isRlsEnabled = rlsEnabledEnv === 'true';
+      const isValidWhenEnabled = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      expect(isValidWhenEnabled).toBe(false);
     });
   });
 });
