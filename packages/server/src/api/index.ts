@@ -203,9 +203,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             }
           }
         } else {
-          logger.debug(
-            `Agent ${runtime.character.name} attempting plugin route match: [${route.type.toUpperCase()}] ${routePath} vs request path: ${baselessReqPath}`
-          );
+          // Verbose route matching debug removed for cleaner logs
           let matcher: MatchFunction<object>;
           try {
             matcher = match(routePath, { decode: decodeURIComponent });
