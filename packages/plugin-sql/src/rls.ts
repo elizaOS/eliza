@@ -223,13 +223,13 @@ export async function assignAgentToOwner(
 
   if (agents.length > 0) {
     const agent = agents[0];
-    const currentOwnerId = agent.owner_id;
+    const currentOwnerId = agent.ownerId;
 
     if (currentOwnerId === ownerId) {
       logger.debug(`[RLS] Agent ${agent.name} already owned by correct owner`);
     } else {
       // Update agent owner using Drizzle
-      await db.update(agentTable).set({ owner_id: ownerId }).where(eq(agentTable.id, agentId));
+      await db.update(agentTable).set({ ownerId: ownerId }).where(eq(agentTable.id, agentId));
 
       if (currentOwnerId === null) {
         logger.info(`[RLS] Agent ${agent.name} assigned to owner`);

@@ -101,12 +101,14 @@ export enum AgentStatus {
  * It includes:
  * - `enabled`: A boolean indicating if the agent is currently active or disabled.
  * - `status`: The current operational status, typically `AgentStatus.ACTIVE` or `AgentStatus.INACTIVE`.
+ * - `ownerId`: Optional UUID of the user/entity that owns this agent.
  * - `createdAt`, `updatedAt`: Timestamps for when the agent record was created and last updated in the database.
  * This interface is primarily used by the `IDatabaseAdapter` for agent management.
  */
 export interface Agent extends Character {
   enabled?: boolean;
   status?: AgentStatus;
+  ownerId?: UUID;
   createdAt: number;
   updatedAt: number;
 }

@@ -231,6 +231,75 @@ describe('Agent Integration Tests', () => {
         expect(createdAgent?.enabled).toBe(true); // Should use the default value
         expect(createdAgent?.settings).toEqual({}); // Should have empty settings object
       });
+
+      it('should create and retrieve agent with ownerId in camelCase', async () => {
+        const ownerUuid = uuidv4() as UUID;
+        const agentWithOwner: Agent = {
+          id: uuidv4() as UUID,
+          name: 'Agent with Owner',
+          bio: 'This agent has an owner',
+          ownerId: ownerUuid,
+          enabled: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          username: 'owned-agent',
+          system: 'System message',
+          messageExamples: [],
+          postExamples: [],
+          topics: [],
+          adjectives: [],
+          knowledge: [],
+          plugins: [],
+          settings: {},
+          style: {},
+        };
+
+        const result = await adapter.createAgent(agentWithOwner);
+        expect(result).toBe(true);
+
+        // Retrieve the agent and verify ownerId is returned in camelCase
+        const retrievedAgent = await adapter.getAgent(agentWithOwner.id);
+        expect(retrievedAgent).not.toBeNull();
+        expect(retrievedAgent?.ownerId).toBe(ownerUuid);
+        expect(retrievedAgent?.name).toBe('Agent with Owner');
+      });
+
+      it('should update agent ownerId', async () => {
+        const initialOwnerId = uuidv4() as UUID;
+        const newOwnerId = uuidv4() as UUID;
+
+        const agent: Agent = {
+          id: uuidv4() as UUID,
+          name: 'Agent Owner Update Test',
+          bio: 'Testing owner update',
+          ownerId: initialOwnerId,
+          enabled: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          username: 'owner-update-test',
+          system: 'System message',
+          messageExamples: [],
+          postExamples: [],
+          topics: [],
+          adjectives: [],
+          knowledge: [],
+          plugins: [],
+          settings: {},
+          style: {},
+        };
+
+        await adapter.createAgent(agent);
+
+        // Update ownerId
+        const updateResult = await adapter.updateAgent(agent.id, {
+          ownerId: newOwnerId,
+        });
+        expect(updateResult).toBe(true);
+
+        // Verify ownerId was updated
+        const updatedAgent = await adapter.getAgent(agent.id);
+        expect(updatedAgent?.ownerId).toBe(newOwnerId);
+      });
     });
 
     describe('getAgent and getAgents', () => {
