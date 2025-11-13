@@ -168,6 +168,7 @@ export class AgentServer {
 
   public database!: DatabaseAdapter;
   private databasePlugin?: Plugin; // Store the database plugin for agent startup
+  private useMysql: boolean = false; // Track if using MySQL (for syntax differences)
   private rlsOwnerId?: UUID;
   public serverId: UUID = DEFAULT_SERVER_ID;
 
@@ -355,6 +356,9 @@ export class AgentServer {
         try {
           logger.info('[INIT] Using MySQL database plugin');
 
+          // Store MySQL flag for later use (e.g., SQL syntax differences)
+          this.useMysql = true;
+
           // Validate MySQL URL before attempting to use it
           validateAndLogMySQLUrl(mysqlUrl);
 
@@ -427,8 +431,8 @@ export class AgentServer {
       try {
         const migrationService = new DatabaseMigrationService();
 
-        // Get the underlying database instance
-        const db = (this.database as any).getDatabase();
+        // Get the underlying database instance from the adapter's db property
+        const db = this.database.db;
         await migrationService.initializeWithDatabase(db);
 
         // Register the database plugin schema
@@ -601,12 +605,26 @@ export class AgentServer {
         // Reference: https://orm.drizzle.team/docs/sql
         try {
           const db = (this.database as any).db;
-          // Safe: drizzle-orm sql`` handles parameterization automatically
-          await db.execute(sql`
-            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
-            ON CONFLICT (id) DO NOTHING
-          `);
+
+          // Use database-appropriate upsert syntax
+          // MySQL uses ON DUPLICATE KEY UPDATE, PostgreSQL uses ON CONFLICT
+          if (this.useMysql) {
+            // MySQL syntax: ON DUPLICATE KEY UPDATE (or just let it fail and catch)
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON DUPLICATE KEY UPDATE name = name
+            `);
+          } else {
+            // PostgreSQL/PGLite syntax: ON CONFLICT DO NOTHING
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON CONFLICT (id) DO NOTHING
+            `);
+          }
           logger.success('[AgentServer] Server created via parameterized query');
 
           // Immediately check if it was created with parameterized query
