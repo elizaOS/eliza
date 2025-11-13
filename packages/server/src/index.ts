@@ -198,9 +198,16 @@ export class AgentServer {
       agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      // The database plugin is automatically added by each agent's plugin list
-      // Don't force add it here as it's character-specific
-      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || [])];
+      // Add the database plugin (MySQL or PostgreSQL) that was loaded during initialization
+      if (!this.databasePlugin) {
+        throw new Error('Database plugin not initialized. Cannot start agents without database access.');
+      }
+
+      const allPlugins = [
+        ...(agent.character.plugins || []),
+        ...(agent.plugins || []),
+        this.databasePlugin,
+      ];
 
       return {
         character: encryptedCharacter(agent.character),
