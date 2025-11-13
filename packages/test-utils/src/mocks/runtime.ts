@@ -94,19 +94,20 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     routes: overrides.routes || [],
     logger: overrides.logger || {
       level: 'info',
-      trace: () => {},
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {},
-      fatal: () => {},
-      success: () => {},
-      progress: () => {},
-      log: () => {},
-      clear: () => {},
+      trace: () => { },
+      debug: () => { },
+      info: () => { },
+      warn: () => { },
+      error: () => { },
+      fatal: () => { },
+      success: () => { },
+      progress: () => { },
+      log: () => { },
+      clear: () => { },
       child: () => ({}) as any,
     },
     stateCache,
+    initPromise: Promise.resolve(),
 
     // Database Properties
     db: overrides.db || mockDb,
@@ -265,6 +266,11 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
 
     // Text Generation (required by IAgentRuntime)
     generateText: mock().mockResolvedValue('Mock generated text'),
+
+    // ElizaOS Integration (must be a function, not a mock, due to type predicate signature)
+    hasElizaOS(): this is IAgentRuntime & { elizaOS: any } {
+      return false;
+    },
 
     // Apply overrides
     ...overrides,
