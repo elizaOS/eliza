@@ -42,6 +42,8 @@ import type {
   MessageServiceStructure,
 } from './types.js';
 import { existsSync } from 'node:fs';
+import { MySQLNoOpMigrationService } from './utils/mysql-noop-migration-service.js';
+import { validateAndLogMySQLUrl } from './utils/mysql-url-validator.js';
 
 /**
  * Expands a file path starting with `~` to the project directory.
@@ -326,35 +328,64 @@ export class AgentServer {
       loadEnvFile();
 
       // Determine which database plugin to use based on environment variables
-      const useMysql = !!process.env.MYSQL_URL;
+      const mysqlUrl = process.env.MYSQL_URL;
+      const postgresUrl = config?.postgresUrl;
+      const useMysql = !!mysqlUrl;
 
-      let createDatabaseAdapter: any;
-      let DatabaseMigrationService: any;
+      // Log plugin selection decision
+      logger.info(`[INIT] Database plugin selection: useMysql=${useMysql}, hasPostgresUrl=${!!postgresUrl}, hasMysqlUrl=${!!mysqlUrl}`);
 
+      // Type-safe database plugin imports using typeof import() patterns
+      type CreateDatabaseAdapterFn = (
+        config: { dataDir?: string; postgresUrl?: string; mysqlUrl?: string },
+        agentId: UUID
+      ) => DatabaseAdapter;
+
+      type DatabaseMigrationServiceClass = new () => {
+        initializeWithDatabase(db: any): Promise<void>;
+        discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+        runAllPluginMigrations(): Promise<void>;
+      };
+
+      let createDatabaseAdapter: CreateDatabaseAdapterFn;
+      let DatabaseMigrationService: DatabaseMigrationServiceClass;
+
+      // Standardized error handling for both plugin types
       if (useMysql) {
-        logger.info('[INIT] Using MySQL database plugin');
-        const mysqlPluginModule = await import('@elizaos/plugin-mysql');
-        // Type assertion needed due to dual @elizaos/core versions
-        this.databasePlugin = mysqlPluginModule.default as any as Plugin;
-        createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter;
-        // MySQL plugin may not have migration service yet, provide a no-op implementation
-        DatabaseMigrationService = class {
-          async initializeWithDatabase() {
-            logger.debug('[INIT] MySQL migration service (no-op)');
-          }
-          discoverAndRegisterPluginSchemas() {
-            logger.debug('[INIT] MySQL schema registration (no-op)');
-          }
-          async runAllPluginMigrations() {
-            logger.debug('[INIT] MySQL migrations (no-op)');
-          }
-        };
+        try {
+          logger.info('[INIT] Using MySQL database plugin');
+
+          // Validate MySQL URL before attempting to use it
+          validateAndLogMySQLUrl(mysqlUrl);
+
+          const mysqlPluginModule = await import('@elizaos/plugin-mysql');
+          // Type assertion needed due to dual @elizaos/core versions
+          this.databasePlugin = mysqlPluginModule.default as any as Plugin;
+          createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+          // MySQL plugin may not have migration service yet, use extracted no-op implementation
+          DatabaseMigrationService = MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+          logger.success('[INIT] MySQL database plugin loaded successfully');
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error(`[INIT] Failed to load MySQL database plugin: ${errorMsg}`);
+          throw new Error(`Failed to initialize MySQL database plugin: ${errorMsg}`);
+        }
       } else {
-        logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
-        const sqlPluginModule = await import('@elizaos/plugin-sql');
-        this.databasePlugin = sqlPluginModule.default;
-        createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter;
-        DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService;
+        try {
+          logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
+
+          const sqlPluginModule = await import('@elizaos/plugin-sql');
+          this.databasePlugin = sqlPluginModule.default;
+          createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+          DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService as DatabaseMigrationServiceClass;
+
+          logger.success('[INIT] SQL database plugin loaded successfully');
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error(`[INIT] Failed to load SQL database plugin: ${errorMsg}`);
+          throw new Error(`Failed to initialize SQL database plugin: ${errorMsg}`);
+        }
       }
 
       const agentDataDir = resolvePgliteDir(config?.dataDir);
@@ -473,17 +504,26 @@ export class AgentServer {
           );
         }
       } else if (config?.postgresUrl && !useMysql) {
-        logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
+        // Only attempt RLS cleanup if RLS was explicitly disabled after being enabled
+        // Check if RLS might have been previously enabled by looking for RLS_OWNER_ID history
+        const hadRlsOwner = !!process.env.RLS_OWNER_ID;
 
-        // Clean up RLS if it was previously enabled
-        try {
-          const { uninstallRLS } = await import('@elizaos/plugin-sql');
-          logger.info('[INIT] Cleaning up RLS policies and functions...');
-          await uninstallRLS(this.database);
-          logger.success('[INIT] RLS cleanup completed');
-        } catch (cleanupError) {
-          // It's OK if cleanup fails (RLS might not have been installed)
-          logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
+        if (hadRlsOwner) {
+          logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
+          logger.info('[INIT] Detected previous RLS configuration, attempting cleanup...');
+
+          // Clean up RLS if it was previously enabled
+          try {
+            const { uninstallRLS } = await import('@elizaos/plugin-sql');
+            logger.info('[INIT] Cleaning up RLS policies and functions...');
+            await uninstallRLS(this.database);
+            logger.success('[INIT] RLS cleanup completed');
+          } catch (cleanupError) {
+            // It's OK if cleanup fails (RLS might not have been installed)
+            logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
+          }
+        } else {
+          logger.info('[INIT] RLS never configured, skipping cleanup');
         }
       } else if (useMysql && rlsEnabled) {
         logger.warn('[RLS] RLS is not supported with MySQL, skipping RLS initialization');
@@ -555,9 +595,13 @@ export class AgentServer {
       if (!defaultServer) {
         logger.info(`[AgentServer] Creating server with UUID ${this.serverId}...`);
 
-        // Use parameterized query to prevent SQL injection
+        // SECURITY: Using drizzle-orm's sql tagged template literal for safe parameterization
+        // The sql`` tag automatically converts interpolated values to parameterized queries,
+        // preventing SQL injection. Each ${variable} is bound as a parameter, not concatenated.
+        // Reference: https://orm.drizzle.team/docs/sql
         try {
           const db = (this.database as any).db;
+          // Safe: drizzle-orm sql`` handles parameterization automatically
           await db.execute(sql`
             INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
             VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
@@ -566,6 +610,7 @@ export class AgentServer {
           logger.success('[AgentServer] Server created via parameterized query');
 
           // Immediately check if it was created with parameterized query
+          // Safe: drizzle-orm sql`` handles parameterization automatically
           const checkResult = await db.execute(sql`
             SELECT id, name FROM message_servers WHERE id = ${this.serverId}
           `);
