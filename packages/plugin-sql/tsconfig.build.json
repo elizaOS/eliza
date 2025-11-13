@@ -4,7 +4,8 @@
     "outDir": "dist/browser",
     "declaration": true,
     "declarationMap": false,
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "noEmit": false
   },
   "include": [
     "src/index.browser.ts",
