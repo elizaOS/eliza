@@ -22,13 +22,35 @@ import { mock } from './mockUtils';
 export type MockRuntimeOverrides = Partial<IAgentRuntime & IDatabaseAdapter>;
 
 /**
+ * Helper class to manage mock runtime initialization promise
+ * Mimics the actual AgentRuntime's initPromise behavior
+ */
+class MockInitPromiseManager {
+  promise: Promise<void>;
+  resolve!: () => void;
+  reject!: (reason?: any) => void;
+
+  constructor() {
+    this.promise = new Promise<void>((resolve, reject) => {
+      this.resolve = resolve;
+      this.reject = reject;
+    });
+  }
+}
+
+/**
  * Create a comprehensive mock of IAgentRuntime with intelligent defaults
  *
  * This function provides a fully-featured mock that implements both IAgentRuntime
  * and IDatabaseAdapter interfaces, ensuring compatibility with all test scenarios.
  *
+ * **IMPORTANT**: The mock's initPromise is created as a pending promise, matching
+ * the actual AgentRuntime behavior. Tests that need initialization to complete
+ * should call `(mockRuntime as any).resolveInit()` or provide a pre-resolved
+ * initPromise in overrides.
+ *
  * @param overrides - Partial object to override specific methods or properties
- * @returns Complete mock implementation of IAgentRuntime
+ * @returns Complete mock implementation of IAgentRuntime with additional test helpers
  *
  * @deprecated Use real runtime testing instead: import { createTestRuntime } from '@elizaos/core/test-utils'
  *
@@ -40,9 +62,18 @@ export type MockRuntimeOverrides = Partial<IAgentRuntime & IDatabaseAdapter>;
  *   getSetting: () => 'test-api-key',
  *   useModel: () => Promise.resolve('mock response')
  * });
+ *
+ * // Simulate initialization completion (if needed)
+ * (mockRuntime as any).resolveInit();
+ *
+ * // Or wait for initialization
+ * await mockRuntime.initPromise;
  * ```
  */
-export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentRuntime {
+export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentRuntime & {
+  resolveInit?: () => void;
+  rejectInit?: (reason?: any) => void;
+} {
   // Mock character with sensible defaults
   const defaultCharacter: Character = {
     id: 'test-character-id' as UUID,
@@ -78,6 +109,10 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
   // Shared state cache reference for methods that read from cache
   const stateCache: Map<string, any> = (overrides.stateCache as Map<string, any>) || new Map();
 
+  // Create init promise manager to mimic actual runtime behavior
+  // Unless overridden, the promise starts pending (not resolved)
+  const initManager = new MockInitPromiseManager();
+
   // Create base runtime mock
   const baseRuntime: IAgentRuntime = {
     // Core Properties
@@ -107,14 +142,18 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       child: () => ({}) as any,
     },
     stateCache,
-    initPromise: Promise.resolve(),
+    // Use the manager's promise (pending by default) unless overridden
+    initPromise: overrides.initPromise || initManager.promise,
 
     // Database Properties
     db: overrides.db || mockDb,
 
     // Core Runtime Methods
     registerPlugin: mock().mockResolvedValue(undefined),
-    initialize: mock().mockResolvedValue(undefined),
+    initialize: mock().mockImplementation(async () => {
+      // Automatically resolve initPromise when initialize is called, matching actual runtime
+      initManager.resolve();
+    }),
     getConnection: mock().mockResolvedValue(mockDb),
     getService: mock().mockReturnValue(null),
     getServicesByType: mock().mockReturnValue([]),
@@ -276,5 +315,15 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     ...overrides,
   };
 
-  return baseRuntime;
+  // Add test helpers for controlling initialization
+  // These can be used in tests to simulate initialization completion or failure
+  const runtimeWithHelpers = baseRuntime as IAgentRuntime & {
+    resolveInit: () => void;
+    rejectInit: (reason?: any) => void;
+  };
+
+  runtimeWithHelpers.resolveInit = () => initManager.resolve();
+  runtimeWithHelpers.rejectInit = (reason?: any) => initManager.reject(reason);
+
+  return runtimeWithHelpers;
 }
