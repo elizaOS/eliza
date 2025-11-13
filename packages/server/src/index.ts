@@ -165,6 +165,7 @@ export class AgentServer {
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
   public database!: DatabaseAdapter;
+  private databasePlugin?: Plugin; // Store the database plugin for agent startup
   private rlsOwnerId?: UUID;
   public serverId: UUID = DEFAULT_SERVER_ID;
 
@@ -194,7 +195,9 @@ export class AgentServer {
       agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
+      // The database plugin is automatically added by each agent's plugin list
+      // Don't force add it here as it's character-specific
+      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || [])];
 
       return {
         character: encryptedCharacter(agent.character),
@@ -324,16 +327,15 @@ export class AgentServer {
 
       // Determine which database plugin to use based on environment variables
       const useMysql = !!process.env.MYSQL_URL;
-      const usePostgres = !!config?.postgresUrl;
 
-      let databasePlugin: Plugin;
       let createDatabaseAdapter: any;
       let DatabaseMigrationService: any;
 
       if (useMysql) {
         logger.info('[INIT] Using MySQL database plugin');
         const mysqlPluginModule = await import('@elizaos/plugin-mysql');
-        databasePlugin = mysqlPluginModule.default;
+        // Type assertion needed due to dual @elizaos/core versions
+        this.databasePlugin = mysqlPluginModule.default as any as Plugin;
         createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter;
         // MySQL plugin may not have migration service yet, provide a no-op implementation
         DatabaseMigrationService = class {
@@ -350,7 +352,7 @@ export class AgentServer {
       } else {
         logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
         const sqlPluginModule = await import('@elizaos/plugin-sql');
-        databasePlugin = sqlPluginModule.default;
+        this.databasePlugin = sqlPluginModule.default;
         createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter;
         DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService;
       }
@@ -399,7 +401,7 @@ export class AgentServer {
         await migrationService.initializeWithDatabase(db);
 
         // Register the database plugin schema
-        migrationService.discoverAndRegisterPluginSchemas([databasePlugin]);
+        migrationService.discoverAndRegisterPluginSchemas([this.databasePlugin!]);
 
         // Run the migrations
         await migrationService.runAllPluginMigrations();
