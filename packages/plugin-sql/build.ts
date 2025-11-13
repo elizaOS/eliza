@@ -89,8 +89,8 @@ async function buildAll() {
   // Browser alias (stable entry) with explicit types for subpath
   const browserIndexDtsPath = join(browserDir, 'index.d.ts');
   const browserAlias = [
-    'export * from "./src/index.browser";',
-    'export { default } from "./src/index.browser";',
+    'export * from "./index.browser";',
+    'export { default } from "./index.browser";',
     '',
   ].join('\n');
   await writeFile(browserIndexDtsPath, browserAlias, 'utf8');
