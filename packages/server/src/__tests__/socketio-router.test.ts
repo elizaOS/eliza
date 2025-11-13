@@ -116,6 +116,24 @@ describe('SocketIORouter', () => {
     });
   });
 
+  describe.only('when ELIZA_SOCKETIO_AUTO_TOKEN is set', () => {
+    const validToken = 'test-auth-token-12345';
+
+    beforeEach(() => {
+      process.env.ELIZA_SOCKETIO_AUTH_TOKEN = validToken;
+    });
+
+    it('should not allow connection with invalid auth token', () => {
+      router.setupListeners(mockIO);
+      mockSocket.handshake.auth.token = "invalid-token";
+
+      const connectionHandler = mockIO.on.mock.calls[0][1];
+      connectionHandler(mockSocket);
+
+      expect(mockSocket.disconnect).toHaveBeenCalled();
+    });
+  });
+
   describe('handleChannelJoining', () => {
     it('should handle channel joining with valid channelId', () => {
       router.setupListeners(mockIO);
