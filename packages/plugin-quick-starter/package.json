@@ -61,13 +61,7 @@
     "access": "public"
   },
   "resolutions": {
-    "// Note": "langchain 0.3.30 fixes @langchain/core zod/v3 import issues",
-    "zod": "4.1.11",
-    "langchain": "0.3.30",
-    "@langchain/core": "0.3.30"
-  },
-  "overrides": {
-    "@langchain/core": "0.3.30"
+    "zod": "4.1.11"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
