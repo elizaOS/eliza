@@ -125,6 +125,15 @@ export interface ServerConfig {
   clientPath?: string;
   port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
 
+  // Database plugin configuration (provided by caller, typically CLI)
+  databasePlugin?: Plugin;
+  createDatabaseAdapter?: (config: any, agentId: UUID) => DatabaseAdapter;
+  DatabaseMigrationService?: new () => {
+    initializeWithDatabase(db: any): Promise<void>;
+    discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+    runAllPluginMigrations(): Promise<void>;
+  };
+
   // Agent configuration (runtime, not infrastructure)
   agents?: Array<{
     character: Character;
@@ -335,14 +344,6 @@ export class AgentServer {
       // This ensures the server works when used standalone (without CLI)
       loadEnvFile();
 
-      // Determine which database plugin to use based on environment variables
-      const mysqlUrl = process.env.MYSQL_URL;
-      const postgresUrl = config?.postgresUrl;
-      const useMysql = !!mysqlUrl;
-
-      // Log plugin selection decision
-      logger.info(`[INIT] Database plugin selection: useMysql=${useMysql}, hasPostgresUrl=${!!postgresUrl}, hasMysqlUrl=${!!mysqlUrl}`);
-
       // Type-safe database plugin imports using typeof import() patterns
       type CreateDatabaseAdapterFn = (
         config: { dataDir?: string; postgresUrl?: string; mysqlUrl?: string },
@@ -358,44 +359,72 @@ export class AgentServer {
       let createDatabaseAdapter: CreateDatabaseAdapterFn;
       let DatabaseMigrationService: DatabaseMigrationServiceClass;
 
-      // Standardized error handling for both plugin types
-      if (useMysql) {
-        try {
-          logger.info('[INIT] Using MySQL database plugin');
+      // Use database plugin from config if provided (preferred, removes dependency coupling)
+      if (config?.databasePlugin && config?.createDatabaseAdapter) {
+        logger.info('[INIT] Using database plugin provided by caller');
+        this.databasePlugin = config.databasePlugin;
+        createDatabaseAdapter = config.createDatabaseAdapter;
+        DatabaseMigrationService = config.DatabaseMigrationService || MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
 
-          // Store MySQL flag for later use (e.g., SQL syntax differences)
-          this.useMysql = true;
+        // Check if it's MySQL based on the plugin
+        const mysqlUrl = process.env.MYSQL_URL;
+        this.useMysql = !!mysqlUrl;
 
-          // Validate MySQL URL before attempting to use it
+        if (this.useMysql) {
           validateAndLogMySQLUrl(mysqlUrl);
-
-          const mysqlPluginModule = await import('@elizaos/plugin-mysql');
-          // Type assertion needed due to dual @elizaos/core versions
-          this.databasePlugin = mysqlPluginModule.default as any as Plugin;
-          createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
-          // MySQL plugin may not have migration service yet, use extracted no-op implementation
-          DatabaseMigrationService = MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
-
-          logger.success('[INIT] MySQL database plugin loaded successfully');
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger.error(`[INIT] Failed to load MySQL database plugin: ${errorMsg}`);
-          throw new Error(`Failed to initialize MySQL database plugin: ${errorMsg}`);
         }
+
+        logger.success(`[INIT] Database plugin loaded: ${this.databasePlugin.name}`);
       } else {
-        try {
-          logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
+        // Fallback: Auto-detect and load plugin (for backward compatibility)
+        logger.info('[INIT] No database plugin provided in config, auto-detecting...');
 
-          const sqlPluginModule = await import('@elizaos/plugin-sql');
-          this.databasePlugin = sqlPluginModule.default;
-          createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
-          DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService as DatabaseMigrationServiceClass;
+        const mysqlUrl = process.env.MYSQL_URL;
+        const postgresUrl = config?.postgresUrl;
+        const useMysql = !!mysqlUrl;
 
-          logger.success('[INIT] SQL database plugin loaded successfully');
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger.error(`[INIT] Failed to load SQL database plugin: ${errorMsg}`);
-          throw new Error(`Failed to initialize SQL database plugin: ${errorMsg}`);
+        // Log plugin selection decision
+        logger.info(`[INIT] Database plugin selection: useMysql=${useMysql}, hasPostgresUrl=${!!postgresUrl}, hasMysqlUrl=${!!mysqlUrl}`);
+
+        // Standardized error handling for both plugin types
+        if (useMysql) {
+          try {
+            logger.info('[INIT] Using MySQL database plugin');
+
+            // Store MySQL flag for later use (e.g., SQL syntax differences)
+            this.useMysql = true;
+
+            // Validate MySQL URL before attempting to use it
+            validateAndLogMySQLUrl(mysqlUrl);
+
+            const mysqlPluginModule = await import('@elizaos/plugin-mysql');
+            // Type assertion needed due to dual @elizaos/core versions
+            this.databasePlugin = mysqlPluginModule.default as any as Plugin;
+            createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            // MySQL plugin may not have migration service yet, use extracted no-op implementation
+            DatabaseMigrationService = MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] MySQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load MySQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize MySQL database plugin: ${errorMsg}`);
+          }
+        } else {
+          try {
+            logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
+
+            const sqlPluginModule = await import('@elizaos/plugin-sql');
+            this.databasePlugin = sqlPluginModule.default;
+            createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] SQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load SQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize SQL database plugin: ${errorMsg}`);
+          }
         }
       }
 
@@ -413,7 +442,7 @@ export class AgentServer {
       // Each agent will have its own database adapter created by the appropriate plugin
       const tempServerAgentId = '00000000-0000-0000-0000-000000000000'; // Temporary ID for server operations
 
-      if (useMysql) {
+      if (this.useMysql) {
         this.database = createDatabaseAdapter(
           {
             mysqlUrl: process.env.MYSQL_URL,
@@ -460,7 +489,7 @@ export class AgentServer {
       const rlsOwnerIdString = process.env.RLS_OWNER_ID;
 
       // RLS is only supported with PostgreSQL (not MySQL or PGLite)
-      if (rlsEnabled && !useMysql) {
+      if (rlsEnabled && !this.useMysql) {
         if (!config?.postgresUrl) {
           logger.error(
             '[RLS] ENABLE_RLS_ISOLATION requires PostgreSQL (not compatible with PGLite or MySQL)'
@@ -514,7 +543,7 @@ export class AgentServer {
             `RLS initialization failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
           );
         }
-      } else if (config?.postgresUrl && !useMysql) {
+      } else if (config?.postgresUrl && !this.useMysql) {
         // Only attempt RLS cleanup if RLS was explicitly disabled after being enabled
         // Check if RLS might have been previously enabled by looking for RLS_OWNER_ID history
         const hadRlsOwner = !!process.env.RLS_OWNER_ID;
@@ -536,7 +565,7 @@ export class AgentServer {
         } else {
           logger.info('[INIT] RLS never configured, skipping cleanup');
         }
-      } else if (useMysql && rlsEnabled) {
+      } else if (this.useMysql && rlsEnabled) {
         logger.warn('[RLS] RLS is not supported with MySQL, skipping RLS initialization');
       }
 
