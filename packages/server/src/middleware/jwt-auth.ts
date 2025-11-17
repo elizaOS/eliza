@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { logger, type UUID } from '@elizaos/core';
-import { jwtVerifier } from './jwt-verifier';
+import { jwtVerifier } from '../services/jwt-verifier.js';
 
 /**
  * Extended Request with JWT authentication data.

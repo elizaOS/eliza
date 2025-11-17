@@ -12,6 +12,7 @@ import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
 import { randomUUID } from '@/lib/utils';
 import clientLogger from '@/lib/logger';
+import { useAuth } from '@/context/AuthContext';
 
 interface UseSocketChatProps {
   channelId: UUID | undefined;
@@ -41,6 +42,7 @@ export function useSocketChat({
   onInputDisabledChange,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
+  const { getJwtToken, getApiKey } = useAuth();
   const animatedMessageIdRef = useRef<string | null>(null);
   const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
 
@@ -95,7 +97,10 @@ export function useSocketChat({
       return;
     }
 
-    socketIOManager.initialize(currentUserId); // Initialize on user context
+    // Initialize socket with JWT token and API key for authentication
+    const jwtToken = getJwtToken();
+    const apiKey = getApiKey();
+    socketIOManager.initialize(currentUserId, jwtToken ?? undefined, apiKey ?? undefined);
 
     // Only join if this specific channelId hasn't been joined by this hook instance yet,
     // or if the channelId has changed.

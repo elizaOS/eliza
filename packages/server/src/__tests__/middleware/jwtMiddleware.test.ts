@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:te
 import { type Response, type NextFunction } from 'express';
 import { jwtAuthMiddleware, requireJWT, type JWTAuthRequest } from '../../middleware';
 import { logger } from '@elizaos/core';
-import { jwtVerifier } from '../../middleware/jwt-verifier';
+import { jwtVerifier } from '../../services/jwt-verifier';
 
 describe('JWT Auth Middleware', () => {
   let mockRequest: Partial<JWTAuthRequest>;

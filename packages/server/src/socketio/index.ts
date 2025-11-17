@@ -11,6 +11,17 @@ import {
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils/media-transformer';
+import { jwtVerifier } from '../services/jwt-verifier';
+
+/**
+ * Socket.io socket.data structure for authenticated sockets
+ * These properties are set by the authentication middleware
+ */
+export interface SocketData {
+  entityId?: UUID;
+  allowedRooms?: Set<UUID>;
+  roomsCacheLoaded?: boolean;
+}
 
 export class SocketIORouter {
   private elizaOS: ElizaOS;
@@ -47,27 +58,60 @@ export class SocketIORouter {
    * Authentication middleware - Production-grade WebSocket security
    *
    * Runs on every WebSocket handshake to:
-   * 1. Authenticate the user (currently mock JWT, will be real JWT)
-   * 2. Initialize security context on socket.data
-   * 3. Track entity->sockets mapping for cache invalidation
-   *
-   * TODO: Replace mock entityId with real JWT token verification
+   * 1. Verify API Key (if configured)
+   * 2. Verify JWT and extract entityId from token
+   * 3. Initialize security context on socket.data
+   * 4. Track entity->sockets mapping for cache invalidation
    */
   private setupAuthenticationMiddleware(io: SocketIOServer) {
     io.use(async (socket, next) => {
       try {
-        // TODO: const token = socket.handshake.auth.token;
-        // TODO: const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        // TODO: const entityId = decoded.entityId;
+        // API Key authentication (if configured)
+        if (process.env.SERVER_API_KEY) {
+          const apiKey = socket.handshake.auth.apiKey || socket.handshake.headers['x-api-key'];
 
-        // MOCK JWT - Client sends entityId directly (INSECURE, temporary)
-        // This simulates JWT authentication flow without actual token verification
-        const entityId = socket.handshake.auth.entityId;
+          if (!apiKey || apiKey !== process.env.SERVER_API_KEY) {
+            logger.warn(`[SocketIO Auth] Invalid or missing API Key from socket ${socket.id}`);
+            return next(new Error('Invalid or missing API Key'));
+          }
+
+          logger.debug(`[SocketIO Auth] API Key verified for socket ${socket.id}`);
+        }
+
+        // JWT authentication
+        const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+        if (!jwtVerifier.isEnabled()) {
+          if (dataIsolationEnabled) {
+            logger.error('[SocketIO Auth] JWT required for data isolation but not configured');
+            return next(new Error('JWT authentication required for data isolation'));
+          }
+          logger.warn('[SocketIO Auth] JWT authentication disabled - connection allowed without token');
+          return next();
+        }
+
+        const token = socket.handshake.auth.token;
+
+        if (!token) {
+          if (dataIsolationEnabled) {
+            logger.warn(`[SocketIO Auth] Missing JWT token (ENABLE_DATA_ISOLATION=true)`);
+            return next(new Error('JWT token required for data isolation'));
+          }
+          logger.debug(`[SocketIO Auth] No JWT token provided, allowed (ENABLE_DATA_ISOLATION=false)`);
+          return next();
+        }
+
+        // Verify JWT and extract entityId
+        const { entityId, sub, payload } = await jwtVerifier.verify(token);
 
         if (!entityId || !validateUuid(entityId)) {
-          logger.warn(`[SocketIO Auth] Invalid or missing entityId in handshake`);
-          return next(new Error('Authentication failed: entityId required'));
+          logger.error(`[SocketIO Auth] JWT verification succeeded but entityId invalid: ${entityId}`);
+          return next(new Error('Invalid entityId from JWT'));
         }
+
+        logger.info(
+          `[SocketIO Auth] JWT verified: ${sub} → entityId: ${entityId.substring(0, 8)}... (issuer: ${payload.iss || 'unknown'})`
+        );
 
         // Initialize socket security context
         socket.data.entityId = entityId as UUID;
