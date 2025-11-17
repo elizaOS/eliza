@@ -66,6 +66,7 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
+    "@langchain/core": "^1.0.0",
     "@langchain/textsplitters": "^1.0.0",
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
