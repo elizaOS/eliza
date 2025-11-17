@@ -41,7 +41,7 @@ export class SocketIORouter {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
 
     // Optional Authentication
-    const serverAuthToken = process.env.ELIZA_SOCKETIO_AUTH_TOKEN;
+    const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
     if (serverAuthToken) {
       if (socket.handshake.auth.token !== serverAuthToken) {
         logger.error(`[SocketIO] Invalid authentication token for socket ${socket.id}`);
@@ -50,7 +50,7 @@ export class SocketIORouter {
       }
     } else {
       logger.warn(
-        '[SocketIO] Server authentication is disabled. Set ELIZA_SOCKETIO_AUTH_TOKEN environment variable to enable.'
+        '[SocketIO] Server authentication is disabled. Set ELIZA_SERVER_AUTH_TOKEN environment variable to enable.'
       );
     }
 

@@ -116,11 +116,11 @@ describe('SocketIORouter', () => {
     });
   });
 
-  describe.only('when ELIZA_SOCKETIO_AUTO_TOKEN is set', () => {
+  describe.only('when ELIZA_SERVER_AUTH_TOKEN is set', () => {
     const validToken = 'test-auth-token-12345';
 
     beforeEach(() => {
-      process.env.ELIZA_SOCKETIO_AUTH_TOKEN = validToken;
+      process.env.ELIZA_SERVER_AUTH_TOKEN = validToken;
     });
 
     it('should not allow connection with invalid auth token', () => {
