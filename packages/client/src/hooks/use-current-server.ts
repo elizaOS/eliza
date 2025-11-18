@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import type { UUID } from '@elizaos/core';
 import clientLogger from '@/lib/logger';
 import { STALE_TIMES } from './use-query-hooks';
@@ -13,7 +13,7 @@ export function useCurrentMessageServer() {
     queryKey: ['currentMessageServer'],
     queryFn: async () => {
       clientLogger.info('[useCurrentMessageServer] Fetching current message server ID from backend');
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       const result = await elizaClient.messaging.getCurrentMessageServer();
       clientLogger.info('[useCurrentServer] Current server ID:', result.messageServerId);
       return result.messageServerId;

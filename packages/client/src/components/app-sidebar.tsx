@@ -38,7 +38,7 @@ import {
 import { useDeleteChannel } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
-import { Book, Cog, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
+import { Book, Cog, LogIn, LogOut, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 import {
@@ -48,6 +48,8 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
+import { useAuth } from '@/context/AuthContext';
+import { useServerConfig } from '@/context/ServerConfigContext';
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -645,6 +647,7 @@ export function AppSidebar({
             <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
             <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
             <FooterLink to="/settings" Icon={Cog} label="Settings" />
+            <AuthButton />
             <ConnectionStatus />
           </SidebarMenu>
         </SidebarFooter>
@@ -654,6 +657,43 @@ export function AppSidebar({
     </>
   );
 }
+
+/* ---------- auth button ---------- */
+const AuthButton = () => {
+  const { jwtToken, openAuthDialog, logout } = useAuth();
+  const { requiresAuth } = useServerConfig();
+
+  // Don't show auth buttons if server doesn't require authentication
+  if (!requiresAuth) {
+    return null;
+  }
+
+  if (jwtToken) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton
+          className="rounded cursor-pointer"
+          onClick={logout}
+        >
+          <LogOut className="h-4 w-4 mr-3" />
+          Logout
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        className="rounded cursor-pointer"
+        onClick={openAuthDialog}
+      >
+        <LogIn className="h-4 w-4 mr-3" />
+        Login
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+};
 
 /* ---------- footer link ---------- */
 const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label: string }) => {

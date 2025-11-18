@@ -1,6 +1,7 @@
 import { AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConnection } from '../context/ConnectionContext';
+import { useServerConfig } from '../context/ServerConfigContext';
 
 export interface ConnectionErrorBannerProps {
   className?: string;
@@ -8,8 +9,11 @@ export interface ConnectionErrorBannerProps {
 
 export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps) {
   const { status, error } = useConnection();
+  const { requiresAuth } = useServerConfig();
 
-  const shouldShowBanner = status === 'error' || status === 'unauthorized';
+  // Don't show unauthorized banner if server doesn't require auth
+  const shouldShowBanner =
+    status === 'error' || (status === 'unauthorized' && requiresAuth);
 
   if (!shouldShowBanner) {
     return null;
@@ -23,8 +27,8 @@ export function ConnectionErrorBanner({ className }: ConnectionErrorBannerProps)
     const errorMsg = error;
 
     if (isUnauthorized) {
-      errorTitle = 'Unauthorized';
-      errorDescription = 'Invalid or missing API Key provided.';
+      errorTitle = 'Authentication Required';
+      errorDescription = 'Please log in to continue.';
     } else if (errorMsg.includes('NetworkError') || errorMsg.includes('Failed to fetch')) {
       errorTitle = 'Network Error';
       errorDescription = 'Cannot reach the server. Please check your network connection.';

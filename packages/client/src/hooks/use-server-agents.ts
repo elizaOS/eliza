@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
 import type { UUID } from '@elizaos/core';
 
@@ -9,7 +9,7 @@ export function useAddAgentToMessageServer() {
 
   return useMutation({
     mutationFn: async ({ messageServerId, agentId }: { messageServerId: UUID; agentId: UUID }) => {
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.agents.addAgentToMessageServer(messageServerId, agentId);
     },
     onSuccess: (_data, variables) => {
@@ -38,7 +38,7 @@ export function useRemoveAgentFromMessageServer() {
 
   return useMutation({
     mutationFn: async ({ messageServerId, agentId }: { messageServerId: UUID; agentId: UUID }) => {
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.agents.removeAgentFromMessageServer(messageServerId, agentId);
     },
     onSuccess: (_data, variables) => {

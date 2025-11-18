@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from './use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import type { Agent } from '@elizaos/core';
 
 export function useDeleteAgent(targetAgentData: Agent) {
@@ -33,7 +33,7 @@ export function useDeleteAgent(targetAgentData: Agent) {
         }
       }, 8000);
 
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
 
       // Ensure we have a valid ID
       if (!targetAgentData.id) {

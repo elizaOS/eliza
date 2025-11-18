@@ -15,7 +15,7 @@ export interface ConnectionStatusProps {
 export default function ConnectionStatus() {
   const { toast } = useToast();
   const [prevStatus, setPrevStatus] = useState<string | null>(null);
-  const { openApiKeyDialog } = useAuth();
+  const { requireAuth } = useAuth();
   const { status, error } = useConnection();
 
   // Derive states from context
@@ -55,11 +55,11 @@ export default function ConnectionStatus() {
   }, [status, prevStatus, isConnected, isError, isUnauthorized, toast]);
 
   useEffect(() => {
-    // If the status becomes unauthorized, trigger the API key dialog
+    // If the status becomes unauthorized, trigger the auth dialog
     if (isUnauthorized && prevStatus !== 'unauthorized') {
-      openApiKeyDialog(); // Trigger the global dialog
+      requireAuth(); // Trigger the auth dialog
     }
-  }, [isUnauthorized, prevStatus, openApiKeyDialog]);
+  }, [isUnauthorized, prevStatus, requireAuth]);
 
   const getStatusColor = () => {
     if (isUnauthorized) return 'bg-yellow-500';

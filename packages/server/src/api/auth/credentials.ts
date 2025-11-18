@@ -120,6 +120,8 @@ export function createAuthCredentialsRouter(
         passwordHash,
       });
 
+      logger.debug(`[Auth] User created in DB with id: ${userId}`);
+
       // Generate JWT token
       const token = generateAuthToken(username, email);
 
@@ -175,21 +177,31 @@ export function createAuthCredentialsRouter(
     }
 
     try {
+      logger.debug(`[Auth] Login attempt for: ${email}`);
+
       // Find user by email
       const user = await db.getUserByEmail(email.toLowerCase());
 
       if (!user) {
+        logger.warn(`[Auth] User not found: ${email}`);
         return sendError(res, 401, 'INVALID_CREDENTIALS', 'Invalid credentials');
       }
 
+      logger.debug(
+        `[Auth] User found: ${user.username}, passwordHash starts with: ${user.passwordHash?.substring(0, 10)}...`
+      );
+
       // Verify password
+      logger.debug(`[Auth] Comparing password for ${email}`);
       const isValidPassword = await bcrypt.compare(
         password,
         user.passwordHash
       );
 
+      logger.debug(`[Auth] Password comparison result: ${isValidPassword}`);
+
       if (!isValidPassword) {
-        logger.warn(`[Auth] Failed login attempt for ${email}`);
+        logger.warn(`[Auth] Failed login attempt for ${email} - invalid password`);
         return sendError(res, 401, 'INVALID_CREDENTIALS', 'Invalid credentials');
       }
 

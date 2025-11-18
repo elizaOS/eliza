@@ -30,7 +30,7 @@ import {
 } from '@/hooks/use-query-hooks';
 import { useSocketChat } from '@/hooks/use-socket-chat';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
 import { parseMediaFromText, removeMediaUrlsFromText, type MediaInfo } from '@/lib/media-utils';
 import {
@@ -482,7 +482,7 @@ export default function Chat({
 
       if (latestChannel) {
         try {
-          const elizaClient = createElizaClient();
+          const elizaClient = getElizaClient();
           const latestMessages = await elizaClient.messaging.getChannelMessages(latestChannel.id, {
             limit: 30,
           });
@@ -584,7 +584,7 @@ export default function Chat({
       async () => {
         clientLogger.info(`[Chat] Deleting DM channel ${channelToDelete.id}`);
         try {
-          const elizaClient = createElizaClient();
+          const elizaClient = getElizaClient();
           await elizaClient.messaging.deleteChannel(channelToDelete.id);
 
           // --- Optimistically update the React-Query cache so UI refreshes instantly ---
@@ -879,7 +879,7 @@ export default function Chat({
       return;
     }
 
-    const elizaClient = createElizaClient();
+    const elizaClient = getElizaClient();
     const data = await elizaClient.messaging.generateChannelTitle(
       finalChannelIdForHooks,
       contextId
@@ -1506,7 +1506,7 @@ export default function Chat({
                         },
                         async () => {
                           try {
-                            const elizaClient = createElizaClient();
+                            const elizaClient = getElizaClient();
                             await elizaClient.messaging.deleteChannel(channelIdToDelete);
                             toast({
                               title: 'Group Deleted',

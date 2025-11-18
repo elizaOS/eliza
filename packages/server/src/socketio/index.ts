@@ -91,40 +91,54 @@ export class SocketIORouter {
         }
 
         const token = socket.handshake.auth.token;
+        let entityId: UUID;
 
         if (!token) {
           if (dataIsolationEnabled) {
             logger.warn(`[SocketIO Auth] Missing JWT token (ENABLE_DATA_ISOLATION=true)`);
             return next(new Error('JWT token required for data isolation'));
           }
-          logger.debug(`[SocketIO Auth] No JWT token provided, allowed (ENABLE_DATA_ISOLATION=false)`);
-          return next();
+
+          // No JWT - use client-provided entityId (fallback mode for DATA_ISOLATION=false)
+          const clientEntityId = socket.handshake.auth.entityId;
+
+          if (!clientEntityId || !validateUuid(clientEntityId)) {
+            logger.error(`[SocketIO Auth] No JWT and invalid client entityId: ${clientEntityId}`);
+            return next(new Error('Valid entityId required'));
+          }
+
+          entityId = clientEntityId as UUID;
+          logger.debug(`[SocketIO Auth] No JWT token - using client entityId: ${entityId.substring(0, 8)}... (ENABLE_DATA_ISOLATION=false)`);
+        } else {
+          // JWT present - extract entityId from token (secure mode)
+          const verificationResult = await jwtVerifier.verify(token);
+          const jwtEntityId = verificationResult.entityId;
+          const { sub, payload } = verificationResult;
+
+          if (!jwtEntityId || !validateUuid(jwtEntityId)) {
+            logger.error(`[SocketIO Auth] JWT verification succeeded but entityId invalid: ${jwtEntityId}`);
+            return next(new Error('Invalid entityId from JWT'));
+          }
+
+          entityId = jwtEntityId as UUID;
+
+          logger.info(
+            `[SocketIO Auth] JWT verified: ${sub} → entityId: ${entityId.substring(0, 8)}... (issuer: ${payload.iss || 'unknown'})`
+          );
         }
 
-        // Verify JWT and extract entityId
-        const { entityId, sub, payload } = await jwtVerifier.verify(token);
-
-        if (!entityId || !validateUuid(entityId)) {
-          logger.error(`[SocketIO Auth] JWT verification succeeded but entityId invalid: ${entityId}`);
-          return next(new Error('Invalid entityId from JWT'));
-        }
-
-        logger.info(
-          `[SocketIO Auth] JWT verified: ${sub} → entityId: ${entityId.substring(0, 8)}... (issuer: ${payload.iss || 'unknown'})`
-        );
-
-        // Initialize socket security context
-        socket.data.entityId = entityId as UUID;
+        // Initialize socket security context with the determined entityId
+        socket.data.entityId = entityId;
         socket.data.allowedRooms = new Set<UUID>(); // Lazy-loaded on first join attempt
         socket.data.roomsCacheLoaded = false; // Track if cache is initialized
 
-        logger.info(`[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId}`);
+        logger.info(`[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId.substring(0, 8)}...`);
 
         // Track entity -> sockets mapping for targeted cache invalidation
-        if (!this.entitySockets.has(entityId as UUID)) {
-          this.entitySockets.set(entityId as UUID, new Set());
+        if (!this.entitySockets.has(entityId)) {
+          this.entitySockets.set(entityId, new Set());
         }
-        this.entitySockets.get(entityId as UUID)!.add(socket.id);
+        this.entitySockets.get(entityId)!.add(socket.id);
 
         next();
       } catch (error: any) {
@@ -136,6 +150,17 @@ export class SocketIORouter {
 
   private handleNewConnection(socket: Socket, _io: SocketIOServer) {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
+
+    // Send authenticated event with the entityId determined by the server
+    // This allows the client to sync its local entityId with the server's decision
+    const entityId = socket.data.entityId;
+    if (entityId) {
+      socket.emit('authenticated', {
+        entityId,
+        timestamp: Date.now(),
+      });
+      logger.debug(`[SocketIO] Sent 'authenticated' event to socket ${socket.id} with entityId: ${entityId.substring(0, 8)}...`);
+    }
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
       logger.debug(

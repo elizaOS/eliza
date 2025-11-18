@@ -31,12 +31,39 @@ export function jwtAuthMiddleware(
     return next();
   }
 
+  // Skip authentication endpoints - they don't need JWT to work
+  const publicAuthRoutes = [
+    '/auth/register',
+    '/auth/login',
+    '/auth/refresh', // refresh might use a refresh token instead of JWT
+  ];
+
+  // Check both req.path and req.url (in case path doesn't include /api prefix when middleware is mounted)
+  const currentPath = req.path || req.url;
+  logger.debug(`[JWT Auth] Checking path: "${currentPath}" (originalUrl: "${req.originalUrl}", baseUrl: "${req.baseUrl}", method: ${req.method})`);
+
+  if (publicAuthRoutes.some(route => currentPath.endsWith(route))) {
+    logger.debug(`[JWT Auth] Skipping JWT check for public auth route: ${currentPath}`);
+    return next();
+  }
+
   // Extract Bearer token
   const authHeader = req.headers?.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     // No JWT provided - check if required
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
     if (dataIsolationEnabled) {
+      // Allow localhost/internal requests to bypass JWT (for agent-to-API communication)
+      const isLocalhost = req.ip === '127.0.0.1' ||
+                         req.ip === '::1' ||
+                         req.ip === '::ffff:127.0.0.1' ||
+                         req.hostname === 'localhost';
+
+      if (isLocalhost) {
+        logger.debug(`[JWT Auth] Allowing internal request from ${req.ip} without JWT (ENABLE_DATA_ISOLATION=true)`);
+        return next();
+      }
+
       logger.warn('[JWT Auth] Missing JWT token (ENABLE_DATA_ISOLATION=true)');
       return res.status(401).json({
         error: 'JWT token required for data isolation',

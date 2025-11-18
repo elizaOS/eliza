@@ -10,12 +10,13 @@ import { AgentLogViewer } from './components/agent-log-viewer';
 import OnboardingTour from './components/onboarding-tour';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ConnectionProvider, useConnection } from './context/ConnectionContext';
+import { ServerConfigProvider } from './context/ServerConfigContext';
 import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
-import { createElizaClient } from './lib/api-client-config';
+import { getElizaClient } from './lib/api-client-config';
 import Chat from './routes/chat';
 import AgentCreatorRoute from './routes/createAgent';
 import Home from './routes/home';
@@ -35,8 +36,15 @@ const queryClient = new QueryClient({
       staleTime: STALE_TIMES.STANDARD,
       // Default to no polling unless specifically configured
       refetchInterval: false,
-      // Make queries retry 3 times with exponential backoff
-      retry: 3,
+      // Don't retry on 401 errors (authentication required) to avoid spamming the server
+      retry: (failureCount, error: any) => {
+        // Don't retry on 401 (Unauthorized) or 403 (Forbidden)
+        if (error?.response?.status === 401 || error?.response?.status === 403) {
+          return false;
+        }
+        // Retry up to 3 times for other errors
+        return failureCount < 3;
+      },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
       // Refetch query on window focus
       refetchOnWindowFocus: true,
@@ -45,8 +53,13 @@ const queryClient = new QueryClient({
       // Fail queries that take too long
     },
     mutations: {
-      // Default to 3 retries for mutations too
-      retry: 3,
+      // Don't retry mutations on 401/403 either
+      retry: (failureCount, error: any) => {
+        if (error?.response?.status === 401 || error?.response?.status === 403) {
+          return false;
+        }
+        return failureCount < 3;
+      },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
   },
@@ -59,7 +72,7 @@ const prefetchInitialData = async () => {
     await queryClient.prefetchQuery({
       queryKey: ['agents'],
       queryFn: async () => {
-        const elizaClient = createElizaClient();
+        const elizaClient = getElizaClient();
         const result = await elizaClient.agents.listAgents();
         return { data: result };
       },
@@ -71,21 +84,22 @@ const prefetchInitialData = async () => {
   }
 };
 
-// Execute prefetch immediately
-prefetchInitialData();
-
 // Component containing the core application logic and routing
 function AppContent() {
   useVersion();
   const { status } = useConnection();
+  const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [homeKey, setHomeKey] = useState(Date.now());
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    clientLogger.info('[AppContent] Mounted/Updated');
+    clientLogger.info('[AppContent] Mounted/Updated, isAuthenticated:', isAuthenticated);
+    // Always attempt prefetch - server will decide if JWT is required
+    // If ENABLE_DATA_ISOLATION=false on server, queries work without JWT
+    // If ENABLE_DATA_ISOLATION=true on server and no JWT, we get 401 (no retry spam thanks to retry config)
     prefetchInitialData();
-  }, []);
+  }, [isAuthenticated]);
 
   const refreshHomePage = () => {
     clientLogger.info('[AppContent] refreshHomePage called. Current homeKey:', homeKey);
@@ -208,11 +222,13 @@ function App() {
         }}
       >
         <BrowserRouter>
-          <AuthProvider>
-            <ConnectionProvider>
-              <AppContent />
-            </ConnectionProvider>
-          </AuthProvider>
+          <ServerConfigProvider>
+            <AuthProvider>
+              <ConnectionProvider>
+                <AppContent />
+              </ConnectionProvider>
+            </AuthProvider>
+          </ServerConfigProvider>
         </BrowserRouter>
       </div>
     </QueryClientProvider>

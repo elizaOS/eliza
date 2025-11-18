@@ -219,6 +219,7 @@ export class SocketIOManager extends EventAdapter {
       auth: {
         token: jwtToken,
         apiKey: apiKey,
+        entityId: clientEntityId,
       },
       autoConnect: true,
       reconnection: true,
@@ -248,6 +249,25 @@ export class SocketIOManager extends EventAdapter {
       //   clientLogger.info(`[SocketIO] 'connect' event: Attempting to re-join active channel ${channelId} (THIS SHOULD NOT HAPPEN AUTOMATICALLY)`);
       //   this.joinChannel(channelId);
       // });
+    });
+
+    // Listen for 'authenticated' event - server sends the entityId it assigned/verified
+    this.socket.on('authenticated', (data: { entityId: string; timestamp: number }) => {
+      if (data.entityId) {
+        const USER_ID_KEY = 'elizaos-client-user-id';
+        const previousEntityId = localStorage.getItem(USER_ID_KEY);
+
+        // Update localStorage with server-assigned entityId
+        localStorage.setItem(USER_ID_KEY, data.entityId);
+
+        if (previousEntityId !== data.entityId) {
+          clientLogger.info(
+            `[SocketIO] EntityId synchronized: ${previousEntityId?.substring(0, 8)}... → ${data.entityId.substring(0, 8)}... (source: server)`
+          );
+        } else {
+          clientLogger.debug(`[SocketIO] EntityId confirmed: ${data.entityId.substring(0, 8)}...`);
+        }
+      }
     });
 
     this.socket.on('unauthorized', (reason: string) => {
@@ -653,7 +673,7 @@ export class SocketIOManager extends EventAdapter {
   }
 
   /**
-   * Disconnect from the server
+   * Disconnect from the server (allows auto-reconnection)
    */
   public disconnect(): void {
     if (this.socket) {
@@ -664,6 +684,33 @@ export class SocketIOManager extends EventAdapter {
       this.logStreamSubscribed = false;
       clientLogger.info('[SocketIO] Disconnected from server');
     }
+  }
+
+  /**
+   * Logout - gracefully disconnect and destroy the singleton instance
+   * Emits 'logout' event before disconnecting so listeners can handle without showing error toasts
+   */
+  public logout(): void {
+    clientLogger.info('[SocketIO] Logout initiated');
+
+    // Emit logout event BEFORE disconnecting so listeners know this is intentional
+    this.emit('logout', 'User logout');
+
+    // Disconnect socket
+    if (this.socket) {
+      this.socket.io.opts.reconnection = false;
+      clientLogger.debug('[SocketIO] Auto-reconnection disabled for logout');
+
+      this.socket.disconnect();
+      this.socket = null;
+      this.isConnected = false;
+      this.activeChannelIds.clear();
+      this.logStreamSubscribed = false;
+    }
+
+    // Destroy singleton instance - forces clean re-initialization on next login
+    SocketIOManager.instance = null;
+    clientLogger.info('[SocketIO] Logout complete - singleton destroyed');
   }
 }
 
