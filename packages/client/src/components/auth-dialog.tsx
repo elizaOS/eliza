@@ -44,10 +44,10 @@ export function AuthDialog({ open, onOpenChange, closeable = true }: AuthDialogP
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'register')}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'login' | 'register')} data-testid="auth-tabs">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsTrigger value="login" data-testid="login-tab">Login</TabsTrigger>
+            <TabsTrigger value="register" data-testid="register-tab">Register</TabsTrigger>
           </TabsList>
 
           <TabsContent value="login">
@@ -158,11 +158,12 @@ function LoginForm({ onSuccess, onError, apiKey }: FormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 py-4">
+    <form onSubmit={handleSubmit} className="space-y-4 py-4" data-testid="login-form">
       <div className="space-y-2">
         <Label htmlFor="login-email">Email</Label>
         <Input
           id="login-email"
+          data-testid="login-email-input"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -176,6 +177,7 @@ function LoginForm({ onSuccess, onError, apiKey }: FormProps) {
         <div className="relative">
           <Input
             id="login-password"
+            data-testid="login-password-input"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -191,6 +193,7 @@ function LoginForm({ onSuccess, onError, apiKey }: FormProps) {
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
             disabled={isLoading}
+            data-testid="login-password-toggle"
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
@@ -198,7 +201,7 @@ function LoginForm({ onSuccess, onError, apiKey }: FormProps) {
       </div>
 
       <DialogFooter>
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading} data-testid="login-submit-button">
           {isLoading ? 'Logging in...' : 'Login'}
         </Button>
       </DialogFooter>
@@ -273,11 +276,12 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 py-4">
+    <form onSubmit={handleSubmit} className="space-y-4 py-4" data-testid="register-form">
       <div className="space-y-2">
         <Label htmlFor="register-email">Email</Label>
         <Input
           id="register-email"
+          data-testid="register-email-input"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -290,6 +294,7 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
         <Label htmlFor="register-username">Username</Label>
         <Input
           id="register-username"
+          data-testid="register-username-input"
           type="text"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -303,6 +308,7 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
         <div className="relative">
           <Input
             id="register-password"
+            data-testid="register-password-input"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -318,6 +324,7 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? 'Hide password' : 'Show password'}
             disabled={isLoading}
+            data-testid="register-password-toggle"
           >
             {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
@@ -328,6 +335,7 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
         <Label htmlFor="register-confirm-password">Confirm Password</Label>
         <Input
           id="register-confirm-password"
+          data-testid="register-confirm-password-input"
           type={showPassword ? 'text' : 'password'}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
@@ -337,7 +345,7 @@ function RegisterForm({ onSuccess, onError, apiKey }: FormProps) {
       </div>
 
       <DialogFooter>
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading} data-testid="register-submit-button">
           {isLoading ? 'Creating account...' : 'Register'}
         </Button>
       </DialogFooter>

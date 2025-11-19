@@ -59,9 +59,9 @@ fi
 
 echo -e "${GREEN}✅ Development server is ready${NC}"
 
-# Run E2E tests
-echo -e "\n${YELLOW}Running E2E tests...${NC}"
-bunx cypress run --e2e
+# Run E2E tests (excluding authentication tests which require ENABLE_DATA_ISOLATION)
+echo -e "\n${YELLOW}Running E2E tests (without authentication)...${NC}"
+bunx cypress run --e2e --spec "cypress/e2e/01-*.cy.ts,cypress/e2e/02-*.cy.ts,cypress/e2e/03-*.cy.ts"
 TEST_EXIT_CODE=$?
 
 # Cleanup is handled by trap
@@ -73,4 +73,4 @@ if [ $TEST_EXIT_CODE -eq 0 ]; then
 else
   echo -e "${RED}❌ E2E tests failed!${NC}"
   exit 1
-fi 
+fi
