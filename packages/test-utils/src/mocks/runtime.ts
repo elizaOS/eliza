@@ -162,6 +162,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getServiceLoadPromise: mock().mockResolvedValue(null),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
+    hasElizaOS(): this is IAgentRuntime & { elizaOS: any } {
+      return false;
+    },
     registerDatabaseAdapter: mock(),
     setSetting: mock(),
     getSetting: mock((key: string) => {

@@ -98,8 +98,8 @@ async function buildAll() {
   // Node alias to index.node (stable entry)
   const nodeIndexDtsPath = join(nodeDir, 'index.d.ts');
   const nodeAlias = [
-    'export * from "./index.node";',
-    'export { default } from "./index.node";',
+    'export * from "./src/index.node";',
+    'export { default } from "./src/index.node";',
     '',
   ].join('\n');
   await writeFile(nodeIndexDtsPath, nodeAlias, 'utf8');

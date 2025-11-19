@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-starter",
   "description": "${PLUGINDESCRIPTION}",
-  "version": "1.6.5-alpha.3",
+  "version": "1.6.5-alpha.6",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -76,13 +76,7 @@
     "access": "public"
   },
   "resolutions": {
-    "// Note": "langchain 0.3.30 fixes @langchain/core zod/v3 import issues",
-    "zod": "4.1.11",
-    "langchain": "0.3.30",
-    "@langchain/core": "0.3.30"
-  },
-  "overrides": {
-    "@langchain/core": "0.3.30"
+    "zod": "4.1.11"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
