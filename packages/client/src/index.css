@@ -206,6 +206,12 @@
     margin-bottom: 0 !important;
   }
 
+  /* Tight spacing between paragraph and following list (like Claude web) */
+  .markdown-content p:has(+ ul),
+  .markdown-content p:has(+ ol) {
+    margin-bottom: 4px !important;
+  }
+
   /* Ordered lists: clean structure with 16px gap after */
   .markdown-content ol {
     list-style-type: decimal !important;
