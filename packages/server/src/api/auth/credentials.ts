@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
+import { SignJWT, jwtVerify } from 'jose';
 import { v4 as uuidv4 } from 'uuid';
 import { logger, stringToUuid, type UUID } from '@elizaos/core';
 import type { AgentServer } from '../../index';
@@ -13,7 +13,7 @@ import { sendError, sendSuccess } from '../shared/response-utils';
  * @param email - User's email
  * @returns JWT token string
  */
-function generateAuthToken(username: string, email: string): string {
+async function generateAuthToken(username: string, email: string): Promise<string> {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     throw new Error('JWT_SECRET not configured');
@@ -25,17 +25,24 @@ function generateAuthToken(username: string, email: string): string {
   // Generate deterministic entityId
   const entityId = stringToUuid(sub) as UUID;
 
-  const payload = {
+  // Convert secret to Uint8Array for HMAC
+  const secretBytes = new TextEncoder().encode(secret);
+
+  const token = await new SignJWT({
     sub,
     iss: 'eliza-server',
     entityId,
     username,
     email,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
-  };
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(sub)
+    .setIssuer('eliza-server')
+    .setIssuedAt()
+    .setExpirationTime('7d')
+    .sign(secretBytes);
 
-  return jwt.sign(payload, secret);
+  return token;
 }
 
 /**
@@ -123,7 +130,7 @@ export function createAuthCredentialsRouter(
       logger.debug(`[Auth] User created in DB with id: ${userId}`);
 
       // Generate JWT token
-      const token = generateAuthToken(username, email);
+      const token = await generateAuthToken(username, email);
 
       // Calculate entityId (same as in JWT)
       const entityId = stringToUuid(`eliza:${username}`) as UUID;
@@ -209,7 +216,7 @@ export function createAuthCredentialsRouter(
       await db.updateUserLastLogin(user.id);
 
       // Generate JWT token
-      const token = generateAuthToken(user.username, user.email);
+      const token = await generateAuthToken(user.username, user.email);
 
       // Calculate entityId
       const entityId = stringToUuid(`eliza:${user.username}`) as UUID;
@@ -266,14 +273,17 @@ export function createAuthCredentialsRouter(
 
     try {
       // Verify current token
-      const decoded = jwt.verify(token, secret) as {
-        username: string;
-        email: string;
-        entityId: UUID;
+      const secretBytes = new TextEncoder().encode(secret);
+      const { payload } = await jwtVerify(token, secretBytes);
+
+      const decoded = {
+        username: payload.username as string,
+        email: payload.email as string,
+        entityId: payload.entityId as UUID,
       };
 
       // Generate new token with fresh expiration
-      const newToken = generateAuthToken(decoded.username, decoded.email);
+      const newToken = await generateAuthToken(decoded.username, decoded.email);
 
       logger.info(
         `[Auth] Token refreshed for ${decoded.username} (entityId: ${decoded.entityId.substring(0, 8)}...)`
@@ -326,10 +336,13 @@ export function createAuthCredentialsRouter(
 
     try {
       // Verify and decode token
-      const decoded = jwt.verify(token, secret) as {
-        username: string;
-        email: string;
-        entityId: UUID;
+      const secretBytes = new TextEncoder().encode(secret);
+      const { payload } = await jwtVerify(token, secretBytes);
+
+      const decoded = {
+        username: payload.username as string,
+        email: payload.email as string,
+        entityId: payload.entityId as UUID,
       };
 
       return sendSuccess(res, {
