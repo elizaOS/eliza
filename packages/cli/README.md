@@ -331,7 +331,7 @@ elizaos tee phala <command> [options]
 - **`elizaos tee phala auth login [api-key]`** - Set the API key for authentication
 
   - Store your Phala Cloud API key securely for subsequent operations
-  - Get your API key from [Phala Cloud Dashboard](https://cloud.phala.network)
+  - Get your API key from [Phala Cloud Dashboard](https://cloud.phala.network/register)
 
 - **`elizaos tee phala auth logout`** - Remove the stored API key
 
@@ -444,7 +444,7 @@ elizaos tee phala <command> [options]
 
    ```bash
    elizaos tee phala free
-   # Or visit https://cloud.phala.network to create an account
+   # Or visit https://cloud.phala.network/register to create an account
    ```
 
 2. **Authenticate**:
@@ -509,7 +509,7 @@ For private Docker images, set these environment variables before deployment and
 ##### Additional Resources
 
 - **Command Help**: `elizaos tee phala help` or `elizaos tee phala <command> --help`
-- **Official Documentation**: [Phala Cloud Docs](https://docs.phala.network/phala-cloud)
+- **Official Documentation**: [Phala Cloud Docs](https://docs.phala.com/phala-cloud/what-is/what-is-phala-cloud)
 - **Dashboard**: [Phala Cloud Dashboard](https://cloud.phala.network)
 - **NPM Package**: [phala on npm](https://www.npmjs.com/package/phala)
 - **Support**: [Phala Network Discord](https://discord.gg/phala-network)
