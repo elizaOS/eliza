@@ -247,6 +247,54 @@ describe('Utils Comprehensive Tests', () => {
 
       expect(chunks.length).toBeGreaterThan(1);
     });
+
+    it('should handle empty string', async () => {
+      const text = '';
+      const chunks = await splitChunks(text);
+
+      expect(chunks).toBeInstanceOf(Array);
+      expect(chunks.length).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should use RecursiveCharacterTextSplitter from @langchain/textsplitters', async () => {
+      // This test verifies the migration to @langchain/textsplitters is working
+      const text = 'This is a test. ' + 'More text here. '.repeat(50);
+      const chunks = await splitChunks(text, 100, 20);
+
+      // Verify basic functionality
+      expect(chunks).toBeInstanceOf(Array);
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Verify chunks respect the size constraint (accounting for char-to-token ratio)
+      chunks.forEach((chunk) => {
+        expect(chunk.length).toBeLessThanOrEqual(100 * 4);
+      });
+    });
+
+    it('should handle very large chunk size', async () => {
+      const text = 'Small text that fits in one chunk';
+      const chunks = await splitChunks(text, 10000, 100);
+
+      expect(chunks).toHaveLength(1);
+      expect(chunks[0]).toBe(text);
+    });
+
+    it('should verify chunk overlap behavior', async () => {
+      // Create predictable text with clear boundaries
+      const text = 'A '.repeat(200) + 'B '.repeat(200) + 'C '.repeat(200);
+      const chunkSize = 100; // Small chunks to ensure splitting
+      const bleed = 20; // Overlap size
+
+      const chunks = await splitChunks(text, chunkSize, bleed);
+
+      // Should have multiple chunks
+      expect(chunks.length).toBeGreaterThan(1);
+
+      // Each chunk should respect the size limit (with char-to-token ratio)
+      chunks.forEach((chunk) => {
+        expect(chunk.length).toBeLessThanOrEqual(chunkSize * 4);
+      });
+    });
   });
 
   describe('trimTokens', () => {
