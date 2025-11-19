@@ -1,53 +1,106 @@
-import jwt from 'jsonwebtoken';
-import jwksClient from 'jwks-rsa';
-import { logger, stringToUuid, type UUID } from '@elizaos/core';
+import { logger } from '@elizaos/core';
+import { JWTVerifierFactory } from './jwt-verifiers/factory';
+import type { IJWTVerifier, JWTVerificationResult } from './jwt-verifiers/base';
 
 /**
  * Universal JWT Verifier for ElizaOS.
  *
- * Supports two verification modes:
- * 1. JWKS (JSON Web Key Set) - For external providers (Privy, CDP, Auth0)
- * 2. Shared Secret - For self-signed tokens (custom auth)
+ * Supports multiple verification methods through a pluggable architecture using the `jose` library:
+ *
+ * 1. **Ed25519** (Privy and other Ed25519-based providers)
+ *    - Uses public verification key (PEM format)
+ *    - No SDK required - just the verification key from provider dashboard
+ *    - Algorithm: EdDSA (Ed25519)
+ *
+ * 2. **JWKS** (Standard OAuth providers)
+ *    - Auth0: https://{domain}/.well-known/jwks.json
+ *    - Clerk: https://{frontendAPI}/.well-known/jwks.json
+ *    - Supabase: https://{project}.supabase.co/auth/v1/.well-known/jwks.json
+ *    - Google: https://www.googleapis.com/oauth2/v3/certs
+ *    - Algorithms: RS256, ES256, PS256, EdDSA
+ *
+ * 3. **Shared Secret** (Custom HMAC tokens)
+ *    - For self-signed tokens or legacy systems
+ *    - Algorithms: HS256, HS384, HS512
  *
  * The verifier automatically generates a deterministic entityId from the JWT `sub` claim
  * using stringToUuid(). This ensures the same user always gets the same entityId.
  *
- * @example
- * // JWKS mode (Privy)
- * JWT_JWKS_URI=https://auth.privy.io/.well-known/jwks.json
+ * ## Configuration Priority
  *
- * @example
- * // Secret mode (custom auth)
+ * 1. **Privy / Ed25519** (highest priority)
+ *    ```bash
+ *    PRIVY_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
+ *    MCowBQYDK2VwAyEA...
+ *    -----END PUBLIC KEY-----
+ *    ```
+ *
+ * 2. **JWKS** (standard providers)
+ *    ```bash
+ *    JWT_JWKS_URI=https://your-domain/.well-known/jwks.json
+ *    ```
+ *
+ * 3. **Secret** (custom auth)
+ *    ```bash
+ *    JWT_SECRET=your-256-bit-secret-key
+ *    ```
+ *
+ * ## Optional Configuration
+ *
+ * ```bash
+ * # Whitelist specific issuers (comma-separated)
+ * JWT_ISSUER_WHITELIST=https://auth.privy.io,https://clerk.your-app.com
+ *
+ * # Or allow all issuers
+ * JWT_ISSUER_WHITELIST=*
+ * ```
+ *
+ * ## Examples
+ *
+ * @example Privy (Ed25519 - no SDK needed!)
+ * ```bash
+ * # Get verification key from: https://dashboard.privy.io/ → Configuration → App settings
+ * PRIVY_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
+ * MCowBQYDK2VwAyEA...
+ * -----END PUBLIC KEY-----
+ * ```
+ *
+ * @example Auth0
+ * ```bash
+ * JWT_JWKS_URI=https://your-tenant.auth0.com/.well-known/jwks.json
+ * ```
+ *
+ * @example Clerk
+ * ```bash
+ * JWT_JWKS_URI=https://clerk.your-app.com/.well-known/jwks.json
+ * ```
+ *
+ * @example Supabase
+ * ```bash
+ * JWT_JWKS_URI=https://abc123.supabase.co/auth/v1/.well-known/jwks.json
+ * ```
+ *
+ * @example Custom Secret
+ * ```bash
  * JWT_SECRET=your-secret-key
+ * ```
  */
 export class UniversalJWTVerifier {
-  private jwksClient?: jwksClient.JwksClient;
-  private verificationMethod: 'jwks' | 'secret' | 'disabled';
+  private verifier: IJWTVerifier | null;
 
   constructor() {
-    const jwksUri = process.env.JWT_JWKS_URI;
-    const secret = process.env.JWT_SECRET;
+    // Create appropriate verifier using factory
+    this.verifier = JWTVerifierFactory.create();
 
-    if (jwksUri) {
-      // JWKS mode - auto-fetch public keys from provider
-      this.verificationMethod = 'jwks';
-      this.jwksClient = jwksClient({
-        jwksUri,
-        cache: true,
-        cacheMaxAge: 3600000, // 1 hour cache
-        rateLimit: true,
-        jwksRequestsPerMinute: 10,
-      });
-      logger.info(`[JWT] Using JWKS verification from: ${jwksUri}`);
-    } else if (secret) {
-      // Shared secret mode - self-signed tokens
-      this.verificationMethod = 'secret';
-      logger.info('[JWT] Using shared secret verification');
+    if (this.verifier) {
+      logger.info(`[JWT] Authentication enabled using ${this.verifier.getName()} verifier`);
     } else {
-      // JWT disabled - no authentication
-      this.verificationMethod = 'disabled';
-      logger.info('[JWT] JWT authentication disabled (no JWKS_URI or SECRET configured)');
+      logger.info('[JWT] Authentication disabled (no verifier configured)');
     }
+
+    // Log configuration status
+    const status = JWTVerifierFactory.getConfigStatus();
+    logger.debug(`[JWT] Config: ${status.method} - ${status.details}`);
   }
 
   /**
@@ -57,108 +110,28 @@ export class UniversalJWTVerifier {
    *
    * @param token - JWT token string
    * @returns { entityId: UUID, sub: string, payload: any }
-   * @throws Error if verification fails
+   * @throws Error if verification fails or JWT is disabled
    */
-  async verify(token: string): Promise<{ entityId: UUID; sub: string; payload: any }> {
-    if (this.verificationMethod === 'disabled') {
+  async verify(token: string): Promise<JWTVerificationResult> {
+    if (!this.verifier) {
       throw new Error('JWT authentication is not configured');
     }
 
-    try {
-      let payload: any;
-
-      if (this.verificationMethod === 'jwks') {
-        payload = await this.verifyWithJWKS(token);
-      } else {
-        payload = this.verifyWithSecret(token);
-      }
-
-      // Extract sub (required)
-      const sub = payload.sub;
-      if (!sub) {
-        throw new Error('JWT missing required claim: sub');
-      }
-
-      // Validate expiration
-      if (payload.exp && payload.exp < Date.now() / 1000) {
-        throw new Error('JWT expired');
-      }
-
-      // Optional: Validate issuer whitelist
-      const issuerWhitelist = process.env.JWT_ISSUER_WHITELIST;
-      if (issuerWhitelist && issuerWhitelist !== '*') {
-        const allowedIssuers = issuerWhitelist.split(',').map((iss) => iss.trim());
-        if (payload.iss && !allowedIssuers.includes(payload.iss)) {
-          throw new Error(`Untrusted issuer: ${payload.iss}`);
-        }
-      }
-
-      // Generate deterministic entityId from sub
-      const entityId = stringToUuid(sub) as UUID;
-
-      logger.debug(`[JWT] Verified token: ${sub} → entityId: ${entityId.substring(0, 8)}...`);
-
-      return {
-        entityId,
-        sub,
-        payload, // Full JWT payload for additional claims
-      };
-    } catch (error: any) {
-      logger.error('[JWT] Verification failed:', error.message);
-      throw new Error(`JWT verification failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Verify JWT with JWKS (public key from provider).
-   * Used for external auth providers (Privy, CDP, Auth0).
-   */
-  private async verifyWithJWKS(token: string): Promise<any> {
-    // Decode token to get key ID from header
-    const decoded = jwt.decode(token, { complete: true });
-    if (!decoded) {
-      throw new Error('Invalid JWT format');
-    }
-
-    // Fetch signing key from JWKS endpoint
-    const kid = decoded.header.kid;
-    if (!kid) {
-      throw new Error('JWT header missing kid (key ID)');
-    }
-
-    const key = await this.jwksClient!.getSigningKey(kid);
-    const publicKey = key.getPublicKey();
-
-    // Verify signature with public key
-    return jwt.verify(token, publicKey, {
-      algorithms: ['RS256', 'ES256', 'PS256'], // Standard asymmetric algorithms
-    });
-  }
-
-  /**
-   * Verify JWT with shared secret.
-   * Used for self-signed tokens (custom auth).
-   */
-  private verifyWithSecret(token: string): any {
-    const secret = process.env.JWT_SECRET!;
-
-    return jwt.verify(token, secret, {
-      algorithms: ['HS256', 'HS384', 'HS512'], // HMAC algorithms
-    });
+    return this.verifier.verify(token);
   }
 
   /**
    * Check if JWT authentication is enabled.
    */
   isEnabled(): boolean {
-    return this.verificationMethod !== 'disabled';
+    return this.verifier !== null && this.verifier.isConfigured();
   }
 
   /**
    * Get current verification method.
    */
-  getVerificationMethod(): 'jwks' | 'secret' | 'disabled' {
-    return this.verificationMethod;
+  getVerificationMethod(): string {
+    return this.verifier?.getName() || 'disabled';
   }
 }
 

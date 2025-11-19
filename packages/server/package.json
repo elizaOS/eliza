@@ -48,8 +48,8 @@
   "devDependencies": {
     "@elizaos/client": "workspace:*",
     "@types/bcrypt": "^6.0.0",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.0.1",
+    "bun-fetch-mock": "^1.0.0",
     "prettier": "3.6.2",
     "tsx": "4.20.6",
     "typescript": "^5.5.4",
@@ -69,8 +69,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "jwks-rsa": "^3.2.0",
+    "jose": "^6.1.2",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",
     "socket.io": "^4.8.1"
