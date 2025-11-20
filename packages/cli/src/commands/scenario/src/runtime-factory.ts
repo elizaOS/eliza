@@ -160,7 +160,8 @@ export async function createScenarioAgent(
   server: AgentServer,
   agentName: string = 'scenario-agent',
   pluginNames: string[] = [
-    '@elizaos/plugin-sql',
+    // Conditionally select database plugin based on environment
+    process.env.MYSQL_URL ? '@elizaos/plugin-mysql' : '@elizaos/plugin-sql',
     '@elizaos/plugin-openai',
     '@elizaos/plugin-bootstrap',
   ]
@@ -171,11 +172,31 @@ export async function createScenarioAgent(
   console.log(
     `🔧 [DEBUG] createScenarioAgent called for agent: ${agentName}, plugins: ${pluginNames.join(', ')}`
   );
+
+  // Ensure we don't have both plugin-sql and plugin-mysql loaded simultaneously
+  const hasMysqlPlugin = pluginNames.some(
+    (p) => p === '@elizaos/plugin-mysql' || p === 'plugin-mysql'
+  );
+  const hasSqlPlugin = pluginNames.some(
+    (p) => p === '@elizaos/plugin-sql' || p === 'plugin-sql'
+  );
+
+  let finalPluginNames = pluginNames;
+  if (hasMysqlPlugin && hasSqlPlugin) {
+    // Remove plugin-sql if plugin-mysql is present
+    finalPluginNames = pluginNames.filter(
+      (p) => p !== '@elizaos/plugin-sql' && p !== 'plugin-sql'
+    );
+    console.log(
+      `🔧 [DEBUG] Removed plugin-sql because plugin-mysql is present. Using: ${finalPluginNames.join(', ')}`
+    );
+  }
+
   const character: Character = {
     name: agentName,
     id: stringToUuid(agentName),
     bio: 'A test agent for scenario execution',
-    plugins: pluginNames,
+    plugins: finalPluginNames,
     settings: {
       // Let ConfigManager populate minimal, file-scoped secrets.
       secrets: {},

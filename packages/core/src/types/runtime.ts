@@ -43,6 +43,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   logger: Logger;
   stateCache: Map<string, State>;
   elizaOS?: IElizaOS;
+  initPromise: Promise<void>;
 
   // Methods
   registerPlugin(plugin: Plugin): Promise<void>;

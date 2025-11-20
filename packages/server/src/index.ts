@@ -31,16 +31,6 @@ import {
 } from './services/message.js';
 import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
 import * as Sentry from '@sentry/node';
-import sqlPlugin, {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  installRLSFunctions,
-  getOrCreateRlsOwner,
-  setOwnerContext,
-  assignAgentToOwner,
-  applyRLSToNewTables,
-  uninstallRLS,
-} from '@elizaos/plugin-sql';
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
@@ -52,6 +42,8 @@ import type {
   MessageServiceStructure,
 } from './types.js';
 import { existsSync } from 'node:fs';
+import { MySQLNoOpMigrationService } from './utils/mysql-noop-migration-service.js';
+import { validateAndLogMySQLUrl } from './utils/mysql-url-validator.js';
 
 /**
  * Expands a file path starting with `~` to the project directory.
@@ -133,6 +125,15 @@ export interface ServerConfig {
   clientPath?: string;
   port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
 
+  // Database plugin configuration (provided by caller, typically CLI)
+  databasePlugin?: Plugin;
+  createDatabaseAdapter?: (config: any, agentId: UUID) => DatabaseAdapter;
+  DatabaseMigrationService?: new () => {
+    initializeWithDatabase(db: any): Promise<void>;
+    discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+    runAllPluginMigrations(): Promise<void>;
+  };
+
   // Agent configuration (runtime, not infrastructure)
   agents?: Array<{
     character: Character;
@@ -163,8 +164,8 @@ export function isWebUIEnabled(): boolean {
 /**
  * Class representing an agent server.
  */ /**
- * Represents an agent server which handles agents, database, and server functionalities.
- */
+* Represents an agent server which handles agents, database, and server functionalities.
+*/
 export class AgentServer {
   public app!: express.Application;
   public server!: http.Server;
@@ -175,6 +176,8 @@ export class AgentServer {
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
   public database!: DatabaseAdapter;
+  private databasePlugin?: Plugin; // Store the database plugin for agent startup
+  private useMysql: boolean = false; // Track if using MySQL (for syntax differences)
   private rlsOwnerId?: UUID;
   public serverId: UUID = DEFAULT_SERVER_ID;
 
@@ -204,7 +207,16 @@ export class AgentServer {
       agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
+      // Add the database plugin (MySQL or PostgreSQL) that was loaded during initialization
+      if (!this.databasePlugin) {
+        throw new Error('Database plugin not initialized. Cannot start agents without database access.');
+      }
+
+      const allPlugins = [
+        ...(agent.character.plugins || []),
+        ...(agent.plugins || []),
+        this.databasePlugin,
+      ];
 
       return {
         character: encryptedCharacter(agent.character),
@@ -239,6 +251,7 @@ export class AgentServer {
 
             // Assign agent to owner if RLS is enabled
             if (this.rlsOwnerId) {
+              const { assignAgentToOwner } = await import('@elizaos/plugin-sql');
               await assignAgentToOwner(this.database, runtime.agentId, this.rlsOwnerId);
             }
           } catch (error) {
@@ -331,8 +344,92 @@ export class AgentServer {
       // This ensures the server works when used standalone (without CLI)
       loadEnvFile();
 
+      // Type-safe database plugin imports using typeof import() patterns
+      type CreateDatabaseAdapterFn = (
+        config: { dataDir?: string; postgresUrl?: string; mysqlUrl?: string },
+        agentId: UUID
+      ) => DatabaseAdapter;
+
+      type DatabaseMigrationServiceClass = new () => {
+        initializeWithDatabase(db: any): Promise<void>;
+        discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+        runAllPluginMigrations(): Promise<void>;
+      };
+
+      let createDatabaseAdapter: CreateDatabaseAdapterFn;
+      let DatabaseMigrationService: DatabaseMigrationServiceClass;
+
+      // Use database plugin from config if provided (preferred, removes dependency coupling)
+      if (config?.databasePlugin && config?.createDatabaseAdapter) {
+        logger.info('[INIT] Using database plugin provided by caller');
+        this.databasePlugin = config.databasePlugin;
+        createDatabaseAdapter = config.createDatabaseAdapter;
+        DatabaseMigrationService = config.DatabaseMigrationService || MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+        // Check if it's MySQL based on the plugin
+        const mysqlUrl = process.env.MYSQL_URL;
+        this.useMysql = !!mysqlUrl;
+
+        if (this.useMysql) {
+          validateAndLogMySQLUrl(mysqlUrl);
+        }
+
+        logger.success(`[INIT] Database plugin loaded: ${this.databasePlugin.name}`);
+      } else {
+        // Fallback: Auto-detect and load plugin (for backward compatibility)
+        logger.info('[INIT] No database plugin provided in config, auto-detecting...');
+
+        const mysqlUrl = process.env.MYSQL_URL;
+        const postgresUrl = config?.postgresUrl;
+        const useMysql = !!mysqlUrl;
+
+        // Log plugin selection decision
+        logger.info(`[INIT] Database plugin selection: useMysql=${useMysql}, hasPostgresUrl=${!!postgresUrl}, hasMysqlUrl=${!!mysqlUrl}`);
+
+        // Standardized error handling for both plugin types
+        if (useMysql) {
+          try {
+            logger.info('[INIT] Using MySQL database plugin');
+
+            // Store MySQL flag for later use (e.g., SQL syntax differences)
+            this.useMysql = true;
+
+            // Validate MySQL URL before attempting to use it
+            validateAndLogMySQLUrl(mysqlUrl);
+
+            const mysqlPluginModule = await import('@elizaos/plugin-mysql');
+            // Type assertion needed due to dual @elizaos/core versions
+            this.databasePlugin = mysqlPluginModule.default as any as Plugin;
+            createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            // MySQL plugin may not have migration service yet, use extracted no-op implementation
+            DatabaseMigrationService = MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] MySQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load MySQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize MySQL database plugin: ${errorMsg}`);
+          }
+        } else {
+          try {
+            logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
+
+            const sqlPluginModule = await import('@elizaos/plugin-sql');
+            this.databasePlugin = sqlPluginModule.default;
+            createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] SQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load SQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize SQL database plugin: ${errorMsg}`);
+          }
+        }
+      }
+
       const agentDataDir = resolvePgliteDir(config?.dataDir);
-      logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);
+      logger.info(`[INIT] Database Dir: ${agentDataDir}`);
 
       // Ensure the database directory exists
       const dbDir = path.dirname(agentDataDir);
@@ -342,29 +439,40 @@ export class AgentServer {
       }
 
       // Create a temporary database adapter just for server operations (migrations, default server)
-      // Each agent will have its own database adapter created by the SQL plugin
+      // Each agent will have its own database adapter created by the appropriate plugin
       const tempServerAgentId = '00000000-0000-0000-0000-000000000000'; // Temporary ID for server operations
-      this.database = createDatabaseAdapter(
-        {
-          dataDir: agentDataDir,
-          postgresUrl: config?.postgresUrl,
-        },
-        tempServerAgentId
-      ) as DatabaseAdapter;
+
+      if (this.useMysql) {
+        this.database = createDatabaseAdapter(
+          {
+            mysqlUrl: process.env.MYSQL_URL,
+          },
+          tempServerAgentId
+        ) as DatabaseAdapter;
+      } else {
+        this.database = createDatabaseAdapter(
+          {
+            dataDir: agentDataDir,
+            postgresUrl: config?.postgresUrl,
+          },
+          tempServerAgentId
+        ) as DatabaseAdapter;
+      }
+
       await this.database.init();
       logger.success('Database initialized for server operations');
 
-      // Run migrations for the SQL plugin schema
+      // Run migrations for the database plugin schema
       logger.info('[INIT] Running database migrations for messaging tables...');
       try {
         const migrationService = new DatabaseMigrationService();
 
-        // Get the underlying database instance
-        const db = (this.database as any).getDatabase();
+        // Get the underlying database instance from the adapter's db property
+        const db = this.database.db;
         await migrationService.initializeWithDatabase(db);
 
-        // Register the SQL plugin schema
-        migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+        // Register the database plugin schema
+        migrationService.discoverAndRegisterPluginSchemas([this.databasePlugin!]);
 
         // Run the migrations
         await migrationService.runAllPluginMigrations();
@@ -380,10 +488,11 @@ export class AgentServer {
       const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
       const rlsOwnerIdString = process.env.RLS_OWNER_ID;
 
-      if (rlsEnabled) {
+      // RLS is only supported with PostgreSQL (not MySQL or PGLite)
+      if (rlsEnabled && !this.useMysql) {
         if (!config?.postgresUrl) {
           logger.error(
-            '[RLS] ENABLE_RLS_ISOLATION requires PostgreSQL (not compatible with PGLite)'
+            '[RLS] ENABLE_RLS_ISOLATION requires PostgreSQL (not compatible with PGLite or MySQL)'
           );
           throw new Error('RLS isolation requires PostgreSQL database');
         }
@@ -404,6 +513,14 @@ export class AgentServer {
         logger.warn('[RLS] Superusers bypass ALL RLS policies, defeating isolation.');
 
         try {
+          // Load RLS functions from plugin-sql
+          const {
+            installRLSFunctions,
+            getOrCreateRlsOwner,
+            setOwnerContext,
+            applyRLSToNewTables
+          } = await import('@elizaos/plugin-sql');
+
           // Install RLS PostgreSQL functions
           await installRLSFunctions(this.database);
 
@@ -426,18 +543,30 @@ export class AgentServer {
             `RLS initialization failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
           );
         }
-      } else if (config?.postgresUrl) {
-        logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
+      } else if (config?.postgresUrl && !this.useMysql) {
+        // Only attempt RLS cleanup if RLS was explicitly disabled after being enabled
+        // Check if RLS might have been previously enabled by looking for RLS_OWNER_ID history
+        const hadRlsOwner = !!process.env.RLS_OWNER_ID;
 
-        // Clean up RLS if it was previously enabled
-        try {
-          logger.info('[INIT] Cleaning up RLS policies and functions...');
-          await uninstallRLS(this.database);
-          logger.success('[INIT] RLS cleanup completed');
-        } catch (cleanupError) {
-          // It's OK if cleanup fails (RLS might not have been installed)
-          logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
+        if (hadRlsOwner) {
+          logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
+          logger.info('[INIT] Detected previous RLS configuration, attempting cleanup...');
+
+          // Clean up RLS if it was previously enabled
+          try {
+            const { uninstallRLS } = await import('@elizaos/plugin-sql');
+            logger.info('[INIT] Cleaning up RLS policies and functions...');
+            await uninstallRLS(this.database);
+            logger.success('[INIT] RLS cleanup completed');
+          } catch (cleanupError) {
+            // It's OK if cleanup fails (RLS might not have been installed)
+            logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
+          }
+        } else {
+          logger.info('[INIT] RLS never configured, skipping cleanup');
         }
+      } else if (this.useMysql && rlsEnabled) {
+        logger.warn('[RLS] RLS is not supported with MySQL, skipping RLS initialization');
       }
 
       // Add a small delay to ensure database is fully ready
@@ -506,17 +635,36 @@ export class AgentServer {
       if (!defaultServer) {
         logger.info(`[AgentServer] Creating server with UUID ${this.serverId}...`);
 
-        // Use parameterized query to prevent SQL injection
+        // SECURITY: Using drizzle-orm's sql tagged template literal for safe parameterization
+        // The sql`` tag automatically converts interpolated values to parameterized queries,
+        // preventing SQL injection. Each ${variable} is bound as a parameter, not concatenated.
+        // Reference: https://orm.drizzle.team/docs/sql
         try {
           const db = (this.database as any).db;
-          await db.execute(sql`
-            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
-            ON CONFLICT (id) DO NOTHING
-          `);
+
+          // Use database-appropriate upsert syntax
+          // MySQL uses ON DUPLICATE KEY UPDATE, PostgreSQL uses ON CONFLICT
+          if (this.useMysql) {
+            // MySQL syntax: ON DUPLICATE KEY UPDATE (or just let it fail and catch)
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON DUPLICATE KEY UPDATE name = name
+            `);
+          } else {
+            // PostgreSQL/PGLite syntax: ON CONFLICT DO NOTHING
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.serverId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON CONFLICT (id) DO NOTHING
+            `);
+          }
           logger.success('[AgentServer] Server created via parameterized query');
 
           // Immediately check if it was created with parameterized query
+          // Safe: drizzle-orm sql`` handles parameterization automatically
           const checkResult = await db.execute(sql`
             SELECT id, name FROM message_servers WHERE id = ${this.serverId}
           `);
@@ -608,44 +756,44 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-                // Production CSP - includes upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                  // this should probably be unlocked too
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // upgrade-insecure-requests is added by helmet automatically
-                },
-                useDefaults: true,
-              }
-            : {
-                // Development CSP - minimal policy without upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                  // unlocking this, so plugin can include the various frameworks from CDN if needed
-                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'self'", 'data:'],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
-                },
-                useDefaults: false,
+              // Production CSP - includes upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                // this should probably be unlocked too
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // upgrade-insecure-requests is added by helmet automatically
               },
+              useDefaults: true,
+            }
+            : {
+              // Development CSP - minimal policy without upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                // unlocking this, so plugin can include the various frameworks from CDN if needed
+                // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: ["'self'", 'data:'],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+              },
+              useDefaults: false,
+            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -657,10 +805,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-                maxAge: 31536000, // 1 year
-                includeSubDomains: true,
-                preload: true,
-              }
+              maxAge: 31536000, // 1 year
+              includeSubDomains: true,
+              preload: true,
+            }
             : false,
           // No Sniff
           noSniff: true,
@@ -1164,7 +1312,7 @@ export class AgentServer {
               scope.setTag('type', 'uncaughtException');
               return scope;
             });
-          } catch {}
+          } catch { }
         });
         process.on('unhandledRejection', (reason: any) => {
           try {
@@ -1175,7 +1323,7 @@ export class AgentServer {
                 return scope;
               }
             );
-          } catch {}
+          } catch { }
         });
       }
 
@@ -1554,10 +1702,10 @@ export class AgentServer {
 
               console.log(
                 `\x1b[32mStartup successful!\x1b[0m\n` +
-                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
               );
             }
 

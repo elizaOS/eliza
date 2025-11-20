@@ -494,6 +494,19 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.debug(`Success: Agent entity created successfully for ${this.character.name}`);
       }
 
+      // World creation (required before room due to foreign key constraint)
+      const world = await this.getWorld(this.agentId);
+      if (!world) {
+        await this.ensureWorldExists({
+          id: this.agentId,
+          name: this.character.name,
+          serverId: this.agentId,
+          agentId: this.agentId,
+          metadata: {},
+        });
+        this.logger.debug(`Success: World created successfully for ${this.character.name}`);
+      }
+
       // Room creation and participant setup
       const room = await this.getRoom(this.agentId);
       if (!room) {

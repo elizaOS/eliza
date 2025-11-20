@@ -159,22 +159,34 @@ export const scenario = new Command()
           // Initialize Reporter
           reporter = new Reporter();
           reporter.reportStart(scenario);
-          const defaultPlugins = [
-            '@elizaos/plugin-sql',
-            '@elizaos/plugin-bootstrap',
-            '@elizaos/plugin-openai',
-          ];
-          // Ensure PGLite uses isolated directory per scenario run when not overridden
-          if (!process.env.PGLITE_DATA_DIR) {
-            const uniqueDir = `${process.cwd()}/test-data/scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-            process.env.PGLITE_DATA_DIR = uniqueDir;
-          }
+
           // Extract plugin names from scenario configuration, filtering by enabled status
           const scenarioPlugins = Array.isArray((scenario as any).plugins)
             ? (scenario as any).plugins
-                .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
-                .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
+              .filter((p: any) => p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+              .map((p: any) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
+
+          // Determine which database plugin to use
+          // If plugin-mysql is specified in scenario plugins or MYSQL_URL is set, use plugin-mysql
+          // Otherwise, use plugin-sql (default)
+          const hasMysqlPlugin = scenarioPlugins.some(
+            (p: string) => p === '@elizaos/plugin-mysql' || p === 'plugin-mysql'
+          );
+          const useMysql = hasMysqlPlugin || !!process.env.MYSQL_URL;
+
+          const defaultPlugins = [
+            useMysql ? '@elizaos/plugin-mysql' : '@elizaos/plugin-sql',
+            '@elizaos/plugin-bootstrap',
+            '@elizaos/plugin-openai',
+          ];
+
+          // Ensure PGLite uses isolated directory per scenario run when not overridden (only for SQL plugin)
+          if (!useMysql && !process.env.PGLITE_DATA_DIR) {
+            const uniqueDir = `${process.cwd()}/test-data/scenario-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            process.env.PGLITE_DATA_DIR = uniqueDir;
+          }
+
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
           logger.info(`Using plugins: ${JSON.stringify(finalPlugins)}`);
           // Determine environment provider based on scenario type
@@ -468,12 +480,12 @@ export const scenario = new Command()
               }
               await runtime.close();
               logger.info('Runtime shutdown complete');
-            } catch {}
+            } catch { }
           }
           if (server && createdServer) {
             try {
               await shutdownScenarioServer(server, serverPort);
-            } catch {}
+            } catch { }
           }
 
           // Report final result and exit with appropriate code
