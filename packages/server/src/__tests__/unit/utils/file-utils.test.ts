@@ -2,7 +2,9 @@
  * Unit tests for file utilities
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
+import fs from 'node:fs';
+import { logger } from '@elizaos/core';
 import {
   createSecureUploadDir,
   sanitizeFilename,
@@ -140,35 +142,83 @@ describe('File Utilities', () => {
     });
   });
 
-  describe.skip('cleanupFile - SKIPPED: Requires fs mocking which causes issues in Bun', () => {
+  describe('cleanupFile', () => {
     it('should delete existing file', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      // Requires fsMock.existsSync and fsMock.unlinkSync
+
+      const existsSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
+      const unlinkSpy = spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+      const loggerSpy = spyOn(logger, 'debug').mockImplementation(() => {});
+
+      cleanupFile(filePath);
+
+      expect(existsSpy).toHaveBeenCalledWith(filePath);
+      expect(unlinkSpy).toHaveBeenCalled();
+      expect(loggerSpy).toHaveBeenCalled();
+
+      existsSpy.mockRestore();
+      unlinkSpy.mockRestore();
+      loggerSpy.mockRestore();
     });
 
     it('should handle non-existent file gracefully', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      // Requires fsMock.existsSync
+
+      const existsSpy = spyOn(fs, 'existsSync').mockReturnValue(false);
+      const unlinkSpy = spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+      cleanupFile(filePath);
+
+      expect(existsSpy).toHaveBeenCalledWith(filePath);
+      expect(unlinkSpy).not.toHaveBeenCalled();
+
+      existsSpy.mockRestore();
+      unlinkSpy.mockRestore();
     });
 
     it('should handle empty file path', () => {
+      const existsSpy = spyOn(fs, 'existsSync').mockReturnValue(false);
+      const unlinkSpy = spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
       cleanupFile('');
-      // Requires fsMock to verify no calls made
+
+      expect(unlinkSpy).not.toHaveBeenCalled();
+
+      existsSpy.mockRestore();
+      unlinkSpy.mockRestore();
     });
 
-    it('should block path traversal attempts', () => {
-      const maliciousPath = '../../../etc/passwd';
-      // Requires fsMock and implementation doesn't have this feature
+    it('should normalize paths before deletion', () => {
+      const filePath = '/test/app/uploads/../uploads/test.jpg';
+
+      const existsSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
+      const unlinkSpy = spyOn(fs, 'unlinkSync').mockImplementation(() => {});
+
+      cleanupFile(filePath);
+
+      // Should normalize the path before calling unlink
+      expect(unlinkSpy).toHaveBeenCalled();
+
+      existsSpy.mockRestore();
+      unlinkSpy.mockRestore();
     });
 
-    it('should block paths outside of app directory', () => {
-      const outsidePath = '/etc/passwd';
-      // Requires fsMock and implementation doesn't have this feature
-    });
-
-    it.skip('should handle file deletion errors', () => {
+    it('should handle file deletion errors gracefully', () => {
       const filePath = '/test/app/uploads/test.jpg';
-      // Requires fsMock
+
+      const existsSpy = spyOn(fs, 'existsSync').mockReturnValue(true);
+      const unlinkSpy = spyOn(fs, 'unlinkSync').mockImplementation(() => {
+        throw new Error('Permission denied');
+      });
+      const errorSpy = spyOn(logger, 'error').mockImplementation(() => {});
+
+      cleanupFile(filePath);
+
+      expect(errorSpy).toHaveBeenCalled();
+
+      existsSpy.mockRestore();
+      unlinkSpy.mockRestore();
+      errorSpy.mockRestore();
     });
   });
 

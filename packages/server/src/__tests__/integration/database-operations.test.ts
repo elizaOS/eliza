@@ -9,7 +9,7 @@ import { ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
 
-describe.skip('Database Operations Integration Tests - SKIPPED: Fail in full run due to test interference', () => {
+describe('Database Operations Integration Tests', () => {
   let agentServer: AgentServer;
   let testDbPath: string;
   let serverPort: number;

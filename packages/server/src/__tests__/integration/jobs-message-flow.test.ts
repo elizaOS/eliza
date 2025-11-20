@@ -64,47 +64,30 @@ describe('Jobs API Message Bus Integration', () => {
     }
   });
 
-  it.skip('should emit message to bus when job is created', async () => {
+  it('should create job successfully via API', async () => {
     const content = 'Test message for bus';
 
-    // Create a Promise to wait for the message bus event
-    const messagePromise = new Promise<boolean>((resolve) => {
-      const handler = (data: unknown) => {
-        const message = data as { content?: string; metadata?: { jobId?: string } };
-        if (message.content === content && message.metadata?.jobId) {
-          internalMessageBus.off('new_message', handler);
-          resolve(true);
-        }
-      };
-
-      internalMessageBus.on('new_message', handler);
-
-      // Set timeout to resolve if no message received
-      setTimeout(() => {
-        internalMessageBus.off('new_message', handler);
-        resolve(false);
-      }, 2000);
+    // Create job using simulated request (no real HTTP server needed)
+    const createRes = await simulateRequest(app, 'POST', '/api/messaging/jobs', {
+      agentId,
+      userId,
+      content,
     });
 
-    // Create job
-    await fetch('http://localhost:3000/api/messaging/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, userId, content }),
-    }).catch(() => {
-      // If fetch fails (no server), simulate the request directly
-      return simulateRequest(app, 'POST', '/api/messaging/jobs', {
-        agentId,
-        userId,
-        content,
-      });
-    });
+    // Verify job was created successfully
+    expect(createRes.status).toBe(201);
+    const createBody = createRes.body as Record<string, unknown>;
+    expect(createBody.jobId).toBeDefined();
+    expect(typeof createBody.jobId).toBe('string');
 
-    // Wait for message or timeout
-    const messageReceived = await messagePromise;
+    // Verify we can retrieve the job status
+    const jobId = createBody.jobId as string;
+    const statusRes = await simulateRequest(app, 'GET', `/api/messaging/jobs/${jobId}`);
+    expect(statusRes.status).toBe(200);
 
-    // In unit test environment without actual server, just verify the test ran
-    expect(messageReceived || true).toBe(true);
+    const statusBody = statusRes.body as Record<string, unknown>;
+    expect(statusBody.status).toBeDefined();
+    expect([JobStatus.PROCESSING, JobStatus.COMPLETED]).toContain(statusBody.status);
   });
 
   it('should complete job when agent response is received', async () => {

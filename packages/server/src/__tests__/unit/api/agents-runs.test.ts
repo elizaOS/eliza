@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach } from 'bun:test';
 import express from 'express';
-import type { UUID, IAgentRuntime } from '@elizaos/core';
+import type { UUID, IAgentRuntime, Log } from '@elizaos/core';
 import { createAgentRunsRouter } from '../../../api/agents/runs';
 
 type LogEntry = {
@@ -17,9 +17,17 @@ interface MockRuntime extends Pick<IAgentRuntime, 'getLogs'> {
   getParticipantsForRoom: (roomId: UUID) => Promise<UUID[]>;
 }
 
-function makeRuntimeWithLogs(logs: LogEntry[]): MockRuntime {
+function makeRuntimeWithLogs(logs: LogEntry[], defaultEntityId: UUID): MockRuntime {
   return {
-    getLogs: async (_params: any) => logs,
+    getLogs: async (_params: any): Promise<Log[]> => {
+      return logs.map((log) => ({
+        entityId: (log.body.entityId as UUID) || defaultEntityId,
+        roomId: log.body.roomId as UUID | undefined,
+        type: log.type,
+        createdAt: log.createdAt,
+        body: log.body,
+      }));
+    },
     getMemories: async (_params: any) => [],  // Return empty array for messages
     getAllWorlds: async () => [],  // No worlds needed for this test
     getRooms: async (_worldId: UUID) => [],
@@ -27,12 +35,81 @@ function makeRuntimeWithLogs(logs: LogEntry[]): MockRuntime {
   };
 }
 
-// FIXED: Mock now includes required methods (getMemories, getAllWorlds, etc.)
-// But still fails in full run due to test interference - passes in isolation (2/2)
-describe.skip('Agent Runs API - Test interference in full runs', () => {
+// Helper to simulate requests without real HTTP server
+async function simulateRequest(
+  app: express.Application,
+  method: string,
+  path: string
+): Promise<{ status: number; body: any }> {
+  return new Promise((resolve) => {
+    let responseStatus = 200;
+    let responseBody: any = null;
+    let responseSent = false;
+
+    const req: any = {
+      method: method.toUpperCase(),
+      url: path,
+      path: path,
+      originalUrl: path,
+      query: {},
+      params: {},
+      headers: {},
+      get: () => '',
+    };
+
+    const res: any = {
+      status: function (code: number) {
+        if (!responseSent) {
+          responseStatus = code;
+        }
+        return this;
+      },
+      json: function (data: any) {
+        if (!responseSent) {
+          responseSent = true;
+          responseBody = data;
+          resolve({ status: responseStatus, body: data });
+        }
+        return this;
+      },
+      send: function (data: any) {
+        if (!responseSent) {
+          responseSent = true;
+          responseBody = data;
+          resolve({ status: responseStatus, body: data });
+        }
+        return this;
+      },
+      setHeader: () => {},
+      set: () => {},
+      end: function () {
+        if (!responseSent) {
+          responseSent = true;
+          resolve({ status: responseStatus, body: responseBody });
+        }
+      },
+    };
+
+    const next = (err?: Error) => {
+      if (!responseSent) {
+        responseStatus = err ? 500 : 404;
+        responseBody = { error: err?.message || 'Not found' };
+        resolve({ status: responseStatus, body: responseBody });
+      }
+    };
+
+    try {
+      app(req, res, next as any);
+    } catch (error) {
+      if (!responseSent) {
+        resolve({ status: 500, body: { error: error instanceof Error ? error.message : 'Error' } });
+      }
+    }
+  });
+}
+
+describe('Agent Runs API', () => {
   let app: express.Application;
-  let server: ReturnType<express.Application['listen']>;
-  let port: number;
 
   const agentId = '00000000-0000-0000-0000-000000000001' as UUID;
   const roomId = '00000000-0000-0000-0000-000000000002' as UUID;
@@ -106,32 +183,26 @@ describe.skip('Agent Runs API - Test interference in full runs', () => {
   const mockElizaOS: MockElizaOS = {
     getAgent: (id: UUID) => {
       if (id === agentId) {
-        return makeRuntimeWithLogs(logs);
+        return makeRuntimeWithLogs(logs, agentId);
       }
       return null;
     },
   };
 
-  beforeEach((done) => {
+  beforeEach(() => {
     app = express();
-    app.use('/api/agents', createAgentRunsRouter(mockElizaOS));
-
-    server = app.listen(0, () => {
-      port = server.address().port;
-      done();
-    });
-  });
-
-  afterEach((done) => {
-    server.close(done);
+    app.use('/api/agents', createAgentRunsRouter(mockElizaOS as any));
   });
 
   it('GET /api/agents/:agentId/runs should return aggregated runs', async () => {
-    const response = await fetch(
-      `http://localhost:${port}/api/agents/${agentId}/runs?roomId=${roomId}`
+    const response = await simulateRequest(
+      app,
+      'GET',
+      `/api/agents/${agentId}/runs?roomId=${roomId}`
     );
+
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = response.body;
 
     expect(Array.isArray(body.data.runs)).toBe(true);
     expect(body.data.runs.length).toBeGreaterThan(0);
@@ -145,11 +216,14 @@ describe.skip('Agent Runs API - Test interference in full runs', () => {
   });
 
   it('GET /api/agents/:agentId/runs/:runId should return a timeline', async () => {
-    const response = await fetch(
-      `http://localhost:${port}/api/agents/${agentId}/runs/${runId}?roomId=${roomId}`
+    const response = await simulateRequest(
+      app,
+      'GET',
+      `/api/agents/${agentId}/runs/${runId}?roomId=${roomId}`
     );
+
     expect(response.status).toBe(200);
-    const body = await response.json();
+    const body = response.body;
 
     expect(body.data.summary.runId).toBe(runId);
     expect(body.data.summary.status).toBe('completed');
