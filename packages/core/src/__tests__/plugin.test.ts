@@ -1,5 +1,12 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import { loadPlugin, resolvePlugins, isValidPluginShape, tryInstallPlugin } from '../plugin';
+import {
+  loadPlugin,
+  resolvePlugins,
+  isValidPluginShape,
+  tryInstallPlugin,
+  normalizePluginName,
+  resolvePluginDependencies,
+} from '../plugin';
 import type { Plugin } from '../types';
 
 function delay(ms: number) {
@@ -213,6 +220,250 @@ describe('Plugin Functions', () => {
       const indexB = resolved.findIndex((p) => p.name === 'plugin-b');
       // In test mode, plugin-b should come before plugin-a due to testDependencies
       expect(indexB).toBeLessThan(indexA);
+    });
+  });
+
+  describe('normalizePluginName', () => {
+    test('should extract short name from @elizaos scoped packages', () => {
+      expect(normalizePluginName('@elizaos/plugin-discord')).toBe('discord');
+      expect(normalizePluginName('@elizaos/plugin-sql')).toBe('sql');
+      expect(normalizePluginName('@elizaos/plugin-bootstrap')).toBe('bootstrap');
+    });
+
+    test('should extract short name from other scoped packages', () => {
+      expect(normalizePluginName('@myorg/plugin-custom')).toBe('custom');
+      expect(normalizePluginName('@company/plugin-integration')).toBe('integration');
+    });
+
+    test('should return original name for non-scoped packages', () => {
+      expect(normalizePluginName('discord')).toBe('discord');
+      expect(normalizePluginName('bootstrap')).toBe('bootstrap');
+      expect(normalizePluginName('my-custom-plugin')).toBe('my-custom-plugin');
+    });
+
+    test('should return original name for scoped packages without plugin- prefix', () => {
+      expect(normalizePluginName('@elizaos/core')).toBe('@elizaos/core');
+      expect(normalizePluginName('@myorg/utils')).toBe('@myorg/utils');
+    });
+  });
+
+  describe('resolvePluginDependencies with scoped names', () => {
+    test('should resolve dependency using scoped package name', () => {
+      const pluginA: Plugin = {
+        name: 'discord',
+        description: 'Discord plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'music-player',
+        description: 'Music player plugin',
+        dependencies: ['@elizaos/plugin-discord'], // Scoped name
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('discord', pluginA);
+      pluginMap.set('music-player', pluginB);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      expect(resolved).toHaveLength(2);
+      const indexA = resolved.findIndex((p) => p.name === 'discord');
+      const indexB = resolved.findIndex((p) => p.name === 'music-player');
+      // Discord should come before music-player due to dependency
+      expect(indexA).toBeLessThan(indexB);
+    });
+
+    test('should resolve dependency using short name', () => {
+      const pluginA: Plugin = {
+        name: 'discord',
+        description: 'Discord plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'music-player',
+        description: 'Music player plugin',
+        dependencies: ['discord'], // Short name
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('discord', pluginA);
+      pluginMap.set('music-player', pluginB);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      expect(resolved).toHaveLength(2);
+      const indexA = resolved.findIndex((p) => p.name === 'discord');
+      const indexB = resolved.findIndex((p) => p.name === 'music-player');
+      expect(indexA).toBeLessThan(indexB);
+    });
+
+    test('should handle mixed scoped and short names', () => {
+      const pluginA: Plugin = {
+        name: 'sql',
+        description: 'SQL plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'discord',
+        description: 'Discord plugin',
+        dependencies: ['@elizaos/plugin-sql'], // Scoped name
+        actions: [],
+        services: [],
+      };
+
+      const pluginC: Plugin = {
+        name: 'music-player',
+        description: 'Music player plugin',
+        dependencies: ['discord', 'sql'], // Short names
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('sql', pluginA);
+      pluginMap.set('discord', pluginB);
+      pluginMap.set('music-player', pluginC);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      expect(resolved).toHaveLength(3);
+      const indexA = resolved.findIndex((p) => p.name === 'sql');
+      const indexB = resolved.findIndex((p) => p.name === 'discord');
+      const indexC = resolved.findIndex((p) => p.name === 'music-player');
+      // SQL should come first, then discord, then music-player
+      expect(indexA).toBeLessThan(indexB);
+      expect(indexB).toBeLessThan(indexC);
+    });
+
+    test('should warn on missing scoped dependency', () => {
+      const pluginA: Plugin = {
+        name: 'music-player',
+        description: 'Music player plugin',
+        dependencies: ['@elizaos/plugin-nonexistent'],
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('music-player', pluginA);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      // Should still resolve the plugin even if dependency is missing
+      expect(resolved).toHaveLength(1);
+      expect(resolved[0].name).toBe('music-player');
+    });
+
+    test('should handle complex dependency chains with scoped names', () => {
+      const pluginA: Plugin = {
+        name: 'sql',
+        description: 'SQL plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'bootstrap',
+        description: 'Bootstrap plugin',
+        dependencies: ['@elizaos/plugin-sql'],
+        actions: [],
+        services: [],
+      };
+
+      const pluginC: Plugin = {
+        name: 'discord',
+        description: 'Discord plugin',
+        dependencies: ['bootstrap'],
+        actions: [],
+        services: [],
+      };
+
+      const pluginD: Plugin = {
+        name: 'music-player',
+        description: 'Music player plugin',
+        dependencies: ['@elizaos/plugin-discord', '@elizaos/plugin-bootstrap'],
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('sql', pluginA);
+      pluginMap.set('bootstrap', pluginB);
+      pluginMap.set('discord', pluginC);
+      pluginMap.set('music-player', pluginD);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      expect(resolved).toHaveLength(4);
+      const indexSql = resolved.findIndex((p) => p.name === 'sql');
+      const indexBootstrap = resolved.findIndex((p) => p.name === 'bootstrap');
+      const indexDiscord = resolved.findIndex((p) => p.name === 'discord');
+      const indexMusicPlayer = resolved.findIndex((p) => p.name === 'music-player');
+
+      // Verify dependency order
+      expect(indexSql).toBeLessThan(indexBootstrap);
+      expect(indexBootstrap).toBeLessThan(indexDiscord);
+      expect(indexDiscord).toBeLessThan(indexMusicPlayer);
+    });
+  });
+
+  describe('resolvePlugins with scoped dependencies', () => {
+    test('should resolve plugins with scoped dependencies', async () => {
+      const pluginA: Plugin = {
+        name: 'sql',
+        description: 'SQL plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'test-plugin',
+        description: 'Test plugin',
+        dependencies: ['@elizaos/plugin-sql'],
+        actions: [],
+        services: [],
+      };
+
+      const resolved = await resolvePlugins([pluginB, pluginA]);
+
+      expect(resolved).toHaveLength(2);
+      const indexA = resolved.findIndex((p) => p.name === 'sql');
+      const indexB = resolved.findIndex((p) => p.name === 'test-plugin');
+      expect(indexA).toBeLessThan(indexB);
+    });
+
+    test('should handle test dependencies with scoped names', async () => {
+      const pluginA: Plugin = {
+        name: 'sql',
+        description: 'SQL plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginB: Plugin = {
+        name: 'test-plugin',
+        description: 'Test plugin',
+        testDependencies: ['@elizaos/plugin-sql'],
+        actions: [],
+        services: [],
+      };
+
+      const resolved = await resolvePlugins([pluginB, pluginA], true);
+
+      expect(resolved).toHaveLength(2);
+      const indexA = resolved.findIndex((p) => p.name === 'sql');
+      const indexB = resolved.findIndex((p) => p.name === 'test-plugin');
+      expect(indexA).toBeLessThan(indexB);
     });
   });
 
