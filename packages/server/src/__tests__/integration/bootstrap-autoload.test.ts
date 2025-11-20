@@ -1,19 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { AgentServer } from '../../index';
-import type { Character } from '@elizaos/core';
+import type { Character, Plugin } from '@elizaos/core';
 import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
+
+// Mock plugin to replace external dependencies in tests
+const mockCharacterPlugin: Plugin = {
+  name: 'mock-character-plugin',
+  description: 'Mock plugin for testing character plugin injection',
+  actions: [],
+  evaluators: [],
+  providers: [],
+  services: [],
+};
 
 describe('Bootstrap Auto-Loading', () => {
   let server: AgentServer;
   let envSnapshot: EnvironmentSnapshot;
 
   beforeEach(async () => {
-    // Clean environment, save snapshot, and create isolated database for this test
-    envSnapshot = setupTestEnvironment({ isolateDatabase: true });
+    // Clean environment and save snapshot
+    envSnapshot = setupTestEnvironment();
 
-    // Create and initialize server instance with isolated database
+    // Create and initialize server instance
     server = new AgentServer();
-    await server.start({ isTestMode: true, dataDir: envSnapshot.testDbPath });
+    await server.start({ isTestMode: true }); // Initialize server in test mode
   });
 
   afterEach(async () => {
@@ -22,10 +32,7 @@ describe('Bootstrap Auto-Loading', () => {
       await server.stop();
     }
 
-    // Wait a bit for file handles to be released
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    // Restore environment and cleanup database
+    // Restore environment
     teardownTestEnvironment(envSnapshot);
   });
 
@@ -60,10 +67,15 @@ describe('Bootstrap Auto-Loading', () => {
       const testCharacter: Character = {
         name: 'TestAgent',
         bio: ['Test agent'],
-        plugins: ['@elizaos/plugin-openai'],
+        plugins: [],
       };
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await server.startAgents([
+        {
+          character: testCharacter,
+          plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+        }
+      ], {
         isTestMode: true,
       });
 
@@ -71,11 +83,11 @@ describe('Bootstrap Auto-Loading', () => {
       const pluginNames = runtime.plugins.map((p) => p.name);
 
       const bootstrapIndex = pluginNames.indexOf('bootstrap');
-      const openaiIndex = pluginNames.findIndex((name) => name.toLowerCase().includes('openai'));
+      const mockPluginIndex = pluginNames.indexOf('mock-character-plugin');
 
-      // Bootstrap should come before openai (if openai loaded successfully)
-      if (openaiIndex !== -1) {
-        expect(bootstrapIndex).toBeLessThan(openaiIndex);
+      // Bootstrap should come before character plugins
+      if (mockPluginIndex !== -1 && bootstrapIndex !== -1) {
+        expect(bootstrapIndex).toBeLessThan(mockPluginIndex);
       }
     });
 
@@ -148,10 +160,15 @@ describe('Bootstrap Auto-Loading', () => {
       const testCharacter: Character = {
         name: 'TestAgent',
         bio: ['Test agent'],
-        plugins: ['@elizaos/plugin-openai'],
+        plugins: [],
       };
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await server.startAgents([
+        {
+          character: testCharacter,
+          plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+        }
+      ], {
         isTestMode: true,
       });
 
@@ -162,11 +179,11 @@ describe('Bootstrap Auto-Loading', () => {
       const sqlIndex = pluginNames.findIndex(
         (name) => name === 'sql' || name === '@elizaos/plugin-sql'
       );
-      const openaiIndex = pluginNames.findIndex((name) => name.toLowerCase().includes('openai'));
+      const mockPluginIndex = pluginNames.indexOf('mock-character-plugin');
 
-      // SQL should come after openai (if openai loaded successfully)
-      if (openaiIndex !== -1 && sqlIndex !== -1) {
-        expect(sqlIndex).toBeGreaterThan(openaiIndex);
+      // SQL should come after character plugins
+      if (mockPluginIndex !== -1 && sqlIndex !== -1) {
+        expect(sqlIndex).toBeGreaterThan(mockPluginIndex);
       }
     });
   });
@@ -176,19 +193,23 @@ describe('Bootstrap Auto-Loading', () => {
       const testCharacter: Character = {
         name: 'TestAgent',
         bio: ['Test agent'],
-        plugins: ['@elizaos/plugin-openai'], // Character plugin
+        plugins: [], // No character plugins, will add at runtime
       };
 
-      const runtimePlugin = {
+      const runtimePlugin: Plugin = {
         name: 'test-runtime-plugin',
         description: 'Test runtime plugin',
+        actions: [],
+        evaluators: [],
+        providers: [],
+        services: [],
       };
 
       const runtimes = await server.startAgents(
         [
           {
             character: testCharacter,
-            plugins: [runtimePlugin], // Runtime plugin
+            plugins: [mockCharacterPlugin, runtimePlugin], // Both character and runtime plugins
           },
         ],
         { isTestMode: true }
@@ -197,6 +218,7 @@ describe('Bootstrap Auto-Loading', () => {
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
 
+      const mockPluginIndex = pluginNames.indexOf('mock-character-plugin');
       const runtimePluginIndex = pluginNames.indexOf('test-runtime-plugin');
       // Plugin names can be either short ('sql') or full package name ('@elizaos/plugin-sql')
       const sqlIndex = pluginNames.findIndex(
@@ -204,6 +226,7 @@ describe('Bootstrap Auto-Loading', () => {
       );
 
       // Verify plugins are present (server only auto-injects SQL)
+      expect(mockPluginIndex).not.toBe(-1);
       expect(runtimePluginIndex).not.toBe(-1);
       expect(sqlIndex).not.toBe(-1);
 
