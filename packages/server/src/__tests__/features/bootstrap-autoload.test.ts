@@ -1,7 +1,11 @@
+/**
+ * Tests for Bootstrap and SQL plugin auto-injection
+ * Verifies that the server automatically injects required plugins in the correct order
+ */
+
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { AgentServer } from '../../index';
+import { TestServerFixture, CharacterBuilder } from '../index';
 import type { Character, Plugin } from '@elizaos/core';
-import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 // Mock plugin to replace external dependencies in tests
 const mockCharacterPlugin: Plugin = {
@@ -14,37 +18,28 @@ const mockCharacterPlugin: Plugin = {
 };
 
 describe('Bootstrap Auto-Loading', () => {
-  let server: AgentServer;
-  let envSnapshot: EnvironmentSnapshot;
+  let serverFixture: TestServerFixture;
 
   beforeEach(async () => {
-    // Clean environment and save snapshot
-    envSnapshot = setupTestEnvironment();
-
-    // Create and initialize server instance
-    server = new AgentServer();
-    await server.start({ isTestMode: true });
+    // Create fresh server instance for each test
+    serverFixture = new TestServerFixture();
+    await serverFixture.setup();
   });
 
   afterEach(async () => {
-    // Cleanup server first
-    if (server) {
-      await server.stop();
-    }
-
-    // Restore environment
-    teardownTestEnvironment(envSnapshot);
+    // Cleanup server
+    await serverFixture.cleanup();
   });
 
   describe('Bootstrap Plugin Auto-Injection', () => {
     it('should automatically inject bootstrap plugin by default', async () => {
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent for bootstrap injection'],
-        plugins: [], // No plugins specified
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent for bootstrap injection'])
+        .withPlugins([]) // No plugins specified
+        .build();
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await serverFixture.getServer().startAgents([{ character: testCharacter }], {
         isTestMode: true,
       });
 
@@ -64,20 +59,23 @@ describe('Bootstrap Auto-Loading', () => {
     });
 
     it('should inject bootstrap before character plugins', async () => {
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent'],
-        plugins: [],
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent'])
+        .withPlugins([])
+        .build();
 
-      const runtimes = await server.startAgents([
+      const runtimes = await serverFixture.getServer().startAgents(
+        [
+          {
+            character: testCharacter,
+            plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+          }
+        ],
         {
-          character: testCharacter,
-          plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+          isTestMode: true,
         }
-      ], {
-        isTestMode: true,
-      });
+      );
 
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
@@ -94,13 +92,13 @@ describe('Bootstrap Auto-Loading', () => {
     it('should not inject bootstrap when IGNORE_BOOTSTRAP is set', async () => {
       process.env.IGNORE_BOOTSTRAP = 'true';
 
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent'],
-        plugins: [],
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent'])
+        .withPlugins([])
+        .build();
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await serverFixture.getServer().startAgents([{ character: testCharacter }], {
         isTestMode: true,
       });
 
@@ -120,7 +118,7 @@ describe('Bootstrap Auto-Loading', () => {
         plugins: ['@elizaos/plugin-bootstrap'], // User explicitly added bootstrap
       };
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await serverFixture.getServer().startAgents([{ character: testCharacter }], {
         isTestMode: true,
       });
 
@@ -136,13 +134,13 @@ describe('Bootstrap Auto-Loading', () => {
 
   describe('SQL Plugin Auto-Injection', () => {
     it('should automatically inject SQL plugin', async () => {
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent'],
-        plugins: [],
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent'])
+        .withPlugins([])
+        .build();
 
-      const runtimes = await server.startAgents([{ character: testCharacter }], {
+      const runtimes = await serverFixture.getServer().startAgents([{ character: testCharacter }], {
         isTestMode: true,
       });
 
@@ -157,20 +155,23 @@ describe('Bootstrap Auto-Loading', () => {
     });
 
     it('should inject SQL after character plugins', async () => {
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent'],
-        plugins: [],
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent'])
+        .withPlugins([])
+        .build();
 
-      const runtimes = await server.startAgents([
+      const runtimes = await serverFixture.getServer().startAgents(
+        [
+          {
+            character: testCharacter,
+            plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+          }
+        ],
         {
-          character: testCharacter,
-          plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
+          isTestMode: true,
         }
-      ], {
-        isTestMode: true,
-      });
+      );
 
       const runtime = runtimes[0];
       const pluginNames = runtime.plugins.map((p) => p.name);
@@ -190,11 +191,11 @@ describe('Bootstrap Auto-Loading', () => {
 
   describe('Plugin Injection Order', () => {
     it('should maintain correct plugin order: bootstrap -> character -> runtime -> SQL', async () => {
-      const testCharacter: Character = {
-        name: 'TestAgent',
-        bio: ['Test agent'],
-        plugins: [], // No character plugins, will add at runtime
-      };
+      const testCharacter = new CharacterBuilder()
+        .withName('TestAgent')
+        .withBio(['Test agent'])
+        .withPlugins([]) // No character plugins, will add at runtime
+        .build();
 
       const runtimePlugin: Plugin = {
         name: 'test-runtime-plugin',
@@ -205,7 +206,7 @@ describe('Bootstrap Auto-Loading', () => {
         services: [],
       };
 
-      const runtimes = await server.startAgents(
+      const runtimes = await serverFixture.getServer().startAgents(
         [
           {
             character: testCharacter,
@@ -237,10 +238,19 @@ describe('Bootstrap Auto-Loading', () => {
 
   describe('Multiple Agents', () => {
     it('should inject bootstrap and SQL for all agents', async () => {
-      const agent1: Character = { name: 'Agent1', bio: ['Agent 1'], plugins: [] };
-      const agent2: Character = { name: 'Agent2', bio: ['Agent 2'], plugins: [] };
+      const agent1 = new CharacterBuilder()
+        .withName('Agent1')
+        .withBio(['Agent 1'])
+        .withPlugins([])
+        .build();
 
-      const runtimes = await server.startAgents([{ character: agent1 }, { character: agent2 }], {
+      const agent2 = new CharacterBuilder()
+        .withName('Agent2')
+        .withBio(['Agent 2'])
+        .withPlugins([])
+        .build();
+
+      const runtimes = await serverFixture.getServer().startAgents([{ character: agent1 }, { character: agent2 }], {
         isTestMode: true,
       });
 
