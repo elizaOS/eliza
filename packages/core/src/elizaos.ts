@@ -86,10 +86,11 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      // Always merge environment secrets with character secrets
+      // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
+      // In test mode, skip env merge to avoid database bloat from system variables
       const character = agent.character;
-      await setDefaultSecretsFromEnv(character);
+      await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
 
       const resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)

@@ -851,7 +851,7 @@ ANOTHER_KEY=another-value`;
           },
         };
 
-        await setDefaultSecretsFromEnv(character);
+        await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
         // Verify complex objects are preserved
         expect(character.settings!.discord).toEqual({
@@ -862,11 +862,15 @@ ANOTHER_KEY=another-value`;
           botToken: 'bot-token',
         });
 
-        // Verify simple overrides work
+        // Verify existing settings root values are preserved
         expect(character.settings!.SIMPLE_KEY).toBe('character-override');
 
-        // Verify non-overridden .env values are added
-        expect(character.settings!.ANOTHER_KEY).toBe('another-value');
+        // Verify .env values are NOT merged into settings root (no duplication)
+        expect(character.settings!.ANOTHER_KEY).toBeUndefined();
+
+        // Verify .env values are merged into settings.secrets
+        expect((character.settings!.secrets as any).SIMPLE_KEY).toBe('simple-value');
+        expect((character.settings!.secrets as any).ANOTHER_KEY).toBe('another-value');
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });

@@ -74,18 +74,31 @@ describe('SecretsManager', () => {
   });
 
   describe('setDefaultSecretsFromEnv', () => {
-    test('should return true and merge process.env', async () => {
+    test('should return true and merge process.env when not skipped', async () => {
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
-      // Should always return true because process.env always exists
+      // Should return true because process.env merge is enabled
       expect(result).toBe(true);
       expect(character.settings?.secrets).toBeDefined();
+    });
+
+    test('should return false when skipEnvMerge is true', async () => {
+      const character: Character = {
+        name: 'TestChar',
+        bio: ['Test bio'],
+        settings: {},
+      } as Character;
+
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: true });
+
+      // Should return false because env merge is skipped
+      expect(result).toBe(false);
     });
 
     test('should load secrets from process.env', async () => {
@@ -101,7 +114,7 @@ describe('SecretsManager', () => {
         settings: {},
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
       expect(character.settings?.secrets).toBeDefined();
@@ -126,7 +139,7 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
       // Character secret should override process.env
@@ -135,7 +148,7 @@ describe('SecretsManager', () => {
       expect((character.settings!.secrets as any).TEST_ANTHROPIC_KEY).toBe('env-key-456');
     });
 
-    test('should merge process.env into character.settings (for non-secret configs)', async () => {
+    test('should merge process.env ONLY into character.settings.secrets (not settings root)', async () => {
       // Set environment variables with various configs
       process.env.TEST_LOG_LEVEL = 'info';
       process.env.TEST_SERVER_PORT = '3000';
@@ -148,18 +161,25 @@ describe('SecretsManager', () => {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {
-          TEST_LOG_LEVEL: 'debug', // Override process.env
+          TEST_LOG_LEVEL: 'debug', // Existing setting should be preserved
+          secrets: {
+            TEST_OPENAI_KEY: 'character-override', // Override process.env
+          },
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
-      // Character setting should override process.env
+      // Existing character settings (non-secrets) should be preserved
       expect(character.settings!.TEST_LOG_LEVEL).toBe('debug');
-      // process.env values should be available for non-overridden keys
-      expect(character.settings!.TEST_SERVER_PORT).toBe('3000');
-      expect(character.settings!.TEST_OPENAI_KEY).toBe('sk-test');
+      // process.env values should NOT be merged into settings root
+      expect(character.settings!.TEST_SERVER_PORT).toBeUndefined();
+      // process.env values should be merged into settings.secrets
+      expect((character.settings!.secrets as any).TEST_SERVER_PORT).toBe('3000');
+      expect((character.settings!.secrets as any).TEST_LOG_LEVEL).toBe('info');
+      // Character secret should override process.env
+      expect((character.settings!.secrets as any).TEST_OPENAI_KEY).toBe('character-override');
     });
 
     test('should NOT touch character.secrets (root level)', async () => {
@@ -175,7 +195,7 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
       // Root secrets should remain untouched
@@ -186,6 +206,36 @@ describe('SecretsManager', () => {
       expect(character.secrets?.TEST_SOME_KEY).toBeUndefined();
       // But should be in settings.secrets
       expect((character.settings!.secrets as any).TEST_SOME_KEY).toBe('from-env');
+    });
+
+    test('should preserve existing character.settings and not duplicate in settings root', async () => {
+      // Set environment variables
+      process.env.ENV_VAR_1 = 'env-value-1';
+      process.env.ENV_VAR_2 = 'env-value-2';
+      testEnvKeys.add('ENV_VAR_1');
+      testEnvKeys.add('ENV_VAR_2');
+
+      const character: Character = {
+        name: 'TestChar',
+        bio: ['Test bio'],
+        settings: {
+          EXISTING_SETTING: 'should-be-preserved',
+          ANOTHER_SETTING: { nested: 'object' },
+        },
+      } as Character;
+
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
+
+      expect(result).toBe(true);
+      // Existing settings should be preserved
+      expect(character.settings!.EXISTING_SETTING).toBe('should-be-preserved');
+      expect(character.settings!.ANOTHER_SETTING).toEqual({ nested: 'object' });
+      // Env vars should NOT be in settings root
+      expect(character.settings!.ENV_VAR_1).toBeUndefined();
+      expect(character.settings!.ENV_VAR_2).toBeUndefined();
+      // Env vars should ONLY be in settings.secrets
+      expect((character.settings!.secrets as any).ENV_VAR_1).toBe('env-value-1');
+      expect((character.settings!.secrets as any).ENV_VAR_2).toBe('env-value-2');
     });
   });
 });
