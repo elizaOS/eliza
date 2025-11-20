@@ -249,12 +249,35 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
 }
 
 // ============================================================================
+// Plugin Name Mapping Utilities
+// ============================================================================
+
+/**
+ * Normalizes a plugin name by extracting the short name from scoped packages
+ * Examples:
+ *  - '@elizaos/plugin-discord' -> 'discord'
+ *  - '@elizaos/plugin-sql' -> 'sql'
+ *  - 'bootstrap' -> 'bootstrap'
+ *  - 'plugin-custom' -> 'plugin-custom'
+ */
+export function normalizePluginName(pluginName: string): string {
+  // Match patterns like @elizaos/plugin-{name} or @{scope}/plugin-{name}
+  const scopedMatch = pluginName.match(/^@[^/]+\/plugin-(.+)$/);
+  if (scopedMatch) {
+    return scopedMatch[1];
+  }
+  return pluginName;
+}
+
+// ============================================================================
 // Plugin Dependency Resolution
 // ============================================================================
 
 /**
  * Resolve plugin dependencies with circular dependency detection
  * Performs topological sorting of plugins to ensure dependencies are loaded in the correct order
+ * 
+ * Supports both scoped package names (@elizaos/plugin-discord) and short names (discord)
  */
 export function resolvePluginDependencies(
   availablePlugins: Map<string, Plugin>,
@@ -264,41 +287,81 @@ export function resolvePluginDependencies(
   const visited = new Set<string>();
   const visiting = new Set<string>();
 
+  // Create enhanced lookup map supporting both naming conventions
+  // Allows finding plugins by short name ('discord') or scoped name ('@elizaos/plugin-discord')
+  const lookupMap = new Map<string, Plugin>();
+  for (const [key, plugin] of availablePlugins.entries()) {
+    lookupMap.set(key, plugin);
+    if (plugin.name !== key) {
+      lookupMap.set(plugin.name, plugin);
+    }
+    lookupMap.set(`@elizaos/plugin-${plugin.name}`, plugin);
+    const normalizedKey = normalizePluginName(key);
+    if (normalizedKey !== key) {
+      lookupMap.set(normalizedKey, plugin);
+    }
+  }
+
   function visit(pluginName: string) {
-    if (!availablePlugins.has(pluginName)) {
-      logger.warn(`Plugin dependency "${pluginName}" not found and will be skipped.`);
+    // Try to find the plugin using the lookup map
+    const plugin = lookupMap.get(pluginName);
+
+    if (!plugin) {
+      // Try normalized name as fallback
+      const normalizedName = normalizePluginName(pluginName);
+      const pluginByNormalized = lookupMap.get(normalizedName);
+
+      if (!pluginByNormalized) {
+        logger.warn(`Plugin dependency "${pluginName}" not found and will be skipped.`);
+        return;
+      }
+
+      // Use the normalized name for the rest of the resolution
+      return visit(pluginByNormalized.name);
+    }
+
+    // Use the actual plugin.name for tracking to ensure consistency
+    const canonicalName = plugin.name;
+
+    if (visited.has(canonicalName)) return;
+    if (visiting.has(canonicalName)) {
+      logger.error(`Circular dependency detected involving plugin: ${canonicalName}`);
       return;
     }
-    if (visited.has(pluginName)) return;
-    if (visiting.has(pluginName)) {
-      logger.error(`Circular dependency detected involving plugin: ${pluginName}`);
-      return;
+
+    visiting.add(canonicalName);
+
+    const deps = [...(plugin.dependencies || [])];
+    if (isTestMode) {
+      deps.push(...(plugin.testDependencies || []));
+    }
+    for (const dep of deps) {
+      visit(dep);
     }
 
-    visiting.add(pluginName);
-    const plugin = availablePlugins.get(pluginName);
-    if (plugin) {
-      const deps = [...(plugin.dependencies || [])];
-      if (isTestMode) {
-        deps.push(...(plugin.testDependencies || []));
-      }
-      for (const dep of deps) {
-        visit(dep);
-      }
-    }
-    visiting.delete(pluginName);
-    visited.add(pluginName);
-    resolutionOrder.push(pluginName);
+    visiting.delete(canonicalName);
+    visited.add(canonicalName);
+    resolutionOrder.push(canonicalName);
   }
 
-  for (const name of availablePlugins.keys()) {
-    if (!visited.has(name)) {
-      visit(name);
+  // Visit all plugins using their canonical names
+  for (const plugin of availablePlugins.values()) {
+    if (!visited.has(plugin.name)) {
+      visit(plugin.name);
     }
   }
 
+  // Map back to actual plugin objects using the original availablePlugins map
   const finalPlugins = resolutionOrder
-    .map((name) => availablePlugins.get(name))
+    .map((name) => {
+      // Find by name in the original map
+      for (const plugin of availablePlugins.values()) {
+        if (plugin.name === name) {
+          return plugin;
+        }
+      }
+      return null;
+    })
     .filter((p): p is Plugin => Boolean(p));
 
   logger.info({ plugins: finalPlugins.map((p) => p.name) }, `Final plugins being loaded:`);
@@ -331,6 +394,33 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
 }
 
 /**
+ * Helper to queue a dependency if not already queued or loaded
+ */
+function queueDependency(
+  depName: string,
+  seenDependencies: Set<string>,
+  pluginMap: Map<string, Plugin>,
+  queue: (string | Plugin)[]
+): void {
+  const normalizedDepName = normalizePluginName(depName);
+
+  // Check if already queued or loaded (by any name variant)
+  const alreadyQueued =
+    seenDependencies.has(depName) ||
+    seenDependencies.has(normalizedDepName) ||
+    pluginMap.has(normalizedDepName) ||
+    Array.from(pluginMap.values()).some(
+      (p) => p.name === depName || p.name === normalizedDepName
+    );
+
+  if (!alreadyQueued) {
+    seenDependencies.add(depName);
+    seenDependencies.add(normalizedDepName);
+    queue.push(depName);
+  }
+}
+
+/**
  * Internal implementation of plugin resolution
  * @param plugins - Array of plugin names or Plugin objects
  * @param isTestMode - Whether to include test dependencies
@@ -342,34 +432,32 @@ async function resolvePluginsImpl(
 ): Promise<Plugin[]> {
   const pluginMap = new Map<string, Plugin>();
   const queue: (string | Plugin)[] = [...plugins];
+  const seenDependencies = new Set<string>();
 
   while (queue.length > 0) {
     const next = queue.shift()!;
     const loaded = await loadPlugin(next);
     if (!loaded) continue;
 
-    if (!pluginMap.has(loaded.name)) {
-      pluginMap.set(loaded.name, loaded);
+    const canonicalName = loaded.name;
 
-      // Add regular dependencies
+    if (!pluginMap.has(canonicalName)) {
+      pluginMap.set(canonicalName, loaded);
+
+      // Queue regular dependencies
       for (const depName of loaded.dependencies ?? []) {
-        if (!pluginMap.has(depName)) {
-          queue.push(depName);
-        }
+        queueDependency(depName, seenDependencies, pluginMap, queue);
       }
 
-      // Add test dependencies if in test mode
+      // Queue test dependencies if in test mode
       if (isTestMode) {
         for (const depName of loaded.testDependencies ?? []) {
-          if (!pluginMap.has(depName)) {
-            queue.push(depName);
-          }
+          queueDependency(depName, seenDependencies, pluginMap, queue);
         }
       }
     }
   }
 
-  // Resolve dependencies and return ordered list
   return resolvePluginDependencies(pluginMap, isTestMode);
 }
 
@@ -401,8 +489,8 @@ export async function resolvePlugins(
   if (plugins.some((p) => typeof p === 'string')) {
     logger.warn(
       'Browser environment: String plugin references are not supported. ' +
-        'Only Plugin objects will be used. Skipped plugins: ' +
-        plugins.filter((p) => typeof p === 'string').join(', ')
+      'Only Plugin objects will be used. Skipped plugins: ' +
+      plugins.filter((p) => typeof p === 'string').join(', ')
     );
   }
 
