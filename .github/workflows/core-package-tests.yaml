@@ -159,13 +159,18 @@ jobs:
 
             cd "packages/$package"
 
-            # Server uses test:ci: parallel for unit/feature/compatibility, sequential for integration
+            # Server uses separate test scripts: unit, features, compatibility, security (parallel), integration (sequential)
             if [ "$package" = "server" ]; then
-              if bun run test:ci --timeout 60000; then
-                echo "✅ Tests passed for $package"
-              else
-                echo "❌ Tests failed for $package"
-                TESTS_FAILED=1
+              for test_type in unit features compatibility security integration; do
+                echo "Running $test_type tests..."
+                if ! bun run test:$test_type --timeout 60000; then
+                  echo "❌ ${test_type^} tests failed"
+                  TESTS_FAILED=1
+                fi
+              done
+
+              if [ $TESTS_FAILED -eq 0 ]; then
+                echo "✅ All tests passed for $package"
               fi
             else
               if bun run test --timeout 60000; then
