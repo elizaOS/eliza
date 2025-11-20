@@ -60,6 +60,28 @@ describe('Database Operations Integration Tests', () => {
 
       console.log(`Test server started on port ${serverPort}`);
 
+      // Wait for server to be fully ready and accepting connections
+      const maxAttempts = 10;
+      let serverReady = false;
+      for (let i = 0; i < maxAttempts; i++) {
+        try {
+          const response = await fetch(`http://localhost:${serverPort}/api/agents`);
+          if (response.ok || response.status === 404) {
+            serverReady = true;
+            break;
+          }
+        } catch {
+          // Server not ready yet
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+
+      if (!serverReady) {
+        throw new Error('Server failed to start within timeout');
+      }
+
+      console.log(`Server is ready and accepting connections on port ${serverPort}`);
+
       // Create a test agent with mock model provider to prevent TEXT_SMALL handler errors
       // This agent will handle any message processing triggered by the tests
       const testCharacter = {
