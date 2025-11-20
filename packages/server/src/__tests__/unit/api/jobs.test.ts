@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
-import { createJobsRouter, type JobsRouter } from '../jobs';
+import { createJobsRouter, type JobsRouter } from '../../../api/messaging/jobs';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 import { JobStatus, JobValidation } from '../../../types/jobs';
@@ -72,10 +72,10 @@ async function simulateRequest(
         ...headers,
       },
       get: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       header: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       accepts: jest.fn(() => 'application/json'),
       is: jest.fn((type: string) => type === 'application/json'),
@@ -90,7 +90,7 @@ async function simulateRequest(
       status: function (code: number) {
         if (!responseSent) {
           responseStatus = code;
-          this.statusCode = code;
+          (this as any).statusCode = code;
         }
         return this;
       },
@@ -134,7 +134,7 @@ async function simulateRequest(
     };
 
     try {
-      app(req, res, next);
+      app(req, res, next as any);
     } catch (error) {
       if (!responseSent) {
         responseStatus = 500;

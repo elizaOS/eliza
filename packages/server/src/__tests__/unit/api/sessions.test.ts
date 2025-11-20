@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
 import express from 'express';
-import { createSessionsRouter, type SessionRouter } from '../sessions';
+import { createSessionsRouter, type SessionRouter } from '../../../api/messaging/sessions';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 import type { SimplifiedMessage } from '../../../types/sessions';

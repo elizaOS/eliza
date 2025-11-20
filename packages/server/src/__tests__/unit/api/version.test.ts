@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, setSystemTime } from 'bun:test';
 import express from 'express';
-import { createVersionRouter } from '../version';
+import { createVersionRouter } from '../../../api/system/version';
 import packageJson from '../../../../package.json';
 
 // SKIPPED: These tests pass in isolation but fail in full test runs due to 
