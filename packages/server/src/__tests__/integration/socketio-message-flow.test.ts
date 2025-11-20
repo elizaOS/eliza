@@ -9,6 +9,7 @@ import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
 import { SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
+import { captureEnvironment, restoreEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 describe('Socket.IO End-to-End Message Flow', () => {
   let agentServer: AgentServer;
@@ -17,11 +18,18 @@ describe('Socket.IO End-to-End Message Flow', () => {
   let client2: ClientSocket;
   let mockRuntime: IAgentRuntime;
   let testDbPath: string;
+  let envSnapshot: EnvironmentSnapshot;
 
   beforeAll(async () => {
+    // Capture environment before making changes
+    envSnapshot = captureEnvironment();
+
     // Use a test database
     testDbPath = path.join(__dirname, `test-db-${Date.now()}`);
     process.env.PGLITE_DATA_DIR = testDbPath;
+
+    // Disable bootstrap plugin to prevent PGLite errors in CI
+    process.env.IGNORE_BOOTSTRAP = 'true';
 
     // Clean up environment variables that might interfere
     delete process.env.POSTGRES_URL;
@@ -113,6 +121,9 @@ describe('Socket.IO End-to-End Message Flow', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       fs.rmSync(testDbPath, { recursive: true, force: true });
     }
+
+    // Restore environment to original state
+    restoreEnvironment(envSnapshot);
   });
 
   beforeEach(() => {

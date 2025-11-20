@@ -141,6 +141,11 @@ describe('Server Package Compatibility', () => {
 
   describe('Database Integration Patterns', () => {
     it('should support CLI database configuration patterns', () => {
+      // Capture and clean environment first to ensure no pollution from other tests
+      const snapshot = captureEnvironment();
+      delete process.env.PGLITE_DATA_DIR;
+      delete process.env.IGNORE_BOOTSTRAP;
+
       // Test path resolution patterns CLI uses
       const resolvePgliteDir = (dir?: string, fallbackDir?: string): string => {
         const base =
@@ -163,9 +168,10 @@ describe('Server Package Compatibility', () => {
       expect(resolvePgliteDir('~/custom')).toBe(path.join(process.cwd(), 'custom'));
 
       // Test environment variable handling
-      const snapshot = captureEnvironment();
       process.env.PGLITE_DATA_DIR = '/env/path';
       expect(resolvePgliteDir()).toBe('/env/path');
+
+      // Restore environment
       restoreEnvironment(snapshot);
     });
   });
