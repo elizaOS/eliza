@@ -40,10 +40,9 @@
     "test:features": "bun test src/__tests__/features/",
     "test:compatibility": "bun test src/__tests__/compatibility/",
     "test:security": "bun test src/__tests__/security/",
-    "test:integration": "bun test src/__tests__/integration/ --max-concurrency=1",
+    "test:integration": "bun test src/__tests__/integration/",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
-    "test:cli": "bun test tests/commands/",
     "dev": "bun run build.ts --watch"
   },
   "devDependencies": {

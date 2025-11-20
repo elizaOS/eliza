@@ -146,7 +146,7 @@ jobs:
           # Track if any tests fail
           TESTS_FAILED=0
 
-          # Run tests in each package that has them (excluding CLI, client, server, and other excluded packages)
+          # Run tests in each package that has them (excluding CLI and client)
           # These packages are tested together because they:
           # - Use standard bun test without special environment requirements
           # - Form the core backend functionality of ElizaOS
@@ -159,26 +159,11 @@ jobs:
 
             cd "packages/$package"
 
-            # Server uses separate test scripts: unit, features, compatibility, security (parallel), integration (sequential)
-            if [ "$package" = "server" ]; then
-              for test_type in unit features compatibility security integration; do
-                echo "Running $test_type tests..."
-                if ! bun run test:$test_type --timeout 60000; then
-                  echo "❌ ${test_type^} tests failed"
-                  TESTS_FAILED=1
-                fi
-              done
-
-              if [ $TESTS_FAILED -eq 0 ]; then
-                echo "✅ All tests passed for $package"
-              fi
+            if bun run test --timeout 60000; then
+              echo "✅ Tests passed for $package"
             else
-              if bun run test --timeout 60000; then
-                echo "✅ Tests passed for $package"
-              else
-                echo "❌ Tests failed for $package"
-                TESTS_FAILED=1
-              fi
+              echo "❌ Tests failed for $package"
+              TESTS_FAILED=1
             fi
 
             cd ../..
