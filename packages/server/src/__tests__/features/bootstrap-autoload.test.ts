@@ -18,15 +18,12 @@ describe('Bootstrap Auto-Loading', () => {
   let envSnapshot: EnvironmentSnapshot;
 
   beforeEach(async () => {
-    // Clean environment and save snapshot with isolated database
-    envSnapshot = setupTestEnvironment({ isolateDatabase: true });
+    // Clean environment and save snapshot
+    envSnapshot = setupTestEnvironment();
 
-    // Create and initialize server instance with isolated database
+    // Create and initialize server instance
     server = new AgentServer();
-    await server.start({
-      isTestMode: true,
-      dataDir: envSnapshot.testDbPath, // Use isolated database
-    });
+    await server.start({ isTestMode: true });
   });
 
   afterEach(async () => {
