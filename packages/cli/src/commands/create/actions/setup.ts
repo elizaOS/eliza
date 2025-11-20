@@ -285,6 +285,72 @@ export async function setupEmbeddingModelConfig(
         break;
       }
 
+      case 'openrouter': {
+        // 'openrouter' for embeddings, configure it with model and dimensions
+        if (!hasValidApiKey(content, 'OPENROUTER_API_KEY')) {
+          if (isNonInteractive) {
+            // In non-interactive mode, add/update placeholder
+            if (!content.includes('OPENROUTER_API_KEY=')) {
+              content += '\n# Embedding Model Configuration (Fallback)\n';
+              content += '# OpenRouter Embeddings Configuration\n';
+              content += 'OPENROUTER_API_KEY=your_openrouter_api_key_here\n';
+              content += 'OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small\n';
+              content += 'OPENROUTER_EMBEDDING_DIMENSIONS=1536\n';
+              content += '# Get your API key from: https://openrouter.ai/keys\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - prompt for OpenRouter API key
+            await promptAndStoreOpenRouterKey(envFilePath);
+          }
+        } else {
+          // OpenRouter API key exists, but we need to add embedding model configuration
+          if (isNonInteractive) {
+            // Re-read content to get latest state
+            content = await fs.readFile(envFilePath, 'utf8');
+
+            // In non-interactive mode, just add embedding model if not present
+            // Check for active (non-commented) lines only
+            const hasActiveEmbeddingModel = /^OPENROUTER_EMBEDDING_MODEL=.+$/m.test(content);
+            const hasActiveEmbeddingDimensions = /^OPENROUTER_EMBEDDING_DIMENSIONS=.+$/m.test(
+              content
+            );
+
+            if (!hasActiveEmbeddingModel) {
+              content += 'OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small\n';
+            }
+            if (!hasActiveEmbeddingDimensions) {
+              content += 'OPENROUTER_EMBEDDING_DIMENSIONS=1536\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          } else {
+            // Interactive mode - Re-read and add embedding config
+            content = await fs.readFile(envFilePath, 'utf8');
+
+            // Check for active (non-commented) lines only
+            const hasActiveEmbeddingModel = /^OPENROUTER_EMBEDDING_MODEL=.+$/m.test(content);
+            const hasActiveEmbeddingDimensions = /^OPENROUTER_EMBEDDING_DIMENSIONS=.+$/m.test(
+              content
+            );
+
+            if (!hasActiveEmbeddingModel) {
+              if (content && !content.endsWith('\n')) {
+                content += '\n';
+              }
+              content += 'OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small\n';
+            }
+            if (!hasActiveEmbeddingDimensions) {
+              if (content && !content.endsWith('\n')) {
+                content += '\n';
+              }
+              content += 'OPENROUTER_EMBEDDING_DIMENSIONS=1536\n';
+            }
+            await fs.writeFile(envFilePath, content, 'utf8');
+          }
+        }
+        break;
+      }
+
       default:
         console.warn(`Unknown embedding model: ${embeddingModel}, skipping configuration`);
         return;
