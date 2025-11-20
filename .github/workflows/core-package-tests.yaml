@@ -151,7 +151,7 @@ jobs:
           # - Use standard bun test without special environment requirements
           # - Form the core backend functionality of ElizaOS
           # - Can run with in-memory PGLite database
-          for package in core plugin-bootstrap plugin-dummy-services project-tee-starter; do
+          for package in core plugin-bootstrap plugin-dummy-services project-tee-starter server; do
             echo ""
             echo "========================================="
             echo "Running tests in packages/$package"
