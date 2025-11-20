@@ -356,6 +356,8 @@ export class SocketIORouter {
           attachments,
         },
         sourceType: source || 'socketio_client',
+        sourceId: payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        inReplyToRootMessageId: null as any,
       };
 
       const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);

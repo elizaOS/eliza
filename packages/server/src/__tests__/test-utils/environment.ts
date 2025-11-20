@@ -5,6 +5,7 @@
 import { getElizaPaths } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 /**
  * Environment snapshot for restoration
@@ -71,7 +72,7 @@ export function restoreEnvironment(snapshot: EnvironmentSnapshot): void {
 /**
  * Setup clean test environment (for beforeEach)
  * @param options - Optional configuration
- * @param options.isolateDatabase - If true, creates a unique database directory for this test
+ * @param options.isolateDatabase - If true, creates a unique temporary database directory for this test
  * @returns snapshot to restore in teardown
  */
 export function setupTestEnvironment(options?: { isolateDatabase?: boolean }): EnvironmentSnapshot {
@@ -80,11 +81,10 @@ export function setupTestEnvironment(options?: { isolateDatabase?: boolean }): E
 
   // Create unique database path if isolation requested
   if (options?.isolateDatabase) {
-    const testDbPath = path.join(
-      process.cwd(),
-      '.test-db',
-      `test-${Date.now()}-${Math.random().toString(36).substring(7)}`
-    );
+    // Create a true temporary directory using system temp directory
+    // This approach matches plugin-sql's createIsolatedTestDatabase
+    // Each test gets a completely isolated temp directory, avoiding PGlite global state conflicts
+    const testDbPath = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-server-test-'));
     process.env.PGLITE_DATA_DIR = testDbPath;
     snapshot.testDbPath = testDbPath;
   }

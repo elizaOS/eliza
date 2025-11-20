@@ -40,7 +40,7 @@
     "test:features": "bun test src/__tests__/features/",
     "test:compatibility": "bun test src/__tests__/compatibility/",
     "test:security": "bun test src/__tests__/security/",
-    "test:integration": "bun test src/__tests__/integration/",
+    "test:integration": "bash scripts/run-integration-tests.sh",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
     "dev": "bun run build.ts --watch"

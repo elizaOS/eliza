@@ -5,13 +5,20 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { createJobsRouter, type JobsRouter } from '../../api/messaging/jobs';
-import type { ElizaOS, IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS, IAgentRuntime } from '@elizaos/core';
 import type { AgentServer } from '../../index';
 import internalMessageBus from '../../bus';
 import express from 'express';
 import { JobStatus } from '../../types/jobs';
 
+// New architecture imports
+import type { UUID } from '../index';
+
 describe('Jobs API Message Bus Integration', () => {
+  // Note: This test uses mocks instead of fixtures because it's testing
+  // the Jobs API router logic in isolation, not the full server stack.
+  // The Jobs API requires minimal dependencies (ElizaOS + AgentServer mocks).
+
   let router: JobsRouter;
   let mockElizaOS: ElizaOS;
   let mockServerInstance: AgentServer;
@@ -87,7 +94,7 @@ describe('Jobs API Message Bus Integration', () => {
 
     const statusBody = statusRes.body as Record<string, unknown>;
     expect(statusBody.status).toBeDefined();
-    expect([JobStatus.PROCESSING, JobStatus.COMPLETED]).toContain(statusBody.status);
+    expect([JobStatus.PROCESSING, JobStatus.COMPLETED]).toContain(statusBody.status as JobStatus);
   });
 
   it('should complete job when agent response is received', async () => {
