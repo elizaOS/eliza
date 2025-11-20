@@ -9,18 +9,27 @@ import type { UUID, Character } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
+import { captureEnvironment, restoreEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 describe('Agent-Server Interaction Integration Tests', () => {
   let agentServer: AgentServer;
   let testDbPath: string;
   let serverPort: number;
+  let envSnapshot: EnvironmentSnapshot;
 
   beforeAll(async () => {
+    // Capture environment before making changes
+    envSnapshot = captureEnvironment();
+
     // Use a test database with unique path
     testDbPath = path.join(
       __dirname,
       `test-db-agent-server-${Date.now()}-${Math.random().toString(36).substring(7)}`
     );
+    process.env.PGLITE_DATA_DIR = testDbPath;
+
+    // Disable bootstrap plugin to prevent PGLite errors in CI
+    process.env.IGNORE_BOOTSTRAP = 'true';
 
     // Create and start agent server
     agentServer = new AgentServer();
@@ -77,6 +86,9 @@ describe('Agent-Server Interaction Integration Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       fs.rmSync(testDbPath, { recursive: true, force: true });
     }
+
+    // Restore environment to original state
+    restoreEnvironment(envSnapshot);
   });
 
   describe('Agent Registration and Management', () => {

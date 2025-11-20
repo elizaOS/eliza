@@ -156,16 +156,26 @@ jobs:
             echo "========================================="
             echo "Running tests in packages/$package"
             echo "========================================="
-            
+
             cd "packages/$package"
-            
-            if bun run test --timeout 60000; then
-              echo "✅ Tests passed for $package"
+
+            # Server uses test:ci: parallel for unit/feature/compatibility, sequential for integration
+            if [ "$package" = "server" ]; then
+              if bun run test:ci --timeout 60000; then
+                echo "✅ Tests passed for $package"
+              else
+                echo "❌ Tests failed for $package"
+                TESTS_FAILED=1
+              fi
             else
-              echo "❌ Tests failed for $package"
-              TESTS_FAILED=1
+              if bun run test --timeout 60000; then
+                echo "✅ Tests passed for $package"
+              else
+                echo "❌ Tests failed for $package"
+                TESTS_FAILED=1
+              fi
             fi
-            
+
             cd ../..
           done
 
