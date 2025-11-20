@@ -8,6 +8,7 @@ import type { UUID, Character, Plugin, IAgentRuntime } from '@elizaos/core';
 import { ChannelType, ModelType, stringToUuid } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
+import { captureEnvironment, restoreEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 // Helper to generate unique channel IDs for tests
 const generateChannelId = (testName: string): UUID => {
@@ -37,14 +38,21 @@ describe('Database Operations Integration Tests', () => {
   let serverPort: number;
   let isServerStarted: boolean = false;
   let testAgentId: UUID;
+  let envSnapshot: EnvironmentSnapshot;
 
   beforeAll(async () => {
+    // Capture environment before making changes
+    envSnapshot = captureEnvironment();
+
     // Use a test database with unique path
     testDbPath = path.join(
       __dirname,
       `test-db-ops-${Date.now()}-${Math.random().toString(36).substring(7)}`
     );
     process.env.PGLITE_DATA_DIR = testDbPath;
+
+    // Disable bootstrap plugin to prevent PGLite errors in CI
+    process.env.IGNORE_BOOTSTRAP = 'true';
 
     // Clean up environment variables that might interfere
     delete process.env.POSTGRES_URL;
@@ -124,6 +132,9 @@ describe('Database Operations Integration Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       fs.rmSync(testDbPath, { recursive: true, force: true });
     }
+
+    // Restore environment to original state
+    restoreEnvironment(envSnapshot);
   });
 
   describe('Transaction Handling', () => {
