@@ -36,7 +36,7 @@
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "test": "bun test src/__tests__/**/*.test.ts",
-    "test:ci": "bun test ./src/__tests__/unit/**/*.test.ts ./src/__tests__/feature/**/*.test.ts ./src/__tests__/compatibility/**/*.test.ts && bun test ./src/__tests__/integration/**/*.test.ts --max-concurrency=1",
+    "test:ci": "bun test src/__tests__/unit/**/*.test.ts src/__tests__/feature/**/*.test.ts src/__tests__/compatibility/**/*.test.ts && bun test src/__tests__/integration/**/*.test.ts --max-concurrency=1",
     "test:unit": "bun test src/__tests__/unit/**/*.test.ts",
     "test:integration": "bun test src/__tests__/integration/**/*.test.ts --max-concurrency=1",
     "test:coverage": "bun test --coverage",
