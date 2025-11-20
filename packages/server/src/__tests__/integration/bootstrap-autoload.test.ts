@@ -8,12 +8,12 @@ describe('Bootstrap Auto-Loading', () => {
   let envSnapshot: EnvironmentSnapshot;
 
   beforeEach(async () => {
-    // Clean environment and save snapshot
-    envSnapshot = setupTestEnvironment();
+    // Clean environment, save snapshot, and create isolated database for this test
+    envSnapshot = setupTestEnvironment({ isolateDatabase: true });
 
-    // Create and initialize server instance
+    // Create and initialize server instance with isolated database
     server = new AgentServer();
-    await server.start({ isTestMode: true }); // Initialize server in test mode
+    await server.start({ isTestMode: true, dataDir: envSnapshot.testDbPath });
   });
 
   afterEach(async () => {
@@ -22,7 +22,10 @@ describe('Bootstrap Auto-Loading', () => {
       await server.stop();
     }
 
-    // Restore environment
+    // Wait a bit for file handles to be released
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Restore environment and cleanup database
     teardownTestEnvironment(envSnapshot);
   });
 

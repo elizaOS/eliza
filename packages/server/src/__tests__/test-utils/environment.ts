@@ -3,6 +3,8 @@
  * Provides utilities to save/restore environment state and clear caches
  */
 import { getElizaPaths } from '@elizaos/core';
+import path from 'node:path';
+import fs from 'node:fs';
 
 /**
  * Environment snapshot for restoration
@@ -11,6 +13,7 @@ export interface EnvironmentSnapshot {
   PGLITE_DATA_DIR?: string;
   ELIZA_DATABASE_DIR?: string;
   IGNORE_BOOTSTRAP?: string;
+  testDbPath?: string; // Track the unique DB path for cleanup
   // Add more environment variables as needed
 }
 
@@ -67,17 +70,42 @@ export function restoreEnvironment(snapshot: EnvironmentSnapshot): void {
 
 /**
  * Setup clean test environment (for beforeEach)
+ * @param options - Optional configuration
+ * @param options.isolateDatabase - If true, creates a unique database directory for this test
  * @returns snapshot to restore in teardown
  */
-export function setupTestEnvironment(): EnvironmentSnapshot {
+export function setupTestEnvironment(options?: { isolateDatabase?: boolean }): EnvironmentSnapshot {
   const snapshot = captureEnvironment();
   cleanTestEnvironment();
+
+  // Create unique database path if isolation requested
+  if (options?.isolateDatabase) {
+    const testDbPath = path.join(
+      process.cwd(),
+      '.test-db',
+      `test-${Date.now()}-${Math.random().toString(36).substring(7)}`
+    );
+    process.env.PGLITE_DATA_DIR = testDbPath;
+    snapshot.testDbPath = testDbPath;
+  }
+
   return snapshot;
 }
 
 /**
  * Teardown test environment (for afterEach)
+ * Cleans up database if it was created by setupTestEnvironment
  */
 export function teardownTestEnvironment(snapshot: EnvironmentSnapshot): void {
+  // Clean up test database if it exists
+  if (snapshot.testDbPath && fs.existsSync(snapshot.testDbPath)) {
+    try {
+      fs.rmSync(snapshot.testDbPath, { recursive: true, force: true });
+    } catch (error) {
+      // Ignore cleanup errors in tests
+      console.warn(`Failed to cleanup test database at ${snapshot.testDbPath}:`, error);
+    }
+  }
+
   restoreEnvironment(snapshot);
 }
