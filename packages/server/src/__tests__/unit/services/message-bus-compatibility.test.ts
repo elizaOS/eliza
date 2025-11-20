@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'bun:test';
-import internalMessageBus from '../bus';
+import internalMessageBus from '../../../bus';
 
 describe('InternalMessageBus EventEmitter Compatibility', () => {
   beforeEach(() => {
@@ -104,8 +104,8 @@ describe('InternalMessageBus EventEmitter Compatibility', () => {
 
       internalMessageBus.on('data-test', (data) => {
         expect(data).toEqual(testData);
-        expect(data.foo).toBe('bar');
-        expect(data.num).toBe(123);
+        expect((data as any).foo).toBe('bar');
+        expect((data as any).num).toBe(123);
         done();
       });
 
@@ -316,8 +316,8 @@ describe('InternalMessageBus EventEmitter Compatibility', () => {
 
       internalMessageBus.on('complex-data', (data) => {
         expect(data).toEqual(complexData);
-        expect(data.array).toEqual([1, 2, 3]);
-        expect(data.nested.deep.value).toBe('test');
+        expect((data as any).array).toEqual([1, 2, 3]);
+        expect((data as any).nested?.deep?.value).toBe('test');
         done();
       });
 

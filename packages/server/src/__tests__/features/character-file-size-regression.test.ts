@@ -21,8 +21,6 @@ describe('Character File Size Limits - Issue #5268 Regression Test', () => {
         post: [],
       },
       adjectives: [],
-      people: [],
-      clients: [],
     };
 
     const currentSize = JSON.stringify(baseCharacter).length;

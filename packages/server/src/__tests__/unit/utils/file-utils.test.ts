@@ -9,8 +9,7 @@ import {
   cleanupFile,
   cleanupFiles,
   cleanupUploadedFile,
-} from '../api/shared/file-utils';
-import path from 'node:path';
+} from '../../../api/shared/file-utils';
 
 // Test file interface to avoid 'as any' casts
 interface TestFileObject {

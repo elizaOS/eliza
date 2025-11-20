@@ -2,12 +2,12 @@
  * Unit tests for MessageBusService
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
-import { MessageBusService } from '../services/message';
-import { createMockAgentRuntime } from './test-utils/mocks';
+import { describe, it, expect, beforeEach, afterEach, jest, mock } from 'bun:test';
+import { MessageBusService } from '../../../services/message';
+import { createMockAgentRuntime } from '../../test-utils/mocks';
 import { EventType, type IAgentRuntime, type UUID } from '@elizaos/core';
 import { logger } from '@elizaos/core';
-import internalMessageBus from '../bus';
+import internalMessageBus from '../../../bus';
 
 // Mock the internal message bus
 
@@ -109,7 +109,7 @@ describe.skip('MessageBusService - SKIPPED: Tests timeout due to async event han
   });
 
   afterEach(() => {
-    mock.restore();
+    mock.restore?.();
   });
 
   describe('initialization', () => {

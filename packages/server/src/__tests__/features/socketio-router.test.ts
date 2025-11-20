@@ -3,11 +3,11 @@
  */
 
 import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
-import { SocketIORouter } from '../socketio';
-import { createMockAgentRuntime } from './test-utils/mocks';
+import { SocketIORouter } from '../../socketio';
+import { createMockAgentRuntime } from '../test-utils/mocks';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import { EventType, SOCKET_MESSAGE_TYPE, ChannelType, logger } from '@elizaos/core';
-import type { AgentServer } from '../index';
+import type { AgentServer } from '../../index';
 
 // Mock types for testing
 type MockElizaOS = Pick<ElizaOS, 'getAgent' | 'getAgents'>;

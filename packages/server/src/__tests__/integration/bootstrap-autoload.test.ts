@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { AgentServer } from '../index';
+import { AgentServer } from '../../index';
 import type { Character } from '@elizaos/core';
+import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 describe('Bootstrap Auto-Loading', () => {
   let server: AgentServer;
-  let originalIgnoreBootstrap: string | undefined;
+  let envSnapshot: EnvironmentSnapshot;
 
   beforeEach(async () => {
-    // Save original environment
-    originalIgnoreBootstrap = process.env.IGNORE_BOOTSTRAP;
-    delete process.env.IGNORE_BOOTSTRAP;
+    // Clean environment and save snapshot
+    envSnapshot = setupTestEnvironment();
 
     // Create and initialize server instance
     server = new AgentServer();
@@ -17,17 +17,13 @@ describe('Bootstrap Auto-Loading', () => {
   });
 
   afterEach(async () => {
-    // Restore environment
-    if (originalIgnoreBootstrap === undefined) {
-      delete process.env.IGNORE_BOOTSTRAP;
-    } else {
-      process.env.IGNORE_BOOTSTRAP = originalIgnoreBootstrap;
-    }
-
-    // Cleanup server
+    // Cleanup server first
     if (server) {
       await server.stop();
     }
+
+    // Restore environment
+    teardownTestEnvironment(envSnapshot);
   });
 
   describe('Bootstrap Plugin Auto-Injection', () => {
@@ -48,8 +44,7 @@ describe('Bootstrap Auto-Loading', () => {
       // Verify server loaded required plugins
       // Note: Bootstrap plugin auto-injection happens at character level via buildCharacterPlugins()
       // The server itself only auto-injects SQL plugin
-      const pluginNames = runtime.plugins.map((p) => p.name);
-      
+
       // Server should have at least SQL plugin
       const hasSQL = runtime.plugins.some(
         (p) => p.name === 'sql' || p.name === '@elizaos/plugin-sql'

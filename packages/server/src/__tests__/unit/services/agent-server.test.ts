@@ -1,11 +1,12 @@
 /**
- * Constructor tests for AgentServer
+ * Unit tests for AgentServer
+ * Tests constructor, properties, and method existence without complex mocks
  */
 
 import { describe, it, expect, afterEach } from 'bun:test';
-import { AgentServer } from '../index';
+import { AgentServer } from '../../../index';
 
-describe('AgentServer Constructor Tests', () => {
+describe('AgentServer', () => {
   let server: AgentServer;
 
   afterEach(() => {

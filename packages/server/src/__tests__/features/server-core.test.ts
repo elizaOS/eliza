@@ -1,94 +1,12 @@
 /**
  * Basic functionality tests without complex dependencies
+ * Tests core server patterns: rate limiting, middleware, configuration, UI toggle
  */
 
 import { describe, it, expect } from 'bun:test';
-import path from 'node:path';
-import { isWebUIEnabled } from '../index.js';
+import { isWebUIEnabled } from '../../index.js';
 
 describe('Basic Server Functionality', () => {
-  describe('Path utilities', () => {
-    it('should handle path expansion logic', () => {
-      const testExpandTildePath = (filepath: string): string => {
-        if (filepath && filepath.startsWith('~')) {
-          return path.join(process.cwd(), filepath.slice(1));
-        }
-        return filepath;
-      };
-
-      // Test the core logic without external dependencies
-      expect(testExpandTildePath('~/test')).toBe(path.join(process.cwd(), 'test'));
-      expect(testExpandTildePath('/absolute')).toBe('/absolute');
-      expect(testExpandTildePath('relative')).toBe('relative');
-      expect(testExpandTildePath('')).toBe('');
-    });
-  });
-
-  describe('UUID validation logic', () => {
-    it('should validate UUID format correctly', () => {
-      const validateUuidPattern = (id: string): boolean => {
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        return uuidRegex.test(id);
-      };
-
-      // Valid UUIDs
-      expect(validateUuidPattern('123e4567-e89b-12d3-a456-426614174000')).toBe(true);
-      expect(validateUuidPattern('00000000-0000-0000-0000-000000000000')).toBe(true);
-      expect(validateUuidPattern('ffffffff-ffff-ffff-ffff-ffffffffffff')).toBe(true);
-
-      // Invalid UUIDs
-      expect(validateUuidPattern('invalid-uuid')).toBe(false);
-      expect(validateUuidPattern('123e4567e89b12d3a456426614174000')).toBe(false); // no dashes
-      expect(validateUuidPattern('123e4567-e89b-12d3-a456-42661417400')).toBe(false); // too short
-      expect(validateUuidPattern('')).toBe(false);
-    });
-  });
-
-  describe('Security pattern detection', () => {
-    it('should detect suspicious patterns', () => {
-      const detectSuspiciousPatterns = (input: string): boolean => {
-        const suspiciousPatterns = ['..', '<', '>', '"', "'", '\\', '/'];
-        return suspiciousPatterns.some((pattern) => input.includes(pattern));
-      };
-
-      // Suspicious inputs
-      expect(detectSuspiciousPatterns('test../path')).toBe(true);
-      expect(detectSuspiciousPatterns('test<script>')).toBe(true);
-      expect(detectSuspiciousPatterns('test>alert')).toBe(true);
-      expect(detectSuspiciousPatterns('test"quote')).toBe(true);
-      expect(detectSuspiciousPatterns("test'quote")).toBe(true);
-      expect(detectSuspiciousPatterns('test\\backslash')).toBe(true);
-      expect(detectSuspiciousPatterns('test/slash')).toBe(true);
-
-      // Clean inputs
-      expect(detectSuspiciousPatterns('123e4567-e89b-12d3-a456-426614174000')).toBe(false);
-      expect(detectSuspiciousPatterns('cleantext')).toBe(false);
-      expect(detectSuspiciousPatterns('clean-text-123')).toBe(false);
-    });
-
-    it('should detect path traversal attempts', () => {
-      const containsPathTraversal = (path: string): boolean => {
-        return path.includes('../') || path.includes('..\\');
-      };
-
-      expect(containsPathTraversal('../../../etc/passwd')).toBe(true);
-      expect(containsPathTraversal('normal/path')).toBe(false);
-      expect(containsPathTraversal('..\\windows\\system32')).toBe(true);
-    });
-
-    it('should detect script injection patterns', () => {
-      const containsScriptInjection = (input: string): boolean => {
-        const scriptPatterns = ['<script', 'javascript:', 'onerror=', 'onload='];
-        return scriptPatterns.some((pattern) => input.toLowerCase().includes(pattern));
-      };
-
-      expect(containsScriptInjection('<script>alert(1)</script>')).toBe(true);
-      expect(containsScriptInjection('javascript:alert(1)')).toBe(true);
-      expect(containsScriptInjection('<img src=x onerror=alert(1)>')).toBe(true);
-      expect(containsScriptInjection('normal text')).toBe(false);
-    });
-  });
-
   describe('Rate limiting logic', () => {
     it('should implement basic rate limiting concepts', () => {
       class SimpleRateLimiter {
@@ -97,7 +15,7 @@ describe('Basic Server Functionality', () => {
         constructor(
           private windowMs: number,
           private maxRequests: number
-        ) { }
+        ) {}
 
         isAllowed(clientId: string): boolean {
           const now = Date.now();

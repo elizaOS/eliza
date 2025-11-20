@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:test';
 import { type Request, type Response, type NextFunction } from 'express';
-import { apiKeyAuthMiddleware } from '../middleware';
+import { apiKeyAuthMiddleware } from '../../../middleware';
 import { logger } from '@elizaos/core';
 
 describe('API Key Auth Middleware', () => {
@@ -30,8 +30,13 @@ describe('API Key Auth Middleware', () => {
         // Express normalizes header names to lowercase
         const lowerName = name.toLowerCase();
         const headers = mockRequest.headers as Record<string, string | string[] | undefined>;
-        return headers?.[lowerName];
-      }),
+        const value = headers?.[lowerName];
+        // Express get() returns string[] for "set-cookie", string otherwise
+        if (lowerName === 'set-cookie' && Array.isArray(value)) {
+          return value;
+        }
+        return typeof value === 'string' ? value : undefined;
+      }) as Request['get'],
     };
 
     mockResponse = {

@@ -147,7 +147,7 @@ describe('Jobs API Message Bus Integration', () => {
 
     const statusBody = statusRes.body as Record<string, unknown>;
     // Job might be completed or still processing depending on timing
-    expect([JobStatus.COMPLETED, JobStatus.PROCESSING]).toContain(statusBody.status);
+    expect([JobStatus.COMPLETED, JobStatus.PROCESSING]).toContain(statusBody.status as JobStatus);
   });
 
   it('should timeout job when no response received', async () => {
@@ -266,10 +266,10 @@ async function simulateRequest(
         'content-type': 'application/json',
       },
       get: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       header: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       ip: '127.0.0.1',
     } as unknown as express.Request;
@@ -279,7 +279,7 @@ async function simulateRequest(
       status: function (code: number) {
         if (!responseSent) {
           responseStatus = code;
-          this.statusCode = code;
+          (this as any).statusCode = code;
         }
         return this;
       },
@@ -323,7 +323,7 @@ async function simulateRequest(
     };
 
     try {
-      app(req, res, next);
+      app(req, res, next as any);
     } catch (error) {
       if (!responseSent) {
         responseStatus = 500;

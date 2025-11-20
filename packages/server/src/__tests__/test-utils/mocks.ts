@@ -14,7 +14,7 @@ import type {
 } from '@elizaos/core';
 import { ServiceType } from '@elizaos/core';
 import type { NextFunction, Request, Response } from 'express';
-import { mock, jest } from 'bun:test';
+import { jest } from 'bun:test';
 
 /**
  * Creates a mock IAgentRuntime with all required properties
@@ -22,7 +22,7 @@ import { mock, jest } from 'bun:test';
 export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
   const db = { execute: jest.fn(() => Promise.resolve([])) };
 
-  const baseRuntime: IAgentRuntime = {
+  const baseRuntime: Partial<IAgentRuntime> = {
     // Properties from IAgentRuntime interface
     agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
     character: {
@@ -42,7 +42,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     evaluators: [],
     plugins: [],
     services: new Map(),
-    events: new Map(),
+    events: new Map() as any, // PluginEvents type expects object but runtime uses Map
     fetch: null,
     routes: [],
 
@@ -96,7 +96,6 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     db,
     isReady: jest.fn(() => Promise.resolve(true)),
     init: jest.fn(() => Promise.resolve()),
-    runMigrations: jest.fn(() => Promise.resolve()),
     close: jest.fn(() => Promise.resolve()),
     getAgent: jest.fn(() => Promise.resolve(null)),
     getAgents: jest.fn(() => Promise.resolve([])),
@@ -104,7 +103,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     updateAgent: jest.fn(() => Promise.resolve(true)),
     deleteAgent: jest.fn(() => Promise.resolve(true)),
     ensureEmbeddingDimension: jest.fn(() => Promise.resolve()),
-    getEntityByIds: jest.fn(() => Promise.resolve(null)),
+    getEntitiesByIds: jest.fn(() => Promise.resolve(null)),
     getEntitiesForRoom: jest.fn(() => Promise.resolve([])),
     createEntities: jest.fn(() => Promise.resolve(true)),
     updateEntity: jest.fn(() => Promise.resolve()),
@@ -167,7 +166,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     ...overrides,
   };
 
-  return baseRuntime;
+  return baseRuntime as IAgentRuntime;
 }
 
 /**
@@ -192,7 +191,7 @@ export function createMockDatabaseAdapter(overrides?: any): DatabaseAdapter & an
     deleteAgent: jest.fn(() => Promise.resolve(true)),
 
     // Entity methods
-    getEntityByIds: jest.fn(() => Promise.resolve(null)),
+    getEntitiesByIds: jest.fn(() => Promise.resolve(null)),
     getEntitiesForRoom: jest.fn(() => Promise.resolve([])),
     createEntities: jest.fn(() => Promise.resolve(true)),
     updateEntity: jest.fn(() => Promise.resolve()),
@@ -445,4 +444,41 @@ export function createMockUploadedFile(
     path: '',
     ...overrides,
   };
+}
+
+/**
+ * Creates a mock fetch Response
+ * Provides a properly typed Response mock for testing fetch calls
+ */
+export function createMockFetchResponse<T = any>(options: {
+  ok?: boolean;
+  status?: number;
+  statusText?: string;
+  data?: T;
+  jsonError?: Error;
+}) {
+  const { ok = true, status = 200, statusText = 'OK', data, jsonError } = options;
+
+  const mockResponse: Partial<globalThis.Response> = {
+    ok,
+    status,
+    statusText,
+    json: async () => {
+      if (jsonError) throw jsonError;
+      return data;
+    },
+    text: async () => JSON.stringify(data),
+    headers: new Headers(),
+    redirected: false,
+    type: 'basic' as ResponseType,
+    url: '',
+    clone: jest.fn() as any,
+    body: null,
+    bodyUsed: false,
+    arrayBuffer: async () => new ArrayBuffer(0),
+    blob: async () => new Blob(),
+    formData: async () => new FormData(),
+  };
+
+  return mockResponse as globalThis.Response;
 }

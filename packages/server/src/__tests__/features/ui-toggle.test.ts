@@ -54,9 +54,9 @@ describe('UI Disable Feature Integration', () => {
       testScenarios.forEach(([nodeEnv, elizaUIEnable, expected, description]) => {
         const isProduction = nodeEnv === 'production';
         const uiEnabled =
-          elizaUIEnable !== undefined ? elizaUIEnable.toLowerCase() === 'true' : !isProduction;
+          elizaUIEnable !== undefined ? (elizaUIEnable as string).toLowerCase() === 'true' : !isProduction;
 
-        expect(uiEnabled).toBe(expected);
+        expect(uiEnabled).toBe(expected as boolean);
         // Also verify the description makes sense
         expect(typeof description).toBe('string');
       });

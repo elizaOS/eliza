@@ -10,7 +10,7 @@ import {
   validateMemoryId,
   validateWorldId,
   getRuntime,
-} from '../api/shared/validation';
+} from '../../../api/shared/validation';
 import { logger } from '@elizaos/core';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
 

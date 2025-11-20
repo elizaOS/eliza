@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
+import { captureEnvironment, restoreEnvironment } from '../test-utils/environment';
 
 describe('Server Package Compatibility', () => {
   describe('Export Structure', () => {
@@ -162,10 +163,10 @@ describe('Server Package Compatibility', () => {
       expect(resolvePgliteDir('~/custom')).toBe(path.join(process.cwd(), 'custom'));
 
       // Test environment variable handling
-      const originalEnv = process.env.PGLITE_DATA_DIR;
+      const snapshot = captureEnvironment();
       process.env.PGLITE_DATA_DIR = '/env/path';
       expect(resolvePgliteDir()).toBe('/env/path');
-      process.env.PGLITE_DATA_DIR = originalEnv;
+      restoreEnvironment(snapshot);
     });
   });
 

@@ -2,14 +2,20 @@
  * Unit tests for utility functions
  */
 
-import { describe, it, expect, beforeEach, jest } from 'bun:test';
-import { expandTildePath, resolvePgliteDir } from '../index';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { expandTildePath, resolvePgliteDir } from '../../../index';
+import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../../test-utils/environment';
 import path from 'node:path';
 
 describe('Utility Functions', () => {
+  let envSnapshot: EnvironmentSnapshot;
+
   beforeEach(() => {
-    // Reset environment variables
-    delete process.env.PGLITE_DATA_DIR;
+    envSnapshot = setupTestEnvironment();
+  });
+
+  afterEach(() => {
+    teardownTestEnvironment(envSnapshot);
   });
 
   describe('expandTildePath', () => {

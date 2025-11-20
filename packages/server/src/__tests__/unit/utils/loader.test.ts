@@ -2,15 +2,16 @@
  * Unit tests for loader.ts
  */
 
-import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import {
   loadCharactersFromUrl,
   jsonToCharacter,
   loadCharacter,
   loadCharacters,
   hasValidRemoteUrls,
-} from '../loader';
+} from '../../../loader';
 import { logger, UUID } from '@elizaos/core';
+import { createMockFetchResponse } from '../../test-utils/mocks';
 
 const TEST_CHARACTER_URL =
   'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/shaw.json';
@@ -18,14 +19,16 @@ const TEST_CHARACTER_URL =
 const TEST_MULTI_CHARACTER_URL =
   'https://raw.githubusercontent.com/elizaOS/eliza/refs/heads/develop/packages/cli/tests/test-characters/multi-chars.json';
 
-// Mock fetch globally
-const mockFetch = jest.fn();
-global.fetch = mockFetch as any;
-
 describe('Loader Functions', () => {
+  let fetchSpy: ReturnType<typeof spyOn>;
+
   beforeEach(() => {
     process.env = {};
-    mockFetch.mockClear();
+    fetchSpy = spyOn(global, 'fetch');
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
   });
 
   // tryLoadFile tests skipped - require fs mocking
@@ -37,16 +40,15 @@ describe('Loader Functions', () => {
         id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
         bio: ['Test character biography']
       };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCharacter,
-      });
+      fetchSpy.mockResolvedValueOnce(
+        createMockFetchResponse({ data: mockCharacter })
+      );
 
       const result = await loadCharactersFromUrl('https://example.com/character.json');
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('Test Character');
-      expect(mockFetch).toHaveBeenCalledWith('https://example.com/character.json');
+      expect(fetchSpy).toHaveBeenCalledWith('https://example.com/character.json');
     });
 
     it('should load multiple characters from URL', async () => {
@@ -54,10 +56,9 @@ describe('Loader Functions', () => {
         { name: 'Character 1', id: '123e4567-e89b-12d3-a456-426614174001' as UUID, bio: ['Bio 1'] },
         { name: 'Character 2', id: '123e4567-e89b-12d3-a456-426614174002' as UUID, bio: ['Bio 2'] },
       ];
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCharacters,
-      });
+      fetchSpy.mockResolvedValueOnce(
+        createMockFetchResponse({ data: mockCharacters })
+      );
 
       const result = await loadCharactersFromUrl(TEST_MULTI_CHARACTER_URL);
 
@@ -67,11 +68,9 @@ describe('Loader Functions', () => {
     });
 
     it('should throw error for HTTP error response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        statusText: 'Not Found',
-      });
+      fetchSpy.mockResolvedValueOnce(
+        createMockFetchResponse({ ok: false, status: 404, statusText: 'Not Found' })
+      );
 
       await expect(loadCharactersFromUrl('https://example.com/character.json')).rejects.toThrow(
         'Failed to load character from URL'
@@ -79,12 +78,9 @@ describe('Loader Functions', () => {
     });
 
     it('should throw error for invalid JSON response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => {
-          throw new Error('Invalid JSON');
-        },
-      });
+      fetchSpy.mockResolvedValueOnce(
+        createMockFetchResponse({ jsonError: new Error('Invalid JSON') })
+      );
 
       await expect(loadCharactersFromUrl('https://example.com/character.json')).rejects.toThrow(
         'Invalid JSON response from URL'
@@ -92,7 +88,7 @@ describe('Loader Functions', () => {
     });
 
     it('should throw error for network failures', async () => {
-      mockFetch.mockRejectedValueOnce(new TypeError('Network error'));
+      fetchSpy.mockRejectedValueOnce(new TypeError('Network error'));
 
       await expect(loadCharactersFromUrl('https://example.com/character.json')).rejects.toThrow(
         'Failed to fetch character from URL'
@@ -200,15 +196,14 @@ describe('Loader Functions', () => {
   describe.skip('loadCharacterTryPath', () => {
     it('should load character from URL', async () => {
       const mockCharacter = { name: 'URL Character', id: 'url-1' };
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => mockCharacter,
-      });
+      fetchSpy.mockResolvedValueOnce(
+        createMockFetchResponse({ data: mockCharacter })
+      );
 
-      const result = await loadCharacterTryPath('https://example.com/character.json');
-
-      expect(result.name).toBe('URL Character');
-      expect(mockFetch).toHaveBeenCalledWith('https://example.com/character.json');
+      // Note: loadCharacterTryPath is not exported, these tests are skipped
+      // const result = await loadCharacterTryPath('https://example.com/character.json');
+      // expect(result.name).toBe('URL Character');
+      // expect(fetchSpy).toHaveBeenCalledWith('https://example.com/character.json');
     });
 
     it('should try multiple local paths', async () => {
