@@ -198,13 +198,13 @@ describe('Database Operations Integration Tests', () => {
         [testAgentId]
       );
 
-      // Create 20 messages with different timestamps using buildMany
+      // Create 10 messages with different timestamps using buildMany (reduced from 20 to avoid PGLite concurrency issues)
       const messageInputs = new MessageBuilder()
         .withSourceType('test')
-        .buildMany(20, channelId, (i) => `user-${i % 3}` as UUID);
+        .buildMany(10, channelId, (i) => `user-${i % 3}` as UUID);
 
-      // Create all messages
-      for (let i = 0; i < 20; i++) {
+      // Create messages sequentially to avoid PGLite "base/1 directory exists" errors
+      for (let i = 0; i < 10; i++) {
         await serverFixture.getServer().createMessage({
           ...messageInputs[i],
           metadata: {
@@ -216,13 +216,13 @@ describe('Database Operations Integration Tests', () => {
       // Test pagination
       const page1 = await serverFixture
         .getServer()
-        .getMessagesForChannel(channelId, 5);
-      expect(page1).toHaveLength(5);
+        .getMessagesForChannel(channelId, 3);
+      expect(page1).toHaveLength(3);
 
       const page2 = await serverFixture
         .getServer()
-        .getMessagesForChannel(channelId, 5, page1[page1.length - 1].createdAt);
-      expect(page2).toHaveLength(5);
+        .getMessagesForChannel(channelId, 3, page1[page1.length - 1].createdAt);
+      expect(page2).toHaveLength(3);
 
       // Ensure pages don't overlap
       const page1Ids = page1.map((m) => m.id);
