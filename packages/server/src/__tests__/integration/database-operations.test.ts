@@ -6,9 +6,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentServer, CentralRootMessage } from '../../index';
 import type { UUID, Character, Plugin, IAgentRuntime } from '@elizaos/core';
 import { ChannelType, ModelType, stringToUuid } from '@elizaos/core';
-import path from 'node:path';
-import fs from 'node:fs';
-import { captureEnvironment, restoreEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
+import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 // Helper to generate unique channel IDs for tests
 const generateChannelId = (testName: string): UUID => {
@@ -34,33 +32,17 @@ const mockModelProviderPlugin: Plugin = {
 
 describe('Database Operations Integration Tests', () => {
   let agentServer: AgentServer;
-  let testDbPath: string;
   let serverPort: number;
   let isServerStarted: boolean = false;
   let testAgentId: UUID;
   let envSnapshot: EnvironmentSnapshot;
 
   beforeAll(async () => {
-    // Capture environment before making changes
-    envSnapshot = captureEnvironment();
-
-    // Use a test database with unique path
-    testDbPath = path.join(
-      __dirname,
-      `test-db-ops-${Date.now()}-${Math.random().toString(36).substring(7)}`
-    );
-    process.env.PGLITE_DATA_DIR = testDbPath;
+    // Setup isolated test environment with unique database
+    envSnapshot = setupTestEnvironment({ isolateDatabase: true });
 
     // Disable bootstrap plugin to prevent PGLite errors in CI
     process.env.IGNORE_BOOTSTRAP = 'true';
-
-    // Clean up environment variables that might interfere
-    delete process.env.POSTGRES_URL;
-    delete process.env.POSTGRES_PASSWORD;
-    delete process.env.POSTGRES_USER;
-    delete process.env.POSTGRES_HOST;
-    delete process.env.POSTGRES_PORT;
-    delete process.env.POSTGRES_DATABASE;
 
     // Create and initialize agent server
     agentServer = new AgentServer();
@@ -71,7 +53,7 @@ describe('Database Operations Integration Tests', () => {
       process.env.SERVER_PORT = serverPort.toString();
 
       await agentServer.start({
-        dataDir: testDbPath,
+        dataDir: envSnapshot.testDbPath,
         port: serverPort,
       });
       isServerStarted = true;
@@ -100,10 +82,8 @@ describe('Database Operations Integration Tests', () => {
       testAgentId = runtime.agentId;
     } catch (error) {
       console.error('Failed to initialize agent server:', error);
-      // Clean up on failure
-      if (fs.existsSync(testDbPath)) {
-        fs.rmSync(testDbPath, { recursive: true, force: true });
-      }
+      // Clean up on failure and restore environment
+      teardownTestEnvironment(envSnapshot);
       throw error;
     }
 
@@ -126,15 +106,11 @@ describe('Database Operations Integration Tests', () => {
       await agentServer.stop();
     }
 
-    // Clean up test database
-    if (fs.existsSync(testDbPath)) {
-      // Wait a bit before cleanup to ensure all file handles are released
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      fs.rmSync(testDbPath, { recursive: true, force: true });
-    }
+    // Wait for cleanup to ensure all file handles are released
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    // Restore environment to original state
-    restoreEnvironment(envSnapshot);
+    // Clean up test environment (restores env vars and removes test DB)
+    teardownTestEnvironment(envSnapshot);
   });
 
   describe('Transaction Handling', () => {

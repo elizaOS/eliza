@@ -7,26 +7,16 @@ import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentServer, CentralRootMessage } from '../../index';
 import type { UUID, Character } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
-import path from 'node:path';
-import fs from 'node:fs';
-import { captureEnvironment, restoreEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
+import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
 
 describe('Agent-Server Interaction Integration Tests', () => {
   let agentServer: AgentServer;
-  let testDbPath: string;
   let serverPort: number;
   let envSnapshot: EnvironmentSnapshot;
 
   beforeAll(async () => {
-    // Capture environment before making changes
-    envSnapshot = captureEnvironment();
-
-    // Use a test database with unique path
-    testDbPath = path.join(
-      __dirname,
-      `test-db-agent-server-${Date.now()}-${Math.random().toString(36).substring(7)}`
-    );
-    process.env.PGLITE_DATA_DIR = testDbPath;
+    // Setup isolated test environment with unique database
+    envSnapshot = setupTestEnvironment({ isolateDatabase: true });
 
     // Disable bootstrap plugin to prevent PGLite errors in CI
     process.env.IGNORE_BOOTSTRAP = 'true';
@@ -39,7 +29,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
     process.env.SERVER_PORT = serverPort.toString();
 
     await agentServer.start({
-      dataDir: testDbPath,
+      dataDir: envSnapshot.testDbPath,
       port: serverPort,
     });
     console.log(`Test server started on port ${serverPort}`);
@@ -80,15 +70,11 @@ describe('Agent-Server Interaction Integration Tests', () => {
       await agentServer.stop();
     }
 
-    // Clean up test database
-    if (fs.existsSync(testDbPath)) {
-      // Wait a bit before cleanup to ensure all file handles are released
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      fs.rmSync(testDbPath, { recursive: true, force: true });
-    }
+    // Wait for cleanup to ensure all file handles are released
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    // Restore environment to original state
-    restoreEnvironment(envSnapshot);
+    // Clean up test environment (restores env vars and removes test DB)
+    teardownTestEnvironment(envSnapshot);
   });
 
   describe('Agent Registration and Management', () => {
@@ -523,15 +509,12 @@ describe('Agent-Server Interaction Integration Tests', () => {
   describe('Agent Unregistration (Special Case)', () => {
     it('should unregister an agent without affecting database', async () => {
       // Create a separate server instance for this test since unregisterAgent closes the database
-      const testDbPath = path.join(
-        __dirname,
-        `test-db-unregister-${Date.now()}-${Math.random().toString(36).substring(7)}`
-      );
+      const testEnv = setupTestEnvironment({ isolateDatabase: true });
 
       const isolatedServer = new AgentServer();
       const testPort = 6000 + Math.floor(Math.random() * 1000);
       await isolatedServer.start({
-        dataDir: testDbPath,
+        dataDir: testEnv.testDbPath,
         port: testPort,
       });
 
@@ -570,11 +553,9 @@ describe('Agent-Server Interaction Integration Tests', () => {
         // Clean up the isolated server
         await isolatedServer.stop();
 
-        // Clean up test database
-        if (fs.existsSync(testDbPath)) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          fs.rmSync(testDbPath, { recursive: true, force: true });
-        }
+        // Wait for cleanup then restore environment
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        teardownTestEnvironment(testEnv);
       }
     });
   });
