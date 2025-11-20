@@ -329,28 +329,8 @@ describe('Database Operations Integration Tests', () => {
       const initialServers = await agentServer.getServers();
       const initialServerCount = initialServers.length;
 
-      // Create an agent first (required for foreign key constraint)
-      // Don't specify ID, let the system generate it
-      const agentChar = {
-        name: 'Consistency Test Agent',
-        bio: ['Test agent for consistency checks'],
-        topics: [],
-        clients: [],
-        plugins: [],
-        settings: {
-          secrets: {},
-          model: 'mock', // Use mock model to prevent TEXT_SMALL handler errors
-        },
-        modelProvider: 'mock', // Prevent model lookup errors
-      } as Character;
-
-      // Start the agent with the mock model provider plugin
-      const [runtime] = await agentServer.startAgents([{
-        character: agentChar,
-        plugins: [mockModelProviderPlugin],
-      }]);
-      expect(runtime).toBeDefined();
-      const agentId = runtime.agentId; // Get the generated agent ID
+      // Use the test agent already created in beforeAll (avoids PGLite conflicts)
+      const agentId = testAgentId;
 
       // Create new server
       const newServer = await agentServer.createServer({
