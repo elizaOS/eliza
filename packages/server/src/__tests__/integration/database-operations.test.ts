@@ -4,16 +4,39 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { AgentServer, CentralRootMessage } from '../../index';
-import type { UUID, Character } from '@elizaos/core';
-import { ChannelType } from '@elizaos/core';
+import type { UUID, Character, Plugin, IAgentRuntime } from '@elizaos/core';
+import { ChannelType, ModelType, stringToUuid } from '@elizaos/core';
 import path from 'node:path';
 import fs from 'node:fs';
+
+// Helper to generate unique channel IDs for tests
+const generateChannelId = (testName: string): UUID => {
+  return stringToUuid(`test-channel-${testName}-${Date.now()}-${Math.random()}`);
+};
+
+// Mock model provider plugin to prevent TEXT_SMALL handler errors
+const mockModelProviderPlugin: Plugin = {
+  name: 'mockModelProvider',
+  description: 'Mock model provider for testing',
+  actions: [],
+  evaluators: [],
+  providers: [],
+  services: [],
+  init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
+    // Register a mock model handler for all model types
+    const mockHandler = async () => 'mock response';
+    runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'mock');
+    runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'mock');
+    runtime.registerModel(ModelType.TEXT_EMBEDDING, mockHandler, 'mock');
+  },
+};
 
 describe('Database Operations Integration Tests', () => {
   let agentServer: AgentServer;
   let testDbPath: string;
   let serverPort: number;
   let isServerStarted: boolean = false;
+  let testAgentId: UUID;
 
   beforeAll(async () => {
     // Use a test database with unique path
@@ -46,6 +69,27 @@ describe('Database Operations Integration Tests', () => {
       isServerStarted = true;
 
       console.log(`Test server started on port ${serverPort}`);
+
+      // Create a test agent with mock model provider to prevent TEXT_SMALL handler errors
+      // This agent will handle any message processing triggered by the tests
+      const testCharacter = {
+        name: 'Database Test Agent',
+        bio: ['Agent for database integration tests'],
+        topics: [],
+        clients: [],
+        plugins: [],
+        settings: {
+          secrets: {},
+          model: 'mock',
+        },
+        modelProvider: 'mock',
+      } as Character;
+
+      const [runtime] = await agentServer.startAgents([{
+        character: testCharacter,
+        plugins: [mockModelProviderPlugin],
+      }]);
+      testAgentId = runtime.agentId;
     } catch (error) {
       console.error('Failed to initialize agent server:', error);
       // Clean up on failure
@@ -84,7 +128,7 @@ describe('Database Operations Integration Tests', () => {
 
   describe('Transaction Handling', () => {
     it('should handle concurrent message creation', async () => {
-      const channelId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
+      const channelId = generateChannelId('concurrent-messages');
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
 
       // Verify default server exists
@@ -92,14 +136,17 @@ describe('Database Operations Integration Tests', () => {
       expect(servers.length).toBeGreaterThan(0);
       expect(servers.some((s) => s.id === serverId)).toBe(true);
 
-      // Create channel first
-      await agentServer.createChannel({
-        id: channelId,
-        name: 'Concurrent Test Channel',
-        type: ChannelType.GROUP,
-        messageServerId: serverId,
-        metadata: {},
-      });
+      // Create channel with test agent as participant to prevent message processing errors
+      await agentServer.createChannel(
+        {
+          id: channelId,
+          name: 'Concurrent Test Channel',
+          type: ChannelType.GROUP,
+          messageServerId: serverId,
+          metadata: {},
+        },
+        [testAgentId]
+      );
 
       // Create multiple messages concurrently
       const messagePromises: Promise<CentralRootMessage>[] = [];
@@ -181,14 +228,14 @@ describe('Database Operations Integration Tests', () => {
   describe('Complex Queries', () => {
     it('should handle channel participant management', async () => {
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
-      const channelId = '345e6789-e89b-12d3-a456-426614174000' as UUID;
+      const channelId = generateChannelId('participant-management');
       const participants = [
         '111e1111-e89b-12d3-a456-426614174000' as UUID,
         '222e2222-e89b-12d3-a456-426614174000' as UUID,
         '333e3333-e89b-12d3-a456-426614174000' as UUID,
       ];
 
-      // Create channel with initial participants
+      // Create channel with initial participants + test agent
       await agentServer.createChannel(
         {
           id: channelId,
@@ -197,36 +244,40 @@ describe('Database Operations Integration Tests', () => {
           messageServerId: serverId,
           metadata: {},
         },
-        participants.slice(0, 2) // First two participants
+        [testAgentId, ...participants.slice(0, 2)] // Test agent + first two participants
       );
 
-      // Verify initial participants
+      // Verify initial participants (testAgent + 2 participants)
       let currentParticipants = await agentServer.getChannelParticipants(channelId);
-      expect(currentParticipants).toHaveLength(2);
+      expect(currentParticipants).toHaveLength(3);
 
       // Add third participant
       await agentServer.addParticipantsToChannel(channelId, [participants[2]]);
 
-      // Verify all participants
+      // Verify all participants (testAgent + 3 participants)
       currentParticipants = await agentServer.getChannelParticipants(channelId);
-      expect(currentParticipants).toHaveLength(3);
+      expect(currentParticipants).toHaveLength(4);
       participants.forEach((p) => {
         expect(currentParticipants).toContain(p);
       });
+      expect(currentParticipants).toContain(testAgentId);
     });
 
     it('should handle complex message queries with filters', async () => {
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
-      const channelId = '456e7890-e89b-12d3-a456-426614174000' as UUID;
+      const channelId = generateChannelId('query-filters');
 
-      // Create channel
-      await agentServer.createChannel({
-        id: channelId,
-        name: 'Query Test Channel',
-        type: ChannelType.GROUP,
-        messageServerId: serverId,
-        metadata: {},
-      });
+      // Create channel with test agent as participant
+      await agentServer.createChannel(
+        {
+          id: channelId,
+          name: 'Query Test Channel',
+          type: ChannelType.GROUP,
+          messageServerId: serverId,
+          metadata: {},
+        },
+        [testAgentId]
+      );
 
       // Create messages with different timestamps
       const baseTime = new Date();
@@ -279,11 +330,16 @@ describe('Database Operations Integration Tests', () => {
         plugins: [],
         settings: {
           secrets: {},
+          model: 'mock', // Use mock model to prevent TEXT_SMALL handler errors
         },
+        modelProvider: 'mock', // Prevent model lookup errors
       } as Character;
 
-      // Start the agent to ensure it exists in database
-      const [runtime] = await agentServer.startAgents([{ character: agentChar }]);
+      // Start the agent with the mock model provider plugin
+      const [runtime] = await agentServer.startAgents([{
+        character: agentChar,
+        plugins: [mockModelProviderPlugin],
+      }]);
       expect(runtime).toBeDefined();
       const agentId = runtime.agentId; // Get the generated agent ID
 
@@ -343,28 +399,9 @@ describe('Database Operations Integration Tests', () => {
   describe('Performance and Bulk Operations', () => {
     it('should handle bulk message insertion efficiently', async () => {
       const serverId = '00000000-0000-0000-0000-000000000000' as UUID;
-      const channelId = '567e8901-e89b-12d3-a456-426614174000' as UUID;
+      const channelId = generateChannelId('bulk-insertion');
 
-      // Get or create an agent to be participant (to avoid MessageBusService warnings)
-      let participantAgentId: UUID;
-      const existingAgents = agentServer.getAllAgents();
-      if (existingAgents.length > 0) {
-        participantAgentId = existingAgents[0].agentId;
-      } else {
-        // Create a test agent if none exists
-        const testAgent = {
-          name: 'Bulk Test Agent',
-          bio: ['Agent for bulk test'],
-          topics: [],
-          clients: [],
-          plugins: [],
-          settings: { secrets: {} },
-        } as Character;
-        const [runtime] = await agentServer.startAgents([{ character: testAgent }]);
-        participantAgentId = runtime.agentId;
-      }
-
-      // Create channel with the agent as participant
+      // Create channel with test agent as participant
       await agentServer.createChannel(
         {
           id: channelId,
@@ -373,7 +410,7 @@ describe('Database Operations Integration Tests', () => {
           messageServerId: serverId,
           metadata: {},
         },
-        [participantAgentId]
+        [testAgentId]
       );
 
       const startTime = Date.now();

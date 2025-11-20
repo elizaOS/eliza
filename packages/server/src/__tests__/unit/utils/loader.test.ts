@@ -6,11 +6,9 @@ import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import {
   loadCharactersFromUrl,
   jsonToCharacter,
-  loadCharacter,
-  loadCharacters,
   hasValidRemoteUrls,
 } from '../../../loader';
-import { logger, UUID } from '@elizaos/core';
+import { UUID } from '@elizaos/core';
 import { createMockFetchResponse } from '../../test-utils/mocks';
 
 const TEST_CHARACTER_URL =
@@ -188,76 +186,14 @@ describe('Loader Functions', () => {
 
   // loadCharacter and loadCharacterTryPath tests skipped - require fs mocking
 
-  /* SKIPPED: loadCharacter, loadCharacterTryPath, loadCharacters tests
-   * These require fs mocking which causes test hangs in Bun test runner.
-   * File loading is validated through integration tests instead.
+  /* NOTE: File system-based loading functions (loadCharacter, loadCharacterTryPath, loadCharacters)
+   * are not unit tested here because:
+   * 1. They require complex fs mocking that causes test hangs in Bun test runner
+   * 2. They involve multiple file path resolution strategies that are difficult to mock reliably
+   * 3. They are comprehensively covered by integration tests that use real file operations
+   *
+   * Network-based loading (loadCharactersFromUrl) IS unit tested above with fetch mocking.
    */
-
-  describe.skip('loadCharacterTryPath', () => {
-    it('should load character from URL', async () => {
-      const mockCharacter = { name: 'URL Character', id: 'url-1' };
-      fetchSpy.mockResolvedValueOnce(
-        createMockFetchResponse({ data: mockCharacter })
-      );
-
-      // Note: loadCharacterTryPath is not exported, these tests are skipped
-      // const result = await loadCharacterTryPath('https://example.com/character.json');
-      // expect(result.name).toBe('URL Character');
-      // expect(fetchSpy).toHaveBeenCalledWith('https://example.com/character.json');
-    });
-
-    it('should try multiple local paths', async () => {
-      const mockCharacter = { name: 'Local Character', id: 'local-1' };
-
-      // Mock tryLoadFile to fail a few times then succeed
-      let callCount = 0;
-      (fs.readFileSync as any).mockImplementation(() => {
-        callCount++;
-        if (callCount < 3) {
-          throw new Error('ENOENT: no such file');
-        }
-        return JSON.stringify(mockCharacter);
-      });
-
-      const result = await loadCharacterTryPath('character');
-
-      expect(result.name).toBe('Local Character');
-      // The exact number may vary based on the paths tried
-      expect(fs.readFileSync).toHaveBeenCalled();
-    });
-
-    it('should handle .json extension correctly', async () => {
-      const mockCharacter = { name: 'JSON Character', id: 'json-1' };
-      (fs.readFileSync as any).mockReturnValue(JSON.stringify(mockCharacter));
-
-      const result = await loadCharacterTryPath('character.json');
-
-      expect(result.name).toBe('JSON Character');
-      // Should not try to add .json again
-      expect(fs.readFileSync).toHaveBeenCalledWith(
-        expect.stringContaining('character.json'),
-        'utf8'
-      );
-    });
-
-    it('should throw error when all paths fail', async () => {
-      (fs.readFileSync as any).mockImplementation(() => {
-        throw new Error('ENOENT: no such file');
-      });
-
-      await expect(loadCharacterTryPath('nonexistent')).rejects.toThrow(
-        "Character 'nonexistent' not found"
-      );
-    });
-
-    it('should throw specific error for URL failures', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
-
-      await expect(loadCharacterTryPath('http://fail.com/character.json')).rejects.toThrow(
-        'Failed to load character from URL'
-      );
-    });
-  });
 
   describe('hasValidRemoteUrls', () => {
     it('should return true for valid HTTP URLs', () => {
@@ -285,136 +221,4 @@ describe('Loader Functions', () => {
     });
   });
 
-  describe.skip('loadCharacters', () => {
-    it('should load characters from comma-separated paths', async () => {
-      const char1 = { name: 'Character 1', id: 'char-1' };
-      const char2 = { name: 'Character 2', id: 'char-2' };
-
-      (fs.readFileSync as any).mockImplementation((path: string) => {
-        // Return character data when the right path is found
-        if (path.includes('char1.json')) {
-          return JSON.stringify(char1);
-        } else if (path.includes('char2.json')) {
-          return JSON.stringify(char2);
-        }
-        throw new Error('ENOENT: no such file');
-      });
-
-      const result = await loadCharacters('char1.json,char2.json');
-
-      expect(result).toHaveLength(2);
-      expect(result[0].name).toBe('Character 1');
-      expect(result[1].name).toBe('Character 2');
-    });
-
-    it('should load characters from storage when enabled', async () => {
-      process.env.USE_CHARACTER_STORAGE = 'true';
-      const char = { name: 'Storage Character', id: 'storage-1' };
-
-      (fs.promises.mkdir as any).mockReturnValue(Promise.resolve(undefined));
-      (fs.promises.readdir as any).mockReturnValue(Promise.resolve(['storage-char.json']));
-      (fs.readFileSync as any).mockImplementation((path: string) => {
-        if (path.includes('storage-char.json')) {
-          return JSON.stringify(char);
-        }
-        throw new Error('ENOENT: no such file');
-      });
-
-      const result = await loadCharacters('');
-
-      // Should successfully load from storage even if empty string path fails
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('Storage Character');
-      expect(fs.promises.readdir).toHaveBeenCalled();
-    });
-
-    it('should load remote characters when local paths fail', async () => {
-      process.env.REMOTE_CHARACTER_URLS = TEST_CHARACTER_URL;
-      const remoteChar = { name: 'Remote Character', id: 'remote-1' };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => remoteChar,
-      });
-
-      (fs.readFileSync as any).mockImplementation(() => {
-        throw new Error('ENOENT: no such file');
-      });
-
-      // Now that we fixed the bug, this should work properly
-      const result = await loadCharacters('non-existent.json');
-
-      expect(result).toHaveLength(1);
-      expect(result[0].name).toBe('Remote Character');
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to load character from 'non-existent.json'")
-      );
-      expect(mockFetch).toHaveBeenCalledWith(TEST_CHARACTER_URL);
-    });
-
-    it('should load from both local and remote sources', async () => {
-      process.env.REMOTE_CHARACTER_URLS = 'https://example.com/remote.json';
-      const localChar = { name: 'Local Character', id: 'local-1' };
-      const remoteChar = { name: 'Remote Character', id: 'remote-1' };
-
-      (fs.readFileSync as any).mockReturnValue(JSON.stringify(localChar));
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => remoteChar,
-      });
-
-      const result = await loadCharacters('local.json');
-
-      expect(result).toHaveLength(2);
-      expect(result[0].name).toBe('Local Character');
-      expect(result[1].name).toBe('Remote Character');
-    });
-
-    it('should handle storage read errors gracefully', async () => {
-      process.env.USE_CHARACTER_STORAGE = 'true';
-
-      (fs.promises.mkdir as any).mockRejectedValue(new Error('Permission denied'));
-      (fs.readFileSync as any).mockImplementation(() => {
-        throw new Error('ENOENT: no such file');
-      });
-
-      const result = await loadCharacters('');
-
-      // Should return empty array but log errors
-      expect(result).toHaveLength(0);
-      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Error reading directory'));
-    });
-
-    it('should log warning when no characters found', async () => {
-      // Mock fs to throw for any file read
-      (fs.readFileSync as any).mockImplementation(() => {
-        throw new Error('ENOENT: no such file');
-      });
-
-      // Empty string still creates array with empty string which tries to load
-      const result = await loadCharacters('');
-
-      expect(result).toHaveLength(0);
-      // Should log error for failed empty string load
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to load character from ''")
-      );
-      expect(logger.info).toHaveBeenCalledWith('No characters found, using default character');
-      expect(logger.warn).toHaveBeenCalledWith(
-        'Server package does not include a default character. Please provide one.'
-      );
-    });
-
-    it('should trim whitespace from comma-separated paths', async () => {
-      const char = { name: 'Test Character', id: 'test-1' };
-      (fs.readFileSync as any).mockReturnValue(JSON.stringify(char));
-
-      expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('char1.json'), 'utf8');
-      expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('char2.json'), 'utf8');
-    });
-  });
-
-  // Error Handling tests skipped - require fs mocking which causes test hangs
-  // These tests verify error handling for file operations but would need
-  // a non-hanging fs mocking strategy to implement properly
 });
