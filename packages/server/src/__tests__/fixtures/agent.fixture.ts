@@ -136,13 +136,16 @@ export class AgentFixture {
     // Combine mock model provider with any additional plugins
     const plugins = [mockModelProviderPlugin, ...(options.plugins || [])];
 
-    // Start agent
-    const [runtime] = await this.agentServer.startAgents([
-      {
-        character: this.character,
-        plugins,
-      },
-    ]);
+    // Start agent in test mode (skips env merge to avoid database bloat)
+    const [runtime] = await this.agentServer.startAgents(
+      [
+        {
+          character: this.character,
+          plugins,
+        },
+      ],
+      { isTestMode: true }
+    );
 
     this.runtime = runtime;
     this.agentId = runtime.agentId;
