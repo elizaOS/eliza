@@ -295,7 +295,10 @@ export function resolvePluginDependencies(
     if (plugin.name !== key) {
       lookupMap.set(plugin.name, plugin);
     }
-    lookupMap.set(`@elizaos/plugin-${plugin.name}`, plugin);
+    // Only add scoped name if plugin.name is not already scoped
+    if (!plugin.name.startsWith('@')) {
+      lookupMap.set(`@elizaos/plugin-${plugin.name}`, plugin);
+    }
     const normalizedKey = normalizePluginName(key);
     if (normalizedKey !== key) {
       lookupMap.set(normalizedKey, plugin);
@@ -405,12 +408,20 @@ function queueDependency(
   const normalizedDepName = normalizePluginName(depName);
 
   // Check if already queued or loaded (by any name variant)
+  // Normalize both dependency name and plugin names for consistent matching
   const alreadyQueued =
     seenDependencies.has(depName) ||
     seenDependencies.has(normalizedDepName) ||
-    pluginMap.has(normalizedDepName) ||
+    // Check if any plugin map key normalizes to the same name
+    Array.from(pluginMap.keys()).some(
+      (key) => normalizePluginName(key) === normalizedDepName
+    ) ||
+    // Check if any plugin's name normalizes to the same name
     Array.from(pluginMap.values()).some(
-      (p) => p.name === depName || p.name === normalizedDepName
+      (p) =>
+        normalizePluginName(p.name) === normalizedDepName ||
+        p.name === depName ||
+        p.name === normalizedDepName
     );
 
   if (!alreadyQueued) {
