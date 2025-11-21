@@ -69,30 +69,35 @@ export const MODEL_SETTINGS = {
   // Default settings - apply to all model types unless overridden
   DEFAULT_MAX_TOKENS: 'DEFAULT_MAX_TOKENS',
   DEFAULT_TEMPERATURE: 'DEFAULT_TEMPERATURE',
+  DEFAULT_TOP_P: 'DEFAULT_TOP_P',
   DEFAULT_FREQUENCY_PENALTY: 'DEFAULT_FREQUENCY_PENALTY',
   DEFAULT_PRESENCE_PENALTY: 'DEFAULT_PRESENCE_PENALTY',
 
   // TEXT_SMALL specific settings
   TEXT_SMALL_MAX_TOKENS: 'TEXT_SMALL_MAX_TOKENS',
   TEXT_SMALL_TEMPERATURE: 'TEXT_SMALL_TEMPERATURE',
+  TEXT_SMALL_TOP_P: 'TEXT_SMALL_TOP_P',
   TEXT_SMALL_FREQUENCY_PENALTY: 'TEXT_SMALL_FREQUENCY_PENALTY',
   TEXT_SMALL_PRESENCE_PENALTY: 'TEXT_SMALL_PRESENCE_PENALTY',
 
   // TEXT_LARGE specific settings
   TEXT_LARGE_MAX_TOKENS: 'TEXT_LARGE_MAX_TOKENS',
   TEXT_LARGE_TEMPERATURE: 'TEXT_LARGE_TEMPERATURE',
+  TEXT_LARGE_TOP_P: 'TEXT_LARGE_TOP_P',
   TEXT_LARGE_FREQUENCY_PENALTY: 'TEXT_LARGE_FREQUENCY_PENALTY',
   TEXT_LARGE_PRESENCE_PENALTY: 'TEXT_LARGE_PRESENCE_PENALTY',
 
   // OBJECT_SMALL specific settings
   OBJECT_SMALL_MAX_TOKENS: 'OBJECT_SMALL_MAX_TOKENS',
   OBJECT_SMALL_TEMPERATURE: 'OBJECT_SMALL_TEMPERATURE',
+  OBJECT_SMALL_TOP_P: 'OBJECT_SMALL_TOP_P',
   OBJECT_SMALL_FREQUENCY_PENALTY: 'OBJECT_SMALL_FREQUENCY_PENALTY',
   OBJECT_SMALL_PRESENCE_PENALTY: 'OBJECT_SMALL_PRESENCE_PENALTY',
 
   // OBJECT_LARGE specific settings
   OBJECT_LARGE_MAX_TOKENS: 'OBJECT_LARGE_MAX_TOKENS',
   OBJECT_LARGE_TEMPERATURE: 'OBJECT_LARGE_TEMPERATURE',
+  OBJECT_LARGE_TOP_P: 'OBJECT_LARGE_TOP_P',
   OBJECT_LARGE_FREQUENCY_PENALTY: 'OBJECT_LARGE_FREQUENCY_PENALTY',
   OBJECT_LARGE_PRESENCE_PENALTY: 'OBJECT_LARGE_PRESENCE_PENALTY',
 
@@ -109,6 +114,11 @@ export const MODEL_SETTINGS = {
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
  * `ModelType.TEXT_REASONING_LARGE`, or `ModelType.TEXT_COMPLETION`.
  * It includes essential information like the prompt and various generation controls.
+ *
+ * **Note for Plugin Implementers**: Different LLM providers have varying support for these parameters.
+ * Some providers may not support both `temperature` and `topP` simultaneously, or may have other restrictions.
+ * Plugin implementations should filter out unsupported parameters before calling their provider's API.
+ * Check your provider's documentation to determine which parameters are supported.
  */
 export type GenerateTextParams = {
   /** The input string or prompt that the language model will use to generate text. */
@@ -117,6 +127,10 @@ export type GenerateTextParams = {
   maxTokens?: number;
   /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
   temperature?: number;
+  /** Optional. Nucleus sampling parameter (0.0-1.0). Controls diversity via nucleus sampling.
+   * Note: Some providers may not support both `temperature` and `topP` simultaneously.
+   * Plugin implementations should filter based on provider capabilities. */
+  topP?: number;
   /** Optional. Penalizes new tokens based on their existing frequency in the text so far. */
   frequencyPenalty?: number;
   /** Optional. Penalizes new tokens based on whether they appear in the text so far. */
