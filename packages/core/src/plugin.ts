@@ -397,7 +397,26 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
 }
 
 /**
- * Helper to queue a dependency if not already queued or loaded
+ * Helper function to queue a plugin dependency for resolution if it hasn't been queued or loaded already.
+ * 
+ * This function handles plugin name normalization to prevent duplicate queuing when dependencies
+ * are specified using different naming conventions (e.g., '@elizaos/plugin-discord' vs 'discord').
+ * 
+ * @param depName - The dependency name to queue (can be scoped or short name)
+ * @param seenDependencies - Set tracking all dependency names that have been processed
+ * @param pluginMap - Map of already loaded plugins keyed by their canonical names
+ * @param queue - The resolution queue to add the dependency to if not already present
+ * 
+ * @remarks
+ * The function normalizes the dependency name and checks multiple sources to determine if it's
+ * already queued:
+ * - Direct name match in seenDependencies
+ * - Normalized name match in seenDependencies
+ * - Normalized name match against pluginMap keys
+ * - Name match against plugin names in pluginMap values
+ * 
+ * If the dependency is not found in any of these sources, it's added to both seenDependencies
+ * (with both original and normalized names) and the resolution queue.
  */
 function queueDependency(
   depName: string,
