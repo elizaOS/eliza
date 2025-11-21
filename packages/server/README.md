@@ -254,15 +254,26 @@ server/
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
+# Run all tests (unit, features, security, compatibility)
+bun test
 
-# Run specific test suite
-npm test -- api/agents
+# Run specific test suites
+bun test:unit             # Unit tests only
+bun test:features         # Feature tests only
+bun test:security         # Security tests (RLS)
+bun test:compatibility    # CLI/API compatibility tests
+bun test:integration      # Integration tests (sequential via script)
 
 # Run with coverage
-npm test -- --coverage
+bun test:coverage
+
+# Watch mode for development
+bun test:watch
 ```
+
+**Note:** Integration tests run sequentially via `scripts/run-integration-tests.sh` due to PGLite's global singleton state. Each test file runs in an isolated Bun process with 5-second pauses between files.
+
+For more details on the test architecture, see [src/__tests__/README.md](src/__tests__/README.md).
 
 ### Building
 
