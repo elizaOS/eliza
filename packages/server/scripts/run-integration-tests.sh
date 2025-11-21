@@ -28,10 +28,10 @@ for i in "${!test_files[@]}"; do
   # Run test file in isolation
   if bun test "$file"; then
     echo "✅ PASSED: $(basename $file)"
-    ((passed++))
+    ((passed++)) || true
   else
     echo "❌ FAILED: $(basename $file)"
-    ((failed++))
+    ((failed++)) || true
   fi
 
   # Add delay between test files to let PGLite fully shutdown
