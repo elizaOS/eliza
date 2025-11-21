@@ -221,6 +221,78 @@ describe('Plugin Functions', () => {
       // In test mode, plugin-b should come before plugin-a due to testDependencies
       expect(indexB).toBeLessThan(indexA);
     });
+
+    test('should handle scoped plugin names with short name dependencies', async () => {
+      // Plugin with scoped name
+      const pluginDiscord: Plugin = {
+        name: '@elizaos/plugin-discord',
+        description: 'Discord plugin',
+        actions: [],
+        services: [],
+      };
+
+      // Plugin that depends on it using short name
+      const pluginBootstrap: Plugin = {
+        name: 'bootstrap',
+        description: 'Bootstrap plugin',
+        dependencies: ['discord'], // Short name reference
+        actions: [],
+        services: [],
+      };
+
+      // Resolve plugins - discord should be loaded first due to dependency
+      const resolved = await resolvePlugins([pluginBootstrap, pluginDiscord]);
+
+      // Should have both plugins
+      expect(resolved).toHaveLength(2);
+      
+      // Discord should come before bootstrap due to dependency
+      const indexDiscord = resolved.findIndex((p) => p.name === '@elizaos/plugin-discord');
+      const indexBootstrap = resolved.findIndex((p) => p.name === 'bootstrap');
+      expect(indexDiscord).toBeLessThan(indexBootstrap);
+      
+      // Verify both plugins are present
+      expect(resolved.some((p) => p.name === '@elizaos/plugin-discord')).toBe(true);
+      expect(resolved.some((p) => p.name === 'bootstrap')).toBe(true);
+    });
+
+    test('should not queue dependency twice when plugin has scoped name', async () => {
+      // Plugin with scoped name
+      const pluginDiscord: Plugin = {
+        name: '@elizaos/plugin-discord',
+        description: 'Discord plugin',
+        actions: [],
+        services: [],
+      };
+
+      // Plugin that depends on it using short name
+      const pluginA: Plugin = {
+        name: 'plugin-a',
+        description: 'Plugin A',
+        dependencies: ['discord'], // Short name reference
+        actions: [],
+        services: [],
+      };
+
+      // Another plugin that also depends on it using short name
+      const pluginB: Plugin = {
+        name: 'plugin-b',
+        description: 'Plugin B',
+        dependencies: ['discord'], // Short name reference
+        actions: [],
+        services: [],
+      };
+
+      // Resolve plugins - discord should only appear once
+      const resolved = await resolvePlugins([pluginA, pluginB, pluginDiscord]);
+
+      // Should have all three plugins, but discord only once
+      expect(resolved).toHaveLength(3);
+      
+      // Count occurrences of discord plugin
+      const discordCount = resolved.filter((p) => p.name === '@elizaos/plugin-discord').length;
+      expect(discordCount).toBe(1);
+    });
   });
 
   describe('normalizePluginName', () => {
@@ -362,6 +434,40 @@ describe('Plugin Functions', () => {
       // Should still resolve the plugin even if dependency is missing
       expect(resolved).toHaveLength(1);
       expect(resolved[0].name).toBe('music-player');
+    });
+
+    test('should not create double-scoped names in lookup map', () => {
+      // Plugin with scoped name - this should not create '@elizaos/plugin-@elizaos/plugin-discord'
+      const pluginDiscord: Plugin = {
+        name: '@elizaos/plugin-discord',
+        description: 'Discord plugin',
+        actions: [],
+        services: [],
+      };
+
+      const pluginBootstrap: Plugin = {
+        name: 'bootstrap',
+        description: 'Bootstrap plugin',
+        dependencies: ['discord'], // Short name reference
+        actions: [],
+        services: [],
+      };
+
+      const pluginMap = new Map<string, Plugin>();
+      pluginMap.set('@elizaos/plugin-discord', pluginDiscord);
+      pluginMap.set('bootstrap', pluginBootstrap);
+
+      const resolved = resolvePluginDependencies(pluginMap);
+
+      // Should resolve correctly without creating double-scoped names
+      expect(resolved).toHaveLength(2);
+      const indexDiscord = resolved.findIndex((p) => p.name === '@elizaos/plugin-discord');
+      const indexBootstrap = resolved.findIndex((p) => p.name === 'bootstrap');
+      // Discord should come before bootstrap due to dependency
+      expect(indexDiscord).toBeLessThan(indexBootstrap);
+      
+      // Verify the plugin is found correctly
+      expect(resolved.some((p) => p.name === '@elizaos/plugin-discord')).toBe(true);
     });
 
     test('should handle complex dependency chains with scoped names', () => {
