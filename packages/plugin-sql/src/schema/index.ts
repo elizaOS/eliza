@@ -5,16 +5,17 @@ export { embeddingTable } from './embedding';
 export { entityTable } from './entity';
 export { logTable } from './log';
 export { memoryTable } from './memory';
-export { ownersTable } from './owners';
+export { serverTable } from './server';
 export { participantTable } from './participant';
 export { relationshipTable } from './relationship';
 export { roomTable } from './room';
 export { worldTable } from './world';
 export { taskTable } from './tasks';
+export { userTable } from './user';
 
 // Central database tables
 export { messageServerTable } from './messageServer';
 export { channelTable } from './channel';
 export { messageTable } from './message';
 export { channelParticipantsTable } from './channelParticipant';
-export { serverAgentsTable } from './serverAgent';
+export { messageServerAgentsTable } from './messageServerAgent';

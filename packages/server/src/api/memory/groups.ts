@@ -15,8 +15,8 @@ export function createGroupMemoryRouter(
   const db = serverInstance?.database;
 
   // Create group memory spaces for multiple agents
-  router.post('/groups/:serverId', async (req, res) => {
-    const serverId = validateUuid(req.params.serverId);
+  router.post('/groups/:messageServerId', async (req, res) => {
+    const messageServerId = validateUuid(req.params.messageServerId);
     const { name, worldId, source, metadata, agentIds = [] } = req.body;
 
     if (!Array.isArray(agentIds) || agentIds.length === 0) {
@@ -34,14 +34,14 @@ export function createGroupMemoryRouter(
     for (const agentId of agentIds) {
       try {
         const runtime = getRuntime(elizaOS, agentId as UUID);
-        const roomId = createUniqueUuid(runtime, serverId as string);
+        const roomId = createUniqueUuid(runtime, messageServerId as string);
         const roomName = name || `Chat ${new Date().toLocaleString()}`;
 
         await runtime.ensureWorldExists({
           id: worldId,
           name: source,
           agentId: runtime.agentId,
-          serverId: serverId as UUID,
+          messageServerId: messageServerId as UUID,
         });
 
         await runtime.ensureRoomExists({
@@ -50,7 +50,7 @@ export function createGroupMemoryRouter(
           source,
           type: ChannelType.API,
           worldId,
-          serverId: serverId as UUID,
+          messageServerId: messageServerId as UUID,
           metadata,
           channelId: roomId,
         });
@@ -104,10 +104,10 @@ export function createGroupMemoryRouter(
   });
 
   // Delete group
-  router.delete('/groups/:serverId', async (req, res) => {
-    const worldId = validateUuid(req.params.serverId);
+  router.delete('/groups/:messageServerId', async (req, res) => {
+    const worldId = validateUuid(req.params.messageServerId);
     if (!worldId) {
-      return sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return sendError(res, 400, 'INVALID_ID', 'Invalid messageServerId (worldId) format');
     }
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
@@ -118,24 +118,24 @@ export function createGroupMemoryRouter(
       res.status(204).send();
     } catch (error) {
       logger.error(
-        '[GROUP DELETE] Error deleting group:',
+        '[MESSAGE SERVER DELETE] Error deleting message server:',
         error instanceof Error ? error.message : String(error)
       );
       sendError(
         res,
         500,
         'DELETE_ERROR',
-        'Error deleting group',
+        'Error deleting message server',
         error instanceof Error ? error.message : String(error)
       );
     }
   });
 
   // Clear group memories
-  router.delete('/groups/:serverId/memories', async (req, res) => {
-    const worldId = validateUuid(req.params.serverId);
+  router.delete('/groups/:messageServerId/memories', async (req, res) => {
+    const worldId = validateUuid(req.params.messageServerId);
     if (!worldId) {
-      return sendError(res, 400, 'INVALID_ID', 'Invalid serverId (worldId) format');
+      return sendError(res, 400, 'INVALID_ID', 'Invalid messageServerId (worldId) format');
     }
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');

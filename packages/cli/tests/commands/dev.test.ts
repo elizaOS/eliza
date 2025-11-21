@@ -339,8 +339,6 @@ describe('ElizaOS Dev Commands', () => {
 
             if (!outputReceived && text.length > 0) {
               outputReceived = true;
-              // Quick resolution once we have any output
-              setTimeout(() => resolve({ output, stderrOutput }), 100);
             }
           }
         } finally {

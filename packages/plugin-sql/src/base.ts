@@ -15,6 +15,7 @@ import {
   type Task,
   TaskMetadata,
   type UUID,
+  type User,
   type World,
   type AgentRunSummary,
   type AgentRunSummaryResult,
@@ -53,7 +54,7 @@ import {
   participantTable,
   relationshipTable,
   roomTable,
-  serverAgentsTable,
+  messageServerAgentsTable,
   taskTable,
   worldTable,
 } from './schema/index';
@@ -92,6 +93,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   protected migrationService?: DatabaseMigrationService;
 
   protected abstract withDatabase<T>(operation: () => Promise<T>): Promise<T>;
+
+  /**
+   * Execute a callback with entity context for Entity RLS.
+   * Must be implemented by concrete adapters to handle their specific RLS mechanisms.
+   *
+   * @param entityId - The entity UUID to set as context (or null for system operations)
+   * @param callback - The database operations to execute with the entity context
+   * @returns The result of the callback
+   */
+  public abstract withEntityContext<T>(
+    entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T>;
+
   public abstract init(): Promise<void>;
   public abstract close(): Promise<void>;
 
@@ -370,6 +385,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           // Convert numeric timestamps to Date objects for database storage
           // The Agent interface uses numbers, but the database schema expects Date objects
           const updateData: any = { ...agent };
+
           if (updateData.createdAt) {
             if (typeof updateData.createdAt === 'number') {
               updateData.createdAt = new Date(updateData.createdAt);
@@ -1350,7 +1366,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
 
-        await this.db.transaction(async (tx) => {
+        // Use withEntityContext to set Entity RLS context before inserting
+        // This ensures the log entry passes STRICT Entity RLS policy
+        await this.withEntityContext(params.entityId, async (tx) => {
           await tx.insert(logTable).values({
             body: sql`${jsonString}::jsonb`,
             entityId: params.entityId,
@@ -1879,7 +1897,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const metadataToInsert =
       typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    await this.db.transaction(async (tx) => {
+    // Use withEntityContext to set Entity RLS context if needed
+    // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
+    await this.withEntityContext(memory.entityId, async (tx) => {
       await tx.insert(memoryTable).values([
         {
           id: memoryId,
@@ -2194,7 +2214,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           name: roomTable.name, // Added name
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
-          serverId: roomTable.serverId,
+          messageServerId: roomTable.messageServerId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
@@ -2209,7 +2229,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         id: room.id as UUID,
         name: room.name ?? undefined,
         agentId: room.agentId as UUID,
-        serverId: room.serverId as UUID,
+        messageServerId: room.messageServerId as UUID,
+        serverId: room.messageServerId as UUID, // Backward compatibility alias
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
@@ -2233,7 +2254,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         id: room.id as UUID,
         name: room.name ?? undefined,
         agentId: room.agentId as UUID,
-        serverId: room.serverId as UUID,
+        messageServerId: room.messageServerId as UUID,
+        serverId: room.messageServerId as UUID, // Backward compatibility alias
         worldId: room.worldId as UUID,
         channelId: room.channelId as UUID,
         type: room.type as ChannelType,
@@ -2456,6 +2478,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Check if an entity is a participant in a specific room/channel.
+   * More efficient than getParticipantsForRoom when only checking membership.
+   * @param {UUID} roomId - The ID of the room to check.
+   * @param {UUID} entityId - The ID of the entity to check.
+   * @returns {Promise<boolean>} A Promise that resolves to true if entity is a participant.
+   */
+  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(participantTable)
+        .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
+        .limit(1);
+
+      return result.length > 0;
+    });
+  }
+
+  /**
    * Asynchronously retrieves the user state for a participant in a room from the database based on the provided parameters.
    * @param {UUID} roomId - The ID of the room to retrieve the participant's user state for.
    * @param {UUID} entityId - The ID of the entity to retrieve the user state for.
@@ -2646,15 +2687,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return result.rows.map((relationship: any) => ({
         ...relationship,
         id: relationship.id as UUID,
-        sourceEntityId: relationship.sourceEntityId as UUID,
-        targetEntityId: relationship.targetEntityId as UUID,
-        agentId: relationship.agentId as UUID,
+        sourceEntityId: (relationship.source_entity_id || relationship.sourceEntityId) as UUID,
+        targetEntityId: (relationship.target_entity_id || relationship.targetEntityId) as UUID,
+        agentId: (relationship.agent_id || relationship.agentId) as UUID,
         tags: relationship.tags ?? [],
         metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
-        createdAt: relationship.createdAt
-          ? relationship.createdAt instanceof Date
-            ? relationship.createdAt.toISOString()
-            : new Date(relationship.createdAt).toISOString()
+        createdAt: relationship.created_at || relationship.createdAt
+          ? (relationship.created_at || relationship.createdAt) instanceof Date
+            ? (relationship.created_at || relationship.createdAt).toISOString()
+            : new Date(relationship.created_at || relationship.createdAt).toISOString()
           : new Date().toISOString(),
       }));
     });
@@ -3185,6 +3226,44 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Gets a message server by RLS server_id
+   * Note: server_id column only exists when RLS is enabled (added dynamically by RLS setup)
+   * This is used to find the message_server linked to a specific RLS server instance
+   */
+  async getMessageServerByRlsServerId(rlsServerId: UUID): Promise<{
+    id: UUID;
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: any;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null> {
+    return this.withDatabase(async () => {
+      // Use raw SQL since server_id column is dynamically added by RLS and not in Drizzle schema
+      const results = await this.db.execute(sql`
+        SELECT id, name, source_type, source_id, metadata, created_at, updated_at
+        FROM message_servers
+        WHERE server_id = ${rlsServerId}
+        LIMIT 1
+      `);
+
+      const rows = results.rows || results;
+      return rows.length > 0
+        ? {
+            id: rows[0].id as UUID,
+            name: rows[0].name,
+            sourceType: rows[0].source_type,
+            sourceId: rows[0].source_id || undefined,
+            metadata: rows[0].metadata || undefined,
+            createdAt: new Date(rows[0].created_at),
+            updatedAt: new Date(rows[0].updated_at),
+          }
+        : null;
+    });
+  }
+
+  /**
    * Creates a new channel
    */
   async createChannel(
@@ -3231,9 +3310,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         await tx.insert(channelTable).values(channelToInsert);
 
         if (participantIds && participantIds.length > 0) {
-          const participantValues = participantIds.map((userId) => ({
+          const participantValues = participantIds.map((entityId) => ({
             channelId: newId,
-            userId: userId,
+            entityId: entityId,
           }));
           await tx.insert(channelParticipantsTable).values(participantValues).onConflictDoNothing();
         }
@@ -3244,9 +3323,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Gets channels for a server
+   * Gets channels for a message server
    */
-  async getChannelsForServer(serverId: UUID): Promise<
+  async getChannelsForMessageServer(messageServerId: UUID): Promise<
     Array<{
       id: UUID;
       messageServerId: UUID;
@@ -3264,7 +3343,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const results = await this.db
         .select()
         .from(channelTable)
-        .where(eq(channelTable.messageServerId, serverId));
+        .where(eq(channelTable.messageServerId, messageServerId));
       return results.map((r) => ({
         id: r.id as UUID,
         messageServerId: r.messageServerId as UUID,
@@ -3536,9 +3615,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
           // Add new participants
           if (updates.participantCentralUserIds.length > 0) {
-            const participantValues = updates.participantCentralUserIds.map((userId) => ({
+            const participantValues = updates.participantCentralUserIds.map((entityId) => ({
               channelId: channelId,
-              userId: userId,
+              entityId: entityId,
             }));
             await tx
               .insert(channelParticipantsTable)
@@ -3580,13 +3659,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   /**
    * Adds participants to a channel
    */
-  async addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void> {
+  async addChannelParticipants(channelId: UUID, entityIds: UUID[]): Promise<void> {
     return this.withDatabase(async () => {
-      if (!userIds || userIds.length === 0) return;
+      if (!entityIds || entityIds.length === 0) return;
 
-      const participantValues = userIds.map((userId) => ({
+      const participantValues = entityIds.map((entityId) => ({
         channelId: channelId,
-        userId: userId,
+        entityId: entityId,
       }));
 
       await this.db
@@ -3602,23 +3681,41 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const results = await this.db
-        .select({ userId: channelParticipantsTable.userId })
+        .select({ entityId: channelParticipantsTable.entityId })
         .from(channelParticipantsTable)
         .where(eq(channelParticipantsTable.channelId, channelId));
 
-      return results.map((r) => r.userId as UUID);
+      return results.map((r) => r.entityId as UUID);
     });
   }
 
   /**
-   * Adds an agent to a server
+   * Check if an entity is a participant in a specific messaging channel.
+   * @param {UUID} channelId - The ID of the channel to check.
+   * @param {UUID} entityId - The ID of the entity to check.
+   * @returns {Promise<boolean>} A Promise that resolves to true if entity is a participant.
    */
-  async addAgentToServer(serverId: UUID, agentId: UUID): Promise<void> {
+  async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
+    return this.withDatabase(async () => {
+      const result = await this.db
+        .select()
+        .from(channelParticipantsTable)
+        .where(and(eq(channelParticipantsTable.channelId, channelId), eq(channelParticipantsTable.entityId, entityId)))
+        .limit(1);
+
+      return result.length > 0;
+    });
+  }
+
+  /**
+   * Adds an agent to a message server (Discord/Telegram server)
+   */
+  async addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .insert(serverAgentsTable)
+        .insert(messageServerAgentsTable)
         .values({
-          serverId,
+          messageServerId,
           agentId,
         })
         .onConflictDoNothing();
@@ -3626,28 +3723,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Gets agents for a server
+   * Gets agents for a message server (Discord/Telegram server)
    */
-  async getAgentsForServer(serverId: UUID): Promise<UUID[]> {
+  async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
     return this.withDatabase(async () => {
       const results = await this.db
-        .select({ agentId: serverAgentsTable.agentId })
-        .from(serverAgentsTable)
-        .where(eq(serverAgentsTable.serverId, serverId));
+        .select({ agentId: messageServerAgentsTable.agentId })
+        .from(messageServerAgentsTable)
+        .where(eq(messageServerAgentsTable.messageServerId, messageServerId));
 
       return results.map((r) => r.agentId as UUID);
     });
   }
 
   /**
-   * Removes an agent from a server
+   * Removes an agent from a message server (Discord/Telegram server)
    */
-  async removeAgentFromServer(serverId: UUID, agentId: UUID): Promise<void> {
+  async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db
-        .delete(serverAgentsTable)
+        .delete(messageServerAgentsTable)
         .where(
-          and(eq(serverAgentsTable.serverId, serverId), eq(serverAgentsTable.agentId, agentId))
+          and(eq(messageServerAgentsTable.messageServerId, messageServerId), eq(messageServerAgentsTable.agentId, agentId))
         );
     });
   }
@@ -3712,6 +3809,65 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         },
         ids
       );
+    });
+  }
+
+  // User management methods
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.email, email.toLowerCase()))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async getUserByUsername(username: string): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.username, username))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async getUserById(id: UUID): Promise<User | null> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      const rows = await this.db
+        .select()
+        .from(userTable)
+        .where(eq(userTable.id, id))
+        .limit(1);
+
+      return rows.length > 0 ? (rows[0] as User) : null;
+    });
+  }
+
+  async createUser(user: User): Promise<User> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      await this.db.insert(userTable).values(user);
+      return user;
+    });
+  }
+
+  async updateUserLastLogin(userId: UUID): Promise<void> {
+    return this.withDatabase(async () => {
+      const { userTable } = await import('./schema');
+      await this.db
+        .update(userTable)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(userTable.id, userId));
     });
   }
 }

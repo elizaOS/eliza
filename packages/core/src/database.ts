@@ -419,6 +419,15 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    */
   abstract getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 
+  /**
+   * Check if an entity is a participant in a specific room.
+   * More efficient than getParticipantsForRoom when only checking membership.
+   * @param roomId The UUID of the room.
+   * @param entityId The UUID of the entity to check.
+   * @returns A Promise that resolves to a boolean indicating if the entity is a participant.
+   */
+  abstract isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+
   abstract getParticipantUserState(
     roomId: UUID,
     entityId: UUID
@@ -585,4 +594,11 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
   }): Promise<Memory[]>;
 
   abstract deleteRoomsByWorldId(worldId: UUID): Promise<void>;
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  abstract getUserByEmail(email: string): Promise<any | null>;
+  abstract getUserByUsername(username: string): Promise<any | null>;
+  abstract getUserById(id: UUID): Promise<any | null>;
+  abstract createUser(user: any): Promise<any>;
+  abstract updateUserLastLogin(userId: UUID): Promise<void>;
 }

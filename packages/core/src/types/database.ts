@@ -3,6 +3,7 @@ import type { Component, Entity, Participant, Relationship, Room, World } from '
 import type { Memory, MemoryMetadata } from './memory';
 import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
+import type { User } from './user';
 
 /**
  * Represents a log entry
@@ -89,6 +90,14 @@ export interface IDatabaseAdapter {
   close(): Promise<void>;
 
   getConnection(): Promise<any>;
+
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * @param entityId - The entity ID to set as context
+   * @param callback - The callback to execute within the entity context
+   * @returns The result of the callback
+   */
+  withEntityContext?<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T>;
 
   getAgent(agentId: UUID): Promise<Agent | null>;
 
@@ -249,6 +258,8 @@ export interface IDatabaseAdapter {
 
   getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
 
+  isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
+
   addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 
   getParticipantUserState(roomId: UUID, entityId: UUID): Promise<'FOLLOWED' | 'MUTED' | null>;
@@ -312,6 +323,13 @@ export interface IDatabaseAdapter {
     count?: number;
     tableName?: string;
   }): Promise<Memory[]>;
+
+  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
+  getUserByEmail(email: string): Promise<User | null>;
+  getUserByUsername(username: string): Promise<User | null>;
+  getUserById(id: UUID): Promise<User | null>;
+  createUser(user: User): Promise<User>;
+  updateUserLastLogin(userId: UUID): Promise<void>;
 }
 
 /**

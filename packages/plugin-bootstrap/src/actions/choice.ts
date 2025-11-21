@@ -97,11 +97,11 @@ export const choiceAction: Action = {
 
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-    if (!room || !room.serverId) {
+    if (!room || !room.messageServerId) {
       return false;
     }
 
-    const userRole = await getUserServerRole(runtime, message.entityId, room.serverId);
+    const userRole = await getUserServerRole(runtime, message.entityId, room.messageServerId);
 
     if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
       return false;
@@ -116,7 +116,7 @@ export const choiceAction: Action = {
 
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
-      const userRole = await getUserServerRole(runtime, message.entityId, room.serverId);
+      const userRole = await getUserServerRole(runtime, message.entityId, room.messageServerId);
 
       if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
         return false;

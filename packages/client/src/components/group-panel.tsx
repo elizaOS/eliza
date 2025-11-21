@@ -2,7 +2,7 @@ import { ChannelType, validateUuid } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -89,7 +89,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Create group mutation
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.messaging.createGroupChannel({
         name,
         participantIds: participantIds,
@@ -122,7 +122,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       if (!channelId) throw new Error('Channel ID is required for update');
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.messaging.updateChannel(channelId, {
         name,
         participantCentralUserIds: participantIds,
@@ -149,7 +149,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error('Channel ID is required for delete');
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.messaging.deleteChannel(channelId);
     },
     onSuccess: () => {
@@ -184,7 +184,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     queryFn: async () => {
       if (!channelId) return { success: true, data: [] };
       try {
-        const elizaClient = createElizaClient();
+        const elizaClient = getElizaClient();
         const result = await elizaClient.messaging.getChannelParticipants(channelId);
 
         // Handle different possible response formats

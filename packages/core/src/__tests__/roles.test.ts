@@ -45,7 +45,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['user-123-456-789-abc-def012345678' as UUID]: Role.ADMIN,
@@ -75,7 +75,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {},
       };
 
@@ -90,7 +90,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           someOtherData: 'value',
         },
@@ -107,7 +107,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['user-456-789-abc-def-012345678901' as UUID]: Role.OWNER,
@@ -128,7 +128,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['owner-user-123-456-789-abcdef0123' as UUID]: Role.OWNER,
@@ -170,7 +170,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             ownership: {
               ownerId: 'user-123',
@@ -181,7 +181,7 @@ describe('roles utilities', () => {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
           metadata: {
             ownership: {
               ownerId: 'other-user',
@@ -192,7 +192,7 @@ describe('roles utilities', () => {
           id: 'world-3' as UUID,
           name: 'World 3',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-3',
+          messageServerId: 'server-3',
           metadata: {
             ownership: {
               ownerId: 'user-123',
@@ -257,7 +257,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             ownership: {
               ownerId: 'other-user-1',
@@ -268,7 +268,7 @@ describe('roles utilities', () => {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
           metadata: {
             ownership: {
               ownerId: 'other-user-2',
@@ -290,14 +290,14 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {},
         },
         {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
         } as World,
       ];
 
@@ -314,7 +314,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             someOtherData: 'value',
           },

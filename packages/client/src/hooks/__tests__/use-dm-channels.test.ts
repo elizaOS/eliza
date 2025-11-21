@@ -25,6 +25,15 @@ mock.module('@/lib/api-client-config', () => ({
       getServerChannels: mockGetServerChannels,
     },
   }),
+  getElizaClient: () => ({
+    messaging: {
+      createGroupChannel: mockCreateGroupChannel,
+      getServerChannels: mockGetServerChannels,
+    },
+  }),
+  createApiClientConfig: () => ({}),
+  updateApiClientApiKey: () => {},
+  updateApiClientJwtToken: () => {},
 }));
 
 mock.module('@/hooks/use-toast', () => ({

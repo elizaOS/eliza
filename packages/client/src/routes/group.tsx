@@ -1,16 +1,17 @@
 import ChatComponent from '@/components/chat';
 import { ChannelType, validateUuid, type UUID } from '@elizaos/core';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 
-export default function GroupRoute() {
+function GroupRouteContent() {
   const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
   const [searchParams] = useSearchParams();
-  const serverIdFromQuery = searchParams.get('serverId');
+  const messageServerIdFromQuery = searchParams.get('messageServerId');
 
   const channelId = validateUuid(channelIdFromPath);
-  const serverId = validateUuid(serverIdFromQuery || '');
+  const messageServerId = validateUuid(messageServerIdFromQuery || '');
 
-  if (!channelId || !serverId) {
+  if (!channelId || !messageServerId) {
     return (
       <div className="flex flex-1 justify-center items-center">
         <p>Missing channel or server information.</p>
@@ -23,7 +24,18 @@ export default function GroupRoute() {
       key={channelId}
       chatType={ChannelType.GROUP}
       contextId={channelId as UUID}
-      serverId={serverId as UUID}
+      messageServerId={messageServerId as UUID}
     />
+  );
+}
+
+/**
+ * GroupRoute with route protection
+ */
+export default function GroupRoute() {
+  return (
+    <ProtectedRoute>
+      <GroupRouteContent />
+    </ProtectedRoute>
   );
 }

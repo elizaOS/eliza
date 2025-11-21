@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAgents } from '../hooks/use-query-hooks';
-import { createElizaClient } from '../lib/api-client-config';
+import { getElizaClient } from '../lib/api-client-config';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
@@ -255,7 +255,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   } = useQuery<LogResponse>({
     queryKey: ['logs', selectedLevel, selectedAgentName],
     queryFn: async () => {
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.system.getGlobalLogs({
         level: selectedLevel === 'all' ? '' : selectedLevel,
         agentName: selectedAgentName === 'all' ? undefined : selectedAgentName,
@@ -390,7 +390,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
       async () => {
         try {
           setIsClearing(true);
-          const elizaClient = createElizaClient();
+          const elizaClient = getElizaClient();
           await elizaClient.system.deleteGlobalLogs();
           queryClient.invalidateQueries({ queryKey: ['logs'] });
 

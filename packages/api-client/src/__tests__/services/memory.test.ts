@@ -7,7 +7,7 @@ import { UUID } from '@elizaos/core';
 const TEST_AGENT_ID = '550e8400-e29b-41d4-a716-446655440001' as UUID;
 const TEST_ROOM_ID = '550e8400-e29b-41d4-a716-446655440002' as UUID;
 const TEST_MEMORY_ID = '550e8400-e29b-41d4-a716-446655440003' as UUID;
-const TEST_SERVER_ID = '550e8400-e29b-41d4-a716-446655440004' as UUID;
+const TEST_MESSAGE_SERVER_ID = '550e8400-e29b-41d4-a716-446655440004' as UUID;
 
 describe('MemoryService', () => {
   let memoryService: MemoryService;
@@ -261,16 +261,16 @@ describe('MemoryService', () => {
   });
 
   describe('createWorldFromServer', () => {
-    const worldParams = { serverId: TEST_SERVER_ID, name: 'New World', description: 'A new world' };
+    const worldParams = { messageServerId: TEST_MESSAGE_SERVER_ID, name: 'New World', description: 'A new world' };
 
     it('should create world from server successfully', async () => {
       const mockResponse = { worldId: 'world-new' as UUID };
       (memoryService as any).post.mockResolvedValue(mockResponse);
 
-      const result = await memoryService.createWorldFromServer(TEST_SERVER_ID, worldParams);
+      const result = await memoryService.createWorldFromMessageServer(TEST_MESSAGE_SERVER_ID, worldParams);
 
       expect((memoryService as any).post).toHaveBeenCalledWith(
-        `/api/memory/groups/${TEST_SERVER_ID}`,
+        `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}`,
         worldParams
       );
       expect(result).toEqual(mockResponse);
@@ -282,10 +282,10 @@ describe('MemoryService', () => {
       const mockResponse = { success: true };
       (memoryService as any).delete.mockResolvedValue(mockResponse);
 
-      const result = await memoryService.deleteWorld(TEST_SERVER_ID);
+      const result = await memoryService.deleteWorld(TEST_MESSAGE_SERVER_ID);
 
       expect((memoryService as any).delete).toHaveBeenCalledWith(
-        `/api/memory/groups/${TEST_SERVER_ID}`
+        `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -296,10 +296,10 @@ describe('MemoryService', () => {
       const mockResponse = { deleted: 15 };
       (memoryService as any).delete.mockResolvedValue(mockResponse);
 
-      const result = await memoryService.clearWorldMemories(TEST_SERVER_ID);
+      const result = await memoryService.clearWorldMemories(TEST_MESSAGE_SERVER_ID);
 
       expect((memoryService as any).delete).toHaveBeenCalledWith(
-        `/api/memory/groups/${TEST_SERVER_ID}/memories`
+        `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}/memories`
       );
       expect(result).toEqual(mockResponse);
     });

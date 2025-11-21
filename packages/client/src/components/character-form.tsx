@@ -62,7 +62,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { SecretPanelRef } from './secret-panel';
 import { MissingSecretsDialog } from './missing-secrets-dialog';
 import { useRequiredSecrets } from '@/hooks/use-plugin-details';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { V1Character, useConvertCharacter } from '@/hooks/use-character-convert';
 
 export type InputField = {
@@ -217,7 +217,7 @@ export default function CharacterForm({
   useEffect(() => {
     const fetchGlobalEnvs = async () => {
       try {
-        const elizaClient = createElizaClient();
+        const elizaClient = getElizaClient();
         const data = await elizaClient.system.getEnvironment();
         setGlobalEnvs(data || {});
       } catch (error) {

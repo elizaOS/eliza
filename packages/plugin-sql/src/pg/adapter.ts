@@ -18,6 +18,24 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     this.db = manager.getDatabase();
   }
 
+  getManager(): PostgresConnectionManager {
+    return this.manager;
+  }
+
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * Delegates to the manager's withEntityContext method
+   *
+   * This is a public method because it's part of the adapter's public API
+   * for operations that need entity-scoped database access.
+   */
+  public async withEntityContext<T>(
+    entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T> {
+    return await this.manager.withEntityContext(entityId, callback);
+  }
+
   // Methods required by TypeScript but not in base class
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     // Delegate to the correct method name
