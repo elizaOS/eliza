@@ -2,62 +2,66 @@
  * Unit tests for JWKSVerifier (Auth0, Clerk, Supabase, Google, etc.)
  */
 
-import { describe, it, expect, beforeEach, afterEach, beforeAll, spyOn } from 'bun:test';
-import { JWKSVerifier } from '../../../services/jwt-verifiers/jwks-verifier';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, spyOn, jest } from 'bun:test';
+import { JWKSVerifier } from '../../../../services/jwt-verifiers/jwks-verifier';
 import { logger, stringToUuid } from '@elizaos/core';
-import { useFetchMock } from 'bun-fetch-mock';
 import { SignJWT, generateKeyPair, exportJWK } from 'jose';
 
 describe('JWKSVerifier', () => {
   let verifier: JWKSVerifier;
-  let fetchMock: ReturnType<typeof useFetchMock>;
   let jwksUri: string;
   let privateKey: any;
   let publicJwk: any;
   let loggerErrorSpy: ReturnType<typeof spyOn>;
   let loggerDebugSpy: ReturnType<typeof spyOn>;
   const originalEnv = process.env;
+  const originalFetch = globalThis.fetch;
+
+  // Helper to create mock fetch response
+  const createMockFetch = (jwks: { keys: any[] }) => {
+    return jest.fn((url: string) => {
+      if (url.includes('.well-known/jwks.json') || url.includes('/certs')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(jwks),
+        } as Response);
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    });
+  };
 
   beforeAll(async () => {
     // Generate RS256 keypair for testing (common for Auth0, Clerk, etc.)
     const keypair = await generateKeyPair('RS256');
     privateKey = keypair.privateKey;
     publicJwk = await exportJWK(keypair.publicKey);
-    publicJwk.kid = 'test-key-id-1'; // Add key ID
+    publicJwk.kid = 'test-key-id-1';
     publicJwk.alg = 'RS256';
     publicJwk.use = 'sig';
   });
 
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   beforeEach(() => {
-    // Reset environment
     process.env = { ...originalEnv };
     delete process.env.JWT_ISSUER_WHITELIST;
 
-    // Setup fetch mock with baseUrl
-    const baseUrl = 'https://test-provider.com';
-    jwksUri = `${baseUrl}/.well-known/jwks.json`;
-    fetchMock = useFetchMock({ baseUrl });
+    jwksUri = 'https://test-provider.com/.well-known/jwks.json';
 
-    // Mock JWKS endpoint to return our public key
-    fetchMock.get('/.well-known/jwks.json', {
-      data: { keys: [publicJwk] },
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // Mock fetch to return our public key
+    globalThis.fetch = createMockFetch({ keys: [publicJwk] }) as any;
 
-    // Initialize verifier
     verifier = new JWKSVerifier(jwksUri);
 
-    // Spy on logger methods
     loggerErrorSpy = spyOn(logger, 'error');
     loggerDebugSpy = spyOn(logger, 'debug');
   });
 
   afterEach(() => {
-    // Reset fetch mocks
-    fetchMock.reset();
-
-    // Restore original environment
+    globalThis.fetch = originalFetch;
     process.env = originalEnv;
     loggerErrorSpy?.mockRestore();
     loggerDebugSpy?.mockRestore();
@@ -117,7 +121,6 @@ describe('JWKSVerifier', () => {
       const result1 = await verifier.verify(token);
       const result2 = await verifier.verify(token);
 
-      // Same sub should always produce same entityId
       expect(result1.entityId).toBe(result2.entityId);
       expect(result1.entityId).toBe(stringToUuid(sub));
     });
@@ -144,7 +147,7 @@ describe('JWKSVerifier', () => {
         .setProtectedHeader({ alg: 'RS256', kid: 'test-key-id-1' })
         .setSubject(sub)
         .setIssuedAt()
-        .setExpirationTime('-1h') // Expired 1 hour ago
+        .setExpirationTime('-1h')
         .sign(privateKey);
 
       await expect(verifier.verify(token)).rejects.toThrow();
@@ -352,7 +355,6 @@ describe('JWKSVerifier', () => {
 
   describe('Error handling', () => {
     it('should provide descriptive error for invalid signature', async () => {
-      // Generate different keypair
       const wrongKeypair = await generateKeyPair('RS256');
 
       const sub = 'user@example.com';
@@ -361,7 +363,7 @@ describe('JWKSVerifier', () => {
         .setSubject(sub)
         .setIssuedAt()
         .setExpirationTime('1h')
-        .sign(wrongKeypair.privateKey); // Sign with different key
+        .sign(wrongKeypair.privateKey);
 
       await expect(verifier.verify(token)).rejects.toThrow();
       expect(loggerErrorSpy).toHaveBeenCalled();
@@ -370,14 +372,12 @@ describe('JWKSVerifier', () => {
     it('should handle missing kid in token header', async () => {
       const sub = 'user@example.com';
       const token = await new SignJWT({ sub })
-        .setProtectedHeader({ alg: 'RS256' }) // No kid
+        .setProtectedHeader({ alg: 'RS256' })
         .setSubject(sub)
         .setIssuedAt()
         .setExpirationTime('1h')
         .sign(privateKey);
 
-      // jose can still verify tokens without kid if there's only one key in JWKS
-      // This is the expected behavior per JWKS spec
       const result = await verifier.verify(token);
       expect(result.sub).toBe(sub);
     });

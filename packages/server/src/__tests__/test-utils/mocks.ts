@@ -278,9 +278,9 @@ export function createMockDatabaseAdapter(overrides?: any): DatabaseAdapter & an
     getMessageServerById: jest.fn(() =>
       Promise.resolve({ id: '00000000-0000-0000-0000-000000000000', name: 'Default Server' })
     ),
-    addAgentToMessageServer: jest.fn(() => Promise.resolve()),
-    removeAgentFromMessageServer: jest.fn(() => Promise.resolve()),
-    getAgentsForMessageServer: jest.fn(() => Promise.resolve([])),
+    addAgentToServer: jest.fn(() => Promise.resolve()),
+    removeAgentFromServer: jest.fn(() => Promise.resolve()),
+    getAgentsForServer: jest.fn(() => Promise.resolve([])),
 
     // Channel methods
     createChannel: jest.fn(() => Promise.resolve({ id: '123e4567-e89b-12d3-a456-426614174000' })),

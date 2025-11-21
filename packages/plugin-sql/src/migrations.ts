@@ -17,6 +17,15 @@ import { sql } from 'drizzle-orm';
 export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = adapter.db;
 
+  // Detect database type - skip PostgreSQL-specific migrations for SQLite
+  try {
+    await db.execute(sql`SELECT 1 FROM pg_tables LIMIT 1`);
+  } catch {
+    // Not PostgreSQL (likely SQLite)
+    logger.debug('[Migration] ⊘ Not PostgreSQL, skipping PostgreSQL-specific migrations');
+    return;
+  }
+
   logger.info('[Migration] Starting develop → feat/entity-rls migration...');
 
   try {

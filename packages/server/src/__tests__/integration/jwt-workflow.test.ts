@@ -9,13 +9,20 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { UniversalJWTVerifier } from '../../services/jwt-verifier';
 import { stringToUuid } from '@elizaos/core';
 import { SignJWT, generateKeyPair, exportSPKI } from 'jose';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  type EnvironmentSnapshot,
+} from '../test-utils/environment';
+import { JWTTestHelper } from '../test-utils/jwt-helper';
 
 describe('JWT Authentication Workflow Integration', () => {
-  const originalEnv = process.env;
+  let envSnapshot: EnvironmentSnapshot;
 
   beforeEach(() => {
-    // Reset environment
-    process.env = { ...originalEnv };
+    // Use centralized environment setup
+    envSnapshot = setupTestEnvironment();
+    // Clear JWT-specific env vars
     delete process.env.PRIVY_VERIFICATION_KEY;
     delete process.env.JWT_ED25519_PUBLIC_KEY;
     delete process.env.JWT_JWKS_URI;
@@ -25,15 +32,18 @@ describe('JWT Authentication Workflow Integration', () => {
   });
 
   afterEach(() => {
-    // Restore original environment
-    process.env = originalEnv;
+    // Use centralized environment teardown
+    teardownTestEnvironment(envSnapshot);
   });
 
   describe('End-to-end: Ed25519 (Privy) workflow', () => {
     it('should complete full authentication flow with Ed25519', async () => {
-      // 1. Setup: Generate Ed25519 keypair (simulating Privy setup)
-      const keypair = await generateKeyPair('EdDSA');
-      const publicKey = await exportSPKI(keypair.publicKey);
+      // 1. Setup using JWTTestHelper (simulating Privy setup)
+      const { token, publicKey } = await JWTTestHelper.createPrivyToken({
+        userId: 'clabcd1234567890',
+        appId: 'test-app-id',
+        linkedAccounts: ['wallet:0x123'],
+      });
 
       process.env.PRIVY_VERIFICATION_KEY = publicKey;
       process.env.ENABLE_DATA_ISOLATION = 'true';
@@ -44,29 +54,16 @@ describe('JWT Authentication Workflow Integration', () => {
       expect(verifier.isEnabled()).toBe(true);
       expect(verifier.getVerificationMethod()).toBe('Ed25519');
 
-      // 3. Client generates JWT (simulating Privy SDK on client)
-      const sub = 'did:privy:clabcd1234567890';
-      const token = await new SignJWT({
-        sub,
-        app_id: 'test-app-id',
-        linked_accounts: ['wallet:0x123'],
-      })
-        .setProtectedHeader({ alg: 'EdDSA' })
-        .setSubject(sub)
-        .setIssuer('https://auth.privy.io')
-        .setIssuedAt()
-        .setExpirationTime('1h')
-        .sign(keypair.privateKey);
-
-      // 4. Server verifies token (simulating request middleware)
+      // 3. Server verifies token (simulating request middleware)
       const result = await verifier.verify(token);
 
-      // 5. Verify result
-      expect(result.sub).toBe(sub);
-      expect(result.entityId).toBe(stringToUuid(sub));
+      // 4. Verify result
+      const expectedSub = 'did:privy:clabcd1234567890';
+      expect(result.sub).toBe(expectedSub);
+      expect(result.entityId).toBe(stringToUuid(expectedSub));
       expect(result.payload.app_id).toBe('test-app-id');
 
-      // 6. Verify entityId is deterministic
+      // 5. Verify entityId is deterministic
       const result2 = await verifier.verify(token);
       expect(result2.entityId).toBe(result.entityId);
     });

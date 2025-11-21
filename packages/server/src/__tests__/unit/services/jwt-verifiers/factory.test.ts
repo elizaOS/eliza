@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, spyOn } from 'bun:test';
-import { JWTVerifierFactory } from '../../../services/jwt-verifiers/factory';
-import { Ed25519Verifier } from '../../../services/jwt-verifiers/ed25519-verifier';
-import { JWKSVerifier } from '../../../services/jwt-verifiers/jwks-verifier';
-import { SecretVerifier } from '../../../services/jwt-verifiers/secret-verifier';
+import { JWTVerifierFactory } from '../../../../services/jwt-verifiers/factory';
+import { Ed25519Verifier } from '../../../../services/jwt-verifiers/ed25519-verifier';
+import { JWKSVerifier } from '../../../../services/jwt-verifiers/jwks-verifier';
+import { SecretVerifier } from '../../../../services/jwt-verifiers/secret-verifier';
 import { logger } from '@elizaos/core';
 import { generateKeyPair, exportSPKI } from 'jose';
 

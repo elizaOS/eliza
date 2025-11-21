@@ -4,9 +4,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:test';
 import { type Response, type NextFunction } from 'express';
-import { jwtAuthMiddleware, requireJWT, type JWTAuthRequest } from '../../middleware';
+import { jwtAuthMiddleware, requireJWT, type JWTAuthRequest } from '../../../middleware';
 import { logger } from '@elizaos/core';
-import { jwtVerifier } from '../../services/jwt-verifier';
+import { jwtVerifier } from '../../../services/jwt-verifier';
 
 describe('JWT Auth Middleware', () => {
   let mockRequest: Partial<JWTAuthRequest>;
@@ -33,9 +33,14 @@ describe('JWT Auth Middleware', () => {
     jwtVerifierVerifySpy = spyOn(jwtVerifier, 'verify');
 
     // Create fresh mocks for each test
+    // Use non-localhost IP to test JWT validation (localhost bypasses JWT)
     mockRequest = {
       headers: {},
-      ip: '127.0.0.1',
+      ip: '192.168.1.100',
+      path: '/api/test',
+      url: '/api/test',
+      originalUrl: '/api/test',
+      baseUrl: '',
     };
 
     mockResponse = {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
-import { Ed25519Verifier } from '../../../services/jwt-verifiers/ed25519-verifier';
+import { Ed25519Verifier } from '../../../../services/jwt-verifiers/ed25519-verifier';
 import { logger, stringToUuid } from '@elizaos/core';
 import { SignJWT, generateKeyPair, exportSPKI } from 'jose';
 

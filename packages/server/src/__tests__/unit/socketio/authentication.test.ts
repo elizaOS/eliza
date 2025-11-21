@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest, spyOn } from 'bun:test';
-import { SocketIORouter, type SocketData } from '../../socketio';
+import { SocketIORouter, type SocketData } from '../../../socketio';
 import { logger } from '@elizaos/core';
-import { jwtVerifier } from '../../services/jwt-verifier';
+import { jwtVerifier } from '../../../services/jwt-verifier';
 import type { UUID } from '@elizaos/core';
 
 describe('SocketIO Authentication', () => {
@@ -282,17 +282,18 @@ describe('SocketIO Authentication', () => {
       );
     });
 
-    it('should allow connection with no JWT token when data isolation is disabled', async () => {
+    it('should allow connection with no JWT token when data isolation is disabled (with client entityId)', async () => {
       delete process.env.SERVER_API_KEY;
       process.env.ENABLE_DATA_ISOLATION = 'false';
       (jwtVerifier.isEnabled as any).mockReturnValue(true);
 
       router.setupListeners(mockIO);
 
+      const clientEntityId = '123e4567-e89b-12d3-a456-426614174000';
       const mockSocket = {
         id: 'socket-123',
         handshake: {
-          auth: {},
+          auth: { entityId: clientEntityId },
           headers: {},
         },
         data: {} as SocketData,
@@ -303,7 +304,7 @@ describe('SocketIO Authentication', () => {
 
       expect(next).toHaveBeenCalledWith(); // Called without error
       expect(loggerDebugSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No JWT token provided, allowed')
+        expect.stringContaining('No JWT token - using client entityId')
       );
     });
 

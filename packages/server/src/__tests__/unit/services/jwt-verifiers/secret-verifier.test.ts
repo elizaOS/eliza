@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
-import { SecretVerifier } from '../../../services/jwt-verifiers/secret-verifier';
+import { SecretVerifier } from '../../../../services/jwt-verifiers/secret-verifier';
 import { logger, stringToUuid } from '@elizaos/core';
 import { SignJWT } from 'jose';
 
