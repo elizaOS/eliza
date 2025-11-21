@@ -95,7 +95,7 @@ describe('Database Operations Integration Tests', () => {
     });
 
     it('should maintain referential integrity', async () => {
-      const channelId = '234e5678-e89b-12d3-a456-426614174000' as UUID;
+      const channelId = generateChannelId('referential-integrity');
 
       // Create channel
       await serverFixture.getServer().createChannel(
