@@ -170,4 +170,109 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Restore default list styles that Tailwind's Preflight removes */
+  ol {
+    list-style-type: decimal;
+  }
+
+  ul {
+    list-style-type: disc;
+  }
+}
+
+/* Compact rendering for AI-generated markdown content */
+@layer components {
+  /* Match test environment: 15px font-size */
+  .markdown-content {
+    font-size: 15px !important;
+    color: #f5f5f5;
+  }
+
+  /* Collapse Streamdown wrapper divs to eliminate spacing */
+  .markdown-content > div {
+    display: contents !important;
+  }
+
+  /* Paragraphs: tight line-height within, larger gaps between */
+  .markdown-content p {
+    line-height: 1.5 !important;
+    margin: 0 !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Last paragraph should have no bottom margin */
+  .markdown-content p:last-child {
+    margin-bottom: 0 !important;
+  }
+
+  /* Tight spacing between paragraph and following list (like Claude web) */
+  .markdown-content p:has(+ ul),
+  .markdown-content p:has(+ ol) {
+    margin-bottom: 4px !important;
+  }
+
+  /* Ordered lists: clean structure with 16px gap after */
+  .markdown-content ol {
+    list-style-type: decimal !important;
+    list-style-position: outside !important;
+    padding-left: 24px !important;
+    margin: 0 !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Numbered list items: 8px spacing between items, 1.5 line-height */
+  .markdown-content ol > li {
+    margin-bottom: 8px !important;
+    line-height: 1.5 !important;
+    padding-left: 6px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Paragraph in numbered list item: 4px gap before nested bullets */
+  .markdown-content ol > li > p {
+    margin: 0 !important;
+    margin-bottom: 4px !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Unordered lists: clean structure */
+  .markdown-content ul {
+    list-style-type: disc !important;
+    list-style-position: outside !important;
+    padding-left: 20px !important;
+    margin: 0 !important;
+    margin-bottom: 8px !important;
+  }
+
+  /* Bullet items: 2px spacing, 1.4 line-height */
+  .markdown-content ul li {
+    margin-bottom: 2px !important;
+    line-height: 1.4 !important;
+    padding-left: 4px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* Tight connection between list item header and nested bullets */
+  .markdown-content li > p:has(+ ul),
+  .markdown-content li > p:has(+ ol) {
+    margin-bottom: 2px !important;
+  }
+
+  /* Nested lists: minimal spacing */
+  .markdown-content ol ol,
+  .markdown-content ol ul,
+  .markdown-content ul ol,
+  .markdown-content ul ul {
+    margin-top: 4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  /* Strong text styling */
+  .markdown-content strong {
+    font-weight: 600;
+    color: #ffffff;
+  }
 }

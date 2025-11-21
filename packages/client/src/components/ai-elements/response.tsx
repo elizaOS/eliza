@@ -9,7 +9,7 @@ type ResponseProps = ComponentProps<typeof Streamdown>;
 export const Response = memo(
   ({ className, shikiTheme = ['github-dark', 'github-dark'], ...props }: ResponseProps) => (
     <Streamdown
-      className={cn('size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0', className)}
+      className={cn('!space-y-0 size-full markdown-content', className)}
       shikiTheme={shikiTheme}
       {...props}
     />
