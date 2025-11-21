@@ -2195,12 +2195,12 @@ export class AgentRuntime implements IAgentRuntime {
       let sizeInfo = 'unknown size';
       if (Buffer.isBuffer(params)) {
         sizeInfo = `${params.length} bytes`;
-      } else if (params instanceof Blob) {
+      } else if (typeof Blob !== 'undefined' && params instanceof Blob) {
         sizeInfo = `${params.size} bytes`;
       } else if (typeof params === 'object' && params !== null) {
         if ('audio' in params && Buffer.isBuffer(params.audio)) {
           sizeInfo = `${(params.audio as Buffer).length} bytes`;
-        } else if ('audio' in params && params.audio instanceof Blob) {
+        } else if ('audio' in params && typeof Blob !== 'undefined' && params.audio instanceof Blob) {
           sizeInfo = `${(params.audio as Blob).size} bytes`;
         }
       }
