@@ -70,9 +70,11 @@ describe('Socket.IO End-to-End Message Flow', () => {
   });
 
   beforeEach(() => {
-    // Create new client fixtures for each test
-    clientFixture1 = new SocketIOClientFixture(port);
-    clientFixture2 = new SocketIOClientFixture(port);
+    // Create new client fixtures for each test with entityId for authentication
+    const testEntityId1 = stringToUuid('test-entity-1');
+    const testEntityId2 = stringToUuid('test-entity-2');
+    clientFixture1 = new SocketIOClientFixture(port, { entityId: testEntityId1 });
+    clientFixture2 = new SocketIOClientFixture(port, { entityId: testEntityId2 });
   });
 
   afterEach(async () => {

@@ -11,7 +11,6 @@ import {
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils/media-transformer';
-import { jwtVerifier } from '../services/jwt-verifier';
 
 /**
  * Socket.io socket.data structure for authenticated sockets
@@ -59,7 +58,7 @@ export class SocketIORouter {
    *
    * Runs on every WebSocket handshake to:
    * 1. Verify API Key (if configured)
-   * 2. Verify JWT and extract entityId from token
+   * 2. Extract entityId from client handshake
    * 3. Initialize security context on socket.data
    * 4. Track entity->sockets mapping for cache invalidation
    */
@@ -78,54 +77,17 @@ export class SocketIORouter {
           logger.debug(`[SocketIO Auth] API Key verified for socket ${socket.id}`);
         }
 
-        // JWT authentication
-        const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
-
-        if (!jwtVerifier.isEnabled()) {
-          if (dataIsolationEnabled) {
-            logger.error('[SocketIO Auth] JWT required for data isolation but not configured');
-            return next(new Error('JWT authentication required for data isolation'));
-          }
-          logger.warn('[SocketIO Auth] JWT authentication disabled - connection allowed without token');
-          return next();
-        }
-
-        const token = socket.handshake.auth.token;
+        // Entity identification via client-provided entityId
+        const clientEntityId = socket.handshake.auth.entityId;
         let entityId: UUID;
 
-        if (!token) {
-          if (dataIsolationEnabled) {
-            logger.warn(`[SocketIO Auth] Missing JWT token (ENABLE_DATA_ISOLATION=true)`);
-            return next(new Error('JWT token required for data isolation'));
-          }
-
-          // No JWT - use client-provided entityId (fallback mode for DATA_ISOLATION=false)
-          const clientEntityId = socket.handshake.auth.entityId;
-
-          if (!clientEntityId || !validateUuid(clientEntityId)) {
-            logger.error(`[SocketIO Auth] No JWT and invalid client entityId: ${clientEntityId}`);
-            return next(new Error('Valid entityId required'));
-          }
-
-          entityId = clientEntityId as UUID;
-          logger.debug(`[SocketIO Auth] No JWT token - using client entityId: ${entityId.substring(0, 8)}... (ENABLE_DATA_ISOLATION=false)`);
-        } else {
-          // JWT present - extract entityId from token (secure mode)
-          const verificationResult = await jwtVerifier.verify(token);
-          const jwtEntityId = verificationResult.entityId;
-          const { sub, payload } = verificationResult;
-
-          if (!jwtEntityId || !validateUuid(jwtEntityId)) {
-            logger.error(`[SocketIO Auth] JWT verification succeeded but entityId invalid: ${jwtEntityId}`);
-            return next(new Error('Invalid entityId from JWT'));
-          }
-
-          entityId = jwtEntityId as UUID;
-
-          logger.info(
-            `[SocketIO Auth] JWT verified: ${sub} → entityId: ${entityId.substring(0, 8)}... (issuer: ${payload.iss || 'unknown'})`
-          );
+        if (!clientEntityId || !validateUuid(clientEntityId)) {
+          logger.warn(`[SocketIO Auth] Invalid or missing entityId: ${clientEntityId}`);
+          return next(new Error('Valid entityId required'));
         }
+
+        entityId = clientEntityId as UUID;
+        logger.debug(`[SocketIO Auth] Using client entityId: ${entityId.substring(0, 8)}...`);
 
         // Initialize socket security context with the determined entityId
         socket.data.entityId = entityId;

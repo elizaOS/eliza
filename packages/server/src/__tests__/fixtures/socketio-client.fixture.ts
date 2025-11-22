@@ -37,6 +37,10 @@ export interface SocketIOClientOptions {
   autoConnect?: boolean;
   /** Connection timeout in ms */
   timeout?: number;
+  /** Entity ID for authentication */
+  entityId?: UUID | string;
+  /** API key for authentication */
+  apiKey?: string;
 }
 
 export interface SendMessagePayload {
@@ -88,6 +92,10 @@ export class SocketIOClientFixture {
       autoConnect: false,
       transports: this.options.transports,
       timeout: this.options.timeout,
+      auth: {
+        entityId: this.options.entityId,
+        apiKey: this.options.apiKey,
+      },
     });
 
     return new Promise((resolve, reject) => {

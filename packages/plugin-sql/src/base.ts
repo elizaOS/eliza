@@ -15,7 +15,6 @@ import {
   type Task,
   TaskMetadata,
   type UUID,
-  type User,
   type World,
   type AgentRunSummary,
   type AgentRunSummaryResult,
@@ -1041,16 +1040,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       throw new Error('offset must be a non-negative number');
     }
 
-    return this.withDatabase(async () => {
+    return this.withEntityContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
 
       if (start) {
         conditions.push(gte(memoryTable.createdAt, new Date(start)));
       }
 
-      if (entityId) {
-        conditions.push(eq(memoryTable.entityId, entityId));
-      }
+      // Note: entityId WHERE filter removed - RLS handles access control
+      // This allows seeing ALL messages in accessible rooms (user + agent responses)
 
       if (roomId) {
         conditions.push(eq(memoryTable.roomId, roomId));
@@ -1073,7 +1071,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         conditions.push(eq(memoryTable.agentId, agentId));
       }
 
-      const baseQuery = this.db
+      const baseQuery = tx
         .select({
           memory: {
             id: memoryTable.id,
@@ -1445,20 +1443,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns {Promise<Log[]>} A Promise that resolves to an array of logs.
    */
   async getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
     offset?: number;
   }): Promise<Log[]> {
     const { entityId, roomId, type, count, offset } = params;
-    return this.withDatabase(async () => {
-      const result = await this.db
+
+    // Use withEntityContext for RLS only when entityId is provided
+    // Without entityId, bypass RLS to see all logs (for non-RLS mode)
+    // Note: No WHERE filter on entityId - RLS handles access control automatically
+    return this.withEntityContext(entityId ?? null, async (tx) => {
+      const result = await tx
         .select()
         .from(logTable)
         .where(
           and(
-            eq(logTable.entityId, entityId),
             roomId ? eq(logTable.roomId, roomId) : undefined,
             type ? eq(logTable.type, type) : undefined
           )
@@ -1467,7 +1468,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(count ?? 10)
         .offset(offset ?? 0);
 
-      const logs = result.map((log) => ({
+      const logs = result.map((log: any) => ({
         ...log,
         id: log.id as UUID,
         entityId: log.entityId as UUID,
@@ -1489,13 +1490,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       status?: RunStatus | 'all';
       from?: number;
       to?: number;
+      entityId?: UUID;
     } = {}
   ): Promise<AgentRunSummaryResult> {
     const limit = Math.min(Math.max(params.limit ?? 20, 1), 100);
     const fromDate = typeof params.from === 'number' ? new Date(params.from) : undefined;
     const toDate = typeof params.to === 'number' ? new Date(params.to) : undefined;
 
-    return this.withDatabase(async () => {
+    // Use withEntityContext for RLS when entityId is provided
+    return this.withEntityContext(params.entityId ?? null, async (tx) => {
       const runMap = new Map<string, AgentRunSummary>();
 
       const conditions: SQL<unknown>[] = [
@@ -1503,6 +1506,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         sql`${logTable.body} ? 'runId'`,
         eq(roomTable.agentId, this.agentId),
       ];
+
+      // Note: No WHERE filter on entityId - RLS handles access control automatically
 
       if (params.roomId) {
         conditions.push(eq(logTable.roomId, params.roomId));
@@ -1518,7 +1523,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
 
       const eventLimit = Math.max(limit * 20, 200);
 
-      const runEventRows = await this.db
+      const runEventRows = await tx
         .select({
           runId: sql<string>`(${logTable.body} ->> 'runId')`,
           status: sql<string | null>`(${logTable.body} ->> 'status')`,
@@ -3809,65 +3814,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         },
         ids
       );
-    });
-  }
-
-  // User management methods
-
-  async getUserByEmail(email: string): Promise<User | null> {
-    return this.withDatabase(async () => {
-      const { userTable } = await import('./schema');
-      const rows = await this.db
-        .select()
-        .from(userTable)
-        .where(eq(userTable.email, email.toLowerCase()))
-        .limit(1);
-
-      return rows.length > 0 ? (rows[0] as User) : null;
-    });
-  }
-
-  async getUserByUsername(username: string): Promise<User | null> {
-    return this.withDatabase(async () => {
-      const { userTable } = await import('./schema');
-      const rows = await this.db
-        .select()
-        .from(userTable)
-        .where(eq(userTable.username, username))
-        .limit(1);
-
-      return rows.length > 0 ? (rows[0] as User) : null;
-    });
-  }
-
-  async getUserById(id: UUID): Promise<User | null> {
-    return this.withDatabase(async () => {
-      const { userTable } = await import('./schema');
-      const rows = await this.db
-        .select()
-        .from(userTable)
-        .where(eq(userTable.id, id))
-        .limit(1);
-
-      return rows.length > 0 ? (rows[0] as User) : null;
-    });
-  }
-
-  async createUser(user: User): Promise<User> {
-    return this.withDatabase(async () => {
-      const { userTable } = await import('./schema');
-      await this.db.insert(userTable).values(user);
-      return user;
-    });
-  }
-
-  async updateUserLastLogin(userId: UUID): Promise<void> {
-    return this.withDatabase(async () => {
-      const { userTable } = await import('./schema');
-      await this.db
-        .update(userTable)
-        .set({ lastLoginAt: new Date() })
-        .where(eq(userTable.id, userId));
     });
   }
 }

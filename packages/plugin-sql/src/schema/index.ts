@@ -11,7 +11,6 @@ export { relationshipTable } from './relationship';
 export { roomTable } from './room';
 export { worldTable } from './world';
 export { taskTable } from './tasks';
-export { userTable } from './user';
 
 // Central database tables
 export { messageServerTable } from './messageServer';

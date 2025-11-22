@@ -14,6 +14,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import clientLogger from '@/lib/logger';
+import { getEntityId } from '@/lib/utils';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
 
@@ -90,9 +91,12 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       const elizaClient = getElizaClient();
+      // Include the current user's entityId as a participant so they can access the channel
+      const currentUserEntityId = getEntityId();
+      const allParticipantIds = [...participantIds, currentUserEntityId];
       return await elizaClient.messaging.createGroupChannel({
         name,
-        participantIds: participantIds,
+        participantIds: allParticipantIds,
         metadata: {
           type: ChannelType.GROUP,
           server_id: serverId,
@@ -107,7 +111,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         queryClient.invalidateQueries({ queryKey: ['channels'] });
         onClose();
         setTimeout(() => {
-          navigate(`/group/${response.id}?serverId=${serverId}`);
+          navigate(`/group/${response.id}?messageServerId=${serverId}`);
         }, 100);
       }
     },
@@ -134,7 +138,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
       onClose();
       setTimeout(() => {
-        navigate(`/group/${channelId}?serverId=${serverId}`);
+        navigate(`/group/${channelId}?messageServerId=${serverId}`);
       }, 100);
     },
     onError: (error) => {

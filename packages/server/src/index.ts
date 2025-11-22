@@ -22,7 +22,7 @@ import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
 import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
-import { apiKeyAuthMiddleware, jwtAuthMiddleware } from './middleware/index.js';
+import { apiKeyAuthMiddleware } from './middleware/index.js';
 import {
   messageBusConnectorPlugin,
   setGlobalElizaOS,
@@ -763,20 +763,14 @@ export class AgentServer {
       logger.info('Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
 
       // Optional Authentication Middleware
-      logger.info('[Auth] Configuring authentication middleware chain...');
+      logger.info('[Auth] Configuring authentication middleware...');
 
       // Active if ELIZA_SERVER_AUTH_TOKEN is configured
       this.app.use('/api', apiKeyAuthMiddleware);
 
-      // Active if ENABLE_DATA_ISOLATION=true
-      this.app.use('/api', jwtAuthMiddleware);
-
-      logger.info('[Auth] Authentication middleware chain configured');
+      logger.info('[Auth] Authentication middleware configured');
       logger.warn(
         `[Auth] API Key: ${process.env.ELIZA_SERVER_AUTH_TOKEN ? 'ENABLED' : 'DISABLED'}`
-      );
-      logger.warn(
-        `[Auth] JWT: ${process.env.ENABLE_DATA_ISOLATION === 'true' ? 'ENABLED' : 'DISABLED'}`
       );
 
       // Determine if web UI should be enabled

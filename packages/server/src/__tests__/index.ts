@@ -88,14 +88,6 @@ export {
 } from './test-utils/environment';
 export type { EnvironmentSnapshot } from './test-utils/environment';
 
-export { JWTTestHelper } from './test-utils/jwt-helper';
-export type {
-  Ed25519TokenOptions,
-  Ed25519TokenResult,
-  SecretTokenOptions,
-  SecretTokenResult,
-} from './test-utils/jwt-helper';
-
 // ============================================================================
 // Re-exports from @elizaos/core for convenience
 // ============================================================================

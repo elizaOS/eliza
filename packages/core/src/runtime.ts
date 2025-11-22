@@ -144,6 +144,7 @@ export class AgentRuntime implements IAgentRuntime {
   private initRejecter: ((reason?: any) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
+  private currentRoomId?: UUID; // Track the current room for logging
   private currentActionContext?: {
     // Track current action execution context
     actionName: string;
@@ -221,9 +222,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   /**
    * Start a new run for tracking prompts
+   * @param roomId Optional room ID to associate logs with this conversation
    */
-  startRun(): UUID {
+  startRun(roomId?: UUID): UUID {
     this.currentRunId = this.createRunId();
+    this.currentRoomId = roomId;
     return this.currentRunId;
   }
 
@@ -232,6 +235,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   endRun(): void {
     this.currentRunId = undefined;
+    this.currentRoomId = undefined;
   }
 
   /**
@@ -2269,7 +2273,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Keep the existing model logging for backward compatibility
       this.adapter.log({
         entityId: this.agentId,
-        roomId: this.agentId,
+        roomId: this.currentRoomId ?? this.agentId,
         body: {
           modelType,
           modelKey,
@@ -2768,7 +2772,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.countMemories(roomId, unique, tableName);
   }
   async getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -3004,26 +3008,5 @@ export class AgentRuntime implements IAgentRuntime {
 
   hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
     return this.elizaOS !== undefined;
-  }
-
-  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
-  async getUserByEmail(email: string): Promise<any | null> {
-    return await this.adapter.getUserByEmail(email);
-  }
-
-  async getUserByUsername(username: string): Promise<any | null> {
-    return await this.adapter.getUserByUsername(username);
-  }
-
-  async getUserById(id: UUID): Promise<any | null> {
-    return await this.adapter.getUserById(id);
-  }
-
-  async createUser(user: any): Promise<any> {
-    return await this.adapter.createUser(user);
-  }
-
-  async updateUserLastLogin(userId: UUID): Promise<void> {
-    return await this.adapter.updateUserLastLogin(userId);
   }
 }
