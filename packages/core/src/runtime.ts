@@ -2105,8 +2105,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Helper to get a setting value with fallback chain
     const getSettingWithFallback = (
-      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
-      legacyKey: string
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey?: string
     ): number | null => {
       // Try model-specific setting first
       if (modelType) {
@@ -2132,12 +2132,14 @@ export class AgentRuntime implements IAgentRuntime {
         // If default value exists but is invalid, continue to legacy
       }
 
-      // Fall back to legacy setting for backwards compatibility
-      const legacyValue = this.getSetting(legacyKey);
-      if (legacyValue !== null && legacyValue !== undefined) {
-        const numValue = Number(legacyValue);
-        if (!isNaN(numValue)) {
-          return numValue;
+      // Fall back to legacy setting for backwards compatibility (if provided)
+      if (legacyKey) {
+        const legacyValue = this.getSetting(legacyKey);
+        if (legacyValue !== null && legacyValue !== undefined) {
+          const numValue = Number(legacyValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
         }
       }
 
@@ -2147,6 +2149,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Get settings with proper fallback chain
     const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
     const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const topP = getSettingWithFallback('TOP_P');
     const frequencyPenalty = getSettingWithFallback(
       'FREQUENCY_PENALTY',
       MODEL_SETTINGS.MODEL_FREQ_PENALTY
@@ -2159,6 +2162,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Add settings if they exist
     if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
     if (temperature !== null) modelSettings.temperature = temperature;
+    if (topP !== null) modelSettings.topP = topP;
     if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
     if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
 
