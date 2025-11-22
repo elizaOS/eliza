@@ -90,6 +90,14 @@ export interface IDatabaseAdapter {
 
   getConnection(): Promise<any>;
 
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * @param entityId - The entity ID to set as context
+   * @param callback - The callback to execute within the entity context
+   * @returns The result of the callback
+   */
+  withEntityContext?<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T>;
+
   getAgent(agentId: UUID): Promise<Agent | null>;
 
   /** Get all agents */
@@ -176,7 +184,7 @@ export interface IDatabaseAdapter {
   }): Promise<void>;
 
   getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -191,6 +199,7 @@ export interface IDatabaseAdapter {
     status?: RunStatus | 'all';
     from?: number;
     to?: number;
+    entityId?: UUID;
   }): Promise<AgentRunSummaryResult>;
 
   searchMemories(params: {
@@ -248,6 +257,8 @@ export interface IDatabaseAdapter {
   getParticipantsForEntity(entityId: UUID): Promise<Participant[]>;
 
   getParticipantsForRoom(roomId: UUID): Promise<UUID[]>;
+
+  isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean>;
 
   addParticipantsRoom(entityIds: UUID[], roomId: UUID): Promise<boolean>;
 

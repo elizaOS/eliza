@@ -80,7 +80,7 @@ describe('entities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-id-123' as UUID,
-        serverId: 'server-123' as UUID,
+        messageServerId: 'server-123' as UUID,
         metadata: {
           roles: {},
         },
@@ -142,7 +142,7 @@ describe('entities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-id-123' as UUID,
-        serverId: 'server-123' as UUID,
+        messageServerId: 'server-123' as UUID,
         metadata: {
           roles: {
             'admin-entity': 'ADMIN',
@@ -243,7 +243,7 @@ describe('entities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-id-123' as UUID,
-        serverId: 'server-123' as UUID,
+        messageServerId: 'server-123' as UUID,
         metadata: {
           roles: {
             'admin-entity': 'ADMIN',

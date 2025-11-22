@@ -10,14 +10,14 @@ import { describe, it, expect } from 'bun:test';
 describe('CLI API Exports', () => {
   describe('AgentServer Class', () => {
     it('should export AgentServer class', async () => {
-      const { AgentServer } = await import('../../');
+      const { AgentServer } = await import('../../../index');
 
       expect(AgentServer).toBeDefined();
       expect(typeof AgentServer).toBe('function');
     });
 
     it('should have required methods', async () => {
-      const { AgentServer } = await import('../../');
+      const { AgentServer } = await import('../../../index');
       const server = new AgentServer();
 
       // Check methods that CLI uses
@@ -30,7 +30,7 @@ describe('CLI API Exports', () => {
     });
 
     it('should have isInitialized property', async () => {
-      const { AgentServer } = await import('../../');
+      const { AgentServer } = await import('../../../index');
       const server = new AgentServer();
 
       expect(server.hasOwnProperty('isInitialized')).toBe(true);
@@ -40,14 +40,14 @@ describe('CLI API Exports', () => {
 
   describe('Loader Functions', () => {
     it('should export loadCharacterTryPath', async () => {
-      const { loadCharacterTryPath } = await import('../../');
+      const { loadCharacterTryPath } = await import('../../../index');
 
       expect(loadCharacterTryPath).toBeDefined();
       expect(typeof loadCharacterTryPath).toBe('function');
     });
 
     it('should export jsonToCharacter', async () => {
-      const { jsonToCharacter } = await import('../../');
+      const { jsonToCharacter } = await import('../../../index');
 
       expect(jsonToCharacter).toBeDefined();
       expect(typeof jsonToCharacter).toBe('function');
@@ -60,7 +60,7 @@ describe('CLI API Exports', () => {
         loadCharacter,
         hasValidRemoteUrls,
         loadCharacters,
-      } = await import('../../');
+      } = await import('../../../index');
 
       expect(tryLoadFile).toBeDefined();
       expect(loadCharactersFromUrl).toBeDefined();
@@ -72,14 +72,14 @@ describe('CLI API Exports', () => {
 
   describe('Utility Functions', () => {
     it('should export expandTildePath', async () => {
-      const { expandTildePath } = await import('../../');
+      const { expandTildePath } = await import('../../../index');
 
       expect(expandTildePath).toBeDefined();
       expect(typeof expandTildePath).toBe('function');
     });
 
     it('should export resolvePgliteDir', async () => {
-      const { resolvePgliteDir } = await import('../../');
+      const { resolvePgliteDir } = await import('../../../index');
 
       expect(resolvePgliteDir).toBeDefined();
       expect(typeof resolvePgliteDir).toBe('function');

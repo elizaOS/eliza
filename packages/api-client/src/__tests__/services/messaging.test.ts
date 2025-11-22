@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { MessagingService } from '../../services/messaging';
 import { ApiClientConfig } from '../../types/base';
+import { stringToUuid } from '@elizaos/core';
 
 describe('MessagingService', () => {
   let messagingService: MessagingService;
@@ -121,7 +122,7 @@ describe('MessagingService', () => {
     const mockParams = {
       name: 'New Channel',
       type: 'public' as any,
-      serverId: 'server-123' as any,
+      messageServerId: stringToUuid('server-123'),
       metadata: { description: 'A new channel' },
     };
 
@@ -132,11 +133,11 @@ describe('MessagingService', () => {
       const result = await messagingService.createChannel(mockParams);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        '/api/messaging/central-channels',
+        '/api/messaging/channels',
         {
           name: mockParams.name,
           type: mockParams.type,
-          server_id: mockParams.serverId,
+          message_server_id: mockParams.messageServerId,
           metadata: mockParams.metadata,
         }
       );
@@ -158,10 +159,10 @@ describe('MessagingService', () => {
       const result = await messagingService.createGroupChannel(mockParams);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        '/api/messaging/central-channels',
+        '/api/messaging/channels',
         {
           name: mockParams.name,
-          server_id: '00000000-0000-0000-0000-000000000000',
+          message_server_id: '00000000-0000-0000-0000-000000000000',
           participantCentralUserIds: mockParams.participantIds,
           type: 'group', // Extracted from metadata
         }
@@ -202,7 +203,7 @@ describe('MessagingService', () => {
       const result = await messagingService.getChannelDetails(channelId);
 
       expect((messagingService as any).get).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/details`
+        `/api/messaging/channels/${channelId}/details`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -218,7 +219,7 @@ describe('MessagingService', () => {
       const result = await messagingService.getChannelParticipants(channelId);
 
       expect((messagingService as any).get).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/participants`
+        `/api/messaging/channels/${channelId}/participants`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -235,7 +236,7 @@ describe('MessagingService', () => {
       const result = await messagingService.addAgentToChannel(channelId, agentId);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/agents`,
+        `/api/messaging/channels/${channelId}/agents`,
         { agentId }
       );
       expect(result).toEqual(mockResponse);
@@ -253,7 +254,7 @@ describe('MessagingService', () => {
       const result = await messagingService.removeAgentFromChannel(channelId, agentId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/agents/${agentId}`
+        `/api/messaging/channels/${channelId}/agents/${agentId}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -269,7 +270,7 @@ describe('MessagingService', () => {
       const result = await messagingService.deleteChannel(channelId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}`
+        `/api/messaging/channels/${channelId}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -285,7 +286,7 @@ describe('MessagingService', () => {
       const result = await messagingService.clearChannelHistory(channelId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/messages`
+        `/api/messaging/channels/${channelId}/messages`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -303,7 +304,7 @@ describe('MessagingService', () => {
       const result = await messagingService.postMessage(channelId, content, metadata);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/messages`,
+        `/api/messaging/channels/${channelId}/messages`,
         { content, metadata }
       );
       expect(result).toEqual(mockResponse);
@@ -320,7 +321,7 @@ describe('MessagingService', () => {
       const result = await messagingService.getChannelMessages(channelId);
 
       expect((messagingService as any).get).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/messages`,
+        `/api/messaging/channels/${channelId}/messages`,
         { params: undefined }
       );
       expect(result).toEqual(mockResponse);
@@ -333,7 +334,7 @@ describe('MessagingService', () => {
       await messagingService.getChannelMessages(channelId, params);
 
       expect((messagingService as any).get).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/messages`,
+        `/api/messaging/channels/${channelId}/messages`,
         { params }
       );
     });
@@ -366,7 +367,7 @@ describe('MessagingService', () => {
       const result = await messagingService.deleteMessage(channelId, messageId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/central-channels/${channelId}/messages/${messageId}`
+        `/api/messaging/channels/${channelId}/messages/${messageId}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -416,9 +417,9 @@ describe('MessagingService', () => {
       const mockResponse = { servers: [{ id: 'server-1', name: 'Test Server' }] };
       (messagingService as any).get.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.listServers();
+      const result = await messagingService.listMessageServers();
 
-      expect((messagingService as any).get).toHaveBeenCalledWith('/api/messaging/central-servers');
+      expect((messagingService as any).get).toHaveBeenCalledWith('/api/messaging/message-servers');
       expect(result).toEqual(mockResponse);
     });
   });
@@ -430,10 +431,10 @@ describe('MessagingService', () => {
       const mockResponse = { channels: [{ id: 'channel-1', name: 'General' }] };
       (messagingService as any).get.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.getServerChannels(serverId);
+      const result = await messagingService.getMessageServerChannels(serverId);
 
       expect((messagingService as any).get).toHaveBeenCalledWith(
-        `/api/messaging/central-servers/${serverId}/channels`
+        `/api/messaging/message-servers/${serverId}/channels`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -451,10 +452,10 @@ describe('MessagingService', () => {
       const mockResponse = { id: 'server-new', name: 'New Server' };
       (messagingService as any).post.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.createServer(mockParams);
+      const result = await messagingService.createMessageServer(mockParams);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        '/api/messaging/servers',
+        '/api/messaging/message-servers',
         mockParams
       );
       expect(result).toEqual(mockResponse);
@@ -474,10 +475,10 @@ describe('MessagingService', () => {
       const mockResponse = { synced: 2 };
       (messagingService as any).post.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.syncServerChannels(serverId, mockParams);
+      const result = await messagingService.syncMessageServerChannels(serverId, mockParams);
 
       expect((messagingService as any).post).toHaveBeenCalledWith(
-        `/api/messaging/servers/${serverId}/sync-channels`,
+        `/api/messaging/message-servers/${serverId}/sync-channels`,
         mockParams
       );
       expect(result).toEqual(mockResponse);
@@ -491,10 +492,10 @@ describe('MessagingService', () => {
       const mockResponse = { success: true };
       (messagingService as any).delete.mockResolvedValue(mockResponse);
 
-      const result = await messagingService.deleteServer(serverId);
+      const result = await messagingService.deleteMessageServer(serverId);
 
       expect((messagingService as any).delete).toHaveBeenCalledWith(
-        `/api/messaging/servers/${serverId}`
+        `/api/messaging/message-servers/${serverId}`
       );
       expect(result).toEqual(mockResponse);
     });
@@ -504,7 +505,7 @@ describe('MessagingService', () => {
     it('should handle network errors', async () => {
       (messagingService as any).get.mockRejectedValue(new Error('Network error'));
 
-      await expect(messagingService.listServers()).rejects.toThrow('Network error');
+      await expect(messagingService.listMessageServers()).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {

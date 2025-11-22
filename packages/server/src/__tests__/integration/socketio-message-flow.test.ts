@@ -1,17 +1,16 @@
 /**
  * Integration tests for Socket.IO end-to-end message flow
- * MIGRATED to new fixtures architecture
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
-import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
-import { SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
+import { ChannelType } from '@elizaos/core';
 
-// New architecture imports
+// New architecture imports - fully using fixtures!
 import {
   TestServerFixture,
   AgentFixture,
+  SocketIOClientFixture,
   CharacterBuilder,
   stringToUuid,
 } from '../index';
@@ -22,17 +21,18 @@ function generateUniqueChannelId(): UUID {
   return stringToUuid(`test-channel-socketio-${Date.now()}-${channelIdCounter++}`);
 }
 
+const DEFAULT_MESSAGE_SERVER_ID = '00000000-0000-0000-0000-000000000000';
+
 describe('Socket.IO End-to-End Message Flow', () => {
   let serverFixture: TestServerFixture;
   let agentFixture: AgentFixture;
   let port: number;
-  let client1: ClientSocket;
-  let client2: ClientSocket;
+  let clientFixture1: SocketIOClientFixture;
+  let clientFixture2: SocketIOClientFixture;
   let mockRuntime: IAgentRuntime;
 
   beforeAll(async () => {
-    // Setup server with fixtures (replaces 80+ lines of boilerplate!)
-    // Use auto-discovery instead of fixed port to avoid conflicts in parallel tests
+    // Setup server with fixtures
     serverFixture = new TestServerFixture();
     const { port: serverPort } = await serverFixture.setup();
     port = serverPort;
@@ -50,7 +50,6 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
     // Mock the agent's processActions to avoid calling OpenAI
     mockRuntime.processActions = async (message: any, responses: any[]) => {
-      // Simulate agent responding to a message
       responses.push({
         id: 'mock-response-' + Date.now(),
         text: 'Mock response from agent',
@@ -66,211 +65,124 @@ describe('Socket.IO End-to-End Message Flow', () => {
   }, 30000);
 
   afterAll(async () => {
-    // Close all connections
-    if (client1) client1.close();
-    if (client2) client2.close();
-
-    // Cleanup with fixtures (automatic!)
     await agentFixture.cleanup();
     await serverFixture.cleanup();
   });
 
   beforeEach(() => {
-    // Create new clients for each test
-    client1 = ioClient(`http://localhost:${port}`, {
-      autoConnect: false,
-      transports: ['websocket'],
-    });
-
-    client2 = ioClient(`http://localhost:${port}`, {
-      autoConnect: false,
-      transports: ['websocket'],
-    });
+    // Create new client fixtures for each test with entityId for authentication
+    const testEntityId1 = stringToUuid('test-entity-1');
+    const testEntityId2 = stringToUuid('test-entity-2');
+    clientFixture1 = new SocketIOClientFixture(port, { entityId: testEntityId1 });
+    clientFixture2 = new SocketIOClientFixture(port, { entityId: testEntityId2 });
   });
 
-  afterEach(() => {
-    // Properly cleanup clients after each test
-    if (client1) {
-      client1.removeAllListeners();
-      if (client1.connected) client1.disconnect();
-    }
-    if (client2) {
-      client2.removeAllListeners();
-      if (client2.connected) client2.disconnect();
-    }
+  afterEach(async () => {
+    // Cleanup client fixtures
+    await SocketIOClientFixture.cleanupMany([clientFixture1, clientFixture2]);
   });
 
   describe('Connection and Channel Joining', () => {
     it('should establish connection and join channel', async () => {
-      const connectionPromise = new Promise((resolve) => {
-        client1.on('connection_established', (data) => {
-          expect(data).toHaveProperty('socketId');
-          expect(data.message).toContain('Connected to Eliza Socket.IO server');
-          resolve(data);
-        });
-      });
-
-      client1.connect();
-      await connectionPromise;
-
-      // Join a channel
-      const joinPromise = new Promise((resolve) => {
-        client1.on('channel_joined', (data) => {
-          expect(data).toHaveProperty('channelId');
-          expect(data.message).toContain('successfully joined');
-          resolve(data);
-        });
-      });
+      const client = await clientFixture1.connect();
+      expect(client.connected).toBe(true);
 
       const channelId = generateUniqueChannelId();
-      client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
+      await clientFixture1.joinChannel({
         channelId,
         entityId: 'user-123',
-        serverId: '00000000-0000-0000-0000-000000000000',
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
       });
-
-      await joinPromise;
+      // If we get here without error, channel was joined successfully
     });
 
     it('should allow multiple clients to join same channel', async () => {
-      // Connect both clients
-      await Promise.all([
-        new Promise((resolve) => {
-          client1.on('connection_established', resolve);
-          client1.connect();
-        }),
-        new Promise((resolve) => {
-          client2.on('connection_established', resolve);
-          client2.connect();
-        }),
-      ]);
+      // Connect both clients using fixture helper
+      await SocketIOClientFixture.connectMany([clientFixture1, clientFixture2]);
 
       const channelId = generateUniqueChannelId();
 
       // Both clients join the same channel
-      const joinPromises = Promise.all([
-        new Promise((resolve) => {
-          client1.on('channel_joined', resolve);
-          client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-            channelId,
-            entityId: 'user-1',
-            serverId: '00000000-0000-0000-0000-000000000000',
-          });
+      await Promise.all([
+        clientFixture1.joinChannel({
+          channelId,
+          entityId: 'user-1',
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         }),
-        new Promise((resolve) => {
-          client2.on('channel_joined', resolve);
-          client2.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-            channelId,
-            entityId: 'user-2',
-            serverId: '00000000-0000-0000-0000-000000000000',
-          });
+        clientFixture2.joinChannel({
+          channelId,
+          entityId: 'user-2',
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         }),
       ]);
-
-      await joinPromises;
     });
   });
 
   describe('Message Sending and Broadcasting', () => {
     it('should send message and broadcast to other clients', async () => {
       const channelId = generateUniqueChannelId();
-      const serverId = '00000000-0000-0000-0000-000000000000';
 
       // Connect and join channel for both clients
+      await SocketIOClientFixture.connectMany([clientFixture1, clientFixture2]);
       await Promise.all([
-        new Promise((resolve) => {
-          client1.on('connection_established', () => {
-            client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-              channelId,
-              entityId: 'user-1',
-              serverId,
-            });
-          });
-          client1.on('channel_joined', resolve);
-          client1.connect();
+        clientFixture1.joinChannel({
+          channelId,
+          entityId: 'user-1',
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         }),
-        new Promise((resolve) => {
-          client2.on('connection_established', () => {
-            client2.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-              channelId,
-              entityId: 'user-2',
-              serverId,
-            });
-          });
-          client2.on('channel_joined', resolve);
-          client2.connect();
+        clientFixture2.joinChannel({
+          channelId,
+          entityId: 'user-2',
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         }),
       ]);
 
       // Set up message broadcast listener on client2
-      const messageReceived = new Promise((resolve) => {
-        client2.on('messageBroadcast', (message) => {
-          expect(message).toHaveProperty('id');
-          expect(message.text).toBe('Hello from client1');
-          expect(message.senderId).toBe('123e4567-e89b-12d3-a456-426614174001');
-          expect(message.channelId).toBe(channelId);
-          resolve(message);
-        });
-      });
+      const messageReceived = clientFixture2.waitForEvent<{
+        id: string;
+        text: string;
+        senderId: string;
+        channelId: string;
+      }>('messageBroadcast');
 
       // Client1 sends a message
-      const ackReceived = new Promise((resolve) => {
-        client1.on('messageAck', (ack) => {
-          expect(ack.status).toBe('received_by_server_and_processing');
-          resolve(ack);
-        });
-      });
-
-      client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
+      const ackPromise = clientFixture1.sendMessage({
         channelId,
         senderId: '123e4567-e89b-12d3-a456-426614174001',
         senderName: 'User 1',
         message: 'Hello from client1',
-        serverId,
-        messageId: 'client-msg-1',
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
       });
 
-      await Promise.all([messageReceived, ackReceived]);
+      const [message, ack] = await Promise.all([messageReceived, ackPromise]);
+
+      expect(message).toHaveProperty('id');
+      expect(message.text).toBe('Hello from client1');
+      expect(message.senderId).toBe('123e4567-e89b-12d3-a456-426614174001');
+      expect(message.channelId).toBe(channelId);
+      expect(ack.status).toBe('received_by_server_and_processing');
     });
 
     it('should handle message with attachments', async () => {
       const channelId = generateUniqueChannelId();
-      const serverId = '00000000-0000-0000-0000-000000000000';
 
-      // Connect and join
-      await new Promise((resolve) => {
-        client1.on('connection_established', () => {
-          client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-            channelId,
-            entityId: 'user-1',
-            serverId,
-          });
-        });
-        client1.on('channel_joined', resolve);
-        client1.connect();
+      await clientFixture1.connect();
+      await clientFixture1.joinChannel({
+        channelId,
+        entityId: 'user-1',
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
       });
 
-      const ackReceived = new Promise((resolve) => {
-        client1.on('messageAck', resolve);
-      });
+      const messageBroadcast = clientFixture1.waitForEvent<{
+        attachments: Array<{ url: string; type: string }>;
+      }>('messageBroadcast');
 
-      const messageBroadcast = new Promise((resolve) => {
-        client1.on('messageBroadcast', (message) => {
-          expect(message.attachments).toHaveLength(1);
-          expect(message.attachments[0]).toEqual({
-            url: 'https://example.com/image.jpg',
-            type: 'image',
-          });
-          resolve(message);
-        });
-      });
-
-      client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
+      await clientFixture1.sendMessage({
         channelId,
         senderId: '123e4567-e89b-12d3-a456-426614174002',
         senderName: 'User 1',
         message: 'Check out this image',
-        serverId,
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         attachments: [
           {
             url: 'https://example.com/image.jpg',
@@ -279,37 +191,30 @@ describe('Socket.IO End-to-End Message Flow', () => {
         ],
       });
 
-      await Promise.all([ackReceived, messageBroadcast]);
+      const message = await messageBroadcast;
+      expect(message.attachments).toHaveLength(1);
+      expect(message.attachments[0]).toEqual({
+        url: 'https://example.com/image.jpg',
+        type: 'image',
+      });
     });
   });
 
   describe('DM Channel Creation and Messaging', () => {
     it('should auto-create DM channel and send message', async () => {
       const channelId = generateUniqueChannelId();
-      const serverId = '00000000-0000-0000-0000-000000000000';
       const user1Id = stringToUuid(`test-user-dm-1-${Date.now()}`);
       const user2Id = stringToUuid(`test-user-dm-2-${Date.now()}`);
 
-      // Connect client1
-      await new Promise((resolve) => {
-        client1.on('connection_established', resolve);
-        client1.connect();
-      });
+      await clientFixture1.connect();
 
       // Send DM message (channel doesn't exist yet)
-      const ackReceived = new Promise((resolve) => {
-        client1.on('messageAck', (ack) => {
-          expect(ack.status).toBe('received_by_server_and_processing');
-          resolve(ack);
-        });
-      });
-
-      client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
+      const ack = await clientFixture1.sendMessage({
         channelId,
         senderId: user1Id,
         senderName: 'User 1',
         message: 'Hello, this is a DM',
-        serverId,
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
         targetUserId: user2Id,
         metadata: {
           isDm: true,
@@ -317,7 +222,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
         },
       });
 
-      await ackReceived;
+      expect(ack.status).toBe('received_by_server_and_processing');
 
       // Verify channel was created by checking database
       const channel = await serverFixture.getServer().getChannelDetails(channelId as UUID);
@@ -328,138 +233,69 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
   describe('Error Handling and Edge Cases', () => {
     it('should handle invalid channel ID gracefully', async () => {
-      await new Promise((resolve) => {
-        client1.on('connection_established', resolve);
-        client1.connect();
-      });
+      await clientFixture1.connect();
 
-      const errorReceived = new Promise((resolve) => {
-        client1.on('messageError', (error) => {
-          expect(error.error).toContain('channelId is required');
-          resolve(error);
-        });
-      });
-
-      client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-        // Missing channelId
-        entityId: 'user-1',
-        serverId: '00000000-0000-0000-0000-000000000000',
-      });
-
-      await errorReceived;
+      // Use try/catch since joinChannel should reject
+      await expect(
+        clientFixture1.joinChannel({
+          channelId: '' as UUID, // Invalid - empty
+          entityId: 'user-1',
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
+        })
+      ).rejects.toThrow();
     });
 
     it('should handle message without required fields', async () => {
-      const channelId = generateUniqueChannelId();
+      await clientFixture1.connect();
 
-      await new Promise((resolve) => {
-        client1.on('connection_established', resolve);
-        client1.connect();
-      });
-
-      const errorReceived = new Promise((resolve) => {
-        client1.on('messageError', (error) => {
-          expect(error.error).toContain('required');
-          resolve(error);
-        });
-      });
-
-      client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
-        channelId,
-        // Missing senderId and message
-      });
-
-      await errorReceived;
+      // sendMessage requires message field, so this should fail
+      await expect(
+        clientFixture1.sendMessage({
+          channelId: generateUniqueChannelId(),
+          senderId: '123e4567-e89b-12d3-a456-426614174001',
+          message: '', // Empty message
+          messageServerId: DEFAULT_MESSAGE_SERVER_ID,
+        })
+      ).rejects.toThrow();
     });
 
     it('should handle disconnection and cleanup', async () => {
       const channelId = generateUniqueChannelId();
 
-      await new Promise((resolve) => {
-        client1.on('connection_established', () => {
-          client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
-            channelId,
-            entityId: 'user-1',
-            serverId: '00000000-0000-0000-0000-000000000000',
-          });
-        });
-        client1.on('channel_joined', resolve);
-        client1.connect();
+      await clientFixture1.connect();
+      await clientFixture1.joinChannel({
+        channelId,
+        entityId: 'user-1',
+        messageServerId: DEFAULT_MESSAGE_SERVER_ID,
       });
 
       // Disconnect
-      const disconnectPromise = new Promise((resolve) => {
-        client1.on('disconnect', resolve);
-        client1.disconnect();
-      });
-
-      await disconnectPromise;
-      expect(client1.connected).toBe(false);
+      clientFixture1.disconnect();
+      expect(clientFixture1.getClient().connected).toBe(false);
     });
   });
 
   describe('Log Streaming', () => {
     it('should subscribe to log stream and receive filtered logs', async () => {
-      await new Promise((resolve) => {
-        client1.on('connection_established', resolve);
-        client1.connect();
-      });
+      await clientFixture1.connect();
 
-      // Subscribe to logs
-      const subscriptionConfirmed = new Promise((resolve) => {
-        client1.on('log_subscription_confirmed', (data) => {
-          expect(data.subscribed).toBe(true);
-          resolve(data);
-        });
-      });
-
-      client1.emit('subscribe_logs');
-      await subscriptionConfirmed;
-
-      // Update filters
-      const filtersUpdated = new Promise((resolve) => {
-        client1.on('log_filters_updated', (data) => {
-          expect(data.success).toBe(true);
-          expect(data.filters).toMatchObject({
-            agentName: 'SocketIO Test Agent',
-            level: 'info',
-          });
-          resolve(data);
-        });
-      });
-
-      client1.emit('update_log_filters', {
+      // Subscribe to logs using fixture method
+      await clientFixture1.subscribeToLogs({
         agentName: 'SocketIO Test Agent',
         level: 'info',
       });
 
-      await filtersUpdated;
-
-      // TODO: Test actual log streaming when logs are generated
+      // If we get here, subscription was successful
     });
 
     it('should unsubscribe from log stream', async () => {
-      await new Promise((resolve) => {
-        client1.on('connection_established', resolve);
-        client1.connect();
-      });
+      await clientFixture1.connect();
 
       // Subscribe first
-      await new Promise((resolve) => {
-        client1.on('log_subscription_confirmed', resolve);
-        client1.emit('subscribe_logs');
-      });
+      await clientFixture1.subscribeToLogs();
 
       // Then unsubscribe
-      const unsubscribeConfirmed = new Promise((resolve) => {
-        client1.on('log_subscription_confirmed', (data) => {
-          expect(data.subscribed).toBe(false);
-          resolve(data);
-        });
-      });
-
-      client1.emit('unsubscribe_logs');
-      await unsubscribeConfirmed;
+      await clientFixture1.unsubscribeFromLogs();
     });
   });
 });

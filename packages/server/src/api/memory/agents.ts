@@ -33,6 +33,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const includeEmbedding = req.query.includeEmbedding === 'true';
       const tableName = (req.query.tableName as string) || 'messages';
 
+      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+
       // Convert channelId to agent's unique roomId
       const roomId = createUniqueUuid(runtime, channelId);
       logger.info(
@@ -44,6 +46,7 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         roomId,
         count: limit,
         end: before,
+        entityId: entityId || undefined,
       });
 
       const cleanMemories = includeEmbedding
@@ -86,6 +89,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
 
+      // Get entityId from X-Entity-Id header for RLS context
+      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+
       // Handle both roomId and channelId parameters
       let roomIdToUse: UUID | undefined;
 
@@ -113,6 +119,7 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         agentId,
         tableName,
         roomId: roomIdToUse,
+        entityId: entityId || undefined,
       });
 
       const cleanMemories = includeEmbedding

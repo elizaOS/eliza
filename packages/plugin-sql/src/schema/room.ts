@@ -27,15 +27,15 @@ export const roomTable = pgTable('rooms', {
   }),
   source: text('source').notNull(),
   type: text('type').notNull(),
-  serverId: text('serverId'),
+  messageServerId: uuid('message_server_id'),
   worldId: uuid('worldId'), // no guarantee that world exists, it is optional for now
   // .references(() => worldTable.id, {
   //   onDelete: 'cascade',
   // }),
   name: text('name'),
   metadata: jsonb('metadata'),
-  channelId: text('channelId'),
-  createdAt: timestamp('createdAt')
+  channelId: text('channel_id'),
+  createdAt: timestamp('created_at')
     .default(sql`now()`)
     .notNull(),
 });

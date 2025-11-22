@@ -10,7 +10,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import SocketIOManager from '@/lib/socketio-manager';
 import { updateApiClientApiKey } from '@/lib/api-client-config';
-// Eliza client refresh functionality removed (not needed with direct client)
 
 export const connectionStatusActions = {
   setUnauthorized: (message: string) => {
@@ -43,7 +42,6 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
   const [status, setStatus] = useState<ConnectionStatusType>('loading');
   const [error, setError] = useState<string | null>(null);
   const isFirstConnect = useRef(true);
-  const socketManager = SocketIOManager.getInstance();
 
   const setUnauthorizedFromApi = useCallback(
     (message: string) => {
@@ -70,27 +68,19 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
             variant: 'destructive',
           });
         }
-      } else {
-        if (status === 'error' && error?.includes('offline')) {
-        }
       }
     },
-    [status, error, toast]
+    [status, toast]
   );
 
   const refreshApiClient = useCallback((newApiKey?: string | null) => {
     try {
-      // Update localStorage if a new API key is provided
       if (newApiKey !== undefined) {
         updateApiClientApiKey(newApiKey);
       }
-
-      // Refresh the ElizaClient instance with new configuration
-      // Client refresh not needed with direct client pattern
-
       console.log('API client refreshed with new configuration');
-    } catch (error) {
-      console.error('Failed to refresh API client:', error);
+    } catch (err) {
+      console.error('Failed to refresh API client:', err);
     }
   }, []);
 
@@ -100,9 +90,12 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
   }, [setUnauthorizedFromApi, setOfflineStatusFromProvider]);
 
   useEffect(() => {
+    const socketManager = SocketIOManager.getInstance();
+
     const onConnect = () => {
       setStatus('connected');
       setError(null);
+
       if (connectionStatusActions.setOfflineStatus) {
         connectionStatusActions.setOfflineStatus(false);
       }
@@ -146,7 +139,11 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
     const onUnauthorized = (reason: string) => {
       setStatus('unauthorized');
       setError(`Unauthorized: ${reason}`);
-      toast({ title: 'Unauthorized', description: 'Please log in again.', variant: 'destructive' });
+      toast({
+        title: 'Authorization Required',
+        description: 'Please provide a valid API key.',
+        variant: 'destructive'
+      });
     };
 
     socketManager.on('connect', onConnect);
@@ -168,7 +165,7 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
       socketManager.off('connect_error', onConnectError);
       socketManager.off('unauthorized', onUnauthorized);
     };
-  }, [toast, socketManager, setOfflineStatusFromProvider]);
+  }, [toast, setOfflineStatusFromProvider]);
 
   return (
     <ConnectionContext.Provider

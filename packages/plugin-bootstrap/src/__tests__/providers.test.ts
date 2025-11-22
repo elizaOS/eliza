@@ -435,14 +435,14 @@ describe('Role Provider', () => {
 
     (mockRuntime.getRoom as any).mockResolvedValue({
       id: 'default-room' as UUID,
-      serverId: 'default-server' as UUID,
+      messageServerId: 'default-server' as UUID,
       type: ChannelType.GROUP,
       source: 'discord', // Added source for entity metadata access
     });
 
     (mockRuntime.getWorld as any).mockResolvedValue({
       id: 'default-world' as UUID,
-      serverId: 'default-server' as UUID,
+      messageServerId: 'default-server' as UUID,
       name: 'Default Test World',
       metadata: {
         ownership: { ownerId: 'owner-user-id' as UUID },
@@ -456,7 +456,7 @@ describe('Role Provider', () => {
     mockState.data = {
       room: {
         id: 'state-room-id' as UUID,
-        serverId: 'state-server-id' as UUID,
+        messageServerId: 'state-server-id' as UUID,
         type: ChannelType.GROUP,
         source: 'discord', // Added source
       },
@@ -475,7 +475,7 @@ describe('Role Provider', () => {
     mockState.data = {
       room: {
         id: 'room-for-roles-simple-test' as UUID,
-        serverId: serverId,
+        messageServerId: serverId,
         type: ChannelType.GROUP,
         source: 'discord',
       },
@@ -488,7 +488,7 @@ describe('Role Provider', () => {
       // Return world data for any world ID since we can't control createUniqueUuid
       return {
         id: id,
-        serverId: serverId,
+        messageServerId: serverId,
         name: 'Role Test World Simple',
         metadata: {
           ownership: { ownerId: 'any-owner-simple' as UUID },
@@ -554,7 +554,7 @@ describe('Role Provider', () => {
     mockMessage.roomId = mockRoomId;
     (mockRuntime.getRoom as any).mockResolvedValue({
       id: mockRoomId,
-      serverId: mockServerId,
+      messageServerId: mockServerId,
       type: ChannelType.GROUP,
       source: 'discord',
     });
@@ -564,7 +564,7 @@ describe('Role Provider', () => {
       // Return world data for any world ID since we can't control createUniqueUuid
       return {
         id: id,
-        serverId: mockServerId,
+        messageServerId: mockServerId,
         name: 'Test World No Roles',
         metadata: {
           ownership: { ownerId: 'some-owner' as UUID },
@@ -642,7 +642,7 @@ describe('Settings Provider', () => {
     // Mock getWorld to provide world data
     mockRuntime.getWorld = mock().mockResolvedValue({
       id: 'world-1' as UUID,
-      serverId: 'server-1',
+      messageServerId: 'server-1',
       name: 'Test World',
     });
   });

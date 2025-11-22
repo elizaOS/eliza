@@ -49,7 +49,11 @@ export type World = {
   id: UUID;
   name?: string;
   agentId: UUID;
-  serverId: string;
+  messageServerId?: UUID;
+  /**
+   * @deprecated Use messageServerId instead. This alias is kept for backward compatibility.
+   */
+  serverId?: UUID;
   metadata?: {
     ownership?: {
       ownerId: string;
@@ -82,7 +86,11 @@ export type Room = {
   source: string;
   type: ChannelType;
   channelId?: string;
-  serverId?: string;
+  messageServerId?: UUID;
+  /**
+   * @deprecated Use messageServerId instead. This alias is kept for backward compatibility.
+   */
+  serverId?: UUID;
   worldId?: UUID;
   metadata?: Metadata;
 };

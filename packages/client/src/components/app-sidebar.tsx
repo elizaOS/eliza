@@ -38,7 +38,7 @@ import {
 import { useDeleteChannel } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger'; // Added import
 import { useQueryClient } from '@tanstack/react-query'; // Import useQueryClient
-import { Book, Cog, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
+import { Book, Cog, LogIn, LogOut, Plus, TerminalIcon, Trash2, Users } from 'lucide-react'; // Added Hash for channels
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
 import {
@@ -155,7 +155,7 @@ const GroupRow = ({
 
   return (
     <SidebarMenuItem>
-      <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+      <NavLink to={`/group/${channel.id}?messageServerId=${serverId}`} className="flex-1">
         <SidebarMenuButton
           isActive={active}
           className="px-2 py-2 my-1 h-full rounded justify-between cursor-pointer"
@@ -376,7 +376,7 @@ const ChannelsForServer = ({
           {groupChannels.map((channel) => (
             <SidebarMenuItem key={channel.id} className="h-12 group">
               <div className="flex items-center gap-1 w-full">
-                <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+                <NavLink to={`/group/${channel.id}?messageServerId=${serverId}`} className="flex-1">
                   <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded cursor-pointer">
                     <div className="flex items-center gap-3">
                       <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}

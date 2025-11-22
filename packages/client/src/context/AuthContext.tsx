@@ -5,13 +5,26 @@ import clientLogger from '@/lib/logger';
 
 interface AuthContextType {
   openApiKeyDialog: () => void;
+  getApiKey: () => string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getLocalStorageApiKey = () =>
+  typeof window === 'undefined' ? 'eliza-api-key' : `eliza-api-key-${window.location.origin}`;
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
+
+  const getApiKey = useCallback(() => {
+    try {
+      return localStorage.getItem(getLocalStorageApiKey());
+    } catch (err) {
+      clientLogger.error('[Auth] Unable to read API key from localStorage', err);
+      return null;
+    }
+  }, []);
 
   const openApiKeyDialog = useCallback(() => {
     setIsApiKeyDialogOpen(true);
@@ -24,7 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [queryClient]);
 
   return (
-    <AuthContext.Provider value={{ openApiKeyDialog }}>
+    <AuthContext.Provider value={{ openApiKeyDialog, getApiKey }}>
       {children}
       <ApiKeyDialog
         open={isApiKeyDialogOpen}

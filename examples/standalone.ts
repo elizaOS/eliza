@@ -123,7 +123,7 @@ async function main(): Promise<void> {
     name: 'LocalUser',
     source: 'cli',
     channelId: 'standalone-channel',
-    serverId: 'standalone-server',
+    messageServerId: stringToUuid('standalone-server'),
     type: ChannelType.DM,
   });
 

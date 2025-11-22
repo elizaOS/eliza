@@ -39,7 +39,7 @@ import { useRequiredSecrets } from '@/hooks/use-plugin-details';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 
 type EnvVariable = {
   name: string;
@@ -95,7 +95,7 @@ export const SecretPanel = forwardRef<SecretPanelRef, SecretPanelProps>(
       const fetchGlobalEnvs = async () => {
         try {
           setIsLoadingGlobalEnvs(true);
-          const elizaClient = createElizaClient();
+          const elizaClient = getElizaClient();
           const data = await elizaClient.system.getEnvironment();
           setGlobalEnvs(data || {});
         } catch (error) {

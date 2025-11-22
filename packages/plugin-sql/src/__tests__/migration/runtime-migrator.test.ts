@@ -131,11 +131,11 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
         'logs',
         'memories',
         'message_servers',
+        'message_server_agents',
         'central_messages',
         'participants',
         'relationships',
         'rooms',
-        'server_agents',
         'tasks',
         'worlds',
       ];

@@ -30,8 +30,11 @@ export function createAgentLogsRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
+      // Get entityId from X-Entity-Id header for RLS context
+      const entityId = validateUuid(req.headers['x-entity-id'] as string) || undefined;
+
       const logs: Log[] = await runtime.getLogs({
-        entityId: agentId,
+        entityId,
         roomId: roomId ? (roomId as UUID) : undefined,
         type: type ? (type as string) : undefined,
         count: count ? Number(count) : undefined,

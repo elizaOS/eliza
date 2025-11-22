@@ -3,15 +3,17 @@
  */
 
 import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
-import { SocketIORouter } from '../../socketio';
-import { createMockAgentRuntime } from '../test-utils/mocks';
+import { SocketIORouter } from '../../../socketio';
+import { createMockAgentRuntime } from '../../test-utils/mocks';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import { EventType, SOCKET_MESSAGE_TYPE, ChannelType, logger } from '@elizaos/core';
-import type { AgentServer } from '../../index';
+import type { AgentServer } from '../../../index';
 
 // Mock types for testing
 type MockElizaOS = Pick<ElizaOS, 'getAgent' | 'getAgents'>;
-type MockAgentServer = Pick<AgentServer, 'getChannelDetails' | 'createChannel' | 'createMessage' | 'getServers'>;
+type MockAgentServer = Pick<AgentServer, 'getChannelDetails' | 'createChannel' | 'createMessage' | 'getServers' | 'isChannelParticipant'> & {
+  messageServerId?: string;
+};
 
 interface MockSocket {
   id: string;
@@ -19,6 +21,9 @@ interface MockSocket {
   emit: jest.Mock;
   disconnect: jest.Mock;
   join: jest.Mock;
+  to: jest.Mock;
+  onAny: jest.Mock;
+  data: Record<string, any>;
 }
 
 interface MockIO {
@@ -26,6 +31,8 @@ interface MockIO {
     sockets: Map<string, MockSocket>;
   };
   to: jest.Mock;
+  on: jest.Mock;
+  use: jest.Mock;
 }
 
 describe('SocketIORouter', () => {
@@ -54,6 +61,8 @@ describe('SocketIORouter', () => {
       getServers: jest
         .fn()
         .mockReturnValue(Promise.resolve([{ id: '00000000-0000-0000-0000-000000000000' }])),
+      isChannelParticipant: jest.fn().mockReturnValue(Promise.resolve(true)),
+      messageServerId: '00000000-0000-0000-0000-000000000000',
     };
 
     // Create mock socket
@@ -64,30 +73,34 @@ describe('SocketIORouter', () => {
       to: jest.fn().mockReturnThis(),
       on: jest.fn(),
       onAny: jest.fn(),
+      disconnect: jest.fn(),
+      data: { entityId: '123e4567-e89b-12d3-a456-426614174001' },
     };
 
     // Create mock IO server
     mockIO = {
       on: jest.fn(),
+      use: jest.fn((middleware) => middleware(mockSocket, jest.fn())),
+      to: jest.fn().mockReturnThis(),
       sockets: {
         sockets: new Map([[mockSocket.id, mockSocket]]),
       },
     };
 
     // Create router instance with ElizaOS and AgentServer
-    router = new SocketIORouter(mockElizaOS, mockServerInstance);
+    router = new SocketIORouter(mockElizaOS as any, mockServerInstance as any);
   });
 
 
   describe('setupListeners', () => {
     it('should setup connection listener on IO server', () => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
 
       expect(mockIO.on).toHaveBeenCalledWith('connection', expect.any(Function));
     });
 
     it('should handle new connections', () => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
 
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
@@ -111,8 +124,8 @@ describe('SocketIORouter', () => {
   });
 
   describe('handleChannelJoining', () => {
-    it('should handle channel joining with valid channelId', () => {
-      router.setupListeners(mockIO);
+    it('should handle channel joining with valid channelId', async () => {
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -124,10 +137,10 @@ describe('SocketIORouter', () => {
         channelId: '123e4567-e89b-12d3-a456-426614174000',
         agentId: 'agent-123',
         entityId: 'entity-123',
-        serverId: 'server-123',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
       };
 
-      joinHandler(payload);
+      await joinHandler(payload);
 
       expect(mockSocket.join).toHaveBeenCalledWith(payload.channelId);
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -139,8 +152,8 @@ describe('SocketIORouter', () => {
       );
     });
 
-    it('should handle channel joining with roomId for backward compatibility', () => {
-      router.setupListeners(mockIO);
+    it('should handle channel joining with roomId for backward compatibility', async () => {
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -153,7 +166,7 @@ describe('SocketIORouter', () => {
         agentId: 'agent-123',
       };
 
-      joinHandler(payload);
+      await joinHandler(payload);
 
       expect(mockSocket.join).toHaveBeenCalledWith(payload.roomId);
       expect(mockSocket.emit).toHaveBeenCalledWith(
@@ -164,8 +177,8 @@ describe('SocketIORouter', () => {
       );
     });
 
-    it('should emit ENTITY_JOINED event when entityId is provided', () => {
-      router.setupListeners(mockIO);
+    it('should emit ENTITY_JOINED event when entityId is provided', async () => {
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -175,25 +188,25 @@ describe('SocketIORouter', () => {
 
       const payload = {
         channelId: '123e4567-e89b-12d3-a456-426614174000',
-        entityId: 'entity-123',
-        serverId: 'server-123',
+        entityId: '123e4567-e89b-12d3-a456-426614174001',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
         metadata: { isDm: true },
       };
 
-      joinHandler(payload);
+      await joinHandler(payload);
 
       expect(mockRuntime.emitEvent).toHaveBeenCalledWith(
         EventType.ENTITY_JOINED,
         expect.objectContaining({
           entityId: payload.entityId,
-          worldId: payload.serverId,
+          worldId: payload.messageServerId,
           roomId: payload.channelId,
         })
       );
     });
 
-    it('should reject joining without channelId', () => {
-      router.setupListeners(mockIO);
+    it('should reject joining without channelId', async () => {
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -201,7 +214,7 @@ describe('SocketIORouter', () => {
         (call) => call[0] === String(SOCKET_MESSAGE_TYPE.ROOM_JOINING)
       )?.[1];
 
-      joinHandler({}); // No channelId
+      await joinHandler({}); // No channelId
 
       expect(mockSocket.join).not.toHaveBeenCalled();
       expect(mockSocket.emit).toHaveBeenCalledWith('messageError', {
@@ -212,7 +225,7 @@ describe('SocketIORouter', () => {
 
   describe('handleMessageSubmission', () => {
     beforeEach(() => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
     });
@@ -229,13 +242,13 @@ describe('SocketIORouter', () => {
         senderId: '987e6543-e89b-12d3-a456-426614174000',
         senderName: 'Test User',
         message: 'Hello world',
-        serverId: '00000000-0000-0000-0000-000000000000',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
       };
 
-      mockServerInstance.getChannelDetails.mockReturnValue(
+      (mockServerInstance.getChannelDetails as jest.Mock).mockReturnValue(
         Promise.resolve({ id: payload.channelId })
       );
-      mockServerInstance.createMessage.mockReturnValue(
+      (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
           id: 'msg-123',
           createdAt: new Date().toISOString(),
@@ -271,11 +284,11 @@ describe('SocketIORouter', () => {
         senderId: '987e6543-e89b-12d3-a456-426614174000',
         senderName: 'Test User',
         message: 'Hello world',
-        serverId: '00000000-0000-0000-0000-000000000000',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
       };
 
-      mockServerInstance.getChannelDetails.mockRejectedValue(new Error('Channel not found'));
-      mockServerInstance.createMessage.mockReturnValue(
+      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(new Error('Channel not found'));
+      (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
           id: 'msg-123',
           createdAt: new Date().toISOString(),
@@ -290,7 +303,7 @@ describe('SocketIORouter', () => {
       expect(mockServerInstance.createChannel).toHaveBeenCalledWith(
         expect.objectContaining({
           id: payload.channelId,
-          messageServerId: payload.serverId,
+          messageServerId: payload.messageServerId,
         }),
         [payload.senderId]
       );
@@ -309,12 +322,12 @@ describe('SocketIORouter', () => {
         targetUserId: '456e7890-e89b-12d3-a456-426614174000',
         senderName: 'Test User',
         message: 'Hello DM',
-        serverId: '00000000-0000-0000-0000-000000000000',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
         metadata: { isDm: true },
       };
 
-      mockServerInstance.getChannelDetails.mockRejectedValue(new Error('Channel not found'));
-      mockServerInstance.createMessage.mockReturnValue(
+      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(new Error('Channel not found'));
+      (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
           id: 'msg-123',
           createdAt: new Date().toISOString(),
@@ -355,7 +368,7 @@ describe('SocketIORouter', () => {
 
   describe('log streaming', () => {
     beforeEach(() => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
     });
@@ -423,7 +436,7 @@ describe('SocketIORouter', () => {
       mockSocket.emit.mockClear();
 
       // Broadcast log that matches filters
-      router.broadcastLog(mockIO, {
+      router.broadcastLog(mockIO as any, {
         agentName: 'TestAgent',
         level: 30, // info level (customLevels.info = 30)
         message: 'Test log message',
@@ -453,7 +466,7 @@ describe('SocketIORouter', () => {
       mockSocket.emit.mockClear();
 
       // Broadcast log that doesn't match filters
-      router.broadcastLog(mockIO, {
+      router.broadcastLog(mockIO as any, {
         agentName: 'OtherAgent',
         level: 20, // info level (below error)
         message: 'Test log message',
@@ -464,8 +477,8 @@ describe('SocketIORouter', () => {
   });
 
   describe('disconnect handling', () => {
-    it('should clean up connections on disconnect', () => {
-      router.setupListeners(mockIO);
+    it('should clean up connections on disconnect', async () => {
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -474,7 +487,7 @@ describe('SocketIORouter', () => {
         (call) => call[0] === String(SOCKET_MESSAGE_TYPE.ROOM_JOINING)
       )?.[1];
 
-      joinHandler({
+      await joinHandler({
         channelId: '123e4567-e89b-12d3-a456-426614174000',
         agentId: 'agent-123',
       });
@@ -494,7 +507,7 @@ describe('SocketIORouter', () => {
 
   describe('error handling', () => {
     it('should handle socket errors gracefully', () => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 
@@ -508,7 +521,7 @@ describe('SocketIORouter', () => {
     });
 
     it('should handle malformed message event data', () => {
-      router.setupListeners(mockIO);
+      router.setupListeners(mockIO as any);
       const connectionHandler = mockIO.on.mock.calls[0][1];
       connectionHandler(mockSocket);
 

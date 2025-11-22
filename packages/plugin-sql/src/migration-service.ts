@@ -1,6 +1,8 @@
 import { logger, type Plugin } from '@elizaos/core';
 import { RuntimeMigrator } from './runtime-migrator';
 import type { DrizzleDatabase } from './types';
+import { migrateToEntityRLS } from './migrations';
+import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from './rls';
 
 export class DatabaseMigrationService {
   private db: DrizzleDatabase | null = null;
@@ -17,6 +19,12 @@ export class DatabaseMigrationService {
    */
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
     this.db = db;
+
+    // TEMPORARY: Migrate from develop to feat/entity-rls (Owner RLS → Server RLS + Entity RLS)
+    // This runs before the RuntimeMigrator to ensure schema compatibility
+    // Can be removed after users have migrated from develop to this branch
+    await migrateToEntityRLS({ db } as any);
+
     this.migrator = new RuntimeMigrator(db);
     await this.migrator.initialize();
     logger.info('DatabaseMigrationService initialized with database and runtime migrator');
@@ -133,6 +141,29 @@ export class DatabaseMigrationService {
       logger.info(
         `[DatabaseMigrationService] All ${successCount} migrations completed successfully`
       );
+
+      // Re-apply RLS after all migrations are complete
+      // This ensures RLS is active on all tables with proper server_id columns
+      // ONLY if data isolation is enabled
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (dataIsolationEnabled) {
+        try {
+          logger.info('[DatabaseMigrationService] Re-applying Row Level Security...');
+          await installRLSFunctions({ db: this.db } as any);
+          await applyRLSToNewTables({ db: this.db } as any);
+          await applyEntityRLSToAllTables({ db: this.db } as any);
+          logger.info('[DatabaseMigrationService] ✅ RLS re-applied successfully');
+        } catch (rlsError) {
+          const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
+          logger.warn('[DatabaseMigrationService] ⚠️ Failed to re-apply RLS:', errorMsg);
+          logger.warn(
+            '[DatabaseMigrationService] This is OK if server_id columns are not yet in schemas'
+          );
+        }
+      } else {
+        logger.info('[DatabaseMigrationService] Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)');
+      }
     } else {
       logger.error(
         `[DatabaseMigrationService] Migrations failed: ${failureCount} failed, ${successCount} succeeded`

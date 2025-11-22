@@ -72,7 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
 
-  # E2E tests (needs server)
+  # E2E tests (needs server, no auth)
   cypress-e2e:
     runs-on: ubuntu-latest
     strategy:
@@ -112,8 +112,8 @@ jobs:
       - name: Run E2E tests with server
         working-directory: packages/client
         run: |
-          chmod +x scripts/test-e2e-with-server.sh
-          ./scripts/test-e2e-with-server.sh
+          chmod +x scripts/test-e2e-server.sh
+          ./scripts/test-e2e-server.sh
         env:
           SERVER_PORT: 3000
           CLIENT_PORT: 5173
@@ -132,7 +132,7 @@ jobs:
           if [[ "$component_result" == "failure" || "$e2e_result" == "failure" ]]; then
             echo "❌ Cypress tests failed"
             echo "Component tests: $component_result"
-            echo "E2E tests: $e2e_result"
+            echo "E2E tests (no auth): $e2e_result"
             exit 1
           elif [[ "$component_result" == "cancelled" || "$e2e_result" == "cancelled" ]]; then
             echo "⏹️ Cypress tests were cancelled"
@@ -140,5 +140,5 @@ jobs:
           else
             echo "✅ All Cypress tests passed"
             echo "Component tests: $component_result"
-            echo "E2E tests: $e2e_result"
+            echo "E2E tests (no auth): $e2e_result"
           fi

@@ -104,7 +104,7 @@ describe('MediaService', () => {
 
       expect((mediaService as any).request).toHaveBeenCalledWith(
         'POST',
-        `/api/messaging/central-channels/${TEST_CHANNEL_ID}/upload-media`,
+        `/api/messaging/channels/${TEST_CHANNEL_ID}/upload-media`,
         expect.objectContaining({
           body: expect.any(FormData),
         })

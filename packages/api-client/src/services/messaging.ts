@@ -12,8 +12,8 @@ import {
   DmChannelParams,
   ChannelParticipant,
   MessageSearchParams,
-  ServerCreateParams,
-  ServerSyncParams,
+  MessageServerCreateParams,
+  MessageServerSyncParams,
   ChannelUpdateParams,
   ChannelMetadata,
   MessageMetadata,
@@ -24,13 +24,13 @@ import { PaginationParams } from '../types/base';
 interface ChannelCreatePayload {
   name: string;
   type: ChannelType;
-  server_id: UUID;
+  message_server_id: UUID;
   metadata?: ChannelMetadata;
 }
 
 interface GroupChannelCreatePayload {
   name: string;
-  server_id: UUID;
+  message_server_id: UUID;
   participantCentralUserIds: UUID[];
   type?: ChannelType;
   metadata?: ChannelMetadata;
@@ -68,27 +68,27 @@ export class MessagingService extends BaseApiClient {
    * Create a new channel
    */
   async createChannel(params: ChannelCreateParams): Promise<MessageChannel> {
-    // Server expects: { name, type, server_id, metadata }
+    // MessageServer expects: { name, type, message_server_id, metadata }
     const payload: ChannelCreatePayload = {
       name: params.name,
       type: params.type,
-      server_id: params.serverId || ('00000000-0000-0000-0000-000000000000' as UUID),
+      message_server_id: params.messageServerId || ('00000000-0000-0000-0000-000000000000' as UUID),
       metadata: params.metadata,
     };
-    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
+    return this.post<MessageChannel>('/api/messaging/channels', payload);
   }
 
   /**
    * Create a group channel
    */
   async createGroupChannel(params: GroupChannelCreateParams): Promise<MessageChannel> {
-    // Server expects: { name, server_id, participantCentralUserIds, type?, metadata? }
-    // The client currently provides participantIds and may include server_id/type in metadata.
-    const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
+    // MessageServer expects: { name, message_server_id, participantCentralUserIds, type?, metadata? }
+    // The client currently provides participantIds and may include message_server_id/type in metadata.
+    const DEFAULT_MESSAGE_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
     // Extract and clean metadata - handle legacy fields that might be in metadata
     let cleanedMetadata: ChannelMetadata | undefined;
-    let serverIdFromMeta: UUID | undefined;
+    let messageServerIdFromMeta: UUID | undefined;
     let typeFromMeta: ChannelType | undefined;
 
     if (params.metadata) {
@@ -96,9 +96,9 @@ export class MessagingService extends BaseApiClient {
       const metadataCopy: ChannelMetadata = { ...params.metadata };
 
       // Extract hoisted fields safely using bracket notation (ChannelMetadata allows [key: string]: unknown)
-      if ('server_id' in metadataCopy) {
-        serverIdFromMeta = metadataCopy['server_id'] as UUID | undefined;
-        delete metadataCopy['server_id'];
+      if ('message_server_id' in metadataCopy) {
+        messageServerIdFromMeta = metadataCopy['message_server_id'] as UUID | undefined;
+        delete metadataCopy['message_server_id'];
       }
 
       if ('type' in metadataCopy) {
@@ -114,14 +114,14 @@ export class MessagingService extends BaseApiClient {
 
     const payload: GroupChannelCreatePayload = {
       name: params.name,
-      server_id: serverIdFromMeta || DEFAULT_SERVER_ID,
+      message_server_id: messageServerIdFromMeta || DEFAULT_MESSAGE_SERVER_ID,
       participantCentralUserIds: params.participantIds,
       // If caller intended DM, allow type override
       ...(typeFromMeta ? { type: typeFromMeta } : {}),
       ...(cleanedMetadata ? { metadata: cleanedMetadata } : {}),
     };
 
-    return this.post<MessageChannel>('/api/messaging/central-channels', payload);
+    return this.post<MessageChannel>('/api/messaging/channels', payload);
   }
 
   /**
@@ -143,7 +143,7 @@ export class MessagingService extends BaseApiClient {
    * Get channel details
    */
   async getChannelDetails(channelId: UUID): Promise<MessageChannel> {
-    return this.get<MessageChannel>(`/api/messaging/central-channels/${channelId}/details`);
+    return this.get<MessageChannel>(`/api/messaging/channels/${channelId}/details`);
   }
 
   /**
@@ -151,7 +151,7 @@ export class MessagingService extends BaseApiClient {
    */
   async getChannelParticipants(channelId: UUID): Promise<{ participants: ChannelParticipant[] }> {
     return this.get<{ participants: ChannelParticipant[] }>(
-      `/api/messaging/central-channels/${channelId}/participants`
+      `/api/messaging/channels/${channelId}/participants`
     );
   }
 
@@ -159,7 +159,7 @@ export class MessagingService extends BaseApiClient {
    * Add agent to channel
    */
   async addAgentToChannel(channelId: UUID, agentId: UUID): Promise<{ success: boolean }> {
-    return this.post<{ success: boolean }>(`/api/messaging/central-channels/${channelId}/agents`, {
+    return this.post<{ success: boolean }>(`/api/messaging/channels/${channelId}/agents`, {
       agentId,
     });
   }
@@ -169,7 +169,7 @@ export class MessagingService extends BaseApiClient {
    */
   async removeAgentFromChannel(channelId: UUID, agentId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(
-      `/api/messaging/central-channels/${channelId}/agents/${agentId}`
+      `/api/messaging/channels/${channelId}/agents/${agentId}`
     );
   }
 
@@ -177,7 +177,7 @@ export class MessagingService extends BaseApiClient {
    * Delete a channel
    */
   async deleteChannel(channelId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/central-channels/${channelId}`);
+    return this.delete<{ success: boolean }>(`/api/messaging/channels/${channelId}`);
   }
 
   /**
@@ -185,7 +185,7 @@ export class MessagingService extends BaseApiClient {
    */
   async clearChannelHistory(channelId: UUID): Promise<{ deleted: number }> {
     return this.delete<{ deleted: number }>(
-      `/api/messaging/central-channels/${channelId}/messages`
+      `/api/messaging/channels/${channelId}/messages`
     );
   }
 
@@ -197,7 +197,7 @@ export class MessagingService extends BaseApiClient {
     content: string,
     metadata?: MessageMetadata
   ): Promise<Message> {
-    return this.post<Message>(`/api/messaging/central-channels/${channelId}/messages`, {
+    return this.post<Message>(`/api/messaging/channels/${channelId}/messages`, {
       content,
       metadata,
     });
@@ -211,7 +211,7 @@ export class MessagingService extends BaseApiClient {
     params?: PaginationParams & { before?: Date | string; after?: Date | string }
   ): Promise<{ messages: Message[] }> {
     return this.get<{ messages: Message[] }>(
-      `/api/messaging/central-channels/${channelId}/messages`,
+      `/api/messaging/channels/${channelId}/messages`,
       { params }
     );
   }
@@ -228,7 +228,7 @@ export class MessagingService extends BaseApiClient {
    */
   async deleteMessage(channelId: UUID, messageId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(
-      `/api/messaging/central-channels/${channelId}/messages/${messageId}`
+      `/api/messaging/channels/${channelId}/messages/${messageId}`
     );
   }
 
@@ -247,43 +247,52 @@ export class MessagingService extends BaseApiClient {
   }
 
   /**
-   * List all message servers
+   * Get current Message Server's ID
+   * This returns the messageServerId of the currently running message server instance.
+   * Clients should use this messageServerId when creating channels and messages.
    */
-  async listServers(): Promise<{ servers: MessageServer[] }> {
-    return this.get<{ servers: MessageServer[] }>('/api/messaging/central-servers');
+  async getCurrentMessageServer(): Promise<{ messageServerId: UUID }> {
+    return this.get<{ messageServerId: UUID }>('/api/messaging/message-server/current');
   }
 
   /**
-   * Get server channels
+   * List all message servers
    */
-  async getServerChannels(serverId: UUID): Promise<{ channels: MessageChannel[] }> {
+  async listMessageServers(): Promise<{ messageServers: MessageServer[] }> {
+    return this.get<{ messageServers: MessageServer[] }>('/api/messaging/message-servers');
+  }
+
+  /**
+   * Get message server channels
+   */
+  async getMessageServerChannels(messageServerId: UUID): Promise<{ channels: MessageChannel[] }> {
     return this.get<{ channels: MessageChannel[] }>(
-      `/api/messaging/central-servers/${serverId}/channels`
+      `/api/messaging/message-servers/${messageServerId}/channels`
     );
   }
 
   /**
-   * Create a new server
+   * Create a new message server
    */
-  async createServer(params: ServerCreateParams): Promise<MessageServer> {
-    return this.post<MessageServer>('/api/messaging/servers', params);
+  async createMessageServer(params: MessageServerCreateParams): Promise<MessageServer> {
+    return this.post<MessageServer>('/api/messaging/message-servers', params);
   }
 
   /**
-   * Sync server channels
+   * Sync message server channels
    */
-  async syncServerChannels(serverId: UUID, params: ServerSyncParams): Promise<{ synced: number }> {
+  async syncMessageServerChannels(messageServerId: UUID, params: MessageServerSyncParams): Promise<{ synced: number }> {
     return this.post<{ synced: number }>(
-      `/api/messaging/servers/${serverId}/sync-channels`,
+      `/api/messaging/message-servers/${messageServerId}/sync-channels`,
       params
     );
   }
 
   /**
-   * Delete a server
+   * Delete a Message server
    */
-  async deleteServer(serverId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/messaging/servers/${serverId}`);
+  async deleteMessageServer(messageServerId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/messaging/message-servers/${messageServerId}`);
   }
 
   /**
@@ -294,7 +303,7 @@ export class MessagingService extends BaseApiClient {
     params: ChannelUpdateParams
   ): Promise<{ success: boolean; data: MessageChannel }> {
     return this.patch<{ success: boolean; data: MessageChannel }>(
-      `/api/messaging/central-channels/${channelId}`,
+      `/api/messaging/channels/${channelId}`,
       params
     );
   }
@@ -304,7 +313,7 @@ export class MessagingService extends BaseApiClient {
    */
   async generateChannelTitle(channelId: UUID, agentId: UUID): Promise<{ title: string }> {
     return this.post<{ title: string }>(
-      `/api/messaging/central-channels/${channelId}/generate-title`,
+      `/api/messaging/channels/${channelId}/generate-title`,
       { agentId }
     );
   }

@@ -26,7 +26,7 @@ describe('Room Integration Tests', () => {
       id: testWorldId,
       agentId: testAgentId,
       name: 'Test World',
-      serverId: 'test-server',
+      messageServerId: uuidv4() as UUID,
     });
   });
 
@@ -118,6 +118,28 @@ describe('Room Integration Tests', () => {
 
       retrieved = await adapter.getRoomsByIds([room.id]);
       expect(retrieved).toEqual([]);
+    });
+
+    it('should map messageServerId to serverId for backward compatibility', async () => {
+      const roomId = uuidv4() as UUID;
+      const messageServerId = uuidv4() as UUID;
+      const room: Room = {
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: 'discord',
+        type: ChannelType.GROUP,
+        name: 'Discord Room',
+        messageServerId: messageServerId,
+      };
+
+      await adapter.createRooms([room]);
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+
+      expect(retrieved).toHaveLength(1);
+      expect(retrieved?.[0]?.messageServerId).toBe(messageServerId);
+      // Verify backward compatibility: serverId should be mapped to messageServerId
+      expect(retrieved?.[0]?.serverId).toBe(messageServerId);
     });
   });
 });

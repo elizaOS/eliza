@@ -1,5 +1,5 @@
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { UUID } from '@elizaos/core';
 import { useMutation } from '@tanstack/react-query';
 import { Ellipsis, StopCircle, Volume2 } from 'lucide-react';
@@ -18,7 +18,7 @@ export default function ChatTtsButton({ agentId, text }: { agentId: string; text
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
 
-  const elizaClient = createElizaClient();
+  const elizaClient = getElizaClient();
 
   // Cleanup blob URL when component unmounts or audioBlob changes
   useEffect(() => {

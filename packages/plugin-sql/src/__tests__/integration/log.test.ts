@@ -59,7 +59,7 @@ describe('Log Integration Tests', () => {
         type: 'test_log',
       };
       await adapter.log(logData);
-      const logs = await adapter.getLogs({ entityId: testEntityId, roomId: testRoomId });
+      const logs = await adapter.getLogs({ ownerEntityId: testEntityId, roomId: testRoomId });
       expect(logs).toHaveLength(1);
       expect(logs[0].body).toEqual({ message: 'hello world' });
     });
@@ -85,7 +85,7 @@ describe('Log Integration Tests', () => {
       });
 
       const logs = await adapter.getLogs({
-        entityId: testEntityId,
+        ownerEntityId: testEntityId,
         roomId: testRoomId,
         type: 'typeA',
       });

@@ -74,7 +74,7 @@ describe('settings utilities', () => {
       id: 'world-123' as any,
       name: 'Test World',
       agentId: 'agent-123' as any,
-      serverId: 'server-123',
+      messageServerId: 'server-123',
       metadata: {},
     };
   });

@@ -18,14 +18,35 @@
 
 // Import commands.js using ES2015 syntax:
 import './commands';
+import { registerAuthCommands } from './auth-commands';
 import 'cypress-real-events/support';
 import '@testing-library/cypress/add-commands';
+
+// Register authentication commands
+registerAuthCommands();
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
 
-// Mock API endpoints to prevent infinite redirects during E2E tests
-beforeEach(() => {
+/**
+ * Visit a page with onboarding tour disabled
+ * Useful for authentication tests to avoid the onboarding overlay blocking UI elements
+ */
+Cypress.Commands.add('visitWithoutOnboarding', (url = '/') => {
+  cy.visit(url, {
+    onBeforeLoad(win) {
+      // Disable onboarding tour before the app loads
+      win.localStorage.setItem('eliza-onboarding-completed', 'true');
+    },
+  });
+});
+
+/**
+ * Setup API mocks for E2E tests
+ * Call this explicitly in tests that need mocked API responses
+ * DO NOT call this in authentication tests - they need real API calls
+ */
+Cypress.Commands.add('setupApiMocks', () => {
   // Mock system environment endpoint
   cy.intercept('GET', '/api/system/env/local', {
     statusCode: 200,

@@ -1,7 +1,7 @@
 import ChatComponent from '@/components/chat';
 import { Button } from '@/components/ui/button';
 import { useAgentManagement } from '@/hooks/use-agent-management';
-import { useAgent, useServers } from '@/hooks/use-query-hooks';
+import { useAgent } from '@/hooks/use-query-hooks';
 import clientLogger from '@/lib/logger';
 import {
   type Agent,
@@ -19,7 +19,7 @@ import type { AgentWithStatus } from '../types';
  *
  * Renders the chat panel for a specific agent, and conditionally shows a sidebar with agent details based on user interaction. If no agent ID is present in the URL, displays a "No data." message.
  */
-export default function AgentRoute() {
+function AgentRouteContent() {
   // useParams will include agentId and optionally channelId for /chat/:agentId/:channelId routes
   const { agentId, channelId } = useParams<{ agentId: UUID; channelId?: UUID }>();
   const navigate = useNavigate();
@@ -33,10 +33,6 @@ export default function AgentRoute() {
 
   const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(agentId);
   const { startAgent, isAgentStarting } = useAgentManagement();
-
-  // Get the server ID to pass to Chat component
-  const { data: serversData, isLoading: isLoadingServers } = useServers();
-  const serverId = serversData?.data?.servers?.[0]?.id;
 
   const agentFromHook: Agent | undefined = agentDataResponse?.data
     ? ({
@@ -75,17 +71,12 @@ export default function AgentRoute() {
     : undefined;
 
   if (!agentId) return <div className="p-4">Agent ID not provided.</div>;
-  if (isLoadingAgent || isLoadingServers || !agentFromHook)
+  if (isLoadingAgent || !agentFromHook)
     return (
       <div className="p-4 flex items-center justify-center h-full" data-testid="loader">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
-
-  // Fallback to a default server ID if no servers are available
-  if (!serverId) {
-    clientLogger.warn('[AgentRoute] No server ID available, using default');
-  }
 
   const isActive = agentFromHook.status === CoreAgentStatusEnum.ACTIVE;
   const isStarting = isAgentStarting(agentFromHook.id);
@@ -131,8 +122,11 @@ export default function AgentRoute() {
       key={`${agentId}-${channelId || 'no-dm-channel'}`}
       chatType={ChannelType.DM}
       contextId={agentId}
-      serverId={serverId}
       initialDmChannelId={channelId}
     />
   );
+}
+
+export default function AgentRoute() {
+  return <AgentRouteContent />;
 }
