@@ -72,7 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
 
-  # E2E tests (needs server, no auth)
+  # E2E tests (needs server)
   cypress-e2e:
     runs-on: ubuntu-latest
     strategy:
@@ -132,7 +132,7 @@ jobs:
           if [[ "$component_result" == "failure" || "$e2e_result" == "failure" ]]; then
             echo "❌ Cypress tests failed"
             echo "Component tests: $component_result"
-            echo "E2E tests (no auth): $e2e_result"
+            echo "E2E tests: $e2e_result"
             exit 1
           elif [[ "$component_result" == "cancelled" || "$e2e_result" == "cancelled" ]]; then
             echo "⏹️ Cypress tests were cancelled"
@@ -140,5 +140,5 @@ jobs:
           else
             echo "✅ All Cypress tests passed"
             echo "Component tests: $component_result"
-            echo "E2E tests (no auth): $e2e_result"
+            echo "E2E tests: $e2e_result"
           fi

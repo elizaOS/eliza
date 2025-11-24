@@ -1,5 +1,5 @@
 import type { ElizaOS, UUID, Log, IDatabaseAdapter, RunStatus } from '@elizaos/core';
-import { validateUuid, logger } from '@elizaos/core';
+import { validateUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
 

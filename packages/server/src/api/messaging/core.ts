@@ -12,6 +12,16 @@ import { validateServerIdForRls } from '../../utils/rls-validation';
 export function createMessagingCoreRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
+  // Middleware to handle deprecated parameter names (backward compatibility)
+  router.use((req, _res, next) => {
+    // Map deprecated server_id to message_server_id
+    if (req.body && req.body.server_id && !req.body.message_server_id) {
+      logger.warn('[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.');
+      req.body.message_server_id = req.body.server_id;
+    }
+    next();
+  });
+
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
   (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
     const {
