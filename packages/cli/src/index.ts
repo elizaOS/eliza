@@ -106,7 +106,8 @@ async function main() {
   }
 
   // Check for logging flags early (before command parsing)
-  if (process.argv.includes('--debug') || process.argv.includes('-d')) {
+  // Note: -d is NOT used as shorthand for --debug to avoid confusion with the deprecated --dir flag
+  if (process.argv.includes('--debug')) {
     process.env.LOG_LEVEL = 'debug';
   }
   if (process.argv.includes('--verbose')) {
