@@ -2105,7 +2105,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Helper to get a setting value with fallback chain
     const getSettingWithFallback = (
-      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'TOP_K' | 'MIN_P' | 'SEED' | 'REPETITION_PENALTY' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
       legacyKey?: string
     ): number | null => {
       // Try model-specific setting first
@@ -2150,6 +2150,10 @@ export class AgentRuntime implements IAgentRuntime {
     const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
     const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
     const topP = getSettingWithFallback('TOP_P');
+    const topK = getSettingWithFallback('TOP_K');
+    const minP = getSettingWithFallback('MIN_P');
+    const seed = getSettingWithFallback('SEED');
+    const repetitionPenalty = getSettingWithFallback('REPETITION_PENALTY');
     const frequencyPenalty = getSettingWithFallback(
       'FREQUENCY_PENALTY',
       MODEL_SETTINGS.MODEL_FREQ_PENALTY
@@ -2163,6 +2167,10 @@ export class AgentRuntime implements IAgentRuntime {
     if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
     if (temperature !== null) modelSettings.temperature = temperature;
     if (topP !== null) modelSettings.topP = topP;
+    if (topK !== null) modelSettings.topK = topK;
+    if (minP !== null) modelSettings.minP = minP;
+    if (seed !== null) modelSettings.seed = seed;
+    if (repetitionPenalty !== null) modelSettings.repetitionPenalty = repetitionPenalty;
     if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
     if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
 
@@ -2348,6 +2356,11 @@ export class AgentRuntime implements IAgentRuntime {
       prompt,
       maxTokens: options?.maxTokens,
       temperature: options?.temperature,
+      topP: options?.topP,
+      topK: options?.topK,
+      minP: options?.minP,
+      seed: options?.seed,
+      repetitionPenalty: options?.repetitionPenalty,
       frequencyPenalty: options?.frequencyPenalty,
       presencePenalty: options?.presencePenalty,
       stopSequences: options?.stopSequences,
