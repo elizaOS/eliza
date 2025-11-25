@@ -19,7 +19,7 @@ export class DatabaseMigrationService {
     this.db = db;
     this.migrator = new RuntimeMigrator(db);
     await this.migrator.initialize();
-    logger.info('DatabaseMigrationService initialized with database and runtime migrator');
+    logger.info({ src: 'plugin:sql' }, 'DatabaseMigrationService initialized');
   }
 
   /**
@@ -30,11 +30,11 @@ export class DatabaseMigrationService {
     for (const plugin of plugins) {
       if ((plugin as any).schema) {
         this.registeredSchemas.set(plugin.name, (plugin as any).schema);
-        logger.info(`Registered schema for plugin: ${plugin.name}`);
       }
     }
     logger.info(
-      `Discovered ${this.registeredSchemas.size} plugin schemas out of ${plugins.length} plugins`
+      { src: 'plugin:sql', schemasDiscovered: this.registeredSchemas.size, totalPlugins: plugins.length },
+      'Plugin schemas discovered'
     );
   }
 
@@ -45,7 +45,7 @@ export class DatabaseMigrationService {
    */
   registerSchema(pluginName: string, schema: any): void {
     this.registeredSchemas.set(pluginName, schema);
-    logger.info(`Registered schema for plugin: ${pluginName}`);
+    logger.debug({ src: 'plugin:sql', pluginName }, 'Schema registered');
   }
 
   /**
@@ -75,15 +75,10 @@ export class DatabaseMigrationService {
     };
 
     // Log migration start
-    logger.info('[DatabaseMigrationService] Starting migrations');
     logger.info(
-      `[DatabaseMigrationService] Environment: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`
+      { src: 'plugin:sql', environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT', pluginCount: this.registeredSchemas.size, dryRun: migrationOptions.dryRun },
+      'Starting migrations'
     );
-    logger.info(`[DatabaseMigrationService] Plugins to migrate: ${this.registeredSchemas.size}`);
-
-    if (migrationOptions.dryRun) {
-      logger.info('[DatabaseMigrationService] DRY RUN mode - no changes will be applied');
-    }
 
     let successCount = 0;
     let failureCount = 0;
@@ -93,7 +88,7 @@ export class DatabaseMigrationService {
       try {
         await this.migrator.migrate(pluginName, schema, migrationOptions);
         successCount++;
-        logger.info(`[DatabaseMigrationService] ✅ Completed: ${pluginName}`);
+        logger.info({ src: 'plugin:sql', pluginName }, 'Migration completed');
       } catch (error) {
         failureCount++;
         const errorMessage = (error as Error).message;
@@ -104,25 +99,14 @@ export class DatabaseMigrationService {
         if (errorMessage.includes('Destructive migration blocked')) {
           // Destructive migration was blocked - this is expected behavior
           logger.error(
-            `[DatabaseMigrationService] ❌ Blocked: ${pluginName} (destructive changes detected)`
+            { src: 'plugin:sql', pluginName },
+            'Migration blocked - destructive changes detected. Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true or use force option'
           );
-
-          // Check environment variable consistently with runtime-migrator.ts
-          if (
-            !migrationOptions.force &&
-            process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS !== 'true'
-          ) {
-            logger.error('[DatabaseMigrationService] To allow destructive migrations:');
-            logger.error(
-              '[DatabaseMigrationService]   - Set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true'
-            );
-            logger.error('[DatabaseMigrationService]   - Or pass { force: true } to this method');
-          }
         } else {
           // Unexpected error
           logger.error(
-            `[DatabaseMigrationService] ❌ Failed: ${pluginName}`,
-            JSON.stringify(error)
+            { src: 'plugin:sql', pluginName, error: errorMessage },
+            'Migration failed'
           );
         }
       }
@@ -130,12 +114,11 @@ export class DatabaseMigrationService {
 
     // Final summary
     if (failureCount === 0) {
-      logger.info(
-        `[DatabaseMigrationService] All ${successCount} migrations completed successfully`
-      );
+      logger.info({ src: 'plugin:sql', successCount }, 'All migrations completed successfully');
     } else {
       logger.error(
-        `[DatabaseMigrationService] Migrations failed: ${failureCount} failed, ${successCount} succeeded`
+        { src: 'plugin:sql', failureCount, successCount },
+        'Some migrations failed'
       );
 
       // Throw a consolidated error with details about all failures

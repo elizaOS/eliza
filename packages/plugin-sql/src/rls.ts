@@ -162,7 +162,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     $$ LANGUAGE plpgsql;
   `);
 
-  logger.info('[RLS] PostgreSQL functions installed');
+  logger.info({ src: 'plugin:sql' }, 'RLS PostgreSQL functions installed');
 }
 
 /**
@@ -182,7 +182,7 @@ export async function getOrCreateRlsOwner(
     })
     .onConflictDoNothing();
 
-  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
+  logger.info({ src: 'plugin:sql', ownerId: ownerId.slice(0, 8) }, 'RLS owner registered');
   return ownerId;
 }
 
@@ -204,8 +204,7 @@ export async function setOwnerContext(adapter: IDatabaseAdapter, ownerId: string
     throw new Error(`Owner ${ownerId} does not exist`);
   }
 
-  logger.info(`[RLS] Owner: ${ownerId.slice(0, 8)}…`);
-  logger.info('[RLS] Context configured successfully (using application_name)');
+  logger.info({ src: 'plugin:sql', ownerId: ownerId.slice(0, 8) }, 'RLS context configured');
 }
 
 /**
@@ -226,19 +225,19 @@ export async function assignAgentToOwner(
     const currentOwnerId = agent.owner_id;
 
     if (currentOwnerId === ownerId) {
-      logger.debug(`[RLS] Agent ${agent.name} already owned by correct owner`);
+      logger.debug({ src: 'plugin:sql', agentName: agent.name }, 'Agent already owned by correct owner');
     } else {
       // Update agent owner using Drizzle
       await db.update(agentTable).set({ owner_id: ownerId }).where(eq(agentTable.id, agentId));
 
       if (currentOwnerId === null) {
-        logger.info(`[RLS] Agent ${agent.name} assigned to owner`);
+        logger.info({ src: 'plugin:sql', agentName: agent.name }, 'Agent assigned to owner');
       } else {
-        logger.warn(`[RLS] Agent ${agent.name} owner changed`);
+        logger.warn({ src: 'plugin:sql', agentName: agent.name }, 'Agent owner changed');
       }
     }
   } else {
-    logger.debug(`[RLS] Agent ${agentId} doesn't exist yet`);
+    logger.debug({ src: 'plugin:sql', agentId }, 'Agent does not exist yet');
   }
 }
 
@@ -250,9 +249,9 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
-    logger.info('[RLS] Applied to all tables');
+    logger.info({ src: 'plugin:sql' }, 'RLS applied to all tables');
   } catch (error) {
-    logger.warn('[RLS] Failed to apply to some tables:', String(error));
+    logger.warn({ src: 'plugin:sql', error: String(error) }, 'Failed to apply RLS to some tables');
   }
 }
 
@@ -278,13 +277,11 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
 
     if (!rlsEnabled) {
-      logger.debug('[RLS] RLS not installed, skipping cleanup');
+      logger.debug({ src: 'plugin:sql' }, 'RLS not installed, skipping cleanup');
       return;
     }
 
-    logger.info(
-      '[RLS] Disabling RLS globally (keeping owner_id columns for schema compatibility)...'
-    );
+    logger.info({ src: 'plugin:sql' }, 'Disabling RLS globally (keeping owner_id columns)');
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
     // Using format() with %I ensures proper identifier quoting and prevents SQL injection
@@ -329,11 +326,11 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       try {
         // Call stored procedure with parameterized query (safe from SQL injection)
         await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
-        logger.debug(`[RLS] Disabled RLS on table: ${schemaName}.${tableName}`);
+        logger.debug({ src: 'plugin:sql', schemaName, tableName }, 'Disabled RLS on table');
       } catch (error) {
         logger.warn(
-          `[RLS] Failed to disable RLS on table ${schemaName}.${tableName}:`,
-          String(error)
+          { src: 'plugin:sql', schemaName, tableName, error: String(error) },
+          'Failed to disable RLS on table'
         );
       }
     }
@@ -346,22 +343,19 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     // - Each row keeps its original owner_id
     // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
     // - Existing data remains owned by its original tenant
-    logger.info('[RLS] Keeping owner_id values intact (prevents data theft on re-enable)');
 
     // 3. Keep the owners table structure but clear it
     // When RLS is re-enabled, owners will be re-created from auth tokens
-    logger.info('[RLS] Clearing owners table...');
     await db.execute(sql`TRUNCATE TABLE owners`);
 
     // 4. Drop all RLS functions
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS add_owner_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_owner_id() CASCADE`);
-    logger.info('[RLS] Dropped all RLS functions');
 
-    logger.success('[RLS] RLS disabled successfully (owner_id columns preserved)');
+    logger.success({ src: 'plugin:sql' }, 'RLS disabled successfully (owner_id columns preserved)');
   } catch (error) {
-    logger.error('[RLS] Failed to disable RLS:', String(error));
+    logger.error({ src: 'plugin:sql', error: String(error) }, 'Failed to disable RLS');
     throw error;
   }
 }

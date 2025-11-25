@@ -577,7 +577,8 @@ describe('DefaultMessageService', () => {
       expect(mockDeleteMemory).not.toHaveBeenCalled();
       if (mockRuntime.logger) {
         expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-          '[MessageService] Cannot delete memory: message ID is missing'
+          { src: 'service:message', agentId: mockRuntime.agentId },
+          'Cannot delete memory: message ID is missing'
         );
       }
     });

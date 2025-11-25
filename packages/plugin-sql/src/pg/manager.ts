@@ -13,7 +13,7 @@ export class PostgresConnectionManager {
 
     if (rlsOwnerId) {
       poolConfig.application_name = rlsOwnerId;
-      logger.debug(`[RLS] Pool configured with application_name: ${rlsOwnerId}`);
+      logger.debug({ src: 'plugin:sql', rlsOwnerId }, 'Pool configured with RLS owner');
     }
 
     this.pool = new Pool(poolConfig);
@@ -40,7 +40,8 @@ export class PostgresConnectionManager {
       return true;
     } catch (error) {
       logger.error(
-        `Failed to connect to the database: ${error instanceof Error ? error.message : String(error)}`
+        { src: 'plugin:sql', error: error instanceof Error ? error.message : String(error) },
+        'Failed to connect to the database'
       );
       return false;
     } finally {

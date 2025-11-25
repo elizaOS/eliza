@@ -63,9 +63,7 @@ export function createDatabaseAdapter(
           );
         }
         rlsOwnerId = stringToUuid(rlsOwnerIdString);
-        logger.debug(
-          `[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`
-        );
+        logger.debug({ src: 'plugin:sql', rlsOwnerId: rlsOwnerId.slice(0, 8) }, 'Creating connection pool with RLS owner');
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -102,7 +100,7 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_, runtime: IAgentRuntime) => {
-    logger.info('plugin-sql init starting...');
+    logger.info({ src: 'plugin:sql' }, 'plugin-sql init starting');
 
     // Prefer direct check for existing adapter (avoid readiness heuristics)
     const adapterRegistered =
@@ -121,11 +119,11 @@ export const plugin: Plugin = {
           })();
 
     if (adapterRegistered) {
-      logger.info('Database adapter already registered, skipping creation');
+      logger.info({ src: 'plugin:sql' }, 'Database adapter already registered, skipping creation');
       return;
     }
 
-    logger.debug('No database adapter found, proceeding to register new adapter');
+    logger.debug({ src: 'plugin:sql' }, 'No database adapter found, proceeding to register');
 
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
@@ -141,7 +139,7 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info('Database adapter created and registered');
+    logger.info({ src: 'plugin:sql' }, 'Database adapter created and registered');
 
     // Note: DatabaseMigrationService is not registered as a runtime service
     // because migrations are handled at the server level before agents are loaded

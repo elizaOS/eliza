@@ -50,14 +50,14 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
-    logger.info('plugin-sql (browser) init starting...');
+    logger.info({ src: 'plugin:sql' }, 'plugin-sql (browser) init starting');
 
     // Check if a database adapter is already registered
     try {
       // Try to check if the runtime is ready (has an adapter)
       const isReady = await runtime.isReady();
       if (isReady) {
-        logger.info('Database adapter already registered, skipping creation');
+        logger.info({ src: 'plugin:sql' }, 'Database adapter already registered, skipping creation');
         return;
       }
     } catch (error) {
@@ -67,7 +67,7 @@ export const plugin: Plugin = {
     // In browser builds, always use PGlite (in-memory unless configured elsewhere in runtime)
     const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info('Browser database adapter (PGlite) created and registered');
+    logger.info({ src: 'plugin:sql' }, 'Browser database adapter (PGlite) created and registered');
   },
 };
 
