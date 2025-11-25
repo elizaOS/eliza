@@ -219,7 +219,7 @@ export type GenerateTextParams = {
    * 
    * Note: Plugin implementations should pass this parameter to their provider's API when supported.
    */
-  user?: string;
+  user?: string | null;
   /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
    * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
   responseFormat?: { type: 'json_object' | 'text' } | string;
