@@ -2105,8 +2105,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Helper to get a setting value with fallback chain
     const getSettingWithFallback = (
-      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
-      legacyKey: string
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'TOP_K' | 'MIN_P' | 'SEED' | 'REPETITION_PENALTY' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey?: string
     ): number | null => {
       // Try model-specific setting first
       if (modelType) {
@@ -2132,12 +2132,14 @@ export class AgentRuntime implements IAgentRuntime {
         // If default value exists but is invalid, continue to legacy
       }
 
-      // Fall back to legacy setting for backwards compatibility
-      const legacyValue = this.getSetting(legacyKey);
-      if (legacyValue !== null && legacyValue !== undefined) {
-        const numValue = Number(legacyValue);
-        if (!isNaN(numValue)) {
-          return numValue;
+      // Fall back to legacy setting for backwards compatibility (if provided)
+      if (legacyKey) {
+        const legacyValue = this.getSetting(legacyKey);
+        if (legacyValue !== null && legacyValue !== undefined) {
+          const numValue = Number(legacyValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
         }
       }
 
@@ -2147,6 +2149,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Get settings with proper fallback chain
     const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
     const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const topP = getSettingWithFallback('TOP_P');
+    const topK = getSettingWithFallback('TOP_K');
+    const minP = getSettingWithFallback('MIN_P');
+    const seed = getSettingWithFallback('SEED');
+    const repetitionPenalty = getSettingWithFallback('REPETITION_PENALTY');
     const frequencyPenalty = getSettingWithFallback(
       'FREQUENCY_PENALTY',
       MODEL_SETTINGS.MODEL_FREQ_PENALTY
@@ -2159,6 +2166,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Add settings if they exist
     if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
     if (temperature !== null) modelSettings.temperature = temperature;
+    if (topP !== null) modelSettings.topP = topP;
+    if (topK !== null) modelSettings.topK = topK;
+    if (minP !== null) modelSettings.minP = minP;
+    if (seed !== null) modelSettings.seed = seed;
+    if (repetitionPenalty !== null) modelSettings.repetitionPenalty = repetitionPenalty;
     if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
     if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
 
@@ -2228,6 +2240,23 @@ export class AgentRuntime implements IAgentRuntime {
       } else {
         // No model settings configured, use params as-is
         modelParams = params;
+      }
+
+      // Auto-populate user parameter from character name if not provided
+      // The `user` parameter is used by LLM providers for tracking and analytics purposes.
+      // We only auto-populate when user is undefined (not explicitly set to empty string or null)
+      // to allow users to intentionally set an empty identifier if needed.
+      if (
+        typeof modelParams === 'object' &&
+        modelParams !== null &&
+        !Array.isArray(modelParams) &&
+        !BufferUtils.isBuffer(modelParams) &&
+        !(modelParams instanceof Date) &&
+        !(modelParams instanceof RegExp)
+      ) {
+        if (modelParams.user === undefined && this.character?.name) {
+          modelParams.user = this.character.name;
+        }
       }
     }
     const startTime =
@@ -2343,10 +2372,20 @@ export class AgentRuntime implements IAgentRuntime {
     const params: GenerateTextParams = {
       prompt,
       maxTokens: options?.maxTokens,
+      minTokens: options?.minTokens,
       temperature: options?.temperature,
+      topP: options?.topP,
+      topK: options?.topK,
+      minP: options?.minP,
+      seed: options?.seed,
+      repetitionPenalty: options?.repetitionPenalty,
       frequencyPenalty: options?.frequencyPenalty,
       presencePenalty: options?.presencePenalty,
       stopSequences: options?.stopSequences,
+      // User identifier for provider tracking/analytics - auto-populates from character name if not provided
+      // Explicitly set empty string or null will be preserved (not overridden)
+      user: options?.user !== undefined ? options.user : this.character?.name,
+      responseFormat: options?.responseFormat,
     };
 
     const response = await this.useModel(modelType, params);
