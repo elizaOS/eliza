@@ -2243,8 +2243,11 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Auto-populate user parameter from character name if not provided
+      // The `user` parameter is used by LLM providers for tracking and analytics purposes.
+      // We only auto-populate when user is undefined (not explicitly set to empty string or null)
+      // to allow users to intentionally set an empty identifier if needed.
       if (typeof modelParams === 'object' && modelParams !== null && !Array.isArray(modelParams) && !BufferUtils.isBuffer(modelParams)) {
-        if (!modelParams.user && this.character?.name) {
+        if (modelParams.user === undefined && this.character?.name) {
           modelParams.user = this.character.name;
         }
       }
@@ -2372,7 +2375,9 @@ export class AgentRuntime implements IAgentRuntime {
       frequencyPenalty: options?.frequencyPenalty,
       presencePenalty: options?.presencePenalty,
       stopSequences: options?.stopSequences,
-      user: options?.user ?? this.character?.name,
+      // User identifier for provider tracking/analytics - auto-populates from character name if not provided
+      // Explicitly set empty string or null will be preserved (not overridden)
+      user: options?.user !== undefined ? options.user : this.character?.name,
       responseFormat: options?.responseFormat,
     };
 
