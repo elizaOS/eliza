@@ -87,10 +87,17 @@ describe('generateText', () => {
     await runtime.generateText(input, {
       includeCharacter: false,
       temperature: 0.9,
+      topP: 0.95,
+      topK: 40,
+      minP: 0.05,
+      seed: 42,
+      repetitionPenalty: 1.1,
       maxTokens: 500,
       frequencyPenalty: 0.5,
       presencePenalty: 0.3,
       stopSequences: ['\n\n', 'END'],
+      user: 'custom-user-id',
+      responseFormat: { type: 'json_object' },
     });
 
     expect(mockUseModel).toHaveBeenCalledTimes(1);
@@ -98,10 +105,31 @@ describe('generateText', () => {
     const callArgs = mockUseModel.mock.calls[0];
     const params = callArgs[1];
     expect(params.temperature).toBe(0.9);
+    expect(params.topP).toBe(0.95);
+    expect(params.topK).toBe(40);
+    expect(params.minP).toBe(0.05);
+    expect(params.seed).toBe(42);
+    expect(params.repetitionPenalty).toBe(1.1);
     expect(params.maxTokens).toBe(500);
     expect(params.frequencyPenalty).toBe(0.5);
     expect(params.presencePenalty).toBe(0.3);
     expect(params.stopSequences).toEqual(['\n\n', 'END']);
+    expect(params.user).toBe('custom-user-id');
+    expect(params.responseFormat).toEqual({ type: 'json_object' });
+  });
+
+  it('should auto-populate user from character name when not provided', async () => {
+    const input = 'Test prompt';
+    await runtime.generateText(input, {
+      includeCharacter: false,
+    });
+
+    expect(mockUseModel).toHaveBeenCalledTimes(1);
+
+    const callArgs = mockUseModel.mock.calls[0];
+    const params = callArgs[1];
+    // Should auto-populate from character name
+    expect(params.user).toBe('TestBot');
   });
 
   it('should handle character with array bio', async () => {
