@@ -162,7 +162,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
   const { agentId, roomId } = message;
 
   if (!agentId || !roomId) {
-    logger.warn({ message }, 'Missing agentId or roomId in message');
+    logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, message }, 'Missing agentId or roomId in message');
     return;
   }
 
@@ -199,7 +199,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     });
 
     if (!response) {
-      logger.warn({ prompt }, 'Getting reflection failed - empty response');
+      logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - empty response');
       return;
     }
 
@@ -207,18 +207,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     const reflection = parseKeyValueXml(response);
 
     if (!reflection) {
-      logger.warn({ response }, 'Getting reflection failed - failed to parse XML');
+      logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - failed to parse XML');
       return;
     }
 
     // Perform basic structure validation
     if (!reflection.facts) {
-      logger.warn({ reflection }, 'Getting reflection failed - invalid facts structure');
+      logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid facts structure');
       return;
     }
 
     if (!reflection.relationships) {
-      logger.warn({ reflection }, 'Getting reflection failed - invalid relationships structure');
+      logger.warn({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId }, 'Getting reflection failed - invalid relationships structure');
       return;
     }
 
@@ -331,7 +331,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       message?.id || ''
     );
   } catch (error) {
-    logger.error({ error }, 'Error in reflection handler:');
+    logger.error({ src: 'plugin:bootstrap:evaluator:reflection', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reflection handler');
     return;
   }
 }

@@ -53,7 +53,7 @@ export const roleProvider: Provider = {
       throw new Error('No server ID found');
     }
 
-    logger.info(`Using server ID: ${serverId}`);
+    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'Using server ID');
 
     // Get world data instead of using cache
     const worldId = createUniqueUuid(runtime, serverId);
@@ -61,7 +61,8 @@ export const roleProvider: Provider = {
 
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
-        `No ownership data found for server ${serverId}, initializing empty role hierarchy`
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+        'No ownership data found for server, initializing empty role hierarchy'
       );
       return {
         data: {
@@ -77,7 +78,7 @@ export const roleProvider: Provider = {
     const roles = world.metadata.roles || {};
 
     if (Object.keys(roles).length === 0) {
-      logger.info(`No roles found for server ${serverId}`);
+      logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'No roles found for server');
       return {
         data: {
           roles: [],
@@ -89,7 +90,7 @@ export const roleProvider: Provider = {
       };
     }
 
-    logger.info(`Found ${Object.keys(roles).length} roles`);
+    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roleCount: Object.keys(roles).length }, 'Found roles');
 
     // Group users by role
     const owners: { name: string; username: string; names: string[] }[] = [];
@@ -117,7 +118,7 @@ export const roleProvider: Provider = {
       }
 
       if (!name || !username || !names) {
-        logger.warn(`User ${entityId} has no name or username, skipping`);
+        logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId }, 'User has no name or username, skipping');
         continue;
       }
 

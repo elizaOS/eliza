@@ -102,7 +102,8 @@ describe('API Key Auth Middleware', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Unauthorized access attempt')
+        { src: 'http', ip: '127.0.0.1' },
+        'Unauthorized access attempt'
       );
     });
 
@@ -115,7 +116,8 @@ describe('API Key Auth Middleware', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Unauthorized access attempt')
+        { src: 'http', ip: '127.0.0.1' },
+        'Unauthorized access attempt'
       );
     });
 
@@ -172,7 +174,10 @@ describe('API Key Auth Middleware', () => {
 
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
-      expect(loggerWarnSpy).toHaveBeenCalledWith(expect.stringContaining('192.168.1.100'));
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        { src: 'http', ip: '192.168.1.100' },
+        'Unauthorized access attempt'
+      );
     });
   });
 

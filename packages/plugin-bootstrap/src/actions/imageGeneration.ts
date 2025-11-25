@@ -104,7 +104,7 @@ export const generateImageAction = {
 
       const imageUrl = imageResponse[0].url;
 
-      logger.info(`[GENERATE_IMAGE] Received image URL: ${imageUrl}`);
+      logger.info({ src: 'plugin:bootstrap:action:image_generation', agentId: runtime.agentId, imageUrl }, 'Received image URL');
 
       // Determine file extension from URL or default to png
       const getFileExtension = (url: string): string => {

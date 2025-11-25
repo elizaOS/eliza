@@ -45,7 +45,8 @@ describe('Validation Functions', () => {
       validateChannelId(invalidUuid, clientIp);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        `[SECURITY] Invalid channel ID attempted from ${clientIp}: ${invalidUuid}`
+        { src: 'http', ip: clientIp, channelId: invalidUuid },
+        'Invalid channel ID attempted'
       );
     });
 
@@ -65,7 +66,8 @@ describe('Validation Functions', () => {
         expect(result).toBeNull();
         // These inputs are not valid UUIDs, so they get the "Invalid" message, not "Suspicious"
         expect(loggerWarnSpy).toHaveBeenCalledWith(
-          `[SECURITY] Invalid channel ID attempted from 192.168.1.100: ${input}`
+          { src: 'http', ip: '192.168.1.100', channelId: input },
+          'Invalid channel ID attempted'
         );
       });
     });

@@ -91,7 +91,7 @@ export const choiceAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     if (!state) {
-      logger.error('State is required for validating the action');
+      logger.error({ src: 'plugin:bootstrap:action:choice', agentId: runtime.agentId }, 'State is required for validating the action');
       throw new Error('State is required for validating the action');
     }
 
