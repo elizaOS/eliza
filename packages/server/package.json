@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.6.5-alpha.8",
+  "version": "1.6.5-alpha.10",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -35,7 +35,7 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
-    "test": "bun test src/__tests__/",
+    "test": "bun run test:unit && bun run test:features && bun run test:compatibility && bun run test:security && bun run test:integration",
     "test:unit": "bun test src/__tests__/unit/",
     "test:features": "bun test src/__tests__/features/",
     "test:compatibility": "bun test src/__tests__/compatibility/",
