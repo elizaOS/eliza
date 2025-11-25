@@ -190,13 +190,10 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
 
       await runtime.updateMemory(memoryToUpdate);
 
-      logger.success(`[MEMORY UPDATE] Successfully updated memory ${memoryId}`);
+      logger.success({ src: 'http', agentId, memoryId }, 'Memory updated');
       sendSuccess(res, { id: memoryId, message: 'Memory updated successfully' });
     } catch (error) {
-      logger.error(
-        `[MEMORY UPDATE] Error updating memory ${memoryId}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', agentId, memoryId, error: error instanceof Error ? error.message : String(error) }, 'Error updating memory');
       sendError(
         res,
         500,

@@ -20,7 +20,7 @@ export const createApiRateLimit = () => {
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     handler: (req, res) => {
       const clientIp = req.ip || 'unknown';
-      logger.warn(`[SECURITY] Rate limit exceeded for IP: ${clientIp}`);
+      logger.warn({ src: 'http', ip: clientIp }, 'Rate limit exceeded');
       res.status(429).json({
         success: false,
         error: {
@@ -50,9 +50,7 @@ export const createFileSystemRateLimit = () => {
     legacyHeaders: false,
     handler: (req, res) => {
       const clientIp = req.ip || 'unknown';
-      logger.warn(
-        `[SECURITY] File system rate limit exceeded for IP: ${clientIp}, endpoint: ${req.path}`
-      );
+      logger.warn({ src: 'http', ip: clientIp, path: req.path }, 'File system rate limit exceeded');
       res.status(429).json({
         success: false,
         error: {
@@ -82,9 +80,7 @@ export const createUploadRateLimit = () => {
     legacyHeaders: false,
     handler: (req, res) => {
       const clientIp = req.ip || 'unknown';
-      logger.warn(
-        `[SECURITY] Upload rate limit exceeded for IP: ${clientIp}, endpoint: ${req.path}`
-      );
+      logger.warn({ src: 'http', ip: clientIp, path: req.path }, 'Upload rate limit exceeded');
       res.status(429).json({
         success: false,
         error: {
@@ -126,9 +122,7 @@ export const createChannelValidationRateLimit = () => {
     handler: (req, res) => {
       const clientIp = req.ip || 'unknown';
       const channelId = req.params.channelId || 'unknown';
-      logger.warn(
-        `[SECURITY] Channel validation rate limit exceeded for IP: ${clientIp}, attempted channel: ${channelId}`
-      );
+      logger.warn({ src: 'http', ip: clientIp, channelId }, 'Channel validation rate limit exceeded');
       res.status(429).json({
         success: false,
         error: {

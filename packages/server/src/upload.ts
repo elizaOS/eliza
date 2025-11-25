@@ -28,7 +28,7 @@ export function ensureUploadDir(id: string, type: 'agents' | 'channels'): string
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  logger.debug(`[UPLOAD] Secure ${type.slice(0, -1)} upload directory created: ${uploadDir}`);
+  logger.debug({ src: 'http', type, uploadDir }, 'Secure upload directory created');
   return uploadDir;
 }
 
@@ -145,14 +145,11 @@ export async function processUploadedFile(
     // Construct URL
     const url = `/media/uploads/${type}/${targetId}/${filename}`;
 
-    logger.debug(`[UPLOAD] File processed successfully: ${filename}`);
+    logger.debug({ src: 'http', filename }, 'File processed successfully');
 
     return { filename, path: finalPath, url };
   } catch (error) {
-    logger.error(
-      '[UPLOAD] Error processing uploaded file:',
-      error instanceof Error ? error.message : String(error)
-    );
+    logger.error({ src: 'http', error: error instanceof Error ? error.message : String(error) }, 'Error processing uploaded file');
     throw error;
   }
 }

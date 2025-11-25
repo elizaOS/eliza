@@ -105,6 +105,20 @@ async function main() {
     process.env.ELIZA_NO_AUTO_INSTALL = 'true';
   }
 
+  // Check for logging flags early (before command parsing)
+  if (process.argv.includes('--debug') || process.argv.includes('-d')) {
+    process.env.LOG_LEVEL = 'debug';
+  }
+  if (process.argv.includes('--verbose')) {
+    process.env.LOG_LEVEL = 'trace';
+  }
+  if (process.argv.includes('--quiet') || process.argv.includes('-q')) {
+    process.env.LOG_LEVEL = 'error';
+  }
+  if (process.argv.includes('--log-json')) {
+    process.env.LOG_JSON_FORMAT = 'true';
+  }
+
   // Get version - will return 'monorepo' if in monorepo context
   const version = getVersion();
 
@@ -125,7 +139,11 @@ async function main() {
     .name('elizaos')
     .version(version, '-v, --version', 'output the version number')
     .option('--no-emoji', 'Disable emoji output')
-    .option('--no-auto-install', 'Disable automatic Bun installation');
+    .option('--no-auto-install', 'Disable automatic Bun installation')
+    .option('-d, --debug', 'Enable debug logs (LOG_LEVEL=debug)')
+    .option('--verbose', 'Enable verbose logs (LOG_LEVEL=trace)')
+    .option('-q, --quiet', 'Only show errors (LOG_LEVEL=error)')
+    .option('--log-json', 'Output logs in JSON format');
 
   // Add global options but hide them from global help
   // They will still be passed to all commands for backward compatibility

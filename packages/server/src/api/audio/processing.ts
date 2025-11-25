@@ -32,7 +32,7 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
   // Audio messages endpoints
   router.post('/:agentId/audio-messages', agentAudioUpload().single('file'), async (req, res) => {
     const audioReq = req as AudioRequest;
-    logger.debug('[AUDIO MESSAGE] Processing audio message');
+    logger.debug({ src: 'http', agentId: req.params.agentId }, 'Processing audio message');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
@@ -72,14 +72,11 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
       const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioFile.buffer);
 
       // Placeholder: This part needs to be updated to align with message creation.
-      logger.info(`[AUDIO MESSAGE] Transcription for agent ${agentId}: ${transcription}`);
+      logger.info({ src: 'http', agentId, transcription }, 'Audio transcription completed');
       cleanupUploadedFile(audioFile);
       sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });
     } catch (error) {
-      logger.error(
-        '[AUDIO MESSAGE] Error processing audio:',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing audio');
       cleanupUploadedFile(audioFile);
       sendError(
         res,
@@ -94,7 +91,7 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
   // Transcription endpoint
   router.post('/:agentId/transcriptions', agentAudioUpload().single('file'), async (req, res) => {
     const audioReq = req as AudioRequest;
-    logger.debug('[TRANSCRIPTION] Request to transcribe audio');
+    logger.debug({ src: 'http', agentId: req.params.agentId }, 'Request to transcribe audio');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
@@ -113,7 +110,7 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      logger.debug('[TRANSCRIPTION] Reading audio file');
+      logger.debug({ src: 'http', agentId }, 'Reading audio file');
 
       // Validate file type
       if (!validateAudioFile(audioFile)) {
@@ -133,7 +130,7 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
       }
 
       // Use file buffer directly for transcription
-      logger.debug('[TRANSCRIPTION] Transcribing audio');
+      logger.debug({ src: 'http', agentId }, 'Transcribing audio');
       const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioFile.buffer);
 
       cleanupUploadedFile(audioFile);
@@ -142,13 +139,10 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
         return sendError(res, 500, 'PROCESSING_ERROR', 'Failed to transcribe audio');
       }
 
-      logger.success('[TRANSCRIPTION] Successfully transcribed audio');
+      logger.success({ src: 'http', agentId }, 'Audio transcribed');
       sendSuccess(res, { text: transcription });
     } catch (error) {
-      logger.error(
-        '[TRANSCRIPTION] Error transcribing audio:',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', agentId, error: error instanceof Error ? error.message : String(error) }, 'Error transcribing audio');
       cleanupUploadedFile(audioFile);
       sendError(
         res,
