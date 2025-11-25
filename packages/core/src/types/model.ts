@@ -70,6 +70,10 @@ export const MODEL_SETTINGS = {
   DEFAULT_MAX_TOKENS: 'DEFAULT_MAX_TOKENS',
   DEFAULT_TEMPERATURE: 'DEFAULT_TEMPERATURE',
   DEFAULT_TOP_P: 'DEFAULT_TOP_P',
+  DEFAULT_TOP_K: 'DEFAULT_TOP_K',
+  DEFAULT_MIN_P: 'DEFAULT_MIN_P',
+  DEFAULT_SEED: 'DEFAULT_SEED',
+  DEFAULT_REPETITION_PENALTY: 'DEFAULT_REPETITION_PENALTY',
   DEFAULT_FREQUENCY_PENALTY: 'DEFAULT_FREQUENCY_PENALTY',
   DEFAULT_PRESENCE_PENALTY: 'DEFAULT_PRESENCE_PENALTY',
 
@@ -77,6 +81,10 @@ export const MODEL_SETTINGS = {
   TEXT_SMALL_MAX_TOKENS: 'TEXT_SMALL_MAX_TOKENS',
   TEXT_SMALL_TEMPERATURE: 'TEXT_SMALL_TEMPERATURE',
   TEXT_SMALL_TOP_P: 'TEXT_SMALL_TOP_P',
+  TEXT_SMALL_TOP_K: 'TEXT_SMALL_TOP_K',
+  TEXT_SMALL_MIN_P: 'TEXT_SMALL_MIN_P',
+  TEXT_SMALL_SEED: 'TEXT_SMALL_SEED',
+  TEXT_SMALL_REPETITION_PENALTY: 'TEXT_SMALL_REPETITION_PENALTY',
   TEXT_SMALL_FREQUENCY_PENALTY: 'TEXT_SMALL_FREQUENCY_PENALTY',
   TEXT_SMALL_PRESENCE_PENALTY: 'TEXT_SMALL_PRESENCE_PENALTY',
 
@@ -84,6 +92,10 @@ export const MODEL_SETTINGS = {
   TEXT_LARGE_MAX_TOKENS: 'TEXT_LARGE_MAX_TOKENS',
   TEXT_LARGE_TEMPERATURE: 'TEXT_LARGE_TEMPERATURE',
   TEXT_LARGE_TOP_P: 'TEXT_LARGE_TOP_P',
+  TEXT_LARGE_TOP_K: 'TEXT_LARGE_TOP_K',
+  TEXT_LARGE_MIN_P: 'TEXT_LARGE_MIN_P',
+  TEXT_LARGE_SEED: 'TEXT_LARGE_SEED',
+  TEXT_LARGE_REPETITION_PENALTY: 'TEXT_LARGE_REPETITION_PENALTY',
   TEXT_LARGE_FREQUENCY_PENALTY: 'TEXT_LARGE_FREQUENCY_PENALTY',
   TEXT_LARGE_PRESENCE_PENALTY: 'TEXT_LARGE_PRESENCE_PENALTY',
 
@@ -91,6 +103,10 @@ export const MODEL_SETTINGS = {
   OBJECT_SMALL_MAX_TOKENS: 'OBJECT_SMALL_MAX_TOKENS',
   OBJECT_SMALL_TEMPERATURE: 'OBJECT_SMALL_TEMPERATURE',
   OBJECT_SMALL_TOP_P: 'OBJECT_SMALL_TOP_P',
+  OBJECT_SMALL_TOP_K: 'OBJECT_SMALL_TOP_K',
+  OBJECT_SMALL_MIN_P: 'OBJECT_SMALL_MIN_P',
+  OBJECT_SMALL_SEED: 'OBJECT_SMALL_SEED',
+  OBJECT_SMALL_REPETITION_PENALTY: 'OBJECT_SMALL_REPETITION_PENALTY',
   OBJECT_SMALL_FREQUENCY_PENALTY: 'OBJECT_SMALL_FREQUENCY_PENALTY',
   OBJECT_SMALL_PRESENCE_PENALTY: 'OBJECT_SMALL_PRESENCE_PENALTY',
 
@@ -98,6 +114,10 @@ export const MODEL_SETTINGS = {
   OBJECT_LARGE_MAX_TOKENS: 'OBJECT_LARGE_MAX_TOKENS',
   OBJECT_LARGE_TEMPERATURE: 'OBJECT_LARGE_TEMPERATURE',
   OBJECT_LARGE_TOP_P: 'OBJECT_LARGE_TOP_P',
+  OBJECT_LARGE_TOP_K: 'OBJECT_LARGE_TOP_K',
+  OBJECT_LARGE_MIN_P: 'OBJECT_LARGE_MIN_P',
+  OBJECT_LARGE_SEED: 'OBJECT_LARGE_SEED',
+  OBJECT_LARGE_REPETITION_PENALTY: 'OBJECT_LARGE_REPETITION_PENALTY',
   OBJECT_LARGE_FREQUENCY_PENALTY: 'OBJECT_LARGE_FREQUENCY_PENALTY',
   OBJECT_LARGE_PRESENCE_PENALTY: 'OBJECT_LARGE_PRESENCE_PENALTY',
 
@@ -131,6 +151,17 @@ export type GenerateTextParams = {
    * Note: Some providers may not support both `temperature` and `topP` simultaneously.
    * Plugin implementations should filter based on provider capabilities. */
   topP?: number;
+  /** Optional. Limits the number of highest-probability tokens considered at each step.
+   * Common in Ollama, vLLM, and other local model providers. Alternative/complement to topP. */
+  topK?: number;
+  /** Optional. Minimum probability threshold (0.0-1.0). Discards tokens with probability below this threshold.
+   * Common in node-llama-cpp. Can improve output quality when using higher temperatures by filtering low-probability tokens. */
+  minP?: number;
+  /** Optional. Random seed for reproducible outputs. Useful for testing and debugging. */
+  seed?: number;
+  /** Optional. Repetition penalty (1.0 = no penalty, >1.0 reduces repetition).
+   * Common in Ollama, vLLM, and some Hugging Face models. */
+  repetitionPenalty?: number;
   /** Optional. Penalizes new tokens based on their existing frequency in the text so far. */
   frequencyPenalty?: number;
   /** Optional. Penalizes new tokens based on whether they appear in the text so far. */
