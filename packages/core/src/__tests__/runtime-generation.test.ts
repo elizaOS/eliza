@@ -93,6 +93,7 @@ describe('generateText', () => {
       seed: 42,
       repetitionPenalty: 1.1,
       maxTokens: 500,
+      minTokens: 50,
       frequencyPenalty: 0.5,
       presencePenalty: 0.3,
       stopSequences: ['\n\n', 'END'],
@@ -111,6 +112,7 @@ describe('generateText', () => {
     expect(params.seed).toBe(42);
     expect(params.repetitionPenalty).toBe(1.1);
     expect(params.maxTokens).toBe(500);
+    expect(params.minTokens).toBe(50);
     expect(params.frequencyPenalty).toBe(0.5);
     expect(params.presencePenalty).toBe(0.3);
     expect(params.stopSequences).toEqual(['\n\n', 'END']);
