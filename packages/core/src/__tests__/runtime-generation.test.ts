@@ -134,6 +134,36 @@ describe('generateText', () => {
     expect(params.user).toBe('TestBot');
   });
 
+  it('should preserve explicitly provided empty string for user parameter', async () => {
+    const input = 'Test prompt';
+    await runtime.generateText(input, {
+      includeCharacter: false,
+      user: '',
+    });
+
+    expect(mockUseModel).toHaveBeenCalledTimes(1);
+
+    const callArgs = mockUseModel.mock.calls[0];
+    const params = callArgs[1];
+    // Should preserve empty string, not override with character name
+    expect(params.user).toBe('');
+  });
+
+  it('should preserve explicitly provided null for user parameter', async () => {
+    const input = 'Test prompt';
+    await runtime.generateText(input, {
+      includeCharacter: false,
+      user: null as any,
+    });
+
+    expect(mockUseModel).toHaveBeenCalledTimes(1);
+
+    const callArgs = mockUseModel.mock.calls[0];
+    const params = callArgs[1];
+    // Should preserve null, not override with character name
+    expect(params.user).toBeNull();
+  });
+
   it('should handle character with array bio', async () => {
     const characterWithArrayBio: Character = {
       ...mockCharacter,
