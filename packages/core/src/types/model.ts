@@ -145,6 +145,8 @@ export type GenerateTextParams = {
   prompt: string;
   /** Optional. The maximum number of tokens to generate in the response. */
   maxTokens?: number;
+  /** Optional. The minimum number of tokens to generate in the response. */
+  minTokens?: number;
   /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
   temperature?: number;
   /** Optional. Nucleus sampling parameter (0.0-1.0). Controls diversity via nucleus sampling.
@@ -168,6 +170,11 @@ export type GenerateTextParams = {
   presencePenalty?: number;
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
+  /** Optional. User identifier for tracking and analytics. If not provided, will default to the agent's character name. */
+  user?: string;
+  /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
+   * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
+  responseFormat?: { type: 'json_object' | 'text' } | string;
 };
 
 /**
