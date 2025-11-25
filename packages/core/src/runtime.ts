@@ -2241,6 +2241,13 @@ export class AgentRuntime implements IAgentRuntime {
         // No model settings configured, use params as-is
         modelParams = params;
       }
+
+      // Auto-populate user parameter from character name if not provided
+      if (typeof modelParams === 'object' && modelParams !== null && !Array.isArray(modelParams) && !BufferUtils.isBuffer(modelParams)) {
+        if (!modelParams.user && this.character?.name) {
+          modelParams.user = this.character.name;
+        }
+      }
     }
     const startTime =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -2355,6 +2362,7 @@ export class AgentRuntime implements IAgentRuntime {
     const params: GenerateTextParams = {
       prompt,
       maxTokens: options?.maxTokens,
+      minTokens: options?.minTokens,
       temperature: options?.temperature,
       topP: options?.topP,
       topK: options?.topK,
@@ -2364,6 +2372,8 @@ export class AgentRuntime implements IAgentRuntime {
       frequencyPenalty: options?.frequencyPenalty,
       presencePenalty: options?.presencePenalty,
       stopSequences: options?.stopSequences,
+      user: options?.user ?? this.character?.name,
+      responseFormat: options?.responseFormat,
     };
 
     const response = await this.useModel(modelType, params);
