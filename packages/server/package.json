@@ -31,7 +31,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "type-check": "tsc --project tsconfig.build.json --noEmit",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@elizaos/client": "workspace:*",
+    "@elizaos/config": "workspace:*",
     "@types/node": "^24.0.1",
     "prettier": "3.6.2",
     "tsx": "4.20.6",

@@ -54,11 +54,13 @@
     "test:watch": "bun test --watch",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src"
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/"
   },
   "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@types/bun": "^1.2.21",
     "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.3",
