@@ -2520,7 +2520,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          `Error creating relationship: ${error instanceof Error ? error.message : String(error)}, saveParams: ${JSON.stringify(saveParams)}`
+          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), saveParams },
+          'Error creating relationship'
         );
         return false;
       }
@@ -2544,7 +2545,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .where(eq(relationshipTable.id, relationship.id));
       } catch (error) {
         logger.error(
-          `Error updating relationship: ${error instanceof Error ? error.message : String(error)}, relationship: ${JSON.stringify(relationship)}`
+          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), relationshipId: relationship.id },
+          'Error updating relationship'
         );
         throw error;
       }
@@ -2654,7 +2656,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return undefined;
       } catch (error) {
         logger.error(
-          `Error fetching cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          'Error fetching cache'
         );
         return undefined;
       }
@@ -2687,7 +2690,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          `Error setting cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          'Error setting cache'
         );
         return false;
       }
@@ -2710,7 +2714,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          `Error deleting cache: ${error instanceof Error ? error.message : String(error)}, key: ${key}, agentId: ${this.agentId}`
+          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          'Error deleting cache'
         );
         return false;
       }
