@@ -159,31 +159,6 @@ export function isBuffer(obj: any): obj is BufferLike {
 }
 
 /**
- * Check if a value is a plain object (not null, array, buffer, Date, or RegExp)
- * Type guard that narrows the type to Record<string, unknown>
- * @param value - The value to check
- * @returns True if the value is a plain object
- */
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  if (Array.isArray(value)) {
-    return false;
-  }
-  if (isBuffer(value)) {
-    return false;
-  }
-  if (value instanceof Date) {
-    return false;
-  }
-  if (value instanceof RegExp) {
-    return false;
-  }
-  return true;
-}
-
-/**
  * Create a buffer of a specific size filled with zeros
  * @param size - The size of the buffer
  * @returns A BufferLike object
@@ -320,7 +295,6 @@ export const BufferUtils = {
   toHex,
   toString,
   isBuffer,
-  isPlainObject,
   alloc,
   concat,
   slice,
