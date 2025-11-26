@@ -33,7 +33,6 @@ mock.module('@/lib/api-client-config', () => ({
   }),
   createApiClientConfig: () => ({}),
   updateApiClientApiKey: () => {},
-  updateApiClientJwtToken: () => {},
 }));
 
 mock.module('@/hooks/use-toast', () => ({

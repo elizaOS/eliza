@@ -6,7 +6,6 @@ import type {
   Memory,
   UUID,
   Memory as CoreMemory,
-  AgentStatus,
 } from '@elizaos/core';
 import {
   useQuery,
@@ -14,13 +13,11 @@ import {
   useQueryClient,
   useQueries,
   UseQueryResult,
-  type DefinedUseQueryResult,
-  type UndefinedInitialDataOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from './use-toast';
-import { getEntityId, randomUUID, moment } from '@/lib/utils';
+import { getEntityId } from '@/lib/utils';
 import type {
   ServerMessage,
   AgentWithStatus,
@@ -32,20 +29,17 @@ import { useNavigate } from 'react-router-dom';
 import {
   mapApiAgentToClient,
   mapApiChannelToClient,
-  mapApiServerToClient,
-  mapApiServersToClient,
   mapApiChannelsToClient,
+  mapApiServersToClient,
   mapApiMessageToUi,
   mapApiLogToClient,
   mapApiMemoryToClient,
-  mapEnumToApiStatus,
-  apiDateToTimestamp,
   type AgentLog,
 } from '@/lib/api-type-mappers';
 import type { ListRunsParams, RunDetail, RunSummary } from '@elizaos/api-client';
 import { getElizaClient } from '@/lib/api-client-config';
 
-// Helper to always get the current client instance (important after JWT token updates)
+// Helper to always get the current client instance (important after API key updates)
 const getClient = () => getElizaClient();
 
 /**
@@ -370,7 +364,7 @@ export type UiMessage = Content & {
  */
 export function useChannelMessages(
   channelId: UUID | undefined, // Changed from UUID | null
-  initialServerId?: UUID | undefined // Changed from UUID (optional was already undefined)
+  initialMessageServerId?: UUID | undefined // Changed from UUID (optional was already undefined)
 ): {
   data: UiMessage[] | undefined;
   isLoading: boolean;
@@ -452,13 +446,13 @@ export function useChannelMessages(
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
-        serverId: serverIdToUse || sm.metadata?.messageServerId || initialServerId,
+        messageServerId: serverIdToUse || sm.metadata?.messageServerId || initialMessageServerId,
         source: sm.sourceType,
         isLoading: false,
         prompt: isAgent ? sm.metadata?.prompt : undefined,
       };
     },
-    [currentClientCentralId, initialServerId]
+    [currentClientCentralId, initialMessageServerId]
   );
 
   const fetchMessages = useCallback(
@@ -483,7 +477,7 @@ export function useChannelMessages(
         });
 
         const newUiMessages = response.messages.map((msg) =>
-          mapApiMessageToUi(msg, initialServerId || msg.metadata?.messageServerId)
+          mapApiMessageToUi(msg, initialMessageServerId || msg.metadata?.messageServerId as UUID)
         );
 
         setMessages((prev) => {
@@ -511,8 +505,8 @@ export function useChannelMessages(
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [channelId, transformServerMessageToUiMessage, initialServerId]
-  ); // Add initialServerId to deps
+    [channelId, transformServerMessageToUiMessage, initialMessageServerId]
+  ); // Add initialMessageServerId to deps
 
   useEffect(() => {
     // Initial fetch when channelId changes or becomes available
@@ -603,11 +597,11 @@ export function useChannelMessages(
   };
 }
 
-export function useGroupChannelMessages(channelId: UUID | null, initialServerId?: UUID) {
+export function useGroupChannelMessages(channelId: UUID | null, initialMessageServerId?: UUID) {
   // This hook now becomes an alias or a slightly specialized version of useChannelMessages
   // if group-specific logic (like different source filtering) isn't handled here.
   // For now, it can directly use useChannelMessages.
-  return useChannelMessages(channelId ?? undefined, initialServerId);
+  return useChannelMessages(channelId ?? undefined, initialMessageServerId);
 }
 
 // Hook for fetching agent actions

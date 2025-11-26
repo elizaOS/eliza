@@ -99,7 +99,7 @@ export function useSocketChat({
 
     // Initialize socket with API key for authentication
     const apiKey = getApiKey();
-    socketIOManager.initialize(currentUserId, undefined, apiKey ?? undefined);
+    socketIOManager.initialize(currentUserId, apiKey ?? undefined);
 
     // Only join if this specific channelId hasn't been joined by this hook instance yet,
     // or if the channelId has changed.

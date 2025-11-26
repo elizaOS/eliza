@@ -20,7 +20,6 @@ mock.module('@/lib/api-client-config', () => ({
   }),
   createApiClientConfig: () => ({}),
   updateApiClientApiKey: () => {},
-  updateApiClientJwtToken: () => {},
 }));
 
 mock.module('../use-plugins', () => ({
