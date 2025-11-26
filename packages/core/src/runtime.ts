@@ -2246,16 +2246,9 @@ export class AgentRuntime implements IAgentRuntime {
       // The `user` parameter is used by LLM providers for tracking and analytics purposes.
       // We only auto-populate when user is undefined (not explicitly set to empty string or null)
       // to allow users to intentionally set an empty identifier if needed.
-      if (
-        typeof modelParams === 'object' &&
-        modelParams !== null &&
-        !Array.isArray(modelParams) &&
-        !BufferUtils.isBuffer(modelParams) &&
-        !(modelParams instanceof Date) &&
-        !(modelParams instanceof RegExp)
-      ) {
+      if (BufferUtils.isPlainObject(modelParams)) {
         if (modelParams.user === undefined && this.character?.name) {
-          modelParams.user = this.character.name;
+          (modelParams as Record<string, unknown>).user = this.character.name;
         }
       }
     }
