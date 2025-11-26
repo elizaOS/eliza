@@ -223,8 +223,8 @@ describe('TaskService', () => {
 
     // Verify error was logged
     expect(logger.error).toHaveBeenCalledWith(
-      { error: expect.any(Error), taskId: testTask.id },
-      `[Bootstrap] Error executing task ${testTask.id}:`
+      { src: 'plugin:bootstrap:service:task', agentId: mockRuntime.agentId, taskId: testTask.id, error: expect.any(String) },
+      'Error executing task'
     );
 
     // Verify error was handled gracefully (original assertions removed as they don't match current executeTask)

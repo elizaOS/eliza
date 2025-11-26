@@ -167,7 +167,8 @@ describe('processAttachments', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual(imageAttachment); // Should return original
     expect(mockRuntime.logger.warn).toHaveBeenCalledWith(
-      '[Bootstrap] Failed to parse XML response for image description'
+      { src: 'plugin:bootstrap', agentId: mockRuntime.agentId },
+      'Failed to parse XML response for image description'
     );
   });
 
@@ -201,8 +202,8 @@ describe('processAttachments', () => {
     expect(result[0]).toEqual(attachments[0]); // First image unchanged due to error
     expect(result[1].description).toBe('Description of second image');
     expect(mockRuntime.logger.error).toHaveBeenCalledWith(
-      { error: expect.any(Error) },
-      '[Bootstrap] Error generating image description:'
+      { src: 'plugin:bootstrap', agentId: mockRuntime.agentId, error: expect.any(String) },
+      'Error generating image description'
     );
   });
 

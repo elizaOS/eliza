@@ -278,8 +278,8 @@ export const updateEntityAction: Action = {
         }
       } catch (error: any) {
         logger.error(
-          'Failed to parse component data:',
-          error instanceof Error ? error.message : String(error)
+          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+          'Failed to parse component data'
         );
         await callback({
           text: "I couldn't properly understand the component information. Please try again with more specific information.",

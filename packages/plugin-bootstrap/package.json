@@ -39,7 +39,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src -c ../config/src/eslint/eslint.config.plugin.js && prettier --write ./src",
+    "lint:check": "eslint src -c ../config/src/eslint/eslint.config.plugin.js",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
