@@ -16,8 +16,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       res.json({ success: true, data: { servers } });
     } catch (error) {
       logger.error(
-        '[Messages Router /central-servers] Error fetching servers:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/central-servers', error: error instanceof Error ? error.message : String(error) },
+        'Error fetching servers'
       );
       res.status(500).json({ success: false, error: 'Failed to fetch servers' });
     }
@@ -44,8 +44,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       res.status(201).json({ success: true, data: { server } });
     } catch (error) {
       logger.error(
-        '[Messages Router /servers] Error creating server:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/servers', error: error instanceof Error ? error.message : String(error) },
+        'Error creating server'
       );
       res.status(500).json({ success: false, error: 'Failed to create server' });
     }
@@ -99,8 +99,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error adding agent to server'
         );
         res.status(500).json({ success: false, error: 'Failed to add agent to server' });
       }
@@ -151,8 +151,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error removing agent from server'
         );
         res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
       }
@@ -191,8 +191,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error fetching agents for server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching agents for server'
         );
         res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
       }
@@ -223,8 +223,8 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error fetching servers for agent ${agentId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching servers for agent'
         );
         res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
       }

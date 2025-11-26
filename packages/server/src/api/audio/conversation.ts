@@ -141,12 +141,13 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
       res.send(audioResult.buffer);
 
       logger.success(
-        `[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`
+        { src: 'http', path: req.path, agentId, agentName: runtime.character.name },
+        'Successfully processed conversation'
       );
     } catch (error) {
       logger.error(
-        '[SPEECH CONVERSATION] Error processing conversation:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error processing conversation'
       );
       sendError(
         res,

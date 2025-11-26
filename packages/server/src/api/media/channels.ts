@@ -86,7 +86,8 @@ export function createChannelMediaRouter(): express.Router {
         const result = await saveUploadedFile(req.file, channelId);
 
         logger.info(
-          `[Channel Media Upload] File uploaded for channel ${channelId}: ${result.filename}. URL: ${result.url}`
+          { src: 'http', path: req.path, channelId, filename: result.filename, url: result.url },
+          'Successfully uploaded channel media'
         );
 
         res.json({
@@ -101,8 +102,8 @@ export function createChannelMediaRouter(): express.Router {
         });
       } catch (error: any) {
         logger.error(
-          `[Channel Media Upload] Error processing upload for channel ${channelId}: ${error.message}`,
-          error
+          { src: 'http', path: req.path, channelId, error: error.message },
+          'Error processing channel media upload'
         );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
