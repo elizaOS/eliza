@@ -6,8 +6,10 @@
 import { isBuffer } from './buffer';
 
 /**
- * Check if a value is a plain object (not null, array, buffer, Date, or RegExp)
+ * Check if a value is a plain object (not a special object type)
  * Type guard that narrows the type to Record<string, unknown>
+ *
+ * Excludes: null, arrays, buffers, Date, RegExp, Map, Set, WeakMap, WeakSet, Error, Promise
  *
  * @param value - The value to check
  * @returns True if the value is a plain object
@@ -35,6 +37,24 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
     return false;
   }
   if (value instanceof RegExp) {
+    return false;
+  }
+  if (value instanceof Map) {
+    return false;
+  }
+  if (value instanceof Set) {
+    return false;
+  }
+  if (value instanceof WeakMap) {
+    return false;
+  }
+  if (value instanceof WeakSet) {
+    return false;
+  }
+  if (value instanceof Error) {
+    return false;
+  }
+  if (value instanceof Promise) {
     return false;
   }
   return true;

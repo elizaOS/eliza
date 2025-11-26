@@ -9,6 +9,7 @@ interface WorkingMemoryEntry {
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
+import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
@@ -2246,7 +2247,7 @@ export class AgentRuntime implements IAgentRuntime {
       // The `user` parameter is used by LLM providers for tracking and analytics purposes.
       // We only auto-populate when user is undefined (not explicitly set to empty string or null)
       // to allow users to intentionally set an empty identifier if needed.
-      if (BufferUtils.isPlainObject(modelParams)) {
+      if (isPlainObject(modelParams)) {
         if (modelParams.user === undefined && this.character?.name) {
           (modelParams as Record<string, unknown>).user = this.character.name;
         }
