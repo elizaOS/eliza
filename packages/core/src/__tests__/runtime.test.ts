@@ -397,6 +397,40 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       );
     });
 
+    it('should skip plugin migrations when skipMigrations option is true', async () => {
+      const runtimeWithMigrations = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Spy on runPluginMigrations
+      const runMigrationsSpy = spyOn(runtimeWithMigrations as any, 'runPluginMigrations');
+
+      // Initialize with skipMigrations = true
+      await runtimeWithMigrations.initialize({ skipMigrations: true });
+
+      // Verify migrations were not called
+      expect(runMigrationsSpy).not.toHaveBeenCalled();
+    });
+
+    it('should run plugin migrations by default when skipMigrations is not specified', async () => {
+      const runtimeDefault = new AgentRuntime({
+        character: mockCharacter,
+        agentId: agentId,
+        adapter: mockDatabaseAdapter,
+      });
+
+      // Spy on runPluginMigrations
+      const runMigrationsSpy = spyOn(runtimeDefault as any, 'runPluginMigrations');
+
+      // Initialize without skipMigrations option (default behavior)
+      await runtimeDefault.initialize();
+
+      // Verify migrations were called
+      expect(runMigrationsSpy).toHaveBeenCalled();
+    });
+
     // Add more tests for initialize: existing entity, existing room, knowledge processing etc.
   });
 
@@ -866,6 +900,65 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(capturedParams.maxTokens).toBeUndefined();
         expect(capturedParams.frequencyPenalty).toBeUndefined();
         expect(capturedParams.presencePenalty).toBeUndefined();
+      });
+
+      it('should preserve explicitly provided empty string for user parameter in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: Explicitly set user to empty string should be preserved
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+          user: '',
+        });
+
+        expect(capturedParams.user).toBe('');
+        expect(capturedParams.prompt).toBe('test prompt');
+      });
+
+      it('should preserve explicitly provided null for user parameter in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: Explicitly set user to null should be preserved
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+          user: null as any,
+        });
+
+        expect(capturedParams.user).toBeNull();
+        expect(capturedParams.prompt).toBe('test prompt');
+      });
+
+      it('should auto-populate user from character name when not provided in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: When user is undefined, should auto-populate from character name
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+        });
+
+        expect(capturedParams.user).toBe('Test Character');
+        expect(capturedParams.prompt).toBe('test prompt');
       });
     });
 

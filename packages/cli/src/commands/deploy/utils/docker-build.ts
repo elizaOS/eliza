@@ -99,7 +99,7 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
  */
 function detectHostPlatform(): string {
   const arch = process.arch;
-  
+
   // Map Node.js arch to Docker platform
   // Node.js uses: 'arm64', 'x64', 'arm', 'ia32', etc.
   if (arch === 'arm64') {
@@ -111,7 +111,7 @@ function detectHostPlatform(): string {
   } else if (arch === 'ia32') {
     return 'linux/386';
   }
-  
+
   // Default to amd64 for unknown architectures
   logger.warn(`Unknown architecture ${arch}, defaulting to linux/amd64`);
   return 'linux/amd64';
@@ -128,14 +128,14 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     // 3. Host platform (auto-detected)
     const hostPlatform = detectHostPlatform();
     const platform = options.platform || process.env.ELIZA_DOCKER_PLATFORM || hostPlatform;
-    
+
     // Warn if cross-compiling
     if (platform !== hostPlatform) {
       logger.warn(`Cross-compiling from ${hostPlatform} to ${platform}`);
       logger.warn('This may be slower and requires Docker BuildKit with QEMU emulation');
       logger.info('Tip: Set ELIZA_DOCKER_PLATFORM=' + hostPlatform + ' to use native platform');
     }
-    
+
     logger.info(`Building Docker image: ${options.imageTag} (platform: ${platform})`);
 
     const dockerfilePath = options.dockerfile

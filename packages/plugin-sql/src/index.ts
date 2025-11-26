@@ -58,10 +58,14 @@ export function createDatabaseAdapter(
       if (rlsEnabled) {
         const rlsOwnerIdString = process.env.RLS_OWNER_ID;
         if (!rlsOwnerIdString) {
-          throw new Error('[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable');
+          throw new Error(
+            '[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable'
+          );
         }
         rlsOwnerId = stringToUuid(rlsOwnerIdString);
-        logger.debug(`[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`);
+        logger.debug(
+          `[RLS] Creating connection pool with owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`
+        );
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(

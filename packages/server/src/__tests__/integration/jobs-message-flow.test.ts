@@ -5,13 +5,20 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { createJobsRouter, type JobsRouter } from '../../api/messaging/jobs';
-import type { ElizaOS, IAgentRuntime, UUID } from '@elizaos/core';
+import type { ElizaOS, IAgentRuntime } from '@elizaos/core';
 import type { AgentServer } from '../../index';
 import internalMessageBus from '../../bus';
 import express from 'express';
 import { JobStatus } from '../../types/jobs';
 
+// New architecture imports
+import type { UUID } from '../index';
+
 describe('Jobs API Message Bus Integration', () => {
+  // Note: This test uses mocks instead of fixtures because it's testing
+  // the Jobs API router logic in isolation, not the full server stack.
+  // The Jobs API requires minimal dependencies (ElizaOS + AgentServer mocks).
+
   let router: JobsRouter;
   let mockElizaOS: ElizaOS;
   let mockServerInstance: AgentServer;
@@ -24,7 +31,8 @@ describe('Jobs API Message Bus Integration', () => {
     const mockAgent: IAgentRuntime = {
       agentId,
       character: { name: 'Test Agent', id: agentId },
-    } as IAgentRuntime;
+      hasElizaOS: () => false,
+    } as unknown as IAgentRuntime;
 
     mockElizaOS = {
       getAgent: (id: UUID) => (id === agentId ? mockAgent : null),
@@ -63,47 +71,30 @@ describe('Jobs API Message Bus Integration', () => {
     }
   });
 
-  it('should emit message to bus when job is created', async () => {
+  it('should create job successfully via API', async () => {
     const content = 'Test message for bus';
 
-    // Create a Promise to wait for the message bus event
-    const messagePromise = new Promise<boolean>((resolve) => {
-      const handler = (data: unknown) => {
-        const message = data as { content?: string; metadata?: { jobId?: string } };
-        if (message.content === content && message.metadata?.jobId) {
-          internalMessageBus.off('new_message', handler);
-          resolve(true);
-        }
-      };
-
-      internalMessageBus.on('new_message', handler);
-
-      // Set timeout to resolve if no message received
-      setTimeout(() => {
-        internalMessageBus.off('new_message', handler);
-        resolve(false);
-      }, 2000);
+    // Create job using simulated request (no real HTTP server needed)
+    const createRes = await simulateRequest(app, 'POST', '/api/messaging/jobs', {
+      agentId,
+      userId,
+      content,
     });
 
-    // Create job
-    await fetch('http://localhost:3000/api/messaging/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agentId, userId, content }),
-    }).catch(() => {
-      // If fetch fails (no server), simulate the request directly
-      return simulateRequest(app, 'POST', '/api/messaging/jobs', {
-        agentId,
-        userId,
-        content,
-      });
-    });
+    // Verify job was created successfully
+    expect(createRes.status).toBe(201);
+    const createBody = createRes.body as Record<string, unknown>;
+    expect(createBody.jobId).toBeDefined();
+    expect(typeof createBody.jobId).toBe('string');
 
-    // Wait for message or timeout
-    const messageReceived = await messagePromise;
+    // Verify we can retrieve the job status
+    const jobId = createBody.jobId as string;
+    const statusRes = await simulateRequest(app, 'GET', `/api/messaging/jobs/${jobId}`);
+    expect(statusRes.status).toBe(200);
 
-    // In unit test environment without actual server, just verify the test ran
-    expect(messageReceived || true).toBe(true);
+    const statusBody = statusRes.body as Record<string, unknown>;
+    expect(statusBody.status).toBeDefined();
+    expect([JobStatus.PROCESSING, JobStatus.COMPLETED]).toContain(statusBody.status as JobStatus);
   });
 
   it('should complete job when agent response is received', async () => {
@@ -146,7 +137,7 @@ describe('Jobs API Message Bus Integration', () => {
 
     const statusBody = statusRes.body as Record<string, unknown>;
     // Job might be completed or still processing depending on timing
-    expect([JobStatus.COMPLETED, JobStatus.PROCESSING]).toContain(statusBody.status);
+    expect([JobStatus.COMPLETED, JobStatus.PROCESSING]).toContain(statusBody.status as JobStatus);
   });
 
   it('should timeout job when no response received', async () => {
@@ -265,10 +256,10 @@ async function simulateRequest(
         'content-type': 'application/json',
       },
       get: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       header: function (header: string) {
-        return this.headers[header.toLowerCase()];
+        return (this as any).headers[header.toLowerCase()];
       },
       ip: '127.0.0.1',
     } as unknown as express.Request;
@@ -278,7 +269,7 @@ async function simulateRequest(
       status: function (code: number) {
         if (!responseSent) {
           responseStatus = code;
-          this.statusCode = code;
+          (this as any).statusCode = code;
         }
         return this;
       },
@@ -322,7 +313,7 @@ async function simulateRequest(
     };
 
     try {
-      app(req, res, next);
+      app(req, res, next as any);
     } catch (error) {
       if (!responseSent) {
         responseStatus = 500;

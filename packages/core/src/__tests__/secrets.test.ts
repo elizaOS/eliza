@@ -74,24 +74,39 @@ describe('SecretsManager', () => {
   });
 
   describe('setDefaultSecretsFromEnv', () => {
-    test('should return false when no .env file exists', async () => {
+    test('should return true and merge process.env when not skipped', async () => {
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {},
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
-      // Should return false because we're in a temp directory with no .env
-      expect(result).toBe(false);
-      expect(character.settings?.secrets).toBeUndefined();
+      // Should return true because process.env merge is enabled
+      expect(result).toBe(true);
+      expect(character.settings?.secrets).toBeDefined();
     });
 
-    test('should load secrets from .env file when it exists', async () => {
-      // Create a test .env file in the temp directory
-      const envContent = 'OPENAI_API_KEY=test-key-123\nANTHROPIC_API_KEY=test-key-456\n';
-      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+    test('should return false when skipEnvMerge is true', async () => {
+      const character: Character = {
+        name: 'TestChar',
+        bio: ['Test bio'],
+        settings: {},
+      } as Character;
+
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: true });
+
+      // Should return false because env merge is skipped
+      expect(result).toBe(false);
+    });
+
+    test('should load secrets from process.env', async () => {
+      // Set environment variables
+      process.env.TEST_OPENAI_API_KEY = 'test-key-123';
+      process.env.TEST_ANTHROPIC_API_KEY = 'test-key-456';
+      testEnvKeys.add('TEST_OPENAI_API_KEY');
+      testEnvKeys.add('TEST_ANTHROPIC_API_KEY');
 
       const character: Character = {
         name: 'TestChar',
@@ -99,66 +114,78 @@ describe('SecretsManager', () => {
         settings: {},
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
       expect(character.settings?.secrets).toBeDefined();
-      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('test-key-123');
-      expect((character.settings!.secrets as any).ANTHROPIC_API_KEY).toBe('test-key-456');
+      expect((character.settings!.secrets as any).TEST_OPENAI_API_KEY).toBe('test-key-123');
+      expect((character.settings!.secrets as any).TEST_ANTHROPIC_API_KEY).toBe('test-key-456');
     });
 
-    test('should merge .env with existing character.settings.secrets (character overrides)', async () => {
-      // Create a test .env file
-      const envContent = 'OPENAI_API_KEY=env-key\nANTHROPIC_API_KEY=env-key-456\n';
-      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+    test('should merge process.env with existing character.settings.secrets (character overrides)', async () => {
+      // Set environment variables
+      process.env.TEST_OPENAI_KEY = 'env-key';
+      process.env.TEST_ANTHROPIC_KEY = 'env-key-456';
+      testEnvKeys.add('TEST_OPENAI_KEY');
+      testEnvKeys.add('TEST_ANTHROPIC_KEY');
 
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {
           secrets: {
-            OPENAI_API_KEY: 'character-override',
+            TEST_OPENAI_KEY: 'character-override',
           },
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
-      // Should now return true and merge
       expect(result).toBe(true);
-      // Character secret should override .env
-      expect((character.settings!.secrets as any).OPENAI_API_KEY).toBe('character-override');
-      // .env secret should be added for non-conflicting keys
-      expect((character.settings!.secrets as any).ANTHROPIC_API_KEY).toBe('env-key-456');
+      // Character secret should override process.env
+      expect((character.settings!.secrets as any).TEST_OPENAI_KEY).toBe('character-override');
+      // process.env secret should be added for non-conflicting keys
+      expect((character.settings!.secrets as any).TEST_ANTHROPIC_KEY).toBe('env-key-456');
     });
 
-    test('should merge .env into character.settings (for non-secret configs)', async () => {
-      // Create a test .env file with various configs
-      const envContent = 'LOG_LEVEL=info\nSERVER_PORT=3000\nOPENAI_API_KEY=sk-test\n';
-      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+    test('should merge process.env ONLY into character.settings.secrets (not settings root)', async () => {
+      // Set environment variables with various configs
+      process.env.TEST_LOG_LEVEL = 'info';
+      process.env.TEST_SERVER_PORT = '3000';
+      process.env.TEST_OPENAI_KEY = 'sk-test';
+      testEnvKeys.add('TEST_LOG_LEVEL');
+      testEnvKeys.add('TEST_SERVER_PORT');
+      testEnvKeys.add('TEST_OPENAI_KEY');
 
       const character: Character = {
         name: 'TestChar',
         bio: ['Test bio'],
         settings: {
-          LOG_LEVEL: 'debug', // Override .env
+          TEST_LOG_LEVEL: 'debug', // Existing setting should be preserved
+          secrets: {
+            TEST_OPENAI_KEY: 'character-override', // Override process.env
+          },
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
-      // Character setting should override .env
-      expect(character.settings!.LOG_LEVEL).toBe('debug');
-      // .env values should be available for non-overridden keys
-      expect(character.settings!.SERVER_PORT).toBe('3000');
-      expect(character.settings!.OPENAI_API_KEY).toBe('sk-test');
+      // Existing character settings (non-secrets) should be preserved
+      expect(character.settings!.TEST_LOG_LEVEL).toBe('debug');
+      // process.env values should NOT be merged into settings root
+      expect(character.settings!.TEST_SERVER_PORT).toBeUndefined();
+      // process.env values should be merged into settings.secrets
+      expect((character.settings!.secrets as any).TEST_SERVER_PORT).toBe('3000');
+      expect((character.settings!.secrets as any).TEST_LOG_LEVEL).toBe('info');
+      // Character secret should override process.env
+      expect((character.settings!.secrets as any).TEST_OPENAI_KEY).toBe('character-override');
     });
 
     test('should NOT touch character.secrets (root level)', async () => {
-      // Create a test .env file
-      const envContent = 'SOME_KEY=from-env\n';
-      fs.writeFileSync(path.join(testDir, '.env'), envContent);
+      // Set environment variable
+      process.env.TEST_SOME_KEY = 'from-env';
+      testEnvKeys.add('TEST_SOME_KEY');
 
       const character: Character = {
         name: 'TestChar',
@@ -168,17 +195,47 @@ describe('SecretsManager', () => {
         },
       } as Character;
 
-      const result = await setDefaultSecretsFromEnv(character);
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
       expect(result).toBe(true);
       // Root secrets should remain untouched
       expect(character.secrets).toEqual({
         RUNTIME_SECRET: 'must-not-be-touched',
       });
-      // .env should NOT be merged into root secrets
-      expect(character.secrets?.SOME_KEY).toBeUndefined();
+      // process.env should NOT be merged into root secrets
+      expect(character.secrets?.TEST_SOME_KEY).toBeUndefined();
       // But should be in settings.secrets
-      expect((character.settings!.secrets as any).SOME_KEY).toBe('from-env');
+      expect((character.settings!.secrets as any).TEST_SOME_KEY).toBe('from-env');
+    });
+
+    test('should preserve existing character.settings and not duplicate in settings root', async () => {
+      // Set environment variables
+      process.env.ENV_VAR_1 = 'env-value-1';
+      process.env.ENV_VAR_2 = 'env-value-2';
+      testEnvKeys.add('ENV_VAR_1');
+      testEnvKeys.add('ENV_VAR_2');
+
+      const character: Character = {
+        name: 'TestChar',
+        bio: ['Test bio'],
+        settings: {
+          EXISTING_SETTING: 'should-be-preserved',
+          ANOTHER_SETTING: { nested: 'object' },
+        },
+      } as Character;
+
+      const result = await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
+
+      expect(result).toBe(true);
+      // Existing settings should be preserved
+      expect(character.settings!.EXISTING_SETTING).toBe('should-be-preserved');
+      expect(character.settings!.ANOTHER_SETTING).toEqual({ nested: 'object' });
+      // Env vars should NOT be in settings root
+      expect(character.settings!.ENV_VAR_1).toBeUndefined();
+      expect(character.settings!.ENV_VAR_2).toBeUndefined();
+      // Env vars should ONLY be in settings.secrets
+      expect((character.settings!.secrets as any).ENV_VAR_1).toBe('env-value-1');
+      expect((character.settings!.secrets as any).ENV_VAR_2).toBe('env-value-2');
     });
   });
 });

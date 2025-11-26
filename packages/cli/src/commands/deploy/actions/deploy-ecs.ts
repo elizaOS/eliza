@@ -193,13 +193,13 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // Step 11: Determine architecture from Docker platform
     const detectedPlatform = await getDetectedPlatform(options.platform);
     const architecture = detectedPlatform.includes('arm64') ? 'arm64' : 'x86_64';
-    
+
     logger.info(`🏗️  Target architecture: ${architecture} (from platform: ${detectedPlatform})`);
-    
+
     // Step 12: Select instance type based on architecture
     const instanceDefaults = getInstanceDefaults(architecture);
     logger.info(`💻 AWS instance type: ${instanceDefaults.instanceType} (${architecture})`);
-    
+
     // Step 13: Create container configuration for ECS
     const containerConfig: ContainerConfig = {
       name: containerName,
@@ -496,11 +496,11 @@ async function getDetectedPlatform(platformOverride?: string): Promise<string> {
   if (platformOverride) {
     return platformOverride;
   }
-  
+
   if (process.env.ELIZA_DOCKER_PLATFORM) {
     return process.env.ELIZA_DOCKER_PLATFORM;
   }
-  
+
   // Auto-detect based on host
   const arch = process.arch;
   if (arch === 'arm64') {
@@ -510,7 +510,7 @@ async function getDetectedPlatform(platformOverride?: string): Promise<string> {
   } else if (arch === 'arm') {
     return 'linux/arm/v7';
   }
-  
+
   return 'linux/amd64'; // Default
 }
 
@@ -528,7 +528,7 @@ function getInstanceDefaults(architecture: 'arm64' | 'x86_64'): {
     // More cost-effective and energy-efficient
     return {
       instanceType: 't4g.small',
-      cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
+      cpu: 1792, // 1.75 vCPU (87.5% of 2 vCPUs)
       memory: 1792, // 1.75 GiB (87.5% of 2048 MB)
     };
   } else {
@@ -536,7 +536,7 @@ function getInstanceDefaults(architecture: 'arm64' | 'x86_64'): {
     // Note: AWS uses t3 (not t4) for small size on x86_64
     return {
       instanceType: 't3.small',
-      cpu: 1792,  // 1.75 vCPU (87.5% of 2 vCPUs)
+      cpu: 1792, // 1.75 vCPU (87.5% of 2 vCPUs)
       memory: 1792, // 1.75 GiB (87.5% of 2048 MB)
     };
   }

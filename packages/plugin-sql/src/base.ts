@@ -153,6 +153,45 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
+   * Normalizes entity names to ensure they are always a proper array of strings.
+   * Handles strings, Sets, Maps, iterables, and non-iterable values.
+   * All array elements are converted to strings to prevent database errors.
+   * @param {any} names - The names value to normalize
+   * @returns {string[]} A proper array of string names
+   * @private
+   */
+  private normalizeEntityNames(names: any): string[] {
+    // Handle null/undefined
+    if (names == null) {
+      return [];
+    }
+
+    // Handle string - wrap in array
+    if (typeof names === 'string') {
+      return [names];
+    }
+
+    // Handle arrays - ensure all elements are strings
+    if (Array.isArray(names)) {
+      return names.map(String);
+    }
+
+    // Handle Sets - convert to array and ensure all elements are strings
+    if (names instanceof Set) {
+      return Array.from(names).map(String);
+    }
+
+    // Handle other iterables (including Maps) - convert to array and ensure all elements are strings
+    // Maps yield [key, value] tuples, so we need to convert those to strings too
+    if (typeof names === 'object' && typeof names[Symbol.iterator] === 'function') {
+      return Array.from(names).map(String);
+    }
+
+    // Handle non-iterable primitives (numbers, booleans, objects)
+    return [String(names)];
+  }
+
+  /**
    * Executes the given operation with retry logic.
    * @template T
    * @param {() => Promise<T>} operation - The operation to be executed.
@@ -632,7 +671,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     return this.withDatabase(async () => {
       try {
         return await this.db.transaction(async (tx) => {
-          await tx.insert(entityTable).values(entities);
+          // Normalize entity data to ensure names is a proper array
+          const normalizedEntities = entities.map((entity) => ({
+            ...entity,
+            names: this.normalizeEntityNames(entity.names),
+            metadata: entity.metadata || {},
+          }));
+
+          await tx.insert(entityTable).values(normalizedEntities);
 
           logger.debug(`${entities.length} Entities created successfully`);
 
@@ -689,9 +735,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       throw new Error('Entity ID is required for update');
     }
     return this.withDatabase(async () => {
+      // Normalize entity data to ensure names is a proper array
+      const normalizedEntity = {
+        ...entity,
+        names: this.normalizeEntityNames(entity.names),
+        metadata: entity.metadata || {},
+      };
+
       await this.db
         .update(entityTable)
-        .set(entity)
+        .set(normalizedEntity)
         .where(eq(entityTable.id, entity.id as string));
     });
   }

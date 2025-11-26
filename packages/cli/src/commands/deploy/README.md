@@ -91,28 +91,30 @@ The deploy command automatically detects your host platform and builds for it, t
 
 ### Automatic Platform Detection
 
-| Host System | Docker Platform | AWS Instance | Architecture |
-|-------------|----------------|--------------|--------------|
-| **macOS (Apple Silicon)** | `linux/arm64` | t4g.small (Graviton) | ARM64 |
-| **Ubuntu/Linux x86_64** | `linux/amd64` | t3.small (Intel/AMD) | x86_64 |
-| **Ubuntu/Linux ARM64** | `linux/arm64` | t4g.small (Graviton) | ARM64 |
+| Host System               | Docker Platform | AWS Instance         | Architecture |
+| ------------------------- | --------------- | -------------------- | ------------ |
+| **macOS (Apple Silicon)** | `linux/arm64`   | t4g.small (Graviton) | ARM64        |
+| **Ubuntu/Linux x86_64**   | `linux/amd64`   | t3.small (Intel/AMD) | x86_64       |
+| **Ubuntu/Linux ARM64**    | `linux/arm64`   | t4g.small (Graviton) | ARM64        |
 
 ### AWS Instance Specifications
 
-| Instance Type | vCPUs | RAM | Architecture | Cost Efficiency |
-|--------------|-------|-----|--------------|-----------------|
-| **t4g.small** | 2 | 2 GiB | ARM64 (Graviton2) | ⭐ Higher (20-40% cheaper) |
-| **t3.small** | 2 | 2 GiB | x86_64 (Intel/AMD) | Standard |
+| Instance Type | vCPUs | RAM   | Architecture       | Cost Efficiency            |
+| ------------- | ----- | ----- | ------------------ | -------------------------- |
+| **t4g.small** | 2     | 2 GiB | ARM64 (Graviton2)  | ⭐ Higher (20-40% cheaper) |
+| **t3.small**  | 2     | 2 GiB | x86_64 (Intel/AMD) | Standard                   |
 
 Both instance types provide identical performance for most workloads. ARM64 (Graviton) instances are more cost-effective and energy-efficient.
 
 ### Override Options
 
 You can override the automatic detection:
+
 - `--platform` flag: `elizaos deploy --platform linux/arm64`
 - `ELIZA_DOCKER_PLATFORM` environment variable: `export ELIZA_DOCKER_PLATFORM=linux/amd64`
 
 **Note:** The platform you choose determines which AWS instance type will be used:
+
 - `linux/arm64` → Deploys to **t4g.small** (AWS Graviton)
 - `linux/amd64` → Deploys to **t3.small** (Intel/AMD)
 

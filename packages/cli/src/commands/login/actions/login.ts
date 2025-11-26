@@ -25,7 +25,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
 
     // Step 2: Create session on cloud
     const createSpinner = ora('Initializing authentication session...').start();
-    
+
     try {
       const createResponse = await fetch(`${cloudUrl}/api/auth/cli-session`, {
         method: 'POST',
@@ -70,7 +70,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
 
     // Step 5: Poll for authentication status
     const timeoutSeconds = Number.parseInt(options.timeout, 10);
-    
+
     // Validate timeout value
     if (isNaN(timeoutSeconds) || timeoutSeconds <= 0) {
       console.error(

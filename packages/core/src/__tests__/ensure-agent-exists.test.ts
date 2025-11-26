@@ -329,15 +329,13 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
       // Mock getAgent to return DB agent on first call (ensureAgentExists)
       // and updated agent on second call (after update)
-      (mockAdapter.getAgent as any)
-        .mockResolvedValueOnce(dbAgent)
-        .mockResolvedValueOnce({
-          ...dbAgent,
-          settings: {
-            ...dbAgent.settings,
-            MODEL: 'gpt-4', // Added from character file
-          },
-        });
+      (mockAdapter.getAgent as any).mockResolvedValueOnce(dbAgent).mockResolvedValueOnce({
+        ...dbAgent,
+        settings: {
+          ...dbAgent.settings,
+          MODEL: 'gpt-4', // Added from character file
+        },
+      });
 
       // Character file has different settings
       const character: Character = {
@@ -367,7 +365,7 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
       // Mock the services that initialize() expects
       (mockAdapter.getEntitiesByIds as any).mockResolvedValue([
-        { id: agentId, names: ['TestAgent'], metadata: {}, agentId }
+        { id: agentId, names: ['TestAgent'], metadata: {}, agentId },
       ]);
       (mockAdapter.getRoomsByIds as any).mockResolvedValue([]);
       (mockAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
@@ -382,7 +380,9 @@ describe('ensureAgentExists - Settings Persistence', () => {
       expect(testRuntime.character.settings?.SOLANA_PUBLIC_KEY).toBe('wallet_from_db');
       expect(testRuntime.character.settings?.RUNTIME_SETTING).toBe('from_previous_run');
       expect(testRuntime.character.settings?.MODEL).toBe('gpt-4'); // Character file wins
-      expect((testRuntime.character.settings?.secrets as any)?.SOLANA_PRIVATE_KEY).toBe('secret_from_db');
+      expect((testRuntime.character.settings?.secrets as any)?.SOLANA_PRIVATE_KEY).toBe(
+        'secret_from_db'
+      );
 
       // Verify getSetting() can now access DB settings
       expect(testRuntime.getSetting('SOLANA_PUBLIC_KEY')).toBe('wallet_from_db');
@@ -403,15 +403,13 @@ describe('ensureAgentExists - Settings Persistence', () => {
         },
       } as Agent;
 
-      (mockAdapter.getAgent as any)
-        .mockResolvedValueOnce(dbAgent)
-        .mockResolvedValueOnce({
-          ...dbAgent,
-          settings: {
-            MODEL: 'gpt-4', // Updated by character file
-            DB_ONLY_SETTING: 'keep_me',
-          },
-        });
+      (mockAdapter.getAgent as any).mockResolvedValueOnce(dbAgent).mockResolvedValueOnce({
+        ...dbAgent,
+        settings: {
+          MODEL: 'gpt-4', // Updated by character file
+          DB_ONLY_SETTING: 'keep_me',
+        },
+      });
 
       const character: Character = {
         id: agentId,
@@ -434,7 +432,7 @@ describe('ensureAgentExists - Settings Persistence', () => {
       });
 
       (mockAdapter.getEntitiesByIds as any).mockResolvedValue([
-        { id: agentId, names: ['TestAgent'], metadata: {}, agentId }
+        { id: agentId, names: ['TestAgent'], metadata: {}, agentId },
       ]);
       (mockAdapter.getRoomsByIds as any).mockResolvedValue([]);
       (mockAdapter.getParticipantsForRoom as any).mockResolvedValue([]);

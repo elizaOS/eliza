@@ -1,4 +1,4 @@
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import Handlebars from 'handlebars';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
