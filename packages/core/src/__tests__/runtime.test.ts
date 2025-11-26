@@ -901,6 +901,65 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(capturedParams.frequencyPenalty).toBeUndefined();
         expect(capturedParams.presencePenalty).toBeUndefined();
       });
+
+      it('should preserve explicitly provided empty string for user parameter in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: Explicitly set user to empty string should be preserved
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+          user: '',
+        });
+
+        expect(capturedParams.user).toBe('');
+        expect(capturedParams.prompt).toBe('test prompt');
+      });
+
+      it('should preserve explicitly provided null for user parameter in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: Explicitly set user to null should be preserved
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+          user: null as any,
+        });
+
+        expect(capturedParams.user).toBeNull();
+        expect(capturedParams.prompt).toBe('test prompt');
+      });
+
+      it('should auto-populate user from character name when not provided in useModel', async () => {
+        // Mock a model handler to capture params
+        let capturedParams: any = null;
+        const mockHandler = mock().mockImplementation(async (_runtime: any, params: any) => {
+          capturedParams = params;
+          return 'test response';
+        });
+
+        runtime.registerModel(ModelType.TEXT_SMALL, mockHandler, 'test-provider');
+
+        // Test: When user is undefined, should auto-populate from character name
+        await runtime.useModel(ModelType.TEXT_SMALL, {
+          prompt: 'test prompt',
+        });
+
+        expect(capturedParams.user).toBe('Test Character');
+        expect(capturedParams.prompt).toBe('test prompt');
+      });
     });
 
     describe('model settings from character configuration', () => {
