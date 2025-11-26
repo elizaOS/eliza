@@ -9,6 +9,7 @@ import {
   getGeneratedDir,
   getUploadsAgentsDir,
   ElizaOS,
+  loadEnvFile,
 } from '@elizaos/core';
 import cors from 'cors';
 import express, { Request, Response } from 'express';
@@ -51,8 +52,6 @@ import type {
   MessageServiceStructure,
 } from './types.js';
 import { existsSync } from 'node:fs';
-import { resolveEnvFile } from './api/system/environment.js';
-import dotenv from 'dotenv';
 
 /**
  * Expands a file path starting with `~` to the project directory.
@@ -83,11 +82,6 @@ export function expandTildePath(filepath: string): string {
 }
 
 export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
-  const envPath = resolveEnvFile();
-  if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
-
   // If explicit dir provided, use it
   if (dir) {
     const resolved = expandTildePath(dir);
@@ -332,6 +326,10 @@ export class AgentServer {
 
     try {
       logger.debug('Initializing AgentServer (async operations)...');
+
+      // Load .env file if not already loaded by CLI
+      // This ensures the server works when used standalone (without CLI)
+      loadEnvFile();
 
       const agentDataDir = resolvePgliteDir(config?.dataDir);
       logger.info(`[INIT] Database Dir for SQL plugin: ${agentDataDir}`);

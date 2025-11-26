@@ -1,77 +1,54 @@
 /**
  * Integration tests for Socket.IO end-to-end message flow
+ * MIGRATED to new fixtures architecture
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
 import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
-import { AgentServer } from '../../index';
-import type { IAgentRuntime, UUID, Character } from '@elizaos/core';
+import type { IAgentRuntime, UUID } from '@elizaos/core';
 import { SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
-import path from 'node:path';
-import fs from 'node:fs';
+
+// New architecture imports
+import {
+  TestServerFixture,
+  AgentFixture,
+  CharacterBuilder,
+  stringToUuid,
+} from '../index';
+
+// Helper to generate unique channel IDs for each test to avoid conflicts in parallel execution
+let channelIdCounter = 0;
+function generateUniqueChannelId(): UUID {
+  return stringToUuid(`test-channel-socketio-${Date.now()}-${channelIdCounter++}`);
+}
 
 describe('Socket.IO End-to-End Message Flow', () => {
-  let agentServer: AgentServer;
+  let serverFixture: TestServerFixture;
+  let agentFixture: AgentFixture;
   let port: number;
   let client1: ClientSocket;
   let client2: ClientSocket;
   let mockRuntime: IAgentRuntime;
-  let testDbPath: string;
 
   beforeAll(async () => {
-    // Use a test database
-    testDbPath = path.join(__dirname, `test-db-${Date.now()}`);
-    process.env.PGLITE_DATA_DIR = testDbPath;
+    // Setup server with fixtures (replaces 80+ lines of boilerplate!)
+    // Use auto-discovery instead of fixed port to avoid conflicts in parallel tests
+    serverFixture = new TestServerFixture();
+    const { port: serverPort } = await serverFixture.setup();
+    port = serverPort;
 
-    // Clean up environment variables that might interfere
-    delete process.env.POSTGRES_URL;
-    delete process.env.POSTGRES_PASSWORD;
-    delete process.env.POSTGRES_USER;
-    delete process.env.POSTGRES_HOST;
-    delete process.env.POSTGRES_PORT;
-    delete process.env.POSTGRES_DATABASE;
+    // Create test agent using fixture
+    agentFixture = new AgentFixture(serverFixture.getServer());
+    const { runtime } = await agentFixture.setup({
+      character: new CharacterBuilder()
+        .asSocketIOTestAgent()
+        .withSettings({ model: 'gpt-4' })
+        .withSecret('OPENAI_API_KEY', 'test-key')
+        .build(),
+    });
+    mockRuntime = runtime;
 
-    // Create and initialize agent server
-    agentServer = new AgentServer();
-
-    // Start server on a fixed port for testing FIRST
-    port = 3100;
-    process.env.SERVER_PORT = port.toString();
-
-    try {
-      await agentServer.start({
-        dataDir: testDbPath,
-        port,
-      });
-    } catch (error) {
-      console.error('Failed to start agent server:', error);
-      // Clean up on failure
-      if (fs.existsSync(testDbPath)) {
-        fs.rmSync(testDbPath, { recursive: true, force: true });
-      }
-      throw error;
-    }
-
-    // Create and register a real test agent AFTER server is running
-    const testCharacter = {
-      name: 'Test Agent',
-      bio: ['Test bio'],
-      topics: [],
-      clients: [],
-      plugins: [],
-      settings: {
-        model: 'gpt-4',
-        secrets: {},
-      },
-      modelProvider: 'openai',
-    } as Character;
-
-    // Use startAgents to properly create and initialize the agent
-    const [testAgent] = await agentServer.startAgents([{ character: testCharacter }]);
-    mockRuntime = testAgent;
-
-    // Mock the agent's processActions to immediately return a response
-    // This avoids calling OpenAI and prevents timeouts
+    // Mock the agent's processActions to avoid calling OpenAI
     mockRuntime.processActions = async (message: any, responses: any[]) => {
       // Simulate agent responding to a message
       responses.push({
@@ -84,35 +61,18 @@ describe('Socket.IO End-to-End Message Flow', () => {
       });
     };
 
-    // Wait a bit for server to fully start
+    // Wait for server to fully start
     await new Promise((resolve) => setTimeout(resolve, 1000));
-  }); // Increase timeout to 60 seconds
+  }, 30000);
 
   afterAll(async () => {
     // Close all connections
     if (client1) client1.close();
     if (client2) client2.close();
 
-    // Stop all agents first to prevent MessageBusService connection errors
-    if (agentServer) {
-      const allAgents = agentServer.getAllAgents();
-      const agentIds = allAgents.map((agent) => agent.agentId);
-      if (agentIds.length > 0) {
-        await agentServer.stopAgents(agentIds);
-        // Give agents time to clean up their connections
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
-      // Then stop the server
-      await agentServer.stop();
-    }
-
-    // Clean up test database
-    if (fs.existsSync(testDbPath)) {
-      // Wait a bit before cleanup to ensure all file handles are released
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      fs.rmSync(testDbPath, { recursive: true, force: true });
-    }
+    // Cleanup with fixtures (automatic!)
+    await agentFixture.cleanup();
+    await serverFixture.cleanup();
   });
 
   beforeEach(() => {
@@ -129,9 +89,15 @@ describe('Socket.IO End-to-End Message Flow', () => {
   });
 
   afterEach(() => {
-    // Disconnect clients after each test
-    if (client1.connected) client1.disconnect();
-    if (client2.connected) client2.disconnect();
+    // Properly cleanup clients after each test
+    if (client1) {
+      client1.removeAllListeners();
+      if (client1.connected) client1.disconnect();
+    }
+    if (client2) {
+      client2.removeAllListeners();
+      if (client2.connected) client2.disconnect();
+    }
   });
 
   describe('Connection and Channel Joining', () => {
@@ -156,7 +122,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
         });
       });
 
-      const channelId = '123e4567-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
       client1.emit(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), {
         channelId,
         entityId: 'user-123',
@@ -179,7 +145,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
         }),
       ]);
 
-      const channelId = '123e4567-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
 
       // Both clients join the same channel
       const joinPromises = Promise.all([
@@ -207,7 +173,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
   describe('Message Sending and Broadcasting', () => {
     it('should send message and broadcast to other clients', async () => {
-      const channelId = '123e4567-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
       const serverId = '00000000-0000-0000-0000-000000000000';
 
       // Connect and join channel for both clients
@@ -257,7 +223,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
       client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
         channelId,
-        senderId: '123e4567-e89b-12d3-a456-426614174001', // Valid UUID
+        senderId: '123e4567-e89b-12d3-a456-426614174001',
         senderName: 'User 1',
         message: 'Hello from client1',
         serverId,
@@ -268,7 +234,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     });
 
     it('should handle message with attachments', async () => {
-      const channelId = '456e7890-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
       const serverId = '00000000-0000-0000-0000-000000000000';
 
       // Connect and join
@@ -301,7 +267,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
       client1.emit(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), {
         channelId,
-        senderId: '123e4567-e89b-12d3-a456-426614174002', // Valid UUID
+        senderId: '123e4567-e89b-12d3-a456-426614174002',
         senderName: 'User 1',
         message: 'Check out this image',
         serverId,
@@ -319,10 +285,10 @@ describe('Socket.IO End-to-End Message Flow', () => {
 
   describe('DM Channel Creation and Messaging', () => {
     it('should auto-create DM channel and send message', async () => {
-      const channelId = '789e1234-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
       const serverId = '00000000-0000-0000-0000-000000000000';
-      const user1Id = '111e2222-e89b-12d3-a456-426614174000';
-      const user2Id = '222e3333-e89b-12d3-a456-426614174000';
+      const user1Id = stringToUuid(`test-user-dm-1-${Date.now()}`);
+      const user2Id = stringToUuid(`test-user-dm-2-${Date.now()}`);
 
       // Connect client1
       await new Promise((resolve) => {
@@ -354,7 +320,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
       await ackReceived;
 
       // Verify channel was created by checking database
-      const channel = await agentServer.getChannelDetails(channelId as UUID);
+      const channel = await serverFixture.getServer().getChannelDetails(channelId as UUID);
       expect(channel).toBeTruthy();
       expect(channel?.type).toBe(ChannelType.DM);
     });
@@ -384,7 +350,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     });
 
     it('should handle message without required fields', async () => {
-      const channelId = '999e4567-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
 
       await new Promise((resolve) => {
         client1.on('connection_established', resolve);
@@ -407,7 +373,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     });
 
     it('should handle disconnection and cleanup', async () => {
-      const channelId = '888e4567-e89b-12d3-a456-426614174000';
+      const channelId = generateUniqueChannelId();
 
       await new Promise((resolve) => {
         client1.on('connection_established', () => {
@@ -455,7 +421,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
         client1.on('log_filters_updated', (data) => {
           expect(data.success).toBe(true);
           expect(data.filters).toMatchObject({
-            agentName: 'Test Agent',
+            agentName: 'SocketIO Test Agent',
             level: 'info',
           });
           resolve(data);
@@ -463,7 +429,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
       });
 
       client1.emit('update_log_filters', {
-        agentName: 'Test Agent',
+        agentName: 'SocketIO Test Agent',
         level: 'info',
       });
 

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.6.5-alpha.1",
+  "version": "1.6.5-alpha.11",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -66,12 +66,13 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
+    "@langchain/core": "^1.0.0",
+    "@langchain/textsplitters": "^1.0.0",
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dotenv": "17.2.3",
     "glob": "11.0.3",
     "handlebars": "^4.7.8",
-    "langchain": "^0.3.35",
     "pdfjs-dist": "^5.2.133",
     "unique-names-generator": "4.7.1",
     "uuid": "13.0.0",

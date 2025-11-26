@@ -55,6 +55,7 @@ import {
   type RuntimeSettings,
   type Component,
   IAgentRuntime,
+  type IElizaOS,
   type ActionResult,
   type GenerateTextParams,
   type GenerateTextOptions,
@@ -117,6 +118,13 @@ export class AgentRuntime implements IAgentRuntime {
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
   private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
+
+  /**
+   * Reference to the ElizaOS instance that created this runtime
+   * Set by ElizaOS when runtime is registered
+   * @optional
+   */
+  elizaOS?: IElizaOS;
 
   // A map of all plugins available to the runtime, keyed by name, for dependency resolution.
   private allAvailablePlugins = new Map<string, Plugin>();
@@ -325,35 +333,44 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
     if (plugin.services) {
+
       for (const service of plugin.services) {
+        const serviceType = service.serviceType as ServiceTypeName;
+        const serviceName = service.name || 'Unknown';
+
+        this.logger.debug(
+          `Plugin ${plugin.name} registering service: ${serviceType}`
+        );
+
         // ensure we have a promise, so when it's actually loaded via registerService,
         // we can trigger the loading of service dependencies
-        if (!this.servicePromises.has(service.serviceType)) {
-          this._createServiceResolver(service.serviceType as ServiceTypeName);
+        if (!this.servicePromises.has(serviceType)) {
+          this._createServiceResolver(serviceType);
         }
 
         // Track service registration status
-        this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'pending');
+        this.serviceRegistrationStatus.set(serviceType, 'pending');
 
         // Register service asynchronously; handle errors without rethrowing since
         // we are not awaiting this promise here (to avoid unhandled rejections)
         this.registerService(service).catch((error) => {
           this.logger.error(
-            `Service registration failed for ${service.serviceType}: ${error instanceof Error ? error.message : String(error)}`
+            `Plugin ${plugin.name} failed to register service ${serviceType}: ${error instanceof Error ? error.message : String(error)}`
           );
+
           // Reject the service promise so waiting consumers know about the failure
-          const handler = this.servicePromiseHandlers.get(service.serviceType as ServiceTypeName);
+          const handler = this.servicePromiseHandlers.get(serviceType);
           if (handler) {
             const serviceError = new Error(
-              `Service ${service.serviceType} failed to register: ${error instanceof Error ? error.message : String(error)}`
+              `Service ${serviceType} from plugin ${plugin.name} failed to register: ${error instanceof Error ? error.message : String(error)}`
             );
             handler.reject(serviceError);
             // Clean up the promise handles
-            this.servicePromiseHandlers.delete(service.serviceType as ServiceTypeName);
-            this.servicePromises.delete(service.serviceType as ServiceTypeName);
+            this.servicePromiseHandlers.delete(serviceType);
+            this.servicePromises.delete(serviceType);
           }
           // Update service status
-          this.serviceRegistrationStatus.set(service.serviceType as ServiceTypeName, 'failed');
+          this.serviceRegistrationStatus.set(serviceType, 'failed');
           // Do not rethrow; error is propagated via promise rejection and status update
         });
       }
@@ -372,6 +389,8 @@ export class AgentRuntime implements IAgentRuntime {
         await service.stop();
       }
     }
+
+    this.elizaOS = undefined;
   }
 
   async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
@@ -1841,15 +1860,16 @@ export class AgentRuntime implements IAgentRuntime {
 
   async registerService(serviceDef: typeof Service): Promise<void> {
     const serviceType = serviceDef.serviceType as ServiceTypeName;
+    const serviceName = serviceDef.name || 'Unknown';
+
     if (!serviceType) {
       this.logger.warn(
-        `Service ${serviceDef.name} is missing serviceType. Please define a static serviceType property.`
+        `Service ${serviceName} is missing serviceType. Please define a static serviceType property.`
       );
       return;
     }
-    this.logger.debug(
-      `${this.character.name}(${this.agentId}) - Registering service:`,
-      serviceType
+    this.logger.info(
+      `Registering service: ${serviceType}`
     );
 
     // Update service status to registering
@@ -1872,9 +1892,20 @@ export class AgentRuntime implements IAgentRuntime {
       });
 
       await Promise.race([this.initPromise, initTimeout]);
-      this.logger.debug(`Service ${serviceType} proceeding - initialization complete`);
 
+      // Check if service has a start method
+      if (typeof serviceDef.start !== 'function') {
+        throw new Error(
+          `Service ${serviceType} does not have a static start method. All services must implement static async start(runtime: IAgentRuntime): Promise<Service>.`
+        );
+      }
       const serviceInstance = await serviceDef.start(this);
+
+      if (!serviceInstance) {
+        throw new Error(
+          `Service ${serviceType}  start() method returned null or undefined. It must return a Service instance.`
+        );
+      }
 
       // Initialize arrays if they don't exist
       if (!this.services.has(serviceType)) {
@@ -1907,13 +1938,15 @@ export class AgentRuntime implements IAgentRuntime {
       // Update service status to registered
       this.serviceRegistrationStatus.set(serviceType, 'registered');
 
-      this.logger.debug(
-        `${this.character.name}(${this.agentId}) - Service ${serviceType} registered successfully`
+      this.logger.info(
+        `Service ${serviceType} registered successfully`
       );
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
       this.logger.error(
-        `${this.character.name}(${this.agentId}) - Failed to register service ${serviceType}: ${errorMessage}`
+        `Failed to register service ${serviceType}: ${errorMessage}`
       );
 
       // Provide additional context about the failure
@@ -1921,13 +1954,32 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.error(
           `Service ${serviceType} failed due to runtime initialization timeout. Check if runtime.initialize() is being called and completing successfully.`
         );
+      } else if (error?.message?.includes('Not implemented')) {
+        this.logger.error(
+          `Service ${serviceType} failed because it does not implement the static start() method. ` +
+          `All services must override the base Service.start() method. ` +
+          `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
+        );
+        if (errorStack) {
+          this.logger.debug(`Stack trace: ${errorStack}`);
+        }
       } else if (
         error?.message?.includes('Service') &&
         error?.message?.includes('failed to start')
       ) {
         this.logger.error(
-          `Service ${serviceType} failed to start. Check service implementation and dependencies.`
+          `Service ${serviceType} (${serviceName}) failed to start. Check service implementation and dependencies.`
         );
+      } else if (error?.message?.includes('does not have a static start method')) {
+        // Already logged above, but ensure it's clear
+        this.logger.error(
+          `Service ${serviceType} (${serviceName}) is missing required static start() method implementation.`
+        );
+      } else {
+        // Generic error - log stack trace for debugging
+        if (errorStack) {
+          this.logger.debug(`Service ${serviceType} (${serviceName}) error stack: ${errorStack}`);
+        }
       }
 
       // Update service status to failed
@@ -2053,8 +2105,8 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Helper to get a setting value with fallback chain
     const getSettingWithFallback = (
-      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
-      legacyKey: string
+      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'TOP_K' | 'MIN_P' | 'SEED' | 'REPETITION_PENALTY' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      legacyKey?: string
     ): number | null => {
       // Try model-specific setting first
       if (modelType) {
@@ -2080,12 +2132,14 @@ export class AgentRuntime implements IAgentRuntime {
         // If default value exists but is invalid, continue to legacy
       }
 
-      // Fall back to legacy setting for backwards compatibility
-      const legacyValue = this.getSetting(legacyKey);
-      if (legacyValue !== null && legacyValue !== undefined) {
-        const numValue = Number(legacyValue);
-        if (!isNaN(numValue)) {
-          return numValue;
+      // Fall back to legacy setting for backwards compatibility (if provided)
+      if (legacyKey) {
+        const legacyValue = this.getSetting(legacyKey);
+        if (legacyValue !== null && legacyValue !== undefined) {
+          const numValue = Number(legacyValue);
+          if (!isNaN(numValue)) {
+            return numValue;
+          }
         }
       }
 
@@ -2095,6 +2149,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Get settings with proper fallback chain
     const maxTokens = getSettingWithFallback('MAX_TOKENS', MODEL_SETTINGS.MODEL_MAX_TOKEN);
     const temperature = getSettingWithFallback('TEMPERATURE', MODEL_SETTINGS.MODEL_TEMPERATURE);
+    const topP = getSettingWithFallback('TOP_P');
+    const topK = getSettingWithFallback('TOP_K');
+    const minP = getSettingWithFallback('MIN_P');
+    const seed = getSettingWithFallback('SEED');
+    const repetitionPenalty = getSettingWithFallback('REPETITION_PENALTY');
     const frequencyPenalty = getSettingWithFallback(
       'FREQUENCY_PENALTY',
       MODEL_SETTINGS.MODEL_FREQ_PENALTY
@@ -2107,6 +2166,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Add settings if they exist
     if (maxTokens !== null) modelSettings.maxTokens = maxTokens;
     if (temperature !== null) modelSettings.temperature = temperature;
+    if (topP !== null) modelSettings.topP = topP;
+    if (topK !== null) modelSettings.topK = topK;
+    if (minP !== null) modelSettings.minP = minP;
+    if (seed !== null) modelSettings.seed = seed;
+    if (repetitionPenalty !== null) modelSettings.repetitionPenalty = repetitionPenalty;
     if (frequencyPenalty !== null) modelSettings.frequencyPenalty = frequencyPenalty;
     if (presencePenalty !== null) modelSettings.presencePenalty = presencePenalty;
 
@@ -2131,10 +2195,29 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log input parameters (keep debug log if useful)
-    this.logger.debug(
-      `[useModel] ${modelKey} input: ` +
+    // Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
+    const binaryModels = [ModelType.TRANSCRIPTION, ModelType.IMAGE, ModelType.AUDIO, ModelType.VIDEO];
+    if (!binaryModels.includes(modelKey as any)) {
+      this.logger.debug(
+        `[useModel] ${modelKey} input: ` +
         JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
-    );
+      );
+    } else {
+      // For binary models, just log the type and size info
+      let sizeInfo = 'unknown size';
+      if (Buffer.isBuffer(params)) {
+        sizeInfo = `${params.length} bytes`;
+      } else if (typeof Blob !== 'undefined' && params instanceof Blob) {
+        sizeInfo = `${params.size} bytes`;
+      } else if (typeof params === 'object' && params !== null) {
+        if ('audio' in params && Buffer.isBuffer(params.audio)) {
+          sizeInfo = `${(params.audio as Buffer).length} bytes`;
+        } else if ('audio' in params && typeof Blob !== 'undefined' && params.audio instanceof Blob) {
+          sizeInfo = `${(params.audio as Blob).size} bytes`;
+        }
+      }
+      this.logger.debug(`[useModel] ${modelKey} input: <binary data: ${sizeInfo}>`);
+    }
     let modelParams: ModelParamsMap[T];
     if (
       params === null ||
@@ -2158,6 +2241,23 @@ export class AgentRuntime implements IAgentRuntime {
         // No model settings configured, use params as-is
         modelParams = params;
       }
+
+      // Auto-populate user parameter from character name if not provided
+      // The `user` parameter is used by LLM providers for tracking and analytics purposes.
+      // We only auto-populate when user is undefined (not explicitly set to empty string or null)
+      // to allow users to intentionally set an empty identifier if needed.
+      if (
+        typeof modelParams === 'object' &&
+        modelParams !== null &&
+        !Array.isArray(modelParams) &&
+        !BufferUtils.isBuffer(modelParams) &&
+        !(modelParams instanceof Date) &&
+        !(modelParams instanceof RegExp)
+      ) {
+        if (modelParams.user === undefined && this.character?.name) {
+          modelParams.user = this.character.name;
+        }
+      }
     }
     const startTime =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -2174,9 +2274,8 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
-              response.length
-            } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
+          } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -2210,9 +2309,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2273,10 +2372,20 @@ export class AgentRuntime implements IAgentRuntime {
     const params: GenerateTextParams = {
       prompt,
       maxTokens: options?.maxTokens,
+      minTokens: options?.minTokens,
       temperature: options?.temperature,
+      topP: options?.topP,
+      topK: options?.topK,
+      minP: options?.minP,
+      seed: options?.seed,
+      repetitionPenalty: options?.repetitionPenalty,
       frequencyPenalty: options?.frequencyPenalty,
       presencePenalty: options?.presencePenalty,
       stopSequences: options?.stopSequences,
+      // User identifier for provider tracking/analytics - auto-populates from character name if not provided
+      // Explicitly set empty string or null will be preserved (not overridden)
+      user: options?.user !== undefined ? options.user : this.character?.name,
+      responseFormat: options?.responseFormat,
     };
 
     const response = await this.useModel(modelType, params);
@@ -2413,13 +2522,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
@@ -2926,5 +3035,9 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error('Database adapter not registered');
     }
     return await this.adapter.isReady();
+  }
+
+  hasElizaOS(): this is IAgentRuntime & { elizaOS: IElizaOS } {
+    return this.elizaOS !== undefined;
   }
 }

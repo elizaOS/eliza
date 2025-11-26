@@ -26,6 +26,7 @@ describe('SQL Plugin', () => {
       registerService: mock(() => {}),
       getService: mock(() => {}),
       databaseAdapter: undefined,
+      hasElizaOS: mock(() => false),
     } as any;
   });
 

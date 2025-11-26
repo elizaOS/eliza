@@ -5,70 +5,17 @@ import { resolvePlugins } from './plugin';
 import type {
   Character,
   IAgentRuntime,
+  IElizaOS,
   UUID,
   Memory,
   State,
   Plugin,
   RuntimeSettings,
   Content,
+  SendMessageOptions,
+  SendMessageResult,
 } from './types';
 import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
-
-/**
- * Options for sending a message to an agent
- */
-export interface SendMessageOptions {
-  /**
-   * Called when the agent generates a response (ASYNC MODE)
-   * If provided, method returns immediately (fire & forget)
-   * If not provided, method waits for response (SYNC MODE)
-   */
-  onResponse?: (content: Content) => Promise<void>;
-
-  /**
-   * Called if an error occurs during processing
-   */
-  onError?: (error: Error) => Promise<void>;
-
-  /**
-   * Called when processing is complete
-   */
-  onComplete?: () => Promise<void>;
-
-  /**
-   * Maximum number of retries for failed messages
-   */
-  maxRetries?: number;
-
-  /**
-   * Timeout duration in milliseconds
-   */
-  timeoutDuration?: number;
-
-  /**
-   * Enable multi-step message processing
-   */
-  useMultiStep?: boolean;
-
-  /**
-   * Maximum multi-step iterations
-   */
-  maxMultiStepIterations?: number;
-}
-
-/**
- * Result of sending a message to an agent
- */
-export interface SendMessageResult {
-  /** ID of the user message */
-  messageId: UUID;
-
-  /** The user message that was created */
-  userMessage: Memory;
-
-  /** Processing result (only in SYNC mode) */
-  result?: MessageProcessingResult;
-}
 
 /**
  * Batch operation for sending messages
@@ -120,7 +67,7 @@ export interface AgentUpdate {
  * ElizaOS - Multi-agent orchestration framework
  * Pure JavaScript implementation for browser and Node.js compatibility
  */
-export class ElizaOS extends EventTarget {
+export class ElizaOS extends EventTarget implements IElizaOS {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
   private initFunctions: Map<UUID, (runtime: IAgentRuntime) => Promise<void>> = new Map();
   private editableMode = false;
@@ -139,10 +86,11 @@ export class ElizaOS extends EventTarget {
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      // Always merge environment secrets with character secrets
+      // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
+      // In test mode, skip env merge to avoid database bloat from system variables
       const character = agent.character;
-      await setDefaultSecretsFromEnv(character);
+      await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
 
       const resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
@@ -153,6 +101,8 @@ export class ElizaOS extends EventTarget {
         plugins: resolvedPlugins,
         settings: agent.settings || {},
       });
+
+      runtime.elizaOS = this;
 
       this.runtimes.set(runtime.agentId, runtime);
 
@@ -196,6 +146,8 @@ export class ElizaOS extends EventTarget {
     if (this.runtimes.has(runtime.agentId)) {
       throw new Error(`Agent ${runtime.agentId} already registered`);
     }
+
+    runtime.elizaOS = this;
 
     this.runtimes.set(runtime.agentId, runtime);
 
