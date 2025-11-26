@@ -28,6 +28,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "@types/bun": "^1.2.21",
         "@types/node": "latest",
         "eslint": "^9.36.0",
@@ -47,6 +48,7 @@
         "react-dom": "^19.1.0",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "@tauri-apps/cli": "^2.6.2",
         "@types/react": "^19.1.5",
         "@types/react-dom": "^19.1.6",
@@ -173,6 +175,7 @@
       "devDependencies": {
         "@cypress/react": "^9.0.1",
         "@cypress/vite-dev-server": "^7.0.0",
+        "@elizaos/config": "workspace:*",
         "@eslint/js": "^9.22.0",
         "@happy-dom/global-registrator": "^19.0.2",
         "@playwright/test": "^1.40.0",
@@ -270,6 +273,7 @@
         "bun": "^1.2.21",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "@types/bun": "^1.2.21",
         "@types/node": "^22.15.3",
         "prettier": "3.5.3",
@@ -288,6 +292,7 @@
         "uuid": "^9.0.0",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "prettier": "3.5.3",
         "typescript": "5.8.2",
       },
@@ -449,6 +454,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "@types/bun": "^1.2.21",
         "prettier": "^3.4.2",
         "typescript": "^5.7.3",
@@ -465,6 +471,7 @@
         "zod": "3.24.2",
       },
       "devDependencies": {
+        "@elizaos/config": "workspace:*",
         "dotenv": "16.4.5",
         "prettier": "3.5.3",
         "typescript": "5.8.2",
