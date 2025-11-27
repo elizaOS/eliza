@@ -1590,5 +1590,38 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(result).not.toBeNull();
       expect(result?.isFinish).toBe('false');
     });
+
+    it('removes empty list fields so downstream fallbacks trigger', async () => {
+      const llmResponse = `{
+        "thought": "No action necessary",
+        "actions": "",
+        "providers": ""
+      }`;
+
+      const useModelSpy = spyOn(runtime, 'useModel').mockResolvedValue(llmResponse);
+
+      const result = await runtime.dynamicPromptExecFromState({
+        state: createMockState('noop state'),
+        params: {
+          prompt: 'Return thought only',
+        },
+        schema: [
+          { field: 'thought', description: 'Internal reasoning' },
+          { field: 'actions', description: 'Actions to run' },
+          { field: 'providers', description: 'Providers to call' },
+        ],
+        options: {
+          preferredEncapsulation: 'json',
+          contextCheckLevel: 0,
+          maxRetries: 0,
+        },
+      });
+
+      expect(useModelSpy).toHaveBeenCalledTimes(1);
+      expect(result).not.toBeNull();
+      expect(result?.thought).toBe('No action necessary');
+      expect(result?.actions).toBeUndefined();
+      expect(result?.providers).toBeUndefined();
+    });
   });
 }); // End of main describe block

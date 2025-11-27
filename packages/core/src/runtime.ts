@@ -3116,8 +3116,15 @@ export class AgentRuntime implements IAgentRuntime {
     };
 
     const ensureListField = (field: string) => {
-      if (field in normalized) {
-        normalized[field] = toList(normalized[field]);
+      if (!(field in normalized)) {
+        return;
+      }
+
+      const listValue = toList(normalized[field]);
+      if (listValue.length > 0) {
+        normalized[field] = listValue;
+      } else {
+        delete normalized[field];
       }
     };
 
