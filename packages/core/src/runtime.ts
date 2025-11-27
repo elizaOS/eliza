@@ -2772,19 +2772,23 @@ export class AgentRuntime implements IAgentRuntime {
         if (!isArray && typeof s === 'object') {
           let str = '  '.repeat(lvl);
           if (s.field && s.description) {
-            str += isXML ? '<' + s.field + '>' : s.field + ': ';
-            str += (isXML ? '' : '"') + s.description + (isXML ? '' : '"');
-            str += isXML ? '</' + s.field + '>' : '';
+            if (isXML) {
+              str += '<' + s.field + '>' + s.description + '</' + s.field + '>';
+            } else {
+              // JSON format: quote property names for valid JSON
+              str += '"' + s.field + '": "' + s.description + '"';
+            }
           } else {
             this.logger.warn('dynamicPromptExecFromState - no field&desc: ' + JSON.stringify(s));
           }
-          return str + '\n';
-        } else if (isArray) {
-          let str = '';
-          for (const i of s) {
-            str += generateText(i, lvl + 1);
-          }
           return str;
+        } else if (isArray) {
+          const items: string[] = [];
+          for (const i of s) {
+            items.push(generateText(i, lvl + 1));
+          }
+          // Join with newline for XML, comma+newline for JSON
+          return items.join(isXML ? '\n' : ',\n') + '\n';
         } else {
           this.logger.debug('dynamicPromptExecFromState - unknown type', typeof s, 'value', s);
           return '';
