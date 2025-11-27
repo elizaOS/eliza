@@ -2782,7 +2782,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, '');
 
-      let responseContent;
+      let responseContent: Record<string, any> | null = null;
       try {
         responseContent = isXML ? parseKeyValueXml(cleanResponse) : parseJSONObjectFromText(cleanResponse);
         this.logger.debug('dynamicPromptExecFromState responseContent: ' + JSON.stringify(responseContent));
@@ -2809,17 +2809,17 @@ export class AgentRuntime implements IAgentRuntime {
         const validationCodes: [string, string][] = [
           ...(first
             ? [
-                ['one_initial_code', initCode] as [string, string],
-                ['one_middle_code', midCode] as [string, string],
-                ['one_end_code', finalCode] as [string, string],
-              ]
+              ['one_initial_code', initCode] as [string, string],
+              ['one_middle_code', midCode] as [string, string],
+              ['one_end_code', finalCode] as [string, string],
+            ]
             : []),
           ...(last
             ? [
-                ['two_initial_code', initCode] as [string, string],
-                ['two_middle_code', midCode] as [string, string],
-                ['two_end_code', finalCode] as [string, string],
-              ]
+              ['two_initial_code', initCode] as [string, string],
+              ['two_middle_code', midCode] as [string, string],
+              ['two_end_code', finalCode] as [string, string],
+            ]
             : []),
         ];
 
