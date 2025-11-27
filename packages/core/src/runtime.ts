@@ -145,6 +145,7 @@ export class AgentRuntime implements IAgentRuntime {
   private initRejecter: ((reason?: any) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
+  private currentRoomId?: UUID; // Track the current room for logging
   private currentActionContext?: {
     // Track current action execution context
     actionName: string;
@@ -222,9 +223,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   /**
    * Start a new run for tracking prompts
+   * @param roomId Optional room ID to associate logs with this conversation
    */
-  startRun(): UUID {
+  startRun(roomId?: UUID): UUID {
     this.currentRunId = this.createRunId();
+    this.currentRoomId = roomId;
     return this.currentRunId;
   }
 
@@ -233,6 +236,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   endRun(): void {
     this.currentRunId = undefined;
+    this.currentRoomId = undefined;
   }
 
   /**
@@ -513,7 +517,7 @@ export class AgentRuntime implements IAgentRuntime {
           source: 'elizaos',
           type: ChannelType.SELF,
           channelId: this.agentId,
-          serverId: this.agentId,
+          messageServerId: this.agentId,
           worldId: this.agentId,
         });
       }
@@ -1359,7 +1363,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     const rf = {
       worldId: world.id,
-      serverId: world.serverId,
+      messageServerId: world.messageServerId,
       source,
       agentId: this.agentId,
     };
@@ -1389,7 +1393,7 @@ export class AgentRuntime implements IAgentRuntime {
     };
     const wf = {
       worldId: world.id,
-      serverId: world.serverId,
+      messageServerId: world.messageServerId,
     };
 
     if (entitiesToCreate.length) {
@@ -1450,7 +1454,7 @@ export class AgentRuntime implements IAgentRuntime {
     source,
     type,
     channelId,
-    serverId,
+    messageServerId,
     userId,
     metadata,
   }: {
@@ -1463,12 +1467,12 @@ export class AgentRuntime implements IAgentRuntime {
     source?: string;
     type?: ChannelType;
     channelId?: string;
-    serverId?: string;
+    messageServerId?: UUID;
     userId?: UUID;
     metadata?: Record<string, any>;
   }) {
-    if (!worldId && serverId) {
-      worldId = createUniqueUuid(this, serverId);
+    if (!worldId && messageServerId) {
+      worldId = createUniqueUuid(this, messageServerId);
     }
     const names = [name, userName].filter(Boolean) as string[];
     const entityMetadata = {
@@ -1524,9 +1528,9 @@ export class AgentRuntime implements IAgentRuntime {
       }
       await this.ensureWorldExists({
         id: worldId,
-        name: worldName || serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
+        name: worldName || messageServerId ? `World for server ${messageServerId}` : `World for room ${roomId}`,
         agentId: this.agentId,
-        serverId: serverId || 'default',
+        messageServerId: messageServerId,
         metadata,
       });
       await this.ensureRoomExists({
@@ -1535,7 +1539,7 @@ export class AgentRuntime implements IAgentRuntime {
         source: source || 'default',
         type: type || ChannelType.DM,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
       });
       try {
@@ -1605,6 +1609,10 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getParticipantsForRoom(roomId);
   }
 
+  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+    return await this.adapter.isRoomParticipant(roomId, entityId);
+  }
+
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     return await this.adapter.addParticipantsRoom([entityId], roomId);
   }
@@ -1616,7 +1624,7 @@ export class AgentRuntime implements IAgentRuntime {
   /**
    * Ensure the existence of a world.
    */
-  async ensureWorldExists({ id, name, serverId, metadata }: World) {
+  async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
     const world = await this.getWorld(id);
     if (!world) {
       this.logger.debug(
@@ -1624,7 +1632,7 @@ export class AgentRuntime implements IAgentRuntime {
         JSON.stringify({
           id,
           name,
-          serverId,
+          messageServerId,
           agentId: this.agentId,
         })
       );
@@ -1632,14 +1640,14 @@ export class AgentRuntime implements IAgentRuntime {
         id,
         name,
         agentId: this.agentId,
-        serverId: serverId || 'default',
+        messageServerId,
         metadata,
       });
       this.logger.debug(`World ${id} created successfully.`);
     }
   }
 
-  async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
+  async ensureRoomExists({ id, name, source, type, channelId, messageServerId, worldId, metadata }: Room) {
     if (!worldId) throw new Error('worldId is required');
     const room = await this.getRoom(id);
     if (!room) {
@@ -1650,7 +1658,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         type,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
         metadata,
       });
@@ -2288,7 +2296,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Keep the existing model logging for backward compatibility
       this.adapter.log({
         entityId: this.agentId,
-        roomId: this.agentId,
+        roomId: this.currentRoomId ?? this.agentId,
         body: {
           modelType,
           modelKey,
@@ -2797,7 +2805,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.countMemories(roomId, unique, tableName);
   }
   async getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -2832,7 +2840,7 @@ export class AgentRuntime implements IAgentRuntime {
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
     return await this.adapter.getRoomsByIds(roomIds);
   }
-  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+  async createRoom({ id, name, source, type, channelId, messageServerId, worldId }: Room): Promise<UUID> {
     if (!worldId) throw new Error('worldId is required');
     const res = await this.adapter.createRooms([
       {
@@ -2841,7 +2849,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         type,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
       },
     ]);

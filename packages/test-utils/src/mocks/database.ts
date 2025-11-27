@@ -139,6 +139,9 @@ export function createMockDatabase(overrides: MockDatabaseOverrides = {}): IData
     updateTask: mock().mockResolvedValue(undefined),
     deleteTask: mock().mockResolvedValue(undefined),
 
+    // Room Participant Checks
+    isRoomParticipant: mock().mockResolvedValue(false),
+
     // Apply overrides
     ...overrides,
   };

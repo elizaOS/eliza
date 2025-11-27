@@ -1,14 +1,18 @@
 import { ElizaClient, type ApiClientConfig } from '@elizaos/api-client';
+import { getEntityId } from './utils';
+
+const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
 
 export function createApiClientConfig(): ApiClientConfig {
-  const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
   const apiKey = localStorage.getItem(getLocalStorageApiKey());
+  const entityId = getEntityId();
 
   const config: ApiClientConfig = {
     baseUrl: window.location.origin,
     timeout: 30000,
     headers: {
       Accept: 'application/json',
+      'X-Entity-Id': entityId,
     },
   };
 
@@ -20,34 +24,35 @@ export function createApiClientConfig(): ApiClientConfig {
   return config;
 }
 
-// Singleton instance
+/**
+ * Singleton pattern with explicit cache invalidation.
+ *
+ */
 let elizaClientInstance: ElizaClient | null = null;
 
 export function createElizaClient(): ElizaClient {
+  return ElizaClient.create(createApiClientConfig());
+}
+
+export function getElizaClient(): ElizaClient {
   if (!elizaClientInstance) {
-    elizaClientInstance = ElizaClient.create(createApiClientConfig());
+    elizaClientInstance = createElizaClient();
   }
   return elizaClientInstance;
 }
 
-export function getElizaClient(): ElizaClient {
-  return createElizaClient();
-}
-
-// Function to reset the singleton (useful for API key changes)
-export function resetElizaClient(): void {
+/**
+ * Invalidate the cached client instance.
+ */
+function invalidateElizaClient(): void {
   elizaClientInstance = null;
 }
 
 export function updateApiClientApiKey(newApiKey: string | null): void {
-  const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
-
   if (newApiKey) {
     localStorage.setItem(getLocalStorageApiKey(), newApiKey);
   } else {
     localStorage.removeItem(getLocalStorageApiKey());
   }
-
-  // Reset the singleton so it uses the new API key
-  resetElizaClient();
+  invalidateElizaClient();
 }

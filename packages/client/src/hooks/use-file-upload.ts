@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { getContentTypeFromMimeType } from '@elizaos/core';
 import { UUID, Media, ChannelType } from '@elizaos/core';
 import { randomUUID } from '@/lib/utils';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
 // Direct error handling
 import clientLogger from '@/lib/logger';
@@ -26,7 +26,7 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
   const [selectedFiles, setSelectedFiles] = useState<UploadingFile[]>([]);
   const blobUrlsRef = useRef<Set<string>>(new Set());
   const { toast } = useToast();
-  const elizaClient = createElizaClient();
+  const elizaClient = getElizaClient();
 
   // Cleanup blob URLs on unmount
   useEffect(() => {

@@ -43,7 +43,7 @@ export interface RoomCreateParams {
 }
 
 export interface WorldCreateParams {
-  serverId: UUID;
+  messageServerId: UUID;
   name: string;
   description?: string;
 }

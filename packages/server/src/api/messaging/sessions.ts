@@ -515,7 +515,7 @@ function asyncHandler(fn: AsyncRequestHandler): express.RequestHandler {
  * This abstracts away the complexity of servers/channels for simple use cases
  *
  * @param agents - Map of agent IDs to runtime instances
- * @param serverInstance - The server instance for message handling
+ * @param serverInstance - The message server instance for message handling
  * @returns Router with cleanup method to prevent memory leaks
  */
 export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServer): SessionRouter {
@@ -612,7 +612,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           id: channelId,
           name: `session-${sessionId}`,
           type: ChannelType.DM,
-          messageServerId: serverInstance.serverId,
+          messageServerId: serverInstance.messageServerId,
           metadata: {
             sessionId,
             agentId: body.agentId,
