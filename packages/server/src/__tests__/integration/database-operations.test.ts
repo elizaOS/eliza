@@ -261,10 +261,10 @@ describe('Database Operations Integration Tests', () => {
       // Add agent to server
       await serverFixture
         .getServer()
-        .addAgentToServer(newServer.id, agentId);
+        .addAgentToMessageServer(newServer.id, agentId);
       const agentsOnServer = await serverFixture
         .getServer()
-        .getAgentsForServer(newServer.id);
+        .getAgentsForMessageServer(newServer.id);
       expect(agentsOnServer).toContain(agentId);
 
       // Create channel on server
@@ -279,16 +279,16 @@ describe('Database Operations Integration Tests', () => {
       // Verify channel is associated with server
       const serverChannels = await serverFixture
         .getServer()
-        .getChannelsForServer(newServer.id);
+        .getChannelsForMessageServer(newServer.id);
       expect(serverChannels.some((c) => c.id === channel.id)).toBe(true);
 
       // Remove agent from server
       await serverFixture
         .getServer()
-        .removeAgentFromServer(newServer.id, agentId);
+        .removeAgentFromMessageServer(newServer.id, agentId);
       const agentsAfterRemoval = await serverFixture
         .getServer()
-        .getAgentsForServer(newServer.id);
+        .getAgentsForMessageServer(newServer.id);
       expect(agentsAfterRemoval).not.toContain(agentId);
 
       // Channel should still exist
@@ -378,7 +378,7 @@ describe('Database Operations Integration Tests', () => {
       // Retrieve all channels for server
       const channels = await serverFixture
         .getServer()
-        .getChannelsForServer(serverId);
+        .getChannelsForMessageServer(serverId);
       expect(channels.length).toBeGreaterThanOrEqual(20);
     });
   });

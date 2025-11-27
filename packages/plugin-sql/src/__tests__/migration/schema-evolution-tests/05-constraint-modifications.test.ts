@@ -146,9 +146,9 @@ describe('Schema Evolution Test: Constraint Modifications', () => {
         name: text('name').notNull(),
         username: text('username').unique(), // Now unique!
       },
-      (table) => ({
-        usernameUnique: unique('username_unique').on(table.username),
-      })
+      (table) => [
+        unique('username_unique').on(table.username),
+      ]
     );
 
     const schemaV2 = { agents: agentTableV2 };

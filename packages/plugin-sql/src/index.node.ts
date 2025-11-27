@@ -11,8 +11,8 @@ const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
-  // Map of PostgreSQL connection managers by owner_id (for RLS multi-tenancy)
-  // Key: owner_id (or 'default' for non-RLS mode)
+  // Map of PostgreSQL connection managers by server_id (for RLS multi-tenancy)
+  // Key: server_id (or 'default' for non-RLS mode)
   postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
@@ -30,23 +30,19 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    // Determine RLS owner_id if RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-    let rlsOwnerId: string | undefined;
+    // Determine RLS server_id if data isolation is enabled
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+    let rlsServerId: string | undefined;
     let managerKey = 'default'; // Key for connection manager map
 
-    if (rlsEnabled) {
-      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
-      if (!rlsOwnerIdString) {
-        throw new Error(
-          '[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable'
-        );
+    if (dataIsolationEnabled) {
+      const rlsServerIdString = process.env.ELIZA_SERVER_ID;
+      if (!rlsServerIdString) {
+        throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
       }
-      rlsOwnerId = stringToUuid(rlsOwnerIdString);
-      managerKey = rlsOwnerId; // Use owner_id as key for multi-tenancy
-      logger.debug(
-        `[RLS] Using connection pool for owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`
-      );
+      rlsServerId = stringToUuid(rlsServerIdString);
+      managerKey = rlsServerId; // Use server_id as key for multi-tenancy
+      logger.debug(`[Data Isolation] Using connection pool for server_id: ${rlsServerId.slice(0, 8)}… (from ELIZA_SERVER_ID="${rlsServerIdString}")`);
     }
 
     // Initialize connection managers map if needed
@@ -54,11 +50,11 @@ export function createDatabaseAdapter(
       globalSingletons.postgresConnectionManagers = new Map();
     }
 
-    // Get or create connection manager for this owner_id
+    // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!manager) {
-      logger.debug(`[RLS] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
-      manager = new PostgresConnectionManager(config.postgresUrl, rlsOwnerId);
+      logger.debug(`[Data Isolation] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
     }
 
@@ -124,9 +120,9 @@ export default plugin;
 export { DatabaseMigrationService } from './migration-service';
 export {
   installRLSFunctions,
-  getOrCreateRlsOwner,
-  setOwnerContext,
-  assignAgentToOwner,
+  getOrCreateRlsServer,
+  setServerContext,
+  assignAgentToServer,
   applyRLSToNewTables,
   uninstallRLS,
 } from './rls';

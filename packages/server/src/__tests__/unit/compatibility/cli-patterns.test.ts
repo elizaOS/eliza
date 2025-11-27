@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'bun:test';
 import path from 'node:path';
-import { captureEnvironment, restoreEnvironment } from '../test-utils/environment';
+import { captureEnvironment, restoreEnvironment } from '../../test-utils/environment';
 
 describe('Server Package Compatibility', () => {
   describe('Export Structure', () => {

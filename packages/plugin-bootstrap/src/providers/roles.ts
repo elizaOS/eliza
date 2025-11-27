@@ -47,7 +47,7 @@ export const roleProvider: Provider = {
       };
     }
 
-    const serverId = room.serverId;
+    const serverId = room.messageServerId;
 
     if (!serverId) {
       throw new Error('No server ID found');

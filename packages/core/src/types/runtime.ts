@@ -110,7 +110,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     name,
     source,
     channelId,
-    serverId,
+    messageServerId,
     type,
     worldId,
     userId,
@@ -122,7 +122,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     worldName?: string;
     source?: string;
     channelId?: string;
-    serverId?: string;
+    messageServerId?: UUID;
     type?: ChannelType | string;
     worldId: UUID;
     userId?: UUID;
@@ -212,7 +212,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   // Run tracking methods
   createRunId(): UUID;
-  startRun(): UUID;
+  startRun(roomId?: UUID): UUID;
   endRun(): void;
   getCurrentRunId(): UUID;
 
@@ -221,11 +221,10 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getEntityById(entityId: UUID): Promise<Entity | null>;
   getRoom(roomId: UUID): Promise<Room | null>;
   createEntity(entity: Entity): Promise<boolean>;
-  createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID>;
+  createRoom({ id, name, source, type, channelId, messageServerId, worldId }: Room): Promise<UUID>;
   addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>;
   getRooms(worldId: UUID): Promise<Room[]>;
-
   registerSendHandler(source: string, handler: SendHandlerFunction): void;
-
   sendMessageToTarget(target: TargetInfo, content: Content): Promise<void>;
+  updateWorld(world: World): Promise<void>;
 }

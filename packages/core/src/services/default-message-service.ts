@@ -129,8 +129,8 @@ export class DefaultMessageService implements IMessageService {
       }
       agentResponses.set(message.roomId, responseId);
 
-      // Start run tracking
-      const runId = runtime.startRun();
+      // Start run tracking with roomId for proper log association
+      const runId = runtime.startRun(message.roomId);
       const startTime = Date.now();
 
       // Emit run started event

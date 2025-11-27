@@ -37,6 +37,13 @@ export type {
   AgentFixtureResult,
 } from './fixtures/agent.fixture';
 
+export { SocketIOClientFixture } from './fixtures/socketio-client.fixture';
+export type {
+  SocketIOClientOptions,
+  SendMessagePayload,
+  JoinChannelPayload,
+} from './fixtures/socketio-client.fixture';
+
 // ============================================================================
 // Builders - Type-safe test data creation with fluent API
 // ============================================================================

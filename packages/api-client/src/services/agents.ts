@@ -121,39 +121,39 @@ export class AgentsService extends BaseApiClient {
   /**
    * Get agents associated with a server
    */
-  async getAgentsForServer(
-    serverId: UUID
-  ): Promise<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }> {
-    return this.get<{ success: boolean; data: { serverId: UUID; agents: UUID[] } }>(
-      `/api/messaging/servers/${serverId}/agents`
+  async getAgentsForMessageServer(
+    messageServerId: UUID
+  ): Promise<{ success: boolean; data: { messageServerId: UUID; agents: UUID[] } }> {
+    return this.get<{ success: boolean; data: { messageServerId: UUID; agents: UUID[] } }>(
+      `/api/messaging/message-servers/${messageServerId}/agents`
     );
   }
 
-  async addAgentToServer(
-    serverId: UUID,
+  async addAgentToMessageServer(
+    messageServerId: UUID,
     agentId: UUID
-  ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> {
+  ): Promise<{ success: boolean; data: { messageServerId: UUID; agentId: UUID; message: string } }> {
     return this.post<{
       success: boolean;
-      data: { serverId: UUID; agentId: UUID; message: string };
-    }>(`/api/messaging/servers/${serverId}/agents`, { agentId });
+      data: { messageServerId: UUID; agentId: UUID; message: string };
+    }>(`/api/messaging/message-servers/${messageServerId}/agents`, { agentId });
   }
 
-  async removeAgentFromServer(
-    serverId: UUID,
+  async removeAgentFromMessageServer(
+    messageServerId: UUID,
     agentId: UUID
-  ): Promise<{ success: boolean; data: { serverId: UUID; agentId: UUID; message: string } }> {
+  ): Promise<{ success: boolean; data: { messageServerId: UUID; agentId: UUID; message: string } }> {
     return this.delete<{
       success: boolean;
-      data: { serverId: UUID; agentId: UUID; message: string };
-    }>(`/api/messaging/servers/${serverId}/agents/${agentId}`);
+      data: { messageServerId: UUID; agentId: UUID; message: string };
+    }>(`/api/messaging/message-servers/${messageServerId}/agents/${agentId}`);
   }
 
-  async getServersForAgent(
+  async getMessageServersForAgent(
     agentId: UUID
-  ): Promise<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }> {
-    return this.get<{ success: boolean; data: { agentId: UUID; servers: UUID[] } }>(
-      `/api/messaging/agents/${agentId}/servers`
+  ): Promise<{ success: boolean; data: { agentId: UUID; messageServers: UUID[] } }> {
+    return this.get<{ success: boolean; data: { agentId: UUID; messageServers: UUID[] } }>(
+      `/api/messaging/agents/${agentId}/message-servers`
     );
   }
 }

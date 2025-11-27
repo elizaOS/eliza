@@ -52,6 +52,16 @@ class MockDatabaseAdapter extends DatabaseAdapter {
   runMigrations(): Promise<void> {
     throw new Error('Method not implemented.');
   }
+  runPluginMigrations(
+    _plugins: Array<{ name: string; schema?: any }>,
+    _options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void> {
+    throw new Error('Method not implemented.');
+  }
   isReady(): Promise<boolean> {
     throw new Error('Method not implemented.');
   }
@@ -85,7 +95,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
   getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -362,6 +372,9 @@ class MockDatabaseAdapter extends DatabaseAdapter {
    * @returns {Promise<boolean>} A promise that resolves to true if the participant was successfully removed, otherwise false.
    */
   removeParticipant(_entityId: UUID, _roomId: UUID): Promise<boolean> {
+    throw new Error('Method not implemented.');
+  }
+  isRoomParticipant(_roomId: UUID, _entityId: UUID): Promise<boolean> {
     throw new Error('Method not implemented.');
   }
 

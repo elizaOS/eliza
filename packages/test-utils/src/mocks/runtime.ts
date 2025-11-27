@@ -270,6 +270,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     generateText: mock().mockResolvedValue('Mock generated text'),
     dynamicPromptExecFromState: mock().mockResolvedValue({}),
 
+    // Room Participant Checks
+    isRoomParticipant: mock().mockResolvedValue(false),
+
     // Apply overrides
     ...overrides,
   };
