@@ -45,7 +45,6 @@ let adapterReady = false;
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
-  isRoomParticipant: mock().mockResolvedValue(true),
   db: {},
   init: mock().mockImplementation(async () => {
     adapterReady = true;
@@ -77,6 +76,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getRoomsForParticipants: mock().mockResolvedValue([]),
   addParticipantsRoom: mock().mockResolvedValue(true),
   removeParticipant: mock().mockResolvedValue(true),
+  isRoomParticipant: mock().mockResolvedValue(false),
   getParticipantsForEntity: mock().mockResolvedValue([]),
   getParticipantsForRoom: mock().mockResolvedValue([]),
   getParticipantUserState: mock().mockResolvedValue(null),
@@ -1515,6 +1515,80 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Should parse string and use it
       expect(mockDatabaseAdapter.ensureEmbeddingDimension).toHaveBeenCalledWith(3072);
       expect(embeddingHandler).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dynamicPromptExecFromState', () => {
+    afterEach(() => {
+      runtime.clearDynamicPromptMetrics('all');
+    });
+
+    it('normalizes JSON responses into arrays and booleans', async () => {
+      const llmResponse = `{
+        "thought": "Processed request",
+        "actions": "REPLY, IGNORE",
+        "providers": "news ",
+        "evaluators": ["post-process"],
+        "simple": "true"
+      }`;
+
+      const useModelSpy = spyOn(runtime, 'useModel').mockResolvedValue(llmResponse);
+
+      const result = await runtime.dynamicPromptExecFromState({
+        state: createMockState('hello world'),
+        params: {
+          prompt: 'Return structured output',
+        },
+        schema: [
+          { field: 'thought', description: 'Internal reasoning' },
+          { field: 'actions', description: 'Actions to run' },
+          { field: 'providers', description: 'Providers to call' },
+          { field: 'evaluators', description: 'Evaluators to execute' },
+          { field: 'simple', description: 'Whether the response is simple' },
+        ],
+        options: {
+          preferredEncapsulation: 'json',
+          contextCheckLevel: 0,
+          maxRetries: 0,
+        },
+      });
+
+      expect(useModelSpy).toHaveBeenCalledTimes(1);
+      expect(result).not.toBeNull();
+      expect(result?.actions).toEqual(['REPLY', 'IGNORE']);
+      expect(result?.providers).toEqual(['news']);
+      expect(result?.evaluators).toEqual(['post-process']);
+      expect(result?.simple).toBe(true);
+    });
+
+    it('accepts required fields with falsy but present values', async () => {
+      const llmResponse = `{
+        "thought": "",
+        "isFinish": "false"
+      }`;
+
+      const useModelSpy = spyOn(runtime, 'useModel').mockResolvedValue(llmResponse);
+
+      const result = await runtime.dynamicPromptExecFromState({
+        state: createMockState('multi step state'),
+        params: {
+          prompt: 'Return completion status',
+        },
+        schema: [
+          { field: 'thought', description: 'Internal reasoning' },
+          { field: 'isFinish', description: 'Whether the task is done' },
+        ],
+        options: {
+          preferredEncapsulation: 'json',
+          requiredFields: ['isFinish'],
+          contextCheckLevel: 0,
+          maxRetries: 0,
+        },
+      });
+
+      expect(useModelSpy).toHaveBeenCalledTimes(1);
+      expect(result).not.toBeNull();
+      expect(result?.isFinish).toBe('false');
     });
   });
 }); // End of main describe block

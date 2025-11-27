@@ -76,6 +76,7 @@ import {
   parseJSONObjectFromText,
   composeRandomUser,
   upgradeDoubleToTriple,
+  parseBooleanFromText,
 } from './utils';
 import Handlebars from 'handlebars';
 
@@ -2875,6 +2876,8 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.error('dynamicPromptExecFromState err: ' + String(e));
       }
 
+      responseContent = this._normalizeStructuredResponse(responseContent);
+
       // validate response
       let allGood = true;
       if (!responseContent) {
@@ -2927,9 +2930,28 @@ export class AgentRuntime implements IAgentRuntime {
 
         // Validate required fields if specified
         if (options.requiredFields && options.requiredFields.length > 0) {
-          const missingFields = options.requiredFields.filter(
-            (field) => !responseContent || !(field in responseContent) || !responseContent[field]
-          );
+          const isMissingField = (value: unknown): boolean => {
+            if (value === undefined || value === null) {
+              return true;
+            }
+            if (typeof value === 'string') {
+              return value.trim().length === 0;
+            }
+            if (Array.isArray(value)) {
+              return value.length === 0;
+            }
+            if (typeof value === 'object') {
+              return Object.keys(value as Record<string, unknown>).length === 0;
+            }
+            return false;
+          };
+
+          const missingFields = options.requiredFields.filter((field) => {
+            if (!responseContent || !(field in responseContent)) {
+              return true;
+            }
+            return isMissingField(responseContent[field]);
+          });
           if (missingFields.length > 0) {
             this.logger.warn(
               'dynamicPromptExecFromState missing required fields:',
@@ -3062,6 +3084,56 @@ export class AgentRuntime implements IAgentRuntime {
     metric.lowestFailedTokenCount = newMin;
     metric.lastUpdated = Date.now();
     return newMin;
+  }
+
+  private _normalizeStructuredResponse(content: Record<string, any> | null): Record<string, any> | null {
+    if (!content) {
+      return content;
+    }
+
+    const normalized: Record<string, any> = { ...content };
+
+    const toList = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : String(entry ?? '')))
+          .filter((entry) => entry.length > 0);
+      }
+
+      if (typeof value === 'string') {
+        return value
+          .split(',')
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0);
+      }
+
+      if (value == null) {
+        return [];
+      }
+
+      const coerced = String(value).trim();
+      return coerced.length > 0 ? [coerced] : [];
+    };
+
+    const ensureListField = (field: string) => {
+      if (field in normalized) {
+        normalized[field] = toList(normalized[field]);
+      }
+    };
+
+    ensureListField('actions');
+    ensureListField('providers');
+    ensureListField('evaluators');
+
+    if ('simple' in normalized) {
+      const value = normalized.simple;
+      normalized.simple =
+        typeof value === 'boolean'
+          ? value
+          : parseBooleanFromText(typeof value === 'string' ? value : String(value));
+    }
+
+    return normalized;
   }
 
   private _generateCacheKey(state: State, schema: SchemaRow[], modelIdentifier: string): string {

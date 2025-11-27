@@ -188,7 +188,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
       preferredEncapsulation?: 'json' | 'xml'; // JSON or XML
       forceFormat?: 'json' | 'xml'; // force format (overrides preferredEncapsulation)
       requiredFields?: string[];
-      contextCheckLevel?: 0 | 1; // default (undefined => 2)
+      contextCheckLevel?: 0 | 1 | 2; // default (undefined => 2)
       maxRetries?: number; // default 1
       disableCache?: boolean; // disable prompt disk caching (default false, cache enabled)
       cacheTTL?: number; // cache time-to-live in ms (default 5 minutes)
