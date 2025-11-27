@@ -520,6 +520,54 @@ describe('DefaultMessageService', () => {
         'messages'
       );
     });
+
+    it('falls back to IGNORE when structured response omits actions', async () => {
+      (mockRuntime.dynamicPromptExecFromState as any).mockImplementation(({ schema }: any) => {
+        const fieldNames = schema.map((s: any) => s.field);
+
+        if (fieldNames.includes('action') && fieldNames.includes('reasoning')) {
+          return {
+            name: 'TestAgent',
+            reasoning: 'User asked a question',
+            action: 'RESPOND',
+          };
+        }
+
+        if (fieldNames.includes('thought') && fieldNames.includes('actions')) {
+          return {
+            thought: 'No action required',
+            providers: [],
+            actions: [],
+            text: '',
+            simple: false,
+          };
+        }
+
+        return {};
+      });
+
+      const message: Memory = {
+        id: '123e4567-e89b-12d3-a456-426614174060' as UUID,
+        content: {
+          text: 'Hello, anyone there?',
+          source: 'client_chat',
+          channelType: ChannelType.DM,
+        } as Content,
+        entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
+        roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
+        agentId: '123e4567-e89b-12d3-a456-426614174001' as UUID,
+        createdAt: Date.now(),
+      };
+
+      const result = await messageService.handleMessage(
+        mockRuntime as IAgentRuntime,
+        message,
+        mockCallback
+      );
+
+      expect(result.responseContent).not.toBeNull();
+      expect(result.responseContent?.actions).toEqual(['IGNORE']);
+    });
   });
 
   describe('integration scenarios', () => {

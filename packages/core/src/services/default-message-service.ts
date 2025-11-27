@@ -972,25 +972,26 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed response content');
 
       if (parsedXml) {
-        const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
-        const actions = Array.isArray(parsedXml.actions)
-          ? parsedXml.actions.filter((a): a is string => typeof a === 'string')
-          : typeof parsedXml.actions === 'string'
-            ? [parsedXml.actions]
-            : ['IGNORE'];
-        const providers = Array.isArray(parsedXml.providers)
-          ? parsedXml.providers.filter((p): p is string => typeof p === 'string')
-          : [];
-        const text = typeof parsedXml.text === 'string' ? parsedXml.text : '';
-        const simple = typeof parsedXml.simple === 'boolean' ? parsedXml.simple : false;
+        const normalizedActions = (() => {
+          if (Array.isArray(parsedXml.actions)) {
+            return parsedXml.actions;
+          }
+          if (typeof parsedXml.actions === 'string') {
+            return parsedXml.actions
+              .split(',')
+              .map((action) => action.trim())
+              .filter((action) => action.length > 0);
+          }
+          return [];
+        })();
 
         responseContent = {
           ...parsedXml,
-          thought,
-          actions,
-          providers,
-          text,
-          simple,
+          thought: parsedXml.thought || '',
+          actions: normalizedActions.length > 0 ? normalizedActions : ['IGNORE'],
+          providers: parsedXml.providers || [],
+          text: parsedXml.text || '',
+          simple: parsedXml.simple || false,
         };
       } else {
         responseContent = null;
