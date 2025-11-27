@@ -713,7 +713,7 @@ export async function validateDataDir(): Promise<boolean> {
   const status = await checkDataDir();
 
   if (!status.exists) {
-    logger.warn('ElizaOS data directory not found. Initializing...');
+    logger.warn({ src: 'cli', util: 'registry' }, 'ElizaOS data directory not found. Initializing');
     await initializeDataDir();
     return false;
   }
@@ -727,24 +727,24 @@ export async function validateDataDir(): Promise<boolean> {
     const envContent = await fs.readFile(envPath, 'utf-8');
     const parsedEnv = dotenv.parse(envContent);
     if (!parsedEnv.GITHUB_TOKEN) {
-      logger.warn('GitHub token not found in environment');
+      logger.warn({ src: 'cli', util: 'registry' }, 'GitHub token not found in environment');
       isValid = false;
     }
   } else {
-    logger.warn('.env file not found');
+    logger.warn({ src: 'cli', util: 'registry' }, '.env file not found');
     isValid = false;
   }
 
   if (!status.env.hasAllKeys) {
-    logger.warn(`Missing environment variables: ${status.env.missingKeys.join(', ')}`);
+    logger.warn({ src: 'cli', util: 'registry', missingKeys: status.env.missingKeys }, 'Missing environment variables');
     isValid = false;
   }
 
   if (!status.settings.exists) {
-    logger.warn('Registry settings file not found');
+    logger.warn({ src: 'cli', util: 'registry' }, 'Registry settings file not found');
     isValid = false;
   } else if (!status.settings.hasAllKeys) {
-    logger.warn(`Missing settings: ${status.settings.missingKeys.join(', ')}`);
+    logger.warn({ src: 'cli', util: 'registry', missingKeys: status.settings.missingKeys }, 'Missing settings');
     isValid = false;
   }
 
