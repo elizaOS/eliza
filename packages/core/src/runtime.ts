@@ -2853,10 +2853,13 @@ export class AgentRuntime implements IAgentRuntime {
       );
 
       // Extract thoughts from <think> tags before cleaning
+      // Some models include reasoning in <think> blocks - we strip these from the response
+      // but log them for debugging purposes
       const thinkMatches = response.match(/<think>([\s\S]*?)<\/think>/g);
-      const thoughts = thinkMatches
-        ? thinkMatches.map((t) => t.replace(/<\/?think>/g, '').trim()).join('\n\n')
-        : undefined;
+      if (thinkMatches) {
+        const thoughts = thinkMatches.map((t) => t.replace(/<\/?think>/g, '').trim()).join('\n\n');
+        this.logger.debug('dynamicPromptExecFromState model thoughts:', thoughts);
+      }
 
       const cleanResponse = response.replace(/<think>[\s\S]*?<\/think>/g, '');
 
@@ -2879,16 +2882,28 @@ export class AgentRuntime implements IAgentRuntime {
         allGood = false;
         // could try inverse format...
       } else {
-        // Validate all validation codes
+        // Validate only the codes that were actually added to the schema
         // Why: These UUID codes ensure the model actually read and followed the entire prompt
         // If they fail, it indicates the model ignored instructions or hit token limits
+        // Note: contextLevel determines which codes were added:
+        //   - 0: no codes (skip validation)
+        //   - 1: only 'one_' codes (first checkpoint)
+        //   - 2: both 'one_' and 'two_' codes (first + last checkpoints)
         const validationCodes: [string, string][] = [
-          ['one_initial_code', initCode],
-          ['one_middle_code', midCode],
-          ['one_end_code', finalCode],
-          ['two_initial_code', initCode],
-          ['two_middle_code', midCode],
-          ['two_end_code', finalCode],
+          ...(first
+            ? [
+                ['one_initial_code', initCode] as [string, string],
+                ['one_middle_code', midCode] as [string, string],
+                ['one_end_code', finalCode] as [string, string],
+              ]
+            : []),
+          ...(last
+            ? [
+                ['two_initial_code', initCode] as [string, string],
+                ['two_middle_code', midCode] as [string, string],
+                ['two_end_code', finalCode] as [string, string],
+              ]
+            : []),
         ];
 
         for (const [field, expected] of validationCodes) {
@@ -2898,13 +2913,17 @@ export class AgentRuntime implements IAgentRuntime {
           }
         }
 
-        // we should probably strip this injects
-        delete responseContent.one_initial_code;
-        delete responseContent.one_middle_code;
-        delete responseContent.one_end_code;
-        delete responseContent.two_initial_code;
-        delete responseContent.two_middle_code;
-        delete responseContent.two_end_code;
+        // Strip injected validation codes from response
+        if (first) {
+          delete responseContent.one_initial_code;
+          delete responseContent.one_middle_code;
+          delete responseContent.one_end_code;
+        }
+        if (last) {
+          delete responseContent.two_initial_code;
+          delete responseContent.two_middle_code;
+          delete responseContent.two_end_code;
+        }
 
         // Validate required fields if specified
         if (options.requiredFields && options.requiredFields.length > 0) {
