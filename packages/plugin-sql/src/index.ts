@@ -100,7 +100,7 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_, runtime: IAgentRuntime) => {
-    logger.info({ src: 'plugin:sql' }, 'plugin-sql init starting');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'plugin-sql init starting');
 
     // Prefer direct check for existing adapter (avoid readiness heuristics)
     const adapterRegistered =
@@ -119,11 +119,11 @@ export const plugin: Plugin = {
           })();
 
     if (adapterRegistered) {
-      logger.info({ src: 'plugin:sql' }, 'Database adapter already registered, skipping creation');
+      runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter already registered, skipping creation');
       return;
     }
 
-    logger.debug({ src: 'plugin:sql' }, 'No database adapter found, proceeding to register');
+    runtime.logger.debug({ src: 'plugin:sql', agentId: runtime.agentId }, 'No database adapter found, proceeding to register');
 
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
@@ -139,7 +139,7 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info({ src: 'plugin:sql' }, 'Database adapter created and registered');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter created and registered');
 
     // Note: DatabaseMigrationService is not registered as a runtime service
     // because migrations are handled at the server level before agents are loaded

@@ -33,7 +33,7 @@ function isRunningFromLocalCli(): boolean {
 
     return isInLocalCli;
   } catch (error) {
-    logger.debug({ error }, 'Error checking if running from local CLI:');
+    logger.debug({ src: 'cli', util: 'local-cli-delegation', error: error instanceof Error ? error.message : String(error) }, 'Error checking if running from local CLI');
     return false;
   }
 }
@@ -101,7 +101,7 @@ function setupLocalEnvironment(): Record<string, string> {
  * @returns Promise that resolves when the local CLI process exits
  */
 async function delegateToLocalCli(localCliPath: string): Promise<void> {
-  logger.info('Using local @elizaos/cli installation');
+  logger.info({ src: 'cli', util: 'local-cli-delegation' }, 'Using local @elizaos/cli installation');
 
   const nodeExecutable = process.execPath;
   const args = process.argv.slice(2); // Get all arguments after 'node script.js'
@@ -148,10 +148,7 @@ async function delegateToLocalCli(localCliPath: string): Promise<void> {
       process.exit(exitCode);
     }
   } catch (error) {
-    logger.error(
-      `Failed to start local CLI:`,
-      error instanceof Error ? error.message : String(error)
-    );
+    logger.error({ src: 'cli', util: 'local-cli-delegation', error: error instanceof Error ? error.message : String(error) }, 'Failed to start local CLI');
     throw error;
   }
 }
@@ -206,33 +203,33 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
   try {
     // Skip delegation in test or CI environments
     if (isTestOrCiEnvironment()) {
-      logger.debug('Running in test or CI environment, skipping local CLI delegation');
+      logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'Running in test or CI environment, skipping local CLI delegation');
       return false;
     }
 
     // Skip delegation for update command (should always use global CLI)
     const args = process.argv.slice(2);
     if (args.length > 0 && args[0] === 'update') {
-      logger.debug('Update command detected, skipping local CLI delegation');
+      logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'Update command detected, skipping local CLI delegation');
       return false;
     }
 
     // Skip delegation for version command (should always use global CLI)
     if (args.length > 0 && (args[0] === '-v' || args[0] === '--version')) {
-      logger.debug('Version command detected, skipping local CLI delegation');
+      logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'Version command detected, skipping local CLI delegation');
       return false;
     }
 
     // Skip delegation if we're already running from local CLI
     if (isRunningFromLocalCli()) {
-      logger.debug('Already running from local CLI, continuing execution');
+      logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'Already running from local CLI, continuing execution');
       return false;
     }
 
     // Check if local CLI exists
     const localCliPath = getLocalCliPath();
     if (!localCliPath) {
-      logger.debug('No local CLI found, using global installation');
+      logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'No local CLI found, using global installation');
       return false;
     }
 
@@ -240,7 +237,7 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
     if (process.env._ELIZA_CLI_DELEGATION_DEPTH) {
       const depth = parseInt(process.env._ELIZA_CLI_DELEGATION_DEPTH, 10);
       if (depth > 0) {
-        logger.debug('Delegation depth exceeded, preventing infinite loop');
+        logger.debug({ src: 'cli', util: 'local-cli-delegation' }, 'Delegation depth exceeded, preventing infinite loop');
         return false;
       }
     }
@@ -252,11 +249,8 @@ export async function tryDelegateToLocalCli(): Promise<boolean> {
     await delegateToLocalCli(localCliPath);
     return true;
   } catch (error) {
-    logger.error(
-      'Error during local CLI delegation:',
-      error instanceof Error ? error.message : String(error)
-    );
-    logger.info('Falling back to global CLI installation');
+    logger.error({ src: 'cli', util: 'local-cli-delegation', error: error instanceof Error ? error.message : String(error) }, 'Error during local CLI delegation');
+    logger.info({ src: 'cli', util: 'local-cli-delegation' }, 'Falling back to global CLI installation');
     return false;
   }
 }

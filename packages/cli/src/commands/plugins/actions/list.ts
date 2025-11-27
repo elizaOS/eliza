@@ -16,7 +16,7 @@ export async function listAvailablePlugins(opts: ListPluginsOptions): Promise<vo
     !cachedRegistry.registry ||
     Object.keys(cachedRegistry.registry).length === 0
   ) {
-    logger.info('Plugin cache is empty or not found.');
+    logger.info({ src: 'cli', command: 'plugins-list' }, 'Plugin cache is empty or not found');
     console.log('\nPlease run "elizaos plugins update" to fetch the latest plugin registry.');
     return;
   }

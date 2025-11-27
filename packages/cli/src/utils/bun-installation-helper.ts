@@ -1,4 +1,3 @@
-import { logger } from '@elizaos/core';
 import { emoji } from './emoji-handler';
 import { bunExec, commandExists } from './bun-exec';
 
@@ -49,25 +48,23 @@ export async function checkBunInstallation(): Promise<BunInstallationResult> {
 export function displayBunInstallInstructions(): void {
   const platform = process.platform;
 
-  logger.error(
-    `${emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')}`
-  );
-  logger.error('');
-  logger.error(`${emoji.rocket('Install Bun using the appropriate command for your system:')}`);
-  logger.error('');
+  console.error(emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.'));
+  console.error('');
+  console.error(emoji.rocket('Install Bun using the appropriate command for your system:'));
+  console.error('');
 
   if (platform === 'win32') {
-    logger.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+    console.error('   Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
   } else {
-    logger.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+    console.error('   Linux/macOS: curl -fsSL https://bun.sh/install | bash');
     if (platform === 'darwin') {
-      logger.error('   macOS (Homebrew): brew install bun');
+      console.error('   macOS (Homebrew): brew install bun');
     }
   }
-  logger.error('');
-  logger.error('   More options: https://bun.sh/docs/installation');
-  logger.error('   After installation, restart your terminal or source your shell profile');
-  logger.error('');
+  console.error('');
+  console.error('   More options: https://bun.sh/docs/installation');
+  console.error('   After installation, restart your terminal or source your shell profile');
+  console.error('');
 }
 
 /**

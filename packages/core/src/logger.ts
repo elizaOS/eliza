@@ -140,6 +140,57 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
+/**
+ * Format a value for display in pretty log extras
+ */
+function formatExtraValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Error) return value.message;
+  return safeStringify(value);
+}
+
+/**
+ * Format a log entry in compact pretty format
+ * Format: [src] message (key=val, key=val)
+ *
+ * Note: agentId/agentName are NOT displayed in pretty mode because:
+ * - Loggers with namespace already show #agentName prefix (via Adze)
+ * - These fields ARE still included in JSON mode for filtering/monitoring
+ */
+function formatPrettyLog(
+  context: Record<string, unknown>,
+  message: string,
+  isJsonMode: boolean
+): string {
+  // In JSON mode, don't format - return message as-is
+  if (isJsonMode) {
+    return message;
+  }
+
+  const src = context.src as string | undefined;
+
+  // Build prefix: [SRC] in uppercase
+  const srcPart = src ? `[${src.toUpperCase()}] ` : '';
+
+  // Build extras: (key=val, key=val)
+  // Exclude: src (already in prefix), agentId/agentName (shown via Adze namespace #agent)
+  const excludeKeys = ['src', 'agentId', 'agentName'];
+  const extraPairs: string[] = [];
+
+  for (const [key, value] of Object.entries(context)) {
+    if (excludeKeys.includes(key)) continue;
+    if (value === undefined) continue;
+    extraPairs.push(`${key}=${formatExtraValue(value)}`);
+  }
+
+  const extrasPart = extraPairs.length > 0 ? ` (${extraPairs.join(', ')})` : '';
+
+  return `${srcPart}${message}${extrasPart}`;
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -567,9 +618,13 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       // Redact sensitive data from objects
       const redactedObj = safeRedact(obj);
       if (msg !== undefined) {
-        return [msg, redactedObj, ...args];
+        // Browser is always pretty mode - format as compact single line
+        const formatted = formatPrettyLog(redactedObj, msg, false);
+        return [formatted, ...args];
       }
-      return [redactedObj, ...args];
+      // No message - format context only
+      const formatted = formatPrettyLog(redactedObj, '', false);
+      return formatted ? [formatted, ...args] : [...args];
     };
 
     return {
@@ -690,13 +745,16 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   /**
    * Adapt ElizaOS logger API arguments to Adze format
    * Also applies redaction to sensitive data in objects
+   *
+   * In pretty mode: formats as compact single line [src] agent — message (extras)
+   * In JSON mode: keeps structured object for machine parsing
    */
   const adaptArgs = (
     obj: Record<string, unknown> | string | Error,
     msg?: string,
     ...args: unknown[]
   ): unknown[] => {
-    // String first argument
+    // String first argument - no context object
     if (typeof obj === 'string') {
       return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
     }
@@ -706,10 +764,25 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         ? [obj.message, { error: obj }, msg, ...args]
         : [obj.message, { error: obj }, ...args];
     }
-    // Object (context) - redact sensitive data and put message first if provided
+
+    // Object (context) - redact sensitive data
     const redactedObj = safeRedact(obj);
+
     if (msg !== undefined) {
+      // Pretty mode: format as compact single line
+      if (!raw) {
+        const formatted = formatPrettyLog(redactedObj, msg, raw);
+        return [formatted, ...args];
+      }
+      // JSON mode: keep structured object for machine parsing
       return [msg, redactedObj, ...args];
+    }
+
+    // No message provided - just context object
+    if (!raw) {
+      // Pretty mode: format the object as a simple string
+      const formatted = formatPrettyLog(redactedObj, '', raw);
+      return formatted ? [formatted, ...args] : [...args];
     }
     return [redactedObj, ...args];
   };

@@ -64,12 +64,12 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
   const dockerfilePath = path.join(projectPath, 'Dockerfile');
 
   if (fs.existsSync(dockerfilePath)) {
-    logger.debug('Using existing Dockerfile');
+    logger.debug({ src: 'cli', util: 'docker-build' }, 'Using existing Dockerfile');
     return dockerfilePath;
   }
 
   // Copy template Dockerfile
-  logger.info('No Dockerfile found, creating from template...');
+  logger.info({ src: 'cli', util: 'docker-build' }, 'No Dockerfile found, creating from template');
 
   const templatePath = path.join(__dirname, '../../../templates/Dockerfile.template');
 
@@ -78,7 +78,7 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
   }
 
   fs.copyFileSync(templatePath, dockerfilePath);
-  logger.info('Created Dockerfile from template');
+  logger.info({ src: 'cli', util: 'docker-build' }, 'Created Dockerfile from template');
 
   // Also copy .dockerignore if it doesn't exist
   const dockerignorePath = path.join(projectPath, '.dockerignore');
@@ -87,7 +87,7 @@ export async function ensureDockerfile(projectPath: string): Promise<string> {
 
     if (fs.existsSync(dockerignoreTemplatePath)) {
       fs.copyFileSync(dockerignoreTemplatePath, dockerignorePath);
-      logger.debug('Created .dockerignore from template');
+      logger.debug({ src: 'cli', util: 'docker-build' }, 'Created .dockerignore from template');
     }
   }
 
@@ -113,7 +113,7 @@ function detectHostPlatform(): string {
   }
 
   // Default to amd64 for unknown architectures
-  logger.warn(`Unknown architecture ${arch}, defaulting to linux/amd64`);
+  logger.warn({ src: 'cli', util: 'docker-build', arch }, 'Unknown architecture, defaulting to linux/amd64');
   return 'linux/amd64';
 }
 
@@ -131,12 +131,12 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Warn if cross-compiling
     if (platform !== hostPlatform) {
-      logger.warn(`Cross-compiling from ${hostPlatform} to ${platform}`);
-      logger.warn('This may be slower and requires Docker BuildKit with QEMU emulation');
-      logger.info('Tip: Set ELIZA_DOCKER_PLATFORM=' + hostPlatform + ' to use native platform');
+      logger.warn({ src: 'cli', util: 'docker-build', hostPlatform, targetPlatform: platform }, 'Cross-compiling to different platform');
+      logger.warn({ src: 'cli', util: 'docker-build' }, 'This may be slower and requires Docker BuildKit with QEMU emulation');
+      logger.info({ src: 'cli', util: 'docker-build', nativePlatform: hostPlatform }, 'Tip: Set ELIZA_DOCKER_PLATFORM to use native platform');
     }
 
-    logger.info(`Building Docker image: ${options.imageTag} (platform: ${platform})`);
+    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag, platform }, 'Building Docker image');
 
     const dockerfilePath = options.dockerfile
       ? path.join(options.projectPath, options.dockerfile)
@@ -174,7 +174,7 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     // Add context (project directory)
     buildArgs.push(options.projectPath);
 
-    logger.debug('Docker build command:', `docker ${buildArgs.join(' ')}`);
+    logger.debug({ src: 'cli', util: 'docker-build', command: `docker ${buildArgs.join(' ')}` }, 'Docker build command');
 
     // Execute Docker build
     const startTime = Date.now();
@@ -187,11 +187,11 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     });
     const buildTime = Date.now() - startTime;
 
-    logger.debug('Docker build completed in', `${(buildTime / 1000).toFixed(2)}s`);
+    logger.debug({ src: 'cli', util: 'docker-build', buildTimeSeconds: (buildTime / 1000).toFixed(2) }, 'Docker build completed');
 
     // Log build output if verbose
     if (process.env.VERBOSE) {
-      logger.debug('Build output:', stdout);
+      logger.debug({ src: 'cli', util: 'docker-build', output: stdout }, 'Build output');
     }
 
     // Get image info
@@ -207,8 +207,7 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     // Calculate checksum from image ID
     const checksum = crypto.createHash('sha256').update(imageId).digest('hex');
 
-    logger.info(`✅ Image built: ${options.imageTag}`);
-    logger.info(`   Size: ${(size / 1024 / 1024).toFixed(2)} MB`);
+    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag, sizeMB: (size / 1024 / 1024).toFixed(2) }, 'Image built successfully');
 
     return {
       success: true,
@@ -239,25 +238,25 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
   // Strip https:// protocol if present - Docker login doesn't need it
   const cleanRegistryUrl = registryUrl.replace(/^https?:\/\//, '');
 
-  logger.info(`Logging in to ECR registry: ${cleanRegistryUrl}`);
+  logger.info({ src: 'cli', util: 'docker-build', registry: cleanRegistryUrl }, 'Logging in to ECR registry');
 
   // Docker login
   await execa('docker', ['login', '--username', username, '--password-stdin', cleanRegistryUrl], {
     input: password,
   });
 
-  logger.info('✅ Logged in to ECR');
+  logger.info({ src: 'cli', util: 'docker-build' }, 'Logged in to ECR');
 }
 
 /**
  * Tag image for ECR
  */
 async function tagImageForECR(localTag: string, ecrImageUri: string): Promise<void> {
-  logger.info(`Tagging image for ECR: ${ecrImageUri}`);
+  logger.info({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Tagging image for ECR');
 
   await execa('docker', ['tag', localTag, ecrImageUri]);
 
-  logger.debug(`✅ Tagged: ${localTag} -> ${ecrImageUri}`);
+  logger.debug({ src: 'cli', util: 'docker-build', localTag, ecrImageUri }, 'Image tagged for ECR');
 }
 
 /**
@@ -265,7 +264,7 @@ async function tagImageForECR(localTag: string, ecrImageUri: string): Promise<vo
  */
 export async function pushDockerImage(options: DockerPushOptions): Promise<DockerPushResult> {
   try {
-    logger.info(`Pushing image to ECR: ${options.imageTag}`);
+    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag }, 'Pushing image to ECR');
 
     // Step 1: Login to ECR
     await loginToECR(options.ecrRegistryUrl, options.ecrAuthToken);
@@ -276,12 +275,12 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
       // Use the pre-constructed full image URI from API (preferred)
       // Strip https:// protocol if present - Docker doesn't accept it in image tags
       ecrImageUri = options.ecrImageUri.replace(/^https?:\/\//, '');
-      logger.debug(`Using API-provided ECR image URI: ${ecrImageUri}`);
+      logger.debug({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Using API-provided ECR image URI');
     } else {
       // Legacy fallback: construct from registry + imageTag
       const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
       ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
-      logger.debug(`Constructing ECR image URI from registry: ${ecrImageUri}`);
+      logger.debug({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Constructing ECR image URI from registry');
     }
 
     // Step 3: Tag local image for ECR
@@ -373,7 +372,7 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Docker push failed:', errorMessage);
+    logger.error({ src: 'cli', util: 'docker-build', error: errorMessage }, 'Docker push failed');
 
     return {
       success: false,
@@ -431,13 +430,13 @@ export async function cleanupLocalImages(imageTags: string[]): Promise<void> {
     return;
   }
 
-  logger.info(`Cleaning up ${imageTags.length} local images...`);
+  logger.info({ src: 'cli', util: 'docker-build', count: imageTags.length }, 'Cleaning up local images');
 
   try {
     await execa('docker', ['rmi', ...imageTags, '--force']);
-    logger.info('✅ Local images cleaned up');
+    logger.info({ src: 'cli', util: 'docker-build' }, 'Local images cleaned up');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.warn('Failed to clean up some images:', errorMessage);
+    logger.warn({ src: 'cli', util: 'docker-build', error: errorMessage }, 'Failed to clean up some images');
   }
 }

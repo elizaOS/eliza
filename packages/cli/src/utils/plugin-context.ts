@@ -47,7 +47,7 @@ export function detectPluginContext(pluginName: string): PluginContext {
   try {
     packageInfo = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
   } catch (error) {
-    logger.debug(`Failed to parse package.json: ${error}`);
+    logger.debug({ src: 'cli', util: 'plugin-context', error }, 'Failed to parse package.json');
     return { isLocalDevelopment: false };
   }
 
@@ -68,9 +68,7 @@ export function detectPluginContext(pluginName: string): PluginContext {
     const localPath = path.resolve(cwd, mainEntry);
     const needsBuild = !existsSync(localPath);
 
-    logger.debug(`Detected local plugin development: ${pluginName}`);
-    logger.debug(`Expected output: ${localPath}`);
-    logger.debug(`Needs build: ${needsBuild}`);
+    logger.debug({ src: 'cli', util: 'plugin-context', pluginName, localPath, needsBuild }, 'Detected local plugin development');
 
     return {
       isLocalDevelopment: true,
@@ -95,26 +93,26 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
 
   // Check if build script exists
   if (packageInfo.scripts?.build) {
-    logger.info('Plugin not built, attempting to build...');
+    logger.info({ src: 'cli', util: 'plugin-context' }, 'Plugin not built, building...');
     try {
       await buildProject(process.cwd(), true);
 
       // Verify the build created the expected output
       if (localPath && existsSync(localPath)) {
-        logger.success('Plugin built successfully');
+        logger.success({ src: 'cli', util: 'plugin-context' }, 'Plugin built successfully');
         return true;
       } else {
-        logger.error(`Build completed but expected output not found: ${localPath}`);
+        logger.error({ src: 'cli', util: 'plugin-context', expectedPath: localPath }, 'Build completed but output not found');
         return false;
       }
     } catch (error) {
-      logger.error(`Build failed: ${error}`);
+      logger.error({ src: 'cli', util: 'plugin-context', error }, 'Build failed');
       return false;
     }
   }
 
-  logger.error(`Plugin not built and no build script found in package.json`);
-  logger.info(`Add a "build" script to package.json or run 'bun run build' manually`);
+  logger.error({ src: 'cli', util: 'plugin-context' }, 'Plugin not built and no build script found');
+  logger.info({ src: 'cli', util: 'plugin-context' }, 'Add a build script to package.json or run bun run build');
   return false;
 }
 
@@ -126,17 +124,11 @@ export function provideLocalPluginGuidance(pluginName: string, context: PluginCo
     return;
   }
 
-  logger.info(`\nLocal plugin development detected for: ${pluginName}`);
+  logger.info({ src: 'cli', util: 'plugin-context', pluginName }, 'Local plugin development detected');
 
   if (context.needsBuild) {
-    logger.info('To fix this issue:');
-    logger.info('1. Build the plugin: bun run build');
-    logger.info('2. Verify the output exists at: ' + context.localPath);
-    logger.info('3. Re-run the test command');
+    logger.info({ src: 'cli', util: 'plugin-context' }, 'To fix: 1) bun run build, 2) verify output, 3) re-run');
   } else {
-    logger.info('Plugin appears to be built but failed to load.');
-    logger.info('Try rebuilding: bun run build');
+    logger.info({ src: 'cli', util: 'plugin-context' }, 'Plugin built but failed to load, try rebuilding');
   }
-
-  logger.info('\nFor more information, see the plugin development guide.');
 }

@@ -120,7 +120,7 @@ function detectEmojiSupport(): boolean {
 export function getEmoji(key: EmojiKey): string {
   const emojiDef = EMOJIS[key];
   if (!emojiDef) {
-    logger.warn(`Unknown emoji key: ${key}`);
+    logger.warn({ src: 'cli', util: 'emoji-handler', key }, 'Unknown emoji key');
     return '';
   }
 
@@ -182,9 +182,7 @@ export function initializeEmojiSupport(): void {
 
   // Log emoji support status in debug mode
   if (process.env.DEBUG || process.env.ELIZA_DEBUG) {
-    logger.debug(
-      `Emoji support: ${supported ? 'enabled' : 'disabled'} (platform: ${process.platform}, term: ${process.env.TERM || 'unknown'})`
-    );
+    logger.debug({ src: 'cli', util: 'emoji-handler', supported, platform: process.platform, term: process.env.TERM || 'unknown' }, 'Emoji support status');
   }
 }
 

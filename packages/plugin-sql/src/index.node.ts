@@ -76,7 +76,7 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
-    logger.info({ src: 'plugin:sql' }, 'plugin-sql (node) init starting');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'plugin-sql (node) init starting');
 
     const adapterRegistered = await runtime
       .isReady()
@@ -85,18 +85,18 @@ export const plugin: Plugin = {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes('Database adapter not registered')) {
           // Expected on first load before the adapter is created; not a warning condition
-          logger.info({ src: 'plugin:sql' }, 'No pre-registered database adapter detected; registering adapter');
+          runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'No pre-registered database adapter detected; registering adapter');
         } else {
           // Unexpected readiness error - keep as a warning with details
-          logger.warn(
-            { src: 'plugin:sql', error: message },
+          runtime.logger.warn(
+            { src: 'plugin:sql', agentId: runtime.agentId, error: message },
             'Database adapter readiness check error; proceeding to register adapter'
           );
         }
         return false;
       });
     if (adapterRegistered) {
-      logger.info({ src: 'plugin:sql' }, 'Database adapter already registered, skipping creation');
+      runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter already registered, skipping creation');
       return;
     }
 
@@ -113,7 +113,7 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info({ src: 'plugin:sql' }, 'Database adapter created and registered');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter created and registered');
   },
 };
 

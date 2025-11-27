@@ -36,7 +36,7 @@ export async function isCliInstalledViaNpm(): Promise<boolean> {
  * Remove the CLI from npm global installation
  */
 async function removeNpmInstallation(): Promise<void> {
-  logger.info('Removing npm installation of @elizaos/cli...');
+  logger.info({ src: 'cli', util: 'bun-migration' }, 'Removing npm installation of @elizaos/cli');
   await bunExecInherit('npm', ['uninstall', '-g', '@elizaos/cli']);
 }
 
@@ -44,7 +44,7 @@ async function removeNpmInstallation(): Promise<void> {
  * Install the CLI using bun globally
  */
 async function installCliWithBun(version: string): Promise<void> {
-  logger.info('Installing CLI with bun...');
+  logger.info({ src: 'cli', util: 'bun-migration', version }, 'Installing CLI with bun');
   await bunExecInherit('bun', ['add', '-g', `@elizaos/cli@${version}`]);
 }
 
@@ -88,32 +88,30 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
     );
   }
 
-  logger.info('Starting atomic CLI migration from npm to bun...');
+  logger.info({ src: 'cli', util: 'bun-migration', targetVersion }, 'Starting atomic CLI migration from npm to bun');
 
   try {
     // Step 2: Install with bun (without removing npm yet)
     await installCliWithBun(targetVersion);
 
     // Step 3: Verify bun installation works
-    logger.info('Verifying bun installation...');
+    logger.info({ src: 'cli', util: 'bun-migration' }, 'Verifying bun installation');
     if (!(await verifyCliInstallation(targetVersion))) {
       throw new Error('Bun installation verification failed');
     }
 
     // Step 4: Only now remove npm installation (since bun works)
-    logger.info('Bun installation successful, removing npm installation...');
+    logger.info({ src: 'cli', util: 'bun-migration' }, 'Bun installation successful, removing npm installation');
     await removeNpmInstallation();
 
-    logger.info('✅ CLI migration completed successfully! You may need to restart your terminal.');
+    logger.info({ src: 'cli', util: 'bun-migration' }, 'CLI migration completed successfully! You may need to restart your terminal');
   } catch (error) {
-    logger.error(
-      `❌ CLI migration failed: ${error instanceof Error ? error.message : String(error)}`
-    );
-    logger.error('Your original npm installation is still intact.');
+    logger.error({ src: 'cli', util: 'bun-migration', error: error instanceof Error ? error.message : String(error) }, 'CLI migration failed');
+    logger.error({ src: 'cli', util: 'bun-migration' }, 'Your original npm installation is still intact');
 
     // Try to clean up failed bun installation
     try {
-      logger.info('Cleaning up failed bun installation...');
+      logger.info({ src: 'cli', util: 'bun-migration' }, 'Cleaning up failed bun installation');
       await bunExec('bun', ['remove', '-g', '@elizaos/cli'], { stdio: 'ignore' });
     } catch {
       // Ignore cleanup errors

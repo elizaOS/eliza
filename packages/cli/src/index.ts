@@ -54,22 +54,19 @@ const shutdownState = {
 async function gracefulShutdown(signal: string) {
   // Atomically check and set shutdown flag to prevent race conditions
   if (!shutdownState.tryInitiateShutdown()) {
-    logger.debug(`Ignoring ${signal} - shutdown already in progress`);
+    logger.debug({ src: 'cli', signal }, 'Ignoring signal - shutdown already in progress');
     return;
   }
-  logger.info(`Received ${signal}, shutting down gracefully...`);
+  logger.info({ src: 'cli', signal }, 'Received signal, shutting down gracefully');
 
   try {
     // Stop the dev server if it's running
     const serverWasStopped = await stopServer();
     if (serverWasStopped) {
-      logger.info('Server stopped successfully');
+      logger.info({ src: 'cli' }, 'Server stopped successfully');
     }
   } catch (error) {
-    // Extract error message for better debugging
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`Error stopping server: ${errorMessage}`);
-    logger.debug({ error }, 'Full error details:');
+    logger.error({ src: 'cli', error: error instanceof Error ? error.message : String(error) }, 'Error stopping server');
   }
 
   // Use appropriate exit codes for different signals
@@ -177,6 +174,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error({ error }, 'An error occurred:');
+  logger.error({ src: 'cli', error: error instanceof Error ? error.message : String(error) }, 'An error occurred');
   process.exit(1);
 });
