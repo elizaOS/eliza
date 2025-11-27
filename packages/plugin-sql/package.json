@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.6.5-alpha.12",
+  "version": "1.6.5-alpha.13",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",

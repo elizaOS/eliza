@@ -1,6 +1,6 @@
 {
   "name": "elizaos",
-  "version": "1.6.5-alpha.12",
+  "version": "1.6.5-alpha.13",
   "description": "Alias package for @elizaos/cli",
   "publishConfig": {
     "access": "public",
