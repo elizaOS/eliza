@@ -352,11 +352,20 @@
 
   /* Blockquotes */
   .markdown-content blockquote {
-    margin: 12px 0 !important;
-    padding: 8px 16px !important;
+    margin: 8px 0 !important;
+    padding: 4px 16px !important;
     border-left: 3px solid rgba(255, 255, 255, 0.3);
     color: rgba(255, 255, 255, 0.85);
     font-style: italic;
+  }
+
+  /* Blockquote paragraphs should be compact */
+  .markdown-content blockquote p {
+    margin-bottom: 4px !important;
+  }
+
+  .markdown-content blockquote p:last-child {
+    margin-bottom: 0 !important;
   }
 
   /* Code blocks */
