@@ -16,7 +16,7 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./types/index.d.ts",
       "browser": {
         "types": "./dist/browser/index.d.ts",
         "import": "./dist/browser/index.browser.js",
@@ -47,7 +47,8 @@
   "sideEffects": false,
   "files": [
     "dist",
-    "drizzle"
+    "drizzle",
+    "types"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",

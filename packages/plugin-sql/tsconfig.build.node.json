@@ -4,8 +4,7 @@
     "outDir": "dist/node",
     "declaration": true,
     "declarationMap": false,
-    "emitDeclarationOnly": true,
-    "noEmit": false
+    "emitDeclarationOnly": true
   },
   "include": [
     "src/index.node.ts",
