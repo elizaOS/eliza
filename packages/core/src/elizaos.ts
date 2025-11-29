@@ -86,10 +86,11 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     options?: { isTestMode?: boolean }
   ): Promise<UUID[]> {
     const promises = agents.map(async (agent) => {
-      // Always merge environment secrets with character secrets
+      // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
+      // In test mode, skip env merge to avoid database bloat from system variables
       const character = agent.character;
-      await setDefaultSecretsFromEnv(character);
+      await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
 
       const resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
@@ -400,7 +401,18 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       maxMultiStepIterations: options?.maxMultiStepIterations,
     };
 
-    // 6. Determine mode: async or sync
+    // 6. Helper to wrap message handling with Entity RLS context if available
+    const handleMessageWithEntityContext = async <T>(
+      handler: () => Promise<T>
+    ): Promise<T> => {
+      if (runtime.withEntityContext) {
+        return await runtime.withEntityContext(userMessage.entityId, handler);
+      } else {
+        return await handler();
+      }
+    };
+
+    // 7. Determine mode: async or sync
     const isAsyncMode = !!options?.onResponse;
 
     if (isAsyncMode) {
@@ -420,9 +432,10 @@ export class ElizaOS extends EventTarget implements IElizaOS {
         return [];
       };
 
-      // Direct call to messageService
-      runtime.messageService
-        .handleMessage(runtime, userMessage, callback, processingOptions)
+      // Wrap message handling with Entity RLS context
+      handleMessageWithEntityContext(() =>
+        runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
+      )
         .then(() => {
           if (options.onComplete) options.onComplete();
         })
@@ -442,11 +455,8 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // ========== SYNC MODE ==========
       // Wait for response
 
-      const result = await runtime.messageService.handleMessage(
-        runtime,
-        userMessage,
-        undefined,
-        processingOptions
+      const result = await handleMessageWithEntityContext<MessageProcessingResult>(() =>
+        runtime.messageService!.handleMessage(runtime, userMessage, undefined, processingOptions)
       );
 
       if (options?.onComplete) await options.onComplete();

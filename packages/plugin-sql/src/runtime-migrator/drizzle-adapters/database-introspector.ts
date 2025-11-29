@@ -55,15 +55,18 @@ export class DatabaseIntrospector {
       for (const idx of indexes) {
         if (!idx.is_primary && !idx.is_unique_constraint) {
           // Skip primary keys and unique constraints
-          indexesObject[idx.name] = {
-            name: idx.name,
-            columns: idx.columns.map((col) => ({
-              expression: col,
-              isExpression: false,
-            })),
-            isUnique: idx.is_unique,
-            method: idx.method || 'btree',
-          };
+          // Also skip indexes with no columns (partial indexes, expression indexes, etc.)
+          if (idx.columns && Array.isArray(idx.columns) && idx.columns.length > 0) {
+            indexesObject[idx.name] = {
+              name: idx.name,
+              columns: idx.columns.map((col) => ({
+                expression: col,
+                isExpression: false,
+              })),
+              isUnique: idx.is_unique,
+              method: idx.method || 'btree',
+            };
+          }
         }
       }
 

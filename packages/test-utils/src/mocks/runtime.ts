@@ -309,10 +309,8 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Text Generation (required by IAgentRuntime)
     generateText: mock().mockResolvedValue('Mock generated text'),
 
-    // ElizaOS Integration (must be a function, not a mock, due to type predicate signature)
-    hasElizaOS(): this is IAgentRuntime & { elizaOS: any } {
-      return false;
-    },
+    // Room Participant Checks
+    isRoomParticipant: mock().mockResolvedValue(false),
 
     // Apply overrides
     ...overrides,

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
 
 // Registry configuration - centralized for maintainability
@@ -50,7 +50,7 @@ export function usePlugins() {
     queryFn: async () => {
       try {
         // Fetch plugins from registry and agent data in parallel
-        const elizaClient = createElizaClient();
+        const elizaClient = getElizaClient();
         const [registryResponse, agentsResponse] = await Promise.all([
           fetch(REGISTRY_URL),
           elizaClient.agents.listAgents(),

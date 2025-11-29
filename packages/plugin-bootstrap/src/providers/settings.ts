@@ -193,14 +193,16 @@ export const settingsProvider: Provider = {
           throw new Error('No server ownership found for onboarding');
         }
 
-        serverId = world.serverId;
+        serverId = world.messageServerId;
 
         // Fetch world settings based on the server ID
-        try {
-          worldSettings = await getWorldSettings(runtime, serverId);
-        } catch (error) {
-          logger.error(`Error fetching world settings: ${error}`);
-          throw new Error(`Failed to retrieve settings for server ${serverId}`);
+        if (serverId) {
+          try {
+            worldSettings = await getWorldSettings(runtime, serverId);
+          } catch (error) {
+            logger.error(`Error fetching world settings: ${error}`);
+            throw new Error(`Failed to retrieve settings for server ${serverId}`);
+          }
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
@@ -212,7 +214,7 @@ export const settingsProvider: Provider = {
             throw new Error(`No world found for room ${room.worldId}`);
           }
 
-          serverId = world.serverId;
+          serverId = world.messageServerId;
 
           // Once we have the serverId, get the settings
           if (serverId) {

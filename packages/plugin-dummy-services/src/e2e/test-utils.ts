@@ -43,7 +43,7 @@ export async function setupScenario(
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: 'E2E Test World',
-    serverId: 'e2e-test-server',
+    messageServerId: asUUID(uuid()),
     metadata: {
       ownership: {
         ownerId: user.id,
@@ -59,7 +59,7 @@ export async function setupScenario(
     type: ChannelType.DM,
     source: 'e2e-test',
     worldId: world.id,
-    serverId: world.serverId,
+    messageServerId: world.messageServerId,
   };
   await runtime.createRoom(room);
 

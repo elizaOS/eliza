@@ -6,6 +6,7 @@ beforeEach(() => {
     if (context.displayName === 'AuthContext' || context._currentValue === undefined) {
       return {
         openApiKeyDialog: cy.stub(),
+        requireAuth: cy.stub(),
       };
     }
     return context._currentValue;

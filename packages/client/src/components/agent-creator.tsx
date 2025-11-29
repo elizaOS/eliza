@@ -1,6 +1,6 @@
 import CharacterForm from '@/components/character-form';
 import { useToast } from '@/hooks/use-toast';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import type { Agent } from '@elizaos/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useRef } from 'react';
@@ -68,7 +68,7 @@ export default function AgentCreator() {
         };
       }
 
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       await elizaClient.agents.createAgent({ agent: completeCharacter });
 
       // Invalidate the characters query to refresh the characters list

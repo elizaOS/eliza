@@ -22,7 +22,7 @@ import { mock } from 'bun:test';
 export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAgentRuntime {
   const db = { execute: mock(() => Promise.resolve([])) };
 
-  const baseRuntime: IAgentRuntime = {
+  const baseRuntime: Partial<IAgentRuntime> = {
     // Properties from IAgentRuntime interface
     agentId: '123e4567-e89b-12d3-a456-426614174000' as UUID,
     character: {
@@ -42,7 +42,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     evaluators: [],
     plugins: [],
     services: new Map(),
-    events: new Map(),
+    events: new Map() as any, // PluginEvents type expects object but runtime uses Map
     fetch: null,
     routes: [],
 
@@ -104,7 +104,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     updateAgent: mock(() => Promise.resolve(true)),
     deleteAgent: mock(() => Promise.resolve(true)),
     ensureEmbeddingDimension: mock(() => Promise.resolve()),
-    getEntityByIds: mock(() => Promise.resolve(null)),
+    getEntitiesByIds: mock(() => Promise.resolve(null)),
     getEntitiesForRoom: mock(() => Promise.resolve([])),
     createEntities: mock(() => Promise.resolve(true)),
     updateEntity: mock(() => Promise.resolve()),
@@ -167,7 +167,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
     ...overrides,
   };
 
-  return baseRuntime;
+  return baseRuntime as IAgentRuntime;
 }
 
 /**
@@ -192,7 +192,7 @@ export function createMockDatabaseAdapter(overrides?: any): DatabaseAdapter & an
     deleteAgent: mock(() => Promise.resolve(true)),
 
     // Entity methods
-    getEntityByIds: mock(() => Promise.resolve(null)),
+    getEntitiesByIds: mock(() => Promise.resolve(null)),
     getEntitiesForRoom: mock(() => Promise.resolve([])),
     createEntities: mock(() => Promise.resolve(true)),
     updateEntity: mock(() => Promise.resolve()),
@@ -445,4 +445,41 @@ export function createMockUploadedFile(
     path: '',
     ...overrides,
   };
+}
+
+/**
+ * Creates a mock fetch Response
+ * Provides a properly typed Response mock for testing fetch calls
+ */
+export function createMockFetchResponse<T = any>(options: {
+  ok?: boolean;
+  status?: number;
+  statusText?: string;
+  data?: T;
+  jsonError?: Error;
+}) {
+  const { ok = true, status = 200, statusText = 'OK', data, jsonError } = options;
+
+  const mockResponse: Partial<globalThis.Response> = {
+    ok,
+    status,
+    statusText,
+    json: async () => {
+      if (jsonError) throw jsonError;
+      return data;
+    },
+    text: async () => JSON.stringify(data),
+    headers: new Headers(),
+    redirected: false,
+    type: 'basic' as ResponseType,
+    url: '',
+    clone: mock() as any,
+    body: null,
+    bodyUsed: false,
+    arrayBuffer: async () => new ArrayBuffer(0),
+    blob: async () => new Blob(),
+    formData: async () => new FormData(),
+  };
+
+  return mockResponse as globalThis.Response;
 }

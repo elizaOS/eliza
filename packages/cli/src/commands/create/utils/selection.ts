@@ -47,7 +47,7 @@ export function getAvailableAIModels(): AIModelOption[] {
  * Models with embeddings don't need a separate embedding provider.
  */
 export function hasEmbeddingSupport(aiModel: string): boolean {
-  const modelsWithEmbeddings = ['local', 'openai', 'google'];
+  const modelsWithEmbeddings = ['local', 'openai', 'google', 'openrouter'];
   return modelsWithEmbeddings.includes(aiModel);
 }
 
@@ -136,6 +136,11 @@ export function getAvailableEmbeddingModels(): AIModelOption[] {
       title: 'Google Generative AI',
       value: 'google',
       description: 'Google embedding models',
+    },
+    {
+      title: 'OpenRouter',
+      value: 'openrouter',
+      description: 'Access multiple embedding models',
     },
   ];
 }

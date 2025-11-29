@@ -76,6 +76,10 @@ ANTHROPIC_API_KEY=
 # OLLAMA_MEDIUM_MODEL=gemma3:latest
 # OLLAMA_LARGE_MODEL=gemma3:latest
 
+# OpenRouter Configuration
+# OPENROUTER_API_KEY=
+# OPENROUTER_EMBEDDING_MODEL=openai/text-embedding-3-small
+# OPENROUTER_EMBEDDING_DIMENSIONS=1536
 
 # Highly recommended to use nomic-embed-text for embeddings
 # OLLAMA_EMBEDDING_MODEL=nomic-embed-text

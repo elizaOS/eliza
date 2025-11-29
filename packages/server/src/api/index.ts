@@ -16,7 +16,6 @@ import { audioRouter } from './audio';
 import { runtimeRouter } from './runtime';
 import { teeRouter } from './tee';
 import { systemRouter } from './system';
-// NOTE: world router has been removed - functionality moved to messaging/spaces
 import { SocketIORouter } from '../socketio';
 import {
   securityMiddleware,
@@ -30,7 +29,6 @@ import {
  * @param agents Map of agent runtimes
  */
 // Global reference to SocketIO router for log streaming
-// let socketIORouter: SocketIORouter | null = null; // This can be removed if router is managed within setupSocketIO scope correctly
 
 export function setupSocketIO(
   server: http.Server,
@@ -48,10 +46,6 @@ export function setupSocketIO(
   centralSocketRouter.setupListeners(io);
 
   setupLogStreaming(io, centralSocketRouter);
-
-  // Old direct-to-agent processing path via sockets is now fully handled by SocketIORouter
-  // which routes messages through the message store and internal bus.
-  // The old code block is removed.
 
   return io;
 }
@@ -391,8 +385,6 @@ export function createApiRouter(
 
   // Mount system router at /system - handles system configuration, health checks, and environment
   router.use('/system', systemRouter());
-
-  // NOTE: /world routes have been removed - functionality moved to messaging/spaces
 
   // NOTE: Legacy route aliases removed to prevent duplicates
   // Use proper domain routes: /messaging, /system, /tee

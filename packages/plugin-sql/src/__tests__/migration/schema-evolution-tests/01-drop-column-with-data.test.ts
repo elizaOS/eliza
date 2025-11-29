@@ -21,7 +21,7 @@ import { embeddingTable } from '../../../schema/embedding';
 import { logTable } from '../../../schema/log';
 import { cacheTable } from '../../../schema/cache';
 import { taskTable } from '../../../schema/tasks';
-import { serverAgentsTable } from '../../../schema/serverAgent';
+import { messageServerAgentsTable } from '../../../schema/messageServerAgent';
 
 /**
  * Schema Evolution Test 1: Dropping Columns from Production Schema
@@ -53,7 +53,7 @@ describe('Schema Evolution Test: Drop Column with Production Schema', () => {
     logs: logTable,
     cache: cacheTable,
     tasks: taskTable,
-    serverAgents: serverAgentsTable,
+    messageServerAgents: messageServerAgentsTable,
   });
 
   beforeEach(async () => {

@@ -73,27 +73,27 @@ export class MemoryService extends BaseApiClient {
   }
 
   /**
-   * Create world from server
+   * Create world from message server
    */
-  async createWorldFromServer(
-    serverId: UUID,
+  async createWorldFromMessageServer(
+    messageServerId: UUID,
     params: WorldCreateParams
   ): Promise<{ worldId: UUID }> {
-    return this.post<{ worldId: UUID }>(`/api/memory/groups/${serverId}`, params);
+    return this.post<{ worldId: UUID }>(`/api/memory/groups/${messageServerId}`, params);
   }
 
   /**
    * Delete a world
    */
-  async deleteWorld(serverId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(`/api/memory/groups/${serverId}`);
+  async deleteWorld(messageServerId: UUID): Promise<{ success: boolean }> {
+    return this.delete<{ success: boolean }>(`/api/memory/groups/${messageServerId}`);
   }
 
   /**
    * Clear world memories
    */
-  async clearWorldMemories(serverId: UUID): Promise<{ deleted: number }> {
-    return this.delete<{ deleted: number }>(`/api/memory/groups/${serverId}/memories`);
+  async clearWorldMemories(messageServerId: UUID): Promise<{ deleted: number }> {
+    return this.delete<{ deleted: number }>(`/api/memory/groups/${messageServerId}/memories`);
   }
 
   /**
@@ -146,18 +146,18 @@ export class MemoryService extends BaseApiClient {
   /**
    * Delete group memory (implemented via messaging channel message deletion)
    */
-  async deleteGroupMemory(serverId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
+  async deleteGroupMemory(messageServerId: UUID, memoryId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(
-      `/api/messaging/central-channels/${serverId}/messages/${memoryId}`
+      `/api/messaging/channels/${messageServerId}/messages/${memoryId}`
     );
   }
 
   /**
    * Clear group chat (implemented via messaging channel history clearing)
    */
-  async clearGroupChat(serverId: UUID): Promise<{ success: boolean }> {
+  async clearGroupChat(messageServerId: UUID): Promise<{ success: boolean }> {
     return this.delete<{ success: boolean }>(
-      `/api/messaging/central-channels/${serverId}/messages`
+      `/api/messaging/channels/${messageServerId}/messages`
     );
   }
 }

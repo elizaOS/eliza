@@ -4,6 +4,24 @@ import { useConvertCharacter } from '../use-character-convert';
 // Mock the usePlugins hook
 const mockUsePlugins = mock();
 
+// Mock api-client-config to prevent import resolution errors
+mock.module('@/lib/api-client-config', () => ({
+  createElizaClient: () => ({
+    agents: {
+      listAgents: mock(() => Promise.resolve({ agents: [] })),
+      getAgent: mock(() => Promise.resolve({ plugins: [] })),
+    },
+  }),
+  getElizaClient: () => ({
+    agents: {
+      listAgents: mock(() => Promise.resolve({ agents: [] })),
+      getAgent: mock(() => Promise.resolve({ plugins: [] })),
+    },
+  }),
+  createApiClientConfig: () => ({}),
+  updateApiClientApiKey: () => {},
+}));
+
 mock.module('../use-plugins', () => ({
   usePlugins: mockUsePlugins,
 }));
