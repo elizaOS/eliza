@@ -376,11 +376,15 @@ export class AgentServer {
         createDatabaseAdapter = config.createDatabaseAdapter;
         DatabaseMigrationService = config.DatabaseMigrationService || MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
 
-        // Check if it's MySQL based on the plugin
-        const mysqlUrl = process.env.MYSQL_URL;
-        this.useMysql = !!mysqlUrl;
+        // Check if it's MySQL based on the plugin name (not environment variable)
+        // This ensures we use the correct database behavior based on the actual plugin provided
+        const pluginName = this.databasePlugin.name.toLowerCase();
+        this.useMysql = pluginName.includes('mysql');
+
+        logger.info(`[INIT] Database type detected from plugin: ${this.useMysql ? 'MySQL' : 'PostgreSQL/PGLite'}`);
 
         if (this.useMysql) {
+          const mysqlUrl = process.env.MYSQL_URL;
           validateAndLogMySQLUrl(mysqlUrl);
         }
 
@@ -554,8 +558,8 @@ export class AgentServer {
 
           // Clean up RLS if it was previously enabled
           try {
-            await uninstallRLS(this.database);
             logger.info('[INIT] Cleaning up RLS policies and functions...');
+            await uninstallRLS(this.database);
             logger.success('[INIT] RLS cleanup completed');
           } catch (cleanupError) {
             // It's OK if cleanup fails (RLS might not have been installed)
@@ -877,7 +881,7 @@ export class AgentServer {
           // Skip rate limiting for internal/private IPs (Docker, Kubernetes)
           const ip = req.ip || '';
           return ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') ||
-                 ip.startsWith('172.') || ip.startsWith('192.168.');
+            ip.startsWith('172.') || ip.startsWith('192.168.');
         },
       });
 
