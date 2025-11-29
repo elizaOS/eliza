@@ -275,4 +275,109 @@
     font-weight: 600;
     color: #ffffff;
   }
+
+  /* Headings: consistent spacing and sizing */
+  .markdown-content h1 {
+    font-size: 1.875rem !important;
+    /* 30px */
+    font-weight: 700;
+    line-height: 1.2 !important;
+    margin: 0 !important;
+    margin-top: 24px !important;
+    margin-bottom: 16px !important;
+    color: #ffffff;
+  }
+
+  .markdown-content h2 {
+    font-size: 1.5rem !important;
+    /* 24px */
+    font-weight: 700;
+    line-height: 1.3 !important;
+    margin: 0 !important;
+    margin-top: 20px !important;
+    margin-bottom: 12px !important;
+    color: #ffffff;
+  }
+
+  .markdown-content h3 {
+    font-size: 1.25rem !important;
+    /* 20px */
+    font-weight: 600;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    margin-top: 16px !important;
+    margin-bottom: 8px !important;
+    color: #ffffff;
+  }
+
+  .markdown-content h4 {
+    font-size: 1.125rem !important;
+    /* 18px */
+    font-weight: 600;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    margin-top: 16px !important;
+    margin-bottom: 8px !important;
+    color: #ffffff;
+  }
+
+  .markdown-content h5,
+  .markdown-content h6 {
+    font-size: 1rem !important;
+    /* 16px */
+    font-weight: 600;
+    line-height: 1.5 !important;
+    margin: 0 !important;
+    margin-top: 12px !important;
+    margin-bottom: 6px !important;
+    color: #ffffff;
+  }
+
+  /* First heading should have no top margin */
+  .markdown-content h1:first-child,
+  .markdown-content h2:first-child,
+  .markdown-content h3:first-child,
+  .markdown-content h4:first-child,
+  .markdown-content h5:first-child,
+  .markdown-content h6:first-child {
+    margin-top: 0 !important;
+  }
+
+  /* Horizontal rules / separators */
+  .markdown-content hr {
+    margin: 20px 0 !important;
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  /* Blockquotes */
+  .markdown-content blockquote {
+    margin: 12px 0 !important;
+    padding: 8px 16px !important;
+    border-left: 3px solid rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.85);
+    font-style: italic;
+  }
+
+  /* Code blocks */
+  .markdown-content pre {
+    margin: 12px 0 !important;
+    padding: 12px !important;
+    border-radius: 6px;
+    overflow-x: auto;
+    background-color: rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .markdown-content code {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+  }
+
+  /* Inline code */
+  .markdown-content p code,
+  .markdown-content li code {
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
 }
