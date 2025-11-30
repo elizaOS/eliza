@@ -175,7 +175,7 @@ export class MessageBusService extends Service {
         }
       }
 
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelCount: this.validChannelIds.size, serverCount: serversToCheck.size }, 'Loaded valid channel IDs from servers');
+      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelCount: this.validChannelIds.size, serverCount: messageServersToCheck.size }, 'Loaded valid channel IDs from servers');
     } catch (error) {
       logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error fetching valid channel IDs');
     }
@@ -618,7 +618,7 @@ export class MessageBusService extends Service {
         },
       };
 
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId, serverId }, 'Sending response to central server');
+      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId, messageServerId }, 'Sending response to central server');
 
       // Actual fetch to the central server API
       const baseUrl = this.getCentralMessageServerUrl();
