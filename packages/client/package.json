@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.6.5-alpha.15",
+  "version": "1.6.5-alpha.16",
   "description": "Web client interface for ElizaOS agents",
   "repository": {
     "type": "git",
@@ -117,9 +117,9 @@
     "vite-plugin-compression": "^0.5.1"
   },
   "devDependencies": {
-    "@elizaos/config": "workspace:*",
     "@cypress/react": "^9.0.1",
     "@cypress/vite-dev-server": "^7.0.0",
+    "@elizaos/config": "workspace:*",
     "@eslint/js": "^9.22.0",
     "@happy-dom/global-registrator": "^19.0.2",
     "@playwright/test": "^1.40.0",
