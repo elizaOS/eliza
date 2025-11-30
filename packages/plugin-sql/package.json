@@ -60,6 +60,7 @@
     "uuid": "^11.0.5"
   },
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@eslint/js": "^9.28.0",
     "@types/node": "^24.0.3",
     "@types/pg": "8.15.4",
@@ -73,7 +74,8 @@
     "dev": "bun run build.ts --watch",
     "migrate:generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "lint": "eslint .",
+    "lint": "eslint . && prettier --write .",
+    "lint:check": "eslint .",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write .",
     "format:check": "prettier --check ./src",

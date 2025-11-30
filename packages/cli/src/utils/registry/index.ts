@@ -116,9 +116,7 @@ export async function getGitHubToken(): Promise<string | undefined> {
       return env.GITHUB_TOKEN;
     }
   } catch (error) {
-    logger.debug(
-      `Error reading GitHub token: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Error reading GitHub token');
   }
   return undefined;
 }
@@ -156,11 +154,9 @@ export async function setGitHubToken(token: string) {
     // Also update process.env for immediate use
     process.env.GITHUB_TOKEN = token;
 
-    logger.debug('GitHub token saved successfully');
+    logger.debug({ src: 'cli', util: 'registry' }, 'GitHub token saved successfully');
   } catch (error) {
-    logger.error(
-      `Failed to save GitHub token: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.error({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to save GitHub token');
   }
 }
 
@@ -226,11 +222,9 @@ export async function saveRegistryCache(registry: Record<string, string>): Promi
   try {
     await ensureElizaDir();
     await fs.writeFile(REGISTRY_CACHE_FILE, JSON.stringify(registry, null, 2));
-    logger.debug('Registry cache saved successfully');
+    logger.debug({ src: 'cli', util: 'registry' }, 'Registry cache saved successfully');
   } catch (error) {
-    logger.debug(
-      `Failed to save registry cache: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to save registry cache');
   }
 }
 
@@ -243,7 +237,7 @@ export async function saveRegistryCache(registry: Record<string, string>): Promi
 export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
   // First try to fetch from the public raw GitHub URL
   try {
-    logger.debug('Fetching registry from public GitHub URL');
+    logger.debug({ src: 'cli', util: 'registry' }, 'Fetching registry from public GitHub URL');
     const response = await fetch(RAW_REGISTRY_URL);
 
     if (response.ok) {
@@ -262,12 +256,12 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
 
         // Save the fetched registry to cache for future offline use
         await saveRegistryCache(result);
-        logger.debug('Successfully fetched registry from public GitHub URL');
+        logger.debug({ src: 'cli', util: 'registry' }, 'Successfully fetched registry from public GitHub URL');
         return result;
       }
     }
   } catch (error) {
-    logger.debug({ error }, 'Failed to fetch registry from public URL:');
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to fetch registry from public URL');
   }
 
   // If fetching fails, try to read from cache
@@ -275,11 +269,11 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
     if (existsSync(REGISTRY_CACHE_FILE)) {
       const cacheContent = await fs.readFile(REGISTRY_CACHE_FILE, 'utf-8');
       const cachedRegistry = JSON.parse(cacheContent);
-      logger.debug('Using cached registry index');
+      logger.debug({ src: 'cli', util: 'registry' }, 'Using cached registry index');
       return cachedRegistry;
     }
   } catch (error) {
-    logger.debug({ error }, 'Failed to read registry cache:');
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to read registry cache');
   }
 
   // If we're in a monorepo context, try to discover local plugins
@@ -302,7 +296,7 @@ export async function getLocalRegistryIndex(): Promise<Record<string, string>> {
       // Merge with default registry, prioritizing local packages
       return { ...DEFAULT_REGISTRY, ...localRegistry };
     } catch (error) {
-      logger.debug({ error }, 'Failed to discover local plugins:');
+      logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to discover local plugins');
     }
   }
 
@@ -321,7 +315,7 @@ export async function getRegistryIndex(): Promise<Record<string, string>> {
   const credentials = await getGitHubCredentials();
 
   if (!credentials) {
-    logger.error('GitHub credentials not found. Please run login first.');
+    logger.error({ src: 'cli', util: 'registry' }, 'GitHub credentials not found. Please run login first');
     process.exit(1);
   }
 
@@ -408,7 +402,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
     // Try each possible name format in the registry
     for (const name of possibleNames) {
       if (registry[name]) {
-        logger.debug(`Found plugin in registry as: ${name}`);
+        logger.debug({ src: 'cli', util: 'registry', pluginName: name }, 'Found plugin in registry');
         return registry[name];
       }
     }
@@ -426,9 +420,7 @@ export async function getPluginRepository(pluginName: string): Promise<string | 
 
     return null;
   } catch (error) {
-    logger.debug(
-      `Error getting plugin repository: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Error getting plugin repository');
     return null;
   }
 }
@@ -448,9 +440,7 @@ export async function repoHasBranch(repoUrl: string, branchName: string): Promis
     const { stdout } = await bunExecSimple('git', ['ls-remote', '--heads', repoUrl, branchName]);
     return stdout.includes(branchName);
   } catch (error) {
-    logger.warn(
-      `Failed to check for branch ${branchName} in ${repoUrl}: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.warn({ src: 'cli', util: 'registry', repoUrl, branchName, error: error instanceof Error ? error.message : String(error) }, 'Failed to check for branch');
     return false;
   }
 }
@@ -479,7 +469,7 @@ export async function getPluginMetadata(pluginName: string): Promise<PluginMetad
   const credentials = await getGitHubCredentials();
 
   if (!credentials) {
-    logger.error('GitHub credentials not found. Please run login first.');
+    logger.error({ src: 'cli', util: 'registry' }, 'GitHub credentials not found. Please run login first');
     process.exit(1);
   }
 
@@ -523,10 +513,7 @@ export async function getPluginMetadata(pluginName: string): Promise<PluginMetad
 
     return metadata;
   } catch (error) {
-    logger.error(
-      'Failed to fetch plugin metadata:',
-      error instanceof Error ? error.message : String(error)
-    );
+    logger.error({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to fetch plugin metadata');
     return null;
   }
 }
@@ -548,9 +535,7 @@ export async function getPluginVersion(
       return packageDetails.latestVersion;
     }
   } catch (error) {
-    logger.debug(
-      `Error getting package details: ${error instanceof Error ? error.message : String(error)}`
-    );
+    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Error getting package details');
   }
 
   // Fallback to a reasonable default version
@@ -611,14 +596,11 @@ export async function getPackageDetails(packageName: string): Promise<{
     try {
       return JSON.parse(text);
     } catch {
-      logger.warn(
-        { packageName, text },
-        `Invalid JSON response received from registry for package`
-      );
+      logger.warn({ src: 'cli', util: 'registry', packageName }, 'Invalid JSON response received from registry for package');
       return null;
     }
   } catch (error) {
-    logger.warn({ error }, 'Failed to fetch package details from registry:');
+    logger.warn({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to fetch package details from registry');
     return null;
   }
 }
@@ -646,20 +628,14 @@ export async function getBestPluginVersion(
 
   // If major version is different, warn but still return the latest
   if (runtimeMajor !== packageMajor) {
-    logger.warn(
-      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
-      `Plugin runtime version mismatch`
-    );
-    logger.warn('This may cause compatibility issues.');
+    logger.warn({ src: 'cli', util: 'registry', packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion }, 'Plugin runtime version mismatch');
+    logger.warn({ src: 'cli', util: 'registry' }, 'This may cause compatibility issues');
     return packageDetails.latestVersion;
   }
 
   // If minor version is different, warn but with less severity
   if (runtimeMinor !== packageMinor) {
-    logger.warn(
-      { packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion },
-      `Plugin runtime minor version differs`
-    );
+    logger.warn({ src: 'cli', util: 'registry', packageName, expected: packageDetails.runtimeVersion, actual: runtimeVersion }, 'Plugin runtime minor version differs');
   }
 
   return packageDetails.latestVersion;
@@ -737,7 +713,7 @@ export async function validateDataDir(): Promise<boolean> {
   const status = await checkDataDir();
 
   if (!status.exists) {
-    logger.warn('ElizaOS data directory not found. Initializing...');
+    logger.warn({ src: 'cli', util: 'registry' }, 'ElizaOS data directory not found. Initializing');
     await initializeDataDir();
     return false;
   }
@@ -751,24 +727,24 @@ export async function validateDataDir(): Promise<boolean> {
     const envContent = await fs.readFile(envPath, 'utf-8');
     const parsedEnv = dotenv.parse(envContent);
     if (!parsedEnv.GITHUB_TOKEN) {
-      logger.warn('GitHub token not found in environment');
+      logger.warn({ src: 'cli', util: 'registry' }, 'GitHub token not found in environment');
       isValid = false;
     }
   } else {
-    logger.warn('.env file not found');
+    logger.warn({ src: 'cli', util: 'registry' }, '.env file not found');
     isValid = false;
   }
 
   if (!status.env.hasAllKeys) {
-    logger.warn(`Missing environment variables: ${status.env.missingKeys.join(', ')}`);
+    logger.warn({ src: 'cli', util: 'registry', missingKeys: status.env.missingKeys }, 'Missing environment variables');
     isValid = false;
   }
 
   if (!status.settings.exists) {
-    logger.warn('Registry settings file not found');
+    logger.warn({ src: 'cli', util: 'registry' }, 'Registry settings file not found');
     isValid = false;
   } else if (!status.settings.hasAllKeys) {
-    logger.warn(`Missing settings: ${status.settings.missingKeys.join(', ')}`);
+    logger.warn({ src: 'cli', util: 'registry', missingKeys: status.settings.missingKeys }, 'Missing settings');
     isValid = false;
   }
 

@@ -116,20 +116,16 @@ export const eigenCliCommand = new Command('eigen')
     let resolvedBinary = await ensureEigenCli();
 
     if (!resolvedBinary) {
-      logger.warn('Eigen CLI binary not found in PATH.');
-      logger.warn('Attempting to install the Eigen CLI with user consent.');
+      logger.warn({ src: 'cli', command: 'tee-eigen' }, 'Eigen CLI binary not found in PATH');
+      logger.warn({ src: 'cli', command: 'tee-eigen' }, 'Attempting to install the Eigen CLI with user consent');
 
       const autoInstall = process.env.ELIZA_TEE_EIGEN_AUTO_INSTALL === 'true';
       const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
 
       if (!autoInstall && !isInteractive) {
-        logger.error(
-          `\n${emoji.error('Error: Eigen CLI not installed and cannot prompt in non-interactive mode.')}`
-        );
-        logger.error('   Install manually:');
-        logger.error(
-          '   curl -fsSL https://eigenx-scripts.s3.us-east-1.amazonaws.com/install-eigenx.sh | bash'
-        );
+        console.error(`\n${emoji.error('Error: Eigen CLI not installed and cannot prompt in non-interactive mode.')}`);
+        console.error('   Install manually:');
+        console.error('   curl -fsSL https://eigenx-scripts.s3.us-east-1.amazonaws.com/install-eigenx.sh | bash');
         process.exit(1);
         return;
       }
@@ -155,11 +151,9 @@ export const eigenCliCommand = new Command('eigen')
       }
 
       if (!userConsent) {
-        logger.error(`\n${emoji.error('Eigen CLI installation is required to run this command.')}`);
-        logger.error('   Installation can be performed at any time using:');
-        logger.error(
-          '   curl -fsSL https://eigenx-scripts.s3.us-east-1.amazonaws.com/install-eigenx.sh | bash'
-        );
+        console.error(`\n${emoji.error('Eigen CLI installation is required to run this command.')}`);
+        console.error('   Installation can be performed at any time using:');
+        console.error('   curl -fsSL https://eigenx-scripts.s3.us-east-1.amazonaws.com/install-eigenx.sh | bash');
         process.exit(1);
         return;
       }
@@ -167,39 +161,34 @@ export const eigenCliCommand = new Command('eigen')
       const curlAvailable = await commandExists('curl');
 
       if (!curlAvailable) {
-        logger.error(`\n${emoji.error('Error: curl is required to install the Eigen CLI.')}`);
-        logger.error('   Please install curl and try again.');
+        console.error(`\n${emoji.error('Error: curl is required to install the Eigen CLI.')}`);
+        console.error('   Please install curl and try again.');
         process.exit(1);
         return;
       }
 
-      logger.info('Installing Eigen CLI...');
+      logger.info({ src: 'cli', command: 'tee-eigen' }, 'Installing Eigen CLI');
       try {
         await bunExecInherit('bash', [
           '-c',
           'curl -fsSL https://eigenx-scripts.s3.us-east-1.amazonaws.com/install-eigenx.sh | bash',
         ]);
       } catch (error) {
-        logger.error({ error }, 'Eigen CLI installation failed');
-        logger.error('   Please review the output above for details.');
+        logger.error({ src: 'cli', command: 'tee-eigen', error: error instanceof Error ? error.message : String(error) }, 'Eigen CLI installation failed');
+        console.error('   Please review the output above for details.');
         process.exit(1);
         return;
       }
 
       resolvedBinary = await ensureEigenCli();
       if (!resolvedBinary) {
-        logger.error(
-          `\n${emoji.error('Error: Eigen CLI installation completed, but binary not found in PATH.')}`
-        );
-        logger.error('   Ensure your PATH includes the location where eigenx was installed.');
+        console.error(`\n${emoji.error('Error: Eigen CLI installation completed, but binary not found in PATH.')}`);
+        console.error('   Ensure your PATH includes the location where eigenx was installed.');
         process.exit(1);
         return;
       }
 
-      logger.info(
-        { binary: resolvedBinary.command },
-        'Eigen CLI installation completed successfully.'
-      );
+      logger.info({ src: 'cli', command: 'tee-eigen', binary: resolvedBinary.command }, 'Eigen CLI installation completed successfully');
     }
 
     const prependPathEntries: string[] = [];
@@ -227,7 +216,7 @@ export const eigenCliCommand = new Command('eigen')
       return { PATH: combined };
     })();
 
-    logger.info({ args, binary: resolvedBinary.command }, 'Running Eigen CLI command');
+    logger.info({ src: 'cli', command: 'tee-eigen', args, binary: resolvedBinary.command }, 'Running Eigen CLI command');
     try {
       const result = await bunExecInherit(
         resolvedBinary.command,
@@ -236,7 +225,7 @@ export const eigenCliCommand = new Command('eigen')
       );
       process.exit(result.exitCode ?? 0);
     } catch (error) {
-      logger.error({ error, args, binary: resolvedBinary.command }, 'Failed to execute Eigen CLI');
+      logger.error({ src: 'cli', command: 'tee-eigen', error: error instanceof Error ? error.message : String(error), args, binary: resolvedBinary.command }, 'Failed to execute Eigen CLI');
       process.exit(1);
     }
   })

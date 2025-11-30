@@ -45,7 +45,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn('getMemoriesByServerId called but not implemented - returning empty array');
+    logger.warn({ src: 'plugin:sql' }, 'getMemoriesByServerId called but not implemented');
     return [];
   }
 
@@ -103,7 +103,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
    */
   async init(): Promise<void> {
-    logger.debug('PgDatabaseAdapter initialized, skipping automatic migrations.');
+    logger.debug({ src: 'plugin:sql' }, 'PgDatabaseAdapter initialized');
   }
 
   /**

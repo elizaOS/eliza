@@ -131,7 +131,7 @@ export const unmuteRoomAction: Action = {
       }
 
       // Default to false if response is unclear
-      logger.warn(`Unclear boolean response: ${response}, defaulting to false`);
+      logger.warn({ src: 'plugin:bootstrap:action:unmute_room', agentId: runtime.agentId, response }, 'Unclear boolean response, defaulting to false');
       return false;
     }
 
@@ -160,7 +160,7 @@ export const unmuteRoomAction: Action = {
         const room = await runtime.getRoom(message.roomId);
 
         if (!room) {
-          logger.warn(`Room not found: ${message.roomId}`);
+          logger.warn({ src: 'plugin:bootstrap:action:unmute_room', agentId: runtime.agentId, roomId: message.roomId }, 'Room not found');
           return {
             text: `Room not found: ${message.roomId}`,
             values: {
@@ -208,7 +208,7 @@ export const unmuteRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error({ error }, 'Error unmuting room:');
+        logger.error({ src: 'plugin:bootstrap:action:unmute_room', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error unmuting room');
         return {
           text: 'Failed to unmute room',
           values: {

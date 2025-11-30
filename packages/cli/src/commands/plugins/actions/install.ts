@@ -53,7 +53,7 @@ export async function installPluginFromGitHub(
   const success = await installPlugin(githubSpecifier, cwd, undefined, opts.skipVerification);
 
   if (success) {
-    logger.info(`Successfully installed ${pluginNameForPostInstall} from ${githubSpecifier}.`);
+    logger.info({ src: 'cli', command: 'plugins-install', plugin: pluginNameForPostInstall, source: githubSpecifier }, 'Successfully installed plugin from GitHub');
 
     const packageName = extractPackageName(plugin);
 
@@ -65,9 +65,7 @@ export async function installPluginFromGitHub(
       try {
         await promptForPluginEnvVars(packageName, cwd);
       } catch (error) {
-        logger.warn(
-          `Warning: Could not prompt for environment variables: ${error instanceof Error ? error.message : String(error)}`
-        );
+        logger.warn({ src: 'cli', command: 'plugins-install', error: error instanceof Error ? error.message : String(error) }, 'Could not prompt for environment variables');
         // Don't fail the installation if env prompting fails
       }
     } else {
@@ -79,7 +77,7 @@ export async function installPluginFromGitHub(
 
     process.exit(0);
   } else {
-    logger.error(`Failed to install plugin from ${githubSpecifier}.`);
+    logger.error({ src: 'cli', command: 'plugins-install', source: githubSpecifier }, 'Failed to install plugin from GitHub');
     process.exit(1);
   }
 }
@@ -94,7 +92,7 @@ export async function installPluginFromRegistry(
 ): Promise<void> {
   const cachedRegistry = await fetchPluginRegistry();
   if (!cachedRegistry || !cachedRegistry.registry) {
-    logger.error('Plugin registry cache not found. Please run "elizaos plugins update" first.');
+    logger.error({ src: 'cli', command: 'plugins-install' }, 'Plugin registry cache not found. Please run "elizaos plugins update" first');
     process.exit(1);
   }
 
@@ -127,9 +125,7 @@ export async function installPluginFromRegistry(
       try {
         await promptForPluginEnvVars(actualPackageName, cwd);
       } catch (error) {
-        logger.warn(
-          `Warning: Could not prompt for environment variables: ${error instanceof Error ? error.message : String(error)}`
-        );
+        logger.warn({ src: 'cli', command: 'plugins-install', error: error instanceof Error ? error.message : String(error) }, 'Could not prompt for environment variables');
         // Don't fail the installation if env prompting fails
       }
     } else {
@@ -142,7 +138,7 @@ export async function installPluginFromRegistry(
     process.exit(0);
   }
 
-  console.error(`Failed to install ${targetName} from registry.`);
+  logger.error({ src: 'cli', command: 'plugins-install', plugin: targetName }, 'Failed to install plugin from registry');
   process.exit(1);
 }
 
@@ -152,10 +148,8 @@ export async function installPluginFromRegistry(
 export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Promise<void> {
   // Validate plugin name is not empty or whitespace
   if (!pluginArg || !pluginArg.trim()) {
-    logger.error('Plugin name cannot be empty or whitespace-only.');
-    logger.info(
-      'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")'
-    );
+    logger.error({ src: 'cli', command: 'plugins-install' }, 'Plugin name cannot be empty or whitespace-only');
+    logger.info({ src: 'cli', command: 'plugins-install' }, 'Please provide a valid plugin name (e.g., "openai", "plugin-anthropic", "@elizaos/plugin-sql")');
     process.exit(1);
   }
 
@@ -163,15 +157,13 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
   const directoryInfo = detectDirectoryType(cwd);
 
   if (!directoryInfo || !directoryInfo.hasPackageJson) {
-    logger.error(
-      `Command must be run inside an ElizaOS project directory. This directory is: ${directoryInfo?.type || 'invalid or inaccessible'}`
-    );
+    logger.error({ src: 'cli', command: 'plugins-install', directoryType: directoryInfo?.type || 'invalid' }, 'Command must be run inside an ElizaOS project directory');
     process.exit(1);
   }
 
   const allDependencies = getDependenciesFromDirectory(cwd);
   if (!allDependencies) {
-    logger.error('Could not read dependencies from package.json');
+    logger.error({ src: 'cli', command: 'plugins-install' }, 'Could not read dependencies from package.json');
     process.exit(1);
   }
 
@@ -190,7 +182,7 @@ export async function addPlugin(pluginArg: string, opts: AddPluginOptions): Prom
 
   const installedPluginName = findPluginPackageName(plugin, allDependencies);
   if (installedPluginName) {
-    logger.info(`Plugin "${installedPluginName}" is already added to this project.`);
+    logger.info({ src: 'cli', command: 'plugins-install', plugin: installedPluginName }, 'Plugin is already added to this project');
     process.exit(0);
   }
 
