@@ -17,7 +17,7 @@ describe('API Key Auth Middleware', () => {
   beforeEach(() => {
     // Reset environment
     process.env = { ...originalEnv };
-    
+
     // Spy on logger.warn
     loggerWarnSpy = spyOn(logger, 'warn');
 
@@ -105,8 +105,7 @@ describe('API Key Auth Middleware', () => {
         message: 'Missing or invalid X-API-KEY header',
       });
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        { src: 'http', ip: '127.0.0.1' },
-        'Unauthorized access attempt'
+        '[API Key] Unauthorized access attempt from 127.0.0.1'
       );
     });
 
@@ -122,8 +121,7 @@ describe('API Key Auth Middleware', () => {
         message: 'Missing or invalid X-API-KEY header',
       });
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        { src: 'http', ip: '127.0.0.1' },
-        'Unauthorized access attempt'
+        '[API Key] Unauthorized access attempt from 127.0.0.1'
       );
     });
 
@@ -184,8 +182,7 @@ describe('API Key Auth Middleware', () => {
       apiKeyAuthMiddleware(mockRequest as Request, mockResponse as Response, mockNext);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        { src: 'http', ip: '192.168.1.100' },
-        'Unauthorized access attempt'
+        '[API Key] Unauthorized access attempt from 192.168.1.100'
       );
     });
   });
