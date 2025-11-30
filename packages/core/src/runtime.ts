@@ -503,7 +503,7 @@ export class AgentRuntime implements IAgentRuntime {
         await this.ensureWorldExists({
           id: this.agentId,
           name: this.character.name,
-          serverId: this.agentId,
+          messageServerId: this.agentId,
           agentId: this.agentId,
           metadata: {},
         });
@@ -1903,8 +1903,8 @@ export class AgentRuntime implements IAgentRuntime {
       } else if (error?.message?.includes('Not implemented')) {
         this.logger.error(
           `Service ${serviceType} failed because it does not implement the static start() method. ` +
-            `All services must override the base Service.start() method. ` +
-            `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
+          `All services must override the base Service.start() method. ` +
+          `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
         );
         if (errorStack) {
           this.logger.debug(`Stack trace: ${errorStack}`);
@@ -2250,9 +2250,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2447,13 +2447,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
