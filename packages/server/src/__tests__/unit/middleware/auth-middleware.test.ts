@@ -100,7 +100,10 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header',
+      });
       expect(loggerWarnSpy).toHaveBeenCalledWith(
         { src: 'http', ip: '127.0.0.1' },
         'Unauthorized access attempt'
@@ -114,7 +117,10 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header',
+      });
       expect(loggerWarnSpy).toHaveBeenCalledWith(
         { src: 'http', ip: '127.0.0.1' },
         'Unauthorized access attempt'
@@ -128,7 +134,10 @@ describe('API Key Auth Middleware', () => {
 
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header',
+      });
     });
 
     it('should allow OPTIONS requests without API key (CORS preflight)', () => {
@@ -191,7 +200,10 @@ describe('API Key Auth Middleware', () => {
       // Should reject with 401 when headers is undefined
       expect(mockNext).not.toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.send).toHaveBeenCalledWith('Unauthorized: Invalid or missing X-API-KEY');
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        error: 'API key required',
+        message: 'Missing or invalid X-API-KEY header',
+      });
     });
 
     it('should handle null API key value', () => {

@@ -11,9 +11,10 @@ module.exports = defineConfig({
     screenshotOnRunFailure: true,
     viewportWidth: 1280,
     viewportHeight: 720,
-    defaultCommandTimeout: 10000,
-    requestTimeout: 10000,
-    responseTimeout: 10000,
+    defaultCommandTimeout: 15000, // Increased for auth tests
+    requestTimeout: 15000, // Increased for real backend calls
+    responseTimeout: 15000, // Increased for real backend responses
+    pageLoadTimeout: 30000, // Increased for full page loads
     setupNodeEvents(on, config) {
       // Add any e2e specific plugins here
       return config;

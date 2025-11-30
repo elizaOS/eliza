@@ -52,23 +52,21 @@ export function createDatabaseAdapter(
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     if (!globalSingletons.postgresConnectionManager) {
-      // Determine RLS owner_id if RLS isolation is enabled
-      const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-      let rlsOwnerId: string | undefined;
-      if (rlsEnabled) {
-        const rlsOwnerIdString = process.env.RLS_OWNER_ID;
-        if (!rlsOwnerIdString) {
-          throw new Error(
-            '[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable'
-          );
+      // Determine RLS server_id if data isolation is enabled
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+      let rlsServerId: string | undefined;
+      if (dataIsolationEnabled) {
+        const rlsServerIdString = process.env.ELIZA_SERVER_ID;
+        if (!rlsServerIdString) {
+          throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
         }
-        rlsOwnerId = stringToUuid(rlsOwnerIdString);
-        logger.debug({ src: 'plugin:sql', rlsOwnerId: rlsOwnerId.slice(0, 8) }, 'Creating connection pool with RLS owner');
+        rlsServerId = stringToUuid(rlsServerIdString);
+        logger.debug({ src: 'plugin:sql', rlsServerId: rlsServerId.slice(0, 8), serverIdString: rlsServerIdString }, 'Creating connection pool with RLS server');
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
         config.postgresUrl,
-        rlsOwnerId
+        rlsServerId
       );
     }
     return new PgDatabaseAdapter(agentId, globalSingletons.postgresConnectionManager);
@@ -152,9 +150,9 @@ export default plugin;
 export { DatabaseMigrationService } from './migration-service';
 export {
   installRLSFunctions,
-  getOrCreateRlsOwner,
-  setOwnerContext,
-  assignAgentToOwner,
+  getOrCreateRlsServer,
+  setServerContext,
+  assignAgentToServer,
   applyRLSToNewTables,
   uninstallRLS,
 } from './rls';

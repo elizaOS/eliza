@@ -37,6 +37,22 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     this.db = drizzle(this.manager.getConnection() as any);
   }
 
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * PGLite: No RLS support, just execute the callback in a simple transaction
+   *
+   * This is a public method because it's part of the adapter's public API
+   * for operations that need entity-scoped database access.
+   */
+  public async withEntityContext<T>(
+    _entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T> {
+    // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
+    // The entityId parameter is ignored since PGLite doesn't support RLS
+    return this.db.transaction(callback);
+  }
+
   // Methods required by TypeScript but not in base class
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     // Delegate to the correct method name

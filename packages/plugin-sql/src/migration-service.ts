@@ -1,6 +1,8 @@
 import { logger, type Plugin } from '@elizaos/core';
 import { RuntimeMigrator } from './runtime-migrator';
 import type { DrizzleDatabase } from './types';
+import { migrateToEntityRLS } from './migrations';
+import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from './rls';
 
 export class DatabaseMigrationService {
   private db: DrizzleDatabase | null = null;
@@ -17,6 +19,12 @@ export class DatabaseMigrationService {
    */
   async initializeWithDatabase(db: DrizzleDatabase): Promise<void> {
     this.db = db;
+
+    // TEMPORARY: Migrate from develop to feat/entity-rls (Owner RLS → Server RLS + Entity RLS)
+    // This runs before the RuntimeMigrator to ensure schema compatibility
+    // Can be removed after users have migrated from develop to this branch
+    await migrateToEntityRLS({ db } as any);
+
     this.migrator = new RuntimeMigrator(db);
     await this.migrator.initialize();
     logger.info({ src: 'plugin:sql' }, 'DatabaseMigrationService initialized');
@@ -115,6 +123,26 @@ export class DatabaseMigrationService {
     // Final summary
     if (failureCount === 0) {
       logger.info({ src: 'plugin:sql', successCount }, 'All migrations completed successfully');
+
+      // Re-apply RLS after all migrations are complete
+      // This ensures RLS is active on all tables with proper server_id columns
+      // ONLY if data isolation is enabled
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (dataIsolationEnabled) {
+        try {
+          logger.info({ src: 'plugin:sql' }, 'Re-applying Row Level Security...');
+          await installRLSFunctions({ db: this.db } as any);
+          await applyRLSToNewTables({ db: this.db } as any);
+          await applyEntityRLSToAllTables({ db: this.db } as any);
+          logger.info({ src: 'plugin:sql' }, 'RLS re-applied successfully');
+        } catch (rlsError) {
+          const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
+          logger.warn({ src: 'plugin:sql', error: errorMsg }, 'Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)');
+        }
+      } else {
+        logger.info({ src: 'plugin:sql' }, 'Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)');
+      }
     } else {
       logger.error(
         { src: 'plugin:sql', failureCount, successCount },

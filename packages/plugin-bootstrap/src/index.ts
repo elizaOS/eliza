@@ -411,7 +411,7 @@ const postGeneratedHandler = async ({
     id: worldId,
     name: `${runtime.character.name}'s Feed`,
     agentId: runtime.agentId,
-    serverId: userId,
+    messageServerId: userId as UUID,
   });
 
   // Ensure timeline room exists
@@ -421,7 +421,7 @@ const postGeneratedHandler = async ({
     source,
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
-    serverId: userId,
+    messageServerId: userId as UUID,
     worldId: worldId,
   });
 
@@ -654,7 +654,7 @@ const postGeneratedHandler = async ({
 const syncSingleUser = async (
   entityId: UUID,
   runtime: IAgentRuntime,
-  serverId: string,
+  messageServerId: UUID,
   channelId: string,
   type: ChannelType,
   source: string
@@ -670,7 +670,7 @@ const syncSingleUser = async (
     }
 
     const roomId = createUniqueUuid(runtime, channelId);
-    const worldId = createUniqueUuid(runtime, serverId);
+    const worldId = createUniqueUuid(runtime, messageServerId);
 
     // Create world with ownership metadata for DM connections (onboarding)
     const worldMetadata =
@@ -699,7 +699,7 @@ const syncSingleUser = async (
         | string,
       source,
       channelId,
-      serverId,
+      messageServerId,
       type,
       worldId,
       metadata: worldMetadata,

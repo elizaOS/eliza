@@ -505,7 +505,7 @@ export class RuntimeMigrator {
       }
 
       // Install required extensions (same as old migrator)
-      await this.extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch']);
+      await this.extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch', 'pgcrypto']);
 
       // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);

@@ -2,7 +2,7 @@ import { ChannelType, validateUuid } from '@elizaos/core';
 import { Separator } from '@/components/ui/separator';
 import { GROUP_CHAT_SOURCE } from '@/constants';
 import { useAgentsWithDetails, useChannels } from '@/hooks/use-query-hooks';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { type Agent, AgentStatus, type UUID } from '@elizaos/core';
 import { useQueryClient, useQuery, useMutation, type UseQueryResult } from '@tanstack/react-query';
 import { Loader2, Trash, X } from 'lucide-react';
@@ -14,6 +14,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from './ui/card'
 import { Input } from './ui/input';
 import { useToast } from '@/hooks/use-toast';
 import clientLogger from '@/lib/logger';
+import { getEntityId } from '@/lib/utils';
 import { useConfirmation } from '@/hooks/use-confirmation';
 import ConfirmationDialog from './confirmation-dialog';
 
@@ -89,10 +90,13 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   // Create group mutation
   const createGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
+      // Include the current user's entityId as a participant so they can access the channel
+      const currentUserEntityId = getEntityId();
+      const allParticipantIds = [...participantIds, currentUserEntityId];
       return await elizaClient.messaging.createGroupChannel({
         name,
-        participantIds: participantIds,
+        participantIds: allParticipantIds,
         metadata: {
           type: ChannelType.GROUP,
           server_id: serverId,
@@ -107,7 +111,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
         queryClient.invalidateQueries({ queryKey: ['channels'] });
         onClose();
         setTimeout(() => {
-          navigate(`/group/${response.id}?serverId=${serverId}`);
+          navigate(`/group/${response.id}?messageServerId=${serverId}`);
         }, 100);
       }
     },
@@ -122,7 +126,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const updateGroupMutation = useMutation({
     mutationFn: async ({ name, participantIds }: { name: string; participantIds: UUID[] }) => {
       if (!channelId) throw new Error('Channel ID is required for update');
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.messaging.updateChannel(channelId, {
         name,
         participantCentralUserIds: participantIds,
@@ -134,7 +138,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       queryClient.invalidateQueries({ queryKey: ['channels'] });
       onClose();
       setTimeout(() => {
-        navigate(`/group/${channelId}?serverId=${serverId}`);
+        navigate(`/group/${channelId}?messageServerId=${serverId}`);
       }, 100);
     },
     onError: (error) => {
@@ -149,7 +153,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
   const deleteGroupMutation = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error('Channel ID is required for delete');
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       return await elizaClient.messaging.deleteChannel(channelId);
     },
     onSuccess: () => {
@@ -184,7 +188,7 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     queryFn: async () => {
       if (!channelId) return { success: true, data: [] };
       try {
-        const elizaClient = createElizaClient();
+        const elizaClient = getElizaClient();
         const result = await elizaClient.messaging.getChannelParticipants(channelId);
 
         // Handle different possible response formats

@@ -10,32 +10,32 @@ import { stringToUuid } from '@elizaos/core';
 
 describe('AgentServer RLS Configuration', () => {
   describe('Server ID Assignment', () => {
-    it('should use owner_id as serverId when RLS is enabled', () => {
+    it('should use server_id as serverId when data isolation is enabled', () => {
       const mockConfig = {
-        ENABLE_RLS_ISOLATION: 'true',
-        RLS_OWNER_ID: 'test-tenant-123',
+        ENABLE_DATA_ISOLATION: 'true',
+        ELIZA_SERVER_ID: 'test-tenant-123',
       };
 
-      const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
-      const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
+      const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
+      const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
+      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
-      expect(serverId).toBe(ownerId);
-      expect(serverId).not.toBe('00000000-0000-0000-0000-000000000000');
+      expect(actualServerId).toBe(serverId);
+      expect(actualServerId).not.toBe('00000000-0000-0000-0000-000000000000');
     });
 
-    it('should use default serverId when RLS is disabled', () => {
+    it('should use default serverId when data isolation is disabled', () => {
       const mockConfig = {
-        ENABLE_RLS_ISOLATION: 'false',
-        RLS_OWNER_ID: 'test-tenant-123',
+        ENABLE_DATA_ISOLATION: 'false',
+        ELIZA_SERVER_ID: 'test-tenant-123',
       };
 
-      const rlsEnabled = mockConfig.ENABLE_RLS_ISOLATION === 'true';
-      const ownerId = stringToUuid(mockConfig.RLS_OWNER_ID);
-      const serverId = rlsEnabled && ownerId ? ownerId : '00000000-0000-0000-0000-000000000000';
+      const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
+      const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
+      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
-      expect(serverId).toBe('00000000-0000-0000-0000-000000000000');
-      expect(serverId).not.toBe(ownerId);
+      expect(actualServerId).toBe('00000000-0000-0000-0000-000000000000');
+      expect(actualServerId).not.toBe(serverId);
     });
   });
 
@@ -220,103 +220,103 @@ describe('RLS Cleanup on Disable', () => {
 });
 
 describe('Environment Variable Configuration', () => {
-  describe('ENABLE_RLS_ISOLATION', () => {
+  describe('ENABLE_DATA_ISOLATION', () => {
     it('should parse "true" as enabled', () => {
-      const env = { ENABLE_RLS_ISOLATION: 'true' };
-      const rlsEnabled = env.ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(true);
+      const env = { ENABLE_DATA_ISOLATION: 'true' };
+      const dataIsolationEnabled = env.ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(true);
     });
 
     it('should parse "false" as disabled', () => {
-      const env = { ENABLE_RLS_ISOLATION: 'false' };
-      const rlsEnabled = env.ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(false);
+      const env = { ENABLE_DATA_ISOLATION: 'false' };
+      const dataIsolationEnabled = env.ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(false);
     });
 
     it('should treat undefined as disabled', () => {
       const env = {};
-      const rlsEnabled = (env as { ENABLE_RLS_ISOLATION?: string }).ENABLE_RLS_ISOLATION === 'true';
-      expect(rlsEnabled).toBe(false);
+      const dataIsolationEnabled = (env as { ENABLE_DATA_ISOLATION?: string }).ENABLE_DATA_ISOLATION === 'true';
+      expect(dataIsolationEnabled).toBe(false);
     });
   });
 
-  describe('RLS_OWNER_ID', () => {
-    it('should generate consistent owner_id from RLS_OWNER_ID string', () => {
-      const rlsOwnerId = 'my-tenant-123';
-      const ownerId1 = stringToUuid(rlsOwnerId);
-      const ownerId2 = stringToUuid(rlsOwnerId);
+  describe('ELIZA_SERVER_ID', () => {
+    it('should generate consistent server_id from ELIZA_SERVER_ID string', () => {
+      const elizaServerId = 'my-tenant-123';
+      const serverId1 = stringToUuid(elizaServerId);
+      const serverId2 = stringToUuid(elizaServerId);
 
-      expect(ownerId1).toBe(ownerId2);
+      expect(serverId1).toBe(serverId2);
     });
 
-    it('should generate different owner_ids for different RLS_OWNER_ID values', () => {
+    it('should generate different server_ids for different ELIZA_SERVER_ID values', () => {
       const tenant1 = 'tenant-1';
       const tenant2 = 'tenant-2';
 
-      const ownerId1 = stringToUuid(tenant1);
-      const ownerId2 = stringToUuid(tenant2);
+      const serverId1 = stringToUuid(tenant1);
+      const serverId2 = stringToUuid(tenant2);
 
-      expect(ownerId1).not.toBe(ownerId2);
+      expect(serverId1).not.toBe(serverId2);
     });
   });
 });
 
-describe('API Endpoint Security - server_id Validation', () => {
+describe('API Endpoint Security - message_server_id Validation', () => {
   describe('Conditional RLS Enforcement', () => {
-    it('should enforce server_id validation when ENABLE_RLS_ISOLATION is true', () => {
-      const rlsEnabled = 'true';
+    it('should enforce message_server_id validation when ENABLE_DATA_ISOLATION is true', () => {
+      const dataIsolationEnabled = 'true';
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(false); // Should reject mismatched server_id
+      expect(isValidMessageServerId).toBe(false); // Should reject mismatched message_server_id
     });
 
-    it('should skip server_id validation when ENABLE_RLS_ISOLATION is false', () => {
-      const rlsEnabled = 'false' as string;
+    it('should skip message_server_id validation when ENABLE_DATA_ISOLATION is false', () => {
+      const dataIsolationEnabled = 'false' as string;
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS disabled
+      expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation disabled
     });
 
-    it('should skip server_id validation when ENABLE_RLS_ISOLATION is undefined', () => {
-      const rlsEnabled = undefined;
+    it('should skip message_server_id validation when ENABLE_DATA_ISOLATION is undefined', () => {
+      const dataIsolationEnabled = undefined;
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
+      const requestMessageServerId = '3a736a89-66ba-0f58-8c45-ef7406927381';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept any server_id when RLS not configured
+      expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation not configured
     });
 
-    it('should accept matching server_id when ENABLE_RLS_ISOLATION is true', () => {
-      const rlsEnabled = 'true';
+    it('should accept matching message_server_id when ENABLE_DATA_ISOLATION is true', () => {
+      const dataIsolationEnabled = 'true';
       const serverInstance = {
-        serverId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
+        messageServerId: 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01',
       };
-      const requestServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
+      const requestMessageServerId = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
       // Simulate the conditional check from the endpoints
-      const isRlsEnabled = rlsEnabled === 'true';
-      const isValidServerId = !isRlsEnabled || requestServerId === serverInstance.serverId;
+      const isDataIsolationEnabled = dataIsolationEnabled === 'true';
+      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
-      expect(isValidServerId).toBe(true); // Should accept matching server_id
+      expect(isValidMessageServerId).toBe(true); // Should accept matching message_server_id
     });
   });
 

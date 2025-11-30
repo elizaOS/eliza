@@ -4,7 +4,7 @@
  */
 
 // Authentication middleware
-export { apiKeyAuthMiddleware } from './auth';
+export { apiKeyAuthMiddleware, type ApiKeyAuthRequest } from './api-key';
 
 // Security middleware
 export { securityMiddleware } from './security';

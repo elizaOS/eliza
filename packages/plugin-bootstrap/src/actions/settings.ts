@@ -823,11 +823,11 @@ export const updateSettingsAction: Action = {
       const worldSettings = world?.metadata?.settings;
 
       if (!worldSettings) {
-        logger.error({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId: world?.serverId }, 'No settings state found for server');
+        logger.error({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId: world?.messageServerId }, 'No settings state found for server');
         return false;
       }
 
-      logger.debug({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId: world.serverId }, 'Found valid settings state for server');
+      logger.debug({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId: world.messageServerId }, 'Found valid settings state for server');
       return true;
     } catch (error) {
       logger.error({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error validating settings action');
@@ -920,7 +920,7 @@ export const updateSettingsAction: Action = {
         };
       }
 
-      const serverId = serverOwnership?.serverId;
+      const serverId = serverOwnership?.messageServerId;
       logger.info({ src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId }, 'Using server ID');
 
       if (!serverId) {

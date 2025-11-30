@@ -269,6 +269,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     // Text Generation (required by IAgentRuntime)
     generateText: mock().mockResolvedValue('Mock generated text'),
 
+    // Room Participant Checks
+    isRoomParticipant: mock().mockResolvedValue(false),
+
     // Apply overrides
     ...overrides,
   };

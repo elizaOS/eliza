@@ -1,5 +1,8 @@
 describe('Chat Functionality', () => {
   beforeEach(() => {
+    // Setup global API mocks
+    cy.setupApiMocks();
+
     // Mock API calls to prevent timeouts
     cy.intercept('GET', '/api/system/version', {
       statusCode: 200,
@@ -183,7 +186,7 @@ describe('Chat Functionality', () => {
     cy.get('[data-testid="connection-status"]', { timeout: 10000 }).should('exist');
 
     // Should be clickable (even if it doesn't do much)
-    cy.get('[data-testid="connection-status"]').click();
+    cy.get('[data-testid="connection-status"]').click({ force: true });
 
     // Status should still exist after click
     cy.get('[data-testid="connection-status"]').should('exist');

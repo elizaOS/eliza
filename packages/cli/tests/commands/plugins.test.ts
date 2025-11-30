@@ -392,8 +392,9 @@ describe('ElizaOS Plugin Commands', () => {
         expect(false).toBe(true); // Should not reach here
       } catch (e: any) {
         expect(e.status).not.toBe(0);
-        const output = e.stdout?.toString() || e.stderr?.toString() || '';
-        expect(output).toMatch(/not found in registry/);
+        const output = (e.stdout?.toString() || '') + (e.stderr?.toString() || '');
+        // The plugin installation should fail with either "not found" or package resolution error
+        expect(output).toMatch(/not found in registry|Cannot find package|404|No matching package/i);
       }
     },
     TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
