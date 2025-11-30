@@ -397,12 +397,13 @@ export class AgentRuntime implements IAgentRuntime {
       // The runtime now accepts a pre-resolved, ordered list of plugins.
       const pluginsToLoad = this.characterPlugins;
 
+      // Start plugin registration but don't await yet
+      // This allows plugins to be registered concurrently with adapter init
       for (const plugin of pluginsToLoad) {
         if (plugin) {
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
-      await Promise.all(pluginRegistrationPromises);
 
       if (!this.adapter) {
         this.logger.error({ src: 'agent', agentId: this.agentId }, 'Database adapter not initialized');
@@ -415,6 +416,17 @@ export class AgentRuntime implements IAgentRuntime {
       if (!(await this.adapter.isReady())) {
         await this.adapter.init();
       }
+
+      // Resolve init promise after adapter init but before awaiting plugin completion
+      // This allows plugins to wait on initPromise in their init functions without deadlock
+      if (this.initResolver) {
+        this.initResolver();
+        this.initResolver = undefined;
+      }
+
+      // Now await plugin registration to complete
+      // Plugins that were waiting on initPromise can now continue
+      await Promise.all(pluginRegistrationPromises);
 
       // Initialize message service
       this.messageService = new DefaultMessageService();
@@ -537,12 +549,6 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.warn({ src: 'agent', agentId: this.agentId }, 'No TEXT_EMBEDDING model registered, skipping embedding setup');
       } else {
         await this.ensureEmbeddingDimension();
-      }
-
-      // Resolve init promise to allow services to start
-      if (this.initResolver) {
-        this.initResolver();
-        this.initResolver = undefined;
       }
     } catch (error: any) {
       const errorMsg = error instanceof Error ? error.message : String(error);

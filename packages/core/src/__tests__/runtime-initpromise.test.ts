@@ -91,6 +91,7 @@ describe('AgentRuntime initPromise Tests', () => {
             clearAllAgentMemories: mock().mockResolvedValue(undefined),
             getMemoriesByWorldId: mock().mockResolvedValue([]),
             runMigrations: mock().mockResolvedValue(undefined),
+            runPluginMigrations: mock().mockResolvedValue(undefined),
         } as any;
 
         testCharacter = {
@@ -195,7 +196,8 @@ describe('AgentRuntime initPromise Tests', () => {
         };
 
         const runtime = new AgentRuntime({
-            character: { ...testCharacter, plugins: [testPlugin] },
+            character: testCharacter,
+            plugins: [testPlugin],
             adapter: mockAdapter,
         });
 
@@ -249,8 +251,16 @@ describe('AgentRuntime initPromise Tests', () => {
             return undefined;
         });
 
+        // Create a plugin with a schema so migrations will run
+        const testPlugin: Plugin = {
+            name: 'test-plugin-with-schema',
+            description: 'Test plugin with schema',
+            schema: {}, // Add schema so runPluginMigrations will be called
+        };
+
         const runtime = new AgentRuntime({
             character: testCharacter,
+            plugins: [testPlugin],
             adapter: mockAdapter,
         });
 
@@ -315,7 +325,8 @@ describe('AgentRuntime initPromise Tests', () => {
         };
 
         const runtime = new AgentRuntime({
-            character: { ...testCharacter, plugins: [testPlugin] },
+            character: testCharacter,
+            plugins: [testPlugin],
             adapter: mockAdapter,
         });
 

@@ -30,8 +30,8 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     // Create mock adapter with proper types
     mockAdapter = {
-      init: mock(async () => {}),
-      close: mock(async () => {}),
+      init: mock(async () => { }),
+      close: mock(async () => { }),
       isReady: mock(async () => true),
       getConnection: mock(async () => ({})),
       getAgent: mock(async () => null),
@@ -39,9 +39,9 @@ describe('ensureAgentExists - Settings Persistence', () => {
       createAgent: mock(async () => true),
       updateAgent: mock(async () => true),
       deleteAgent: mock(async () => true),
-      ensureEmbeddingDimension: mock(async () => {}),
-      log: mock(async () => {}),
-      runPluginMigrations: mock(async () => {}),
+      ensureEmbeddingDimension: mock(async () => { }),
+      log: mock(async () => { }),
+      runPluginMigrations: mock(async () => { }),
       // Add minimal mocks for other required methods
       getEntitiesByIds: mock(async () => []),
       getRoomsByIds: mock(async () => []),
@@ -49,6 +49,8 @@ describe('ensureAgentExists - Settings Persistence', () => {
       createEntities: mock(async () => true),
       addParticipantsRoom: mock(async () => true),
       createRooms: mock(async () => []),
+      getWorld: mock(async () => null),
+      createWorld: mock(async () => agentId),
     } as unknown as IDatabaseAdapter;
 
     runtime = new AgentRuntime({
