@@ -1564,7 +1564,7 @@ export class AgentRuntime implements IAgentRuntime {
         messageServerId,
         metadata,
       });
-      this.logger.debug({ src: 'agent', agentId: this.agentId, worldId: id, serverId }, 'World created');
+      this.logger.debug({ src: 'agent', agentId: this.agentId, worldId: id, messageServerId }, 'World created');
     }
   }
 
@@ -1880,6 +1880,7 @@ export class AgentRuntime implements IAgentRuntime {
 
       if (errorStack) {
         this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType, stack: errorStack }, 'Service error stack');
+      }
 
       // Provide additional context about the failure
       if (error?.message?.includes('timed out waiting for runtime initialization')) {

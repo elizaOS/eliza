@@ -806,7 +806,6 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
     logger.info('[Entity RLS] Entity RLS functions and policies removed successfully');
   } catch (error) {
     logger.error('[Entity RLS] Failed to remove entity RLS:', String(error));
->>>>>>> origin/develop
     throw error;
   }
 }
