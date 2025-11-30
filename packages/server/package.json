@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.6.5-alpha.13",
+  "version": "1.6.5-alpha.16",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -31,7 +31,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "type-check": "tsc --project tsconfig.build.json --noEmit",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@elizaos/client": "workspace:*",
+    "@elizaos/config": "workspace:*",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^24.0.1",
     "bun-fetch-mock": "^1.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-bootstrap",
-  "version": "1.6.5-alpha.13",
+  "version": "1.6.5-alpha.16",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -30,6 +30,7 @@
     "bun": "^1.2.21"
   },
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@types/bun": "^1.2.21",
     "@types/node": "^22.15.3",
     "prettier": "3.5.3",
@@ -39,7 +40,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",

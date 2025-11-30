@@ -1,6 +1,5 @@
 import { logger } from '@elizaos/core';
 import { UserEnvironment } from './user-environment';
-import { displayBunInstallationTipCompact } from './bun-installation-helper';
 import { runBunCommand } from './run-bun';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -12,7 +11,7 @@ import { bunExec } from './bun-exec';
  * @returns A promise that resolves to 'bun'.
  */
 export async function getPackageManager(): Promise<string> {
-  logger.debug('[PackageManager] Using bun as the package manager for ElizaOS CLI');
+  logger.debug({ src: 'cli', util: 'package-manager' }, 'Using bun as the package manager for ElizaOS CLI');
   return 'bun';
 }
 
@@ -61,7 +60,7 @@ export async function removeFromBunLock(packageName: string, directory: string):
   const lockFilePath = path.join(directory, 'bun.lock');
 
   if (!existsSync(lockFilePath)) {
-    logger.debug(`No bun.lock file found at ${lockFilePath}, skipping removal`);
+    logger.debug({ src: 'cli', util: 'package-manager', lockFilePath }, 'No bun.lock file found, skipping removal');
     return;
   }
 
@@ -72,20 +71,18 @@ export async function removeFromBunLock(packageName: string, directory: string):
     });
 
     if (result.success) {
-      logger.debug(`Successfully removed ${packageName} from bun.lock`);
+      logger.debug({ src: 'cli', util: 'package-manager', packageName }, 'Successfully removed package from bun.lock');
     } else {
       // Check stderr for specific error messages
       if (result.stderr?.includes('not found') || result.stderr?.includes('No such package')) {
-        logger.debug(`Package ${packageName} not found in lockfile (expected for cleanup)`);
+        logger.debug({ src: 'cli', util: 'package-manager', packageName }, 'Package not found in lockfile (expected for cleanup)');
       } else {
-        logger.warn(
-          `Failed to remove ${packageName} from bun.lock: ${result.stderr || 'Unknown error'}`
-        );
+        logger.warn({ src: 'cli', util: 'package-manager', packageName, error: result.stderr || 'Unknown error' }, 'Failed to remove package from bun.lock');
       }
     }
   } catch (error: any) {
     // Handle unexpected errors (e.g., bunExec itself throwing)
-    logger.warn(`Unexpected error removing ${packageName} from bun.lock: ${error.message}`);
+    logger.warn({ src: 'cli', util: 'package-manager', packageName, error: error.message }, 'Unexpected error removing package from bun.lock');
   }
 }
 
@@ -131,11 +128,9 @@ export async function executeInstallation(
   } catch (error: any) {
     // Check if it's a bun not found error
     if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
-      logger.warn(
-        `Installation failed - bun command not found. ${displayBunInstallationTipCompact()}`
-      );
+      logger.warn({ src: 'cli', util: 'package-manager' }, 'Installation failed - bun command not found');
     } else {
-      logger.warn(`Installation failed for ${finalSpecifier}: ${error.message}`);
+      logger.warn({ src: 'cli', util: 'package-manager', finalSpecifier, error: error.message }, 'Installation failed');
     }
     return { success: false, installedIdentifier: null };
   }
@@ -193,7 +188,7 @@ export async function executeInstallationWithFallback(
   }
 
   // If npm installation failed and we have a GitHub fallback, try GitHub installation
-  logger.debug(`npm installation failed, attempting GitHub fallback: ${githubFallback}`);
+  logger.debug({ src: 'cli', util: 'package-manager', githubFallback }, 'npm installation failed, attempting GitHub fallback');
 
   // Remove package from lockfile to prevent circular dependencies
   await removeFromBunLock(packageName, directory);

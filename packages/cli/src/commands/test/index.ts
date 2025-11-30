@@ -41,35 +41,35 @@ export const test = new Command()
     await installPluginDependencies(projectInfo);
   })
   .action(async (testPath: string | undefined, options: TestCommandOptions) => {
-    logger.info('Starting tests...');
+    logger.info({ src: 'cli', command: 'test', testType: options.type }, 'Starting tests');
 
     try {
       const projectInfo = getProjectType(testPath);
 
       switch (options.type) {
         case 'component':
-          logger.info('Running component tests only...');
+          logger.info({ src: 'cli', command: 'test' }, 'Running component tests');
           const componentResult = await runComponentTests(testPath, options, projectInfo);
           if (componentResult.failed) {
-            logger.error('Component tests failed.');
+            logger.error({ src: 'cli', command: 'test' }, 'Component tests failed');
             process.exit(1);
           }
-          logger.success('Component tests passed successfully!');
+          logger.success({ src: 'cli', command: 'test' }, 'Component tests passed');
           break;
 
         case 'e2e':
-          logger.info('Running e2e tests only...');
+          logger.info({ src: 'cli', command: 'test' }, 'Running e2e tests');
           const e2eResult = await runE2eTests(testPath, options, projectInfo);
           if (e2eResult.failed) {
-            logger.error('E2E tests failed.');
+            logger.error({ src: 'cli', command: 'test' }, 'E2E tests failed');
             process.exit(1);
           }
-          logger.success('E2E tests passed successfully!');
+          logger.success({ src: 'cli', command: 'test' }, 'E2E tests passed');
           break;
 
         case 'all':
         default:
-          logger.info('Running all tests...');
+          logger.info({ src: 'cli', command: 'test' }, 'Running all tests');
           await runAllTests(testPath, options);
           break;
       }

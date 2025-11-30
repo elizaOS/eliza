@@ -81,7 +81,7 @@ export const replyAction = {
     const previousResults = actionContext?.previousResults || [];
 
     if (previousResults.length > 0) {
-      logger.debug(`[REPLY] Found ${previousResults.length} previous action results`);
+      logger.debug({ src: 'plugin:bootstrap:action:reply', agentId: runtime.agentId, count: previousResults.length }, 'Found previous action results');
     }
 
     // Check if any responses had providers associated with them
@@ -133,7 +133,7 @@ export const replyAction = {
         success: true,
       };
     } catch (error) {
-      logger.error(`[REPLY] Error generating response: ${error}`);
+      logger.error({ src: 'plugin:bootstrap:action:reply', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error generating response');
 
       return {
         text: 'Error generating reply',

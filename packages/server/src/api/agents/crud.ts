@@ -48,17 +48,8 @@ export function createAgentCrudRouter(
 
       sendSuccess(res, { agents: response });
     } catch (error) {
-      logger.error(
-        '[AGENTS LIST] Error retrieving agents:',
-        error instanceof Error ? error.message : String(error)
-      );
-      sendError(
-        res,
-        500,
-        '500',
-        'Error retrieving agents',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', error }, 'Error retrieving agents');
+      sendError(res, 500, '500', 'Error retrieving agents', error instanceof Error ? error.message : String(error));
     }
   });
 
@@ -86,23 +77,13 @@ export function createAgentCrudRouter(
 
       sendSuccess(res, response);
     } catch (error) {
-      logger.error(
-        '[AGENT GET] Error retrieving agent:',
-        error instanceof Error ? error.message : String(error)
-      );
-      sendError(
-        res,
-        500,
-        '500',
-        'Error retrieving agent',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', error, agentId }, 'Error retrieving agent');
+      sendError(res, 500, '500', 'Error retrieving agent', error instanceof Error ? error.message : String(error));
     }
   });
 
   // Create new agent
   router.post('/', async (req, res) => {
-    logger.debug('[AGENT CREATE] Creating new agent');
     const { characterPath, characterJson, agent } = req.body;
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
@@ -112,13 +93,10 @@ export function createAgentCrudRouter(
       let character: Character;
 
       if (characterJson) {
-        logger.debug('[AGENT CREATE] Parsing character from JSON');
         character = await serverInstance?.jsonToCharacter(characterJson);
       } else if (characterPath) {
-        logger.debug(`[AGENT CREATE] Loading character from path: ${characterPath}`);
         character = await serverInstance?.loadCharacterTryPath(characterPath);
       } else if (agent) {
-        logger.debug('[AGENT CREATE] Parsing character from agent object');
         character = await serverInstance?.jsonToCharacter(agent);
       } else {
         throw new Error('No character configuration provided');
@@ -129,7 +107,6 @@ export function createAgentCrudRouter(
       }
 
       if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
-        logger.debug('[AGENT CREATE] Encrypting secrets');
         const salt = getSalt();
         character.settings.secrets = encryptObjectValues(
           character.settings.secrets as Record<string, any>,
@@ -164,12 +141,9 @@ export function createAgentCrudRouter(
           character: character,
         },
       });
-      logger.success(`[AGENT CREATE] Successfully created agent: ${character.name}`);
+      logger.success({ src: 'http', agentId: newAgent.id, agentName: character.name }, 'Agent created');
     } catch (error) {
-      logger.error(
-        '[AGENT CREATE] Error creating agent:',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', error }, 'Error creating agent');
       res.status(400).json({
         success: false,
         error: {
@@ -244,22 +218,15 @@ export function createAgentCrudRouter(
           currentPlugins.some((plugin, idx) => plugin !== updatedPlugins[idx]);
 
         needsRestart = pluginsChanged;
-
-        if (needsRestart) {
-          logger.debug(`[AGENT UPDATE] Agent ${agentId} requires restart due to plugins changes`);
-        }
       }
 
       // Check if agent is currently active
       if (activeRuntime && updatedAgent) {
         if (needsRestart) {
           // Plugins changed - need full restart
-          logger.debug(`[AGENT UPDATE] Restarting agent ${agentId} due to configuration changes`);
-
           try {
             await serverInstance?.unregisterAgent(agentId);
 
-            // Restart the agent with new configuration
             const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
             const runtimes = await serverInstance?.startAgents([
               { character: characterData as Character },
@@ -267,12 +234,9 @@ export function createAgentCrudRouter(
             if (!runtimes || runtimes.length === 0) {
               throw new Error('Failed to restart agent after configuration change');
             }
-            logger.success(`[AGENT UPDATE] Agent ${agentId} restarted successfully`);
+            logger.debug({ src: 'http', agentId }, 'Agent restarted after config change');
           } catch (restartError) {
-            logger.error(
-              { error: restartError, agentId },
-              `[AGENT UPDATE] Failed to restart agent ${agentId}, attempting to restore previous state`
-            );
+            logger.error({ src: 'http', error: restartError, agentId }, 'Failed to restart agent');
 
             // Try to restore the agent with the previous configuration
             try {
@@ -281,12 +245,9 @@ export function createAgentCrudRouter(
               await serverInstance?.startAgents([
                 { character: previousCharacterData as Character },
               ]);
-              logger.warn(`[AGENT UPDATE] Restored agent ${agentId} to previous state`);
+              logger.warn({ src: 'http', agentId }, 'Restored agent to previous state');
             } catch (restoreError) {
-              logger.error(
-                { error: restoreError, agentId },
-                `[AGENT UPDATE] Failed to restore agent ${agentId} - agent may be in broken state`
-              );
+              logger.error({ src: 'http', error: restoreError, agentId }, 'Failed to restore agent - may be in broken state');
             }
 
             throw restartError;
@@ -295,7 +256,6 @@ export function createAgentCrudRouter(
           // Only character properties changed - can update in-place
           const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
           await elizaOS.updateAgent(agentId, characterData as Character);
-          logger.debug(`[AGENT UPDATE] Updated active agent ${agentId} without restart`);
         }
       }
 
@@ -304,52 +264,32 @@ export function createAgentCrudRouter(
 
       sendSuccess(res, { ...updatedAgent, status });
     } catch (error) {
-      logger.error(
-        '[AGENT UPDATE] Error updating agent:',
-        error instanceof Error ? error.message : String(error)
-      );
-      sendError(
-        res,
-        500,
-        'UPDATE_ERROR',
-        'Error updating agent',
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', error, agentId }, 'Error updating agent');
+      sendError(res, 500, 'UPDATE_ERROR', 'Error updating agent', error instanceof Error ? error.message : String(error));
     }
   });
 
   // Delete agent
   router.delete('/:agentId', async (req, res) => {
-    logger.debug(`[AGENT DELETE] Received request to delete agent with ID: ${req.params.agentId}`);
-
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
-      logger.error(`[AGENT DELETE] Invalid agent ID format: ${req.params.agentId}`);
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
     }
     if (!db) {
       return sendError(res, 500, 'DB_ERROR', 'Database not available');
     }
 
-    logger.debug(`[AGENT DELETE] Validated agent ID: ${agentId}, proceeding with deletion`);
-
     try {
       const agent = await db.getAgent(agentId);
       if (!agent) {
-        logger.warn(`[AGENT DELETE] Agent not found: ${agentId}`);
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
-
-      logger.debug(`[AGENT DELETE] Agent found: ${agent.name} (${agentId})`);
     } catch (checkError) {
-      logger.error(
-        `[AGENT DELETE] Error checking if agent exists: ${agentId}`,
-        checkError instanceof Error ? checkError.message : String(checkError)
-      );
+      logger.error({ src: 'http', error: checkError, agentId }, 'Error checking if agent exists');
     }
 
     const timeoutId = setTimeout(() => {
-      logger.warn(`[AGENT DELETE] Operation taking longer than expected for agent: ${agentId}`);
+      logger.warn({ src: 'http', agentId }, 'Agent deletion taking longer than expected');
       if (!res.headersSent) {
         res.status(202).json({
           success: true,
@@ -368,28 +308,17 @@ export function createAgentCrudRouter(
       try {
         const runtime = elizaOS.getAgent(agentId);
         if (runtime) {
-          logger.debug(`[AGENT DELETE] Agent ${agentId} is running, unregistering from server`);
           try {
             await serverInstance?.unregisterAgent(agentId);
-            logger.debug(`[AGENT DELETE] Agent ${agentId} unregistered successfully`);
           } catch (stopError) {
-            logger.error(
-              `[AGENT DELETE] Error stopping agent ${agentId}:`,
-              stopError instanceof Error ? stopError.message : String(stopError)
-            );
+            logger.error({ src: 'http', error: stopError, agentId }, 'Error stopping agent');
           }
-        } else {
-          logger.debug(`[AGENT DELETE] Agent ${agentId} was not running, no need to unregister`);
         }
 
-        logger.debug(`[AGENT DELETE] Calling database deleteAgent method for agent: ${agentId}`);
-
-        const deleteResult = await db.deleteAgent(agentId);
-        logger.debug(`[AGENT DELETE] Database deleteAgent result: ${JSON.stringify(deleteResult)}`);
-
+        await db.deleteAgent(agentId);
         clearTimeout(timeoutId);
 
-        logger.success(`[AGENT DELETE] Successfully deleted agent: ${agentId}`);
+        logger.success({ src: 'http', agentId }, 'Agent deleted');
 
         if (!res.headersSent) {
           res.status(204).send();
@@ -400,17 +329,13 @@ export function createAgentCrudRouter(
         lastError = error;
         retryCount++;
 
-        logger.error(
-          `[AGENT DELETE] Error deleting agent ${agentId} (attempt ${retryCount}/${MAX_RETRIES + 1}):`,
-          error instanceof Error ? error.message : String(error)
-        );
+        logger.error({ src: 'http', error, agentId, attempt: retryCount, maxRetries: MAX_RETRIES + 1 }, 'Error deleting agent');
 
         if (retryCount > MAX_RETRIES) {
           break;
         }
 
         const delay = 1000 * Math.pow(2, retryCount - 1);
-        logger.debug(`[AGENT DELETE] Waiting ${delay}ms before retry ${retryCount}`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

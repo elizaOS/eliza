@@ -259,9 +259,7 @@ export class AgentServer {
                 ...runtime.character,
                 id: runtime.agentId,
               });
-              logger.info(
-                `Persisted agent ${runtime.character.name} (${runtime.agentId}) to database`
-              );
+              logger.debug({ src: 'db', agentId: runtime.agentId, agentName: runtime.character.name }, 'Agent persisted to database');
             }
 
             // Assign agent to server if RLS is enabled
@@ -269,7 +267,7 @@ export class AgentServer {
               await assignAgentToServer(this.database, runtime.agentId, this.rlsServerId);
             }
           } catch (error) {
-            logger.error({ error }, `Failed to persist agent ${runtime.agentId} to database`);
+            logger.error({ src: 'db', error, agentId: runtime.agentId }, 'Failed to persist agent to database');
           }
         }
         await this.registerAgent(runtime);
@@ -324,7 +322,7 @@ export class AgentServer {
    */
   constructor() {
     try {
-      logger.debug('Initializing AgentServer (constructor)...');
+      logger.debug({ src: 'http' }, 'Initializing AgentServer');
 
       // Initialize character loading functions
       this.loadCharacterTryPath = loadCharacterTryPath;
@@ -333,7 +331,7 @@ export class AgentServer {
       // Register signal handlers once in constructor to prevent accumulation
       this.registerSignalHandlers();
     } catch (error) {
-      logger.error({ error }, 'Failed to initialize AgentServer (constructor):');
+      logger.error({ src: 'http', error }, 'Failed to initialize AgentServer');
       throw error;
     }
   }
@@ -347,12 +345,12 @@ export class AgentServer {
    */
   private async initialize(config?: ServerConfig): Promise<void> {
     if (this.isInitialized) {
-      logger.warn('AgentServer is already initialized, skipping initialization');
+      logger.warn({ src: 'http' }, 'AgentServer already initialized, skipping');
       return;
     }
 
     try {
-      logger.debug('Initializing AgentServer (async operations)...');
+      logger.debug({ src: 'http' }, 'Initializing AgentServer async operations');
 
       // Type-safe database plugin imports using typeof import() patterns
       type CreateDatabaseAdapterFn = (
@@ -443,13 +441,13 @@ export class AgentServer {
       }
 
       const agentDataDir = resolvePgliteDir(config?.dataDir);
-      logger.info(`[INIT] Database Dir: ${agentDataDir}`);
+      logger.info({ src: 'db', dataDir: agentDataDir }, 'Database directory configured');
 
       // Ensure the database directory exists
       const dbDir = path.dirname(agentDataDir);
       if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
-        logger.info(`[INIT] Created database directory: ${dbDir}`);
+        logger.debug({ src: 'db', dbDir }, 'Database directory created');
       }
 
       // Create a temporary database adapter just for server operations (migrations, default server)
@@ -474,10 +472,10 @@ export class AgentServer {
       }
 
       await this.database.init();
-      logger.success('Database initialized for server operations');
+      logger.success({ src: 'db' }, 'Database initialized for server operations');
 
       // Run migrations for the database plugin schema
-      logger.info('[INIT] Running database migrations for messaging tables...');
+      logger.info({ src: 'db' }, 'Running database migrations');
       try {
         const migrationService = new DatabaseMigrationService();
 
@@ -491,9 +489,9 @@ export class AgentServer {
         // Run the migrations
         await migrationService.runAllPluginMigrations();
 
-        logger.success('[INIT] Database migrations completed successfully');
+        logger.success({ src: 'db' }, 'Database migrations completed');
       } catch (migrationError) {
-        logger.error({ error: migrationError }, '[INIT] Failed to run database migrations:');
+        logger.error({ src: 'db', error: migrationError }, 'Failed to run database migrations');
         throw new Error(
           `Database migration failed: ${migrationError instanceof Error ? migrationError.message : String(migrationError)}`
         );
@@ -505,22 +503,20 @@ export class AgentServer {
       // RLS is only supported with PostgreSQL (not MySQL or PGLite)
       if (dataIsolationEnabled && !this.useMysql) {
         if (!config?.postgresUrl) {
-          logger.error('[Data Isolation] ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite or MySQL)');
+          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite or MySQL)');
           throw new Error('Data isolation requires PostgreSQL database');
         }
 
         if (!elizaServerIdString) {
-          logger.error('[Data Isolation] ENABLE_DATA_ISOLATION requires ELIZA_SERVER_ID environment variable');
+          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires ELIZA_SERVER_ID environment variable');
           throw new Error('ELIZA_SERVER_ID environment variable is required when data isolation is enabled');
         }
 
         // Convert ELIZA_SERVER_ID string to deterministic UUID
         const server_id = stringToUuid(elizaServerIdString);
 
-        logger.info('[INIT] Initializing data isolation (Server RLS + Entity RLS)...');
-        logger.info(`[Data Isolation] Server ID: ${server_id.slice(0, 8)}… (from ELIZA_SERVER_ID="${elizaServerIdString}")`);
-        logger.warn('[Data Isolation] Ensure your PostgreSQL user is NOT a superuser!');
-        logger.warn('[Data Isolation] Superusers bypass ALL RLS policies, defeating isolation.');
+        logger.info({ src: 'db', serverId: server_id.slice(0, 8), serverIdString: elizaServerIdString }, 'Initializing data isolation (Server RLS + Entity RLS)...');
+        logger.warn({ src: 'db' }, 'Ensure PostgreSQL user is NOT a superuser - superusers bypass RLS');
 
         try {
           // Install RLS PostgreSQL functions (includes Entity RLS) but DO NOT apply policies yet
@@ -539,34 +535,23 @@ export class AgentServer {
           // RLS policies will be applied automatically after agent migrations complete
           // via DatabaseMigrationService.runAllPluginMigrations() to avoid server_id column conflicts
 
-          logger.success('[INIT] RLS functions installed and context set (policies will apply after migrations)');
-          logger.success('[INIT] Entity RLS functions ready - entities will be isolated after migrations');
+          logger.info({ src: 'db' }, 'RLS functions installed and context set (policies will apply after migrations)');
+          logger.info({ src: 'db' }, 'Entity RLS functions ready - entities will be isolated after migrations');
         } catch (rlsError) {
-          logger.error({ error: rlsError }, '[INIT] Failed to prepare RLS:');
+          logger.error({ src: 'db', error: rlsError }, 'Failed to prepare RLS');
           throw new Error(
             `RLS preparation failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
           );
         }
       } else if (config?.postgresUrl && !this.useMysql) {
-        // Only attempt RLS cleanup if RLS was explicitly disabled after being enabled
-        // Check if RLS might have been previously enabled by looking for RLS_OWNER_ID history
-        const hadRlsOwner = !!process.env.RLS_OWNER_ID;
+        logger.info({ src: 'db' }, 'RLS multi-tenant isolation disabled');
 
-        if (hadRlsOwner) {
-          logger.info('[INIT] RLS multi-tenant isolation disabled (legacy mode)');
-          logger.info('[INIT] Detected previous RLS configuration, attempting cleanup...');
-
-          // Clean up RLS if it was previously enabled
-          try {
-            logger.info('[INIT] Cleaning up RLS policies and functions...');
-            await uninstallRLS(this.database);
-            logger.success('[INIT] RLS cleanup completed');
-          } catch (cleanupError) {
-            // It's OK if cleanup fails (RLS might not have been installed)
-            logger.debug('[INIT] RLS cleanup skipped (RLS not installed or already cleaned)');
-          }
-        } else {
-          logger.info('[INIT] RLS never configured, skipping cleanup');
+        // Clean up RLS if it was previously enabled
+        try {
+          await uninstallRLS(this.database);
+          logger.debug({ src: 'db' }, 'RLS cleanup completed');
+        } catch (cleanupError) {
+          // It's OK if cleanup fails (RLS might not have been installed)
         }
       } else if (this.useMysql && dataIsolationEnabled) {
         logger.warn('[RLS] RLS is not supported with MySQL, skipping RLS initialization');
@@ -576,36 +561,20 @@ export class AgentServer {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Ensure default server exists
-      logger.info('[INIT] Ensuring default server exists...');
       await this.ensureDefaultServer();
-      logger.success('[INIT] Default server setup complete');
 
-      // Server agent is no longer needed - each agent has its own database adapter
-      logger.info('[INIT] Server uses temporary adapter for migrations only');
-
-      logger.info('[INIT] Initializing ElizaOS...');
-      // Don't pass the server's database adapter to ElizaOS
-      // Each agent will get its own adapter from the SQL plugin
-      logger.debug('[INIT] ElizaOS will use agent-specific database adapters from SQL plugin');
+      logger.info({ src: 'http' }, 'Initializing ElizaOS');
       this.elizaOS = new ElizaOS();
-
-      // Enable editable mode to allow updating agent characters at runtime
-      // This is required for the API to be able to update agents
       this.elizaOS.enableEditableMode();
-
-      // Set global ElizaOS instance for MessageBusService
       setGlobalElizaOS(this.elizaOS);
-
-      // Set global AgentServer instance for MessageBusService
       setGlobalAgentServer(this);
-
-      logger.success('[INIT] ElizaOS initialized');
+      logger.success({ src: 'http' }, 'ElizaOS initialized');
 
       await this.initializeServer(config);
       await new Promise((resolve) => setTimeout(resolve, 250));
       this.isInitialized = true;
     } catch (error) {
-      logger.error({ error }, 'Failed to initialize AgentServer (async operations):');
+      logger.error({ src: 'http', error }, 'Failed to initialize AgentServer');
       console.trace(error);
       throw error;
     }
@@ -618,7 +587,7 @@ export class AgentServer {
 
       // Security: Separate RLS server_id (internal) from message_servers.id (public API)
       // - rlsServerId: Used for PostgreSQL RLS isolation (from ELIZA_SERVER_ID env var)
-      // - serverId: Used for message_servers.id (random UUID, exposed in API)
+      // - messageServerId: Used for message_servers.id (random UUID, exposed in API)
       // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
       if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
@@ -627,11 +596,11 @@ export class AgentServer {
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
           this.messageServerId = existingServer.id;
-          logger.info(`[AgentServer] Found existing message_server ${this.messageServerId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
+          logger.info({ src: 'db', messageServerId: this.messageServerId, rlsServerId: this.rlsServerId.substring(0, 8) }, 'Found existing message_server for RLS server');
         } else {
           // First boot: generate new random UUID for message_server (will be linked to rlsServerId via server_id column)
           this.messageServerId = crypto.randomUUID() as UUID;
-          logger.info(`[AgentServer] Generating new message_server ID ${this.messageServerId} for RLS server ${this.rlsServerId.substring(0, 8)}...`);
+          logger.info({ src: 'db', messageServerId: this.messageServerId, rlsServerId: this.rlsServerId.substring(0, 8) }, 'Generating new message_server ID for RLS server');
         }
       } else {
         // RLS disabled: use shared default server
@@ -642,19 +611,14 @@ export class AgentServer {
         ? `Server ${this.messageServerId.substring(0, 8)}`
         : 'Default Server';
 
-      logger.info(`[AgentServer] Checking for server ${this.messageServerId}...`);
+      logger.info({ src: 'db', serverId: this.messageServerId }, 'Checking for server...');
       const servers = await (this.database as any).getMessageServers();
-      logger.debug(`[AgentServer] Found ${servers.length} existing servers`);
-
-      // Log all existing servers for debugging
-      servers.forEach((s: any) => {
-        logger.debug(`[AgentServer] Existing server: ID=${s.id}, Name=${s.name}`);
-      });
+      logger.debug({ src: 'db', serverCount: servers.length }, 'Found existing servers');
 
       const defaultServer = servers.find((s: any) => s.id === this.messageServerId);
 
       if (!defaultServer) {
-        logger.info(`[AgentServer] Creating server with UUID ${this.messageServerId}...`);
+        logger.info({ src: 'db', serverId: this.messageServerId }, 'Creating server...');
 
         // SECURITY: Using drizzle-orm's sql tagged template literal for safe parameterization
         // The sql`` tag automatically converts interpolated values to parameterized queries,
@@ -682,50 +646,38 @@ export class AgentServer {
               ON CONFLICT (id) DO NOTHING
             `);
           }
-          logger.success('[AgentServer] Server created via parameterized query');
-
-          // Immediately check if it was created with parameterized query
-          // Safe: drizzle-orm sql`` handles parameterization automatically
-          const checkResult = await db.execute(sql`
-            SELECT id, name FROM message_servers WHERE id = ${this.messageServerId}
-          `);
-          logger.debug('[AgentServer] Parameterized query check result:', checkResult);
+          logger.info({ src: 'db', serverId: this.messageServerId }, 'Server created via parameterized query');
         } catch (sqlError: any) {
-          logger.error('[AgentServer] Raw SQL insert failed:', sqlError);
+          logger.warn({ src: 'db', error: sqlError }, 'SQL insert failed, trying ORM');
 
           // Try creating with ORM as fallback
           try {
-            const server = await (this.database as any).createMessageServer({
+            await (this.database as any).createMessageServer({
               id: this.messageServerId as UUID,
               name: serverName,
               sourceType: 'eliza_default',
             });
-            logger.success('[AgentServer] Server created via ORM with ID:', server.id);
           } catch (ormError: any) {
-            logger.error('[AgentServer] Both SQL and ORM creation failed:', ormError);
+            logger.error({ src: 'db', error: ormError }, 'Both SQL and ORM creation failed');
             throw new Error(`Failed to create server: ${ormError.message}`);
           }
         }
 
         // Verify it was created
         const verifyServers = await (this.database as any).getMessageServers();
-        logger.debug(`[AgentServer] After creation attempt, found ${verifyServers.length} servers`);
-        verifyServers.forEach((s: any) => {
-          logger.debug(`[AgentServer] Server after creation: ID=${s.id}, Name=${s.name}`);
-        });
-
+        logger.debug({ src: 'db', serverCount: verifyServers.length }, 'After creation attempt, found servers');
+        
         const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
         if (!verifyDefault) {
           throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
         } else {
-          logger.success('[AgentServer] Server creation verified successfully');
+          logger.info({ src: 'db', serverId: this.messageServerId }, 'Server creation verified successfully');
         }
-      } else {
-        logger.info('[AgentServer] Server already exists with ID:', defaultServer.id);
+        logger.info({ src: 'db', serverId: this.messageServerId }, 'Default server created');
       }
     } catch (error) {
-      logger.error({ error }, '[AgentServer] Error ensuring default server:');
-      throw error; // Re-throw to prevent startup if default server can't be created
+      logger.error({ src: 'db', error }, 'Error ensuring default server');
+      throw error;
     }
   }
 
@@ -759,19 +711,13 @@ export class AgentServer {
             integrations: [Sentry.vercelAIIntegration({ force: sentryEnabled })],
             tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
           });
-          logger.info('[Sentry] Initialized Sentry for @elizaos/server');
         } catch (sentryInitError) {
-          logger.error({ error: sentryInitError }, '[Sentry] Failed to initialize Sentry');
+          logger.error({ src: 'http', error: sentryInitError }, 'Failed to initialize Sentry');
         }
       }
 
       // Security headers first - before any other middleware
       const isProd = process.env.NODE_ENV === 'production';
-      logger.debug('Setting up security headers...');
-      if (!isProd) {
-        logger.debug(`NODE_ENV: ${process.env.NODE_ENV}`);
-        logger.debug(`CSP will be: ${isProd ? 'ENABLED' : 'MINIMAL_DEV'}`);
-      }
       this.app.use(
         helmet({
           // Content Security Policy - environment-aware configuration
@@ -842,14 +788,12 @@ export class AgentServer {
 
       // Apply custom middlewares if provided
       if (config?.middlewares) {
-        logger.debug('Applying custom middlewares...');
         for (const middleware of config.middlewares) {
           this.app.use(middleware);
         }
       }
 
       // Setup middleware for all requests
-      logger.debug('Setting up standard middlewares...');
       this.app.use(
         cors({
           origin: process.env.CORS_ORIGIN || true,
@@ -912,32 +856,26 @@ export class AgentServer {
         res.status(isHealthy ? 200 : 503).json(healthcheck);
       });
 
-      logger.info('Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
+      // Optional Authentication Middleware
+      const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
+      logger.info({ src: 'http' }, 'Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
 
       // Optional Authentication Middleware
-      logger.info('[Auth] Configuring authentication middleware...');
+      logger.info({ src: 'http' }, 'Configuring authentication middleware...');
 
       // Active if ELIZA_SERVER_AUTH_TOKEN is configured
       this.app.use('/api', apiKeyAuthMiddleware);
 
-      logger.info('[Auth] Authentication middleware configured');
-      logger.warn(
-        `[Auth] API Key: ${process.env.ELIZA_SERVER_AUTH_TOKEN ? 'ENABLED' : 'DISABLED'}`
-      );
+      if (serverAuthToken) {
+        logger.info({ src: 'http' }, 'Authentication middleware configured - API Key: ENABLED');
+      } else {
+        logger.warn({ src: 'http' }, 'Authentication middleware configured - API Key: DISABLED (set ELIZA_SERVER_AUTH_TOKEN to enable)');
+      }
 
       // Determine if web UI should be enabled
       this.isWebUIEnabled = isWebUIEnabled();
-
-      if (this.isWebUIEnabled) {
-        logger.info('Web UI enabled');
-      } else {
-        // Determine the reason for UI being disabled
-        const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
-        if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
-          logger.info(`Web UI disabled by environment variable (ELIZA_UI_ENABLE=${uiEnabledEnv})`);
-        } else {
-          logger.info('Web UI disabled for security (production mode)');
-        }
+      if (!this.isWebUIEnabled) {
+        logger.info({ src: 'http' }, 'Web UI disabled');
       }
 
       const uploadsBasePath = getUploadsAgentsDir();
@@ -971,14 +909,10 @@ export class AgentServer {
 
           res.sendFile(sanitizedFilename, { root: agentUploadsPath }, (err) => {
             if (err) {
-              if (err.message === 'Request aborted') {
-                logger.warn(`[MEDIA] Download aborted: ${req.originalUrl}`);
-              } else if (!res.headersSent) {
-                logger.warn(`[MEDIA] File not found: ${agentUploadsPath}/${sanitizedFilename}`);
+              if (err.message !== 'Request aborted' && !res.headersSent) {
+                logger.warn({ src: 'http', agentId, file: sanitizedFilename }, 'File not found');
                 res.status(404).json({ error: 'File not found' });
               }
-            } else {
-              logger.debug(`[MEDIA] Successfully served: ${sanitizedFilename}`);
             }
           });
         }
@@ -1062,13 +996,9 @@ export class AgentServer {
           }
 
           res.sendFile(filePath, (err) => {
-            if (err) {
-              logger.warn({ err, filePath }, `[STATIC] Channel media file not found: ${filePath}`);
-              if (!res.headersSent) {
-                res.status(404).json({ error: 'File not found' });
-              }
-            } else {
-              logger.debug(`[STATIC] Served channel media file: ${filePath}`);
+            if (err && !res.headersSent) {
+              logger.warn({ src: 'http', channelId, file: sanitizedFilename }, 'Channel media file not found');
+              res.status(404).json({ error: 'File not found' });
             }
           });
         }
@@ -1228,34 +1158,19 @@ export class AgentServer {
           ].filter(Boolean),
         ].filter(Boolean);
 
-        // Log process information for debugging
-        logger.debug(`[STATIC] process.argv[0]: ${process.argv[0]}`);
-        logger.debug(`[STATIC] process.argv[1]: ${process.argv[1]}`);
-        logger.debug(`[STATIC] __dirname: ${__dirname}`);
-
         for (const possiblePath of possiblePaths) {
           if (possiblePath && existsSync(path.join(possiblePath, 'index.html'))) {
             clientPath = possiblePath;
-            logger.info(`[STATIC] Found client files at: ${clientPath}`);
             break;
           }
         }
 
         if (clientPath) {
-          // Store the resolved client path on the instance for use in the SPA fallback
           this.clientPath = clientPath;
           this.app.use(express.static(clientPath, staticOptions));
-          logger.info(`[STATIC] Serving static files from: ${clientPath}`);
+          logger.info({ src: 'http', clientPath }, 'Serving static files');
         } else {
-          logger.warn('[STATIC] Client dist path not found. Searched locations:');
-          possiblePaths.forEach((p) => {
-            if (p) logger.warn(`[STATIC]   - ${p}`);
-          });
-          logger.warn('[STATIC] The web UI will not be available.');
-          logger.warn(
-            '[STATIC] To fix this, ensure the client is built: cd packages/client && bun run build'
-          );
-          logger.warn('[STATIC] Then rebuild the server: cd packages/server && bun run build');
+          logger.warn({ src: 'http' }, 'Client dist not found - web UI unavailable. Build client and server to fix.');
         }
       }
 
@@ -1276,12 +1191,6 @@ export class AgentServer {
       const apiRouter = createApiRouter(this.elizaOS!, this);
       this.app.use(
         '/api',
-        (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-          if (req.path !== '/ping') {
-            logger.debug(`API request: ${req.method} ${req.path}`);
-          }
-          next();
-        },
         apiRouter,
         (err: any, req: Request, res: Response, _next: express.NextFunction) => {
           // Capture error with Sentry if configured
@@ -1296,7 +1205,7 @@ export class AgentServer {
               return scope;
             });
           }
-          logger.error({ err }, `API error: ${req.method} ${req.path}`);
+          logger.error({ src: 'http', error: err, method: req.method, path: req.path }, 'API error');
           res.status(500).json({
             success: false,
             error: {
@@ -1373,8 +1282,6 @@ export class AgentServer {
 
             // Verify the file exists before attempting to serve it
             if (!existsSync(indexFilePath)) {
-              logger.error(`[STATIC] index.html not found at expected path: ${indexFilePath}`);
-              logger.error(`[STATIC] Client path was: ${resolvedClientPath}`);
               res.status(404).send('Client application not found');
               return;
             }
@@ -1382,21 +1289,12 @@ export class AgentServer {
             // Use sendFile with the directory as root and filename separately
             // This approach is more reliable for Express
             res.sendFile('index.html', { root: resolvedClientPath }, (err) => {
-              if (err) {
-                logger.warn(`[STATIC] Failed to serve index.html: ${err.message}`);
-                logger.warn(`[STATIC] Attempted root: ${resolvedClientPath}`);
-                logger.warn(`[STATIC] Full path was: ${indexFilePath}`);
-                logger.warn(`[STATIC] Error code: ${(err as any).code || 'unknown'}`);
-                if (!res.headersSent) {
-                  res.status(404).send('Client application not found');
-                }
-              } else {
-                logger.debug(`[STATIC] Successfully served index.html for route: ${req.path}`);
+              if (err && !res.headersSent) {
+                logger.warn({ src: 'http', error: err.message }, 'Failed to serve index.html');
+                res.status(404).send('Client application not found');
               }
             });
           } else {
-            logger.warn('[STATIC] Client dist path not found in SPA fallback');
-            logger.warn('[STATIC] Neither local nor instance clientPath variables are set');
             res.status(404).send('Client application not found');
           }
         });
@@ -1413,9 +1311,9 @@ export class AgentServer {
       // Initialize Socket.io, passing the AgentServer instance
       this.socketIO = setupSocketIO(this.server, this.elizaOS!, this);
 
-      logger.success('AgentServer HTTP server and Socket.IO initialized');
+      logger.success({ src: 'http' }, 'HTTP server and Socket.IO initialized');
     } catch (error) {
-      logger.error({ error }, 'Failed to complete server initialization:');
+      logger.error({ src: 'http', error }, 'Failed to complete server initialization');
       throw error;
     }
   }
@@ -1441,54 +1339,38 @@ export class AgentServer {
         throw new Error('Runtime missing character configuration');
       }
 
-      // Agent is now registered in ElizaOS
-      logger.debug(`Agent ${runtime.character.name} (${runtime.agentId}) registered`);
-
       // Auto-register the MessageBusConnector plugin for server-side communication
       try {
         if (messageBusConnectorPlugin) {
           await runtime.registerPlugin(messageBusConnectorPlugin);
-          logger.info(
-            `[AgentServer] Registered MessageBusConnector for agent ${runtime.character.name}`
-          );
         } else {
-          logger.error(`[AgentServer] CRITICAL: MessageBusConnector plugin definition not found.`);
+          logger.error({ src: 'agent', agentId: runtime.agentId }, 'MessageBusConnector plugin not found');
         }
       } catch (e) {
-        logger.error(
-          { error: e },
-          `[AgentServer] CRITICAL: Failed to register MessageBusConnector for agent ${runtime.character.name}`
-        );
+        logger.error({ src: 'agent', error: e, agentId: runtime.agentId }, 'Failed to register MessageBusConnector');
       }
 
       // Register TEE plugin if present
       const teePlugin = runtime.plugins.find((p) => p.name === 'phala-tee-plugin');
       if (teePlugin) {
-        logger.debug(`Found TEE plugin for agent ${runtime.agentId}`);
         if (teePlugin.providers) {
           for (const provider of teePlugin.providers) {
             runtime.registerProvider(provider);
-            logger.debug(`Registered TEE provider: ${provider.name}`);
           }
         }
         if (teePlugin.actions) {
           for (const action of teePlugin.actions) {
             runtime.registerAction(action);
-            logger.debug(`Registered TEE action: ${action.name}`);
           }
         }
       }
 
-      logger.success(
-        `Successfully registered agent ${runtime.character.name} (${runtime.agentId}) with core services.`
-      );
+      logger.info({ src: 'agent', agentId: runtime.agentId, agentName: runtime.character.name }, 'Successfully registered agent with core services');
 
       await this.addAgentToMessageServer(this.messageServerId, runtime.agentId);
-      logger.info(
-        `[AgentServer] Auto-associated agent ${runtime.character.name} with message server ID: ${this.messageServerId}`
-      );
+      logger.info({ src: 'agent', agentId: runtime.agentId, agentName: runtime.character.name, messageServerId: this.messageServerId }, 'Auto-associated agent with message server');
     } catch (error) {
-      logger.error({ error }, 'Failed to register agent:');
+      logger.error({ src: 'agent', error }, 'Failed to register agent');
       throw error;
     }
   }
@@ -1501,36 +1383,28 @@ export class AgentServer {
    */
   public async unregisterAgent(agentId: UUID) {
     if (!agentId) {
-      logger.warn('[AGENT UNREGISTER] Attempted to unregister undefined or invalid agent runtime');
+      logger.warn({ src: 'agent' }, 'Attempted to unregister invalid agent');
       return;
     }
 
     try {
-      // Retrieve the agent from ElizaOS
       const agent = this.elizaOS?.getAgent(agentId);
 
       if (agent) {
-        // Stop all services of the agent before unregistering it
         try {
-          logger.debug(`[AGENT UNREGISTER] Stopping services for agent ${agentId}`);
           await agent.stop();
-          logger.debug(`[AGENT UNREGISTER] All services stopped for agent ${agentId}`);
         } catch (stopError) {
-          logger.error(
-            { error: stopError, agentId },
-            `[AGENT UNREGISTER] Error stopping agent services for ${agentId}:`
-          );
+          logger.error({ src: 'agent', error: stopError, agentId }, 'Error stopping agent services');
         }
       }
 
-      // Delete agent from ElizaOS
       if (this.elizaOS) {
         await this.elizaOS.deleteAgents([agentId]);
       }
 
-      logger.debug(`Agent ${agentId} unregistered`);
+      logger.debug({ src: 'agent', agentId }, 'Agent unregistered');
     } catch (error) {
-      logger.error({ error, agentId }, `Error removing agent ${agentId}:`);
+      logger.error({ src: 'agent', error, agentId }, 'Error removing agent');
     }
   }
 
@@ -1567,7 +1441,7 @@ export class AgentServer {
         if (error && error.code === 'EADDRINUSE') {
           const startFrom = (boundPort ?? 3000) + 1;
           const fallbackPort = await this.findAvailablePort(startFrom);
-          logger.warn(`Port ${boundPort} in use. Falling back to available port ${fallbackPort}`);
+          logger.warn({ src: 'http', port: boundPort, fallbackPort }, 'Port in use, falling back');
           boundPort = fallbackPort;
           await this.startHttpServer(boundPort);
         } else {
@@ -1584,7 +1458,7 @@ export class AgentServer {
     // Step 3: Start agents if provided
     if (config?.agents && config.agents.length > 0) {
       await this.startAgents(config.agents, { isTestMode: config.isTestMode });
-      logger.info(`Started ${config.agents.length} agents`);
+      logger.info({ src: 'agent', count: config.agents.length }, 'Started agents');
     }
   }
 
@@ -1612,7 +1486,7 @@ export class AgentServer {
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 65535) {
         requestedPort = parsed;
       } else {
-        logger.warn(`Invalid SERVER_PORT "${envPort}", falling back to 3000`);
+        logger.warn({ src: 'http', envPort }, 'Invalid SERVER_PORT, falling back to 3000');
       }
     }
 
@@ -1636,7 +1510,7 @@ export class AgentServer {
 
       if (await this.isPortAvailable(port)) {
         if (attempt > 0) {
-          logger.info(`Port ${startPort} is in use, using port ${port} instead`);
+          logger.info({ src: 'http', requestedPort: startPort, actualPort: port }, 'Port in use, using alternative');
         }
         return port;
       }
@@ -1682,9 +1556,6 @@ export class AgentServer {
   private startHttpServer(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        logger.debug(`Starting server on port ${port}...`);
-        logger.debug(`Current agents count: ${this.elizaOS?.getAgents().length || 0}`);
-        logger.debug(`Environment: ${process.env.NODE_ENV}`);
 
         // Use http server instead of app.listen with explicit host binding and error handling
         // For tests and macOS compatibility, prefer 127.0.0.1 when specified
@@ -1715,43 +1586,18 @@ export class AgentServer {
             // Add log for test readiness
             console.log(`AgentServer is listening on port ${port}`);
 
-            logger.success(
-              `REST API bound to ${host}:${port}. If running locally, access it at http://localhost:${port}.`
-            );
-            const agents = this.elizaOS?.getAgents() || [];
-            logger.debug(`Active agents: ${agents.length}`);
-            agents.forEach((agent) => {
-              logger.debug(`- Agent ${agent.agentId}: ${agent.character.name}`);
-            });
+            logger.success({ src: 'http', host, port }, 'REST API started');
 
             // Resolve the promise now that the server is actually listening
             resolve();
           })
           .on('error', (error: any) => {
-            logger.error({ error, host, port }, `Failed to bind server to ${host}:${port}:`);
-
-            // Provide helpful error messages for common issues
-            if (error.code === 'EADDRINUSE') {
-              logger.error(
-                `Port ${port} is already in use. Please try a different port or stop the process using that port.`
-              );
-            } else if (error.code === 'EACCES') {
-              logger.error(
-                `Permission denied to bind to port ${port}. Try using a port above 1024 or running with appropriate permissions.`
-              );
-            } else if (error.code === 'EADDRNOTAVAIL') {
-              logger.error(
-                `Cannot bind to ${host}:${port} - address not available. Check if the host address is correct.`
-              );
-            }
-
-            // Reject the promise on error
+            logger.error({ src: 'http', error, host, port }, 'Failed to bind server');
             reject(error);
           });
 
-        // Server is now listening successfully
       } catch (error) {
-        logger.error({ error }, 'Failed to start server:');
+        logger.error({ src: 'http', error }, 'Failed to start server');
         reject(error);
       }
     });
@@ -1764,7 +1610,7 @@ export class AgentServer {
   public async stop(): Promise<void> {
     if (this.server) {
       this.server.close(() => {
-        logger.success('Server stopped');
+        logger.success({ src: 'http' }, 'Server stopped');
       });
     }
   }
@@ -1838,7 +1684,7 @@ export class AgentServer {
     for (const message of messages) {
       await (this.database as any).deleteMessage(message.id);
     }
-    logger.info(`[AgentServer] Cleared all messages for central channel: ${channelId}`);
+    logger.debug({ src: 'db', channelId }, 'Cleared channel messages');
   }
 
   async findOrCreateCentralDmChannel(
@@ -1873,7 +1719,6 @@ export class AgentServer {
       };
 
       internalMessageBus.emit('new_message', messageForBus);
-      logger.info(`[AgentServer] Published message ${createdMessage.id} to internal message bus`);
     }
 
     return createdMessage;
@@ -1905,9 +1750,7 @@ export class AgentServer {
   // Optional: Method to remove a participant
   async removeParticipantFromChannel(): Promise<void> {
     // Since we don't have a direct method for this, we'll need to handle it at the channel level
-    logger.warn(
-      `[AgentServer] Remove participant operation not directly supported in database adapter`
-    );
+    logger.warn({ src: 'db' }, 'Remove participant operation not supported');
   }
 
   // ===============================
@@ -1971,40 +1814,33 @@ export class AgentServer {
    */
   private registerSignalHandlers(): void {
     const gracefulShutdown = async () => {
-      logger.info('Received shutdown signal, initiating graceful shutdown...');
+      logger.info({ src: 'http' }, 'Received shutdown signal');
 
-      // Stop all agents first
-      logger.debug('Stopping all agents...');
       const agents = this.elizaOS?.getAgents() || [];
       for (const agent of agents) {
         try {
           await agent.stop();
-          logger.debug(`Stopped agent ${agent.agentId}`);
         } catch (error) {
-          logger.error({ error, agentId: agent.agentId }, `Error stopping agent ${agent.agentId}:`);
+          logger.error({ src: 'agent', error, agentId: agent.agentId }, 'Error stopping agent');
         }
       }
 
-      // Close database
       if (this.database) {
         try {
           await this.database.close();
-          logger.info('Database closed.');
         } catch (error) {
-          logger.error({ error }, 'Error closing database:');
+          logger.error({ src: 'db', error }, 'Error closing database');
         }
       }
 
-      // Close server
       if (this.server) {
         this.server.close(() => {
-          logger.success('Server closed successfully');
+          logger.success({ src: 'http' }, 'Server closed');
           process.exit(0);
         });
 
-        // Force close after timeout
         setTimeout(() => {
-          logger.error('Could not close connections in time, forcing shutdown');
+          logger.error({ src: 'http' }, 'Forcing shutdown after timeout');
           process.exit(1);
         }, 5000);
       } else {
@@ -2014,7 +1850,6 @@ export class AgentServer {
 
     process.on('SIGTERM', gracefulShutdown);
     process.on('SIGINT', gracefulShutdown);
-    logger.debug('Shutdown handlers registered');
   }
 }
 

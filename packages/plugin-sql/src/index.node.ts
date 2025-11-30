@@ -42,7 +42,7 @@ export function createDatabaseAdapter(
       }
       rlsServerId = stringToUuid(rlsServerIdString);
       managerKey = rlsServerId; // Use server_id as key for multi-tenancy
-      logger.debug(`[Data Isolation] Using connection pool for server_id: ${rlsServerId.slice(0, 8)}… (from ELIZA_SERVER_ID="${rlsServerIdString}")`);
+      logger.debug({ src: 'plugin:sql', rlsServerId: rlsServerId.slice(0, 8), serverIdString: rlsServerIdString }, 'Using connection pool for RLS server');
     }
 
     // Initialize connection managers map if needed
@@ -53,7 +53,7 @@ export function createDatabaseAdapter(
     // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!manager) {
-      logger.debug(`[Data Isolation] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
+      logger.debug({ src: 'plugin:sql', managerKey: managerKey.slice(0, 8) }, 'Creating new connection pool');
       manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
     }
@@ -74,7 +74,7 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
-    logger.info('plugin-sql (node) init starting...');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'plugin-sql (node) init starting');
 
     const adapterRegistered = await runtime
       .isReady()
@@ -83,18 +83,18 @@ export const plugin: Plugin = {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes('Database adapter not registered')) {
           // Expected on first load before the adapter is created; not a warning condition
-          logger.info('No pre-registered database adapter detected; registering adapter');
+          runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'No pre-registered database adapter detected; registering adapter');
         } else {
           // Unexpected readiness error - keep as a warning with details
-          logger.warn(
-            { error },
+          runtime.logger.warn(
+            { src: 'plugin:sql', agentId: runtime.agentId, error: message },
             'Database adapter readiness check error; proceeding to register adapter'
           );
         }
         return false;
       });
     if (adapterRegistered) {
-      logger.info('Database adapter already registered, skipping creation');
+      runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter already registered, skipping creation');
       return;
     }
 
@@ -111,7 +111,7 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info('Database adapter created and registered');
+    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter created and registered');
   },
 };
 

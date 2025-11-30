@@ -92,7 +92,7 @@ export const updateRoleAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     if (!state) {
-      logger.error('State is required for role assignment');
+      logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId }, 'State is required for role assignment');
       return {
         text: 'State is required for role assignment',
         values: {
@@ -121,7 +121,7 @@ export const updateRoleAction: Action = {
     }
 
     if (!world) {
-      logger.error('World not found');
+      logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId }, 'World not found');
       await callback?.({
         text: "I couldn't find the world. This action only works in a world.",
       });
@@ -237,7 +237,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     for (const assignment of assignments) {
       let targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        logger.error('Could not find an ID to assign to');
+        logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, entityId: assignment.entityId }, 'Could not find an ID to assign to');
         failedUpdates.push({
           entityId: assignment.entityId,
           reason: 'Entity not found',
@@ -282,9 +282,9 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     if (worldUpdated) {
       try {
         await runtime.updateWorld(world);
-        logger.info(`Updated roles in world metadata for server ${serverId}`);
+        logger.info({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, serverId }, 'Updated roles in world metadata');
       } catch (error) {
-        logger.error({ error }, 'Failed to save world updates');
+        logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to save world updates');
         return {
           text: 'Failed to save role updates',
           values: {

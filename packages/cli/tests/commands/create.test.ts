@@ -655,6 +655,7 @@ describe('ElizaOS Create Commands', () => {
         'Unknown option',
         'unknown option',
         'Invalid option',
+        'too many arguments',
       ];
 
       const hasError = errorPatterns.some((pattern) =>

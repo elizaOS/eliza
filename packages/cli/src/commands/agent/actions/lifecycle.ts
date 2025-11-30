@@ -54,9 +54,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
           const agent = await agentsService.createAgent(payload);
           return agent.name || agent.id;
         } catch (error) {
-          logger.error(
-            `Failed to create agent: ${error instanceof Error ? error.message : String(error)}`
-          );
+          logger.error({ src: 'cli', command: 'agent-start', error: error instanceof Error ? error.message : String(error) }, 'Failed to create agent');
           return null;
         }
       }
@@ -72,7 +70,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
           payload.characterJson = JSON.parse(fileContent);
           characterName = await createCharacter(payload);
           if (!characterName) {
-            logger.error('Failed to create character from file. Check server logs for details.');
+            logger.error({ src: 'cli', command: 'agent-start' }, 'Failed to create character from file. Check server logs for details');
           }
         } catch (error) {
           console.error('Error reading or parsing local JSON file:', error);
@@ -93,9 +91,7 @@ export async function startAgent(options: OptionValues): Promise<void> {
         payload.characterPath = options.remoteCharacter;
         characterName = await createCharacter(payload);
         if (!characterName) {
-          logger.error(
-            'Failed to create character from remote URL. Check server logs for details.'
-          );
+          logger.error({ src: 'cli', command: 'agent-start' }, 'Failed to create character from remote URL. Check server logs for details');
         }
       }
 
@@ -213,13 +209,13 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
 
     // If --all flag is provided, stop all local ElizaOS processes
     if (opts.all) {
-      logger.info('Stopping all ElizaOS agents...');
+      logger.info({ src: 'cli', command: 'agent-stop' }, 'Stopping all ElizaOS agents');
 
       // Check platform compatibility
       if (process.platform === 'win32') {
-        logger.error('The --all flag requires Unix-like commands (pgrep, kill).');
-        logger.error('On Windows, please use WSL 2 or stop agents individually with --name.');
-        logger.error('See: https://learn.microsoft.com/en-us/windows/wsl/install-manual');
+        logger.error({ src: 'cli', command: 'agent-stop' }, 'The --all flag requires Unix-like commands (pgrep, kill)');
+        logger.error({ src: 'cli', command: 'agent-stop' }, 'On Windows, please use WSL 2 or stop agents individually with --name');
+        logger.error({ src: 'cli', command: 'agent-stop', url: 'https://learn.microsoft.com/en-us/windows/wsl/install-manual' }, 'See WSL installation guide');
         process.exit(1);
       }
 
@@ -251,11 +247,9 @@ export async function stopAgent(opts: OptionValues): Promise<void> {
           }
         }
 
-        logger.success('All ElizaOS agents stopped successfully!');
+        logger.success({ src: 'cli', command: 'agent-stop' }, 'All ElizaOS agents stopped successfully');
       } catch (error) {
-        logger.error(
-          `Error stopping processes: ${error instanceof Error ? error.message : String(error)}`
-        );
+        logger.error({ src: 'cli', command: 'agent-stop', error: error instanceof Error ? error.message : String(error) }, 'Error stopping processes');
         process.exit(1);
       }
       return;

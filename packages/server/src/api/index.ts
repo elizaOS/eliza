@@ -96,21 +96,13 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
 // Extracted function to handle plugin routes
 export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandler {
   return (req, res, next) => {
-    logger.debug(
-      'Handling plugin request in the plugin route handler',
-      `path: ${req.path}, method: ${req.method}`,
-      {
-        path: req.path,
-        method: req.method,
-        query: req.query,
-      }
-    );
+    logger.debug({ src: 'http', path: req.path, method: req.method, query: req.query }, 'Handling plugin request');
 
     // Skip standard agent API routes - these should be handled by agentRouter
     // Pattern: /agents/{uuid}/...
     const agentApiRoutePattern = /^\/agents\/[a-f0-9-]{36}\/(?!plugins\/)/i;
     if (agentApiRoutePattern.test(req.path)) {
-      logger.debug(`Skipping agent API route in plugin handler: ${req.path}`);
+      logger.debug({ src: 'http', path: req.path }, 'Skipping agent API route in plugin handler');
       return next();
     }
 
@@ -124,7 +116,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
     const clientRoutePattern =
       /^\/(chat|settings|agents|profile|dashboard|login|register|admin|home|about)\b/i;
     if (clientRoutePattern.test(req.path)) {
-      logger.debug(`Skipping client-side route in plugin handler: ${req.path}`);
+      logger.debug({ src: 'http', path: req.path }, 'Skipping client-side route in plugin handler');
       return next();
     }
 
@@ -134,12 +126,12 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
       req.path.includes('.js?') ||
       req.path.match(/index-[A-Za-z0-9]{8}\.js/) // Escaped dot for regex
     ) {
-      logger.debug(`JavaScript request in plugin handler: ${req.method} ${req.path}`);
+      logger.debug({ src: 'http', method: req.method, path: req.path }, 'JavaScript request in plugin handler');
       res.setHeader('Content-Type', 'application/javascript');
     }
 
     if (elizaOS.getAgents().length === 0) {
-      logger.debug('No agents available, skipping plugin route handling.');
+      logger.debug({ src: 'http' }, 'No agents available, skipping plugin route handling');
       return next();
     }
 
@@ -147,7 +139,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
     const agentIdFromQuery = req.query.agentId as UUID | undefined;
     const reqPath = req.path; // Path to match against plugin routes (e.g., /hello2)
     const baselessReqPath = reqPath.replace(/\/api\/agents\/[^\/]+\/plugins/, ''); // strip out base
-    logger.debug('Plugin Request Path', baselessReqPath);
+    logger.debug({ src: 'http', path: baselessReqPath }, 'Plugin request path');
     // might need to ensure /
 
     function findRouteInRuntime(runtime: IAgentRuntime) {
@@ -166,23 +158,14 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
         if (routePath.endsWith('/*')) {
           const baseRoute = routePath.slice(0, -1); // take off *
           if (baselessReqPath.startsWith(baseRoute)) {
-            logger.debug(
-              `Agent ${runtime.character.name} plugin wildcard route: [${route.type.toUpperCase()}] ${routePath} for request: ${reqPath}`
-            );
+            logger.debug({ src: 'http', agentId: runtime.agentId, routeType: route.type.toUpperCase(), routePath, requestPath: reqPath }, 'Plugin wildcard route matched');
             try {
               if (route.handler) {
                 route.handler(req, res, runtime);
                 handled = true;
               }
             } catch (error) {
-              logger.error(
-                `Error handling plugin wildcard route for agent ${agentIdFromQuery}: ${routePath}`,
-                error instanceof Error ? error.message : String(error),
-                {
-                  path: reqPath,
-                  agent: agentIdFromQuery,
-                }
-              );
+              logger.error({ src: 'http', agentId: agentIdFromQuery, routePath, path: reqPath, error: error instanceof Error ? error.message : String(error) }, 'Error handling plugin wildcard route');
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
@@ -197,24 +180,19 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
             }
           }
         } else {
-          // Verbose route matching debug removed for cleaner logs
+          logger.debug({ src: 'http', agentId: runtime.agentId, routeType: route.type.toUpperCase(), routePath, requestPath: baselessReqPath }, 'Attempting plugin route match');
           let matcher: MatchFunction<object>;
           try {
             matcher = match(routePath, { decode: decodeURIComponent });
           } catch (err) {
-            logger.error(
-              `Invalid plugin route path syntax for agent ${agentIdFromQuery}: "${routePath}"`,
-              err instanceof Error ? err.message : String(err)
-            );
+            logger.error({ src: 'http', agentId: agentIdFromQuery, routePath, error: err instanceof Error ? err.message : String(err) }, 'Invalid plugin route path syntax');
             continue;
           }
 
           const matched = matcher(baselessReqPath);
 
           if (matched) {
-            logger.debug(
-              `Agent ${runtime.character.name} plugin route matched: [${route.type.toUpperCase()}] ${routePath} vs request path: ${reqPath}`
-            );
+            logger.debug({ src: 'http', agentId: runtime.agentId, routeType: route.type.toUpperCase(), routePath, requestPath: reqPath }, 'Plugin route matched');
             req.params = { ...(matched.params || {}) };
             try {
               if (route.handler) {
@@ -222,15 +200,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
                 handled = true;
               }
             } catch (error) {
-              logger.error(
-                `Error handling plugin route for agent ${agentIdFromQuery}: ${routePath}`,
-                error instanceof Error ? error.message : String(error),
-                {
-                  path: reqPath,
-                  agent: agentIdFromQuery,
-                  params: req.params,
-                }
-              );
+              logger.error({ src: 'http', agentId: agentIdFromQuery, routePath, path: reqPath, params: req.params, error: error instanceof Error ? error.message : String(error) }, 'Error handling plugin route');
               if (!res.headersSent) {
                 const status =
                   (error instanceof Error && 'code' in error && error.code === 'ENOENT') ||
@@ -253,14 +223,10 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
     if (agentIdFromQuery && validateUuid(agentIdFromQuery)) {
       const runtime = elizaOS.getAgent(agentIdFromQuery);
       if (runtime) {
-        logger.debug(
-          `Agent-scoped request for Agent ID: ${agentIdFromQuery} from query. Path: ${reqPath}`
-        );
+        logger.debug({ src: 'http', agentId: agentIdFromQuery, path: reqPath }, 'Agent-scoped request from query');
         handled = findRouteInRuntime(runtime);
       } else {
-        logger.warn(
-          `Agent ID ${agentIdFromQuery} provided in query, but agent runtime not found. Path: ${reqPath}.`
-        );
+        logger.warn({ src: 'http', agentId: agentIdFromQuery, path: reqPath }, 'Agent runtime not found');
         // For API routes, return error. For other routes, pass to next middleware
         if (reqPath.startsWith('/api/')) {
           res.status(404).json({
@@ -277,7 +243,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
         }
       }
     } else if (agentIdFromQuery && !validateUuid(agentIdFromQuery)) {
-      logger.warn(`Invalid Agent ID format in query: ${agentIdFromQuery}. Path: ${reqPath}.`);
+      logger.warn({ src: 'http', agentId: agentIdFromQuery, path: reqPath }, 'Invalid agent ID format');
       // For API routes, return error. For other routes, pass to next middleware
       if (reqPath.startsWith('/api/')) {
         res.status(400).json({
@@ -295,7 +261,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
     } else {
       // No agentId in query, or it was invalid. Try matching globally for any agent that might have this route.
       // This allows for non-agent-specific plugin routes if any plugin defines them.
-      logger.debug(`No valid agentId in query. Trying global match for path: ${reqPath}`);
+      logger.debug({ src: 'http', path: reqPath }, 'No valid agentId in query, trying global match');
 
       // check in all agents...
       for (const runtime of elizaOS.getAgents()) {
@@ -310,7 +276,7 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
       return;
     }
 
-    logger.debug(`No plugin route handled ${req.method} ${req.path}, passing to next middleware.`);
+    logger.debug({ src: 'http', method: req.method, path: req.path }, 'No plugin route handled, passing to next middleware');
     next();
   };
 }
