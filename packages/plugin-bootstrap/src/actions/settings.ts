@@ -823,11 +823,11 @@ export const updateSettingsAction: Action = {
       const worldSettings = world?.metadata?.settings;
 
       if (!worldSettings) {
-        logger.error(`No settings state found for server ${world?.serverId}`);
+        logger.error(`No settings state found for server ${world?.messageServerId}`);
         return false;
       }
 
-      logger.debug(`Found valid settings state for server ${world.serverId}`);
+      logger.debug(`Found valid settings state for server ${world.messageServerId}`);
       return true;
     } catch (error) {
       logger.error(`Error validating settings action: ${error}`);
@@ -920,7 +920,7 @@ export const updateSettingsAction: Action = {
         };
       }
 
-      const serverId = serverOwnership?.serverId;
+      const serverId = serverOwnership?.messageServerId;
       logger.info(`Using server ID: ${serverId}`);
 
       if (!serverId) {

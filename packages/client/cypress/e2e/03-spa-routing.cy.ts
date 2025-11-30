@@ -9,6 +9,9 @@ describe('SPA Routing', () => {
   ];
 
   beforeEach(() => {
+    // Setup global API mocks
+    cy.setupApiMocks();
+
     // Mock API calls to prevent timeouts
     cy.intercept('GET', '/api/system/version', {
       statusCode: 200,

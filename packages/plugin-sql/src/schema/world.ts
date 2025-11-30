@@ -18,8 +18,8 @@ export const worldTable = pgTable('worlds', {
     .references(() => agentTable.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   metadata: jsonb('metadata'),
-  serverId: text('serverId').notNull().default('local'),
-  createdAt: timestamp('createdAt')
+  messageServerId: uuid('message_server_id'),
+  createdAt: timestamp('created_at')
     .default(sql`now()`)
     .notNull(),
 });

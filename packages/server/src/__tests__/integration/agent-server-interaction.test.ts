@@ -47,7 +47,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       });
 
       // Verify agent is registered
-      const agents = await serverFixture.getServer().getAgentsForServer(serverId);
+      const agents = await serverFixture.getServer().getAgentsForMessageServer(serverId);
       expect(agents).toContain(agentId);
 
       // Auto-cleanup on scope exit!
@@ -71,7 +71,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       expect(agent1).toBeDefined();
       expect(agent2).toBeDefined();
 
-      const agents = await serverFixture.getServer().getAgentsForServer(serverId);
+      const agents = await serverFixture.getServer().getAgentsForMessageServer(serverId);
       expect(agents).toContain(agent1.agentId);
       expect(agents).toContain(agent2.agentId);
 
@@ -136,7 +136,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         metadata: {},
       });
 
-      const server = await serverFixture.getServer().getServerBySourceType('discord');
+      const server = await serverFixture.getServer().getMessageServerBySourceType('discord');
       expect(server).toBeDefined();
       expect(server?.sourceType).toBe('discord');
     });
@@ -415,17 +415,17 @@ describe('Agent-Server Interaction Integration Tests', () => {
     });
 
     it('should add agent to server', async () => {
-      await serverFixture.getServer().addAgentToServer(serverId, testAgentId);
+      await serverFixture.getServer().addAgentToMessageServer(serverId, testAgentId);
 
-      const agents = await serverFixture.getServer().getAgentsForServer(serverId);
+      const agents = await serverFixture.getServer().getAgentsForMessageServer(serverId);
       expect(agents).toContain(testAgentId);
     });
 
     it('should remove agent from server', async () => {
-      await serverFixture.getServer().addAgentToServer(serverId, testAgentId);
-      await serverFixture.getServer().removeAgentFromServer(serverId, testAgentId);
+      await serverFixture.getServer().addAgentToMessageServer(serverId, testAgentId);
+      await serverFixture.getServer().removeAgentFromMessageServer(serverId, testAgentId);
 
-      const agents = await serverFixture.getServer().getAgentsForServer(serverId);
+      const agents = await serverFixture.getServer().getAgentsForMessageServer(serverId);
       expect(agents).not.toContain(testAgentId);
     });
 
@@ -436,20 +436,20 @@ describe('Agent-Server Interaction Integration Tests', () => {
         metadata: {},
       });
 
-      await serverFixture.getServer().addAgentToServer(serverId, testAgentId);
-      await serverFixture.getServer().addAgentToServer(newServer.id, testAgentId);
+      await serverFixture.getServer().addAgentToMessageServer(serverId, testAgentId);
+      await serverFixture.getServer().addAgentToMessageServer(newServer.id, testAgentId);
 
       const servers = await serverFixture
         .getServer()
-        .getServersForAgent(testAgentId);
+        .getMessageServersForAgent(testAgentId);
       expect(servers).toContain(serverId);
       expect(servers).toContain(newServer.id);
 
       // Clean up
-      await serverFixture.getServer().removeAgentFromServer(serverId, testAgentId);
+      await serverFixture.getServer().removeAgentFromMessageServer(serverId, testAgentId);
       await serverFixture
         .getServer()
-        .removeAgentFromServer(newServer.id, testAgentId);
+        .removeAgentFromMessageServer(newServer.id, testAgentId);
     });
 
     it('should handle adding agent to non-existent server', async () => {
@@ -457,7 +457,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       const fakeAgentId = 'test-agent-fake' as UUID;
 
       await expect(
-        serverFixture.getServer().addAgentToServer(fakeServerId, fakeAgentId)
+        serverFixture.getServer().addAgentToMessageServer(fakeServerId, fakeAgentId)
       ).rejects.toThrow();
     });
   });
@@ -481,7 +481,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
         // Get initial agent count
         const initialAgents = await isolatedFixture
           .getServer()
-          .getAgentsForServer('00000000-0000-0000-0000-000000000000' as UUID);
+          .getAgentsForMessageServer('00000000-0000-0000-0000-000000000000' as UUID);
         const initialCount = initialAgents.filter((id) => id === agentId).length;
         expect(initialCount).toBe(1);
 

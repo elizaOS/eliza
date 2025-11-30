@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'bun:test';
-import { isWebUIEnabled } from '../../index.js';
+import { isWebUIEnabled } from '../../../index.js';
 
 describe('Basic Server Functionality', () => {
   describe('Rate limiting logic', () => {

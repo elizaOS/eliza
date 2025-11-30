@@ -81,12 +81,17 @@ Cypress.Commands.add('waitForApi', (alias: string, timeout = 10000) => {
 declare global {
   namespace Cypress {
     interface Chainable {
+      visitWithoutOnboarding(url?: string): Chainable<void>;
       waitForApp(): Chainable<void>;
       login(email: string, password: string): Chainable<void>;
       connectWebSocket(): Chainable<void>;
       cleanupTestData(): Chainable<void>;
       getByTestId(testId: string): Chainable<JQuery<HTMLElement>>;
       waitForApi(alias: string, timeout?: number): Chainable<any>;
+      setupApiMocks(): Chainable<void>;
+      // Authentication commands from auth-commands.ts
+      loginByApi(email: string, password: string): Chainable<void>;
+      registerByApi(email: string, username: string, password: string): Chainable<void>;
     }
   }
 }

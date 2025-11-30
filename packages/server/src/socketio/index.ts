@@ -12,15 +12,27 @@ import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils/media-transformer';
 
+/**
+ * Socket.io socket.data structure for authenticated sockets
+ * These properties are set by the authentication middleware
+ */
+export interface SocketData {
+  entityId?: UUID;
+  allowedRooms?: Set<UUID>;
+  roomsCacheLoaded?: boolean;
+}
+
 export class SocketIORouter {
   private elizaOS: ElizaOS;
-  private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
+  private socketAgent: Map<string, UUID>; // socket.id → agentId (for agent-specific interactions like log streaming)
+  private entitySockets: Map<UUID, Set<string>>; // entityId → socket.ids (for targeted cache invalidation when permissions change)
   private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
   private serverInstance: AgentServer;
 
   constructor(elizaOS: ElizaOS, serverInstance: AgentServer) {
     this.elizaOS = elizaOS;
-    this.connections = new Map();
+    this.socketAgent = new Map();
+    this.entitySockets = new Map();
     this.logStreamConnections = new Map();
     this.serverInstance = serverInstance;
     logger.info(`[SocketIO] Router initialized with ${this.elizaOS.getAgents().length} agents`);
@@ -28,6 +40,10 @@ export class SocketIORouter {
 
   setupListeners(io: SocketIOServer) {
     logger.info(`[SocketIO] Setting up Socket.IO event listeners`);
+
+    // Setup authentication middleware (runs before connection)
+    this.setupAuthenticationMiddleware(io);
+
     const messageTypes = Object.keys(SOCKET_MESSAGE_TYPE).map(
       (key) => `${key}: ${SOCKET_MESSAGE_TYPE[key as keyof typeof SOCKET_MESSAGE_TYPE]}`
     );
@@ -37,8 +53,76 @@ export class SocketIORouter {
     });
   }
 
+  /**
+   * Authentication middleware - Production-grade WebSocket security
+   *
+   * Runs on every WebSocket handshake to:
+   * 1. Verify API Key (if configured)
+   * 2. Extract entityId from client handshake
+   * 3. Initialize security context on socket.data
+   * 4. Track entity->sockets mapping for cache invalidation
+   */
+  private setupAuthenticationMiddleware(io: SocketIOServer) {
+    io.use(async (socket, next) => {
+      try {
+        // API Key authentication (if configured)
+        if (process.env.SERVER_API_KEY) {
+          const apiKey = socket.handshake.auth.apiKey || socket.handshake.headers['x-api-key'];
+
+          if (!apiKey || apiKey !== process.env.SERVER_API_KEY) {
+            logger.warn(`[SocketIO Auth] Invalid or missing API Key from socket ${socket.id}`);
+            return next(new Error('Invalid or missing API Key'));
+          }
+
+          logger.debug(`[SocketIO Auth] API Key verified for socket ${socket.id}`);
+        }
+
+        // Entity identification via client-provided entityId
+        const clientEntityId = socket.handshake.auth.entityId;
+        let entityId: UUID;
+
+        if (!clientEntityId || !validateUuid(clientEntityId)) {
+          logger.warn(`[SocketIO Auth] Invalid or missing entityId: ${clientEntityId}`);
+          return next(new Error('Valid entityId required'));
+        }
+
+        entityId = clientEntityId as UUID;
+        logger.debug(`[SocketIO Auth] Using client entityId: ${entityId.substring(0, 8)}...`);
+
+        // Initialize socket security context with the determined entityId
+        socket.data.entityId = entityId;
+        socket.data.allowedRooms = new Set<UUID>(); // Lazy-loaded on first join attempt
+        socket.data.roomsCacheLoaded = false; // Track if cache is initialized
+
+        logger.info(`[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId.substring(0, 8)}...`);
+
+        // Track entity -> sockets mapping for targeted cache invalidation
+        if (!this.entitySockets.has(entityId)) {
+          this.entitySockets.set(entityId, new Set());
+        }
+        this.entitySockets.get(entityId)!.add(socket.id);
+
+        next();
+      } catch (error: any) {
+        logger.error(`[SocketIO Auth] Authentication error:`, error?.message || error);
+        next(new Error('Authentication failed'));
+      }
+    });
+  }
+
   private handleNewConnection(socket: Socket, _io: SocketIOServer) {
     logger.info(`[SocketIO] New connection: ${socket.id}`);
+
+    // Send authenticated event with the entityId determined by the server
+    // This allows the client to sync its local entityId with the server's decision
+    const entityId = socket.data.entityId;
+    if (entityId) {
+      socket.emit('authenticated', {
+        entityId,
+        timestamp: Date.now(),
+      });
+      logger.debug(`[SocketIO] Sent 'authenticated' event to socket ${socket.id} with entityId: ${entityId.substring(0, 8)}...`);
+    }
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
       logger.debug(
@@ -124,9 +208,51 @@ export class SocketIORouter {
     }
   }
 
-  private handleChannelJoining(socket: Socket, payload: any) {
+  /**
+   * Verify if socket's entity has permission to access a channel.
+   * Returns true if entity is a channel participant or if data isolation is disabled.
+   */
+  private async verifyChannelAccess(socket: Socket, channelId: UUID): Promise<boolean> {
+    try {
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (!dataIsolationEnabled) {
+        logger.debug(`[SocketIO Security] Data isolation disabled - allowing channel access`);
+        return true;
+      }
+
+      const entityId = socket.data?.entityId;
+      if (!entityId) {
+        logger.warn(`[SocketIO Security] No entityId in socket data - denying access`);
+        return false;
+      }
+
+      const isParticipant = await this.serverInstance.isChannelParticipant(channelId, entityId);
+
+      if (isParticipant) {
+        logger.debug(`[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`);
+      } else {
+        logger.warn(`[SocketIO Security] Entity ${entityId} is NOT participant in channel ${channelId}`);
+      }
+
+      return isParticipant;
+    } catch (error: any) {
+      logger.error(`[SocketIO Security] Error verifying channel access:`, error?.message || error);
+      return false; // Fail closed - deny on error
+    }
+  }
+
+  /**
+   * Handle channel joining with production-grade security
+   *
+   * Security features:
+   * 1. Lazy-loading cache: Load allowed rooms only on first join attempt
+   * 2. Hybrid approach: Check cache first, then DB if not found (new room)
+   * 3. Permission verification: Block joins to rooms user doesn't have access to
+   */
+  private async handleChannelJoining(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { agentId, entityId, serverId, metadata } = payload;
+    const { agentId, entityId, messageServerId, metadata } = payload;
 
     logger.debug(
       `[SocketIO] handleChannelJoining called with payload:`,
@@ -138,24 +264,36 @@ export class SocketIORouter {
       return;
     }
 
+    // SECURITY: Verify permission to join this channel
+    const hasPermission = await this.verifyChannelAccess(socket, channelId as UUID);
+    if (!hasPermission) {
+      logger.warn(
+        `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) DENIED access to channel ${channelId}`
+      );
+      this.sendErrorResponse(socket, `Access denied: You don't have permission to join this channel`);
+      return;
+    }
+
     if (agentId) {
       const agentUuid = validateUuid(agentId);
       if (agentUuid) {
-        this.connections.set(socket.id, agentUuid);
+        this.socketAgent.set(socket.id, agentUuid);
         logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
       }
     }
 
     socket.join(channelId);
-    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
+    logger.info(
+      `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) GRANTED access to channel ${channelId}`
+    );
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
-    if (entityId && (serverId || this.serverInstance.serverId)) {
-      const finalServerId = serverId || this.serverInstance.serverId;
+    if (entityId && (messageServerId || this.serverInstance.messageServerId)) {
+      const finalMessageServerId = messageServerId || this.serverInstance.messageServerId;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
       logger.info(
-        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`
+        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, messageServerId: ${finalMessageServerId}, isDm: ${isDm}`
       );
 
       // Get the first available runtime (there should typically be one)
@@ -164,7 +302,7 @@ export class SocketIORouter {
         runtime.emitEvent(EventType.ENTITY_JOINED as any, {
           entityId: entityId as UUID,
           runtime,
-          worldId: finalServerId, // Use serverId as worldId identifier
+          worldId: finalMessageServerId, // Use messageServerId as worldId identifier
           roomId: channelId as UUID,
           metadata: {
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
@@ -180,7 +318,7 @@ export class SocketIORouter {
       }
     } else {
       logger.debug(
-        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || this.serverInstance.serverId}) - not emitting ENTITY_JOINED event`
+        `[SocketIO] Missing entityId (${entityId}) or messageServerId (${messageServerId || this.serverInstance.messageServerId}) - not emitting ENTITY_JOINED event`
       );
     }
 
@@ -198,7 +336,7 @@ export class SocketIORouter {
 
   private async handleMessageSubmission(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
+    const { senderId, senderName, message, messageServerId, source, metadata, attachments } = payload;
 
     logger.info(
       `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
@@ -209,12 +347,12 @@ export class SocketIORouter {
     );
 
     // Validate server ID
-    const isValidServerId = serverId === this.serverInstance.serverId || validateUuid(serverId);
+    const isValidServerId = messageServerId === this.serverInstance.messageServerId || validateUuid(messageServerId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
-        `For SEND_MESSAGE: channelId, serverId (server_id), senderId (author_id), and message are required.`
+        `For SEND_MESSAGE: channelId, messageServerId (message_server_id), senderId (author_id), and message are required.`
       );
       return;
     }
@@ -232,7 +370,7 @@ export class SocketIORouter {
           runtime.emitEvent(EventType.ENTITY_JOINED as any, {
             entityId: senderId as UUID,
             runtime,
-            worldId: serverId, // Use serverId as worldId identifier
+            worldId: messageServerId, // Use messageServerId as worldId identifier
             roomId: channelId as UUID,
             metadata: {
               type: ChannelType.DM,
@@ -264,21 +402,21 @@ export class SocketIORouter {
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
         logger.info(
-          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with serverId ${serverId}`
+          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with messageServerId ${messageServerId}`
         );
         try {
           // First verify the server exists
           const servers = await this.serverInstance.getServers();
-          const serverExists = servers.some((s) => s.id === serverId);
+          const serverExists = servers.some((s) => s.id === messageServerId);
           logger.info(
-            `[SocketIO ${socket.id}] Server ${serverId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+            `[SocketIO ${socket.id}] Server ${messageServerId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
           );
 
           if (!serverExists) {
             logger.error(
-              `[SocketIO ${socket.id}] Server ${serverId} does not exist, cannot create channel`
+              `[SocketIO ${socket.id}] Server ${messageServerId} does not exist, cannot create channel`
             );
-            this.sendErrorResponse(socket, `Server ${serverId} does not exist`);
+            this.sendErrorResponse(socket, `Server ${messageServerId} does not exist`);
             return;
           }
 
@@ -287,7 +425,7 @@ export class SocketIORouter {
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
-            messageServerId: serverId as UUID,
+            messageServerId: messageServerId as UUID,
             name: isDmChannel
               ? `DM ${channelId.substring(0, 8)}`
               : `Chat ${channelId.substring(0, 8)}`,
@@ -352,7 +490,7 @@ export class SocketIORouter {
           ...(metadata || {}),
           user_display_name: senderName,
           socket_id: socket.id,
-          serverId: serverId as UUID,
+          messageServerId: messageServerId as UUID,
           attachments,
         },
         sourceType: source || 'socketio_client',
@@ -377,7 +515,7 @@ export class SocketIORouter {
         text: message,
         channelId: channelId,
         roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Use serverId at message server layer
+        messageServerId: messageServerId, // Use messageS erverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
         attachments: transformedAttachments,
@@ -477,9 +615,22 @@ export class SocketIORouter {
   }
 
   private handleDisconnect(socket: Socket) {
-    const agentIdAssociated = this.connections.get(socket.id);
-    this.connections.delete(socket.id);
+    const agentIdAssociated = this.socketAgent.get(socket.id);
+    this.socketAgent.delete(socket.id);
     this.logStreamConnections.delete(socket.id);
+
+    // Cleanup entitySockets mapping
+    if (socket.data?.entityId) {
+      const entityId = socket.data.entityId as UUID;
+      const sockets = this.entitySockets.get(entityId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          this.entitySockets.delete(entityId);
+        }
+      }
+    }
+
     if (agentIdAssociated) {
       logger.info(
         `[SocketIO] Client ${socket.id} (associated with agent ${agentIdAssociated}) disconnected.`

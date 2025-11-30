@@ -21,6 +21,8 @@ describe('Character File Size Limits - Issue #5268 Regression Test', () => {
         post: [],
       },
       adjectives: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const currentSize = JSON.stringify(baseCharacter).length;
@@ -32,7 +34,7 @@ describe('Character File Size Limits - Issue #5268 Regression Test', () => {
       const entriesNeeded = Math.ceil(additionalBytesNeeded / singleBioSize);
 
       for (let i = 0; i < entriesNeeded; i++) {
-        baseCharacter.bio.push(
+        (baseCharacter.bio as string[]).push(
           `Extended biography section ${i + 1}: ${'x'.repeat(singleBioSize - 50)}`
         );
       }

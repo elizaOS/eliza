@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.6.5-alpha.11",
+  "version": "1.6.5-alpha.15",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -35,11 +35,8 @@
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
-    "test": "bun run test:unit && bun run test:features && bun run test:compatibility && bun run test:security && bun run test:integration",
+    "test": "bun run test:unit && bun run test:integration",
     "test:unit": "bun test src/__tests__/unit/",
-    "test:features": "bun test src/__tests__/features/",
-    "test:compatibility": "bun test src/__tests__/compatibility/",
-    "test:security": "bun test src/__tests__/security/",
     "test:integration": "bash scripts/run-integration-tests.sh",
     "test:coverage": "bun test --coverage",
     "test:watch": "bun test --watch",
@@ -47,7 +44,9 @@
   },
   "devDependencies": {
     "@elizaos/client": "workspace:*",
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^24.0.1",
+    "bun-fetch-mock": "^1.0.0",
     "prettier": "3.6.2",
     "tsx": "4.20.6",
     "typescript": "^5.5.4",
@@ -62,10 +61,12 @@
     "@types/express": "^5.0.2",
     "@types/helmet": "^4.0.0",
     "@types/multer": "^2.0.0",
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
+    "jose": "^6.1.2",
     "multer": "^2.0.1",
     "path-to-regexp": "^8.2.0",
     "socket.io": "^4.8.1"

@@ -8,7 +8,7 @@ import type {
   AgentStatus as CoreAgentStatus,
   ChannelType as CoreChannelType,
 } from '@elizaos/core';
-import type { ServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
+import type { MessageServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 
 /**
  * Interface representing an attachment.
@@ -41,13 +41,13 @@ export interface AgentPanel {
   path: string;
 }
 
-// Represents a server/guild in the central messaging system for the client
+// Represents a message server/guild in the central messaging system for the client
 export interface MessageServer {
-  id: UUID; // Global serverId
+  id: UUID; // Global messageServerId
   name: string;
   sourceType: string;
   sourceId?: string;
-  metadata?: ServerMetadata;
+  metadata?: MessageServerMetadata;
   createdAt: string; // ISO Date string from server, or Date object
   updatedAt: string; // ISO Date string from server, or Date object
 }
@@ -71,7 +71,7 @@ export interface MessageChannel {
 export interface ServerMessage {
   id: UUID;
   channelId: UUID;
-  serverId?: UUID; // Optional: May be added during client-side processing or be in metadata
+  messageServerId?: UUID; // Optional: May be added during client-side processing or be in metadata
   authorId: UUID;
   authorDisplayName?: string; // Optional: May be in metadata or fetched separately
   content: string;

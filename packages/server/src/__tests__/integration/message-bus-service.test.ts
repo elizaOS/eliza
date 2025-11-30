@@ -67,7 +67,7 @@ describe('MessageBusService Integration Tests', () => {
     });
 
     it('should fetch agent servers on initialization', async () => {
-      const agentServers = await serverFixture.getServer().getServersForAgent(testAgentId);
+      const agentServers = await serverFixture.getServer().getMessageServersForAgent(testAgentId);
       expect(agentServers).toBeDefined();
       expect(Array.isArray(agentServers)).toBe(true);
     });

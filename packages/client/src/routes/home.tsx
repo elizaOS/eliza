@@ -44,7 +44,7 @@ export default function Home() {
 
   const handleNavigateToDm = async (agent: Partial<Agent>, forceNew: boolean) => {
     if (!agent.id) return;
-    // Navigate directly to agent chat - DM channel will be created automatically with default server
+    clientLogger.info(`[Home] Navigating to chat/${agent.id}`);
     navigate(`/chat/${agent.id}`, { state: { forceNew } });
   };
 

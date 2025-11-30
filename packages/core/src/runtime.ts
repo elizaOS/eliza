@@ -9,6 +9,7 @@ interface WorkingMemoryEntry {
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
+import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt, safeReplacer } from './index';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
@@ -144,6 +145,7 @@ export class AgentRuntime implements IAgentRuntime {
   private initRejecter: ((reason?: any) => void) | undefined;
   private migratedPlugins = new Set<string>();
   private currentRunId?: UUID; // Track the current run ID
+  private currentRoomId?: UUID; // Track the current room for logging
   private currentActionContext?: {
     // Track current action execution context
     actionName: string;
@@ -221,9 +223,11 @@ export class AgentRuntime implements IAgentRuntime {
 
   /**
    * Start a new run for tracking prompts
+   * @param roomId Optional room ID to associate logs with this conversation
    */
-  startRun(): UUID {
+  startRun(roomId?: UUID): UUID {
     this.currentRunId = this.createRunId();
+    this.currentRoomId = roomId;
     return this.currentRunId;
   }
 
@@ -232,6 +236,7 @@ export class AgentRuntime implements IAgentRuntime {
    */
   endRun(): void {
     this.currentRunId = undefined;
+    this.currentRoomId = undefined;
   }
 
   /**
@@ -333,14 +338,11 @@ export class AgentRuntime implements IAgentRuntime {
       }
     }
     if (plugin.services) {
-
       for (const service of plugin.services) {
         const serviceType = service.serviceType as ServiceTypeName;
         const serviceName = service.name || 'Unknown';
 
-        this.logger.debug(
-          `Plugin ${plugin.name} registering service: ${serviceType}`
-        );
+        this.logger.debug(`Plugin ${plugin.name} registering service: ${serviceType}`);
 
         // ensure we have a promise, so when it's actually loaded via registerService,
         // we can trigger the loading of service dependencies
@@ -512,7 +514,7 @@ export class AgentRuntime implements IAgentRuntime {
           source: 'elizaos',
           type: ChannelType.SELF,
           channelId: this.agentId,
-          serverId: this.agentId,
+          messageServerId: this.agentId,
           worldId: this.agentId,
         });
       }
@@ -1358,7 +1360,7 @@ export class AgentRuntime implements IAgentRuntime {
 
     const rf = {
       worldId: world.id,
-      serverId: world.serverId,
+      messageServerId: world.messageServerId,
       source,
       agentId: this.agentId,
     };
@@ -1388,7 +1390,7 @@ export class AgentRuntime implements IAgentRuntime {
     };
     const wf = {
       worldId: world.id,
-      serverId: world.serverId,
+      messageServerId: world.messageServerId,
     };
 
     if (entitiesToCreate.length) {
@@ -1449,7 +1451,7 @@ export class AgentRuntime implements IAgentRuntime {
     source,
     type,
     channelId,
-    serverId,
+    messageServerId,
     userId,
     metadata,
   }: {
@@ -1462,12 +1464,12 @@ export class AgentRuntime implements IAgentRuntime {
     source?: string;
     type?: ChannelType;
     channelId?: string;
-    serverId?: string;
+    messageServerId?: UUID;
     userId?: UUID;
     metadata?: Record<string, any>;
   }) {
-    if (!worldId && serverId) {
-      worldId = createUniqueUuid(this, serverId);
+    if (!worldId && messageServerId) {
+      worldId = createUniqueUuid(this, messageServerId);
     }
     const names = [name, userName].filter(Boolean) as string[];
     const entityMetadata = {
@@ -1523,9 +1525,12 @@ export class AgentRuntime implements IAgentRuntime {
       }
       await this.ensureWorldExists({
         id: worldId,
-        name: worldName || serverId ? `World for server ${serverId}` : `World for room ${roomId}`,
+        name:
+          worldName || messageServerId
+            ? `World for server ${messageServerId}`
+            : `World for room ${roomId}`,
         agentId: this.agentId,
-        serverId: serverId || 'default',
+        messageServerId: messageServerId,
         metadata,
       });
       await this.ensureRoomExists({
@@ -1534,7 +1539,7 @@ export class AgentRuntime implements IAgentRuntime {
         source: source || 'default',
         type: type || ChannelType.DM,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
       });
       try {
@@ -1604,6 +1609,10 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getParticipantsForRoom(roomId);
   }
 
+  async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+    return await this.adapter.isRoomParticipant(roomId, entityId);
+  }
+
   async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
     return await this.adapter.addParticipantsRoom([entityId], roomId);
   }
@@ -1615,7 +1624,7 @@ export class AgentRuntime implements IAgentRuntime {
   /**
    * Ensure the existence of a world.
    */
-  async ensureWorldExists({ id, name, serverId, metadata }: World) {
+  async ensureWorldExists({ id, name, messageServerId, metadata }: World) {
     const world = await this.getWorld(id);
     if (!world) {
       this.logger.debug(
@@ -1623,7 +1632,7 @@ export class AgentRuntime implements IAgentRuntime {
         JSON.stringify({
           id,
           name,
-          serverId,
+          messageServerId,
           agentId: this.agentId,
         })
       );
@@ -1631,14 +1640,23 @@ export class AgentRuntime implements IAgentRuntime {
         id,
         name,
         agentId: this.agentId,
-        serverId: serverId || 'default',
+        messageServerId,
         metadata,
       });
       this.logger.debug(`World ${id} created successfully.`);
     }
   }
 
-  async ensureRoomExists({ id, name, source, type, channelId, serverId, worldId, metadata }: Room) {
+  async ensureRoomExists({
+    id,
+    name,
+    source,
+    type,
+    channelId,
+    messageServerId,
+    worldId,
+    metadata,
+  }: Room) {
     if (!worldId) throw new Error('worldId is required');
     const room = await this.getRoom(id);
     if (!room) {
@@ -1649,7 +1667,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         type,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
         metadata,
       });
@@ -1868,9 +1886,7 @@ export class AgentRuntime implements IAgentRuntime {
       );
       return;
     }
-    this.logger.info(
-      `Registering service: ${serviceType}`
-    );
+    this.logger.info(`Registering service: ${serviceType}`);
 
     // Update service status to registering
     this.serviceRegistrationStatus.set(serviceType, 'registering');
@@ -1938,16 +1954,12 @@ export class AgentRuntime implements IAgentRuntime {
       // Update service status to registered
       this.serviceRegistrationStatus.set(serviceType, 'registered');
 
-      this.logger.info(
-        `Service ${serviceType} registered successfully`
-      );
+      this.logger.info(`Service ${serviceType} registered successfully`);
     } catch (error: any) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
 
-      this.logger.error(
-        `Failed to register service ${serviceType}: ${errorMessage}`
-      );
+      this.logger.error(`Failed to register service ${serviceType}: ${errorMessage}`);
 
       // Provide additional context about the failure
       if (error?.message?.includes('timed out waiting for runtime initialization')) {
@@ -1957,8 +1969,8 @@ export class AgentRuntime implements IAgentRuntime {
       } else if (error?.message?.includes('Not implemented')) {
         this.logger.error(
           `Service ${serviceType} failed because it does not implement the static start() method. ` +
-          `All services must override the base Service.start() method. ` +
-          `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
+            `All services must override the base Service.start() method. ` +
+            `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
         );
         if (errorStack) {
           this.logger.debug(`Stack trace: ${errorStack}`);
@@ -2105,7 +2117,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Helper to get a setting value with fallback chain
     const getSettingWithFallback = (
-      param: 'MAX_TOKENS' | 'TEMPERATURE' | 'TOP_P' | 'TOP_K' | 'MIN_P' | 'SEED' | 'REPETITION_PENALTY' | 'FREQUENCY_PENALTY' | 'PRESENCE_PENALTY',
+      param:
+        | 'MAX_TOKENS'
+        | 'TEMPERATURE'
+        | 'TOP_P'
+        | 'TOP_K'
+        | 'MIN_P'
+        | 'SEED'
+        | 'REPETITION_PENALTY'
+        | 'FREQUENCY_PENALTY'
+        | 'PRESENCE_PENALTY',
       legacyKey?: string
     ): number | null => {
       // Try model-specific setting first
@@ -2196,11 +2217,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Log input parameters (keep debug log if useful)
     // Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
-    const binaryModels = [ModelType.TRANSCRIPTION, ModelType.IMAGE, ModelType.AUDIO, ModelType.VIDEO];
+    const binaryModels = [
+      ModelType.TRANSCRIPTION,
+      ModelType.IMAGE,
+      ModelType.AUDIO,
+      ModelType.VIDEO,
+    ];
     if (!binaryModels.includes(modelKey as any)) {
       this.logger.debug(
         `[useModel] ${modelKey} input: ` +
-        JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
+          JSON.stringify(params, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
     } else {
       // For binary models, just log the type and size info
@@ -2212,7 +2238,11 @@ export class AgentRuntime implements IAgentRuntime {
       } else if (typeof params === 'object' && params !== null) {
         if ('audio' in params && Buffer.isBuffer(params.audio)) {
           sizeInfo = `${(params.audio as Buffer).length} bytes`;
-        } else if ('audio' in params && typeof Blob !== 'undefined' && params.audio instanceof Blob) {
+        } else if (
+          'audio' in params &&
+          typeof Blob !== 'undefined' &&
+          params.audio instanceof Blob
+        ) {
           sizeInfo = `${(params.audio as Blob).size} bytes`;
         }
       }
@@ -2246,16 +2276,9 @@ export class AgentRuntime implements IAgentRuntime {
       // The `user` parameter is used by LLM providers for tracking and analytics purposes.
       // We only auto-populate when user is undefined (not explicitly set to empty string or null)
       // to allow users to intentionally set an empty identifier if needed.
-      if (
-        typeof modelParams === 'object' &&
-        modelParams !== null &&
-        !Array.isArray(modelParams) &&
-        !BufferUtils.isBuffer(modelParams) &&
-        !(modelParams instanceof Date) &&
-        !(modelParams instanceof RegExp)
-      ) {
+      if (isPlainObject(modelParams)) {
         if (modelParams.user === undefined && this.character?.name) {
-          modelParams.user = this.character.name;
+          (modelParams as Record<string, unknown>).user = this.character.name;
         }
       }
     }
@@ -2274,8 +2297,9 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug(
         `[useModel] ${modelKey} output (took ${Number(elapsedTime.toFixed(2)).toLocaleString()}ms):`,
         Array.isArray(response)
-          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${response.length
-          } items)`
+          ? `${JSON.stringify(response.slice(0, 5))}...${JSON.stringify(response.slice(-5))} (${
+              response.length
+            } items)`
           : JSON.stringify(response, safeReplacer(), 2).replace(/\\n/g, '\n')
       );
 
@@ -2294,7 +2318,7 @@ export class AgentRuntime implements IAgentRuntime {
       // Keep the existing model logging for backward compatibility
       this.adapter.log({
         entityId: this.agentId,
-        roomId: this.agentId,
+        roomId: this.currentRoomId ?? this.agentId,
         body: {
           modelType,
           modelKey,
@@ -2303,15 +2327,16 @@ export class AgentRuntime implements IAgentRuntime {
             prompt: promptContent,
           },
           prompt: promptContent,
+          systemPrompt: this.character?.system || null,
           runId: this.getCurrentRunId(),
           timestamp: Date.now(),
           executionTime: elapsedTime,
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2522,13 +2547,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-          typeof agent.settings?.secrets === 'object'
+        typeof agent.settings?.secrets === 'object'
           ? {
-            ...(typeof existingAgent.settings?.secrets === 'object'
-              ? existingAgent.settings.secrets
-              : {}),
-            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-          }
+              ...(typeof existingAgent.settings?.secrets === 'object'
+                ? existingAgent.settings.secrets
+                : {}),
+              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+            }
           : undefined;
 
       if (mergedSecrets) {
@@ -2803,7 +2828,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.countMemories(roomId, unique, tableName);
   }
   async getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -2838,7 +2863,15 @@ export class AgentRuntime implements IAgentRuntime {
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
     return await this.adapter.getRoomsByIds(roomIds);
   }
-  async createRoom({ id, name, source, type, channelId, serverId, worldId }: Room): Promise<UUID> {
+  async createRoom({
+    id,
+    name,
+    source,
+    type,
+    channelId,
+    messageServerId,
+    worldId,
+  }: Room): Promise<UUID> {
     if (!worldId) throw new Error('worldId is required');
     const res = await this.adapter.createRooms([
       {
@@ -2847,7 +2880,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         type,
         channelId,
-        serverId,
+        messageServerId,
         worldId,
       },
     ]);

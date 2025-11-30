@@ -19,6 +19,7 @@ const mockCharacterPlugin: Plugin = {
 
 describe('Bootstrap Auto-Loading', () => {
   let serverFixture: TestServerFixture;
+  const originalEnv = { ...process.env };
 
   beforeEach(async () => {
     // Create fresh server instance for each test
@@ -29,6 +30,8 @@ describe('Bootstrap Auto-Loading', () => {
   afterEach(async () => {
     // Cleanup server
     await serverFixture.cleanup();
+    // Restore env
+    process.env = originalEnv;
   });
 
   describe('Bootstrap Plugin Auto-Injection', () => {

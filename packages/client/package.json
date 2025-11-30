@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.6.5-alpha.11",
+  "version": "1.6.5-alpha.15",
   "description": "Web client interface for ElizaOS agents",
   "repository": {
     "type": "git",
@@ -53,7 +53,8 @@
     "test:unit:watch": "./scripts/run-bun-tests.sh --watch",
     "test:component": "cypress run --component",
     "test:e2e": "cypress run --e2e",
-    "test:e2e:with-server": "./scripts/test-e2e-with-server.sh",
+    "test:e2e:server": "./scripts/test-e2e-server.sh",
+    "test:e2e:server:auth": "./scripts/test-e2e-server-auth.sh",
     "cypress:open": "cypress open",
     "type-check": "cd cypress && bunx tsc --noEmit --project tsconfig.json"
   },

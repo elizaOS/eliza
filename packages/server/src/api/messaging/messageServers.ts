@@ -6,20 +6,39 @@ import type { AgentServer } from '../../index';
 /**
  * Server management functionality
  */
-export function createServersRouter(serverInstance: AgentServer): express.Router {
+export function createMessageServersRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
-  // GET /central-servers
-  (router as any).get('/central-servers', async (_req: express.Request, res: express.Response) => {
+  // GET /server/current - Get current server's ID (for this running instance)
+  // This is the serverId that clients should use when creating channels/messages
+  (router as any).get('/message-server/current', async (_req: express.Request, res: express.Response) => {
     try {
-      const servers = await serverInstance.getServers();
-      res.json({ success: true, data: { servers } });
+      res.json({
+        success: true,
+        data: {
+          messageServerId: serverInstance.messageServerId,
+        },
+      });
     } catch (error) {
       logger.error(
-        '[Messages Router /central-servers] Error fetching servers:',
+        '[Messages Router /message-server/current] Error fetching current server:',
         error instanceof Error ? error.message : String(error)
       );
-      res.status(500).json({ success: false, error: 'Failed to fetch servers' });
+      res.status(500).json({ success: false, error: 'Failed to fetch current server' });
+    }
+  });
+
+  // GET /message-servers - List all message servers
+  (router as any).get('/message-servers', async (_req: express.Request, res: express.Response) => {
+    try {
+      const messageServers = await serverInstance.getServers();
+      res.json({ success: true, data: { messageServers } });
+    } catch (error) {
+      logger.error(
+        '[Messages Router /message-servers] Error fetching message servers:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({ success: false, error: 'Failed to fetch message servers' });
     }
   });
 
@@ -70,7 +89,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       // RLS security: Only allow modifying agents for current server
-      if (serverId !== serverInstance.serverId) {
+      if (serverId !== serverInstance.messageServerId) {
         return res.status(403).json({
           success: false,
           error: 'Cannot modify agents for a different server',
@@ -78,10 +97,10 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       try {
-        // Add agent to server association
-        await serverInstance.addAgentToServer(serverId, agentId as UUID);
+        // Add agent to message server association
+        await serverInstance.addAgentToMessageServer(serverId, agentId as UUID);
 
-        // Notify the agent's message bus service to start listening for this server
+        // Notify the agent's message bus service to start listening for this message server
         const messageForBus = {
           type: 'agent_added_to_server',
           serverId,
@@ -122,7 +141,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       // RLS security: Only allow modifying agents for current server
-      if (serverId !== serverInstance.serverId) {
+      if (serverId !== serverInstance.messageServerId) {
         return res.status(403).json({
           success: false,
           error: 'Cannot modify agents for a different server',
@@ -130,10 +149,10 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       try {
-        // Remove agent from server association
-        await serverInstance.removeAgentFromServer(serverId, agentId);
+        // Remove agent from message server association
+        await serverInstance.removeAgentFromMessageServer(serverId, agentId);
 
-        // Notify the agent's message bus service to stop listening for this server
+        // Notify the agent's message bus service to stop listening for this message server
         const messageForBus = {
           type: 'agent_removed_from_server',
           serverId,
@@ -173,7 +192,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       // RLS security: Only allow accessing agents for current server
-      if (serverId !== serverInstance.serverId) {
+      if (serverId !== serverInstance.messageServerId) {
         return res.status(403).json({
           success: false,
           error: 'Cannot access agents for a different server',
@@ -181,7 +200,7 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       try {
-        const agents = await serverInstance.getAgentsForServer(serverId);
+        const agents = await serverInstance.getAgentsForMessageServer(serverId);
         res.json({
           success: true,
           data: {
@@ -199,9 +218,9 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
     }
   );
 
-  // GET /agents/:agentId/servers - List servers agent belongs to
+  // GET /agents/:agentId/message-servers - List message servers agent belongs to
   (router as any).get(
-    '/agents/:agentId/servers',
+    '/agents/:agentId/message-servers',
     async (req: express.Request, res: express.Response) => {
       const agentId = validateUuid(req.params.agentId);
 
@@ -213,23 +232,49 @@ export function createServersRouter(serverInstance: AgentServer): express.Router
       }
 
       try {
-        const servers = await serverInstance.getServersForAgent(agentId);
+        const messageServers = await serverInstance.getMessageServersForAgent(agentId);
         res.json({
           success: true,
           data: {
             agentId,
-            servers, // Array of server IDs
+            messageServers, // Array of message server IDs
           },
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error fetching servers for agent ${agentId}:`,
+          `[MessagesRouter] Error fetching message servers for agent ${agentId}:`,
           error instanceof Error ? error.message : String(error)
         );
-        res.status(500).json({ success: false, error: 'Failed to fetch agent servers' });
+        res.status(500).json({ success: false, error: 'Failed to fetch agent message servers' });
       }
     }
   );
+
+  // ============================================================================
+  // DEPRECATED ROUTES - For backward compatibility only
+  // ============================================================================
+
+  /**
+   * @deprecated Use GET /message-servers instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  (router as any).get('/central-servers', async (_req: express.Request, res: express.Response) => {
+    logger.warn(
+      '[DEPRECATED] GET /central-servers is deprecated. Use GET /message-servers instead.'
+    );
+
+    try {
+      const messageServers = await serverInstance.getServers();
+      // Return with old key name for backward compatibility
+      res.json({ success: true, data: { servers: messageServers } });
+    } catch (error) {
+      logger.error(
+        '[Messages Router /central-servers] Error fetching servers:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({ success: false, error: 'Failed to fetch servers' });
+    }
+  });
 
   return router;
 }
