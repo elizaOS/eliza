@@ -19,13 +19,11 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
 
   // If schema is already using pgSchema, return as-is
   if (isAlreadyNamespaced(schema, schemaName)) {
-    logger.debug(`[SchemaTransformer] Plugin '${pluginName}' already uses schema '${schemaName}'`);
+    logger.debug({ src: 'plugin:sql', pluginName, schemaName }, 'Plugin already uses expected schema');
     return schema;
   }
 
-  logger.info(
-    `[SchemaTransformer] Transforming plugin '${pluginName}' to use schema '${schemaName}'`
-  );
+  logger.info({ src: 'plugin:sql', pluginName, schemaName }, 'Transforming plugin to use schema');
 
   // Transform the schema object
   const transformed: any = {};
@@ -41,8 +39,8 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
         // as it would require reconstructing all column definitions, constraints, etc.
         // For now, we'll log a warning and return the original
         logger.warn(
-          `[SchemaTransformer] Table '${config.name}' in plugin '${pluginName}' should use pgSchema('${schemaName}').table(...) ` +
-            `for proper isolation. Manual migration may be required.`
+          { src: 'plugin:sql', tableName: config.name, pluginName, expectedSchema: schemaName },
+          'Table should use pgSchema for proper isolation - manual migration may be required'
         );
         transformed[key] = value;
       } else {

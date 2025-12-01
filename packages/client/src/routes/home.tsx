@@ -12,8 +12,6 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
-import { useAuth } from '@/context/AuthContext';
-import { useServerConfig } from '@/context/ServerConfigContext';
 
 /**
  * Renders the main dashboard for managing agents and groups, providing interactive controls for viewing, starting, messaging, and configuring agents, as well as creating and editing groups.
@@ -23,8 +21,6 @@ import { useServerConfig } from '@/context/ServerConfigContext';
 export default function Home() {
   const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
   const navigate = useNavigate();
-  const { isAuthenticated, requireAuth } = useAuth();
-  const { requiresAuth, isLoading: isLoadingServerConfig } = useServerConfig();
 
   // Extract agents properly from the response
   const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
@@ -48,26 +44,7 @@ export default function Home() {
 
   const handleNavigateToDm = async (agent: Partial<Agent>, forceNew: boolean) => {
     if (!agent.id) return;
-
-    // Wait for server config to load before making navigation decisions
-    if (isLoadingServerConfig) {
-      clientLogger.info('[Home] Waiting for server config to load...');
-      return;
-    }
-
-    clientLogger.info(
-      `[Home] handleNavigateToDm called - requiresAuth: ${requiresAuth}, isAuthenticated: ${isAuthenticated}`
-    );
-
-    // If server requires auth and user is not authenticated, open auth dialog instead of navigating
-    if (requiresAuth && !isAuthenticated) {
-      clientLogger.info('[Home] Server requires authentication - opening auth dialog');
-      requireAuth();
-      return;
-    }
-
     clientLogger.info(`[Home] Navigating to chat/${agent.id}`);
-    // Navigate to agent chat - DM channel will be created automatically with default server
     navigate(`/chat/${agent.id}`, { state: { forceNew } });
   };
 

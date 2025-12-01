@@ -123,10 +123,7 @@ async function readStreamSafe(
     const text = await new Response(stream).text();
     return text;
   } catch (error) {
-    logger.debug(
-      `[bunExec] Error reading ${streamName}:`,
-      error instanceof Error ? error.message : String(error)
-    );
+    logger.debug({ src: 'cli', util: 'bun-exec', streamName, error: error instanceof Error ? error.message : String(error) }, 'Error reading stream');
     return '';
   }
 }
@@ -178,7 +175,7 @@ export async function bunExec(
     const escapedArgs = args.map(escapeShellArg);
     const fullCommand = [command, ...escapedArgs].join(' ');
 
-    logger.debug(`[bunExec] Executing: ${fullCommand}`);
+    logger.debug({ src: 'cli', util: 'bun-exec', command: fullCommand }, 'Executing command');
 
     // Use Bun's shell functionality with proper options
     // Always ensure bun is in PATH for subprocess execution
@@ -239,10 +236,7 @@ export async function bunExec(
     const success = exitCode === 0;
 
     if (!success && options.stdio !== 'ignore') {
-      logger.debug(`[bunExec] Command failed with exit code ${exitCode}`);
-      if (stderr) {
-        logger.debug({ stderr }, `[bunExec] stderr:`);
-      }
+      logger.debug({ src: 'cli', util: 'bun-exec', exitCode, stderr }, 'Command failed');
     }
 
     return {
@@ -278,13 +272,9 @@ export async function bunExec(
     if (proc && proc.exitCode === null) {
       try {
         proc.kill();
-        logger.debug('[bunExec] Killed still-running process in cleanup');
+        logger.debug({ src: 'cli', util: 'bun-exec' }, 'Killed still-running process');
       } catch (cleanupError) {
-        // Process may have exited between our check and the kill attempt
-        logger.debug(
-          '[bunExec] Process cleanup error (process may have already exited):',
-          cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
-        );
+        logger.debug({ src: 'cli', util: 'bun-exec', error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }, 'Process cleanup error');
       }
     }
   }

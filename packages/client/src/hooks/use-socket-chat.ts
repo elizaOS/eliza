@@ -42,7 +42,7 @@ export function useSocketChat({
   onInputDisabledChange,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
-  const { getJwtToken, getApiKey } = useAuth();
+  const { getApiKey } = useAuth();
   const animatedMessageIdRef = useRef<string | null>(null);
   const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
 
@@ -97,10 +97,9 @@ export function useSocketChat({
       return;
     }
 
-    // Initialize socket with JWT token and API key for authentication
-    const jwtToken = getJwtToken();
+    // Initialize socket with API key for authentication
     const apiKey = getApiKey();
-    socketIOManager.initialize(currentUserId, jwtToken ?? undefined, apiKey ?? undefined);
+    socketIOManager.initialize(currentUserId, apiKey ?? undefined);
 
     // Only join if this specific channelId hasn't been joined by this hook instance yet,
     // or if the channelId has changed.

@@ -3,7 +3,6 @@ import type { Component, Entity, Participant, Relationship, Room, World } from '
 import type { Memory, MemoryMetadata } from './memory';
 import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
-import type { User } from './user';
 
 /**
  * Represents a log entry
@@ -185,7 +184,7 @@ export interface IDatabaseAdapter {
   }): Promise<void>;
 
   getLogs(params: {
-    entityId: UUID;
+    entityId?: UUID;
     roomId?: UUID;
     type?: string;
     count?: number;
@@ -200,6 +199,7 @@ export interface IDatabaseAdapter {
     status?: RunStatus | 'all';
     from?: number;
     to?: number;
+    entityId?: UUID;
   }): Promise<AgentRunSummaryResult>;
 
   searchMemories(params: {
@@ -323,13 +323,6 @@ export interface IDatabaseAdapter {
     count?: number;
     tableName?: string;
   }): Promise<Memory[]>;
-
-  // User management methods (for JWT authentication with ENABLE_DATA_ISOLATION)
-  getUserByEmail(email: string): Promise<User | null>;
-  getUserByUsername(username: string): Promise<User | null>;
-  getUserById(id: UUID): Promise<User | null>;
-  createUser(user: User): Promise<User>;
-  updateUserLastLogin(userId: UUID): Promise<void>;
 }
 
 /**

@@ -1,5 +1,4 @@
 import { type IAgentRuntime, Memory, ModelType, Provider, State } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 
 /**
  * Formats an array of memories into a single string with each memory content text separated by a new line.
@@ -103,7 +102,7 @@ const factsProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in factsProvider:');
+      runtime.logger.error({ src: 'plugin:bootstrap:provider:facts', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in factsProvider');
       return {
         values: {
           facts: '',

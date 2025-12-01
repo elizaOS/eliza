@@ -143,7 +143,7 @@ export async function loadProject(dir: string): Promise<Project> {
     const packageJson = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     const main = packageJson.main;
     if (!main) {
-      logger.warn('No main field found in package.json, using default character');
+      logger.warn({ src: 'cli', util: 'project' }, 'No main field found in package.json, using default character');
 
       // Create a fallback project with the default Eliza character
       // Use deterministic UUID based on character name to match runtime behavior
@@ -156,7 +156,7 @@ export async function loadProject(dir: string): Promise<Project> {
           name: defaultCharacterName,
         },
         init: async () => {
-          logger.info('Initializing default Eliza character');
+          logger.info({ src: 'cli', util: 'project' }, 'Initializing default Eliza character');
         },
       };
 
@@ -187,22 +187,22 @@ export async function loadProject(dir: string): Promise<Project> {
               ? 'file:///' + importPath.replace(/\\/g, '/')
               : 'file://' + importPath;
           projectModule = (await import(importUrl)) as ProjectModule;
-          logger.info(`Loaded project from ${entryPoint}`);
+          logger.info({ src: 'cli', util: 'project', entryPoint }, 'Loaded project');
 
           // Debug the module structure
           const exportKeys = Object.keys(projectModule);
-          logger.debug({ exportKeys }, `Module exports:`);
+          logger.debug({ src: 'cli', util: 'project', exportKeys }, 'Module exports');
 
           if (exportKeys.includes('default')) {
-            logger.debug({ type: typeof projectModule.default }, `Default export type:`);
+            logger.debug({ src: 'cli', util: 'project', type: typeof projectModule.default }, 'Default export type');
             if (typeof projectModule.default === 'object' && projectModule.default !== null) {
-              logger.debug({ keys: Object.keys(projectModule.default) }, `Default export keys:`);
+              logger.debug({ src: 'cli', util: 'project', keys: Object.keys(projectModule.default) }, 'Default export keys');
             }
           }
 
           break;
         } catch (error) {
-          logger.warn({ error, entryPoint }, `Failed to import project`);
+          logger.warn({ src: 'cli', util: 'project', error: error instanceof Error ? error.message : String(error), entryPoint }, 'Failed to import project');
         }
       }
     }
@@ -213,18 +213,18 @@ export async function loadProject(dir: string): Promise<Project> {
 
     // Check if it's a plugin using our improved detection
     const moduleIsPlugin = isPlugin(projectModule);
-    logger.debug({ moduleIsPlugin }, `Is this a plugin?`);
+    logger.debug({ src: 'cli', util: 'project', moduleIsPlugin }, 'Is this a plugin?');
 
     if (moduleIsPlugin) {
-      logger.info('Detected plugin module instead of project');
+      logger.info({ src: 'cli', util: 'project' }, 'Detected plugin module instead of project');
 
       try {
         // Extract the plugin object
         const plugin = extractPlugin(projectModule);
-        logger.debug({ name: plugin.name, description: plugin.description }, `Found plugin:`);
+        logger.debug({ src: 'cli', util: 'project', name: plugin.name, description: plugin.description }, 'Found plugin');
 
         // Log plugin structure for debugging
-        logger.debug({ keys: Object.keys(plugin) }, `Plugin has the following properties:`);
+        logger.debug({ src: 'cli', util: 'project', keys: Object.keys(plugin) }, 'Plugin has the following properties');
 
         // Create a more complete plugin object with all required properties
         const completePlugin: Plugin = {
@@ -236,7 +236,7 @@ export async function loadProject(dir: string): Promise<Project> {
           init:
             plugin.init ||
             (async () => {
-              logger.info(`Dummy init for plugin: ${plugin.name}`);
+              logger.info({ src: 'cli', util: 'project', pluginName: plugin.name }, 'Dummy init for plugin');
             }),
         };
 
@@ -251,14 +251,14 @@ export async function loadProject(dir: string): Promise<Project> {
           system: `${elizaCharacter.system} Testing the plugin: ${completePlugin.name}.`,
         };
 
-        logger.info(`Using Eliza character as test agent for plugin: ${completePlugin.name}`);
+        logger.info({ src: 'cli', util: 'project', pluginName: completePlugin.name }, 'Using Eliza character as test agent for plugin');
 
         // Create a test agent with the plugin included
         const testAgent: ProjectAgent = {
           character: testCharacter,
           plugins: [completePlugin], // Only include the plugin being tested
           init: async () => {
-            logger.info(`Initializing Eliza test agent for plugin: ${completePlugin.name}`);
+            logger.info({ src: 'cli', util: 'project', pluginName: completePlugin.name }, 'Initializing Eliza test agent for plugin');
             // The plugin will be registered automatically in runtime.initialize()
           },
         };
@@ -276,8 +276,8 @@ export async function loadProject(dir: string): Promise<Project> {
         };
       } catch (error) {
         logger.error(
-          'Error extracting plugin from module:',
-          error instanceof Error ? error.message : String(error)
+          { src: 'cli', util: 'project', error: error instanceof Error ? error.message : String(error) },
+          'Error extracting plugin from module'
         );
         throw error;
       }
@@ -294,7 +294,7 @@ export async function loadProject(dir: string): Promise<Project> {
     ) {
       // Use the agents from the default export
       agents.push(...(projectModule.default.agents as ProjectAgent[]));
-      logger.debug({ count: agents.length }, `Found agents in default export's agents array`);
+      logger.debug({ src: 'cli', util: 'project', count: agents.length }, 'Found agents in default export agents array');
     }
     // Only if we didn't find agents in the default export, look for other exports
     else {
@@ -305,7 +305,7 @@ export async function loadProject(dir: string): Promise<Project> {
           if ((value as ProjectModule).character && (value as ProjectModule).init) {
             // If it's a single agent, add it
             agents.push(value as ProjectAgent);
-            logger.debug(`Found agent in default export (single agent)`);
+            logger.debug({ src: 'cli', util: 'project' }, 'Found agent in default export (single agent)');
           }
         } else if (
           value &&
@@ -315,7 +315,7 @@ export async function loadProject(dir: string): Promise<Project> {
         ) {
           // If it's a named export that looks like an agent, add it
           agents.push(value as ProjectAgent);
-          logger.debug({ key }, `Found agent in named export`);
+          logger.debug({ src: 'cli', util: 'project', key }, 'Found agent in named export');
         }
       }
     }
@@ -332,7 +332,7 @@ export async function loadProject(dir: string): Promise<Project> {
 
     return project;
   } catch (error) {
-    logger.error({ error }, 'Error loading project:');
+    logger.error({ src: 'cli', util: 'project', error: error instanceof Error ? error.message : String(error) }, 'Error loading project');
     throw error;
   }
 }

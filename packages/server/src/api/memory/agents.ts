@@ -33,10 +33,13 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const includeEmbedding = req.query.includeEmbedding === 'true';
       const tableName = (req.query.tableName as string) || 'messages';
 
+      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+
       // Convert channelId to agent's unique roomId
       const roomId = createUniqueUuid(runtime, channelId);
-      logger.info(
-        `[ROOM MEMORIES] Converting channelId ${channelId} to roomId ${roomId} for agent ${agentId}`
+      logger.debug(
+        { src: 'http', path: req.path, agentId, channelId, roomId },
+        'Converting channelId to roomId'
       );
 
       const memories = await runtime.getMemories({
@@ -44,6 +47,7 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         roomId,
         count: limit,
         end: before,
+        entityId: entityId || undefined,
       });
 
       const cleanMemories = includeEmbedding
@@ -56,8 +60,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(
-        '[MEMORIES GET] Error retrieving memories for room:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error retrieving memories for room'
       );
       sendError(
         res,
@@ -86,6 +90,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const tableName = (req.query.tableName as string) || 'messages';
       const includeEmbedding = req.query.includeEmbedding === 'true';
 
+      // Get entityId from X-Entity-Id header for RLS context
+      const entityId = validateUuid(req.headers['x-entity-id'] as string);
+
       // Handle both roomId and channelId parameters
       let roomIdToUse: UUID | undefined;
 
@@ -97,8 +104,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         }
         // Use createUniqueUuid to generate the same roomId the agent uses
         roomIdToUse = createUniqueUuid(runtime, channelId);
-        logger.info(
-          `[AGENT MEMORIES] Converting channelId ${channelId} to roomId ${roomIdToUse} for agent ${agentId}`
+        logger.debug(
+          { src: 'http', path: req.path, agentId, channelId, roomId: roomIdToUse },
+          'Converting channelId to roomId'
         );
       } else if (req.query.roomId) {
         // Backward compatibility: still accept roomId directly
@@ -113,6 +121,7 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
         agentId,
         tableName,
         roomId: roomIdToUse,
+        entityId: entityId || undefined,
       });
 
       const cleanMemories = includeEmbedding
@@ -124,8 +133,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(
-        `[AGENT MEMORIES] Error retrieving memories for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error retrieving agent memories'
       );
       sendError(
         res,
@@ -190,13 +199,10 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
 
       await runtime.updateMemory(memoryToUpdate);
 
-      logger.success(`[MEMORY UPDATE] Successfully updated memory ${memoryId}`);
+      logger.success({ src: 'http', path: req.path, agentId, memoryId }, 'Memory updated');
       sendSuccess(res, { id: memoryId, message: 'Memory updated successfully' });
     } catch (error) {
-      logger.error(
-        `[MEMORY UPDATE] Error updating memory ${memoryId}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      logger.error({ src: 'http', path: req.path, agentId, memoryId, error: error instanceof Error ? error.message : String(error) }, 'Error updating memory');
       sendError(
         res,
         500,
@@ -227,8 +233,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { deleted, message: 'All agent memories cleared successfully' });
     } catch (error) {
       logger.error(
-        '[DELETE ALL AGENT MEMORIES] Error deleting all agent memories:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId: req.params.agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error deleting all agent memories'
       );
       sendError(
         res,
@@ -265,8 +271,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       res.status(204).send();
     } catch (error) {
       logger.error(
-        '[DELETE ALL MEMORIES] Error deleting all memories:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId: req.params.agentId, roomId: req.params.roomId, error: error instanceof Error ? error.message : String(error) },
+        'Error deleting all memories'
       );
       sendError(
         res,
@@ -299,8 +305,8 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { message: 'Memory deleted successfully' });
     } catch (error) {
       logger.error(
-        `[DELETE MEMORY] Error deleting memory ${req.params.memoryId}:`,
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, agentId: req.params.agentId, memoryId: req.params.memoryId, error: error instanceof Error ? error.message : String(error) },
+        'Error deleting memory'
       );
       sendError(
         res,

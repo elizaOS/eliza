@@ -17,7 +17,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
   const buildCacheKey = (
     agentId: UUID,
-    query: { roomId?: unknown; status?: unknown; limit?: unknown; from?: unknown; to?: unknown }
+    query: { roomId?: unknown; status?: unknown; limit?: unknown; from?: unknown; to?: unknown; entityId?: unknown }
   ) =>
     JSON.stringify({
       agentId,
@@ -26,6 +26,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       limit: query.limit || null,
       from: query.from || null,
       to: query.to || null,
+      entityId: query.entityId || null,
     });
 
   // List Agent Runs
@@ -51,9 +52,13 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const fromTime = from ? Number(from) : undefined;
       const toTime = to ? Number(to) : undefined;
 
+      // Get entityId from X-Entity-Id header for RLS context
+      const entityId = validateUuid(req.headers['x-entity-id'] as string) || undefined;
+
       // Try cache for the common polling path (no explicit time filters)
+      // Include entityId in cache key since results are user-specific with RLS
       const cacheKey =
-        !fromTime && !toTime ? buildCacheKey(agentId, { roomId, status, limit: limitNum }) : null;
+        !fromTime && !toTime ? buildCacheKey(agentId, { roomId, status, limit: limitNum, entityId }) : null;
       if (cacheKey) {
         const cached = runsCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
@@ -82,6 +87,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             status: statusFilter,
             from: fromTime,
             to: toTime,
+            entityId,
           });
 
           if (cacheKey) {
@@ -101,17 +107,18 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         }
       }
 
-      // 1) Direct agent run events
-      const directAgentRunEventsPromise = runtime
+      // 1) Fetch run events
+      // With RLS (entityId present): get only that entity's run_events
+      // Without RLS (entityId absent): get all run_events in the room
+      const directRunEvents = await runtime
         .getLogs({
-          entityId: agentId,
+          entityId,
           roomId: roomId ? (roomId as UUID) : undefined,
           type: 'run_event',
           count: 1000,
         })
         .catch(() => []);
 
-      const directRunEvents = await directAgentRunEventsPromise;
       type RunListItem = {
         runId: string;
         status: 'started' | 'completed' | 'timeout' | 'error';
@@ -188,6 +195,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             tableName: 'messages',
             roomId: roomId ? (roomId as UUID) : undefined,
             count: 200,
+            entityId,
           });
           const authorIds = Array.from(
             new Set(
@@ -197,18 +205,19 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             )
           ).slice(0, 10); // cap to avoid huge fan-out
 
-          const authorRunEvents = await Promise.all(
-            authorIds.map((authorId) =>
-              runtime
-                .getLogs({
-                  entityId: authorId,
-                  roomId: roomId ? (roomId as UUID) : undefined,
-                  type: 'run_event',
-                  count: 500,
-                })
-                .catch(() => [])
-            )
-          );
+          const authorRunEvents = entityId
+            ? []
+            : await Promise.all(
+                authorIds.map(() =>
+                  runtime
+                    .getLogs({
+                      roomId: roomId ? (roomId as UUID) : undefined,
+                      type: 'run_event',
+                      count: 500,
+                    })
+                    .catch(() => [])
+                )
+              );
 
           for (const logs of authorRunEvents) {
             ingestRunEvents(logs);
@@ -220,7 +229,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       }
 
       // 3) Broader participant scan (only if still not enough and no explicit room filter)
-      if (!roomId && needsMoreRuns()) {
+      if (!roomId && !entityId && needsMoreRuns()) {
         try {
           const worlds = await runtime.getAllWorlds();
           const roomIds: UUID[] = [];
@@ -240,10 +249,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
                 const participants: UUID[] = await runtime.getParticipantsForRoom(rId);
                 const otherParticipants = participants.filter((pid) => pid !== agentId).slice(0, 5);
                 const logsPerParticipant = await Promise.all(
-                  otherParticipants.map((participantId) =>
+                  otherParticipants.map(() =>
                     runtime
                       .getLogs({
-                        entityId: participantId,
                         roomId: rId,
                         type: 'run_event',
                         count: 300,
@@ -287,10 +295,11 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       if (runIdSet.size > 0) {
         const logFetchCount = Math.max(200, limitNum * 50);
 
+        // Fetch logs with entityId for RLS filtering (user sees only their run's logs)
         const [action, evaluator, generic] = await Promise.all([
           runtime
             .getLogs({
-              entityId: agentId,
+              entityId,
               roomId: roomId ? (roomId as UUID) : undefined,
               type: 'action',
               count: logFetchCount,
@@ -298,7 +307,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             .catch(() => []),
           runtime
             .getLogs({
-              entityId: agentId,
+              entityId,
               roomId: roomId ? (roomId as UUID) : undefined,
               type: 'evaluator',
               count: logFetchCount,
@@ -306,7 +315,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             .catch(() => []),
           runtime
             .getLogs({
-              entityId: agentId,
+              entityId,
               roomId: roomId ? (roomId as UUID) : undefined,
               count: logFetchCount,
             })
@@ -418,44 +427,43 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      // Fetch agent-side logs (actions, evaluators, model usage)
+      // Get entityId from X-Entity-Id header for RLS context
+      const entityId = validateUuid(req.headers['x-entity-id'] as string) || undefined;
+
       const logs: Log[] = await runtime.getLogs({
-        entityId: agentId,
+        entityId,
         roomId: roomId ? (roomId as UUID) : undefined,
-        count: 2000,
+        count: 5000,
       });
 
-      // Also fetch run_event logs emitted under recent message authors' entity IDs for this agent
-      const recentForDetail = await runtime.getMemories({
-        tableName: 'messages',
-        roomId: roomId ? (roomId as UUID) : undefined,
-        count: 300,
+      // Include logs that have this runId OR have this runId as parentRunId (for actions)
+      const directlyRelated = logs.filter((l) => {
+        const body = l.body as { runId?: UUID; parentRunId?: UUID };
+        return body.runId === runId || body.parentRunId === runId;
       });
-      const detailAuthorIds = Array.from(
-        new Set(
-          recentForDetail
-            .map((m) => m.entityId)
-            .filter((eid): eid is UUID => Boolean(eid) && (eid as UUID) !== agentId)
-        )
+
+      // Get all action runIds from matched action logs
+      const actionRunIds = new Set(
+        directlyRelated
+          .filter((l) => l.type === 'action')
+          .map((l) => (l.body as { runId?: UUID }).runId)
+          .filter((id): id is UUID => !!id)
       );
-      const participantRunEvents: Log[] = [];
-      for (const authorId of detailAuthorIds) {
-        try {
-          const rLogs = await runtime.getLogs({
-            entityId: authorId,
-            roomId: roomId ? (roomId as UUID) : undefined,
-            type: 'run_event',
-            count: 2000,
-          });
-          participantRunEvents.push(...rLogs);
-        } catch {
-          // continue
-        }
-      }
 
-      const related = logs
-        .concat(participantRunEvents)
-        .filter((l) => (l.body as { runId?: UUID }).runId === runId);
+      // Also include action_event logs that share runId with matched actions
+      // (action_event logs have the action's runId but no parentRunId)
+      const related = logs.filter((l) => {
+        const body = l.body as { runId?: UUID; parentRunId?: UUID };
+        // Include if directly related to the main run
+        if (body.runId === runId || body.parentRunId === runId) {
+          return true;
+        }
+        // Also include action_event logs that match action runIds
+        if (l.type === 'action_event' && body.runId && actionRunIds.has(body.runId)) {
+          return true;
+        }
+        return false;
+      });
 
       const runEvents = related
         .filter((l) => l.type === 'run_event')

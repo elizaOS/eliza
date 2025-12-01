@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/core",
-  "version": "1.6.5-alpha.10",
+  "version": "1.6.5-alpha.18",
   "description": "",
   "type": "module",
   "main": "dist/index.js",
@@ -54,12 +54,15 @@
     "test:watch": "bun test --watch",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src"
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/"
   },
   "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@types/bun": "^1.2.21",
+    "@types/fast-redact": "^3.0.4",
     "@types/node": "^24.0.3",
     "@types/uuid": "11.0.0",
     "prettier": "3.6.2",
@@ -71,6 +74,7 @@
     "adze": "^2.2.5",
     "crypto-browserify": "^3.12.0",
     "dotenv": "17.2.3",
+    "fast-redact": "^3.5.0",
     "glob": "11.0.3",
     "handlebars": "^4.7.8",
     "pdfjs-dist": "^5.2.133",

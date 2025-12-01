@@ -191,7 +191,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   // Run tracking methods
   createRunId(): UUID;
-  startRun(): UUID;
+  startRun(roomId?: UUID): UUID;
   endRun(): void;
   getCurrentRunId(): UUID;
 

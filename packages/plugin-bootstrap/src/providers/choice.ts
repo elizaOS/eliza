@@ -1,5 +1,4 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 
 // Define an interface for option objects
 /**
@@ -106,7 +105,7 @@ export const choiceProvider: Provider = {
         text: output,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in options provider:');
+      runtime.logger.error({ src: 'plugin:bootstrap:provider:choice', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in options provider');
       return {
         data: {
           tasks: [],

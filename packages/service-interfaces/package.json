@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/service-interfaces",
-  "version": "1.6.5-alpha.10",
+  "version": "1.6.5-alpha.18",
   "description": "Service interface definitions for ElizaOS plugins",
   "type": "module",
   "main": "dist/index.js",
@@ -51,11 +51,13 @@
     "test:watch": "echo 'Skipping tests for types-only package' && exit 0",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
-    "lint": "prettier --write ./src"
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/"
   },
   "author": "ElizaOS",
   "license": "MIT",
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@types/bun": "^1.2.21",
     "prettier": "^3.4.2",
     "typescript": "^5.7.3"

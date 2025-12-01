@@ -12,6 +12,16 @@ import { validateServerIdForRls } from '../../utils/rls-validation';
 export function createMessagingCoreRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
+  // Middleware to handle deprecated parameter names (backward compatibility)
+  router.use((req, _res, next) => {
+    // Map deprecated server_id to message_server_id
+    if (req.body && req.body.server_id && !req.body.message_server_id) {
+      logger.warn('[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.');
+      req.body.message_server_id = req.body.server_id;
+    }
+    next();
+  });
+
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
   (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
     const {
@@ -98,8 +108,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       res.status(201).json({ success: true, data: createdMessage });
     } catch (error) {
       logger.error(
-        '[Messages Router /submit] Error submitting agent message:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/submit', channelId: channel_id, error: error instanceof Error ? error.message : String(error) },
+        'Error submitting agent message'
       );
       res.status(500).json({ success: false, error: 'Failed to submit agent message' });
     }
@@ -193,8 +203,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(201).json({ success: true, data: savedMessage });
     } catch (error) {
       logger.error(
-        '[POST /actions] Error creating action:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/action', channelId: channel_id, error: error instanceof Error ? error.message : String(error) },
+        'Error creating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to create action' });
     }
@@ -267,8 +277,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(200).json({ success: true, data: updated });
     } catch (error) {
       logger.error(
-        '[PATCH /action/:id] Error updating action:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: req.path, messageId: id, error: error instanceof Error ? error.message : String(error) },
+        'Error updating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to update action' });
     }
@@ -319,9 +329,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       };
 
       internalMessageBus.emit('new_message', messageForBus);
-      logger.info(
-        '[Messages Router /ingest-external] Published to internal message bus:',
-        createdRootMessage.id
+      logger.debug(
+        { src: 'http', path: '/ingest-external', messageId: createdRootMessage.id },
+        'Published to internal message bus'
       );
 
       // Also emit to SocketIO for real-time GUI updates if anyone is watching this channel
@@ -345,8 +355,8 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       });
     } catch (error) {
       logger.error(
-        '[Messages Router /ingest-external] Error ingesting external message:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/ingest-external', error: error instanceof Error ? error.message : String(error) },
+        'Error ingesting external message'
       );
       res.status(500).json({ success: false, error: 'Failed to ingest message' });
     }

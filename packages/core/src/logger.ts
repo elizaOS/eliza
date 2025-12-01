@@ -5,6 +5,7 @@ export const __loggerTestHooks = {
 };
 import { getEnv as getEnvironmentVar } from './utils/environment';
 import adze, { setup } from 'adze';
+import fastRedact from 'fast-redact';
 
 // ============================================================================
 // Type Definitions
@@ -139,6 +140,57 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
 }
 
+/**
+ * Format a value for display in pretty log extras
+ */
+function formatExtraValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Error) return value.message;
+  return safeStringify(value);
+}
+
+/**
+ * Format a log entry in compact pretty format
+ * Format: [src] message (key=val, key=val)
+ *
+ * Note: agentId/agentName are NOT displayed in pretty mode because:
+ * - Loggers with namespace already show #agentName prefix (via Adze)
+ * - These fields ARE still included in JSON mode for filtering/monitoring
+ */
+function formatPrettyLog(
+  context: Record<string, unknown>,
+  message: string,
+  isJsonMode: boolean
+): string {
+  // In JSON mode, don't format - return message as-is
+  if (isJsonMode) {
+    return message;
+  }
+
+  const src = context.src as string | undefined;
+
+  // Build prefix: [SRC] in uppercase
+  const srcPart = src ? `[${src.toUpperCase()}] ` : '';
+
+  // Build extras: (key=val, key=val)
+  // Exclude: src (already in prefix), agentId/agentName (shown via Adze namespace #agent)
+  const excludeKeys = ['src', 'agentId', 'agentName'];
+  const extraPairs: string[] = [];
+
+  for (const [key, value] of Object.entries(context)) {
+    if (excludeKeys.includes(key)) continue;
+    if (value === undefined) continue;
+    extraPairs.push(`${key}=${formatExtraValue(value)}`);
+  }
+
+  const extrasPart = extraPairs.length > 0 ? ` (${extraPairs.join(', ')})` : '';
+
+  return `${srcPart}${message}${extrasPart}`;
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -164,6 +216,56 @@ export const customLevels: Record<string, number> = {
 // Configuration flags
 const raw = parseBooleanFromText(getEnvironmentVar('LOG_JSON_FORMAT'));
 const showTimestamps = parseBooleanFromText(getEnvironmentVar('LOG_TIMESTAMPS') ?? 'true');
+
+// Generate a unique server ID for this process instance
+const serverId =
+  getEnvironmentVar('SERVER_ID') ||
+  (typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10));
+
+// Configure sensitive data redaction
+// Paths use wildcards to match nested objects: *.password matches { user: { password: 'x' } }
+const redact = fastRedact({
+  paths: [
+    'password',
+    'passwd',
+    'secret',
+    'token',
+    'apiKey',
+    'api_key',
+    'apiSecret',
+    'api_secret',
+    'authorization',
+    'auth',
+    'credential',
+    'credentials',
+    'privateKey',
+    'private_key',
+    'accessToken',
+    'access_token',
+    'refreshToken',
+    'refresh_token',
+    'cookie',
+    'session',
+    'jwt',
+    'bearer',
+    // Wildcard paths for nested objects
+    '*.password',
+    '*.secret',
+    '*.token',
+    '*.apiKey',
+    '*.api_key',
+    '*.authorization',
+    '*.credential',
+    '*.credentials',
+    '*.privateKey',
+    '*.accessToken',
+    '*.refreshToken',
+  ],
+  serialize: false, // Don't stringify, just redact in place
+  censor: '[REDACTED]',
+});
 
 // ============================================================================
 // In-Memory Log Storage
@@ -349,30 +451,45 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   delete (metaBase as any).namespace;
   delete (metaBase as any).namespaces;
 
-  // Add required fields for JSON format if not provided
-  if (raw) {
-    // Only add defaults if user hasn't provided them
-    if (!metaBase.name) {
-      metaBase.name = 'elizaos';
-    }
-    if (!metaBase.hostname) {
-      // Get hostname in a way that works in both Node and browser
-      let hostname = 'unknown';
-      if (typeof process !== 'undefined' && process.platform) {
-        // Node.js environment
-        try {
-          const os = require('os');
-          hostname = os.hostname();
-        } catch {
-          // Fallback if os module not available
-          hostname = 'localhost';
-        }
-      } else if (typeof window !== 'undefined' && window.location) {
-        // Browser environment
-        hostname = window.location.hostname || 'browser';
+  // Add server context metadata (always, for observability)
+  // Only add defaults if user hasn't provided them
+  if (!metaBase.name) {
+    metaBase.name = 'elizaos';
+  }
+
+  // Add pid for process identification
+  if (!metaBase.pid && typeof process !== 'undefined' && process.pid) {
+    metaBase.pid = process.pid;
+  }
+
+  // Add environment (production, development, test)
+  if (!metaBase.environment && typeof process !== 'undefined' && process.env) {
+    metaBase.environment = process.env.NODE_ENV || 'development';
+  }
+
+  // Add serverId for instance identification
+  if (!metaBase.serverId) {
+    metaBase.serverId = serverId;
+  }
+
+  // Add hostname (for JSON format or when explicitly needed)
+  if (raw && !metaBase.hostname) {
+    // Get hostname in a way that works in both Node and browser
+    let hostname = 'unknown';
+    if (typeof process !== 'undefined' && process.platform) {
+      // Node.js environment
+      try {
+        const os = require('os');
+        hostname = os.hostname();
+      } catch {
+        // Fallback if os module not available
+        hostname = 'localhost';
       }
-      metaBase.hostname = hostname;
+    } else if (typeof window !== 'undefined' && window.location) {
+      // Browser environment
+      hostname = window.location.hostname || 'browser';
     }
+    metaBase.hostname = hostname;
   }
 
   // This ensures the sealed logger inherits the correct log level and styling
@@ -474,6 +591,19 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       }
     };
 
+    /**
+     * Safely redact sensitive data from an object (browser version)
+     */
+    const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
+      try {
+        const copy = { ...obj };
+        redact(copy);
+        return copy;
+      } catch {
+        return obj;
+      }
+    };
+
     const adaptArgs = (
       obj: Record<string, unknown> | string | Error,
       msg?: string,
@@ -485,10 +615,16 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       if (obj instanceof Error) {
         return msg !== undefined ? [obj.message, msg, ...args] : [obj.message, ...args];
       }
+      // Redact sensitive data from objects
+      const redactedObj = safeRedact(obj);
       if (msg !== undefined) {
-        return [msg, obj, ...args];
+        // Browser is always pretty mode - format as compact single line
+        const formatted = formatPrettyLog(redactedObj, msg, false);
+        return [formatted, ...args];
       }
-      return [obj, ...args];
+      // No message - format context only
+      const formatted = formatPrettyLog(redactedObj, '', false);
+      return formatted ? [formatted, ...args] : [...args];
     };
 
     return {
@@ -589,14 +725,36 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   };
 
   /**
+   * Safely redact sensitive data from an object
+   * Creates a shallow copy to avoid mutating the original
+   */
+  const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
+    try {
+      // Create a shallow copy to avoid mutating original
+      const copy = { ...obj };
+      // fast-redact returns the redacted string when serialize:false
+      // but mutates the object in place, so we use the copy
+      redact(copy);
+      return copy;
+    } catch {
+      // If redaction fails, return original (don't break logging)
+      return obj;
+    }
+  };
+
+  /**
    * Adapt ElizaOS logger API arguments to Adze format
+   * Also applies redaction to sensitive data in objects
+   *
+   * In pretty mode: formats as compact single line [src] agent — message (extras)
+   * In JSON mode: keeps structured object for machine parsing
    */
   const adaptArgs = (
     obj: Record<string, unknown> | string | Error,
     msg?: string,
     ...args: unknown[]
   ): unknown[] => {
-    // String first argument
+    // String first argument - no context object
     if (typeof obj === 'string') {
       return msg !== undefined ? [obj, msg, ...args] : [obj, ...args];
     }
@@ -606,11 +764,27 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
         ? [obj.message, { error: obj }, msg, ...args]
         : [obj.message, { error: obj }, ...args];
     }
-    // Object (context) - put message first if provided
+
+    // Object (context) - redact sensitive data
+    const redactedObj = safeRedact(obj);
+
     if (msg !== undefined) {
-      return [msg, obj, ...args];
+      // Pretty mode: format as compact single line
+      if (!raw) {
+        const formatted = formatPrettyLog(redactedObj, msg, raw);
+        return [formatted, ...args];
+      }
+      // JSON mode: keep structured object for machine parsing
+      return [msg, redactedObj, ...args];
     }
-    return [obj, ...args];
+
+    // No message provided - just context object
+    if (!raw) {
+      // Pretty mode: format the object as a simple string
+      const formatted = formatPrettyLog(redactedObj, '', raw);
+      return formatted ? [formatted, ...args] : [...args];
+    }
+    return [redactedObj, ...args];
   };
 
   // Create log methods

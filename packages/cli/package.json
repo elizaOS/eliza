@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cli",
-  "version": "1.6.5-alpha.10",
+  "version": "1.6.5-alpha.18",
   "description": "elizaOS CLI - Manage your AI agents and plugins",
   "publishConfig": {
     "access": "public",
@@ -43,7 +43,8 @@
   "scripts": {
     "start": "bun run build && bun dist/index.js start",
     "build": "bun run build.ts",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
@@ -65,6 +66,7 @@
     "test:scenarios": "for f in src/commands/scenario/examples/*.scenario.yaml; do echo \"=== $f ===\"; bun dist/index.js scenario run \"$f\" || echo \"FAIL $f\"; echo; done | cat"
   },
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "@types/bun": "^1.2.21",
     "@types/express": "^5.0.2",
     "@types/fs-extra": "^11.0.1",

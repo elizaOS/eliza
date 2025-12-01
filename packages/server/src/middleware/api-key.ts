@@ -11,7 +11,6 @@ export interface ApiKeyAuthRequest extends Request {
  * Authenticates frontend→server connection (Layer 1).
  * Only active if ELIZA_SERVER_AUTH_TOKEN is configured.
  *
- * This is independent from user authentication (JWT).
  * Use case: Prevent unauthorized clients from accessing the API.
  */
 export function apiKeyAuthMiddleware(

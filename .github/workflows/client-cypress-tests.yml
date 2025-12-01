@@ -72,7 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI: true
 
-  # E2E tests (needs server, no auth)
+  # E2E tests (needs server)
   cypress-e2e:
     runs-on: ubuntu-latest
     strategy:
@@ -109,7 +109,7 @@ jobs:
           echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
           echo "LOG_LEVEL=info" >> .env
 
-      - name: Run E2E tests with server (no auth)
+      - name: Run E2E tests with server
         working-directory: packages/client
         run: |
           chmod +x scripts/test-e2e-server.sh
@@ -118,68 +118,9 @@ jobs:
           SERVER_PORT: 3000
           CLIENT_PORT: 5173
 
-  # E2E tests with authentication enabled
-  cypress-e2e-auth:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: eliza_test
-          POSTGRES_PASSWORD: eliza_test_password
-          POSTGRES_DB: eliza_test
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    strategy:
-      fail-fast: false
-      matrix:
-        containers: [1]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 23
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.2.21
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Build packages (Turbo cached)
-        run: bun run build
-
-      - name: Install Cypress binary
-        working-directory: packages/client
-        run: bunx cypress install
-
-      - name: Create .env file
-        run: |
-          echo "OPENAI_API_KEY=$OPENAI_API_KEY" > .env
-          echo "LOG_LEVEL=info" >> .env
-
-      - name: Run E2E tests with authentication
-        working-directory: packages/client
-        run: |
-          chmod +x scripts/test-e2e-server-auth.sh
-          ./scripts/test-e2e-server-auth.sh
-        env:
-          SERVER_PORT: 3000
-          CLIENT_PORT: 5173
-
   # Summary job
   cypress-tests-summary:
-    needs: [cypress-component, cypress-e2e, cypress-e2e-auth]
+    needs: [cypress-component, cypress-e2e]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -187,20 +128,17 @@ jobs:
         run: |
           component_result="${{ needs.cypress-component.result }}"
           e2e_result="${{ needs.cypress-e2e.result }}"
-          e2e_auth_result="${{ needs.cypress-e2e-auth.result }}"
 
-          if [[ "$component_result" == "failure" || "$e2e_result" == "failure" || "$e2e_auth_result" == "failure" ]]; then
+          if [[ "$component_result" == "failure" || "$e2e_result" == "failure" ]]; then
             echo "❌ Cypress tests failed"
             echo "Component tests: $component_result"
-            echo "E2E tests (no auth): $e2e_result"
-            echo "E2E tests (with auth): $e2e_auth_result"
+            echo "E2E tests: $e2e_result"
             exit 1
-          elif [[ "$component_result" == "cancelled" || "$e2e_result" == "cancelled" || "$e2e_auth_result" == "cancelled" ]]; then
+          elif [[ "$component_result" == "cancelled" || "$e2e_result" == "cancelled" ]]; then
             echo "⏹️ Cypress tests were cancelled"
             exit 1
           else
             echo "✅ All Cypress tests passed"
             echo "Component tests: $component_result"
-            echo "E2E tests (no auth): $e2e_result"
-            echo "E2E tests (with auth): $e2e_auth_result"
+            echo "E2E tests: $e2e_result"
           fi

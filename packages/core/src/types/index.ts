@@ -4,7 +4,6 @@ export * from './memory';
 export * from './knowledge';
 export * from './environment';
 export * from './agent';
-export * from './user';
 export * from './components';
 export * from './plugin';
 export * from './service';

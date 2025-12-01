@@ -158,8 +158,8 @@ export async function getElizaDirectories(targetProjectDir?: string) {
   const envFilePath = targetProjectDir ? path.resolve(targetProjectDir, '.env') : paths.envFilePath;
 
   logger.debug(
-    { elizaDir, projectRoot, targetProjectDir: targetProjectDir || 'none' },
-    'Eliza directories:'
+    { src: 'cli', util: 'get-config', elizaDir, projectRoot, targetProjectDir: targetProjectDir || 'none' },
+    'Eliza directories'
   );
 
   const defaultElizaDbDir = path.resolve(projectRoot, '.eliza', '.elizadb');
@@ -176,7 +176,7 @@ export async function getElizaDirectories(targetProjectDir?: string) {
 async function ensureDir(dirPath: string) {
   if (!existsSync(dirPath)) {
     await fs.mkdir(dirPath, { recursive: true });
-    logger.debug(`Created directory: ${dirPath}`);
+    logger.debug({ src: 'cli', util: 'get-config', dirPath }, 'Created directory');
   }
 }
 
@@ -195,7 +195,7 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
       await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
 
       if (!isQuietMode()) {
-        logger.info(`[Config] Created .env file with template variables at: ${envFilePath}`);
+        logger.info({ src: 'cli', util: 'get-config', envFilePath }, 'Created .env file with template variables');
       }
     } else {
       // File exists, check if it's empty
@@ -206,17 +206,15 @@ export async function setupEnvFile(envFilePath: string): Promise<void> {
         // File is empty, write the template
         await fs.writeFile(envFilePath, SAMPLE_ENV_TEMPLATE, 'utf8');
 
-        logger.info(
-          `[Config] Populated empty .env file with template variables at: ${envFilePath}`
-        );
+        logger.info({ src: 'cli', util: 'get-config', envFilePath }, 'Populated empty .env file with template variables');
       } else {
-        logger.debug(`[Config] .env file already exists and has content at: ${envFilePath}`);
+        logger.debug({ src: 'cli', util: 'get-config', envFilePath }, '.env file already exists and has content');
       }
     }
   } catch (error) {
     logger.error(
-      { error: error instanceof Error ? error.message : String(error), envFilePath },
-      'Error setting up .env file:'
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error), envFilePath },
+      'Error setting up .env file'
     );
     throw error;
   }
@@ -237,12 +235,12 @@ export async function ensureElizaDir(targetProjectDir?: string) {
 
   if (!existsSync(registryCachePath)) {
     await fs.writeFile(registryCachePath, JSON.stringify({}, null, 2), 'utf8');
-    logger.debug(`Created registry cache file: ${registryCachePath}`);
+    logger.debug({ src: 'cli', util: 'get-config', registryCachePath }, 'Created registry cache file');
   }
 
   if (!existsSync(configPath)) {
     await fs.writeFile(configPath, JSON.stringify({ version: '1.0.0' }, null, 2), 'utf8');
-    logger.debug(`Created config file: ${configPath}`);
+    logger.debug({ src: 'cli', util: 'get-config', configPath }, 'Created config file');
   }
 
   return dirs;
@@ -268,7 +266,7 @@ export async function setupPgLite(
   try {
     // Ensure the PGLite database directory exists
     await ensureDir(targetDbDir);
-    logger.debug({ targetDbDir }, '[PGLite] Created database directory:');
+    logger.debug({ src: 'cli', util: 'get-config', targetDbDir }, 'Created PGLite database directory');
 
     // Set up the .env file with the full template first
     await setupEnvFile(targetEnvPath);
@@ -277,11 +275,11 @@ export async function setupPgLite(
     // This handles both new and existing .env files
     await storePgliteDataDir(targetDbDir, targetEnvPath);
 
-    logger.success('PGLite configuration saved');
+    logger.success({ src: 'cli', util: 'get-config' }, 'PGLite configuration saved');
   } catch (error) {
     logger.error(
-      { error: error instanceof Error ? error.message : String(error), elizaDbDir, envFilePath },
-      'Error setting up PGLite directory:'
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error), elizaDbDir, envFilePath },
+      'Error setting up PGLite directory'
     );
     throw error;
   }
@@ -318,9 +316,9 @@ export async function storePostgresUrl(url: string, envFilePath: string): Promis
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.POSTGRES_URL = url;
 
-    logger.success('Postgres URL saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'Postgres URL saved to configuration');
   } catch (error) {
-    logger.error({ error }, 'Error saving database configuration:');
+    logger.error({ src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) }, 'Error saving database configuration');
     throw error; // Re-throw to handle upstream
   }
 }
@@ -352,9 +350,9 @@ export async function storePgliteDataDir(dataDir: string, envFilePath: string): 
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.PGLITE_DATA_DIR = dataDir;
 
-    logger.success('PGLite data directory saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'PGLite data directory saved to configuration');
   } catch (error) {
-    logger.error({ error }, 'Error saving PGLite configuration:');
+    logger.error({ src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) }, 'Error saving PGLite configuration');
     throw error; // Re-throw to handle upstream
   }
 }
@@ -459,11 +457,11 @@ export async function storeOpenAIKey(key: string, envFilePath: string): Promise<
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.OPENAI_API_KEY = key;
 
-    logger.success('OpenAI API key saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'OpenAI API key saved to configuration');
   } catch (error) {
     logger.error(
-      'Error saving OpenAI API key:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving OpenAI API key'
     );
     throw error;
   }
@@ -493,11 +491,11 @@ export async function storeGoogleKey(key: string, envFilePath: string): Promise<
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.GOOGLE_GENERATIVE_AI_API_KEY = key;
 
-    logger.success('Google Generative AI API key saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'Google Generative AI API key saved to configuration');
   } catch (error) {
     logger.error(
-      'Error saving Google API key:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving Google API key'
     );
     throw error;
   }
@@ -525,11 +523,11 @@ export async function storeAnthropicKey(key: string, envFilePath: string): Promi
     await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
     process.env.ANTHROPIC_API_KEY = key;
 
-    logger.success('Anthropic API key saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'Anthropic API key saved to configuration');
   } catch (error) {
     logger.error(
-      'Error saving Anthropic API key:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving Anthropic API key'
     );
     throw error;
   }
@@ -732,11 +730,11 @@ export async function storeOllamaConfig(
     process.env.OLLAMA_API_ENDPOINT = config.endpoint;
     process.env.OLLAMA_MODEL = config.model;
 
-    logger.success('Ollama configuration saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'Ollama configuration saved to configuration');
   } catch (error) {
     logger.error(
-      'Error saving Ollama configuration:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving Ollama configuration'
     );
     throw error;
   }
@@ -827,11 +825,11 @@ export async function promptAndStoreOllamaEmbeddingConfig(
         process.env.OLLAMA_API_ENDPOINT = results.endpoint;
         process.env.OLLAMA_EMBEDDING_MODEL = results.embeddingModel;
 
-        logger.success('Ollama embedding configuration saved');
+        logger.success({ src: 'cli', util: 'get-config' }, 'Ollama embedding configuration saved');
       } catch (error) {
         logger.error(
-          'Error saving Ollama embedding configuration:',
-          error instanceof Error ? error.message : String(error)
+          { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+          'Error saving Ollama embedding configuration'
         );
         throw error;
       }
@@ -971,11 +969,11 @@ export async function storeOpenRouterKey(key: string, envFilePath: string): Prom
     // Update process.env
     process.env.OPENROUTER_API_KEY = key;
 
-    logger.success('OpenRouter API key saved to configuration');
+    logger.success({ src: 'cli', util: 'get-config' }, 'OpenRouter API key saved to configuration');
   } catch (error) {
     logger.error(
-      'Error saving OpenRouter API key:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving OpenRouter API key'
     );
     throw error;
   }
@@ -1033,9 +1031,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
   const pgliteDataDir = await resolvePgliteDir(undefined, elizaDbDir);
 
   // Add debug logging
-  logger.debug(`Configuration check - POSTGRES_URL: ${postgresUrl ? 'SET' : 'NOT SET'}`);
-  logger.debug(`Configuration check - PGLITE_DATA_DIR: ${pgliteDataDir ? 'SET' : 'NOT SET'}`);
-  logger.debug(`Configuration check - reconfigure: ${reconfigure}`);
+  logger.debug({ src: 'cli', util: 'get-config', postgresUrlSet: !!postgresUrl, pgliteDataDirSet: !!pgliteDataDir, reconfigure }, 'Configuration check');
 
   // BYPASS ADDED: Skip prompts and always use postgres if URL is provided
   if (process.env.POSTGRES_URL) {
@@ -1045,7 +1041,7 @@ export async function configureDatabaseSettings(reconfigure = false): Promise<st
 
   // If we already have PGLITE_DATA_DIR set in env and not reconfiguring, use PGLite
   if (pgliteDataDir && !reconfigure) {
-    logger.debug(`Using existing PGLite configuration: ${pgliteDataDir}`);
+    logger.debug({ src: 'cli', util: 'get-config', pgliteDataDir }, 'Using existing PGLite configuration');
 
     // Ensure the directory exists
     await ensureDir(pgliteDataDir);
@@ -1111,8 +1107,8 @@ export async function resolveConfigPaths(cwd: string, config: RawConfig) {
     });
   } catch (error) {
     logger.error(
-      'Failed to resolve config paths:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Failed to resolve config paths'
     );
     throw new Error('Invalid configuration: failed to resolve paths');
   }

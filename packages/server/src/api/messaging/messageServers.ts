@@ -21,8 +21,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       });
     } catch (error) {
       logger.error(
-        '[Messages Router /message-server/current] Error fetching current server:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/message-server/current', error: error instanceof Error ? error.message : String(error) },
+        'Error fetching current server'
       );
       res.status(500).json({ success: false, error: 'Failed to fetch current server' });
     }
@@ -63,8 +63,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       res.status(201).json({ success: true, data: { server } });
     } catch (error) {
       logger.error(
-        '[Messages Router /servers] Error creating server:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', path: '/servers', error: error instanceof Error ? error.message : String(error) },
+        'Error creating server'
       );
       res.status(500).json({ success: false, error: 'Failed to create server' });
     }
@@ -118,8 +118,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error adding agent ${agentId} to server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error adding agent to server'
         );
         res.status(500).json({ success: false, error: 'Failed to add agent to server' });
       }
@@ -170,8 +170,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error removing agent ${agentId} from server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error removing agent from server'
         );
         res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
       }
@@ -210,8 +210,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error fetching agents for server ${serverId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, serverId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching agents for server'
         );
         res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
       }
@@ -242,13 +242,39 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         });
       } catch (error) {
         logger.error(
-          `[MessagesRouter] Error fetching message servers for agent ${agentId}:`,
-          error instanceof Error ? error.message : String(error)
+          { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching message servers for agent'
         );
         res.status(500).json({ success: false, error: 'Failed to fetch agent message servers' });
       }
     }
   );
+
+  // ============================================================================
+  // DEPRECATED ROUTES - For backward compatibility only
+  // ============================================================================
+
+  /**
+   * @deprecated Use GET /message-servers instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  (router as any).get('/central-servers', async (_req: express.Request, res: express.Response) => {
+    logger.warn(
+      '[DEPRECATED] GET /central-servers is deprecated. Use GET /message-servers instead.'
+    );
+
+    try {
+      const messageServers = await serverInstance.getServers();
+      // Return with old key name for backward compatibility
+      res.json({ success: true, data: { servers: messageServers } });
+    } catch (error) {
+      logger.error(
+        '[Messages Router /central-servers] Error fetching servers:',
+        error instanceof Error ? error.message : String(error)
+      );
+      res.status(500).json({ success: false, error: 'Failed to fetch servers' });
+    }
+  });
 
   return router;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/client",
-  "version": "1.6.5-alpha.10",
+  "version": "1.6.5-alpha.18",
   "description": "Web client interface for ElizaOS agents",
   "repository": {
     "type": "git",
@@ -42,7 +42,8 @@
     "dev:client": "vite --host 0.0.0.0 --port 5173",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
@@ -118,6 +119,7 @@
   "devDependencies": {
     "@cypress/react": "^9.0.1",
     "@cypress/vite-dev-server": "^7.0.0",
+    "@elizaos/config": "workspace:*",
     "@eslint/js": "^9.22.0",
     "@happy-dom/global-registrator": "^19.0.2",
     "@playwright/test": "^1.40.0",

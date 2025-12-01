@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/test-utils",
   "description": "Utilities and objects for unit testing",
-  "version": "1.6.5-alpha.10",
+  "version": "1.6.5-alpha.18",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -42,6 +42,7 @@
     "zod": "3.24.2"
   },
   "devDependencies": {
+    "@elizaos/config": "workspace:*",
     "dotenv": "16.4.5",
     "prettier": "3.5.3",
     "typescript": "5.8.2"
@@ -49,7 +50,8 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "test": "bun test",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"

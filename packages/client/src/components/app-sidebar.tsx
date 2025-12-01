@@ -48,8 +48,6 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { Separator } from './ui/separator';
-import { useAuth } from '@/context/AuthContext';
-import { useServerConfig } from '@/context/ServerConfigContext';
 
 /* ---------- helpers ---------- */
 const partition = <T,>(src: T[], pred: (v: T) => boolean): [T[], T[]] => {
@@ -157,7 +155,7 @@ const GroupRow = ({
 
   return (
     <SidebarMenuItem>
-      <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+      <NavLink to={`/group/${channel.id}?messageServerId=${serverId}`} className="flex-1">
         <SidebarMenuButton
           isActive={active}
           className="px-2 py-2 my-1 h-full rounded justify-between cursor-pointer"
@@ -378,7 +376,7 @@ const ChannelsForServer = ({
           {groupChannels.map((channel) => (
             <SidebarMenuItem key={channel.id} className="h-12 group">
               <div className="flex items-center gap-1 w-full">
-                <NavLink to={`/group/${channel.id}?serverId=${serverId}`} className="flex-1">
+                <NavLink to={`/group/${channel.id}?messageServerId=${serverId}`} className="flex-1">
                   <SidebarMenuButton className="px-4 py-2 my-1 h-full rounded cursor-pointer">
                     <div className="flex items-center gap-3">
                       <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
@@ -647,7 +645,6 @@ export function AppSidebar({
             <FooterLink to="https://eliza.how/" Icon={Book} label="Documentation" />
             <FooterLink to="/logs" Icon={TerminalIcon} label="Logs" />
             <FooterLink to="/settings" Icon={Cog} label="Settings" />
-            <AuthButton />
             <ConnectionStatus />
           </SidebarMenu>
         </SidebarFooter>
@@ -657,43 +654,6 @@ export function AppSidebar({
     </>
   );
 }
-
-/* ---------- auth button ---------- */
-const AuthButton = () => {
-  const { jwtToken, openAuthDialog, logout } = useAuth();
-  const { requiresAuth } = useServerConfig();
-
-  // Don't show auth buttons if server doesn't require authentication
-  if (!requiresAuth) {
-    return null;
-  }
-
-  if (jwtToken) {
-    return (
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          className="rounded cursor-pointer"
-          onClick={logout}
-        >
-          <LogOut className="h-4 w-4 mr-3" />
-          Logout
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
-  }
-
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        className="rounded cursor-pointer"
-        onClick={openAuthDialog}
-      >
-        <LogIn className="h-4 w-4 mr-3" />
-        Login
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-};
 
 /* ---------- footer link ---------- */
 const FooterLink = ({ to, Icon, label }: { to: string; Icon: typeof Book; label: string }) => {

@@ -217,7 +217,7 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     $$ LANGUAGE plpgsql;
   `);
 
-  logger.info('[Data Isolation] PostgreSQL functions installed');
+  logger.info({ src: 'plugin:sql' }, 'RLS PostgreSQL functions installed');
 
   // Install Entity RLS functions as well (part of unified RLS system)
   await installEntityRLS(adapter);
@@ -240,7 +240,7 @@ export async function getOrCreateRlsServer(
     })
     .onConflictDoNothing();
 
-  logger.info(`[Data Isolation] Server: ${serverId.slice(0, 8)}…`);
+  logger.info({ src: 'plugin:sql', serverId: serverId.slice(0, 8) }, 'RLS server registered');
   return serverId;
 }
 
@@ -265,8 +265,7 @@ export async function setServerContext(
     throw new Error(`Server ${serverId} does not exist`);
   }
 
-  logger.info(`[Data Isolation] Server: ${serverId.slice(0, 8)}…`);
-  logger.info('[Data Isolation] Context configured successfully (using application_name)');
+  logger.info({ src: 'plugin:sql', serverId: serverId.slice(0, 8) }, 'RLS context configured');
 }
 
 /**
@@ -293,7 +292,7 @@ export async function assignAgentToServer(
     const currentServerId = agent.server_id;
 
     if (currentServerId === serverId) {
-      logger.debug(`[Data Isolation] Agent ${agent.name} already assigned to correct server`);
+      logger.debug({ src: 'plugin:sql', agentName: agent.name }, 'Agent already assigned to correct server');
     } else {
       // Update agent server using Drizzle
       await db
@@ -302,13 +301,13 @@ export async function assignAgentToServer(
         .where(eq(agentTable.id, agentId));
 
       if (currentServerId === null) {
-        logger.info(`[Data Isolation] Agent ${agent.name} assigned to server`);
+        logger.info({ src: 'plugin:sql', agentName: agent.name }, 'Agent assigned to server');
       } else {
-        logger.warn(`[Data Isolation] Agent ${agent.name} server changed`);
+        logger.warn({ src: 'plugin:sql', agentName: agent.name }, 'Agent server changed');
       }
     }
   } else {
-    logger.debug(`[Data Isolation] Agent ${agentId} doesn't exist yet`);
+    logger.debug({ src: 'plugin:sql', agentId }, 'Agent does not exist yet');
   }
 }
 
@@ -320,9 +319,9 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
-    logger.info('[Data Isolation] Applied to all tables');
+    logger.info({ src: 'plugin:sql' }, 'RLS applied to all tables');
   } catch (error) {
-    logger.warn('[Data Isolation] Failed to apply to some tables:', String(error));
+    logger.warn({ src: 'plugin:sql', error: String(error) }, 'Failed to apply RLS to some tables');
   }
 }
 
@@ -348,17 +347,17 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
 
     if (!rlsEnabled) {
-      logger.debug('[Data Isolation] RLS not installed, skipping cleanup');
+      logger.debug({ src: 'plugin:sql' }, 'RLS not installed, skipping cleanup');
       return;
     }
 
-    logger.info('[Data Isolation] Disabling RLS globally (keeping server_id columns for schema compatibility)...');
+    logger.info({ src: 'plugin:sql' }, 'Disabling RLS globally (keeping server_id columns for schema compatibility)...');
 
     // First, uninstall Entity RLS (depends on Server RLS)
     try {
       await uninstallEntityRLS(adapter);
     } catch (entityRlsError) {
-      logger.debug('[Data Isolation] Entity RLS cleanup skipped (not installed or already cleaned)');
+      logger.debug({ src: 'plugin:sql' }, 'Entity RLS cleanup skipped (not installed or already cleaned)');
     }
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
@@ -404,11 +403,11 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       try {
         // Call stored procedure with parameterized query (safe from SQL injection)
         await db.execute(sql`SELECT _temp_disable_rls_on_table(${schemaName}, ${tableName})`);
-        logger.debug(`[Data Isolation] Disabled RLS on table: ${schemaName}.${tableName}`);
+        logger.debug({ src: 'plugin:sql', schemaName, tableName }, 'Disabled RLS on table');
       } catch (error) {
         logger.warn(
-          `[Data Isolation] Failed to disable RLS on table ${schemaName}.${tableName}:`,
-          String(error)
+          { src: 'plugin:sql', schemaName, tableName, error: String(error) },
+          'Failed to disable RLS on table'
         );
       }
     }
@@ -421,22 +420,22 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     // - Each row keeps its original server_id
     // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
     // - Existing data remains owned by its original server instance
-    logger.info('[Data Isolation] Keeping server_id values intact (prevents data theft on re-enable)');
+    logger.info({ src: 'plugin:sql' }, 'Keeping server_id values intact (prevents data theft on re-enable)');
 
     // 3. Keep the servers table structure but clear it
     // When RLS is re-enabled, servers will be re-created from server initialization
-    logger.info('[Data Isolation] Clearing servers table...');
+    logger.info({ src: 'plugin:sql' }, 'Clearing servers table...');
     await db.execute(sql`TRUNCATE TABLE servers`);
 
     // 4. Drop all RLS functions
     await db.execute(sql`DROP FUNCTION IF EXISTS apply_rls_to_all_tables() CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS add_server_isolation(text, text) CASCADE`);
     await db.execute(sql`DROP FUNCTION IF EXISTS current_server_id() CASCADE`);
-    logger.info('[Data Isolation] Dropped all RLS functions');
+    logger.info({ src: 'plugin:sql' }, 'Dropped all RLS functions');
 
-    logger.success('[Data Isolation] RLS disabled successfully (server_id columns preserved)');
+    logger.info({ src: 'plugin:sql' }, 'RLS disabled successfully (server_id columns preserved)');
   } catch (error) {
-    logger.error('[Data Isolation] Failed to disable RLS:', String(error));
+    logger.error({ src: 'plugin:sql', error: String(error) }, 'Failed to disable RLS');
     throw error;
   }
 }

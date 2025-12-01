@@ -139,19 +139,6 @@ export function createMockDatabase(overrides: MockDatabaseOverrides = {}): IData
     updateTask: mock().mockResolvedValue(undefined),
     deleteTask: mock().mockResolvedValue(undefined),
 
-    // User/Auth Management
-    getUserByEmail: mock().mockResolvedValue(null),
-    getUserByUsername: mock().mockResolvedValue(null),
-    getUserById: mock().mockResolvedValue(null),
-    createUser: mock().mockResolvedValue({
-      id: 'test-user-id' as UUID,
-      email: 'test@example.com',
-      username: 'testuser',
-      passwordHash: 'hashed',
-      createdAt: new Date(),
-    }),
-    updateUserLastLogin: mock().mockResolvedValue(undefined),
-
     // Room Participant Checks
     isRoomParticipant: mock().mockResolvedValue(false),
 

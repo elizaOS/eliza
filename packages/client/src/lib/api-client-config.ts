@@ -1,31 +1,24 @@
 import { ElizaClient, type ApiClientConfig } from '@elizaos/api-client';
+import { getEntityId } from './utils';
 
 const getLocalStorageApiKey = () => `eliza-api-key-${window.location.origin}`;
-const getLocalStorageJwtKey = () => `eliza-jwt-token-${window.location.origin}`;
 
 export function createApiClientConfig(): ApiClientConfig {
   const apiKey = localStorage.getItem(getLocalStorageApiKey());
-  const jwtToken = localStorage.getItem(getLocalStorageJwtKey());
+  const entityId = getEntityId();
 
   const config: ApiClientConfig = {
     baseUrl: window.location.origin,
     timeout: 30000,
     headers: {
       Accept: 'application/json',
+      'X-Entity-Id': entityId,
     },
   };
 
   // Only include apiKey if it exists (don't pass undefined)
   if (apiKey) {
     config.apiKey = apiKey;
-  }
-
-  // Add JWT token to Authorization header if it exists
-  if (jwtToken) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${jwtToken}`,
-    };
   }
 
   return config;
@@ -60,15 +53,6 @@ export function updateApiClientApiKey(newApiKey: string | null): void {
     localStorage.setItem(getLocalStorageApiKey(), newApiKey);
   } else {
     localStorage.removeItem(getLocalStorageApiKey());
-  }
-  invalidateElizaClient();
-}
-
-export function updateApiClientJwtToken(newJwtToken: string | null): void {
-  if (newJwtToken) {
-    localStorage.setItem(getLocalStorageJwtKey(), newJwtToken);
-  } else {
-    localStorage.removeItem(getLocalStorageJwtKey());
   }
   invalidateElizaClient();
 }

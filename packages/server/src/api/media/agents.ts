@@ -62,7 +62,7 @@ export function createAgentMediaRouter(): express.Router {
 
   // Media upload endpoint for images and videos using multer
   router.post('/:agentId/upload-media', upload.single('file'), async (req, res) => {
-    logger.debug('[MEDIA UPLOAD] Processing media upload with multer');
+    logger.debug({ src: 'http' }, 'Processing media upload');
 
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
@@ -88,7 +88,8 @@ export function createAgentMediaRouter(): express.Router {
       const result = await saveUploadedFile(req.file, agentId);
 
       logger.info(
-        `[MEDIA UPLOAD] Successfully uploaded ${mediaType}: ${result.filename}. URL: ${result.url}`
+        { src: 'http', path: req.path, agentId, mediaType, filename: result.filename, url: result.url },
+        'Successfully uploaded media'
       );
 
       sendSuccess(res, {
@@ -99,7 +100,7 @@ export function createAgentMediaRouter(): express.Router {
         size: req.file.size,
       });
     } catch (error) {
-      logger.error(`[MEDIA UPLOAD] Error processing upload: ${error}`);
+      logger.error({ src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing media upload');
       sendError(
         res,
         500,

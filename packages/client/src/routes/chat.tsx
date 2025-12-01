@@ -13,7 +13,6 @@ import { Loader2, Play, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import type { AgentWithStatus } from '../types';
-import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 /**
  * Displays the agent chat interface with an optional details sidebar in a resizable layout.
@@ -128,13 +127,6 @@ function AgentRouteContent() {
   );
 }
 
-/**
- * AgentRoute with route protection
- */
 export default function AgentRoute() {
-  return (
-    <ProtectedRoute>
-      <AgentRouteContent />
-    </ProtectedRoute>
-  );
+  return <AgentRouteContent />;
 }

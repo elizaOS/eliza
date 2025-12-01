@@ -10,9 +10,8 @@ import { AgentLogViewer } from './components/agent-log-viewer';
 import OnboardingTour from './components/onboarding-tour';
 import { Toaster } from './components/ui/toaster';
 import { TooltipProvider } from './components/ui/tooltip';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { ConnectionProvider, useConnection } from './context/ConnectionContext';
-import { ServerConfigProvider } from './context/ServerConfigContext';
 import { STALE_TIMES } from './hooks/use-query-hooks';
 import useVersion from './hooks/use-version';
 import './index.css';
@@ -88,18 +87,14 @@ const prefetchInitialData = async () => {
 function AppContent() {
   useVersion();
   const { status } = useConnection();
-  const { isAuthenticated } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [homeKey, setHomeKey] = useState(Date.now());
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    clientLogger.info('[AppContent] Mounted/Updated, isAuthenticated:', isAuthenticated);
-    // Always attempt prefetch - server will decide if JWT is required
-    // If ENABLE_DATA_ISOLATION=false on server, queries work without JWT
-    // If ENABLE_DATA_ISOLATION=true on server and no JWT, we get 401 (no retry spam thanks to retry config)
+    clientLogger.info('[AppContent] Mounted/Updated');
     prefetchInitialData();
-  }, [isAuthenticated]);
+  }, []);
 
   const refreshHomePage = () => {
     clientLogger.info('[AppContent] refreshHomePage called. Current homeKey:', homeKey);
@@ -222,13 +217,11 @@ function App() {
         }}
       >
         <BrowserRouter>
-          <ServerConfigProvider>
-            <AuthProvider>
-              <ConnectionProvider>
-                <AppContent />
-              </ConnectionProvider>
-            </AuthProvider>
-          </ServerConfigProvider>
+          <AuthProvider>
+            <ConnectionProvider>
+              <AppContent />
+            </ConnectionProvider>
+          </AuthProvider>
         </BrowserRouter>
       </div>
     </QueryClientProvider>
