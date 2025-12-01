@@ -186,12 +186,15 @@ describe('AgentRuntime initPromise Tests', () => {
             init: async (_, runtime) => {
                 pluginInitCalled = true;
 
-                // Plugin should wait on initPromise before accessing database
-                await runtime.initPromise;
+                // Plugin should defer work until runtime is fully initialized
+                // Using .then() instead of await allows init to complete without deadlock
+                runtime.initPromise.then(async () => {
+                    // Now we can safely access database methods
+                    pluginAccessedDb = true;
+                    await runtime.getTasks({ tags: ['test'] });
+                });
 
-                // Now we can safely access database methods
-                pluginAccessedDb = true;
-                await runtime.getTasks({ tags: ['test'] });
+                // Init function returns immediately without awaiting initPromise
             },
         };
 
@@ -202,6 +205,9 @@ describe('AgentRuntime initPromise Tests', () => {
         });
 
         await runtime.initialize();
+
+        // Wait for deferred work to complete
+        await new Promise(resolve => setTimeout(resolve, 10));
 
         expect(pluginInitCalled).toBe(true);
         expect(pluginAccessedDb).toBe(true);
@@ -241,8 +247,8 @@ describe('AgentRuntime initPromise Tests', () => {
         expect(waiter3Results).toEqual([true]);
     });
 
-    it('should resolve initPromise before plugin migrations run', async () => {
-        let initResolvedBeforeMigrations = false;
+    it('should resolve initPromise after all initialization including migrations', async () => {
+        let initResolvedAfterMigrations = false;
         let migrationsRan = false;
 
         // Mock the adapter to have a runPluginMigrations method
@@ -265,9 +271,10 @@ describe('AgentRuntime initPromise Tests', () => {
         });
 
         runtime.initPromise.then(() => {
-            // Check if migrations have already run
-            if (!migrationsRan) {
-                initResolvedBeforeMigrations = true;
+            // Verify migrations have already run when initPromise resolves
+            // This ensures database schema is ready before services start
+            if (migrationsRan) {
+                initResolvedAfterMigrations = true;
             }
         });
 
@@ -276,7 +283,7 @@ describe('AgentRuntime initPromise Tests', () => {
         // Give promises time to resolve
         await new Promise(resolve => setTimeout(resolve, 10));
 
-        expect(initResolvedBeforeMigrations).toBe(true);
+        expect(initResolvedAfterMigrations).toBe(true);
         expect(migrationsRan).toBe(true);
     });
 

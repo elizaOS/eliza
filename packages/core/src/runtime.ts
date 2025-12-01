@@ -417,15 +417,7 @@ export class AgentRuntime implements IAgentRuntime {
         await this.adapter.init();
       }
 
-      // Resolve init promise after adapter init but before awaiting plugin completion
-      // This allows plugins to wait on initPromise in their init functions without deadlock
-      if (this.initResolver) {
-        this.initResolver();
-        this.initResolver = undefined;
-      }
-
       // Now await plugin registration to complete
-      // Plugins that were waiting on initPromise can now continue
       await Promise.all(pluginRegistrationPromises);
 
       // Initialize message service
@@ -549,6 +541,18 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.warn({ src: 'agent', agentId: this.agentId }, 'No TEXT_EMBEDDING model registered, skipping embedding setup');
       } else {
         await this.ensureEmbeddingDimension();
+      }
+
+      // Resolve init promise after all initialization steps complete
+      // This ensures plugins waiting on initPromise can safely access:
+      // - Database adapter
+      // - Agent entity
+      // - World entity
+      // - Room entity
+      // - All registered plugins
+      if (this.initResolver) {
+        this.initResolver();
+        this.initResolver = undefined;
       }
     } catch (error: any) {
       const errorMsg = error instanceof Error ? error.message : String(error);
