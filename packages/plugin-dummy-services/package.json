@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-dummy-services",
-  "version": "1.6.5-alpha.16",
+  "version": "1.6.5-alpha.17",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
