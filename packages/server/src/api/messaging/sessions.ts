@@ -9,7 +9,7 @@ import {
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
-import { transformMessageAttachments } from '../../utils/media-transformer';
+import { transformMessageAttachments } from '../../utils';
 import type {
   Session,
   SessionTimeoutConfig,

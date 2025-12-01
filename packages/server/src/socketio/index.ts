@@ -10,7 +10,7 @@ import {
 } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
-import { attachmentsToApiUrls } from '../utils/media-transformer';
+import { attachmentsToApiUrls } from '../utils';
 
 /**
  * Socket.io socket.data structure for authenticated sockets
@@ -176,9 +176,16 @@ export class SocketIORouter {
   /**
    * Verify if socket's entity has permission to access a channel.
    * Returns true if entity is a channel participant or if data isolation is disabled.
+   * Includes disconnection guards to prevent operations on stale sockets.
    */
   private async verifyChannelAccess(socket: Socket, channelId: UUID): Promise<boolean> {
     try {
+      // Guard: Check socket state before async operation
+      if (socket.disconnected) {
+        logger.debug({ src: 'ws', socketId: socket.id }, 'Socket disconnected before channel access check');
+        return false;
+      }
+
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
 
       if (!dataIsolationEnabled) {
@@ -193,6 +200,12 @@ export class SocketIORouter {
       }
 
       const isParticipant = await this.serverInstance.isChannelParticipant(channelId, entityId);
+
+      // Guard: Check socket state after async operation
+      if (socket.disconnected) {
+        logger.debug({ src: 'ws', socketId: socket.id }, 'Socket disconnected during channel access check');
+        return false;
+      }
 
       if (isParticipant) {
         logger.debug(`[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`);
@@ -322,19 +335,17 @@ export class SocketIORouter {
       }
 
       // Ensure the channel exists before creating the message
-      let channelExists = false;
-      try {
-        const existingChannel = await this.serverInstance.getChannelDetails(channelId as UUID);
-        channelExists = !!existingChannel;
-      } catch (error: any) {
-        // Channel doesn't exist
-      }
+      // Fetch channel details and servers in parallel for better performance
+      const [existingChannel, servers] = await Promise.all([
+        this.serverInstance.getChannelDetails(channelId as UUID).catch(() => null),
+        this.serverInstance.getServers(),
+      ]);
+      const channelExists = !!existingChannel;
 
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
         logger.info({ src: 'ws', socketId: socket.id, channelId, messageServerId }, 'Auto-creating channel');
         try {
-          const servers = await this.serverInstance.getServers();
           const serverExists = servers.some((s) => s.id === messageServerId);
           logger.debug({ src: 'ws', socketId: socket.id, messageServerId, serverExists, availableServers: servers.map((s) => s.id) }, 'Server existence check');
 

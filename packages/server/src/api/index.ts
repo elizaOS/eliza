@@ -5,7 +5,6 @@ import express from 'express';
 import helmet from 'helmet';
 import http from 'node:http';
 import { match, MatchFunction } from 'path-to-regexp';
-import { Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 // Import new domain routers
 import { agentsRouter } from './agents';
@@ -22,25 +21,39 @@ import {
   validateContentTypeMiddleware,
   createApiRateLimit,
 } from '../middleware';
+import { Server as SocketIOServer, ServerOptions } from 'socket.io';
+
+/**
+ * Socket.IO server configuration
+ * @see https://socket.io/docs/v4/server-options/
+ */
+const SOCKET_IO_CONFIG: Partial<ServerOptions> = {
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
+  pingInterval: 10000,
+  pingTimeout: 5000,
+  connectTimeout: 10000,
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true,
+  maxHttpBufferSize: 1e6,
+  perMessageDeflate: false,
+};
 
 /**
  * Sets up Socket.io server for real-time messaging
  * @param server HTTP Server instance
- * @param agents Map of agent runtimes
+ * @param elizaOS ElizaOS instance
+ * @param serverInstance AgentServer instance
  */
-// Global reference to SocketIO router for log streaming
-
 export function setupSocketIO(
   server: http.Server,
   elizaOS: ElizaOS,
   serverInstance: AgentServer
 ): SocketIOServer {
-  const io = new SocketIOServer(server, {
-    cors: {
-      origin: '*',
-      methods: ['GET', 'POST'],
-    },
-  });
+  const io = new SocketIOServer(server, SOCKET_IO_CONFIG);
 
   const centralSocketRouter = new SocketIORouter(elizaOS, serverInstance);
   centralSocketRouter.setupListeners(io);

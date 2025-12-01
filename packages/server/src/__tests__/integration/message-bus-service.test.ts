@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { MessageBusService } from '../../services/message';
 import { EventType, type UUID } from '@elizaos/core';
-import internalMessageBus from '../../bus';
+import internalMessageBus from '../../services/message-bus';
 
 import {
   TestServerFixture,
@@ -271,7 +271,14 @@ describe('MessageBusService Integration Tests', () => {
       );
 
       for (const msgInput of messages) {
-        await serverFixture.getServer().createMessage(msgInput);
+        await serverFixture.getServer().createMessage({
+          channelId: msgInput.channelId,
+          authorId: msgInput.authorId,
+          content: msgInput.content,
+          sourceId: msgInput.sourceId,
+          sourceType: msgInput.sourceType,
+          metadata: msgInput.metadata,
+        });
       }
 
       // Track if clearChannel is called on messageService
