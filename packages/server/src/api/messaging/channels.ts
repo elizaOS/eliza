@@ -8,14 +8,13 @@ import {
   type UUID,
   getUploadsChannelsDir,
 } from '@elizaos/core';
-import { transformMessageAttachments } from '../../utils/media-transformer';
+import { transformMessageAttachments, validateServerIdForRls } from '../../utils';
 import express from 'express';
-import internalMessageBus from '../../bus';
+import internalMessageBus from '../../services/message-bus';
 import type { AgentServer } from '../../index';
-import type { MessageServiceStructure as MessageService } from '../../types';
+import type { MessageServiceStructure as MessageService } from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
-import { validateServerIdForRls } from '../../utils/rls-validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -117,20 +116,18 @@ export function createChannelsRouter(
 
       try {
         // Ensure the channel exists before creating the message
-        let channelExists = false;
-        try {
-          const existingChannel = await serverInstance.getChannelDetails(channelIdParam);
-          channelExists = !!existingChannel;
-        } catch (error: unknown) {
-          // Channel doesn't exist, will be created
-        }
+        // Fetch channel details and servers in parallel for better performance
+        const [existingChannel, servers] = await Promise.all([
+          serverInstance.getChannelDetails(channelIdParam).catch(() => null),
+          serverInstance.getServers(),
+        ]);
+        const channelExists = !!existingChannel;
 
         if (!channelExists) {
           // Auto-create the channel if it doesn't exist
           logger.info({ src: 'http', channelId: channelIdParam, messageServerId: message_server_id }, 'Auto-creating channel');
           try {
             // First verify the server exists
-            const servers = await serverInstance.getServers();
             const serverExists = servers.some((s) => s.id === message_server_id);
             logger.debug({ src: 'http', messageServerId: message_server_id, serverExists, availableServers: servers.map((s) => s.id) }, 'Server existence check');
 

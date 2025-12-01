@@ -13,7 +13,7 @@ import {
 } from '@elizaos/core';
 import type { MessageMetadata } from '@elizaos/api-client';
 import type { AgentServer } from '../index.js';
-import internalMessageBus from '../bus'; // Import the bus
+import internalMessageBus from './message-bus'; // Import the bus
 
 /**
  * Global ElizaOS instance for MessageBusService

@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import type { UUID } from '@elizaos/core';
 import { stringToUuid, ChannelType } from '@elizaos/core';
-import type { CentralRootMessage } from '../../types';
+import type { CentralRootMessage } from '../../types/server';
 
 // New architecture imports
 import {
@@ -111,7 +111,7 @@ describe('Database Operations Integration Tests', () => {
       const message1 = await serverFixture.getServer().createMessage(
         new MessageBuilder()
           .withChannelId(channelId)
-          .withAuthorId('user-1' as UUID)
+          .withAuthorId(stringToUuid('user-1'))
           .withContent('First message')
           .withSourceId('integrity-1')
           .withSourceType('test')
@@ -121,7 +121,7 @@ describe('Database Operations Integration Tests', () => {
       await serverFixture.getServer().createMessage(
         new MessageBuilder()
           .withChannelId(channelId)
-          .withAuthorId('user-2' as UUID)
+          .withAuthorId(stringToUuid('user-2'))
           .withContent('Reply message')
           .withSourceId('integrity-2')
           .withSourceType('test')

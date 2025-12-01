@@ -1,10 +1,9 @@
 import { logger, validateUuid, type UUID } from '@elizaos/core';
 import express from 'express';
-import internalMessageBus from '../../bus'; // Import the bus
+import internalMessageBus from '../../services/message-bus'; // Import the bus
 import type { AgentServer } from '../../index';
-import type { MessageServiceStructure as MessageService } from '../../types';
-import { attachmentsToApiUrls } from '../../utils/media-transformer';
-import { validateServerIdForRls } from '../../utils/rls-validation';
+import type { MessageServiceStructure as MessageService } from '../../types/server';
+import { attachmentsToApiUrls, validateServerIdForRls } from '../../utils';
 
 /**
  * Core messaging functionality - message submission and ingestion

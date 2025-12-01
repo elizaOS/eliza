@@ -4,8 +4,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import type { UUID } from '@elizaos/core';
-import { ChannelType } from '@elizaos/core';
-import type { CentralRootMessage } from '../../types';
+import { ChannelType, stringToUuid } from '@elizaos/core';
+import type { CentralRootMessage } from '../../types/server';
 
 // New architecture imports
 import {
@@ -280,7 +280,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       const message1 = await serverFixture.getServer().createMessage(
         new MessageBuilder()
           .withChannelId(channelId)
-          .withAuthorId('user-1' as UUID)
+          .withAuthorId(stringToUuid('user-1'))
           .withContent('Hello, world!')
           .withSourceId('msg-1')
           .withSourceType('test')
@@ -294,7 +294,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       // Create another message
       await serverFixture.getServer().createMessage(
         new MessageBuilder()
-          .asSimpleMessage(channelId, 'user-2' as UUID)
+          .asSimpleMessage(channelId, stringToUuid('user-2'))
           .withContent('Hi there!')
           .withSourceId('msg-2')
           .build()
@@ -314,7 +314,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       const originalMessage = await serverFixture.getServer().createMessage(
         new MessageBuilder()
           .withChannelId(channelId)
-          .withAuthorId('user-1' as UUID)
+          .withAuthorId(stringToUuid('user-1'))
           .withContent('Original message')
           .withSourceId('original')
           .withSourceType('test')
@@ -323,7 +323,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
 
       const replyMessage = await serverFixture.getServer().createMessage(
         new MessageBuilder()
-          .asReplyMessage(channelId, 'user-2' as UUID, originalMessage.id)
+          .asReplyMessage(channelId, stringToUuid('user-2'), originalMessage.id)
           .withContent('This is a reply')
           .withSourceId('reply')
           .build()
@@ -335,7 +335,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
     it('should delete a message', async () => {
       const message = await serverFixture.getServer().createMessage(
         new MessageBuilder()
-          .asSimpleMessage(channelId, 'user-1' as UUID)
+          .asSimpleMessage(channelId, stringToUuid('user-1'))
           .withContent('To be deleted')
           .withSourceId('delete-me')
           .build()
@@ -355,7 +355,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       const messageInputs = new MessageBuilder().buildMany(
         10,
         channelId,
-        'user-1' as UUID
+        stringToUuid('user-1')
       );
 
       const messagePromises: Promise<CentralRootMessage>[] = [];

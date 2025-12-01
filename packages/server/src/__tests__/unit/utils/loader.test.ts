@@ -7,7 +7,7 @@ import {
   loadCharactersFromUrl,
   jsonToCharacter,
   hasValidRemoteUrls,
-} from '../../../loader';
+} from '../../../services/loader';
 import { UUID } from '@elizaos/core';
 import { createMockFetchResponse } from '../../test-utils/mocks';
 
