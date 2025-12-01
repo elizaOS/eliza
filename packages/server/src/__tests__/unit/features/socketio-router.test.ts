@@ -23,6 +23,7 @@ interface MockSocket {
   join: jest.Mock;
   to: jest.Mock;
   onAny: jest.Mock;
+  connected: boolean;
   data: Record<string, any>;
 }
 
@@ -74,6 +75,7 @@ describe('SocketIORouter', () => {
       on: jest.fn(),
       onAny: jest.fn(),
       disconnect: jest.fn(),
+      connected: true, // Required for socket.connected guards
       data: { entityId: '123e4567-e89b-12d3-a456-426614174001' },
     };
 

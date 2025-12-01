@@ -5,8 +5,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { MessageBusService } from '../../services/message';
-import { EventType, type UUID } from '@elizaos/core';
-import internalMessageBus from '../../bus';
+import { EventType, type UUID, stringToUuid } from '@elizaos/core';
+import internalMessageBus from '../../services/message-bus';
 
 import {
   TestServerFixture,
@@ -99,7 +99,7 @@ describe('MessageBusService Integration Tests', () => {
         id: 'msg-test-1' as UUID,
         channel_id: channel.id,
         server_id: serverId,
-        author_id: 'user-123' as UUID,
+        author_id: stringToUuid('user-123'),
         content: 'Test message',
         raw_message: { content: 'Test message' },
         source_id: 'test-src-1',
@@ -184,7 +184,7 @@ describe('MessageBusService Integration Tests', () => {
         id: 'msg-not-participant' as UUID,
         channel_id: channel.id,
         server_id: serverId,
-        author_id: 'user-456' as UUID,
+        author_id: stringToUuid('user-456'),
         content: 'Message in other channel',
         raw_message: { content: 'Message in other channel' },
         source_id: 'test-src-3',
@@ -217,7 +217,7 @@ describe('MessageBusService Integration Tests', () => {
       const message = await serverFixture.getServer().createMessage(
         new MessageBuilder()
           .withChannelId(channel.id)
-          .withAuthorId('user-789' as UUID)
+          .withAuthorId(stringToUuid('user-789'))
           .withContent('Message to delete')
           .withSourceId('test-del-1')
           .withSourceType('test')
@@ -267,11 +267,18 @@ describe('MessageBusService Integration Tests', () => {
       const messages = new MessageBuilder().buildMany(
         3,
         channel.id,
-        (i) => `user-clear-${i}` as UUID
+        (i) => stringToUuid(`user-clear-${i}`)
       );
 
       for (const msgInput of messages) {
-        await serverFixture.getServer().createMessage(msgInput);
+        await serverFixture.getServer().createMessage({
+          channelId: msgInput.channelId,
+          authorId: msgInput.authorId,
+          content: msgInput.content,
+          sourceId: msgInput.sourceId,
+          sourceType: msgInput.sourceType,
+          metadata: msgInput.metadata,
+        });
       }
 
       // Track if clearChannel is called on messageService
@@ -341,7 +348,7 @@ describe('MessageBusService Integration Tests', () => {
     });
 
     it('should ignore updates for other agents', async () => {
-      const otherAgentId = 'other-agent-123' as UUID;
+      const otherAgentId = stringToUuid('other-agent-123');
 
       // Emit event for different agent
       internalMessageBus.emit('server_agent_update', {

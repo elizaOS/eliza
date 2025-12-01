@@ -1,5 +1,53 @@
-import type { UUID, ChannelType } from '@elizaos/core';
+import type { UUID, ChannelType, Character, IAgentRuntime, Plugin, DatabaseAdapter } from '@elizaos/core';
 import type { MessageServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
+import type express from 'express';
+
+// ============================================================================
+// Server Configuration Types
+// ============================================================================
+
+/**
+ * Represents a function that acts as a server middleware.
+ */
+export type ServerMiddleware = (
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) => void;
+
+/**
+ * Interface for defining server configuration.
+ * Used for unified server initialization and startup.
+ */
+export interface ServerConfig {
+  // Infrastructure configuration
+  middlewares?: ServerMiddleware[];
+  dataDir?: string;
+  postgresUrl?: string;
+  clientPath?: string;
+  port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
+
+  // Database plugin configuration (provided by caller, typically CLI)
+  databasePlugin?: Plugin;
+  createDatabaseAdapter?: (config: any, agentId: UUID) => DatabaseAdapter;
+  DatabaseMigrationService?: new () => {
+    initializeWithDatabase(db: any): Promise<void>;
+    discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+    runAllPluginMigrations(): Promise<void>;
+  };
+
+  // Agent configuration (runtime, not infrastructure)
+  agents?: Array<{
+    character: Character;
+    plugins?: (Plugin | string)[];
+    init?: (runtime: IAgentRuntime) => Promise<void>;
+  }>;
+  isTestMode?: boolean;
+}
+
+// ============================================================================
+// Message Types
+// ============================================================================
 
 export interface MessageServer {
   id: UUID; // global serverId
@@ -79,4 +127,4 @@ export interface MessageWithAttachments {
 }
 
 // Re-export session types
-export * from './types/sessions';
+export * from './sessions';

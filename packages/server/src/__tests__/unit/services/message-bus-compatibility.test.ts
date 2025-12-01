@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'bun:test';
-import internalMessageBus from '../../../bus';
+import internalMessageBus from '../../../services/message-bus';
 
 describe('InternalMessageBus EventEmitter Compatibility', () => {
   beforeEach(() => {

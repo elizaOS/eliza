@@ -4,8 +4,6 @@ import {
   type IAgentRuntime,
   logger,
   type UUID,
-  parseBooleanFromText,
-  getDatabaseDir,
   getGeneratedDir,
   getUploadsAgentsDir,
   ElizaOS,
@@ -15,24 +13,23 @@ import express, { Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import * as fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import net from 'node:net';
 import path, { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server as SocketIOServer } from 'socket.io';
-import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index.js';
-import { apiKeyAuthMiddleware } from './middleware/index.js';
+import { createApiRouter, createPluginRouteHandler, setupSocketIO } from './api/index';
+import { apiKeyAuthMiddleware } from './middleware/index';
 import {
   messageBusConnectorPlugin,
   setGlobalElizaOS,
   setGlobalAgentServer,
-} from './services/message.js';
-import { loadCharacterTryPath, jsonToCharacter } from './loader.js';
+} from './services/message';
+import { loadCharacterTryPath, jsonToCharacter } from './services/loader';
 import * as Sentry from '@sentry/node';
-import sqlPlugin, {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
+import {
   installRLSFunctions,
   getOrCreateRlsServer,
   setServerContext,
@@ -42,145 +39,40 @@ import sqlPlugin, {
 import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
-import internalMessageBus from './bus.js';
+import internalMessageBus from './services/message-bus';
 import type {
   CentralRootMessage,
   MessageChannel,
   MessageServer,
   MessageServiceStructure,
-} from './types.js';
-import { existsSync } from 'node:fs';
+} from './types/server';
 import { MySQLNoOpMigrationService } from './utils/mysql-noop-migration-service.js';
 import { validateAndLogMySQLUrl } from './utils/mysql-url-validator.js';
-import { resolveEnvFile } from './api/system/environment.js';
-import dotenv from 'dotenv';
 
-/**
- * Expands a file path starting with `~` to the project directory.
- *
- * @param filepath - The path to expand.
- * @returns The expanded path.
- */
-export function expandTildePath(filepath: string): string {
-  if (!filepath) {
-    return filepath;
-  }
+// Re-export config utilities for backward compatibility
+export {
+  DEFAULT_SERVER_ID,
+  expandTildePath,
+  resolvePgliteDir,
+  isWebUIEnabled,
+  type ServerMiddleware,
+  type ServerConfig,
+} from './utils/config';
 
-  if (filepath.startsWith('~')) {
-    if (filepath === '~') {
-      return process.cwd();
-    } else if (filepath.startsWith('~/')) {
-      return path.join(process.cwd(), filepath.slice(2));
-    } else if (filepath.startsWith('~~')) {
-      // Don't expand ~~
-      return filepath;
-    } else {
-      // Handle ~user/path by expanding it to cwd/user/path
-      return path.join(process.cwd(), filepath.slice(1));
-    }
-  }
-
-  return filepath;
-}
-
-export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
-  const envPath = resolveEnvFile();
-  if (existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-  }
-
-  // If explicit dir provided, use it
-  if (dir) {
-    const resolved = expandTildePath(dir);
-    process.env.PGLITE_DATA_DIR = resolved;
-    return resolved;
-  }
-
-  // If fallbackDir provided, use it as fallback
-  if (fallbackDir && !process.env.PGLITE_DATA_DIR && !process.env.ELIZA_DATABASE_DIR) {
-    const resolved = expandTildePath(fallbackDir);
-    process.env.PGLITE_DATA_DIR = resolved;
-    return resolved;
-  }
-
-  // Use the centralized path configuration from core
-  const resolved = getDatabaseDir();
-
-  // Persist chosen root for the process so child modules see it (backward compat)
-  process.env.PGLITE_DATA_DIR = resolved;
-  return resolved;
-}
+// Import for internal use
+import {
+  DEFAULT_SERVER_ID,
+  isWebUIEnabled,
+  resolvePgliteDir,
+  type ServerConfig,
+  type ServerMiddleware,
+} from './utils/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const DEFAULT_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID; // Single default server
-
 /**
- * Represents a function that acts as a server middleware.
- * @param {express.Request} req - The request object.
- * @param {express.Response} res - The response object.
- * @param {express.NextFunction} next - The next function to be called in the middleware chain.
- * @returns {void}
+ * Represents an agent server which handles agents, database, and server functionalities.
  */
-export type ServerMiddleware = (
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) => void;
-
-/**
- * Interface for defining server configuration.
- * Used for unified server initialization and startup.
- */
-export interface ServerConfig {
-  // Infrastructure configuration
-  middlewares?: ServerMiddleware[];
-  dataDir?: string;
-  postgresUrl?: string;
-  clientPath?: string;
-  port?: number; // If provided, fail if not available. If undefined, auto-discover next available port
-
-  // Database plugin configuration (provided by caller, typically CLI)
-  databasePlugin?: Plugin;
-  createDatabaseAdapter?: (config: any, agentId: UUID) => DatabaseAdapter;
-  DatabaseMigrationService?: new () => {
-    initializeWithDatabase(db: any): Promise<void>;
-    discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
-    runAllPluginMigrations(): Promise<void>;
-  };
-
-  // Agent configuration (runtime, not infrastructure)
-  agents?: Array<{
-    character: Character;
-    plugins?: (Plugin | string)[];
-    init?: (runtime: IAgentRuntime) => Promise<void>;
-  }>;
-  isTestMode?: boolean;
-}
-
-/**
- * Determines if the web UI should be enabled based on environment variables.
- *
- * @returns {boolean} - Returns true if UI should be enabled, false otherwise
- */
-export function isWebUIEnabled(): boolean {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const uiEnabledEnv = process.env.ELIZA_UI_ENABLE;
-
-  // Treat empty strings as undefined
-  if (uiEnabledEnv !== undefined && uiEnabledEnv.trim() !== '') {
-    return parseBooleanFromText(uiEnabledEnv);
-  }
-
-  // Default: enabled in dev, disabled in prod
-  return !isProduction;
-}
-
-/**
- * Class representing an agent server.
- */ /**
-* Represents an agent server which handles agents, database, and server functionalities.
-*/
 export class AgentServer {
   public app!: express.Application;
   public server!: http.Server;
@@ -409,6 +301,7 @@ export class AgentServer {
             // Validate MySQL URL before attempting to use it
             validateAndLogMySQLUrl(mysqlUrl);
 
+            // @ts-expect-error - plugin-mysql is an optional plugin that may not be installed
             const mysqlPluginModule = await import('@elizaos/plugin-mysql');
             // Type assertion needed due to dual @elizaos/core versions
             this.databasePlugin = mysqlPluginModule.default as any as Plugin;
@@ -1308,6 +1201,16 @@ export class AgentServer {
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
 
+      // Configure server timeouts for optimal performance:
+      // - timeout: Max time for entire request/response cycle (30s allows for LLM calls)
+      // - keepAliveTimeout: Idle connection timeout (5s balances reuse vs resources)
+      // - headersTimeout: Max time to receive headers (10s protects against slow clients)
+      // - requestTimeout: Max time for request body (30s matches timeout for consistency)
+      this.server.timeout = 30000;
+      this.server.keepAliveTimeout = 5000;
+      this.server.headersTimeout = 10000;
+      this.server.requestTimeout = 30000;
+
       // Initialize Socket.io, passing the AgentServer instance
       this.socketIO = setupSocketIO(this.server, this.elizaOS!, this);
 
@@ -1862,10 +1765,10 @@ export {
   loadCharacterTryPath,
   hasValidRemoteUrls,
   loadCharacters,
-} from './loader';
+} from './services/loader';
 
 // Export types
-export * from './types';
+export * from './types/server';
 
 // Export ElizaOS from core (re-export for convenience)
 export { ElizaOS } from '@elizaos/core';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { jsonToCharacter } from '../../../loader';
+import { jsonToCharacter } from '../../../services/loader';
 import type { Character } from '@elizaos/core';
 
 /**

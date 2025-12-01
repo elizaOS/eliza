@@ -16,12 +16,12 @@
 
 import type { UUID } from '@elizaos/core';
 import { ChannelType } from '@elizaos/core';
-import type { MessageChannel } from '../../types';
+import type { MessageChannel } from '../../types/server';
 
 /**
  * Channel creation input type
  */
-export type ChannelInput = Omit<MessageChannel, 'createdAt' | 'updatedAt'> & { id?: UUID };
+export type ChannelInput = Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'> & { id?: UUID };
 
 /**
  * Builder class for creating Channel test data
@@ -194,7 +194,17 @@ export class ChannelBuilder {
       this.channel.metadata = {};
     }
 
-    return this.channel as ChannelInput;
+    // Type assertion ensures required fields are present after validation
+    return {
+      name: this.channel.name,
+      type: this.channel.type,
+      messageServerId: this.channel.messageServerId,
+      metadata: this.channel.metadata,
+      ...(this.channel.id && { id: this.channel.id }),
+      ...(this.channel.sourceType && { sourceType: this.channel.sourceType }),
+      ...(this.channel.sourceId && { sourceId: this.channel.sourceId }),
+      ...(this.channel.topic && { topic: this.channel.topic }),
+    } as ChannelInput;
   }
 
   /**

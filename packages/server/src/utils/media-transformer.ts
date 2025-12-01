@@ -8,7 +8,7 @@ import type {
   AttachmentInput,
   MessageWithAttachments,
   MessageContentWithAttachments,
-} from '../types';
+} from '../types/server';
 
 // Path configurations mapping
 // Pattern matches any ID format (not just UUIDs) to support all valid IDs
