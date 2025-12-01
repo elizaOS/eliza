@@ -397,13 +397,15 @@ export class AgentRuntime implements IAgentRuntime {
       // The runtime now accepts a pre-resolved, ordered list of plugins.
       const pluginsToLoad = this.characterPlugins;
 
-      // Start plugin registration but don't await yet
-      // This allows plugins to be registered concurrently with adapter init
+      // Register all plugins and wait for completion
+      // This must complete before checking adapter availability because
+      // database plugins register their adapter inside their init() function
       for (const plugin of pluginsToLoad) {
         if (plugin) {
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
         }
       }
+      await Promise.all(pluginRegistrationPromises);
 
       if (!this.adapter) {
         this.logger.error({ src: 'agent', agentId: this.agentId }, 'Database adapter not initialized');
@@ -416,9 +418,6 @@ export class AgentRuntime implements IAgentRuntime {
       if (!(await this.adapter.isReady())) {
         await this.adapter.init();
       }
-
-      // Now await plugin registration to complete
-      await Promise.all(pluginRegistrationPromises);
 
       // Initialize message service
       this.messageService = new DefaultMessageService();
