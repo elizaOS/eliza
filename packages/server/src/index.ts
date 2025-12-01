@@ -559,7 +559,7 @@ export class AgentServer {
         // Verify it was created
         const verifyServers = await (this.database as any).getMessageServers();
         logger.debug({ src: 'db', serverCount: verifyServers.length }, 'After creation attempt, found servers');
-        
+
         const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
         if (!verifyDefault) {
           throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
