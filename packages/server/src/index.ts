@@ -1069,7 +1069,11 @@ export class AgentServer {
       // Create HTTP server for Socket.io
       this.server = http.createServer(this.app);
 
-      // Configure server timeouts
+      // Configure server timeouts for optimal performance:
+      // - timeout: Max time for entire request/response cycle (30s allows for LLM calls)
+      // - keepAliveTimeout: Idle connection timeout (5s balances reuse vs resources)
+      // - headersTimeout: Max time to receive headers (10s protects against slow clients)
+      // - requestTimeout: Max time for request body (30s matches timeout for consistency)
       this.server.timeout = 30000;
       this.server.keepAliveTimeout = 5000;
       this.server.headersTimeout = 10000;

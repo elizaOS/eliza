@@ -24,7 +24,13 @@ import {
 import { Server as SocketIOServer, ServerOptions } from 'socket.io';
 
 /**
- * Socket.IO server configuration
+ * Socket.IO server configuration optimized for production
+ *
+ * Timing values:
+ * - pingInterval (25s): How often server sends ping to clients. Higher = less overhead, slower dead detection
+ * - pingTimeout (20s): Time to wait for pong response before considering client disconnected
+ * - connectTimeout (10s): Max time for initial connection handshake
+ *
  * @see https://socket.io/docs/v4/server-options/
  */
 const SOCKET_IO_CONFIG: Partial<ServerOptions> = {
@@ -33,9 +39,9 @@ const SOCKET_IO_CONFIG: Partial<ServerOptions> = {
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  pingInterval: 25000, // 25s - standard Socket.IO default
-  pingTimeout: 20000, // 20s - time to wait for pong response
-  connectTimeout: 10000, // 10s - initial connection timeout
+  pingInterval: 25000,
+  pingTimeout: 20000,
+  connectTimeout: 10000,
   transports: ['websocket', 'polling'],
   allowUpgrades: true,
   maxHttpBufferSize: 1e6,
