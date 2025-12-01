@@ -33,9 +33,9 @@ const SOCKET_IO_CONFIG: Partial<ServerOptions> = {
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  pingInterval: 10000,
-  pingTimeout: 5000,
-  connectTimeout: 10000,
+  pingInterval: 25000, // 25s - standard Socket.IO default
+  pingTimeout: 20000, // 20s - time to wait for pong response
+  connectTimeout: 10000, // 10s - initial connection timeout
   transports: ['websocket', 'polling'],
   allowUpgrades: true,
   maxHttpBufferSize: 1e6,

@@ -2,14 +2,6 @@
  * Utility exports for the ElizaOS server
  */
 
-// Circuit breaker
-export {
-  createCircuitBreaker,
-  dbCircuitBreaker,
-  CircuitBreaker,
-  type CircuitBreakerConfig,
-} from './circuit-breaker';
-
 // Media transformer
 export { attachmentsToApiUrls, transformMessageAttachments } from './media-transformer';
 

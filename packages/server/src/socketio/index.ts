@@ -431,19 +431,21 @@ export class SocketIORouter {
       // Broadcast to everyone in the channel except the sender
       socket.to(channelId).emit('messageBroadcast', messageBroadcast);
 
-      // Also send back to the sender with the server-assigned ID
-      socket.emit('messageBroadcast', {
-        ...messageBroadcast,
-        clientMessageId: payload.messageId,
-      });
+      // Also send back to the sender with the server-assigned ID (if still connected)
+      if (socket.connected) {
+        socket.emit('messageBroadcast', {
+          ...messageBroadcast,
+          clientMessageId: payload.messageId,
+        });
 
-      socket.emit('messageAck', {
-        clientMessageId: payload.messageId,
-        messageId: createdRootMessage.id,
-        status: 'received_by_server_and_processing',
-        channelId,
-        roomId: channelId, // Keep for backward compatibility
-      });
+        socket.emit('messageAck', {
+          clientMessageId: payload.messageId,
+          messageId: createdRootMessage.id,
+          status: 'received_by_server_and_processing',
+          channelId,
+          roomId: channelId, // Keep for backward compatibility
+        });
+      }
     } catch (error: any) {
       logger.error({ src: 'ws', socketId: socket.id, error: error.message }, 'Error processing message');
       this.sendErrorResponse(socket, `Error processing your message: ${error.message}`);
@@ -452,25 +454,31 @@ export class SocketIORouter {
 
   private sendErrorResponse(socket: Socket, errorMessage: string) {
     logger.warn({ src: 'ws', socketId: socket.id, error: errorMessage }, 'Sending error to client');
-    socket.emit('messageError', {
-      error: errorMessage,
-    });
+    if (socket.connected) {
+      socket.emit('messageError', {
+        error: errorMessage,
+      });
+    }
   }
 
   private handleLogSubscription(socket: Socket) {
     this.logStreamConnections.set(socket.id, {});
-    socket.emit('log_subscription_confirmed', {
-      subscribed: true,
-      message: 'Successfully subscribed to log stream',
-    });
+    if (socket.connected) {
+      socket.emit('log_subscription_confirmed', {
+        subscribed: true,
+        message: 'Successfully subscribed to log stream',
+      });
+    }
   }
 
   private handleLogUnsubscription(socket: Socket) {
     this.logStreamConnections.delete(socket.id);
-    socket.emit('log_subscription_confirmed', {
-      subscribed: false,
-      message: 'Successfully unsubscribed from log stream',
-    });
+    if (socket.connected) {
+      socket.emit('log_subscription_confirmed', {
+        subscribed: false,
+        message: 'Successfully unsubscribed from log stream',
+      });
+    }
   }
 
   private handleLogFilterUpdate(socket: Socket, filters: { agentName?: string; level?: string }) {

@@ -48,7 +48,6 @@
     "@elizaos/config": "workspace:*",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^24.0.1",
-    "@types/opossum": "^8.1.9",
     "bun-fetch-mock": "^1.0.0",
     "prettier": "3.6.2",
     "tsx": "4.20.6",
@@ -71,7 +70,6 @@
     "helmet": "^8.1.0",
     "jose": "^6.1.2",
     "multer": "^2.0.1",
-    "opossum": "^9.0.0",
     "path-to-regexp": "^8.2.0",
     "socket.io": "^4.8.1"
   }
