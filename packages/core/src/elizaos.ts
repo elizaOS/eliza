@@ -565,7 +565,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // ========== SYNC MODE ==========
       // Wait for response
 
-      const result = await handleMessageWithEntityContext<MessageProcessingResult>(() =>
+      const processing = await handleMessageWithEntityContext<MessageProcessingResult>(() =>
         runtime.messageService!.handleMessage(runtime, userMessage, undefined, processingOptions)
       );
 
@@ -574,11 +574,11 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Emit event for tracking
       this.dispatchEvent(
         new CustomEvent('message:sent', {
-          detail: { agentId, messageId, mode: 'sync', result },
+          detail: { agentId, messageId, mode: 'sync', processing },
         })
       );
 
-      return { messageId, userMessage, result };
+      return { messageId, userMessage, processing };
     }
   }
 

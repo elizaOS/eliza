@@ -105,9 +105,9 @@ describe('ElizaOS.sendMessage', () => {
       expect(result.userMessage.content.text).toBe('Hello');
 
       // Should return processing result in SYNC mode
-      expect(result.result).toBeDefined();
-      expect(result.result?.didRespond).toBe(true);
-      expect(result.result?.responseContent?.text).toBe('Hello! How can I help you?');
+      expect(result.processing).toBeDefined();
+      expect(result.processing?.didRespond).toBe(true);
+      expect(result.processing?.responseContent?.text).toBe('Hello! How can I help you?');
 
       // handleMessage should have been called with undefined callback (sync mode)
       expect(handleMessageMock).toHaveBeenCalled();
@@ -280,8 +280,8 @@ describe('ElizaOS.sendMessage', () => {
       // Should return user message
       expect(result.userMessage).toBeDefined();
 
-      // Should NOT return result in async mode
-      expect(result.result).toBeUndefined();
+      // Should NOT return processing in async mode
+      expect(result.processing).toBeUndefined();
     });
 
     it('should call onResponse callback with agent response', async () => {
