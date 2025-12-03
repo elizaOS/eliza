@@ -1,6 +1,8 @@
 import ChatComponent from '@/components/chat';
 import { ChannelType, validateUuid, type UUID } from '@elizaos/core';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
+
 function GroupRouteContent() {
   const { channelId: channelIdFromPath } = useParams<{ channelId: string }>();
   const [searchParams] = useSearchParams();
@@ -27,6 +29,13 @@ function GroupRouteContent() {
   );
 }
 
+/**
+ * GroupRoute with route protection
+ */
 export default function GroupRoute() {
-  return <GroupRouteContent />;
+  return (
+    <ProtectedRoute>
+      <GroupRouteContent />
+    </ProtectedRoute>
+  );
 }

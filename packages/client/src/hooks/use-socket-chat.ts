@@ -47,7 +47,7 @@ export function useSocketChat({
   onInputDisabledChange,
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
-  const { getApiKey } = useAuth();
+  const { getJwtToken, getApiKey } = useAuth();
   const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
   // Track streaming messages for this channel instance.
   // Map is cleared on channel cleanup - safe because handleStreamChunk filters by channelId.
@@ -108,9 +108,10 @@ export function useSocketChat({
       return;
     }
 
-    // Initialize socket with API key for authentication
+    // Initialize socket with JWT token and API key for authentication
+    const jwtToken = getJwtToken();
     const apiKey = getApiKey();
-    socketIOManager.initialize(currentUserId, apiKey ?? undefined);
+    socketIOManager.initialize(currentUserId, jwtToken ?? undefined, apiKey ?? undefined);
 
     // Only join if this specific channelId hasn't been joined by this hook instance yet,
     // or if the channelId has changed.

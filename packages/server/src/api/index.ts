@@ -15,6 +15,7 @@ import { audioRouter } from './audio';
 import { runtimeRouter } from './runtime';
 import { teeRouter } from './tee';
 import { systemRouter } from './system';
+import { authRouter } from './auth';
 import { SocketIORouter } from '../socketio';
 import {
   securityMiddleware,
@@ -396,6 +397,9 @@ export function createApiRouter(
   router.use(validateContentTypeMiddleware());
 
   // Setup new domain-based routes
+  // Mount auth router at /auth - handles user authentication (register/login)
+  router.use('/auth', authRouter(serverInstance));
+
   // Mount agents router at /agents - handles agent creation, management, and interactions
   router.use('/agents', agentsRouter(elizaOS, serverInstance));
 

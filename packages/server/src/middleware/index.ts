@@ -5,6 +5,13 @@
 
 // Authentication middleware
 export { apiKeyAuthMiddleware, type ApiKeyAuthRequest } from './api-key';
+export {
+  createEntityAuthMiddleware,
+  jwtAuthMiddleware,
+  requireJWT,
+  getInternalServiceSecret,
+  type AuthenticatedRequest,
+} from './entity-auth';
 
 // Security middleware
 export { securityMiddleware } from './security';
