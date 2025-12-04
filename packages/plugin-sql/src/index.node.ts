@@ -1,5 +1,6 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
+import { mkdirSync } from 'node:fs';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -62,6 +63,12 @@ export function createDatabaseAdapter(
   }
 
   const dataDir = resolvePgliteDir(config.dataDir);
+
+  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
+  if (dataDir && !dataDir.includes('://')) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
