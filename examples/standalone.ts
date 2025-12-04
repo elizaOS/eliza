@@ -40,7 +40,6 @@
 import {
   AgentRuntime,
   ChannelType,
-  EventType,
   createMessageMemory,
   stringToUuid,
   type Character,
@@ -141,18 +140,23 @@ async function main(): Promise<void> {
 
   console.log('User:', message.content.text);
 
-  // Send the message through the bootstrap message handler and print the response(s)
-  await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+  // Send the message through the messageService and print the response(s)
+  const result = await runtime.messageService.handleMessage(
     runtime,
     message,
-    callback: async (content: Content) => {
+    async (content: Content) => {
       if (content?.text) {
         console.log(`${character.name}:`, content.text);
       } else if (content?.thought) {
         console.log(`${character.name} (thought):`, content.thought);
       }
-    },
-  });
+    }
+  );
+
+  // If no callback was triggered but we have a response, print it
+  if (result.responseContent?.text) {
+    console.log(`${character.name}:`, result.responseContent.text);
+  }
 
   await runtime.stop();
 }

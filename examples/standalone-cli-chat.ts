@@ -14,7 +14,6 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
 import {
   AgentRuntime,
   ChannelType,
-  EventType,
   createMessageMemory,
   stringToUuid,
   type Character,
@@ -184,6 +183,7 @@ class AgentInitializer {
     const userId = uuidv4() as UUID;
     const worldId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.WORLD);
     const roomId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.ROOM);
+    const messageServerId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.SERVER);
 
     await runtime.ensureConnection({
       entityId: userId,
@@ -192,7 +192,7 @@ class AgentInitializer {
       name: 'User',
       source: CONSTANTS.CHAT_IDENTIFIERS.SOURCE,
       channelId: CONSTANTS.CHAT_IDENTIFIERS.CHANNEL,
-      messageServerId: CONSTANTS.CHAT_IDENTIFIERS.SERVER,
+      messageServerId,
       type: ChannelType.DM,
     });
 
@@ -241,7 +241,7 @@ class AgentInitializer {
 // ============================================================================
 
 class MessageProcessor {
-  constructor(private session: ChatSession) {}
+  constructor(private session: ChatSession) { }
 
   private createMessageMemory(userInput: string): Memory {
     return createMessageMemory({
@@ -262,20 +262,21 @@ class MessageProcessor {
 
     let response = '';
 
-    await this.session.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: this.session.runtime,
+    // Use the messageService.handleMessage() API instead of deprecated MESSAGE_RECEIVED event
+    const result = await this.session.runtime.messageService.handleMessage(
+      this.session.runtime,
       message,
-      callback: async (content: Content) => {
+      async (content: Content) => {
         if (content?.text) {
           response += content.text;
         }
-      },
-    });
+      }
+    );
 
     const thinkingTimeMs = Date.now() - startTime;
 
     return {
-      response,
+      response: response || result.responseContent?.text || '',
       thinkingTimeMs,
     };
   }
@@ -289,7 +290,7 @@ class ChatInterface {
   constructor(
     private messageProcessor: MessageProcessor,
     private character: Character
-  ) {}
+  ) { }
 
   private displayWelcome(): void {
     clack.intro('🤖 ElizaOS Interactive Chat');
