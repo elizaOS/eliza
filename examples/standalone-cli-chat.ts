@@ -18,6 +18,7 @@ import {
   stringToUuid,
   type Character,
   type Content,
+  type IDatabaseAdapter,
   type Memory,
   type UUID,
 } from '@elizaos/core';
@@ -138,7 +139,7 @@ class AgentInitializer {
     };
   }
 
-  private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<void> {
+  private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<IDatabaseAdapter> {
     const adapter = createDatabaseAdapter(
       {
         dataDir: config.pgliteDataDir,
