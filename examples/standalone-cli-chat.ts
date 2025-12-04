@@ -9,7 +9,7 @@
  */
 
 // MUST be set before any imports to suppress ElizaOS logs
-process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
+process.env.LOG_LEVEL = 'silent';
 
 import {
   AgentRuntime,
@@ -26,7 +26,6 @@ import openaiPlugin from '@elizaos/plugin-openai';
 import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as clack from '@clack/prompts';
 import 'node:crypto';
-import fs from 'node:fs';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================
@@ -140,10 +139,6 @@ class AgentInitializer {
   }
 
   private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<void> {
-    if (!config.postgresUrl && config.pgliteDataDir !== CONSTANTS.DEFAULT_PGLITE_DATA_DIR) {
-      fs.mkdirSync(config.pgliteDataDir, { recursive: true });
-    }
-
     const adapter = createDatabaseAdapter(
       {
         dataDir: config.pgliteDataDir,
