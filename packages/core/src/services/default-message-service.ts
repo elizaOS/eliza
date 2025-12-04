@@ -889,11 +889,16 @@ export class DefaultMessageService implements IMessageService {
     }
 
     // Automatically determine if response is simple
+    // A response is simple if it's just a REPLY with no providers (or only 'NONE' provider)
+    const hasNoProviders = !responseContent.providers ||
+      responseContent.providers.length === 0 ||
+      (responseContent.providers.length === 1 && responseContent.providers[0].toUpperCase() === 'NONE');
+
     const isSimple =
       responseContent.actions?.length === 1 &&
       typeof responseContent.actions[0] === 'string' &&
       responseContent.actions[0].toUpperCase() === 'REPLY' &&
-      (!responseContent.providers || responseContent.providers.length === 0);
+      hasNoProviders;
 
     responseContent.simple = isSimple;
 
