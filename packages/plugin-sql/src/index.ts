@@ -1,5 +1,6 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
+import { mkdirSync } from 'node:fs';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -75,6 +76,11 @@ export function createDatabaseAdapter(
   // Only resolve PGLite directory when we're actually using PGLite
   const dataDir = resolvePgliteDir(config.dataDir);
 
+  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
+  if (dataDir && !dataDir.includes('://')) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
@@ -105,16 +111,16 @@ export const plugin: Plugin = {
       typeof (runtime as any).hasDatabaseAdapter === 'function'
         ? (runtime as any).hasDatabaseAdapter()
         : (() => {
-            try {
-              const existing =
-                (runtime as any).getDatabaseAdapter?.() ??
-                (runtime as any).databaseAdapter ??
-                (runtime as any).adapter;
-              return Boolean(existing);
-            } catch {
-              return false;
-            }
-          })();
+          try {
+            const existing =
+              (runtime as any).getDatabaseAdapter?.() ??
+              (runtime as any).databaseAdapter ??
+              (runtime as any).adapter;
+            return Boolean(existing);
+          } catch {
+            return false;
+          }
+        })();
 
     if (adapterRegistered) {
       runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter already registered, skipping creation');
