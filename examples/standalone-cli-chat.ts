@@ -9,7 +9,7 @@
  */
 
 // MUST be set before any imports to suppress ElizaOS logs
-process.env.LOG_LEVEL = 'silent';
+process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
 
 import {
   AgentRuntime,
