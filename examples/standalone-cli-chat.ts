@@ -255,16 +255,22 @@ class MessageProcessor {
     const message = this.createMessageMemory(userInput);
     const startTime = Date.now();
 
+    // Verify messageService is initialized
+    if (!this.session.runtime.messageService) {
+      throw new Error('MessageService not initialized - runtime may not be fully configured');
+    }
+
     let response = '';
 
     // Use the messageService.handleMessage() API instead of deprecated MESSAGE_RECEIVED event
     const result = await this.session.runtime.messageService.handleMessage(
       this.session.runtime,
       message,
-      async (content: Content) => {
+      async (content: Content): Promise<Memory[]> => {
         if (content?.text) {
           response += content.text;
         }
+        return []; // Return empty array as we're only capturing text for display
       }
     );
 
