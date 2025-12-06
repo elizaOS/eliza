@@ -800,6 +800,91 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
 
+    it('should mark minimal ActionResult {success: false} as failed (not wrapped as success)', async () => {
+      // This test specifically verifies the fix for the issue where minimal ActionResult
+      // like { success: false } was incorrectly wrapped with success: true because the
+      // check only looked for 'values', 'data', or 'text' fields
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
+        }
+      );
+
+      // Create an action that returns ONLY { success: false } - no text, data, or values
+      const minimalFailHandler = mock().mockResolvedValue({
+        success: false,
+      });
+
+      const minimalFailAction: Action = {
+        name: 'MINIMAL_FAIL_ACTION',
+        description: 'Action that returns minimal failure result',
+        similes: [],
+        examples: [],
+        handler: minimalFailHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(minimalFailAction);
+
+      responseMemory.content.actions = ['MINIMAL_FAIL_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(minimalFailHandler).toHaveBeenCalledTimes(1);
+      expect(capturedActionMemory).not.toBeNull();
+      // Critical: Should be 'failed', NOT 'completed'
+      expect(capturedActionMemory.content.actionStatus).toBe('failed');
+
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
+    });
+
+    it('should mark ActionResult with only error field as failed', async () => {
+      // Test case for { success: false, error: 'message' } without text/data/values
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
+        }
+      );
+
+      const errorOnlyHandler = mock().mockResolvedValue({
+        success: false,
+        error: 'Something went wrong',
+      });
+
+      const errorOnlyAction: Action = {
+        name: 'ERROR_ONLY_ACTION',
+        description: 'Action that returns failure with only error field',
+        similes: [],
+        examples: [],
+        handler: errorOnlyHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(errorOnlyAction);
+
+      responseMemory.content.actions = ['ERROR_ONLY_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(errorOnlyHandler).toHaveBeenCalledTimes(1);
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('failed');
+
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
+    });
+
     it('should create error memory when action has no handler', async () => {
       let capturedActionMemory: any = null;
       const originalCreateMemory = mockDatabaseAdapter.createMemory;

@@ -65,9 +65,9 @@ export function createBrowserFallback(): IAsyncLocalStorage<ActionContextStore> 
         parallelWarningShown = true;
         console.warn(
           '[AsyncLocalStorage Browser Fallback] Parallel async operations detected. ' +
-            'Context isolation is NOT guaranteed in browser environments. ' +
-            'For reliable parallel action execution, use Node.js or Bun which provide real AsyncLocalStorage. ' +
-            'The most recent context will be used, which may cause prompts to be attributed to the wrong action.'
+          'Context isolation is NOT guaranteed in browser environments. ' +
+          'For reliable parallel action execution, use Node.js or Bun which provide real AsyncLocalStorage. ' +
+          'The most recent context will be used, which may cause prompts to be attributed to the wrong action.'
         );
       }
 
@@ -1151,10 +1151,15 @@ export class AgentRuntime implements IAgentRuntime {
 
           if (!isLegacyReturn) {
             // Ensure we have an ActionResult with required success field
+            // Check for any ActionResult fields: success, error, text, values, data
             if (
               typeof result === 'object' &&
               result !== null &&
-              ('values' in result || 'data' in result || 'text' in result)
+              ('success' in result ||
+                'error' in result ||
+                'values' in result ||
+                'data' in result ||
+                'text' in result)
             ) {
               // Ensure success field exists with default true
               actionResult = {
