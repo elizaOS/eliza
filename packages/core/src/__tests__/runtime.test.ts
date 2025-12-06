@@ -799,6 +799,71 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
 
       mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
+
+    it('should create error memory when action has no handler', async () => {
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
+        }
+      );
+
+      // Create an action WITHOUT a handler
+      const noHandlerAction: Action = {
+        name: 'NO_HANDLER_ACTION',
+        description: 'Action without a handler',
+        similes: [],
+        examples: [],
+        handler: undefined as any, // Explicitly no handler
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(noHandlerAction);
+
+      responseMemory.content.actions = ['NO_HANDLER_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify error memory was created
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('failed');
+      expect(capturedActionMemory.content.actionName).toBe('NO_HANDLER_ACTION');
+      expect(capturedActionMemory.content.thought).toContain('has no handler');
+
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
+    });
+
+    it('should create error memory when action is not found', async () => {
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
+        }
+      );
+
+      // Use an action name that doesn't exist
+      responseMemory.content.actions = ['NONEXISTENT_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify error memory was created
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('failed');
+      expect(capturedActionMemory.content.actionName).toBe('NONEXISTENT_ACTION');
+      expect(capturedActionMemory.content.thought).toContain('not found');
+
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
+    });
   });
 
   // --- getActionResults Tests ---
@@ -1676,3 +1741,240 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
   });
 }); // End of main describe block
+
+// --- Browser Fallback Tests ---
+// These tests verify the browser fallback implementation behavior
+import { createBrowserFallback, type ActionContextStore, type IAsyncLocalStorage } from '../runtime';
+
+describe('Browser Fallback AsyncLocalStorage', () => {
+  let fallback: IAsyncLocalStorage<ActionContextStore>;
+
+  beforeEach(() => {
+    // Create fresh fallback for each test
+    fallback = createBrowserFallback();
+  });
+
+  it('should return undefined when no context is active', () => {
+    expect(fallback.getStore()).toBeUndefined();
+  });
+
+  it('should return the store during synchronous callback execution', () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    let capturedStore: ActionContextStore | undefined;
+    fallback.run(store, () => {
+      capturedStore = fallback.getStore();
+    });
+
+    expect(capturedStore).toBe(store);
+  });
+
+  it('should clear store after synchronous callback completes', () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    fallback.run(store, () => {
+      // Inside callback
+    });
+
+    // After callback completes
+    expect(fallback.getStore()).toBeUndefined();
+  });
+
+  it('should return the store during async callback execution', async () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    let capturedStore: ActionContextStore | undefined;
+    await fallback.run(store, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      capturedStore = fallback.getStore();
+    });
+
+    expect(capturedStore).toBe(store);
+  });
+
+  it('should clear store after async callback completes', async () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    await fallback.run(store, async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    // After async callback completes
+    expect(fallback.getStore()).toBeUndefined();
+  });
+
+  it('should restore store on synchronous error', () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    expect(() => {
+      fallback.run(store, () => {
+        throw new Error('test error');
+      });
+    }).toThrow('test error');
+
+    // Store should be cleared after error
+    expect(fallback.getStore()).toBeUndefined();
+  });
+
+  it('should restore store on async rejection', async () => {
+    const store: ActionContextStore = {
+      actionName: 'TEST_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+
+    await expect(
+      fallback.run(store, async () => {
+        throw new Error('async error');
+      })
+    ).rejects.toThrow('async error');
+
+    // Store should be cleared after rejection
+    expect(fallback.getStore()).toBeUndefined();
+  });
+
+  it('should support nested synchronous runs', () => {
+    const outerStore: ActionContextStore = {
+      actionName: 'OUTER_ACTION',
+      actionId: '123' as UUID,
+      prompts: [],
+    };
+    const innerStore: ActionContextStore = {
+      actionName: 'INNER_ACTION',
+      actionId: '456' as UUID,
+      prompts: [],
+    };
+
+    let outerCapture1: ActionContextStore | undefined;
+    let innerCapture: ActionContextStore | undefined;
+    let outerCapture2: ActionContextStore | undefined;
+
+    fallback.run(outerStore, () => {
+      outerCapture1 = fallback.getStore();
+
+      fallback.run(innerStore, () => {
+        innerCapture = fallback.getStore();
+      });
+
+      outerCapture2 = fallback.getStore();
+    });
+
+    expect(outerCapture1).toBe(outerStore);
+    expect(innerCapture).toBe(innerStore);
+    // Note: After inner completes, the fallback tries to find the most recent active scope
+    // In nested sync case, outer is still active
+    expect(outerCapture2).toBe(outerStore);
+  });
+
+  // This test documents the known limitation of the browser fallback
+  it('should warn and use most recent context for parallel async operations (known limitation)', async () => {
+    // Capture console.warn
+    const originalWarn = console.warn;
+    let warningMessage = '';
+    console.warn = (msg: string) => {
+      warningMessage = msg;
+    };
+
+    const storeA: ActionContextStore = {
+      actionName: 'ACTION_A',
+      actionId: 'aaa' as UUID,
+      prompts: [],
+    };
+    const storeB: ActionContextStore = {
+      actionName: 'ACTION_B',
+      actionId: 'bbb' as UUID,
+      prompts: [],
+    };
+
+    let capturedByA: ActionContextStore | undefined;
+    let capturedByB: ActionContextStore | undefined;
+
+    // Start two parallel async operations
+    const promiseA = fallback.run(storeA, async () => {
+      // Delay to ensure B starts before A's getStore
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      capturedByA = fallback.getStore();
+      return 'A';
+    });
+
+    const promiseB = fallback.run(storeB, async () => {
+      // No delay - B starts and captures immediately
+      capturedByB = fallback.getStore();
+      return 'B';
+    });
+
+    await Promise.all([promiseA, promiseB]);
+
+    // Restore console.warn
+    console.warn = originalWarn;
+
+    // The warning should have been logged
+    expect(warningMessage).toContain('Parallel async operations detected');
+    expect(warningMessage).toContain('Context isolation is NOT guaranteed');
+
+    // B captured its own store correctly (it ran first)
+    expect(capturedByB).toBe(storeB);
+
+    // A's capture is the documented limitation:
+    // Since the fallback cannot track async contexts, A may see the wrong store
+    // This test documents the actual behavior (which may vary based on timing)
+    // The important thing is that the warning was logged
+    expect(capturedByA).toBeDefined();
+  });
+
+  it('should only warn once about parallel usage', async () => {
+    // Create a fresh fallback
+    const freshFallback = createBrowserFallback();
+
+    let warnCount = 0;
+    const originalWarn = console.warn;
+    console.warn = () => {
+      warnCount++;
+    };
+
+    const store1: ActionContextStore = { actionName: 'A1', actionId: '1' as UUID, prompts: [] };
+    const store2: ActionContextStore = { actionName: 'A2', actionId: '2' as UUID, prompts: [] };
+    const store3: ActionContextStore = { actionName: 'A3', actionId: '3' as UUID, prompts: [] };
+
+    // First parallel usage
+    await Promise.all([
+      freshFallback.run(store1, async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      }),
+      freshFallback.run(store2, async () => {}),
+    ]);
+
+    // Second parallel usage
+    await Promise.all([
+      freshFallback.run(store1, async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      }),
+      freshFallback.run(store3, async () => {}),
+    ]);
+
+    console.warn = originalWarn;
+
+    // Should only warn once
+    expect(warnCount).toBe(1);
+  });
+});

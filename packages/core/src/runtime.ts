@@ -8,7 +8,7 @@ interface WorkingMemoryEntry {
 }
 
 // Interface for action context stored in AsyncLocalStorage
-interface ActionContextStore {
+export interface ActionContextStore {
   actionName: string;
   actionId: UUID;
   prompts: Array<{
@@ -21,7 +21,7 @@ interface ActionContextStore {
 }
 
 // AsyncLocalStorage-like interface for cross-platform compatibility
-interface IAsyncLocalStorage<T> {
+export interface IAsyncLocalStorage<T> {
   getStore(): T | undefined;
   run<R>(store: T, callback: () => R): R;
 }
@@ -31,37 +31,97 @@ interface IAsyncLocalStorage<T> {
 // In Browser: Uses a simple fallback (browser doesn't run parallel actions server-side)
 let actionContextStorage: IAsyncLocalStorage<ActionContextStore>;
 
-// Browser fallback implementation - simple single-context storage
-// This is acceptable because browser environments don't run the AgentRuntime
-// with parallel action execution (that's a server-side concern)
-function createBrowserFallback(): IAsyncLocalStorage<ActionContextStore> {
-  let currentStore: ActionContextStore | undefined;
+// Browser fallback implementation - single-context storage with parallel usage detection
+// WARNING: This fallback CANNOT provide true async context isolation for parallel operations.
+// True AsyncLocalStorage requires async hooks (available in Node.js/Bun, not browsers).
+// This fallback is acceptable because:
+// 1. Browser environments typically don't run AgentRuntime with parallel action execution
+// 2. Server-side environments (Node.js/Bun) use the real AsyncLocalStorage
+// 3. Runtime warnings are logged if parallel usage is detected
+// Exported for testing purposes
+export function createBrowserFallback(): IAsyncLocalStorage<ActionContextStore> {
+  // Map of active run scopes, keyed by a unique ID
+  // Each run() call creates a scope that tracks its store and completion status
+  const activeScopes = new Map<number, { store: ActionContextStore; completed: boolean }>();
+  let nextScopeId = 0;
+  let currentScopeId: number | undefined;
+  let parallelWarningShown = false;
+
   return {
-    getStore: () => currentStore,
+    getStore: () => {
+      // Return the store for the current scope (if any)
+      if (currentScopeId !== undefined) {
+        const scope = activeScopes.get(currentScopeId);
+        return scope?.store;
+      }
+      return undefined;
+    },
     run: <R>(store: ActionContextStore, callback: () => R): R => {
-      const previousStore = currentStore;
-      currentStore = store;
+      const scopeId = nextScopeId++;
+      const previousScopeId = currentScopeId;
+
+      // Detect parallel usage and warn (only once to avoid log spam)
+      if (previousScopeId !== undefined && !parallelWarningShown) {
+        parallelWarningShown = true;
+        console.warn(
+          '[AsyncLocalStorage Browser Fallback] Parallel async operations detected. ' +
+            'Context isolation is NOT guaranteed in browser environments. ' +
+            'For reliable parallel action execution, use Node.js or Bun which provide real AsyncLocalStorage. ' +
+            'The most recent context will be used, which may cause prompts to be attributed to the wrong action.'
+        );
+      }
+
+      // Create and activate this scope
+      activeScopes.set(scopeId, { store, completed: false });
+      currentScopeId = scopeId;
+
+      const cleanup = () => {
+        // Mark this scope as completed
+        const scope = activeScopes.get(scopeId);
+        if (scope) {
+          scope.completed = true;
+        }
+
+        // If this was the current scope, try to find a still-active previous scope
+        // or clear the current scope if none are active
+        if (currentScopeId === scopeId) {
+          // Find the most recent non-completed scope
+          let mostRecentActiveId: number | undefined;
+          for (const [id, s] of activeScopes) {
+            if (!s.completed && id !== scopeId) {
+              if (mostRecentActiveId === undefined || id > mostRecentActiveId) {
+                mostRecentActiveId = id;
+              }
+            }
+          }
+          currentScopeId = mostRecentActiveId;
+        }
+
+        // Clean up completed scopes to prevent memory leaks
+        for (const [id, s] of activeScopes) {
+          if (s.completed) {
+            activeScopes.delete(id);
+          }
+        }
+      };
 
       let result: R;
       try {
         result = callback();
       } catch (error) {
-        // Sync error - restore store and rethrow
-        currentStore = previousStore;
+        // Sync error - cleanup and rethrow
+        cleanup();
         throw error;
       }
 
       // Check if result is a Promise (async callback)
       if (result instanceof Promise) {
-        // For async callbacks, restore store when Promise settles (resolves or rejects)
-        // This ensures useModel calls within async action handlers see the correct context
-        return result.finally(() => {
-          currentStore = previousStore;
-        }) as R;
+        // For async callbacks, cleanup when Promise settles
+        return result.finally(cleanup) as R;
       }
 
-      // For sync callbacks, restore store immediately and return
-      currentStore = previousStore;
+      // For sync callbacks, cleanup immediately and return
+      cleanup();
       return result;
     },
   };
@@ -973,18 +1033,36 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         if (!action.handler) {
+          const errorMsg = `Action has no handler: ${action.name}`;
           this.logger.error({ src: 'agent', agentId: this.agentId, action: action.name }, 'Action has no handler');
+
+          // Create error memory (consistent with "action not found" case)
+          const actionMemory: Memory = {
+            id: uuidv4() as UUID,
+            entityId: message.entityId,
+            roomId: message.roomId,
+            worldId: message.worldId,
+            content: {
+              thought: errorMsg,
+              source: 'auto',
+              type: 'action_result',
+              actionName: action.name,
+              actionStatus: 'failed',
+              runId,
+            },
+          };
+          await this.createMemory(actionMemory, 'messages');
 
           return {
             responseAction,
             actionIndex: currentActionIndex,
-            result: { success: false, data: { error: 'No handler' } } as ActionResult,
+            result: { success: false, data: { error: errorMsg } } as ActionResult,
             action,
             isLegacyReturn: false,
             storedCallbackData,
             actionId,
             prompts: localPrompts,
-            error: new Error('No handler'),
+            error: new Error(errorMsg),
           };
         }
 
