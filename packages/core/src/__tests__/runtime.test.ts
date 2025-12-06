@@ -632,6 +632,167 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(replyWithImageHandler).toHaveBeenCalledTimes(1);
       expect(replyHandler).not.toHaveBeenCalled();
     });
+
+    it('should mark legacy void/undefined returns as completed, not failed', async () => {
+      // Track action log calls to verify status
+      let capturedActionLog: any = null;
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      // Create an action that returns undefined (legacy pattern)
+      const legacyHandler = mock().mockResolvedValue(undefined);
+
+      const legacyAction: Action = {
+        name: 'LEGACY_ACTION',
+        description: 'Legacy action returning void',
+        similes: [],
+        examples: [],
+        handler: legacyHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(legacyAction);
+
+      responseMemory.content.actions = ['LEGACY_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify the action was executed
+      expect(legacyHandler).toHaveBeenCalledTimes(1);
+
+      // Verify the action was logged as completed, not failed
+      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionLog.body.actionStatus).toBe('completed');
+      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should mark legacy boolean true returns as completed', async () => {
+      let capturedActionLog: any = null;
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      // Create an action that returns true (legacy pattern)
+      const legacyHandler = mock().mockResolvedValue(true);
+
+      const legacyAction: Action = {
+        name: 'LEGACY_TRUE_ACTION',
+        description: 'Legacy action returning true',
+        similes: [],
+        examples: [],
+        handler: legacyHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(legacyAction);
+
+      responseMemory.content.actions = ['LEGACY_TRUE_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(legacyHandler).toHaveBeenCalledTimes(1);
+      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionLog.body.actionStatus).toBe('completed');
+      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should mark legacy boolean false returns as completed (not failed)', async () => {
+      // Note: boolean returns are legacy patterns - the boolean value doesn't indicate
+      // success/failure. Only ActionResult.success === false indicates failure.
+      let capturedActionLog: any = null;
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      // Create an action that returns false (legacy pattern)
+      const legacyHandler = mock().mockResolvedValue(false);
+
+      const legacyAction: Action = {
+        name: 'LEGACY_FALSE_ACTION',
+        description: 'Legacy action returning false',
+        similes: [],
+        examples: [],
+        handler: legacyHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(legacyAction);
+
+      responseMemory.content.actions = ['LEGACY_FALSE_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(legacyHandler).toHaveBeenCalledTimes(1);
+      expect(capturedActionLog).not.toBeNull();
+      // Legacy boolean returns should still be marked as completed
+      // because they didn't return ActionResult with success: false
+      expect(capturedActionLog.body.actionStatus).toBe('completed');
+      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should mark ActionResult with success:false as failed', async () => {
+      let capturedActionLog: any = null;
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      // Create an action that returns ActionResult with success: false
+      const failingHandler = mock().mockResolvedValue({
+        success: false,
+        text: 'Operation failed',
+        data: { error: 'Something went wrong' },
+      });
+
+      const failingAction: Action = {
+        name: 'FAILING_ACTION',
+        description: 'Action that explicitly fails',
+        similes: [],
+        examples: [],
+        handler: failingHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(failingAction);
+
+      responseMemory.content.actions = ['FAILING_ACTION'];
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      expect(failingHandler).toHaveBeenCalledTimes(1);
+      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionLog.body.actionStatus).toBe('failed');
+      expect(capturedActionLog.body.isLegacyReturn).toBe(false);
+
+      mockDatabaseAdapter.log = originalLog;
+    });
   });
 
   // --- getActionResults Tests ---

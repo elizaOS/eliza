@@ -41,11 +41,28 @@ function createBrowserFallback(): IAsyncLocalStorage<ActionContextStore> {
     run: <R>(store: ActionContextStore, callback: () => R): R => {
       const previousStore = currentStore;
       currentStore = store;
+
+      let result: R;
       try {
-        return callback();
-      } finally {
+        result = callback();
+      } catch (error) {
+        // Sync error - restore store and rethrow
         currentStore = previousStore;
+        throw error;
       }
+
+      // Check if result is a Promise (async callback)
+      if (result instanceof Promise) {
+        // For async callbacks, restore store when Promise settles (resolves or rejects)
+        // This ensures useModel calls within async action handlers see the correct context
+        return result.finally(() => {
+          currentStore = previousStore;
+        }) as R;
+      }
+
+      // For sync callbacks, restore store immediately and return
+      currentStore = previousStore;
+      return result;
     },
   };
 }
@@ -1189,15 +1206,21 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Update action plan
           if (actionPlan && actionPlan.steps[currentActionIndex]) {
-            if (batchResult.error || !batchResult.result?.success) {
+            // Only mark as failed if there was an error or explicit success: false
+            // Legacy returns (where result is null) should not be treated as failures
+            const hasFailure =
+              batchResult.error || (batchResult.result && batchResult.result.success === false);
+
+            if (hasFailure) {
               actionPlan = this.updateActionStep(actionPlan, currentActionIndex, {
                 status: 'failed',
                 error: batchResult.error?.message || 'Action failed',
               });
-            } else if (batchResult.result) {
+            } else {
+              // Action completed successfully (including legacy void/null/boolean returns)
               actionPlan = this.updateActionStep(actionPlan, currentActionIndex, {
                 status: 'completed',
-                result: batchResult.result,
+                result: batchResult.result ?? undefined,
               });
             }
           }
