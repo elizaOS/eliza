@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
-import { AgentRuntime } from '../runtime';
+import { AgentRuntime, getCurrentActionContext } from '../runtime';
 import { MemoryType, ModelType } from '../types';
 import type {
   Action,
@@ -390,7 +390,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Prevent unhandled rejection from internal initPromise used by services waiting on initialization
-      runtimeWithoutAdapter.initPromise.catch(() => {});
+      runtimeWithoutAdapter.initPromise.catch(() => { });
 
       await expect(runtimeWithoutAdapter.initialize()).rejects.toThrow(
         /Database adapter not initialized/
@@ -1193,6 +1193,319 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(capturedParams.frequencyPenalty).toBe(0.5); // Valid model-specific
         expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
       });
+    });
+  });
+
+  // --- Parallel-Safe Prompt Tracking Tests ---
+  describe('Parallel-Safe Prompt Tracking (AsyncLocalStorage)', () => {
+    it('getCurrentActionContext should return undefined when not in action context', () => {
+      // When called outside of an action execution, should return undefined
+      const context = getCurrentActionContext();
+      expect(context).toBeUndefined();
+    });
+
+    it('should collect prompts during action execution via AsyncLocalStorage', async () => {
+      let capturedLogCall: any = null;
+
+      // Track log calls to verify prompts are being collected
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedLogCall = logData;
+        }
+        return originalLog(logData);
+      });
+
+      // Create an action that calls useModel during execution
+      const actionHandler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        // Simulate calling useModel during action execution
+        // This should collect prompts into the action context via AsyncLocalStorage
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'test prompt from action' });
+        return { success: true, text: 'completed' };
+      });
+
+      const testAction: Action = {
+        name: 'PROMPT_COLLECTING_ACTION',
+        description: 'Test action that collects prompts',
+        similes: [],
+        examples: [],
+        handler: actionHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(testAction);
+
+      // Register a model handler
+      const modelHandler = mock().mockResolvedValue('model response');
+      runtime.registerModel(ModelType.TEXT_SMALL, modelHandler, 'test-provider');
+
+      const message = createMockMemory('user message', undefined, undefined, undefined, agentId);
+      const responseMemory = createMockMemory(
+        'agent response',
+        undefined,
+        undefined,
+        message.roomId,
+        agentId
+      );
+      responseMemory.content.actions = ['PROMPT_COLLECTING_ACTION'];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('composed state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify the action was executed
+      expect(actionHandler).toHaveBeenCalledTimes(1);
+
+      // Verify prompts were collected and logged
+      expect(capturedLogCall).not.toBeNull();
+      expect(capturedLogCall.body.prompts).toBeDefined();
+      expect(capturedLogCall.body.prompts.length).toBeGreaterThan(0);
+      expect(capturedLogCall.body.promptCount).toBeGreaterThan(0);
+      expect(capturedLogCall.body.prompts[0]).toHaveProperty('promptId');
+      expect(capturedLogCall.body.prompts[0]).toHaveProperty('rendered', 'test prompt from action');
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should isolate prompts between parallel action executions', async () => {
+      const capturedLogCalls: any[] = [];
+
+      // Track log calls
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedLogCalls.push({ ...logData });
+        }
+        return originalLog(logData);
+      });
+
+      // Create two actions that run in parallel and each call useModel with different prompts
+      const action1Handler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        // Add a small delay to ensure parallel execution
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'prompt from ACTION_ONE' });
+        return { success: true, text: 'action one completed' };
+      });
+
+      const action2Handler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'prompt from ACTION_TWO' });
+        return { success: true, text: 'action two completed' };
+      });
+
+      const action1: Action = {
+        name: 'ACTION_ONE',
+        description: 'First parallel action',
+        similes: [],
+        examples: [],
+        handler: action1Handler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      const action2: Action = {
+        name: 'ACTION_TWO',
+        description: 'Second parallel action',
+        similes: [],
+        examples: [],
+        handler: action2Handler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(action1);
+      runtime.registerAction(action2);
+
+      // Register a model handler
+      const modelHandler = mock().mockResolvedValue('model response');
+      runtime.registerModel(ModelType.TEXT_SMALL, modelHandler, 'test-provider');
+
+      const message = createMockMemory('user message', undefined, undefined, undefined, agentId);
+      const responseMemory = createMockMemory(
+        'agent response',
+        undefined,
+        undefined,
+        message.roomId,
+        agentId
+      );
+      // Both actions in same response batch should execute in parallel
+      responseMemory.content.actions = ['ACTION_ONE', 'ACTION_TWO'];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('composed state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Both actions should have been executed
+      expect(action1Handler).toHaveBeenCalledTimes(1);
+      expect(action2Handler).toHaveBeenCalledTimes(1);
+
+      // Verify we have two separate log entries
+      expect(capturedLogCalls.length).toBe(2);
+
+      // Find logs for each action
+      const action1Log = capturedLogCalls.find((log) => log.body.action === 'ACTION_ONE');
+      const action2Log = capturedLogCalls.find((log) => log.body.action === 'ACTION_TWO');
+
+      expect(action1Log).toBeDefined();
+      expect(action2Log).toBeDefined();
+
+      // Verify prompts are isolated - each action should only have its own prompts
+      expect(action1Log.body.prompts.length).toBe(1);
+      expect(action1Log.body.prompts[0].rendered).toBe('prompt from ACTION_ONE');
+      expect(action1Log.body.promptCount).toBe(1);
+
+      expect(action2Log.body.prompts.length).toBe(1);
+      expect(action2Log.body.prompts[0].rendered).toBe('prompt from ACTION_TWO');
+      expect(action2Log.body.promptCount).toBe(1);
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should include action context in useModel logs when in action execution', async () => {
+      let capturedUseModelLog: any = null;
+
+      // Track useModel log calls
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type?.startsWith('useModel:')) {
+          capturedUseModelLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      const actionHandler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'test prompt' });
+        return { success: true, text: 'completed' };
+      });
+
+      const testAction: Action = {
+        name: 'CONTEXT_TEST_ACTION',
+        description: 'Test action for context',
+        similes: [],
+        examples: [],
+        handler: actionHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(testAction);
+      runtime.registerModel(ModelType.TEXT_SMALL, mock().mockResolvedValue('response'), 'test');
+
+      const message = createMockMemory('user message', undefined, undefined, undefined, agentId);
+      const responseMemory = createMockMemory('response', undefined, undefined, message.roomId, agentId);
+      responseMemory.content.actions = ['CONTEXT_TEST_ACTION'];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify action context is included in useModel log
+      expect(capturedUseModelLog).not.toBeNull();
+      expect(capturedUseModelLog.body.actionContext).toBeDefined();
+      expect(capturedUseModelLog.body.actionContext.actionName).toBe('CONTEXT_TEST_ACTION');
+      expect(capturedUseModelLog.body.actionContext.actionId).toBeDefined();
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should handle multiple useModel calls within same action', async () => {
+      let capturedActionLog: any = null;
+
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      const actionHandler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        // Multiple useModel calls within same action
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'first prompt' });
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'second prompt' });
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'third prompt' });
+        return { success: true, text: 'completed' };
+      });
+
+      const testAction: Action = {
+        name: 'MULTI_PROMPT_ACTION',
+        description: 'Action with multiple prompts',
+        similes: [],
+        examples: [],
+        handler: actionHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(testAction);
+      runtime.registerModel(ModelType.TEXT_SMALL, mock().mockResolvedValue('response'), 'test');
+
+      const message = createMockMemory('user message', undefined, undefined, undefined, agentId);
+      const responseMemory = createMockMemory('response', undefined, undefined, message.roomId, agentId);
+      responseMemory.content.actions = ['MULTI_PROMPT_ACTION'];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Verify all prompts were collected
+      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionLog.body.prompts.length).toBe(3);
+      expect(capturedActionLog.body.promptCount).toBe(3);
+      expect(capturedActionLog.body.prompts[0].rendered).toBe('first prompt');
+      expect(capturedActionLog.body.prompts[1].rendered).toBe('second prompt');
+      expect(capturedActionLog.body.prompts[2].rendered).toBe('third prompt');
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
+    });
+
+    it('should not collect TEXT_EMBEDDING prompts', async () => {
+      let capturedActionLog: any = null;
+
+      const originalLog = mockDatabaseAdapter.log;
+      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
+        if (logData.type === 'action') {
+          capturedActionLog = logData;
+        }
+        return originalLog(logData);
+      });
+
+      const actionHandler = mock().mockImplementation(async (rt: AgentRuntime) => {
+        // TEXT_EMBEDDING should not be collected
+        await rt.useModel(ModelType.TEXT_EMBEDDING, { prompt: 'embedding prompt' });
+        // TEXT_SMALL should be collected
+        await rt.useModel(ModelType.TEXT_SMALL, { prompt: 'text prompt' });
+        return { success: true, text: 'completed' };
+      });
+
+      const testAction: Action = {
+        name: 'EMBEDDING_TEST_ACTION',
+        description: 'Action that uses embeddings',
+        similes: [],
+        examples: [],
+        handler: actionHandler,
+        validate: mock().mockResolvedValue(true),
+      };
+
+      runtime.registerAction(testAction);
+      runtime.registerModel(ModelType.TEXT_EMBEDDING, mock().mockResolvedValue([0.1, 0.2]), 'test');
+      runtime.registerModel(ModelType.TEXT_SMALL, mock().mockResolvedValue('response'), 'test');
+
+      const message = createMockMemory('user message', undefined, undefined, undefined, agentId);
+      const responseMemory = createMockMemory('response', undefined, undefined, message.roomId, agentId);
+      responseMemory.content.actions = ['EMBEDDING_TEST_ACTION'];
+
+      spyOn(runtime, 'composeState').mockResolvedValue(createMockState('state'));
+
+      await runtime.processActions(message, [responseMemory]);
+
+      // Only the TEXT_SMALL prompt should be collected, not TEXT_EMBEDDING
+      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionLog.body.prompts.length).toBe(1);
+      expect(capturedActionLog.body.prompts[0].rendered).toBe('text prompt');
+      expect(capturedActionLog.body.promptCount).toBe(1);
+
+      // Restore original log
+      mockDatabaseAdapter.log = originalLog;
     });
   });
 }); // End of main describe block

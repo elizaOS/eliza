@@ -1,10 +1,34 @@
 import { v4 as uuidv4 } from 'uuid';
+import { AsyncLocalStorage } from 'async_hooks';
 
 // Interface for working memory entries
 interface WorkingMemoryEntry {
   actionName: string;
   result: ActionResult;
   timestamp: number;
+}
+
+// Interface for action context stored in AsyncLocalStorage
+interface ActionContextStore {
+  actionName: string;
+  actionId: UUID;
+  prompts: Array<{
+    promptId: string;
+    promptName?: string;
+    rendered: string;
+    modelType?: string;
+    timestamp?: number;
+  }>;
+}
+
+// AsyncLocalStorage instance for tracking action context during parallel execution
+const actionContextStorage = new AsyncLocalStorage<ActionContextStore>();
+
+/**
+ * Get the current action context from AsyncLocalStorage (for parallel-safe prompt tracking)
+ */
+export function getCurrentActionContext(): ActionContextStore | undefined {
+  return actionContextStorage.getStore();
 }
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
@@ -145,16 +169,7 @@ export class AgentRuntime implements IAgentRuntime {
   private initRejecter: ((reason?: any) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentRoomId?: UUID; // Track the current room for logging
-  private currentActionContext?: {
-    // Track current action execution context
-    actionName: string;
-    actionId: UUID;
-    prompts: Array<{
-      modelType: string;
-      prompt: string;
-      timestamp: number;
-    }>;
-  };
+  // Note: Action context is now tracked via AsyncLocalStorage (actionContextStorage) for parallel-safe prompt collection
   private maxWorkingMemoryEntries: number = 50; // Default value, can be overridden
   public messageService: IMessageService | null = null; // Lazily initialized
 
@@ -975,15 +990,27 @@ export class AgentRuntime implements IAgentRuntime {
             return [];
           };
 
-          // Execute action with the batch state snapshot
-          const result = await action.handler(
-            this,
-            message,
-            batchState,
-            options,
-            storageCallback,
-            responses
-          );
+          // Create action context store for AsyncLocalStorage (parallel-safe prompt tracking)
+          const actionContextStore: ActionContextStore = {
+            actionName: action.name,
+            actionId,
+            prompts: [],
+          };
+
+          // Execute action within AsyncLocalStorage context for parallel-safe prompt collection
+          const result = await actionContextStorage.run(actionContextStore, async () => {
+            return action.handler(
+              this,
+              message,
+              batchState,
+              options,
+              storageCallback,
+              responses
+            );
+          });
+
+          // Copy collected prompts from the context store to localPrompts
+          localPrompts.push(...actionContextStore.prompts);
 
           // Handle backward compatibility for void, null, true, false returns
           const isLegacyReturn =
@@ -1140,8 +1167,10 @@ export class AgentRuntime implements IAgentRuntime {
             }
           }
 
-          // Collect successful results for state accumulation
-          if (batchResult.result && !batchResult.error) {
+          // Collect ALL results (including errors) for state accumulation
+          // Error results must be included so subsequent batches can access them via
+          // previousResults/getPreviousResult() for retry logic and error handling
+          if (batchResult.result) {
             allActionResults.push(batchResult.result);
           }
         } else {
@@ -2019,8 +2048,8 @@ export class AgentRuntime implements IAgentRuntime {
       } else if (error?.message?.includes('Not implemented')) {
         this.logger.error(
           `Service ${serviceType} failed because it does not implement the static start() method. ` +
-            `All services must override the base Service.start() method. ` +
-            `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
+          `All services must override the base Service.start() method. ` +
+          `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
         );
         if (errorStack) {
           this.logger.debug(`Stack trace: ${errorStack}`);
@@ -2335,13 +2364,18 @@ export class AgentRuntime implements IAgentRuntime {
       // Log timing / response (keep debug log if useful)
       this.logger.trace({ src: 'agent', agentId: this.agentId, model: modelKey, duration: Number(elapsedTime.toFixed(2)) }, 'Model output');
 
+      // Get action context from AsyncLocalStorage (parallel-safe)
+      const currentActionContext = actionContextStorage.getStore();
+
       // Log all prompts except TEXT_EMBEDDING to track agent behavior
       if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-        // If we're in an action context, collect the prompt
-        if (this.currentActionContext) {
-          this.currentActionContext.prompts.push({
+        // If we're in an action context, collect the prompt for action-level tracing
+        if (currentActionContext) {
+          currentActionContext.prompts.push({
+            promptId: uuidv4(),
+            promptName: modelKey,
+            rendered: promptContent,
             modelType: modelKey,
-            prompt: promptContent,
             timestamp: Date.now(),
           });
         }
@@ -2364,11 +2398,11 @@ export class AgentRuntime implements IAgentRuntime {
           timestamp: Date.now(),
           executionTime: elapsedTime,
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-          actionContext: this.currentActionContext
+          actionContext: currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: currentActionContext.actionName,
+              actionId: currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2563,13 +2597,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
