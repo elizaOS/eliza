@@ -68,6 +68,7 @@ const mockDatabaseAdapter: IDatabaseAdapter = {
   getParticipantsForRoom: mock().mockResolvedValue([]),
   getParticipantUserState: mock().mockResolvedValue(null),
   setParticipantUserState: mock().mockResolvedValue(undefined),
+  isRoomParticipant: mock().mockResolvedValue(false),
   createRelationship: mock().mockResolvedValue(true),
   getRelationship: mock().mockResolvedValue(null),
   getRelationships: mock().mockResolvedValue([]),
@@ -634,15 +635,17 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     it('should mark legacy void/undefined returns as completed, not failed', async () => {
-      // Track action log calls to verify status
-      let capturedActionLog: any = null;
-      const originalLog = mockDatabaseAdapter.log;
-      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
-        if (logData.type === 'action') {
-          capturedActionLog = logData;
+      // Track action memory creation to verify status
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
         }
-        return originalLog(logData);
-      });
+      );
 
       // Create an action that returns undefined (legacy pattern)
       const legacyHandler = mock().mockResolvedValue(undefined);
@@ -666,24 +669,26 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       // Verify the action was executed
       expect(legacyHandler).toHaveBeenCalledTimes(1);
 
-      // Verify the action was logged as completed, not failed
-      expect(capturedActionLog).not.toBeNull();
-      expect(capturedActionLog.body.actionStatus).toBe('completed');
-      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+      // Verify the action memory was created with 'completed' status
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('completed');
+      expect(capturedActionMemory.content.actionName).toBe('LEGACY_ACTION');
 
-      // Restore original log
-      mockDatabaseAdapter.log = originalLog;
+      // Restore original createMemory
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
 
     it('should mark legacy boolean true returns as completed', async () => {
-      let capturedActionLog: any = null;
-      const originalLog = mockDatabaseAdapter.log;
-      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
-        if (logData.type === 'action') {
-          capturedActionLog = logData;
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
         }
-        return originalLog(logData);
-      });
+      );
 
       // Create an action that returns true (legacy pattern)
       const legacyHandler = mock().mockResolvedValue(true);
@@ -705,24 +710,25 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       await runtime.processActions(message, [responseMemory]);
 
       expect(legacyHandler).toHaveBeenCalledTimes(1);
-      expect(capturedActionLog).not.toBeNull();
-      expect(capturedActionLog.body.actionStatus).toBe('completed');
-      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('completed');
 
-      mockDatabaseAdapter.log = originalLog;
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
 
     it('should mark legacy boolean false returns as completed (not failed)', async () => {
       // Note: boolean returns are legacy patterns - the boolean value doesn't indicate
       // success/failure. Only ActionResult.success === false indicates failure.
-      let capturedActionLog: any = null;
-      const originalLog = mockDatabaseAdapter.log;
-      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
-        if (logData.type === 'action') {
-          capturedActionLog = logData;
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
         }
-        return originalLog(logData);
-      });
+      );
 
       // Create an action that returns false (legacy pattern)
       const legacyHandler = mock().mockResolvedValue(false);
@@ -744,24 +750,25 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       await runtime.processActions(message, [responseMemory]);
 
       expect(legacyHandler).toHaveBeenCalledTimes(1);
-      expect(capturedActionLog).not.toBeNull();
+      expect(capturedActionMemory).not.toBeNull();
       // Legacy boolean returns should still be marked as completed
       // because they didn't return ActionResult with success: false
-      expect(capturedActionLog.body.actionStatus).toBe('completed');
-      expect(capturedActionLog.body.isLegacyReturn).toBe(true);
+      expect(capturedActionMemory.content.actionStatus).toBe('completed');
 
-      mockDatabaseAdapter.log = originalLog;
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
 
     it('should mark ActionResult with success:false as failed', async () => {
-      let capturedActionLog: any = null;
-      const originalLog = mockDatabaseAdapter.log;
-      mockDatabaseAdapter.log = mock().mockImplementation(async (logData: any) => {
-        if (logData.type === 'action') {
-          capturedActionLog = logData;
+      let capturedActionMemory: any = null;
+      const originalCreateMemory = mockDatabaseAdapter.createMemory;
+      mockDatabaseAdapter.createMemory = mock().mockImplementation(
+        async (memory: any, tableName: string, unique?: boolean) => {
+          if (memory.content?.type === 'action_result') {
+            capturedActionMemory = memory;
+          }
+          return originalCreateMemory(memory, tableName, unique);
         }
-        return originalLog(logData);
-      });
+      );
 
       // Create an action that returns ActionResult with success: false
       const failingHandler = mock().mockResolvedValue({
@@ -787,11 +794,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       await runtime.processActions(message, [responseMemory]);
 
       expect(failingHandler).toHaveBeenCalledTimes(1);
-      expect(capturedActionLog).not.toBeNull();
-      expect(capturedActionLog.body.actionStatus).toBe('failed');
-      expect(capturedActionLog.body.isLegacyReturn).toBe(false);
+      expect(capturedActionMemory).not.toBeNull();
+      expect(capturedActionMemory.content.actionStatus).toBe('failed');
 
-      mockDatabaseAdapter.log = originalLog;
+      mockDatabaseAdapter.createMemory = originalCreateMemory;
     });
   });
 
