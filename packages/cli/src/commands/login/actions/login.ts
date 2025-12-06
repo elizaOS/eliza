@@ -13,7 +13,7 @@ const ELIZAOS_CLOUD_API_KEY = 'ELIZAOS_CLOUD_API_KEY';
  * Orchestrates the complete authentication flow
  */
 export async function handleLogin(options: LoginOptions): Promise<void> {
-  console.log(colors.bold('\n🔐 ElizaOS Cloud Authentication\n'));
+  console.log(colors.bold('\n🔐 elizaOS Cloud Authentication\n'));
 
   // Ensure cloud URL doesn't have trailing slash
   const cloudUrl = options.cloudUrl.replace(/\/$/, '');
@@ -45,7 +45,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     } catch (error) {
       createSpinner.fail('Failed to connect to cloud');
       throw new Error(
-        `Could not connect to ElizaOS Cloud at ${cloudUrl}. Please check the URL and try again.`
+        `Could not connect to elizaOS Cloud at ${cloudUrl}. Please check the URL and try again.`
       );
     }
 
@@ -174,7 +174,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
  * Display success message with API key details
  */
 function displaySuccessMessage(authResult: SessionStatusResponse): void {
-  console.log(colors.green('\n✨ You are now authenticated with ElizaOS Cloud!\n'));
+  console.log(colors.green('\n✨ You are now authenticated with elizaOS Cloud!\n'));
   console.log(colors.bold('API Key Details:'));
   console.log(colors.dim(`  Prefix: ${authResult.keyPrefix}`));
 
@@ -187,6 +187,6 @@ function displaySuccessMessage(authResult: SessionStatusResponse): void {
 
   console.log(colors.bold('\n📝 Next Steps:'));
   console.log('  • Your API key has been saved to .env');
-  console.log('  • You can now use ElizaOS Cloud features');
+  console.log('  • You can now use elizaOS Cloud features');
   console.log('  • View your usage at the cloud dashboard\n');
 }

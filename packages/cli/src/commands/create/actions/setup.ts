@@ -32,7 +32,7 @@ export async function setupAIModelConfig(
   try {
     switch (aiModel) {
       case 'elizacloud': {
-        // Configure ElizaOS Cloud for multi-model AI
+        // Configure elizaOS Cloud for multi-model AI
         if (isNonInteractive) {
           let content = '';
           if (existsSync(envFilePath)) {
@@ -43,7 +43,7 @@ export async function setupAIModelConfig(
             content += '\n';
           }
 
-          content += '\n# ElizaOS Cloud Configuration\n';
+          content += '\n# elizaOS Cloud Configuration\n';
           content += '# Get your API key by running: elizaos login\n';
           content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
           content += 'ELIZAOS_CLOUD_API_KEY=your_elizaos_cloud_api_key_here\n';
@@ -53,7 +53,7 @@ export async function setupAIModelConfig(
 
           await fs.writeFile(envFilePath, content, 'utf8');
         } else {
-          // Interactive mode - prompt for ElizaOS Cloud API key or login
+          // Interactive mode - prompt for elizaOS Cloud API key or login
           await promptAndStoreElizaCloudKey(envFilePath);
         }
         break;
@@ -395,7 +395,7 @@ export async function setupEmbeddingModelConfig(
  */
 function resolveModelToPlugin(modelName: string): string | null {
   const modelToPlugin: Record<string, string> = {
-    elizacloud: 'elizacloud', // ElizaOS Cloud multi-model AI plugin
+    elizacloud: 'elizacloud', // elizaOS Cloud multi-model AI plugin
     openai: 'openai',
     claude: 'anthropic',
     anthropic: 'anthropic',
@@ -481,7 +481,7 @@ export async function setupProjectEnvironment(
 
   // Always install Ollama plugin as fallback if not already installed
   // This is required because the default Eliza character always includes it
-  // Skip for ElizaOS Cloud since it provides all functionality including embeddings
+  // Skip for elizaOS Cloud since it provides all functionality including embeddings
   if (aiModel !== 'local' && aiModel !== 'elizacloud' && embeddingModel !== 'local') {
     await installPluginWithSpinner('ollama', targetDir, 'as universal fallback');
   }

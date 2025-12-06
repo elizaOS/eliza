@@ -15,9 +15,9 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
-      title: 'ElizaOS Cloud (Recommended)',
+      title: 'elizaOS Cloud (Recommended)',
       value: 'elizacloud',
-      description: 'Multi-model AI via ElizaOS Cloud - GPT-4o, Claude, Gemini & more',
+      description: 'Multi-model AI via elizaOS Cloud - GPT-4o, Claude, Gemini & more',
     },
     {
       title: 'Local AI (Ollama)',
