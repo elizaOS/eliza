@@ -179,8 +179,12 @@ export async function runE2eTests(
             // Use AgentServer's startAgents method with the plugin under test
             // isTestMode: true ensures testDependencies are loaded
             const startedRuntimes = await server.startAgents(
-              [defaultElizaCharacter],
-              [pluginUnderTest], // Pass the local plugin module directly
+              [
+                {
+                  character: defaultElizaCharacter,
+                  plugins: [pluginUnderTest],
+                },
+              ],
               { isTestMode: true }
             );
             const runtime = startedRuntimes[0];
