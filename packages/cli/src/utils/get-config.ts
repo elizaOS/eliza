@@ -7,6 +7,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import * as clack from '@clack/prompts';
 import { z } from 'zod';
 import { resolveEnvFile, resolvePgliteDir } from './resolve-utils';
+import colors from 'yoctocolors';
 // Database config schemas
 const postgresConfigSchema = z.object({
   type: z.literal('postgres'),
@@ -1009,6 +1010,209 @@ export async function promptAndStoreOpenRouterKey(envFilePath: string): Promise<
       await storeOpenRouterKey(results.key, envPath);
     },
     successMessage: 'OpenRouter integration configured',
+  };
+
+  const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);
+  return result?.key || null;
+}
+
+/**
+ * Validates an elizaOS Cloud API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid
+ */
+export function isValidElizaCloudKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  // elizaOS Cloud keys start with 'eliza_'
+  return key.startsWith('eliza_') && key.length > 10;
+}
+
+/**
+ * Stores elizaOS Cloud API key in the .env file
+ * @param key The elizaOS Cloud API key to store
+ * @param envFilePath Path to the .env file
+ */
+export async function storeElizaCloudKey(key: string, envFilePath: string): Promise<void> {
+  if (!key) return;
+
+  try {
+    // Read existing content first to avoid duplicates
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+
+    // Remove existing ELIZAOS_CLOUD_API_KEY line if present
+    const lines = content.split('\n').filter((line) => !line.startsWith('ELIZAOS_CLOUD_API_KEY='));
+    lines.push(`ELIZAOS_CLOUD_API_KEY=${key}`);
+
+    await fs.writeFile(envFilePath, lines.join('\n'), 'utf8');
+    process.env.ELIZAOS_CLOUD_API_KEY = key;
+
+    logger.success({ src: 'cli', util: 'get-config' }, 'elizaOS Cloud API key saved to configuration');
+  } catch (error) {
+    logger.error(
+      { src: 'cli', util: 'get-config', error: error instanceof Error ? error.message : String(error) },
+      'Error saving elizaOS Cloud API key'
+    );
+    throw error;
+  }
+}
+
+/**
+ * Checks if the user already has a valid elizaOS Cloud API key
+ * @param envFilePath Path to the .env file
+ * @returns True if a valid API key exists
+ */
+export async function hasExistingElizaCloudKey(envFilePath: string): Promise<boolean> {
+  // Check environment variable first
+  if (process.env.ELIZAOS_CLOUD_API_KEY && isValidElizaCloudKey(process.env.ELIZAOS_CLOUD_API_KEY)) {
+    return true;
+  }
+
+  // Check .env file
+  if (existsSync(envFilePath)) {
+    try {
+      const content = await fs.readFile(envFilePath, 'utf8');
+      const match = content.match(/^ELIZAOS_CLOUD_API_KEY=(.+)$/m);
+      if (match && match[1] && isValidElizaCloudKey(match[1].trim())) {
+        return true;
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Prompts the user for an elizaOS Cloud API key or to login, validates it, and stores it
+ * @param envFilePath Path to the .env file
+ * @returns The configured elizaOS Cloud API key or null if user cancels
+ */
+export async function promptAndStoreElizaCloudKey(envFilePath: string): Promise<string | null> {
+  // Check if user already has a valid API key
+  if (await hasExistingElizaCloudKey(envFilePath)) {
+    const existingKey = process.env.ELIZAOS_CLOUD_API_KEY;
+    clack.log.success('Found existing elizaOS Cloud API key');
+    return existingKey || null;
+  }
+
+  clack.intro('☁️  elizaOS Cloud Configuration');
+
+  clack.note(
+    `elizaOS Cloud provides multi-model AI access (GPT-4o, Claude, Gemini & more) with a single API key.\n\n` +
+      `Get your API key:\n` +
+      `  1. Run: ${colors.cyan('elizaos login')} to authenticate with your browser\n` +
+      `  2. Or visit: ${colors.blue('https://www.elizacloud.ai/dashboard/api-keys')}\n\n` +
+      `Your API key format: ${colors.dim('eliza_xxxxx')}`,
+    'Setup Options'
+  );
+
+  const authChoice = await clack.select({
+    message: 'How would you like to authenticate?',
+    options: [
+      {
+        label: 'Login with browser (recommended)',
+        value: 'login',
+        hint: 'Opens browser to authenticate and automatically saves your API key',
+      },
+      {
+        label: 'Enter API key manually',
+        value: 'manual',
+        hint: 'If you already have an API key',
+      },
+      {
+        label: 'Skip for now',
+        value: 'skip',
+        hint: 'You can run elizaos login later',
+      },
+    ],
+    initialValue: 'login',
+  });
+
+  if (clack.isCancel(authChoice)) {
+    clack.cancel('Operation cancelled.');
+    return null;
+  }
+
+  if (authChoice === 'skip') {
+    clack.log.warn('Skipping elizaOS Cloud configuration. Run "elizaos login" later to authenticate.');
+    // Add placeholder to .env
+    let content = '';
+    if (existsSync(envFilePath)) {
+      content = await fs.readFile(envFilePath, 'utf8');
+    }
+    if (!content.includes('ELIZAOS_CLOUD_API_KEY=')) {
+      if (content && !content.endsWith('\n')) {
+        content += '\n';
+      }
+      content += '\n# elizaOS Cloud Configuration\n';
+      content += '# Get your API key by running: elizaos login\n';
+      content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
+      content += 'ELIZAOS_CLOUD_API_KEY=\n';
+      await fs.writeFile(envFilePath, content, 'utf8');
+    }
+    clack.outro('Run "elizaos login" to complete authentication');
+    return null;
+  }
+
+  if (authChoice === 'login') {
+    // Import and run the login handler
+    const { handleLogin } = await import('../commands/login/actions/login');
+    const cloudUrl = process.env.ELIZA_CLOUD_URL || 'https://www.elizacloud.ai';
+
+    try {
+      await handleLogin({
+        cloudUrl,
+        browser: true,
+        timeout: '300',
+      });
+
+      // After login, the API key should be in the .env file
+      // Re-read it to return it
+      if (existsSync(envFilePath)) {
+        const content = await fs.readFile(envFilePath, 'utf8');
+        const match = content.match(/^ELIZAOS_CLOUD_API_KEY=(.+)$/m);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
+
+      return process.env.ELIZAOS_CLOUD_API_KEY || null;
+    } catch (error) {
+      clack.log.error('Login failed. You can try again later with "elizaos login"');
+      return null;
+    }
+  }
+
+  // Manual API key entry
+  const config: ProviderPromptConfig = {
+    name: 'elizaOS Cloud',
+    icon: '☁️',
+    noteText: 'Get your API key from: https://www.elizacloud.ai/dashboard/api-keys',
+    inputs: [
+      {
+        key: 'key',
+        message: 'Enter your elizaOS Cloud API key:',
+        type: 'password',
+        placeholder: 'eliza_xxxxx',
+        validate: (value) => {
+          if (value.trim() === '') return 'elizaOS Cloud API key cannot be empty';
+          return undefined;
+        },
+      },
+    ],
+    storeFunction: async (results, envPath) => {
+      const isValid = isValidElizaCloudKey(results.key);
+      if (!isValid) {
+        clack.log.warn('Invalid API key format detected. Expected format: eliza_...');
+        clack.log.warn('The key has been saved but may not work correctly.');
+      }
+      await storeElizaCloudKey(results.key, envPath);
+    },
+    successMessage: 'elizaOS Cloud integration configured',
   };
 
   const result = await promptAndStoreProviderConfig<{ key: string }>(config, envFilePath);

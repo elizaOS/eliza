@@ -14,6 +14,7 @@ mock.module('@clack/prompts', () => ({
 describe('selection utilities', () => {
   describe('hasEmbeddingSupport', () => {
     it('should return true for models with embedding support', () => {
+      expect(hasEmbeddingSupport('elizacloud')).toBe(true);
       expect(hasEmbeddingSupport('local')).toBe(true);
       expect(hasEmbeddingSupport('openai')).toBe(true);
       expect(hasEmbeddingSupport('google')).toBe(true);
@@ -69,7 +70,7 @@ describe('selection utilities', () => {
   describe('AI model selection flow', () => {
     it('should identify which models need separate embedding providers', () => {
       const modelsNeedingEmbeddings = ['claude'];
-      const modelsWithEmbeddings = ['local', 'openai', 'google', 'openrouter'];
+      const modelsWithEmbeddings = ['elizacloud', 'local', 'openai', 'google', 'openrouter'];
 
       modelsNeedingEmbeddings.forEach((model) => {
         expect(hasEmbeddingSupport(model)).toBe(false);
@@ -78,6 +79,24 @@ describe('selection utilities', () => {
       modelsWithEmbeddings.forEach((model) => {
         expect(hasEmbeddingSupport(model)).toBe(true);
       });
+    });
+  });
+
+  describe('elizaOS Cloud model option', () => {
+    it('should include elizacloud as the first model option', () => {
+      const models = getAvailableAIModels();
+      expect(models[0].value).toBe('elizacloud');
+    });
+
+    it('should have elizacloud marked as recommended', () => {
+      const models = getAvailableAIModels();
+      const elizacloud = models.find((m) => m.value === 'elizacloud');
+      expect(elizacloud).toBeDefined();
+      expect(elizacloud!.title).toContain('Recommended');
+    });
+
+    it('should have elizacloud with embedding support', () => {
+      expect(hasEmbeddingSupport('elizacloud')).toBe(true);
     });
   });
 });
