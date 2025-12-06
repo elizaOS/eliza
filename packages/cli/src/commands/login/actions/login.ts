@@ -9,6 +9,17 @@ import { generateSessionId, openBrowser, pollAuthStatus } from '../utils';
 const ELIZAOS_CLOUD_API_KEY = 'ELIZAOS_CLOUD_API_KEY';
 
 /**
+ * Validates an elizaOS Cloud API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid (starts with 'eliza_' and has sufficient length)
+ */
+function isValidElizaCloudKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  // elizaOS Cloud keys start with 'eliza_' and should have reasonable length
+  return key.startsWith('eliza_') && key.length > 10;
+}
+
+/**
  * Handle the login command
  * Orchestrates the complete authentication flow
  */
@@ -109,6 +120,18 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     if (!authResult.apiKey) {
       spinner.fail('No API key received');
       throw new Error('Failed to receive API key from authentication');
+    }
+
+    // Validate API key format
+    if (!isValidElizaCloudKey(authResult.apiKey)) {
+      spinner.fail('Invalid API key format received');
+      console.log(
+        colors.yellow(
+          '\n⚠️  The API key received does not match the expected format (eliza_xxxxx).'
+        )
+      );
+      console.log(colors.yellow('Please try again or contact support.\n'));
+      throw new Error('Invalid API key format: expected eliza_xxxxx');
     }
 
     spinner.succeed('Authentication successful!');
