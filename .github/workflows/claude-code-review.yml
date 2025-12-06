@@ -36,8 +36,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Fetch enough history to see recent commits and check resolved issues
-          fetch-depth: 50
+          fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
@@ -52,15 +51,7 @@ jobs:
           direct_prompt: |
             Review this PR. Be concise and actionable.
 
-            **🔄 BEFORE REVIEWING - CHECK PREVIOUS CONTEXT:**
-            1. Check all previous review comments and discussions on this PR
-            2. Check formal reviews and their status (approved, changes requested, etc.)
-            3. Check recent commits that may have addressed previously raised issues
-            4. **DO NOT repeat issues that have been:**
-               - Already commented on in this PR
-               - Fixed in subsequent commits (look for "fix", "address", "resolve" in commit messages)
-               - Acknowledged by the author as intentional
-            5. If a previous issue was raised but not fixed, you may reference it briefly with "Still unresolved: [issue]"
+            **📝 IMPORTANT: Check and consider all previous review comments in this PR before making new suggestions. Don't repeat issues that have already been addressed or are being discussed.**
 
             **🚨 CRITICAL CHECKS:**
             - Security: hardcoded keys, SQL injection, XSS
@@ -87,10 +78,9 @@ jobs:
             ❌ CRITICAL: [issue] → Fix: [specific action]
             ⚠️ IMPORTANT: [issue] → Fix: [specific action]
             💡 SUGGESTION: [improvement] → Consider: [action]
-            ✅ RESOLVED: [previously raised issue now fixed in commit xyz]
             ```
 
-            Skip explanations. List only NEW issues with fixes. Acknowledge resolved issues briefly.
+            Skip explanations. List issues with fixes.
 
           # Allow Claude to run all bash and gh commands during review
           allowed_tools: 'Bash(*),Bash(gh *)'
