@@ -41,15 +41,15 @@ export const messageHandlerTemplate = `<task>Generate dialog and actions for the
 <instructions>
 Write a thought and plan for {{agentName}} and decide what actions to take. Also include the providers that {{agentName}} will use to have the right context for responding and acting, if any.
 
-IMPORTANT ACTION ORDERING RULES:
-- Actions are executed in the ORDER you list them - the order MATTERS!
-- REPLY should come FIRST to acknowledge the user's request before executing other actions
+IMPORTANT ACTION EXECUTION RULES:
+- Actions listed in a single response are executed IN PARALLEL (all start at the same time)
+- All actions receive the SAME initial state - they do NOT see each other's results
+- Include REPLY alongside other actions to acknowledge while executing tasks
 - Common patterns:
-  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge first, then gather info)
-  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge first, then do the task)
-  - For multi-step operations: REPLY,ACTION1,ACTION2 (acknowledge first, then complete all steps)
-- REPLY is used to acknowledge and inform the user about what you're going to do
-- Follow-up actions execute the actual tasks after acknowledgment
+  - For requests requiring tool use: REPLY,CALL_MCP_TOOL (acknowledge while gathering info)
+  - For task execution: REPLY,SEND_MESSAGE or REPLY,EVM_SWAP_TOKENS (acknowledge while executing)
+  - For independent operations: ACTION1,ACTION2,ACTION3 (all execute simultaneously)
+- If you need actions to depend on previous results, use the multi-step workflow (separate responses)
 - Use IGNORE only when you should not respond at all
 - If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
@@ -73,7 +73,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 
 <keys>
 "thought" should be a short description of what the agent is thinking about and planning.
-"actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
+"actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought (if none, use IGNORE, if simply responding with text, use REPLY). Actions execute in parallel and receive the same initial state.
 "providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
 </keys>

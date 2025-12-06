@@ -36,9 +36,9 @@ describe('Prompts', () => {
       expect(messageHandlerTemplate).toContain('<providers>');
       expect(messageHandlerTemplate).toContain('<text>');
 
-      // Check for important action ordering rules
-      expect(messageHandlerTemplate).toContain('IMPORTANT ACTION ORDERING RULES');
-      expect(messageHandlerTemplate).toContain('Actions are executed in the ORDER you list them');
+      // Check for important action execution rules (parallel execution model)
+      expect(messageHandlerTemplate).toContain('IMPORTANT ACTION EXECUTION RULES');
+      expect(messageHandlerTemplate).toContain('Actions listed in a single response are executed IN PARALLEL');
 
       // Ensure code block formatting rules are explicitly included
       expect(messageHandlerTemplate).toContain('IMPORTANT CODE BLOCK FORMATTING RULES');

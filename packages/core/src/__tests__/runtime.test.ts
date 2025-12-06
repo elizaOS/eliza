@@ -556,8 +556,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect.objectContaining({
           text: 'composed state text',
           values: {},
-          data: {},
-        }), // accumulated state
+          data: expect.objectContaining({
+            actionResults: [], // Parallel execution tracks results from previous responses
+          }),
+        }), // batch state snapshot for parallel execution
         expect.objectContaining({
           actionContext: expect.objectContaining({
             previousResults: [],

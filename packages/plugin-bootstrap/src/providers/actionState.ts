@@ -8,13 +8,15 @@ import {
 } from '@elizaos/core';
 
 /**
- * Provider for sharing action execution state and plan between actions
- * Makes previous action results and execution plan available to subsequent actions
+ * Provider for sharing action execution state and plan between actions.
+ * Makes previous action results and execution plan available to subsequent responses.
+ * Note: Actions within the same response batch execute in parallel and receive the same state snapshot.
+ * "Previous results" refers to results from earlier response batches, not from sibling parallel actions.
  */
 export const actionStateProvider: Provider = {
   name: 'ACTION_STATE',
   description:
-    'Previous action results, working memory, and action plan from the current execution run',
+    'Action results from previous response batches, working memory, and action plan from the current execution run',
   position: 150,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     // Get action results, plan, and working memory from the incoming state
