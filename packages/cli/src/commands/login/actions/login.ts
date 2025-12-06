@@ -6,7 +6,7 @@ import { writeEnvFile, parseEnvFile } from '../../env/utils/file-operations';
 import type { LoginOptions, SessionStatusResponse } from '../types';
 import { generateSessionId, openBrowser, pollAuthStatus } from '../utils';
 
-const ELIZA_CLOUD_API_KEY = 'ELIZA_CLOUD_API_KEY';
+const ELIZAOS_CLOUD_API_KEY = 'ELIZAOS_CLOUD_API_KEY';
 
 /**
  * Handle the login command
@@ -156,7 +156,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
     }
 
     // Update or add API key
-    envVars[ELIZA_CLOUD_API_KEY] = apiKey;
+    envVars[ELIZAOS_CLOUD_API_KEY] = apiKey;
 
     // Write back to .env file
     await writeEnvFile(envPath, envVars);
@@ -165,7 +165,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
   } catch (error) {
     spinner.fail('Failed to save API key to .env file');
     console.log(colors.yellow('\n⚠️  Please manually add this key to your .env file:'));
-    console.log(colors.dim(`${ELIZA_CLOUD_API_KEY}=${apiKey}\n`));
+    console.log(colors.dim(`${ELIZAOS_CLOUD_API_KEY}=${apiKey}\n`));
     throw error;
   }
 }
