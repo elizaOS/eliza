@@ -1,5 +1,4 @@
 import { v4 as uuidv4 } from 'uuid';
-import { AsyncLocalStorage } from 'async_hooks';
 
 // Interface for working memory entries
 interface WorkingMemoryEntry {
@@ -21,8 +20,44 @@ interface ActionContextStore {
   }>;
 }
 
-// AsyncLocalStorage instance for tracking action context during parallel execution
-const actionContextStorage = new AsyncLocalStorage<ActionContextStore>();
+// AsyncLocalStorage-like interface for cross-platform compatibility
+interface IAsyncLocalStorage<T> {
+  getStore(): T | undefined;
+  run<R>(store: T, callback: () => R): R;
+}
+
+// Create AsyncLocalStorage instance with browser fallback
+// In Node.js/Bun: Uses real AsyncLocalStorage for parallel-safe context tracking
+// In Browser: Uses a simple fallback (browser doesn't run parallel actions server-side)
+let actionContextStorage: IAsyncLocalStorage<ActionContextStore>;
+
+// Browser fallback implementation - simple single-context storage
+// This is acceptable because browser environments don't run the AgentRuntime
+// with parallel action execution (that's a server-side concern)
+function createBrowserFallback(): IAsyncLocalStorage<ActionContextStore> {
+  let currentStore: ActionContextStore | undefined;
+  return {
+    getStore: () => currentStore,
+    run: <R>(store: ActionContextStore, callback: () => R): R => {
+      const previousStore = currentStore;
+      currentStore = store;
+      try {
+        return callback();
+      } finally {
+        currentStore = previousStore;
+      }
+    },
+  };
+}
+
+try {
+  // Dynamic import to avoid bundler issues with async_hooks in browser builds
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const asyncHooks = require('async_hooks') as { AsyncLocalStorage: new <T>() => IAsyncLocalStorage<T> };
+  actionContextStorage = new asyncHooks.AsyncLocalStorage<ActionContextStore>();
+} catch {
+  actionContextStorage = createBrowserFallback();
+}
 
 /**
  * Get the current action context from AsyncLocalStorage (for parallel-safe prompt tracking)
