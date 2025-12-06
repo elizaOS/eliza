@@ -6,14 +6,25 @@ import { writeEnvFile, parseEnvFile } from '../../env/utils/file-operations';
 import type { LoginOptions, SessionStatusResponse } from '../types';
 import { generateSessionId, openBrowser, pollAuthStatus } from '../utils';
 
-const ELIZA_CLOUD_API_KEY = 'ELIZA_CLOUD_API_KEY';
+const ELIZAOS_CLOUD_API_KEY = 'ELIZAOS_CLOUD_API_KEY';
+
+/**
+ * Validates an elizaOS Cloud API key format
+ * @param key The API key to validate
+ * @returns True if the key appears valid (starts with 'eliza_' and has sufficient length)
+ */
+function isValidElizaCloudKey(key: string): boolean {
+  if (!key || typeof key !== 'string') return false;
+  // elizaOS Cloud keys start with 'eliza_' and should have reasonable length
+  return key.startsWith('eliza_') && key.length > 10;
+}
 
 /**
  * Handle the login command
  * Orchestrates the complete authentication flow
  */
 export async function handleLogin(options: LoginOptions): Promise<void> {
-  console.log(colors.bold('\n🔐 ElizaOS Cloud Authentication\n'));
+  console.log(colors.bold('\n🔐 elizaOS Cloud Authentication\n'));
 
   // Ensure cloud URL doesn't have trailing slash
   const cloudUrl = options.cloudUrl.replace(/\/$/, '');
@@ -45,7 +56,7 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
     } catch (error) {
       createSpinner.fail('Failed to connect to cloud');
       throw new Error(
-        `Could not connect to ElizaOS Cloud at ${cloudUrl}. Please check the URL and try again.`
+        `Could not connect to elizaOS Cloud at ${cloudUrl}. Please check the URL and try again.`
       );
     }
 
@@ -111,6 +122,18 @@ export async function handleLogin(options: LoginOptions): Promise<void> {
       throw new Error('Failed to receive API key from authentication');
     }
 
+    // Validate API key format
+    if (!isValidElizaCloudKey(authResult.apiKey)) {
+      spinner.fail('Invalid API key format received');
+      console.log(
+        colors.yellow(
+          '\n⚠️  The API key received does not match the expected format (eliza_xxxxx).'
+        )
+      );
+      console.log(colors.yellow('Please try again or contact support.\n'));
+      throw new Error('Invalid API key format: expected eliza_xxxxx');
+    }
+
     spinner.succeed('Authentication successful!');
 
     // Step 6: Write API key to .env file
@@ -156,7 +179,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
     }
 
     // Update or add API key
-    envVars[ELIZA_CLOUD_API_KEY] = apiKey;
+    envVars[ELIZAOS_CLOUD_API_KEY] = apiKey;
 
     // Write back to .env file
     await writeEnvFile(envPath, envVars);
@@ -165,7 +188,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
   } catch (error) {
     spinner.fail('Failed to save API key to .env file');
     console.log(colors.yellow('\n⚠️  Please manually add this key to your .env file:'));
-    console.log(colors.dim(`${ELIZA_CLOUD_API_KEY}=${apiKey}\n`));
+    console.log(colors.dim(`${ELIZAOS_CLOUD_API_KEY}=${apiKey}\n`));
     throw error;
   }
 }
@@ -174,7 +197,7 @@ async function writeApiKeyToEnv(apiKey: string): Promise<void> {
  * Display success message with API key details
  */
 function displaySuccessMessage(authResult: SessionStatusResponse): void {
-  console.log(colors.green('\n✨ You are now authenticated with ElizaOS Cloud!\n'));
+  console.log(colors.green('\n✨ You are now authenticated with elizaOS Cloud!\n'));
   console.log(colors.bold('API Key Details:'));
   console.log(colors.dim(`  Prefix: ${authResult.keyPrefix}`));
 
@@ -187,6 +210,6 @@ function displaySuccessMessage(authResult: SessionStatusResponse): void {
 
   console.log(colors.bold('\n📝 Next Steps:'));
   console.log('  • Your API key has been saved to .env');
-  console.log('  • You can now use ElizaOS Cloud features');
+  console.log('  • You can now use elizaOS Cloud features');
   console.log('  • View your usage at the cloud dashboard\n');
 }
