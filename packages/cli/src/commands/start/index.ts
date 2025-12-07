@@ -4,7 +4,7 @@ import { buildProject } from '@/src/utils/build-project';
 import { ensureElizaOSCli } from '@/src/utils/dependency-manager';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
 import { logger, type Character, type ProjectAgent, loadEnvFile } from '@elizaos/core';
-import { AgentServer, loadCharacterTryPath } from '@elizaos/server';
+import { AgentServer, loadCharacterTryPath, type ServerConfig } from '@elizaos/server';
 import { Command, InvalidOptionArgumentError } from 'commander';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -144,20 +144,65 @@ export const start = new Command()
       // Prepare agent configurations (unified handling)
       const agentConfigs = projectAgents?.length
         ? projectAgents.map((pa) => ({
-            character: pa.character,
-            plugins: Array.isArray(pa.plugins) ? pa.plugins : [],
-            init: pa.init,
-          }))
+          character: pa.character,
+          plugins: Array.isArray(pa.plugins) ? pa.plugins : [],
+          init: pa.init,
+        }))
         : characters?.map((character) => ({ character })) || [];
+
+      // Load appropriate database plugin based on environment
+      // This removes the dependency coupling between @elizaos/server and database plugins
+      const mysqlUrl = process.env.MYSQL_URL;
+      const useMysql = !!mysqlUrl;
+
+      let databasePlugin;
+      let createDatabaseAdapter;
+      let DatabaseMigrationService;
+
+      if (useMysql) {
+        logger.info('[CLI] Loading MySQL database plugin');
+        try {
+          const mysqlPluginModule = await import('@elizaos/plugin-mysql');
+          databasePlugin = mysqlPluginModule.default;
+          createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter;
+          // MySQL doesn't have a full migration service yet, server will use no-op implementation
+          // Pass undefined so server falls back to MySQLNoOpMigrationService
+          DatabaseMigrationService = undefined;
+          logger.success('[CLI] MySQL database plugin loaded');
+        } catch (error: unknown) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error('Failed to load MySQL plugin:', errorMsg);
+          throw new Error(`Failed to load MySQL database plugin: ${errorMsg}`);
+        }
+      } else {
+        logger.info('[CLI] Loading SQL (PostgreSQL/PGLite) database plugin');
+        try {
+          // @ts-expect-error - Type declarations exist but have module resolution issues
+          const sqlPluginModule = await import('@elizaos/plugin-sql');
+          databasePlugin = sqlPluginModule.default;
+          createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter;
+          DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService;
+          logger.success('[CLI] SQL database plugin loaded');
+        } catch (error: unknown) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error('Failed to load SQL plugin:', errorMsg);
+          throw new Error(`Failed to load SQL database plugin: ${errorMsg}`);
+        }
+      }
 
       // Use AgentServer with unified startup
       const server = new AgentServer();
-      await server.start({
+      const serverConfig: ServerConfig = {
         port: options.port,
         dataDir: process.env.PGLITE_DATA_DIR,
         postgresUrl: process.env.POSTGRES_URL,
         agents: agentConfigs,
-      });
+        // Pass database plugin to server (removes server's dependency on plugin-mysql)
+        databasePlugin,
+        createDatabaseAdapter,
+        DatabaseMigrationService,
+      };
+      await server.start(serverConfig);
 
       // Server handles initialization, port resolution, and agent startup automatically
       logger.success({ src: 'cli', command: 'start', agentCount: agentConfigs.length }, 'Server started');

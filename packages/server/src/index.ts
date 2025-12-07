@@ -29,9 +29,7 @@ import {
 } from './services/message';
 import { loadCharacterTryPath, jsonToCharacter } from './services/loader';
 import * as Sentry from '@sentry/node';
-import sqlPlugin, {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
+import {
   installRLSFunctions,
   getOrCreateRlsServer,
   setServerContext,
@@ -48,6 +46,8 @@ import type {
   MessageServer,
   MessageServiceStructure,
 } from './types/server';
+import { MySQLNoOpMigrationService } from './utils/mysql-noop-migration-service.js';
+import { validateAndLogMySQLUrl } from './utils/mysql-url-validator.js';
 
 // Re-export config utilities for backward compatibility
 export {
@@ -83,6 +83,8 @@ export class AgentServer {
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
   public database!: DatabaseAdapter;
+  private databasePlugin?: Plugin; // Store the database plugin for agent startup
+  private useMysql: boolean = false; // Track if using MySQL (for syntax differences)
   private rlsServerId?: UUID;
   public messageServerId: UUID = DEFAULT_SERVER_ID;
 
@@ -112,7 +114,16 @@ export class AgentServer {
       agent.character.id ??= stringToUuid(agent.character.name);
 
       // Merge character plugins with provided plugins and add server-required plugins
-      const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
+      // Add the database plugin (MySQL or PostgreSQL) that was loaded during initialization
+      if (!this.databasePlugin) {
+        throw new Error('Database plugin not initialized. Cannot start agents without database access.');
+      }
+
+      const allPlugins = [
+        ...(agent.character.plugins || []),
+        ...(agent.plugins || []),
+        this.databasePlugin,
+      ];
 
       return {
         character: encryptedCharacter(agent.character),
@@ -233,6 +244,95 @@ export class AgentServer {
     try {
       logger.debug({ src: 'http' }, 'Initializing AgentServer async operations');
 
+      // Type-safe database plugin imports using typeof import() patterns
+      type CreateDatabaseAdapterFn = (
+        config: { dataDir?: string; postgresUrl?: string; mysqlUrl?: string },
+        agentId: UUID
+      ) => DatabaseAdapter;
+
+      type DatabaseMigrationServiceClass = new () => {
+        initializeWithDatabase(db: any): Promise<void>;
+        discoverAndRegisterPluginSchemas(plugins: Plugin[]): void;
+        runAllPluginMigrations(): Promise<void>;
+      };
+
+      let createDatabaseAdapter: CreateDatabaseAdapterFn;
+      let DatabaseMigrationService: DatabaseMigrationServiceClass;
+
+      // Use database plugin from config if provided (preferred, removes dependency coupling)
+      if (config?.databasePlugin && config?.createDatabaseAdapter) {
+        logger.info('[INIT] Using database plugin provided by caller');
+        this.databasePlugin = config.databasePlugin;
+        createDatabaseAdapter = config.createDatabaseAdapter;
+        DatabaseMigrationService = config.DatabaseMigrationService || MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+        // Check if it's MySQL based on the plugin name (not environment variable)
+        // This ensures we use the correct database behavior based on the actual plugin provided
+        const pluginName = this.databasePlugin.name.toLowerCase();
+        this.useMysql = pluginName.includes('mysql');
+
+        logger.info(`[INIT] Database type detected from plugin: ${this.useMysql ? 'MySQL' : 'PostgreSQL/PGLite'}`);
+
+        if (this.useMysql) {
+          const mysqlUrl = process.env.MYSQL_URL;
+          validateAndLogMySQLUrl(mysqlUrl);
+        }
+
+        logger.success(`[INIT] Database plugin loaded: ${this.databasePlugin.name}`);
+      } else {
+        // Fallback: Auto-detect and load plugin (for backward compatibility)
+        logger.info('[INIT] No database plugin provided in config, auto-detecting...');
+
+        const mysqlUrl = process.env.MYSQL_URL;
+        const postgresUrl = config?.postgresUrl;
+        const useMysql = !!mysqlUrl;
+
+        // Log plugin selection decision
+        logger.info(`[INIT] Database plugin selection: useMysql=${useMysql}, hasPostgresUrl=${!!postgresUrl}, hasMysqlUrl=${!!mysqlUrl}`);
+
+        // Standardized error handling for both plugin types
+        if (useMysql) {
+          try {
+            logger.info('[INIT] Using MySQL database plugin');
+
+            // Store MySQL flag for later use (e.g., SQL syntax differences)
+            this.useMysql = true;
+
+            // Validate MySQL URL before attempting to use it
+            validateAndLogMySQLUrl(mysqlUrl);
+
+            // @ts-expect-error - plugin-mysql is an optional plugin that may not be installed
+            const mysqlPluginModule = await import('@elizaos/plugin-mysql');
+            // Type assertion needed due to dual @elizaos/core versions
+            this.databasePlugin = mysqlPluginModule.default as any as Plugin;
+            createDatabaseAdapter = mysqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            // MySQL plugin may not have migration service yet, use extracted no-op implementation
+            DatabaseMigrationService = MySQLNoOpMigrationService as any as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] MySQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load MySQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize MySQL database plugin: ${errorMsg}`);
+          }
+        } else {
+          try {
+            logger.info('[INIT] Using SQL (PostgreSQL/PGLite) database plugin');
+
+            const sqlPluginModule = await import('@elizaos/plugin-sql');
+            this.databasePlugin = sqlPluginModule.default;
+            createDatabaseAdapter = sqlPluginModule.createDatabaseAdapter as CreateDatabaseAdapterFn;
+            DatabaseMigrationService = sqlPluginModule.DatabaseMigrationService as DatabaseMigrationServiceClass;
+
+            logger.success('[INIT] SQL database plugin loaded successfully');
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`[INIT] Failed to load SQL database plugin: ${errorMsg}`);
+            throw new Error(`Failed to initialize SQL database plugin: ${errorMsg}`);
+          }
+        }
+      }
+
       const agentDataDir = resolvePgliteDir(config?.dataDir);
       logger.info({ src: 'db', dataDir: agentDataDir }, 'Database directory configured');
 
@@ -244,29 +344,40 @@ export class AgentServer {
       }
 
       // Create a temporary database adapter just for server operations (migrations, default server)
-      // Each agent will have its own database adapter created by the SQL plugin
+      // Each agent will have its own database adapter created by the appropriate plugin
       const tempServerAgentId = '00000000-0000-0000-0000-000000000000'; // Temporary ID for server operations
-      this.database = createDatabaseAdapter(
-        {
-          dataDir: agentDataDir,
-          postgresUrl: config?.postgresUrl,
-        },
-        tempServerAgentId
-      ) as DatabaseAdapter;
+
+      if (this.useMysql) {
+        this.database = createDatabaseAdapter(
+          {
+            mysqlUrl: process.env.MYSQL_URL,
+          },
+          tempServerAgentId
+        ) as DatabaseAdapter;
+      } else {
+        this.database = createDatabaseAdapter(
+          {
+            dataDir: agentDataDir,
+            postgresUrl: config?.postgresUrl,
+          },
+          tempServerAgentId
+        ) as DatabaseAdapter;
+      }
+
       await this.database.init();
       logger.success({ src: 'db' }, 'Database initialized for server operations');
 
-      // Run migrations for the SQL plugin schema
+      // Run migrations for the database plugin schema
       logger.info({ src: 'db' }, 'Running database migrations');
       try {
         const migrationService = new DatabaseMigrationService();
 
-        // Get the underlying database instance
-        const db = (this.database as any).getDatabase();
+        // Get the underlying database instance from the adapter's db property
+        const db = this.database.db;
         await migrationService.initializeWithDatabase(db);
 
-        // Register the SQL plugin schema
-        migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+        // Register the database plugin schema
+        migrationService.discoverAndRegisterPluginSchemas([this.databasePlugin!]);
 
         // Run the migrations
         await migrationService.runAllPluginMigrations();
@@ -282,9 +393,10 @@ export class AgentServer {
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
       const elizaServerIdString = process.env.ELIZA_SERVER_ID;
 
-      if (dataIsolationEnabled) {
+      // RLS is only supported with PostgreSQL (not MySQL or PGLite)
+      if (dataIsolationEnabled && !this.useMysql) {
         if (!config?.postgresUrl) {
-          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite)');
+          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite or MySQL)');
           throw new Error('Data isolation requires PostgreSQL database');
         }
 
@@ -324,7 +436,7 @@ export class AgentServer {
             `RLS preparation failed: ${rlsError instanceof Error ? rlsError.message : String(rlsError)}`
           );
         }
-      } else if (config?.postgresUrl) {
+      } else if (config?.postgresUrl && !this.useMysql) {
         logger.info({ src: 'db' }, 'RLS multi-tenant isolation disabled');
 
         // Clean up RLS if it was previously enabled
@@ -334,6 +446,8 @@ export class AgentServer {
         } catch (cleanupError) {
           // It's OK if cleanup fails (RLS might not have been installed)
         }
+      } else if (this.useMysql && dataIsolationEnabled) {
+        logger.warn('[RLS] RLS is not supported with MySQL, skipping RLS initialization');
       }
 
       // Add a small delay to ensure database is fully ready
@@ -399,14 +513,32 @@ export class AgentServer {
       if (!defaultServer) {
         logger.info({ src: 'db', serverId: this.messageServerId }, 'Creating server...');
 
-        // Use parameterized query to prevent SQL injection
+        // SECURITY: Using drizzle-orm's sql tagged template literal for safe parameterization
+        // The sql`` tag automatically converts interpolated values to parameterized queries,
+        // preventing SQL injection. Each ${variable} is bound as a parameter, not concatenated.
+        // Reference: https://orm.drizzle.team/docs/sql
         try {
           const db = (this.database as any).db;
-          await db.execute(sql`
-            INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
-            VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
-            ON CONFLICT (id) DO NOTHING
-          `);
+
+          // Use database-appropriate upsert syntax
+          // MySQL uses ON DUPLICATE KEY UPDATE, PostgreSQL uses ON CONFLICT
+          if (this.useMysql) {
+            // MySQL syntax: ON DUPLICATE KEY UPDATE (or just let it fail and catch)
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON DUPLICATE KEY UPDATE name = name
+            `);
+          } else {
+            // PostgreSQL/PGLite syntax: ON CONFLICT DO NOTHING
+            // Safe: drizzle-orm sql`` handles parameterization automatically
+            await db.execute(sql`
+              INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
+              VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
+              ON CONFLICT (id) DO NOTHING
+            `);
+          }
           logger.info({ src: 'db', serverId: this.messageServerId }, 'Server created via parameterized query');
         } catch (sqlError: any) {
           logger.warn({ src: 'db', error: sqlError }, 'SQL insert failed, trying ORM');
@@ -427,7 +559,7 @@ export class AgentServer {
         // Verify it was created
         const verifyServers = await (this.database as any).getMessageServers();
         logger.debug({ src: 'db', serverCount: verifyServers.length }, 'After creation attempt, found servers');
-        
+
         const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
         if (!verifyDefault) {
           throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
@@ -484,44 +616,44 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-                // Production CSP - includes upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                  // this should probably be unlocked too
-                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // upgrade-insecure-requests is added by helmet automatically
-                },
-                useDefaults: true,
-              }
-            : {
-                // Development CSP - minimal policy without upgrade-insecure-requests
-                directives: {
-                  defaultSrc: ["'self'"],
-                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                  // unlocking this, so plugin can include the various frameworks from CDN if needed
-                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
-                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                  mediaSrc: ["'self'", 'blob:', 'data:'],
-                  objectSrc: ["'none'"],
-                  frameSrc: ["'self'", 'data:'],
-                  baseUri: ["'self'"],
-                  formAction: ["'self'"],
-                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
-                },
-                useDefaults: false,
+              // Production CSP - includes upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                // this should probably be unlocked too
+                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // upgrade-insecure-requests is added by helmet automatically
               },
+              useDefaults: true,
+            }
+            : {
+              // Development CSP - minimal policy without upgrade-insecure-requests
+              directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                // unlocking this, so plugin can include the various frameworks from CDN if needed
+                // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                mediaSrc: ["'self'", 'blob:', 'data:'],
+                objectSrc: ["'none'"],
+                frameSrc: ["'self'", 'data:'],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+              },
+              useDefaults: false,
+            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -533,10 +665,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-                maxAge: 31536000, // 1 year
-                includeSubDomains: true,
-                preload: true,
-              }
+              maxAge: 31536000, // 1 year
+              includeSubDomains: true,
+              preload: true,
+            }
             : false,
           // No Sniff
           noSniff: true,
@@ -586,7 +718,7 @@ export class AgentServer {
           // Skip rate limiting for internal/private IPs (Docker, Kubernetes)
           const ip = req.ip || '';
           return ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') ||
-                 ip.startsWith('172.') || ip.startsWith('192.168.');
+            ip.startsWith('172.') || ip.startsWith('192.168.');
         },
       });
 
@@ -985,7 +1117,7 @@ export class AgentServer {
               scope.setTag('type', 'uncaughtException');
               return scope;
             });
-          } catch {}
+          } catch { }
         });
         process.on('unhandledRejection', (reason: any) => {
           try {
@@ -996,7 +1128,7 @@ export class AgentServer {
                 return scope;
               }
             );
-          } catch {}
+          } catch { }
         });
       }
 
@@ -1347,10 +1479,10 @@ export class AgentServer {
 
               console.log(
                 `\x1b[32mStartup successful!\x1b[0m\n` +
-                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
-                  `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
+                `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
+                `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
               );
             }
 

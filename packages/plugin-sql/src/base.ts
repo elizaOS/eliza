@@ -1084,11 +1084,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       // Apply limit and offset for pagination
       // Build query conditionally to maintain proper types
       const rows = await (async () => {
-        if (params.count && offset !== undefined && offset > 0) {
+        if (params.count !== undefined && offset !== undefined) {
           return baseQuery.limit(params.count).offset(offset);
-        } else if (params.count) {
+        } else if (params.count !== undefined) {
           return baseQuery.limit(params.count);
-        } else if (offset !== undefined && offset > 0) {
+        } else if (offset !== undefined) {
           return baseQuery.offset(offset);
         } else {
           return baseQuery;
@@ -2888,10 +2888,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
               ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
-                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
-                      params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
-                    )}]::text[]`,
-                  ]
+                  sql`${taskTable.tags} @> ARRAY[${sql.raw(
+                    params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
+                  )}]::text[]`,
+                ]
                 : [])
             )
           );
@@ -3190,14 +3190,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(1);
       return results.length > 0
         ? {
-            id: results[0].id as UUID,
-            name: results[0].name,
-            sourceType: results[0].sourceType,
-            sourceId: results[0].sourceId || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
+          id: results[0].id as UUID,
+          name: results[0].name,
+          sourceType: results[0].sourceType,
+          sourceId: results[0].sourceId || undefined,
+          metadata: results[0].metadata || undefined,
+          createdAt: results[0].createdAt,
+          updatedAt: results[0].updatedAt,
+        }
         : null;
     });
   }
@@ -3228,14 +3228,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const rows = results.rows || results;
       return rows.length > 0
         ? {
-            id: rows[0].id as UUID,
-            name: rows[0].name,
-            sourceType: rows[0].source_type,
-            sourceId: rows[0].source_id || undefined,
-            metadata: rows[0].metadata || undefined,
-            createdAt: new Date(rows[0].created_at),
-            updatedAt: new Date(rows[0].updated_at),
-          }
+          id: rows[0].id as UUID,
+          name: rows[0].name,
+          sourceType: rows[0].source_type,
+          sourceId: rows[0].source_id || undefined,
+          metadata: rows[0].metadata || undefined,
+          createdAt: new Date(rows[0].created_at),
+          updatedAt: new Date(rows[0].updated_at),
+        }
         : null;
     });
   }
@@ -3359,17 +3359,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(1);
       return results.length > 0
         ? {
-            id: results[0].id as UUID,
-            messageServerId: results[0].messageServerId as UUID,
-            name: results[0].name,
-            type: results[0].type,
-            sourceType: results[0].sourceType || undefined,
-            sourceId: results[0].sourceId || undefined,
-            topic: results[0].topic || undefined,
-            metadata: results[0].metadata || undefined,
-            createdAt: results[0].createdAt,
-            updatedAt: results[0].updatedAt,
-          }
+          id: results[0].id as UUID,
+          messageServerId: results[0].messageServerId as UUID,
+          name: results[0].name,
+          type: results[0].type,
+          sourceType: results[0].sourceType || undefined,
+          sourceId: results[0].sourceId || undefined,
+          topic: results[0].topic || undefined,
+          metadata: results[0].metadata || undefined,
+          createdAt: results[0].createdAt,
+          updatedAt: results[0].updatedAt,
+        }
         : null;
     });
   }

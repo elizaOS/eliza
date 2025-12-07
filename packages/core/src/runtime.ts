@@ -397,6 +397,9 @@ export class AgentRuntime implements IAgentRuntime {
       // The runtime now accepts a pre-resolved, ordered list of plugins.
       const pluginsToLoad = this.characterPlugins;
 
+      // Register all plugins and wait for completion
+      // This must complete before checking adapter availability because
+      // database plugins register their adapter inside their init() function
       for (const plugin of pluginsToLoad) {
         if (plugin) {
           pluginRegistrationPromises.push(this.registerPlugin(plugin));
@@ -497,6 +500,19 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent entity created');
       }
 
+      // World creation (required before room due to foreign key constraint)
+      const world = await this.getWorld(this.agentId);
+      if (!world) {
+        await this.ensureWorldExists({
+          id: this.agentId,
+          name: this.character.name,
+          messageServerId: this.agentId,
+          agentId: this.agentId,
+          metadata: {},
+        });
+        this.logger.debug(`Success: World created successfully for ${this.character.name}`);
+      }
+
       // Room creation and participant setup
       const room = await this.getRoom(this.agentId);
       if (!room) {
@@ -526,7 +542,13 @@ export class AgentRuntime implements IAgentRuntime {
         await this.ensureEmbeddingDimension();
       }
 
-      // Resolve init promise to allow services to start
+      // Resolve init promise after all initialization steps complete
+      // This ensures plugins waiting on initPromise can safely access:
+      // - Database adapter
+      // - Agent entity
+      // - World entity
+      // - Room entity
+      // - All registered plugins
       if (this.initResolver) {
         this.initResolver();
         this.initResolver = undefined;
@@ -1890,8 +1912,8 @@ export class AgentRuntime implements IAgentRuntime {
       } else if (error?.message?.includes('Not implemented')) {
         this.logger.error(
           `Service ${serviceType} failed because it does not implement the static start() method. ` +
-            `All services must override the base Service.start() method. ` +
-            `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
+          `All services must override the base Service.start() method. ` +
+          `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
         );
         if (errorStack) {
           this.logger.debug(`Stack trace: ${errorStack}`);
@@ -2237,9 +2259,9 @@ export class AgentRuntime implements IAgentRuntime {
           provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
           actionContext: this.currentActionContext
             ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
             : undefined,
           response:
             Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2434,13 +2456,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
