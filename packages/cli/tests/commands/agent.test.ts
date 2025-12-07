@@ -7,7 +7,7 @@ import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getPlatformOptions, killProcessOnPort, waitForServerReady } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
-describe('ElizaOS Agent Commands', () => {
+describe('ElizaOS Agent Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let serverProcess: any;
   let testTmpDir: string;
   let testServerPort: string;
@@ -539,7 +539,7 @@ describe('ElizaOS Agent Commands', () => {
 });
 
 // Separate test suite that runs after everything else
-describe('ElizaOS Agent Stop All - Final Cleanup', () => {
+describe('ElizaOS Agent Stop All - Final Cleanup', { timeout: TEST_TIMEOUTS.INDIVIDUAL_TEST }, () => {
   it('agent stop --all works for stopping all agents', async () => {
     // This tests the --all flag functionality using pkill
     // This MUST run after all other tests as it kills everything

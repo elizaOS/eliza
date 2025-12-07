@@ -10,7 +10,7 @@ import { getAvailableAIModels } from '../../src/commands/create/utils/selection'
 import { isValidOllamaEndpoint } from '../../src/utils/get-config';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
-describe('ElizaOS Create Commands', () => {
+describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let originalCwd: string;
 

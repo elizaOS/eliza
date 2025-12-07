@@ -7,8 +7,9 @@ import {
   expectHelpOutput,
   type TestContext,
 } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
-describe('ElizaOS Env Commands', () => {
+describe('ElizaOS Env Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let context: TestContext;
 
   beforeEach(async () => {

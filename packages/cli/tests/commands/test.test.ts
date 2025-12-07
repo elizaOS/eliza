@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { setupTestEnvironment, cleanupTestEnvironment, type TestContext } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
-describe('ElizaOS Test Commands', () => {
+describe('ElizaOS Test Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let context: TestContext;
 
   beforeEach(async () => {

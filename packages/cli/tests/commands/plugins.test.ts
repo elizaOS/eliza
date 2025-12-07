@@ -9,7 +9,7 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 
 const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 
-describe('ElizaOS Plugin Commands', () => {
+describe('ElizaOS Plugin Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let projectDir: string;
   let originalCwd: string;

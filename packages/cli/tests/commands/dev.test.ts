@@ -15,7 +15,7 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 import { killProcessOnPort, safeChangeDirectory, cloneAndSetupPlugin } from './test-utils';
 import type { Subprocess } from 'bun';
 
-describe('ElizaOS Dev Commands', () => {
+describe('ElizaOS Dev Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let projectDir: string;
   let originalCwd: string;
