@@ -23,12 +23,12 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "uuid": "^9.0.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@elizaos/config": "workspace:*",
-    "prettier": "3.5.3",
-    "typescript": "5.8.2"
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "bun run build.ts",
