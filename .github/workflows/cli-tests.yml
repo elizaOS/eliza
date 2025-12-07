@@ -65,10 +65,6 @@ jobs:
             echo "Bun not found in PATH"
           fi
 
-      - name: Clear native package cache (Ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
-        run: rm -rf ~/.bun/install/cache/libpq* ~/.bun/install/cache/pg-native* || true
-
       - name: Install dependencies
         run: bun install
 

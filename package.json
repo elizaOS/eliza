@@ -75,7 +75,9 @@
     "color-name": "1.1.4",
     "is-core-module": "2.13.1",
     "error-ex": "1.3.2",
-    "has-ansi": "6.0.2"
+    "has-ansi": "6.0.2",
+    "pg-native": "npm:empty-npm-package@1.0.0",
+    "libpq": "npm:empty-npm-package@1.0.0"
   },
   "trustedDependencies": [
     "@swc/core",
