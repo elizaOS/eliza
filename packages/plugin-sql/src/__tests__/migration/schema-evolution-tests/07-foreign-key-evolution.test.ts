@@ -321,10 +321,10 @@ describe('Schema Evolution Test: Foreign Key Evolution', () => {
         }),
         name: text('name').notNull(),
       },
-      (table) => ({
+      (table) => [
         // Add unique constraint needed for composite FK from rooms table
-        worldAgentUnique: unique().on(table.worldId, table.id),
-      })
+        unique().on(table.worldId, table.id),
+      ]
     );
 
     const roomTableV2 = pgTable(

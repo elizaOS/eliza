@@ -27,7 +27,7 @@ export const securityMiddleware = () => {
 
     // Log suspicious patterns
     if (userAgent && (userAgent.includes('..') || userAgent.includes('<script'))) {
-      logger.warn(`[SECURITY] Suspicious User-Agent from ${clientIp}: ${userAgent}`);
+      logger.warn({ src: 'http', ip: clientIp, userAgent }, 'Suspicious User-Agent detected');
     }
 
     // Check for suspicious request patterns with safe, non-backtracking regexes
@@ -66,13 +66,16 @@ export const securityMiddleware = () => {
     // Check for other suspicious patterns
     for (const indicator of suspiciousIndicators) {
       if (url.includes(indicator.pattern) || queryString.includes(indicator.pattern)) {
-        logger.warn(`[SECURITY] ${indicator.name} detected from ${clientIp}: ${url}`);
+        logger.warn(
+          { src: 'http', ip: clientIp, url, pattern: indicator.name },
+          'Suspicious pattern detected'
+        );
         break;
       }
     }
 
     if (hasSqlPattern) {
-      logger.warn(`[SECURITY] SQL injection pattern detected from ${clientIp}: ${url}`);
+      logger.warn({ src: 'http', ip: clientIp, url }, 'SQL injection pattern detected');
     }
 
     next();

@@ -1,4 +1,4 @@
-import type { ElizaOS, IAgentRuntime } from '@elizaos/core';
+import type { ElizaOS, IAgentRuntime, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -21,8 +21,12 @@ export function createAgentWorldsRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { worlds });
     } catch (error) {
       logger.error(
-        '[WORLDS LIST] Error retrieving worlds:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: '/worlds',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error retrieving worlds'
       );
       sendError(
         res,
@@ -41,7 +45,7 @@ export function createAgentWorldsRouter(elizaOS: ElizaOS): express.Router {
     res: express.Response
   ) => {
     try {
-      const { name, serverId, metadata } = req.body;
+      const { name, messageServerId, metadata } = req.body;
 
       if (!name) {
         return sendError(res, 400, 'BAD_REQUEST', 'World name is required');
@@ -53,7 +57,7 @@ export function createAgentWorldsRouter(elizaOS: ElizaOS): express.Router {
         id: worldId,
         name,
         agentId: runtime.agentId,
-        serverId: serverId || `server-${Date.now()}`,
+        messageServerId: (messageServerId as UUID) || undefined,
         metadata,
       });
 
@@ -62,8 +66,13 @@ export function createAgentWorldsRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { world }, 201);
     } catch (error) {
       logger.error(
-        '[WORLD CREATE] Error creating world:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error creating world'
       );
       sendError(
         res,
@@ -129,8 +138,14 @@ export function createAgentWorldsRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { world: refreshedWorld });
     } catch (error) {
       logger.error(
-        '[WORLD UPDATE] Error updating world:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          worldId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error updating world'
       );
       sendError(
         res,

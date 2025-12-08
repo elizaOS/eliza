@@ -235,10 +235,10 @@ export async function generateMigrationSQL(
 
   // Log warnings if any
   if (dataLossCheck.warnings.length > 0) {
-    logger.warn('[RuntimeMigrator] Schema changes may cause data loss:');
-    for (const warning of dataLossCheck.warnings) {
-      logger.warn(`  - ${warning}`);
-    }
+    logger.warn(
+      { src: 'plugin:sql', warnings: dataLossCheck.warnings },
+      'Schema changes may cause data loss'
+    );
   }
 
   // Phase 1: Collect unique schemas and create them first

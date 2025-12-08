@@ -10,7 +10,7 @@ import { getAvailableAIModels } from '../../src/commands/create/utils/selection'
 import { isValidOllamaEndpoint } from '../../src/utils/get-config';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
-describe('ElizaOS Create Commands', () => {
+describe('ElizaOS Create Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let originalCwd: string;
 
@@ -348,11 +348,17 @@ describe('ElizaOS Create Commands', () => {
       const models = getAvailableAIModels();
       const values = models.map((m) => m.value);
 
-      // Only test for essential/core providers
-      const CORE_PROVIDERS = ['local', 'openai', 'claude', 'openrouter'];
+      // Only test for essential/core providers (elizacloud is now the recommended default)
+      const CORE_PROVIDERS = ['elizacloud', 'local', 'openai', 'claude', 'openrouter'];
       CORE_PROVIDERS.forEach((provider) => {
         expect(values).toContain(provider);
       });
+    });
+
+    it('has elizacloud as the first/default option', () => {
+      const models = getAvailableAIModels();
+      expect(models[0].value).toBe('elizacloud');
+      expect(models[0].title).toContain('Recommended');
     });
 
     it('all AI models follow the expected contract', () => {
@@ -655,6 +661,7 @@ describe('ElizaOS Create Commands', () => {
         'Unknown option',
         'unknown option',
         'Invalid option',
+        'too many arguments',
       ];
 
       const hasError = errorPatterns.some((pattern) =>

@@ -25,12 +25,22 @@ export async function runE2eTests(
     try {
       const cwd = process.cwd();
       const isPlugin = projectInfo.type === 'elizaos-plugin';
-      logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      logger.info({ src: 'cli', command: 'test-e2e', isPlugin }, 'Building project');
       await buildProject(cwd, isPlugin);
-      logger.info(`Build completed successfully`);
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Build completed successfully');
     } catch (buildError) {
-      logger.error(`Build error: ${buildError}`);
-      logger.warn(`Attempting to continue with tests despite build error`);
+      logger.error(
+        {
+          src: 'cli',
+          command: 'test-e2e',
+          error: buildError instanceof Error ? buildError.message : String(buildError),
+        },
+        'Build error'
+      );
+      logger.warn(
+        { src: 'cli', command: 'test-e2e' },
+        'Attempting to continue with tests despite build error'
+      );
     }
   }
 
@@ -78,41 +88,52 @@ export async function runE2eTests(
 
     // Load environment variables from project .env if it exists
     if (fs.existsSync(envFilePath)) {
-      logger.info(`Loading environment variables from: ${envFilePath}`);
+      logger.info(
+        { src: 'cli', command: 'test-e2e', envFilePath },
+        'Loading environment variables'
+      );
       dotenv.config({ path: envFilePath });
-      logger.info('Environment variables loaded');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Environment variables loaded');
     } else {
-      logger.warn(`Environment file not found: ${envFilePath}`);
+      logger.warn({ src: 'cli', command: 'test-e2e', envFilePath }, 'Environment file not found');
     }
 
     // Database directory has been set in environment variables above
     // Look for PostgreSQL URL in environment variables
     const postgresUrl = process.env.POSTGRES_URL;
     logger.info(
-      `PostgreSQL URL for e2e tests: ${postgresUrl ? 'found' : 'not found (will use PGlite)'}`
+      { src: 'cli', command: 'test-e2e', hasPostgresUrl: !!postgresUrl },
+      'PostgreSQL URL check'
     );
 
     // Create server instance
-    logger.info('Creating server instance...');
+    logger.info({ src: 'cli', command: 'test-e2e' }, 'Creating server instance');
     server = new AgentServer();
-    logger.info('Server instance created');
+    logger.info({ src: 'cli', command: 'test-e2e' }, 'Server instance created');
 
     // Initialize the server explicitly before starting
-    logger.info('Initializing server...');
+    logger.info({ src: 'cli', command: 'test-e2e' }, 'Initializing server');
     try {
       await server.initialize({
         dataDir: elizaDbDir,
         postgresUrl,
       });
-      logger.info('Server initialized successfully');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Server initialized successfully');
     } catch (initError) {
-      logger.error({ error: initError }, 'Server initialization failed:');
+      logger.error(
+        {
+          src: 'cli',
+          command: 'test-e2e',
+          error: initError instanceof Error ? initError.message : String(initError),
+        },
+        'Server initialization failed'
+      );
       throw initError;
     }
 
     let project: Project | undefined;
     try {
-      logger.info('Attempting to load project or plugin...');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Attempting to load project or plugin');
       // Resolve path - use monorepo root if available, otherwise use cwd
       const monorepoRoot = UserEnvironment.getInstance().findMonorepoRoot(process.cwd());
       const baseDir = monorepoRoot ?? process.cwd();
@@ -128,35 +149,51 @@ export async function runE2eTests(
 
       if (!project.isPlugin && (!project.agents || project.agents.length === 0)) {
         logger.warn(
-          'No agents found in project configuration; falling back to default Eliza character for tests.'
+          { src: 'cli', command: 'test-e2e' },
+          'No agents found in project configuration; falling back to default Eliza character for tests'
         );
       }
 
-      logger.info(`Found ${project.agents?.length || 0} agents`);
+      logger.info(
+        { src: 'cli', command: 'test-e2e', agentCount: project.agents?.length || 0 },
+        'Found agents'
+      );
 
       // Set up server properties using AgentServer's built-in methods
-      logger.info('Setting up server properties...');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Setting up server properties');
       // Note: AgentManager was removed, using AgentServer's startAgents directly
       server.startAgent = async (character: any) => {
-        logger.info(`Starting agent for character ${character.name}`);
+        logger.info(
+          { src: 'cli', command: 'test-e2e', characterName: character.name },
+          'Starting agent for character'
+        );
         const runtimes = await server.startAgents([character], [], { isTestMode: true });
         return runtimes[0];
       };
       server.loadCharacterTryPath = loadCharacterTryPath;
       server.jsonToCharacter = jsonToCharacter;
-      logger.info('Server properties set up');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Server properties set up');
 
-      logger.info('Starting server...');
+      logger.info({ src: 'cli', command: 'test-e2e' }, 'Starting server');
       try {
         // Server will auto-discover available port (don't pass port for auto-discovery)
         // If options.port is provided, pass it (will fail if not available - strict mode)
         await server.start(options.port ? { port: options.port } : undefined);
-        logger.info('Server started successfully');
+        logger.info({ src: 'cli', command: 'test-e2e' }, 'Server started successfully');
       } catch (error) {
-        logger.error({ error }, 'Error starting server:');
+        logger.error(
+          {
+            src: 'cli',
+            command: 'test-e2e',
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error starting server'
+        );
         if (error instanceof Error) {
-          logger.error({ message: error.message }, 'Error details:');
-          logger.error({ stack: error.stack }, 'Stack trace:');
+          logger.error(
+            { src: 'cli', command: 'test-e2e', message: error.message, stack: error.stack },
+            'Error details'
+          );
         }
         throw error;
       }
@@ -164,7 +201,13 @@ export async function runE2eTests(
       try {
         // Start each agent in sequence
         logger.info(
-          `Found ${project.agents.length} agents in ${project.isPlugin ? 'plugin' : 'project'}`
+          {
+            src: 'cli',
+            command: 'test-e2e',
+            agentCount: project.agents.length,
+            isPlugin: project.isPlugin,
+          },
+          'Found agents in project'
         );
 
         // When testing a plugin, import and use the default Eliza character
@@ -175,7 +218,10 @@ export async function runE2eTests(
           // The TestRunner uses this to identify direct plugin tests
           process.env.ELIZA_TESTING_PLUGIN = 'true';
 
-          logger.info('Using default Eliza character as test agent');
+          logger.info(
+            { src: 'cli', command: 'test-e2e' },
+            'Using default Eliza character as test agent'
+          );
           try {
             const pluginUnderTest = project.pluginModule;
             if (!pluginUnderTest) {
@@ -201,16 +247,29 @@ export async function runE2eTests(
               plugins: runtime.plugins, // Pass all plugins, not just the one under test
             });
 
-            logger.info('Default test agent started successfully');
+            logger.info(
+              { src: 'cli', command: 'test-e2e' },
+              'Default test agent started successfully'
+            );
           } catch (pluginError) {
-            logger.error({ error: pluginError }, `Error starting plugin test agent:`);
+            logger.error(
+              {
+                src: 'cli',
+                command: 'test-e2e',
+                error: pluginError instanceof Error ? pluginError.message : String(pluginError),
+              },
+              'Error starting plugin test agent'
+            );
             throw pluginError;
           }
         } else {
           // For regular projects, start agents with delay between each (for E2E test stability)
           for (const agent of project.agents) {
             try {
-              logger.debug(`Starting agent: ${agent.character.name}`);
+              logger.debug(
+                { src: 'cli', command: 'test-e2e', agentName: agent.character.name },
+                'Starting agent'
+              );
 
               // isTestMode: true ensures testDependencies are loaded for project tests
               // init function is now automatically called by Core
@@ -233,15 +292,30 @@ export async function runE2eTests(
               await new Promise((resolve) => setTimeout(resolve, 1000));
             } catch (agentError) {
               logger.error(
-                { error: agentError, agentName: agent.character.name },
+                {
+                  src: 'cli',
+                  command: 'test-e2e',
+                  error: agentError instanceof Error ? agentError.message : String(agentError),
+                  agentName: agent.character.name,
+                },
                 'Error starting agent'
               );
               if (agentError instanceof Error) {
-                logger.error({ message: agentError.message }, 'Error details:');
-                logger.error({ stack: agentError.stack }, 'Stack trace:');
+                logger.error(
+                  {
+                    src: 'cli',
+                    command: 'test-e2e',
+                    message: agentError.message,
+                    stack: agentError.stack,
+                  },
+                  'Error details'
+                );
               }
               // Log the error but don't fail the entire test run
-              logger.warn(`Skipping agent ${agent.character.name} due to startup error`);
+              logger.warn(
+                { src: 'cli', command: 'test-e2e', agentName: agent.character.name },
+                'Skipping agent due to startup error'
+              );
             }
           }
         }
@@ -250,7 +324,10 @@ export async function runE2eTests(
           throw new Error('Failed to start any agents from project');
         }
 
-        logger.debug(`Successfully started ${runtimes.length} agents for testing`);
+        logger.debug(
+          { src: 'cli', command: 'test-e2e', runtimeCount: runtimes.length },
+          'Successfully started agents for testing'
+        );
 
         // Run tests for each agent
         let totalFailed = 0;
@@ -260,9 +337,15 @@ export async function runE2eTests(
           const projectAgent = projectAgents[i];
 
           if (project.isPlugin) {
-            logger.debug(`Running tests for plugin: ${project.pluginModule?.name}`);
+            logger.debug(
+              { src: 'cli', command: 'test-e2e', pluginName: project.pluginModule?.name },
+              'Running tests for plugin'
+            );
           } else {
-            logger.debug(`Running tests for agent: ${runtime.character.name}`);
+            logger.debug(
+              { src: 'cli', command: 'test-e2e', agentName: runtime.character.name },
+              'Running tests for agent'
+            );
           }
 
           // Pass the runtime directly without modification to avoid pino logger context issues
@@ -292,17 +375,38 @@ export async function runE2eTests(
         // This aligns with standard testing tools behavior
         return { failed: anyTestsFound ? totalFailed > 0 : false };
       } catch (error) {
-        logger.error({ error }, 'Error in runE2eTests:');
+        logger.error(
+          {
+            src: 'cli',
+            command: 'test-e2e',
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error in runE2eTests'
+        );
         if (error instanceof Error) {
-          logger.error({ message: error.message }, 'Error details:');
-          logger.error({ stack: error.stack }, 'Stack trace:');
+          logger.error(
+            { src: 'cli', command: 'test-e2e', message: error.message, stack: error.stack },
+            'Error details'
+          );
         } else {
-          logger.error({ type: typeof error }, 'Unknown error type:');
-          logger.error({ error }, 'Error value:');
+          logger.error(
+            { src: 'cli', command: 'test-e2e', type: typeof error },
+            'Unknown error type'
+          );
           try {
-            logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
+            logger.error(
+              { src: 'cli', command: 'test-e2e', stringified: JSON.stringify(error, null, 2) },
+              'Stringified error'
+            );
           } catch (e) {
-            logger.error({ error: e }, 'Could not stringify error:');
+            logger.error(
+              {
+                src: 'cli',
+                command: 'test-e2e',
+                error: e instanceof Error ? e.message : String(e),
+              },
+              'Could not stringify error'
+            );
           }
         }
         return { failed: true };
@@ -330,33 +434,61 @@ export async function runE2eTests(
         }
       }
     } catch (error) {
-      logger.error({ error }, 'Error in runE2eTests:');
+      logger.error(
+        {
+          src: 'cli',
+          command: 'test-e2e',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in runE2eTests'
+      );
       if (error instanceof Error) {
-        logger.error({ message: error.message }, 'Error details:');
-        logger.error({ stack: error.stack }, 'Stack trace:');
+        logger.error(
+          { src: 'cli', command: 'test-e2e', message: error.message, stack: error.stack },
+          'Error details'
+        );
       } else {
-        logger.error({ type: typeof error }, 'Unknown error type:');
-        logger.error({ error }, 'Error value:');
+        logger.error({ src: 'cli', command: 'test-e2e', type: typeof error }, 'Unknown error type');
         try {
-          logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
+          logger.error(
+            { src: 'cli', command: 'test-e2e', stringified: JSON.stringify(error, null, 2) },
+            'Stringified error'
+          );
         } catch (e) {
-          logger.error({ error: e }, 'Could not stringify error:');
+          logger.error(
+            { src: 'cli', command: 'test-e2e', error: e instanceof Error ? e.message : String(e) },
+            'Could not stringify error'
+          );
         }
       }
       return { failed: true };
     }
   } catch (error) {
-    logger.error({ error }, 'Error in runE2eTests:');
+    logger.error(
+      {
+        src: 'cli',
+        command: 'test-e2e',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error in runE2eTests'
+    );
     if (error instanceof Error) {
-      logger.error({ message: error.message }, 'Error details:');
-      logger.error({ stack: error.stack }, 'Stack trace:');
+      logger.error(
+        { src: 'cli', command: 'test-e2e', message: error.message, stack: error.stack },
+        'Error details'
+      );
     } else {
-      logger.error({ type: typeof error }, 'Unknown error type:');
-      logger.error({ error }, 'Error value:');
+      logger.error({ src: 'cli', command: 'test-e2e', type: typeof error }, 'Unknown error type');
       try {
-        logger.error({ stringified: JSON.stringify(error, null, 2) }, 'Stringified error:');
+        logger.error(
+          { src: 'cli', command: 'test-e2e', stringified: JSON.stringify(error, null, 2) },
+          'Stringified error'
+        );
       } catch (e) {
-        logger.error({ error: e }, 'Could not stringify error:');
+        logger.error(
+          { src: 'cli', command: 'test-e2e', error: e instanceof Error ? e.message : String(e) },
+          'Could not stringify error'
+        );
       }
     }
     return { failed: true };

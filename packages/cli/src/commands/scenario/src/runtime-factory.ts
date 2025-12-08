@@ -300,14 +300,16 @@ export async function askAgentViaApi(
     const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
     console.log(`🔧 [askAgentViaApi] ✅ ElizaClient created`);
 
-    console.log(`🔧 [askAgentViaApi] About to call client.messaging.listServers()...`);
-    const { servers } = await client.messaging.listServers();
-    console.log(`🔧 [askAgentViaApi] ✅ listServers() returned ${servers.length} servers`);
-
-    if (servers.length === 0) throw new Error('No servers found');
-    const defaultServer = servers[0];
+    console.log(`🔧 [askAgentViaApi] About to call client.messaging.listMessageServers()...`);
+    const { messageServers } = await client.messaging.listMessageServers();
     console.log(
-      `🔧 [askAgentViaApi] Using server: ${defaultServer.id} (${defaultServer.name || 'unnamed'})`
+      `🔧 [askAgentViaApi] ✅ listMessageServers() returned ${messageServers.length} servers`
+    );
+
+    if (messageServers.length === 0) throw new Error('No servers found');
+    const defaultMessageServer = messageServers[0];
+    console.log(
+      `🔧 [askAgentViaApi] Using server: ${defaultMessageServer.id} (${defaultMessageServer.name || 'unnamed'})`
     );
 
     const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
@@ -361,7 +363,7 @@ export async function askAgentViaApi(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             name: 'scenario-test-channel',
-            server_id: defaultServer.id,
+            message_server_id: defaultMessageServer.id,
             participantCentralUserIds: [testUserId],
             type: ChannelType.GROUP,
             metadata: { scenario: true },
@@ -399,11 +401,13 @@ export async function askAgentViaApi(
     // Debug: Check what channels exist on the server
     console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Checking server channels before sync...`);
     try {
-      const serverChannels = await client.messaging.getServerChannels(defaultServer.id);
-      console.log(
-        `🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${serverChannels.channels.length} total channels`
+      const messageServerChannels = await client.messaging.getMessageServerChannels(
+        defaultMessageServer.id
       );
-      const ourChannel = serverChannels.channels.find((c: any) => c.id === channel.id);
+      console.log(
+        `🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${messageServerChannels.channels.length} total channels`
+      );
+      const ourChannel = messageServerChannels.channels.find((c: any) => c.id === channel.id);
       console.log(
         `🔧 [askAgentViaApi] 🔍 DEBUG: Our channel ${channel.id} found in server list: ${!!ourChannel}`
       );
@@ -450,7 +454,7 @@ export async function askAgentViaApi(
         body: JSON.stringify({
           author_id: testUserId,
           content: input,
-          server_id: defaultServer.id,
+          message_server_id: defaultMessageServer.id,
           metadata: { scenario: true, user_display_name: 'Scenario User' },
           source_type: 'scenario_message',
         }),

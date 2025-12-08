@@ -36,7 +36,10 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
     try {
       packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     } catch (parseError) {
-      logger.debug({ error: parseError, packageJsonPath }, `Error parsing JSON in package.json`);
+      logger.debug(
+        { src: 'cli', util: 'dependency-manager', error: parseError, packageJsonPath },
+        'Error parsing package.json'
+      );
       return false;
     }
 
@@ -45,7 +48,10 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
 
     return '@elizaos/cli' in dependencies || '@elizaos/cli' in devDependencies;
   } catch (error) {
-    logger.debug({ error, packageJsonPath }, `Error reading package.json`);
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager', error, packageJsonPath },
+      'Error reading package.json'
+    );
     return false;
   }
 }
@@ -61,13 +67,13 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
 export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
   // Check if auto-install is disabled
   if (process.env.ELIZA_NO_AUTO_INSTALL === 'true') {
-    logger.debug('Auto-install disabled via ELIZA_NO_AUTO_INSTALL');
+    logger.debug({ src: 'cli', util: 'dependency-manager' }, 'Auto-install disabled via env');
     return false;
   }
 
   // Skip in test or CI environments
   if (process.env.CI === 'true' || process.env.ELIZA_TEST_MODE === 'true') {
-    logger.debug('Skipping auto-install in CI/test environment');
+    logger.debug({ src: 'cli', util: 'dependency-manager' }, 'Skipping auto-install in CI/test');
     return false;
   }
 
@@ -76,20 +82,23 @@ export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
 
   // Don't install if we're in a monorepo (it should already have the CLI)
   if (dirInfo.type === 'elizaos-monorepo' || dirInfo.monorepoRoot) {
-    logger.debug('Skipping auto-install in monorepo');
+    logger.debug({ src: 'cli', util: 'dependency-manager' }, 'Skipping auto-install in monorepo');
     return false;
   }
 
   // Need package.json to install dependencies
   if (!dirInfo.hasPackageJson) {
-    logger.debug('No package.json found, skipping auto-install');
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager' },
+      'No package.json, skipping auto-install'
+    );
     return false;
   }
 
   // Check if @elizaos/cli is already present
   const packageJsonPath = path.join(cwd, 'package.json');
   if (hasElizaOSCli(packageJsonPath)) {
-    logger.debug('@elizaos/cli already present, skipping auto-install');
+    logger.debug({ src: 'cli', util: 'dependency-manager' }, '@elizaos/cli already present');
     return false;
   }
 
@@ -101,7 +110,10 @@ export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
  */
 export async function installElizaOSCli(cwd: string = process.cwd()): Promise<boolean> {
   try {
-    logger.info('Adding @elizaos/cli as dev dependency for enhanced development experience...');
+    logger.info(
+      { src: 'cli', util: 'dependency-manager' },
+      'Adding @elizaos/cli as dev dependency'
+    );
 
     const result = await runBunWithSpinner(['add', '--dev', '@elizaos/cli'], cwd, {
       spinnerText: 'Installing @elizaos/cli with bun...',
@@ -111,16 +123,28 @@ export async function installElizaOSCli(cwd: string = process.cwd()): Promise<bo
     });
 
     if (result.success) {
-      logger.info('✓ @elizaos/cli added as dev dependency');
+      logger.info(
+        { src: 'cli', util: 'dependency-manager' },
+        '@elizaos/cli added as dev dependency'
+      );
       return true;
     } else {
-      logger.warn('⚠ Failed to install @elizaos/cli as dev dependency (optional)');
-      logger.debug({ error: result.error }, 'Installation error:');
+      logger.warn(
+        { src: 'cli', util: 'dependency-manager' },
+        'Failed to install @elizaos/cli (optional)'
+      );
+      logger.debug(
+        { src: 'cli', util: 'dependency-manager', error: result.error },
+        'Installation error'
+      );
       return false;
     }
   } catch (error) {
-    logger.warn('⚠ Failed to install @elizaos/cli as dev dependency (optional)');
-    logger.debug({ error }, 'Installation error:');
+    logger.warn(
+      { src: 'cli', util: 'dependency-manager' },
+      'Failed to install @elizaos/cli (optional)'
+    );
+    logger.debug({ src: 'cli', util: 'dependency-manager', error }, 'Installation error');
     return false;
   }
 }
@@ -136,13 +160,16 @@ export async function ensureElizaOSCli(cwd: string = process.cwd()): Promise<voi
     return;
   }
 
-  logger.debug('Auto-installing @elizaos/cli for enhanced development experience');
+  logger.debug({ src: 'cli', util: 'dependency-manager' }, 'Auto-installing @elizaos/cli');
 
   // Attempt to install using bun
   const success = await installElizaOSCli(cwd);
 
   if (success) {
-    logger.info('Next time you can use the local CLI for better performance and consistency');
+    logger.info(
+      { src: 'cli', util: 'dependency-manager' },
+      'Local CLI available for better performance'
+    );
   }
 }
 
@@ -161,14 +188,20 @@ export async function getLatestElizaOSCliVersion(): Promise<string | null> {
         const info = JSON.parse(result.stdout);
         return info.version || info.dist?.version || 'latest';
       } catch (parseError) {
-        logger.debug({ error: parseError }, 'Error parsing JSON from bun info command:');
+        logger.debug(
+          { src: 'cli', util: 'dependency-manager', error: parseError },
+          'Error parsing bun info output'
+        );
         return null;
       }
     }
 
     return null;
   } catch (error) {
-    logger.debug({ error }, 'Error getting @elizaos/cli version with bun:');
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager', error },
+      'Error getting @elizaos/cli version'
+    );
     return null;
   }
 }
@@ -217,12 +250,16 @@ export async function ensurePackageJson(cwd: string = process.cwd()): Promise<bo
     };
 
     fs.writeFileSync(packageJsonPath, JSON.stringify(minimal, null, 2));
-    logger.info('Created package.json for ElizaOS project (bun ready)');
+    logger.info({ src: 'cli', util: 'dependency-manager' }, 'Created package.json');
     return true;
   } catch (error) {
     logger.warn(
-      'Could not create package.json:',
-      error instanceof Error ? error.message : String(error)
+      {
+        src: 'cli',
+        util: 'dependency-manager',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Could not create package.json'
     );
     return false;
   }

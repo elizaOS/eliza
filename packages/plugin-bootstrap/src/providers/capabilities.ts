@@ -1,5 +1,4 @@
 import type { IAgentRuntime, Memory, Provider, ProviderResult } from '@elizaos/core';
-import { logger } from '@elizaos/core';
 
 /**
  * Provider that collects capability descriptions from all registered services
@@ -56,7 +55,14 @@ export const capabilitiesProvider: Provider = {
         text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in capabilities provider:');
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:provider:capabilities',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in capabilities provider'
+      );
       return {
         text: 'Error retrieving capabilities from services.',
       };

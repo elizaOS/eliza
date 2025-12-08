@@ -21,8 +21,8 @@
  *
  * Prerequisites:
  * - OPENAI_API_KEY environment variable
- * - Optional: POSTGRES_URL (defaults to in-memory PGLite)
- * - Optional: PGLITE_PATH (defaults to memory://)
+ * - Optional: POSTGRES_URL (for PostgreSQL database)
+ * - Optional: PGLITE_PATH (defaults to in-memory: memory://)
  *
  * Usage:
  *   OPENAI_API_KEY=your_key bun run standalone.ts
@@ -37,10 +37,12 @@
  * 5. Clean shutdown
  */
 
+// MUST be set before any imports to suppress ElizaOS logs
+process.env.LOG_LEVEL = 'silent';
+
 import {
   AgentRuntime,
   ChannelType,
-  EventType,
   createMessageMemory,
   stringToUuid,
   type Character,
@@ -52,7 +54,6 @@ import bootstrapPlugin from '@elizaos/plugin-bootstrap';
 import openaiPlugin from '@elizaos/plugin-openai';
 import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
 import 'node:crypto';
-import fs from 'node:fs';
 import { v4 as uuidv4 } from 'uuid';
 
 async function main(): Promise<void> {
@@ -65,14 +66,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Database selection: prefer POSTGRES_URL if set, else PGLite at ./.eliza/.elizadb
+  // Database selection: prefer POSTGRES_URL if set, else in-memory PGLite
   const postgresUrl = process.env.POSTGRES_URL || '';
   const pgliteDir = process.env.PGLITE_PATH || 'memory://';
-
-  // Ensure local data directory exists for PGLite
-  if (!postgresUrl) {
-    fs.mkdirSync(pgliteDir, { recursive: true });
-  }
 
   // Character definition
   const character: Character = {
@@ -123,7 +119,7 @@ async function main(): Promise<void> {
     name: 'LocalUser',
     source: 'cli',
     channelId: 'standalone-channel',
-    serverId: 'standalone-server',
+    messageServerId: stringToUuid('standalone-server'),
     type: ChannelType.DM,
   });
 
@@ -141,18 +137,18 @@ async function main(): Promise<void> {
 
   console.log('User:', message.content.text);
 
-  // Send the message through the bootstrap message handler and print the response(s)
-  await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-    runtime,
-    message,
-    callback: async (content: Content) => {
-      if (content?.text) {
-        console.log(`${character.name}:`, content.text);
-      } else if (content?.thought) {
-        console.log(`${character.name} (thought):`, content.thought);
-      }
-    },
-  });
+  // Send the message through the messageService and print the response
+  if (!runtime.messageService) {
+    console.error('MessageService not initialized');
+    process.exit(1);
+  }
+
+  const result = await runtime.messageService.handleMessage(runtime, message);
+
+  // Print the agent's response
+  if (result.responseContent?.text) {
+    console.log(`${character.name}:`, result.responseContent.text);
+  }
 
   await runtime.stop();
 }

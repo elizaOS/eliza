@@ -33,7 +33,10 @@ export async function removePlugin(plugin: string): Promise<void> {
   const packageNameToRemove = findPluginPackageName(plugin, allDependencies);
 
   if (!packageNameToRemove) {
-    logger.warn(`Plugin matching "${plugin}" not found in project dependencies.`);
+    logger.warn(
+      { src: 'cli', command: 'plugins-remove', plugin },
+      'Plugin not found in project dependencies'
+    );
     console.info('\nCheck installed plugins using: elizaos plugins installed-plugins');
     process.exit(0);
   }
@@ -45,7 +48,13 @@ export async function removePlugin(plugin: string): Promise<void> {
     });
   } catch (execError) {
     logger.error(
-      `Failed to run 'bun remove ${packageNameToRemove}': ${execError instanceof Error ? execError.message : String(execError)}`
+      {
+        src: 'cli',
+        command: 'plugins-remove',
+        package: packageNameToRemove,
+        error: execError instanceof Error ? execError.message : String(execError),
+      },
+      'Failed to run bun remove'
     );
     if (
       execError &&
@@ -55,7 +64,8 @@ export async function removePlugin(plugin: string): Promise<void> {
       execError.stderr.includes('not found')
     ) {
       logger.info(
-        `'bun remove' indicated package was not found. Continuing with directory removal attempt.`
+        { src: 'cli', command: 'plugins-remove' },
+        'bun remove indicated package was not found. Continuing with directory removal attempt'
       );
     } else {
       handleError(execError);
@@ -78,7 +88,13 @@ export async function removePlugin(plugin: string): Promise<void> {
       rmSync(pluginDir, { recursive: true, force: true });
     } catch (rmError) {
       logger.error(
-        `Failed to remove directory ${pluginDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`
+        {
+          src: 'cli',
+          command: 'plugins-remove',
+          directory: pluginDir,
+          error: rmError instanceof Error ? rmError.message : String(rmError),
+        },
+        'Failed to remove directory'
       );
     }
   } else {
@@ -88,7 +104,13 @@ export async function removePlugin(plugin: string): Promise<void> {
         rmSync(nonPrefixedDir, { recursive: true, force: true });
       } catch (rmError) {
         logger.error(
-          `Failed to remove directory ${nonPrefixedDir}: ${rmError instanceof Error ? rmError.message : String(rmError)}`
+          {
+            src: 'cli',
+            command: 'plugins-remove',
+            directory: nonPrefixedDir,
+            error: rmError instanceof Error ? rmError.message : String(rmError),
+          },
+          'Failed to remove directory'
         );
       }
     }

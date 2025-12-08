@@ -1,7 +1,6 @@
 import { logger } from '@elizaos/core';
 import { getAgentRuntimeUrl } from '../commands/agent';
 import { OptionValues } from 'commander';
-import colors from 'yoctocolors';
 import { getAuthHeaders } from '../commands/shared';
 /**
  * Handles the error by logging it and exiting the process.
@@ -20,23 +19,26 @@ export function handleError(error: unknown) {
       (error.includes('no space left on device') || error.includes('ENOSPC')));
 
   if (isNoSpace) {
-    logger.error(
-      colors.red('ERROR: No space left on device! Please free up disk space and try again.')
-    );
+    logger.error({ src: 'cli', util: 'error-handler' }, 'No space left on device');
     if (error instanceof Error) {
-      logger.error(colors.red(error.message));
-      logger.error(colors.red(error.stack || ''));
+      logger.error(
+        { src: 'cli', util: 'error-handler', error: error.message, stack: error.stack },
+        'Error details'
+      );
     } else {
-      logger.error(colors.red(String(error)));
+      logger.error({ src: 'cli', util: 'error-handler', error: String(error) }, 'Error details');
     }
   } else {
-    logger.error({ error }, 'An error occurred:');
     if (error instanceof Error) {
-      logger.error({ message: error.message }, 'Error details:');
-      logger.error({ stack: error.stack }, 'Stack trace:');
+      logger.error(
+        { src: 'cli', util: 'error-handler', error: error.message, stack: error.stack },
+        'Error occurred'
+      );
     } else {
-      logger.error({ type: typeof error }, 'Unknown error type:');
-      logger.error({ error }, 'Error value:');
+      logger.error(
+        { src: 'cli', util: 'error-handler', errorType: typeof error, error: String(error) },
+        'Unknown error'
+      );
     }
   }
   process.exit(1);
@@ -51,9 +53,9 @@ export async function checkServer(opts: OptionValues) {
     if (!response.ok) {
       throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
     }
-    logger.success('ElizaOS server is running');
+    logger.success({ src: 'cli', util: 'server-check' }, 'ElizaOS server is running');
   } catch (error) {
-    logger.error('Unable to connect to ElizaOS server, likely not running or not accessible!');
+    logger.error({ src: 'cli', util: 'server-check' }, 'Unable to connect to ElizaOS server');
     process.exit(1);
   }
 }

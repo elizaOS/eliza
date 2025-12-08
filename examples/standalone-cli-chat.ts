@@ -14,11 +14,11 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
 import {
   AgentRuntime,
   ChannelType,
-  EventType,
   createMessageMemory,
   stringToUuid,
   type Character,
   type Content,
+  type IDatabaseAdapter,
   type Memory,
   type UUID,
 } from '@elizaos/core';
@@ -27,7 +27,6 @@ import openaiPlugin from '@elizaos/plugin-openai';
 import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
 import * as clack from '@clack/prompts';
 import 'node:crypto';
-import fs from 'node:fs';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================
@@ -140,11 +139,7 @@ class AgentInitializer {
     };
   }
 
-  private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<void> {
-    if (!config.postgresUrl && config.pgliteDataDir !== CONSTANTS.DEFAULT_PGLITE_DATA_DIR) {
-      fs.mkdirSync(config.pgliteDataDir, { recursive: true });
-    }
-
+  private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<IDatabaseAdapter> {
     const adapter = createDatabaseAdapter(
       {
         dataDir: config.pgliteDataDir,
@@ -184,6 +179,7 @@ class AgentInitializer {
     const userId = uuidv4() as UUID;
     const worldId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.WORLD);
     const roomId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.ROOM);
+    const messageServerId = stringToUuid(CONSTANTS.CHAT_IDENTIFIERS.SERVER);
 
     await runtime.ensureConnection({
       entityId: userId,
@@ -192,7 +188,7 @@ class AgentInitializer {
       name: 'User',
       source: CONSTANTS.CHAT_IDENTIFIERS.SOURCE,
       channelId: CONSTANTS.CHAT_IDENTIFIERS.CHANNEL,
-      serverId: CONSTANTS.CHAT_IDENTIFIERS.SERVER,
+      messageServerId,
       type: ChannelType.DM,
     });
 
@@ -241,7 +237,7 @@ class AgentInitializer {
 // ============================================================================
 
 class MessageProcessor {
-  constructor(private session: ChatSession) {}
+  constructor(private session: ChatSession) { }
 
   private createMessageMemory(userInput: string): Memory {
     return createMessageMemory({
@@ -260,22 +256,29 @@ class MessageProcessor {
     const message = this.createMessageMemory(userInput);
     const startTime = Date.now();
 
+    // Verify messageService is initialized
+    if (!this.session.runtime.messageService) {
+      throw new Error('MessageService not initialized - runtime may not be fully configured');
+    }
+
     let response = '';
 
-    await this.session.runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-      runtime: this.session.runtime,
+    // Use the messageService.handleMessage() API instead of deprecated MESSAGE_RECEIVED event
+    const result = await this.session.runtime.messageService.handleMessage(
+      this.session.runtime,
       message,
-      callback: async (content: Content) => {
+      async (content: Content): Promise<Memory[]> => {
         if (content?.text) {
           response += content.text;
         }
-      },
-    });
+        return []; // Return empty array as we're only capturing text for display
+      }
+    );
 
     const thinkingTimeMs = Date.now() - startTime;
 
     return {
-      response,
+      response: response || result.responseContent?.text || '',
       thinkingTimeMs,
     };
   }
@@ -289,7 +292,7 @@ class ChatInterface {
   constructor(
     private messageProcessor: MessageProcessor,
     private character: Character
-  ) {}
+  ) { }
 
   private displayWelcome(): void {
     clack.intro('🤖 ElizaOS Interactive Chat');

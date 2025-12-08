@@ -5,70 +5,18 @@ import { resolvePlugins } from './plugin';
 import type {
   Character,
   IAgentRuntime,
+  IElizaOS,
   UUID,
   Memory,
   State,
   Plugin,
   RuntimeSettings,
   Content,
+  SendMessageOptions,
+  SendMessageResult,
+  IDatabaseAdapter,
 } from './types';
 import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
-
-/**
- * Options for sending a message to an agent
- */
-export interface SendMessageOptions {
-  /**
-   * Called when the agent generates a response (ASYNC MODE)
-   * If provided, method returns immediately (fire & forget)
-   * If not provided, method waits for response (SYNC MODE)
-   */
-  onResponse?: (content: Content) => Promise<void>;
-
-  /**
-   * Called if an error occurs during processing
-   */
-  onError?: (error: Error) => Promise<void>;
-
-  /**
-   * Called when processing is complete
-   */
-  onComplete?: () => Promise<void>;
-
-  /**
-   * Maximum number of retries for failed messages
-   */
-  maxRetries?: number;
-
-  /**
-   * Timeout duration in milliseconds
-   */
-  timeoutDuration?: number;
-
-  /**
-   * Enable multi-step message processing
-   */
-  useMultiStep?: boolean;
-
-  /**
-   * Maximum multi-step iterations
-   */
-  maxMultiStepIterations?: number;
-}
-
-/**
- * Result of sending a message to an agent
- */
-export interface SendMessageResult {
-  /** ID of the user message */
-  messageId: UUID;
-
-  /** The user message that was created */
-  userMessage: Memory;
-
-  /** Processing result (only in SYNC mode) */
-  result?: MessageProcessingResult;
-}
 
 /**
  * Batch operation for sending messages
@@ -118,16 +66,73 @@ export interface AgentUpdate {
 
 /**
  * ElizaOS - Multi-agent orchestration framework
- * Pure JavaScript implementation for browser and Node.js compatibility
  */
-export class ElizaOS extends EventTarget {
+export class ElizaOS extends EventTarget implements IElizaOS {
   private runtimes: Map<UUID, IAgentRuntime> = new Map();
   private initFunctions: Map<UUID, (runtime: IAgentRuntime) => Promise<void>> = new Map();
   private editableMode = false;
 
+  // Overload: returns UUID[] when returnRuntimes is false/undefined
+  async addAgents(
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      settings?: RuntimeSettings;
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+      databaseAdapter?: IDatabaseAdapter;
+    }>,
+    options?: {
+      isTestMode?: boolean;
+      ephemeral?: boolean;
+      skipMigrations?: boolean;
+      autoStart?: boolean;
+      returnRuntimes?: false;
+    }
+  ): Promise<UUID[]>;
+
+  // Overload: returns IAgentRuntime[] when returnRuntimes is true
+  async addAgents(
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      settings?: RuntimeSettings;
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+      databaseAdapter?: IDatabaseAdapter;
+    }>,
+    options: {
+      isTestMode?: boolean;
+      ephemeral?: boolean;
+      skipMigrations?: boolean;
+      autoStart?: boolean;
+      returnRuntimes: true;
+    }
+  ): Promise<IAgentRuntime[]>;
+
   /**
    * Add multiple agents (batch operation)
    * Handles config and plugin resolution automatically
+   *
+   * Supports both persistent (Node.js server) and ephemeral (serverless) modes:
+   * - Persistent: runtime stored in registry, accessed via getAgent()
+   * - Ephemeral: runtime returned but not stored, for per-request usage
+   *
+   * @example
+   * // Node.js server (persistent)
+   * const ids = await elizaOS.addAgents([{ character, plugins }]);
+   * await elizaOS.startAgents(ids);
+   *
+   * @example
+   * // Serverless (ephemeral, with pre-cached DB adapter)
+   * const runtimes = await elizaOS.addAgents([{
+   *   character,
+   *   plugins,
+   *   databaseAdapter: cachedAdapter,
+   * }], {
+   *   ephemeral: true,
+   *   skipMigrations: true,
+   *   autoStart: true,
+   *   returnRuntimes: true,
+   * });
    */
   async addAgents(
     agents: Array<{
@@ -135,18 +140,38 @@ export class ElizaOS extends EventTarget {
       plugins?: (Plugin | string)[];
       settings?: RuntimeSettings;
       init?: (runtime: IAgentRuntime) => Promise<void>;
+      /** Pre-initialized database adapter (skips plugin-sql) */
+      databaseAdapter?: IDatabaseAdapter;
     }>,
-    options?: { isTestMode?: boolean }
-  ): Promise<UUID[]> {
-    const promises = agents.map(async (agent) => {
-      // Always merge environment secrets with character secrets
-      // Priority: .env < character.json (character overrides)
-      const character = agent.character;
-      await setDefaultSecretsFromEnv(character);
+    options?: {
+      isTestMode?: boolean;
+      /** If true, runtimes are NOT stored in registry (for serverless) */
+      ephemeral?: boolean;
+      /** If true, skip database migrations during initialize */
+      skipMigrations?: boolean;
+      /** If true, automatically call initialize() after creation */
+      autoStart?: boolean;
+      /** If true, return IAgentRuntime[] instead of UUID[] */
+      returnRuntimes?: boolean;
+    }
+  ): Promise<UUID[] | IAgentRuntime[]> {
+    const createdRuntimes: IAgentRuntime[] = [];
 
-      const resolvedPlugins = agent.plugins
+    const promises = agents.map(async (agent) => {
+      // Merge environment secrets with character secrets
+      // Priority: .env < character.json (character overrides)
+      // In test mode, skip env merge to avoid database bloat from system variables
+      const character = agent.character;
+      await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
+
+      let resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
         : [];
+
+      // Filter out plugin-sql if databaseAdapter is provided
+      if (agent.databaseAdapter) {
+        resolvedPlugins = resolvedPlugins.filter((p) => p.name !== '@elizaos/plugin-sql');
+      }
 
       const runtime = new AgentRuntime({
         character,
@@ -154,7 +179,17 @@ export class ElizaOS extends EventTarget {
         settings: agent.settings || {},
       });
 
-      this.runtimes.set(runtime.agentId, runtime);
+      // Register pre-initialized database adapter if provided
+      if (agent.databaseAdapter) {
+        runtime.registerDatabaseAdapter(agent.databaseAdapter);
+      }
+
+      runtime.elizaOS = this;
+
+      // Only store in registry if not ephemeral
+      if (!options?.ephemeral) {
+        this.runtimes.set(runtime.agentId, runtime);
+      }
 
       if (typeof agent.init === 'function') {
         this.initFunctions.set(runtime.agentId, agent.init);
@@ -171,20 +206,49 @@ export class ElizaOS extends EventTarget {
               ...characterWithoutSecrets,
               settings: settingsWithoutSecrets,
             },
+            ephemeral: options?.ephemeral,
           },
         })
       );
 
+      createdRuntimes.push(runtime);
       return runtime.agentId;
     });
 
     const ids = await Promise.all(promises);
 
+    // Auto-start if requested (useful for serverless)
+    if (options?.autoStart) {
+      await Promise.all(
+        createdRuntimes.map(async (runtime) => {
+          await runtime.initialize({ skipMigrations: options?.skipMigrations });
+
+          // Run init function if provided
+          const initFn = this.initFunctions.get(runtime.agentId);
+          if (initFn) {
+            await initFn(runtime);
+            this.initFunctions.delete(runtime.agentId);
+          }
+
+          this.dispatchEvent(
+            new CustomEvent('agent:started', {
+              detail: { agentId: runtime.agentId },
+            })
+          );
+        })
+      );
+    }
+
     this.dispatchEvent(
       new CustomEvent('agents:added', {
-        detail: { agentIds: ids, count: ids.length },
+        detail: { agentIds: ids, count: ids.length, ephemeral: options?.ephemeral },
       })
     );
+
+    // Return runtimes directly if requested (serverless pattern)
+    if (options?.returnRuntimes) {
+      return createdRuntimes;
+    }
 
     return ids;
   }
@@ -196,6 +260,8 @@ export class ElizaOS extends EventTarget {
     if (this.runtimes.has(runtime.agentId)) {
       throw new Error(`Agent ${runtime.agentId} already registered`);
     }
+
+    runtime.elizaOS = this;
 
     this.runtimes.set(runtime.agentId, runtime);
 
@@ -374,14 +440,23 @@ export class ElizaOS extends EventTarget {
   /**
    * Send a message to a specific agent
    *
-   * @param agentId - The agent ID to send the message to
+   * @param target - The agent ID (UUID) or runtime instance to send the message to
    * @param message - Partial Memory object (missing fields auto-filled)
    * @param options - Optional callbacks and processing options
    * @returns Promise with message ID and result
    *
    * @example
-   * // SYNC mode (HTTP API)
+   * // SYNC mode with agent ID (HTTP API)
    * const result = await elizaOS.sendMessage(agentId, {
+   *   entityId: user.id,
+   *   roomId: room.id,
+   *   content: { text: "Hello", source: 'web' }
+   * });
+   *
+   * @example
+   * // Serverless mode with runtime directly (no registry lookup)
+   * const [runtime] = await elizaOS.addAgents([config], { ephemeral: true, autoStart: true, returnRuntimes: true });
+   * const result = await elizaOS.sendMessage(runtime, {
    *   entityId: user.id,
    *   roomId: room.id,
    *   content: { text: "Hello", source: 'web' }
@@ -400,7 +475,7 @@ export class ElizaOS extends EventTarget {
    * });
    */
   async sendMessage(
-    agentId: UUID,
+    target: UUID | IAgentRuntime,
     message: Partial<Memory> & {
       entityId: UUID;
       roomId: UUID;
@@ -409,10 +484,21 @@ export class ElizaOS extends EventTarget {
     },
     options?: SendMessageOptions
   ): Promise<SendMessageResult> {
-    // 1. Get the runtime
-    const runtime = this.runtimes.get(agentId);
-    if (!runtime) {
-      throw new Error(`Agent ${agentId} not found`);
+    // 1. Resolve the runtime (UUID → lookup, runtime → direct)
+    let runtime: IAgentRuntime | undefined;
+    let agentId: UUID;
+
+    if (typeof target === 'string') {
+      // Target is UUID, lookup in registry
+      agentId = target as UUID;
+      runtime = this.runtimes.get(agentId);
+      if (!runtime) {
+        throw new Error(`Agent ${agentId} not found in registry`);
+      }
+    } else {
+      // Target is runtime instance (serverless pattern)
+      runtime = target;
+      agentId = runtime.agentId;
     }
 
     // 2. Verify messageService exists
@@ -449,7 +535,16 @@ export class ElizaOS extends EventTarget {
       maxMultiStepIterations: options?.maxMultiStepIterations,
     };
 
-    // 6. Determine mode: async or sync
+    // 6. Helper to wrap message handling with Entity RLS context if available
+    const handleMessageWithEntityContext = async <T>(handler: () => Promise<T>): Promise<T> => {
+      if (runtime.withEntityContext) {
+        return await runtime.withEntityContext(userMessage.entityId, handler);
+      } else {
+        return await handler();
+      }
+    };
+
+    // 7. Determine mode: async or sync
     const isAsyncMode = !!options?.onResponse;
 
     if (isAsyncMode) {
@@ -469,9 +564,10 @@ export class ElizaOS extends EventTarget {
         return [];
       };
 
-      // Direct call to messageService
-      runtime.messageService
-        .handleMessage(runtime, userMessage, callback, processingOptions)
+      // Wrap message handling with Entity RLS context
+      handleMessageWithEntityContext(() =>
+        runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
+      )
         .then(() => {
           if (options.onComplete) options.onComplete();
         })
@@ -491,11 +587,8 @@ export class ElizaOS extends EventTarget {
       // ========== SYNC MODE ==========
       // Wait for response
 
-      const result = await runtime.messageService.handleMessage(
-        runtime,
-        userMessage,
-        undefined,
-        processingOptions
+      const processing = await handleMessageWithEntityContext<MessageProcessingResult>(() =>
+        runtime.messageService!.handleMessage(runtime, userMessage, undefined, processingOptions)
       );
 
       if (options?.onComplete) await options.onComplete();
@@ -503,11 +596,11 @@ export class ElizaOS extends EventTarget {
       // Emit event for tracking
       this.dispatchEvent(
         new CustomEvent('message:sent', {
-          detail: { agentId, messageId, mode: 'sync', result },
+          detail: { agentId, messageId, mode: 'sync', processing },
         })
       );
 
-      return { messageId, userMessage, result };
+      return { messageId, userMessage, processing };
     }
   }
 

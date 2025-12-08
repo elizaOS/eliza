@@ -209,7 +209,9 @@ describe('TaskService', () => {
       }
       return undefined;
     }) as any;
-    spyOn(logger, 'error').mockImplementation(() => {}); // Suppress error logging for this test
+
+    // Spy on runtime logger instead of global logger
+    const loggerErrorSpy = spyOn(mockRuntime.logger, 'error').mockImplementation(() => {});
 
     // Expose the private method for testing
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
@@ -221,10 +223,15 @@ describe('TaskService', () => {
     expect(mockRuntime.getTaskWorker).toHaveBeenCalledWith(testTask.name);
     expect(mockErrorExecute).toHaveBeenCalled();
 
-    // Verify error was logged
-    expect(logger.error).toHaveBeenCalledWith(
-      { error: expect.any(Error), taskId: testTask.id },
-      `[Bootstrap] Error executing task ${testTask.id}:`
+    // Verify error was logged on runtime.logger
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      {
+        src: 'plugin:bootstrap:service:task',
+        agentId: mockRuntime.agentId,
+        taskId: testTask.id,
+        error: expect.any(String),
+      },
+      'Error executing task'
     );
 
     // Verify error was handled gracefully (original assertions removed as they don't match current executeTask)

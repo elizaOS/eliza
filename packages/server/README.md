@@ -8,6 +8,7 @@ The server package provides the REST API and WebSocket server infrastructure for
 
 - REST API endpoints for agent management and interaction
 - WebSocket support for real-time communication
+- JWT authentication with data isolation (Privy, Auth0, Clerk, Supabase, Google, custom)
 - Database integration with SQLite/PostgreSQL
 - Plugin system integration
 - Multi-agent runtime management
@@ -76,30 +77,72 @@ server.start(3000);
 
 ## API Endpoints
 
-### Agent Management
+### Public Endpoints (Unauthenticated)
 
-- `GET /api/agents` - List all running agents
-- `GET /api/agents/:agentId` - Get specific agent details
-- `POST /api/agents` - Create new agent
-- `PUT /api/agents/:agentId` - Update agent configuration
-- `DELETE /api/agents/:agentId` - Stop and remove agent
+Health check endpoints for load balancers and monitoring (rate limited: 100 req/min):
 
-### Agent Interaction
+- `GET /healthz` - Lightweight health check (always returns 200 OK)
+- `GET /health` - Comprehensive health check (200 if healthy, 503 if no agents)
 
-- `POST /api/agents/:agentId/message` - Send message to agent
-- `GET /api/agents/:agentId/history` - Get conversation history
-- `POST /api/agents/:agentId/action` - Trigger specific agent action
+### Protected API Endpoints
 
-### Memory & State
+The server provides a comprehensive REST API organized into functional categories:
 
-- `GET /api/agents/:agentId/memory` - Get agent memory/knowledge
-- `POST /api/agents/:agentId/memory` - Add to agent memory
-- `DELETE /api/agents/:agentId/memory/:memoryId` - Remove memory
+### Agents (`/api/agents`)
 
-### System
+Core agent management and operations:
+- Agent CRUD (create, read, update, delete)
+- Agent lifecycle (start, stop, restart)
+- Agent memory and state
+- Agent worlds and panels
+- Agent logs and runs
+- Room management
 
-- `GET /api/health` - Health check endpoint
-- `GET /api/version` - Get server version info
+### Messaging (`/api/messaging`)
+
+Real-time messaging infrastructure:
+- Message operations
+- Channel management
+- Sessions handling
+- Job queue
+
+### Memory (`/api/memory`)
+
+Persistent memory storage:
+- Agent-specific memory
+- Group memory
+- Room context
+
+### Media (`/api/media`)
+
+File and media handling:
+- Agent media (avatars, files)
+- Channel media uploads
+
+### Audio (`/api/audio`)
+
+Voice and audio features:
+- Audio processing
+- Speech synthesis
+- Audio conversations
+
+### Authentication (`/api/auth`)
+
+Credentials and authentication management
+
+### System (`/api/system`)
+
+- `GET /api/system/config` - Server configuration (JWT status, features)
+- `GET /api/system/version` - Version information
+- `GET /api/system/env` - Environment details
+
+### Runtime (`/api/runtime`)
+
+- `GET /api/runtime/health` - Health check
+- `GET /api/runtime/logging` - Logging configuration
+- `POST /api/runtime/debug` - Debug operations
+
+> **Note:** For detailed endpoint documentation, see the API router files in `src/api/`
 
 ## WebSocket Events
 
@@ -107,7 +150,12 @@ Connect to `ws://localhost:3000/ws` for real-time communication:
 
 ```javascript
 // Client-side WebSocket connection
-const ws = new WebSocket('ws://localhost:3000/ws');
+const ws = new WebSocket('ws://localhost:3000');
+
+// Connection established
+ws.onopen = () => {
+  console.log('Connected to server');
+};
 
 // Send message
 ws.send(
@@ -119,10 +167,10 @@ ws.send(
 );
 
 // Receive responses
-ws.on('message', (data) => {
-  const response = JSON.parse(data);
+ws.onmessage = (event) => {
+  const response = JSON.parse(event.data);
   console.log('Agent response:', response);
-});
+};
 ```
 
 ### WebSocket Message Types
@@ -201,6 +249,40 @@ The server respects these environment variables:
 - `SQLITE_PATH` - Path to SQLite database file
 - `LOG_LEVEL` - Logging level (debug, info, warn, error)
 - `CORS_ORIGIN` - CORS allowed origins
+- `ENABLE_DATA_ISOLATION` - Enable JWT authentication and data isolation (true/false)
+- `DISABLE_WEB_UI` - Disable the built-in web UI (true/false)
+
+### JWT Authentication
+
+Enable data isolation and authentication by setting `ENABLE_DATA_ISOLATION=true`. The server supports multiple JWT providers:
+
+**Privy (Ed25519)**:
+```bash
+ENABLE_DATA_ISOLATION=true
+PRIVY_VERIFICATION_KEY=-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA...
+-----END PUBLIC KEY-----
+```
+Get key from: Privy Dashboard → Configuration → App settings
+
+**JWKS Providers** (Auth0, Clerk, Supabase, Google):
+```bash
+ENABLE_DATA_ISOLATION=true
+JWT_JWKS_URI=https://your-domain/.well-known/jwks.json
+```
+
+**Custom Secret** (HMAC):
+```bash
+ENABLE_DATA_ISOLATION=true
+JWT_SECRET=your-256-bit-secret
+```
+
+**Optional:**
+```bash
+JWT_ISSUER_WHITELIST=https://auth.privy.io,https://clerk.your-app.com
+```
+
+The server automatically selects the appropriate verifier based on configuration (Ed25519 → JWKS → Secret priority).
 
 ### Error Monitoring (Sentry)
 
@@ -239,30 +321,58 @@ The server package is structured as follows:
 
 ```
 server/
-├── api/              # REST API route handlers
-│   ├── agents/       # Agent management endpoints
-│   ├── memory/       # Memory/knowledge endpoints
-│   └── system/       # System/health endpoints
-├── database/         # Database adapters and migrations
-├── services/         # Core services (runtime, storage)
-├── socketio/         # WebSocket implementation
-└── index.ts          # Main exports
+├── api/                    # REST API route handlers
+│   ├── agents/             # Agent management (CRUD, lifecycle, memory, logs, runs)
+│   ├── messaging/          # Messaging infrastructure (channels, sessions, jobs)
+│   ├── memory/             # Persistent memory (agents, groups, rooms)
+│   ├── media/              # File and media handling
+│   ├── audio/              # Voice and audio processing
+│   ├── auth/               # Authentication and credentials
+│   ├── system/             # System config, version, environment
+│   ├── runtime/            # Health, logging, debug
+│   ├── shared/             # Shared API utilities
+│   └── tee/                # TEE (Trusted Execution Environment)
+├── middleware/             # Express middleware
+│   ├── jwt-auth.ts         # JWT authentication middleware
+│   ├── api-key.ts          # API key validation
+│   ├── rate-limit.ts       # Rate limiting
+│   ├── security.ts         # Security headers (helmet, CORS)
+│   └── validation.ts       # Request validation
+├── services/               # Core services
+│   ├── jwt-verifiers/      # JWT verification (Ed25519, JWKS, Secret)
+│   └── message.ts          # Message processing service
+├── socketio/               # WebSocket/Socket.IO implementation
+├── utils/                  # Utility functions
+└── index.ts                # Main exports and server setup
 ```
+
+> **Note:** Database operations are handled by `@elizaos/core`
 
 ## Development
 
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
+# Run all tests (unit, features, security, compatibility)
+bun test
 
-# Run specific test suite
-npm test -- api/agents
+# Run specific test suites
+bun test:unit             # Unit tests only
+bun test:features         # Feature tests only
+bun test:security         # Security tests (RLS)
+bun test:compatibility    # CLI/API compatibility tests
+bun test:integration      # Integration tests (sequential via script)
 
 # Run with coverage
-npm test -- --coverage
+bun test:coverage
+
+# Watch mode for development
+bun test:watch
 ```
+
+**Note:** Integration tests run sequentially via `scripts/run-integration-tests.sh` due to PGLite's global singleton state. Each test file runs in an isolated Bun process with 5-second pauses between files.
+
+For more details on the test architecture, see [src/__tests__/README.md](src/__tests__/README.md).
 
 ### Building
 

@@ -7,7 +7,7 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 import { TEST_TIMEOUTS } from '../test-timeouts';
 import { mkdtempSync, existsSync, rmSync } from 'node:fs';
 
-describe('ElizaOS Update Commands', () => {
+describe('ElizaOS Update Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let originalCwd: string;
 

@@ -14,7 +14,7 @@ export const taskTable = pgTable('tasks', {
   roomId: uuid('roomId'),
   worldId: uuid('worldId'),
   entityId: uuid('entityId'),
-  agentId: uuid('agent_id')
+  agentId: uuid('agentId')
     .notNull()
     .references(() => agentTable.id, { onDelete: 'cascade' }),
   tags: text('tags')

@@ -24,6 +24,9 @@
     "lint": {
       "outputs": [".eslintcache"]
     },
+    "lint:check": {
+      "outputs": [".eslintcache"]
+    },
     "format": {
       "outputs": []
     },

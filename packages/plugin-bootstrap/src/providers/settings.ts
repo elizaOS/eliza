@@ -115,7 +115,14 @@ function generateStatusMessage(
       .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
       .join('\n\n')}`;
   } catch (error) {
-    logger.error(`Error generating status message: ${error}`);
+    logger.error(
+      {
+        src: 'plugin:bootstrap:provider:settings',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error generating status message'
+    );
     return 'Error generating configuration status.';
   }
 }
@@ -135,12 +142,22 @@ export const settingsProvider: Provider = {
         runtime.getRoom(message.roomId),
         findWorldsForOwner(runtime, message.entityId),
       ]).catch((error) => {
-        logger.error(`Error fetching initial data: ${error}`);
+        logger.error(
+          {
+            src: 'plugin:bootstrap:provider:settings',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error fetching initial data'
+        );
         throw new Error('Failed to retrieve room or user world information');
       });
 
       if (!room) {
-        logger.error('No room found for settings provider');
+        logger.error(
+          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
+          'No room found for settings provider'
+        );
         return {
           data: {
             settings: [],
@@ -153,7 +170,10 @@ export const settingsProvider: Provider = {
       }
 
       if (!room.worldId) {
-        logger.debug('No world found for settings provider -- settings provider will be skipped');
+        logger.debug(
+          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
+          'No world found for settings provider -- settings provider will be skipped'
+        );
         return {
           data: {
             settings: [],
@@ -185,22 +205,42 @@ export const settingsProvider: Provider = {
           }
           world.metadata.settings = {};
           await runtime.updateWorld(world);
-          logger.info(`Initialized settings for user's world ${world.id}`);
+          logger.info(
+            {
+              src: 'plugin:bootstrap:provider:settings',
+              agentId: runtime.agentId,
+              worldId: world.id,
+            },
+            'Initialized settings for user world'
+          );
         }
 
         if (!world) {
-          logger.error('No world found for user during onboarding');
+          logger.error(
+            { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId },
+            'No world found for user during onboarding'
+          );
           throw new Error('No server ownership found for onboarding');
         }
 
-        serverId = world.serverId;
+        serverId = world.messageServerId;
 
         // Fetch world settings based on the server ID
-        try {
-          worldSettings = await getWorldSettings(runtime, serverId);
-        } catch (error) {
-          logger.error(`Error fetching world settings: ${error}`);
-          throw new Error(`Failed to retrieve settings for server ${serverId}`);
+        if (serverId) {
+          try {
+            worldSettings = await getWorldSettings(runtime, serverId);
+          } catch (error) {
+            logger.error(
+              {
+                src: 'plugin:bootstrap:provider:settings',
+                agentId: runtime.agentId,
+                serverId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+              'Error fetching world settings'
+            );
+            throw new Error(`Failed to retrieve settings for server ${serverId}`);
+          }
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
@@ -208,20 +248,41 @@ export const settingsProvider: Provider = {
           world = await runtime.getWorld(room.worldId);
 
           if (!world) {
-            logger.error(`No world found for room ${room.worldId}`);
+            logger.error(
+              {
+                src: 'plugin:bootstrap:provider:settings',
+                agentId: runtime.agentId,
+                worldId: room.worldId,
+              },
+              'No world found for room'
+            );
             throw new Error(`No world found for room ${room.worldId}`);
           }
 
-          serverId = world.serverId;
+          serverId = world.messageServerId;
 
           // Once we have the serverId, get the settings
           if (serverId) {
             worldSettings = await getWorldSettings(runtime, serverId);
           } else {
-            logger.error(`No server ID found for world ${room.worldId}`);
+            logger.error(
+              {
+                src: 'plugin:bootstrap:provider:settings',
+                agentId: runtime.agentId,
+                worldId: room.worldId,
+              },
+              'No server ID found for world'
+            );
           }
         } catch (error) {
-          logger.error(`Error processing world data: ${error}`);
+          logger.error(
+            {
+              src: 'plugin:bootstrap:provider:settings',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Error processing world data'
+          );
           throw new Error('Failed to process world information');
         }
       }
@@ -229,7 +290,12 @@ export const settingsProvider: Provider = {
       // If no server found after recovery attempts
       if (!serverId) {
         logger.info(
-          `No server ownership found for user ${message.entityId} after recovery attempt`
+          {
+            src: 'plugin:bootstrap:provider:settings',
+            agentId: runtime.agentId,
+            entityId: message.entityId,
+          },
+          'No server ownership found for user after recovery attempt'
         );
         return isOnboarding
           ? {
@@ -254,7 +320,10 @@ export const settingsProvider: Provider = {
       }
 
       if (!worldSettings) {
-        logger.info(`No settings state found for server ${serverId}`);
+        logger.info(
+          { src: 'plugin:bootstrap:provider:settings', agentId: runtime.agentId, serverId },
+          'No settings state found for server'
+        );
         return isOnboarding
           ? {
               data: {
@@ -290,7 +359,14 @@ export const settingsProvider: Provider = {
         text: output,
       };
     } catch (error) {
-      logger.error(`Critical error in settings provider: ${error}`);
+      logger.error(
+        {
+          src: 'plugin:bootstrap:provider:settings',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Critical error in settings provider'
+      );
       return {
         data: {
           settings: [],

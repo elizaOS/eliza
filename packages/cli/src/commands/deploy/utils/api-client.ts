@@ -79,7 +79,10 @@ export class CloudApiClient {
    */
   private handleApiError(operation: string, error: unknown): CloudApiErrorResponse {
     const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-    logger.error(`Failed to ${operation}:`, errorMessage);
+    logger.error(
+      { src: 'cli', util: 'api-client', operation, error: errorMessage },
+      'API operation failed'
+    );
 
     return {
       success: false,
@@ -229,7 +232,10 @@ export class CloudApiClient {
       return await response.json();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-      logger.error('Failed to delete container:', errorMessage);
+      logger.error(
+        { src: 'cli', util: 'api-client', error: errorMessage },
+        'Failed to delete container'
+      );
       return {
         success: false,
         error: errorMessage,
@@ -311,7 +317,7 @@ export class CloudApiClient {
     metadata?: Record<string, string>;
   }): Promise<CloudApiResponse<any>> {
     try {
-      logger.info('🔐 Requesting ECR credentials...');
+      logger.info({ src: 'cli', util: 'api-client' }, 'Requesting ECR credentials');
 
       const response = await this.fetchWithTimeout(`${this.apiUrl}/api/v1/containers/credentials`, {
         method: 'POST',
@@ -342,8 +348,11 @@ export class CloudApiClient {
         throw new Error('Invalid response: missing ECR credentials');
       }
 
-      logger.info('✅ Received ECR credentials');
-      logger.info(`✅ ECR repository: ${data.data.ecrRepositoryUri}`);
+      logger.info({ src: 'cli', util: 'api-client' }, 'Received ECR credentials');
+      logger.info(
+        { src: 'cli', util: 'api-client', ecrRepositoryUri: data.data.ecrRepositoryUri },
+        'ECR repository'
+      );
       return data;
     } catch (error: unknown) {
       return this.handleApiError('request image build credentials', error);
@@ -358,7 +367,7 @@ export function getApiCredentials(): {
   apiKey: string;
   apiUrl: string;
 } | null {
-  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZA_CLOUD_API_KEY;
+  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZAOS_CLOUD_API_KEY;
   const apiUrl =
     process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://www.elizacloud.ai';
 

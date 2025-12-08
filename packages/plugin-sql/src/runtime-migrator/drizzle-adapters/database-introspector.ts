@@ -16,7 +16,7 @@ export class DatabaseIntrospector {
    * @returns Schema snapshot of current database state
    */
   async introspectSchema(schemaName: string = 'public'): Promise<SchemaSnapshot> {
-    logger.info(`[DatabaseIntrospector] Starting introspection for schema: ${schemaName}`);
+    logger.info({ src: 'plugin:sql', schemaName }, 'Starting database introspection');
 
     const tables: any = {};
     const schemas: any = {};
@@ -29,7 +29,7 @@ export class DatabaseIntrospector {
       const tableName = tableInfo.table_name;
       const tableSchema = tableInfo.table_schema || 'public';
 
-      logger.debug(`[DatabaseIntrospector] Introspecting table: ${tableSchema}.${tableName}`);
+      logger.debug({ src: 'plugin:sql', tableSchema, tableName }, 'Introspecting table');
 
       // Get columns for this table
       const columns = await this.getColumns(tableSchema, tableName);
@@ -55,15 +55,18 @@ export class DatabaseIntrospector {
       for (const idx of indexes) {
         if (!idx.is_primary && !idx.is_unique_constraint) {
           // Skip primary keys and unique constraints
-          indexesObject[idx.name] = {
-            name: idx.name,
-            columns: idx.columns.map((col) => ({
-              expression: col,
-              isExpression: false,
-            })),
-            isUnique: idx.is_unique,
-            method: idx.method || 'btree',
-          };
+          // Also skip indexes with no columns (partial indexes, expression indexes, etc.)
+          if (idx.columns && Array.isArray(idx.columns) && idx.columns.length > 0) {
+            indexesObject[idx.name] = {
+              name: idx.name,
+              columns: idx.columns.map((col) => ({
+                expression: col,
+                isExpression: false,
+              })),
+              isUnique: idx.is_unique,
+              method: idx.method || 'btree',
+            };
+          }
         }
       }
 
@@ -151,7 +154,8 @@ export class DatabaseIntrospector {
     }
 
     logger.info(
-      `[DatabaseIntrospector] Introspection complete. Found ${Object.keys(tables).length} tables`
+      { src: 'plugin:sql', tableCount: Object.keys(tables).length },
+      'Database introspection complete'
     );
 
     return {

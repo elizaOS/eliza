@@ -33,7 +33,14 @@ function getCliDirectory(): string | null {
 
     return null;
   } catch (error) {
-    logger.error({ error }, 'Failed to determine CLI directory:');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to determine CLI directory'
+    );
     return null;
   }
 }
@@ -49,11 +56,17 @@ async function verifyPluginImport(repository: string, context: string): Promise<
   const loadedModule = await loadPluginModule(repository);
 
   if (loadedModule) {
-    logger.debug(`Successfully verified plugin ${repository} ${context} after installation.`);
+    logger.debug(
+      { src: 'cli', util: 'install-plugin', repository, context },
+      'Successfully verified plugin after installation'
+    );
     return true;
   } else {
     // The loadPluginModule function already logs detailed errors
-    logger.warn(`Plugin ${repository} installed ${context} but could not be loaded/verified.`);
+    logger.warn(
+      { src: 'cli', util: 'install-plugin', repository, context },
+      'Plugin installed but could not be loaded/verified'
+    );
     return false;
   }
 }
@@ -74,7 +87,7 @@ async function attemptInstallation(
   context: string,
   skipVerification = false
 ): Promise<boolean> {
-  logger.debug(`Attempting to install plugin ${context}...`);
+  logger.debug({ src: 'cli', util: 'install-plugin', context }, 'Attempting to install plugin');
 
   try {
     // Use centralized installation function which now returns success status and identifier
@@ -82,7 +95,10 @@ async function attemptInstallation(
 
     // If installation failed, return false immediately
     if (!installResult.success || !installResult.installedIdentifier) {
-      logger.warn(`Installation failed for plugin ${context}`);
+      logger.warn(
+        { src: 'cli', util: 'install-plugin', context },
+        'Installation failed for plugin'
+      );
       return false;
     }
 
@@ -92,18 +108,34 @@ async function attemptInstallation(
     }
     if (skipVerification || process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
       logger.info(
-        `Installation successful for ${installResult.installedIdentifier}, skipping verification`
+        {
+          src: 'cli',
+          util: 'install-plugin',
+          installedIdentifier: installResult.installedIdentifier,
+        },
+        'Installation successful, skipping verification'
       );
       return true;
     }
     logger.debug(
-      `Installation successful for ${installResult.installedIdentifier}, verifying import...`
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        installedIdentifier: installResult.installedIdentifier,
+      },
+      'Installation successful, verifying import'
     );
     return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
     // Catch any unexpected errors during the process
     logger.warn(
-      `Error during installation attempt ${context}: ${installError instanceof Error ? installError.message : String(installError)}`
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        context,
+        error: installError instanceof Error ? installError.message : String(installError),
+      },
+      'Error during installation attempt'
     );
     return false;
   }
@@ -124,14 +156,18 @@ export async function installPlugin(
   versionSpecifier?: string,
   skipVerification = false
 ): Promise<boolean> {
-  logger.debug(`Installing plugin: ${packageName}`);
+  logger.debug({ src: 'cli', util: 'install-plugin', packageName }, 'Installing plugin');
 
   // Check if we're trying to install a plugin into its own directory
   const context = detectPluginContext(packageName);
   if (context.isLocalDevelopment) {
-    logger.warn(`Prevented self-installation of plugin ${packageName}`);
+    logger.warn(
+      { src: 'cli', util: 'install-plugin', packageName },
+      'Prevented self-installation of plugin'
+    );
     logger.info(
-      `You're developing this plugin locally. Use 'bun run build' to build it instead of installing.`
+      { src: 'cli', util: 'install-plugin' },
+      'You are developing this plugin locally. Use bun run build to build it instead of installing'
     );
     return false;
   }
@@ -245,6 +281,6 @@ export async function installPlugin(
     return await attemptInstallation(spec, '', cliDir, 'in CLI directory', skipVerification);
   }
 
-  logger.error(`Failed to install plugin ${packageName}`);
+  logger.error({ src: 'cli', util: 'install-plugin', packageName }, 'Failed to install plugin');
   return false;
 }

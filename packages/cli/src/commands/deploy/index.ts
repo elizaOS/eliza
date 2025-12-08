@@ -58,7 +58,7 @@ export const deploy = new Command()
     try {
       // Validate numeric options
       if (isNaN(options.port!) || options.port! < 1 || options.port! > 65535) {
-        logger.error('❌ Error: Port must be a number between 1 and 65535');
+        logger.error({ src: 'cli', command: 'deploy', port: options.port }, 'Invalid port');
         process.exit(1);
       }
 
@@ -66,12 +66,15 @@ export const deploy = new Command()
         options.desiredCount &&
         (isNaN(options.desiredCount) || options.desiredCount < 1 || options.desiredCount > 10)
       ) {
-        logger.error('❌ Error: Desired count must be a number between 1 and 10');
+        logger.error(
+          { src: 'cli', command: 'deploy', desiredCount: options.desiredCount },
+          'Invalid desired count'
+        );
         process.exit(1);
       }
 
       if (options.cpu && (options.cpu < 256 || options.cpu > 2048)) {
-        logger.error('❌ Error: CPU must be one of: 256, 512, 1024, 2048, 4096');
+        logger.error({ src: 'cli', command: 'deploy', cpu: options.cpu }, 'Invalid CPU value');
         process.exit(1);
       }
 
@@ -79,36 +82,46 @@ export const deploy = new Command()
         options.memory &&
         (isNaN(options.memory) || options.memory < 512 || options.memory > 2048)
       ) {
-        logger.error('❌ Error: Memory must be at least 512 MB');
+        logger.error(
+          { src: 'cli', command: 'deploy', memory: options.memory },
+          'Invalid memory value'
+        );
         process.exit(1);
       }
 
       const result = await deployProject(options);
 
       if (!result.success) {
-        logger.error(`\n❌ Deployment failed: ${result.error}\n`);
+        logger.error({ src: 'cli', command: 'deploy', error: result.error }, 'Deployment failed');
         process.exit(1);
       }
 
-      logger.info('\n✅ Deployment completed successfully!\n');
+      logger.success({ src: 'cli', command: 'deploy' }, 'Deployment completed');
 
       if (result.containerId) {
-        logger.info(`Container ID: ${result.containerId}`);
+        logger.info(
+          { src: 'cli', command: 'deploy', containerId: result.containerId },
+          'Container created'
+        );
       }
 
       if (result.serviceArn) {
-        logger.info(`ECS Service: ${result.serviceArn}`);
+        logger.info(
+          { src: 'cli', command: 'deploy', serviceArn: result.serviceArn },
+          'ECS Service'
+        );
       }
 
       if (result.taskDefinitionArn) {
-        logger.info(`Task Definition: ${result.taskDefinitionArn}`);
+        logger.info(
+          { src: 'cli', command: 'deploy', taskDefinitionArn: result.taskDefinitionArn },
+          'Task Definition'
+        );
       }
 
       if (result.url) {
-        logger.info(`URL: ${result.url}`);
+        logger.info({ src: 'cli', command: 'deploy', url: result.url }, 'Service URL');
       }
-
-      logger.info('\n');
     } catch (error: unknown) {
       handleError(error);
       process.exit(1);

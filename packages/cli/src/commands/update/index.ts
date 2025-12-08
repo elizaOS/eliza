@@ -20,7 +20,7 @@ export const update = new Command()
     try {
       await displayBanner(true); // Skip update check during update command
     } catch {
-      logger.debug('Banner display failed, continuing with update');
+      logger.debug({ src: 'cli', command: 'update' }, 'Banner display failed, continuing');
     }
   })
   .action(async (options) => {
@@ -70,7 +70,10 @@ export const update = new Command()
           return;
         }
 
-        logger.debug(`Detected ${directoryInfo.type}`);
+        logger.debug(
+          { src: 'cli', command: 'update', dirType: directoryInfo.type },
+          'Directory detected'
+        );
 
         if (!isInProject) {
           handleInvalidDirectory(directoryInfo);

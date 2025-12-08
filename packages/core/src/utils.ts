@@ -1,4 +1,4 @@
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import Handlebars from 'handlebars';
 import { names, uniqueNamesGenerator } from 'unique-names-generator';
 import { z } from 'zod';
@@ -215,7 +215,10 @@ export const formatPosts = ({
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
         if (!entity) {
-          logger.warn({ entityId: message.entityId }, 'core::prompts:formatPosts - no entity for');
+          logger.warn(
+            { src: 'core:utils', entityId: message.entityId },
+            'No entity found for message'
+          );
         }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
@@ -357,7 +360,6 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
 
   if (xmlBlockMatch) {
     xmlContent = xmlBlockMatch[1];
-    logger.debug('Found response XML block');
   } else {
     // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
     // This avoids potentially expensive backtracking on crafted inputs
@@ -442,12 +444,10 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
 
     const fb = findFirstXmlBlock(text);
     if (!fb) {
-      logger.warn('Could not find XML block in text');
-      logger.debug({ textPreview: text.substring(0, 200) + '...' }, 'Text content');
+      logger.warn({ src: 'core:utils' }, 'Could not find XML block in text');
       return null;
     }
     xmlContent = fb.content;
-    logger.debug(`Found XML block with tag: ${fb.tag}`);
   }
 
   const result: Record<string, any> = {};
@@ -565,8 +565,7 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
 
   // Return null if no key-value pairs were found
   if (Object.keys(result).length === 0) {
-    logger.warn('No key-value pairs extracted from XML content');
-    logger.debug({ xmlPreview: xmlContent.substring(0, 200) + '...' }, 'XML content was');
+    logger.warn({ src: 'core:utils' }, 'No key-value pairs extracted from XML content');
     return null;
   }
 
@@ -683,8 +682,6 @@ export function truncateToCompleteSentence(text: string, maxLength: number): str
 }
 
 export async function splitChunks(content: string, chunkSize = 512, bleed = 20): Promise<string[]> {
-  logger.debug('[splitChunks] Starting text split');
-
   const characterstoTokens = 3.5;
 
   const textSplitter = new RecursiveCharacterTextSplitter({
@@ -693,13 +690,6 @@ export async function splitChunks(content: string, chunkSize = 512, bleed = 20):
   });
 
   const chunks = await textSplitter.splitText(content);
-  logger.debug(
-    {
-      numberOfChunks: chunks.length,
-      averageChunkSize: chunks.reduce((acc, chunk) => acc + chunk.length, 0) / chunks.length,
-    },
-    '[splitChunks] Split complete'
-  );
 
   return chunks;
 }

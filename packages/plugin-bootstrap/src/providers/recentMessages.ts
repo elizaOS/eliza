@@ -372,7 +372,14 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error({ error }, 'Error in recentMessagesProvider:');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:provider:recent_messages',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in recentMessagesProvider'
+      );
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {

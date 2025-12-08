@@ -151,8 +151,15 @@ export function createLoggingRouter(): express.Router {
 
       // Log debug information for troubleshooting
       logger.debug(
-        `Logs request processed: ${filtered.length}/${logEntries.length} logs returned ` +
-          `(level: ${requestedLevel}, agent: ${requestedAgentName})`
+        {
+          src: 'http',
+          path: '/logs',
+          count: filtered.length,
+          total: logEntries.length,
+          level: requestedLevel,
+          agentName: requestedAgentName,
+        },
+        'Logs request processed'
       );
 
       res.json({
@@ -182,7 +189,7 @@ export function createLoggingRouter(): express.Router {
       // Clear the logs using the logger's clear method
       logger.clear();
 
-      logger.debug('Logs cleared via API endpoint');
+      logger.debug({ src: 'http', path: '/logs' }, 'Logs cleared via API endpoint');
       res.json({ status: 'success', message: 'Logs cleared successfully' });
     } catch (error) {
       res.status(500).json({

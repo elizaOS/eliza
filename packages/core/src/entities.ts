@@ -141,7 +141,10 @@ export async function findEntityByName(
 ): Promise<Entity | null> {
   const room = state.data.room ?? (await runtime.getRoom(message.roomId));
   if (!room) {
-    logger.warn('Room not found for entity search');
+    logger.warn(
+      { src: 'core:entities', roomId: message.roomId },
+      'Room not found for entity search'
+    );
     return null;
   }
 
@@ -230,7 +233,7 @@ export async function findEntityByName(
   // Parse LLM response
   const resolution = parseKeyValueXml(result);
   if (!resolution) {
-    logger.warn('Failed to parse entity resolution result');
+    logger.warn({ src: 'core:entities' }, 'Failed to parse entity resolution result');
     return null;
   }
 

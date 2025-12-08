@@ -41,7 +41,7 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
       const entityId = createUniqueUuid(runtime, rawUserId ?? 'Anon');
       const worldId = rawWorldId ?? createUniqueUuid(runtime, 'direct');
 
-      logger.debug('[SPEECH CONVERSATION] Ensuring connection');
+      logger.debug({ src: 'http', agentId }, 'Ensuring connection');
       await runtime.ensureConnection({
         entityId,
         roomId,
@@ -72,19 +72,19 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
         createdAt: Date.now(),
       };
 
-      logger.debug('[SPEECH CONVERSATION] Creating memory');
+      logger.debug({ src: 'http', agentId }, 'Creating memory');
       await runtime.createMemory(userMessageMemory, 'messages');
 
-      logger.debug('[SPEECH CONVERSATION] Composing state');
+      logger.debug({ src: 'http', agentId }, 'Composing state');
       const state = await runtime.composeState(userMessageMemory);
 
-      logger.debug('[SPEECH CONVERSATION] Creating context');
+      logger.debug({ src: 'http', agentId }, 'Creating context');
       const prompt = composePrompt({
         state,
         template: messageHandlerTemplate,
       });
 
-      logger.debug('[SPEECH CONVERSATION] Using LLM for response');
+      logger.debug({ src: 'http', agentId }, 'Using LLM for response');
       const llmResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
         // Renamed to llmResponse
         messages: [
@@ -103,7 +103,7 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
         return sendError(res, 500, 'MODEL_ERROR', 'No response from model');
       }
 
-      logger.debug('[SPEECH CONVERSATION] Creating response memory');
+      logger.debug({ src: 'http', agentId }, 'Creating response memory');
 
       const responseMessage: Memory = {
         // Explicitly type as Memory
@@ -126,12 +126,12 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
         async () => [userMessageMemory] // Callback should return relevant memories
       );
 
-      logger.debug('[SPEECH CONVERSATION] Generating speech response from LLM output');
+      logger.debug({ src: 'http', agentId }, 'Generating speech response');
 
       const speechAudioResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, llmResponse); // Use llmResponse for TTS
       const audioResult = await convertToAudioBuffer(speechAudioResponse, true);
 
-      logger.debug('[SPEECH CONVERSATION] Setting response headers');
+      logger.debug({ src: 'http', agentId }, 'Setting response headers');
 
       res.set({
         'Content-Type': audioResult.mimeType,
@@ -141,12 +141,18 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
       res.send(audioResult.buffer);
 
       logger.success(
-        `[SPEECH CONVERSATION] Successfully processed conversation for: ${runtime.character.name}`
+        { src: 'http', path: req.path, agentId, agentName: runtime.character.name },
+        'Successfully processed conversation'
       );
     } catch (error) {
       logger.error(
-        '[SPEECH CONVERSATION] Error processing conversation:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error processing conversation'
       );
       sendError(
         res,

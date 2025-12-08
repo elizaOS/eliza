@@ -1,10 +1,26 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import { ElizaOS } from '../elizaos';
-import { type UUID, type Character, type Plugin } from '../types';
+import { type UUID, type Character, type Plugin, type IDatabaseAdapter } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
+// Event detail interfaces for type-safe event handlers
+interface AgentsAddedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
+interface AgentsStoppedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
+interface AgentsDeletedDetail {
+  agentIds: UUID[];
+  count: number;
+}
+
 // Mock database adapter with minimal implementation
-const mockAdapter = new Proxy({} as any, {
+const mockAdapter = new Proxy({} as IDatabaseAdapter, {
   get: (target, prop) => {
     // Return async functions for all adapter methods
     if (prop === 'init' || prop === 'close') {
@@ -122,10 +138,243 @@ describe('ElizaOS', () => {
     });
   });
 
+  describe('Runtime ElizaOS Reference', () => {
+    const testCharacter: Character = {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      system: 'You are a test agent',
+    };
+
+    it('should assign elizaOS reference to runtime when agent is added', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime).toBeTruthy();
+      expect(runtime?.elizaOS).toBe(elizaOS);
+    });
+
+    it('should assign elizaOS reference to runtime when agent is registered', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+      const runtime = elizaOS.getAgent(agentIds[0]);
+
+      // Remove and re-register
+      await elizaOS.deleteAgents(agentIds);
+      elizaOS.registerAgent(runtime!);
+
+      expect(runtime?.elizaOS).toBe(elizaOS);
+    });
+
+    it('hasElizaOS() should return true when elizaOS is assigned', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime?.hasElizaOS()).toBe(true);
+    });
+
+    it('hasElizaOS() should narrow TypeScript type correctly', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      if (runtime?.hasElizaOS()) {
+        // TypeScript should know elizaOS is defined here
+        expect(runtime.elizaOS).toBeDefined();
+        expect(runtime.elizaOS.sendMessage).toBeDefined();
+        expect(runtime.elizaOS.getAgent).toBeDefined();
+      } else {
+        throw new Error('hasElizaOS() should return true');
+      }
+    });
+
+    it('should clear elizaOS reference on runtime.stop()', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+      expect(runtime?.elizaOS).toBe(elizaOS);
+
+      // Stop the runtime
+      await runtime?.stop();
+
+      // elizaOS reference should be cleared to prevent memory leak
+      expect(runtime?.elizaOS).toBeUndefined();
+    });
+
+    it('should prevent memory leaks with bidirectional reference', async () => {
+      const agentIds = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      const runtime = elizaOS.getAgent(agentIds[0]);
+
+      // Verify bidirectional reference
+      expect(runtime?.elizaOS).toBe(elizaOS);
+      expect(elizaOS.getAgent(agentIds[0])).toBe(runtime);
+
+      // Stop and verify cleanup
+      await runtime?.stop();
+      expect(runtime?.elizaOS).toBeUndefined();
+    });
+  });
+
+  describe('Serverless Mode', () => {
+    const testCharacter: Character = {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      system: 'You are a test agent',
+    };
+
+    it('should not store runtime in registry when ephemeral is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          returnRuntimes: true,
+        }
+      );
+
+      // Should return runtimes
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('object');
+
+      const runtime = result[0] as any;
+      expect(runtime.agentId).toBeDefined();
+
+      // Should NOT be in registry
+      expect(elizaOS.getAgent(runtime.agentId)).toBeUndefined();
+    });
+
+    it('should return UUIDs by default (not runtimes)', async () => {
+      const result = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('string');
+    });
+
+    it('should return runtimes when returnRuntimes is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          returnRuntimes: true,
+        }
+      );
+
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('object');
+      expect((result[0] as any).agentId).toBeDefined();
+    });
+
+    it('should auto-start when autoStart is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      );
+
+      const runtime = result[0] as any;
+      // Runtime should have messageService after initialize
+      expect(runtime.messageService).toBeDefined();
+    });
+
+    it('should use provided databaseAdapter', async () => {
+      const customAdapter = { ...mockAdapter, _custom: true } as any;
+
+      const result = await elizaOS.addAgents(
+        [
+          {
+            character: testCharacter,
+            plugins: [],
+            databaseAdapter: customAdapter,
+          },
+        ],
+        {
+          returnRuntimes: true,
+        }
+      );
+
+      const runtime = result[0] as any;
+      expect(runtime.adapter).toBe(customAdapter);
+    });
+
+    it('should emit event with ephemeral flag', async () => {
+      const addedHandler = mock();
+      elizaOS.addEventListener('agents:added', (e: Event) => {
+        addedHandler((e as CustomEvent).detail);
+      });
+
+      await elizaOS.addAgents([{ character: testCharacter, plugins: [mockSqlPlugin] }], {
+        ephemeral: true,
+      });
+
+      expect(addedHandler).toHaveBeenCalledTimes(1);
+      expect(addedHandler.mock.calls[0][0].ephemeral).toBe(true);
+    });
+  });
+
+  describe('sendMessage with runtime', () => {
+    const testCharacter: Character = {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      system: 'You are a test agent',
+    };
+
+    it('should accept runtime directly instead of UUID', async () => {
+      const [runtime] = (await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      )) as any[];
+
+      // Mock messageService
+      const handleMessageMock = mock().mockResolvedValue({ success: true });
+      runtime.messageService = { handleMessage: handleMessageMock };
+      runtime.ensureConnection = mock().mockResolvedValue(undefined);
+
+      const result = await elizaOS.sendMessage(runtime, {
+        entityId: uuidv4() as UUID,
+        roomId: uuidv4() as UUID,
+        content: { text: 'Hello' },
+      });
+
+      expect(result.messageId).toBeDefined();
+      expect(handleMessageMock).toHaveBeenCalled();
+    });
+
+    it('should throw error for unknown UUID', async () => {
+      const unknownId = uuidv4() as UUID;
+
+      await expect(
+        elizaOS.sendMessage(unknownId, {
+          entityId: uuidv4() as UUID,
+          roomId: uuidv4() as UUID,
+          content: { text: 'Hello' },
+        })
+      ).rejects.toThrow(`Agent ${unknownId} not found in registry`);
+    });
+  });
+
   describe('Event System', () => {
     it('should emit events when agents are added', async () => {
       const addedHandler = mock();
-      elizaOS.addEventListener('agents:added', (e: any) => addedHandler(e.detail));
+      elizaOS.addEventListener('agents:added', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsAddedDetail>;
+        addedHandler(customEvent.detail);
+      });
 
       await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent 1' }, plugins: [mockSqlPlugin] },
@@ -133,14 +382,17 @@ describe('ElizaOS', () => {
       ]);
 
       expect(addedHandler).toHaveBeenCalledTimes(1);
-      const eventData = addedHandler.mock.calls[0][0];
+      const eventData: AgentsAddedDetail = addedHandler.mock.calls[0][0];
       expect(eventData.count).toBe(2);
       expect(eventData.agentIds).toHaveLength(2);
     });
 
     it('should emit events when agents are stopped', async () => {
       const stoppedHandler = mock();
-      elizaOS.addEventListener('agents:stopped', (e: any) => stoppedHandler(e.detail));
+      elizaOS.addEventListener('agents:stopped', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsStoppedDetail>;
+        stoppedHandler(customEvent.detail);
+      });
 
       const agentIds = await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
@@ -149,13 +401,16 @@ describe('ElizaOS', () => {
       await elizaOS.stopAgents(agentIds);
 
       expect(stoppedHandler).toHaveBeenCalledTimes(1);
-      const eventData = stoppedHandler.mock.calls[0][0];
+      const eventData: AgentsStoppedDetail = stoppedHandler.mock.calls[0][0];
       expect(eventData.agentIds).toEqual(agentIds);
     });
 
     it('should emit events when agents are deleted', async () => {
       const deletedHandler = mock();
-      elizaOS.addEventListener('agents:deleted', (e: any) => deletedHandler(e.detail));
+      elizaOS.addEventListener('agents:deleted', (e: Event) => {
+        const customEvent = e as CustomEvent<AgentsDeletedDetail>;
+        deletedHandler(customEvent.detail);
+      });
 
       const agentIds = await elizaOS.addAgents([
         { character: { name: 'Test1', bio: 'Test agent' }, plugins: [mockSqlPlugin] },
@@ -163,7 +418,7 @@ describe('ElizaOS', () => {
       await elizaOS.deleteAgents(agentIds);
 
       expect(deletedHandler).toHaveBeenCalledTimes(1);
-      const eventData = deletedHandler.mock.calls[0][0];
+      const eventData: AgentsDeletedDetail = deletedHandler.mock.calls[0][0];
       expect(eventData.agentIds).toEqual(agentIds);
     });
   });

@@ -32,7 +32,7 @@ export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
       const audioResult = await convertToAudioBuffer(speechResponse, true);
 
-      logger.debug('[TTS] Setting response headers');
+      logger.debug({ src: 'http', agentId }, 'Setting TTS response headers');
       res.set({
         'Content-Type': audioResult.mimeType,
         'Content-Length': audioResult.buffer.length.toString(),
@@ -41,8 +41,8 @@ export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
       res.send(audioResult.buffer);
     } catch (error) {
       logger.error(
-        '[TTS] Error generating speech:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error generating speech'
       );
       sendError(
         res,
@@ -56,7 +56,7 @@ export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
 
   // Speech generation endpoint
   router.post('/:agentId/speech/generate', async (req, res) => {
-    logger.debug('[SPEECH GENERATE] Request to generate speech from text');
+    logger.debug({ src: 'http' }, 'Request to generate speech from text');
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
@@ -74,12 +74,15 @@ export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
     }
 
     try {
-      logger.debug('[SPEECH GENERATE] Using text-to-speech model');
+      logger.debug({ src: 'http', agentId }, 'Using text-to-speech model');
       const speechResponse = await runtime.useModel(ModelType.TEXT_TO_SPEECH, text);
       const audioResult = await convertToAudioBuffer(speechResponse, true);
-      logger.debug('[SPEECH GENERATE] Detected audio MIME type:', audioResult.mimeType);
+      logger.debug(
+        { src: 'http', agentId, mimeType: audioResult.mimeType },
+        'Detected audio MIME type'
+      );
 
-      logger.debug('[SPEECH GENERATE] Setting response headers');
+      logger.debug({ src: 'http', agentId }, 'Setting response headers');
       res.set({
         'Content-Type': audioResult.mimeType,
         'Content-Length': audioResult.buffer.length.toString(),
@@ -87,12 +90,13 @@ export function createSynthesisRouter(elizaOS: ElizaOS): express.Router {
 
       res.send(audioResult.buffer);
       logger.success(
-        `[SPEECH GENERATE] Successfully generated speech for: ${runtime.character.name}`
+        { src: 'http', agentId, agentName: runtime.character.name },
+        'Speech generated'
       );
     } catch (error) {
       logger.error(
-        '[SPEECH GENERATE] Error generating speech:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error generating speech'
       );
       sendError(
         res,

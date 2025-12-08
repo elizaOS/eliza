@@ -1,5 +1,6 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
+import { mkdirSync } from 'node:fs';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -11,8 +12,8 @@ const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
-  // Map of PostgreSQL connection managers by owner_id (for RLS multi-tenancy)
-  // Key: owner_id (or 'default' for non-RLS mode)
+  // Map of PostgreSQL connection managers by server_id (for RLS multi-tenancy)
+  // Key: server_id (or 'default' for non-RLS mode)
   postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
@@ -30,22 +31,27 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
-    // Determine RLS owner_id if RLS isolation is enabled
-    const rlsEnabled = process.env.ENABLE_RLS_ISOLATION === 'true';
-    let rlsOwnerId: string | undefined;
+    // Determine RLS server_id if data isolation is enabled
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+    let rlsServerId: string | undefined;
     let managerKey = 'default'; // Key for connection manager map
 
-    if (rlsEnabled) {
-      const rlsOwnerIdString = process.env.RLS_OWNER_ID;
-      if (!rlsOwnerIdString) {
+    if (dataIsolationEnabled) {
+      const rlsServerIdString = process.env.ELIZA_SERVER_ID;
+      if (!rlsServerIdString) {
         throw new Error(
-          '[RLS] ENABLE_RLS_ISOLATION=true requires RLS_OWNER_ID environment variable'
+          '[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable'
         );
       }
-      rlsOwnerId = stringToUuid(rlsOwnerIdString);
-      managerKey = rlsOwnerId; // Use owner_id as key for multi-tenancy
+      rlsServerId = stringToUuid(rlsServerIdString);
+      managerKey = rlsServerId; // Use server_id as key for multi-tenancy
       logger.debug(
-        `[RLS] Using connection pool for owner_id: ${rlsOwnerId.slice(0, 8)}… (from RLS_OWNER_ID="${rlsOwnerIdString}")`
+        {
+          src: 'plugin:sql',
+          rlsServerId: rlsServerId.slice(0, 8),
+          serverIdString: rlsServerIdString,
+        },
+        'Using connection pool for RLS server'
       );
     }
 
@@ -54,11 +60,14 @@ export function createDatabaseAdapter(
       globalSingletons.postgresConnectionManagers = new Map();
     }
 
-    // Get or create connection manager for this owner_id
+    // Get or create connection manager for this server_id
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!manager) {
-      logger.debug(`[RLS] Creating new connection pool for key: ${managerKey.slice(0, 8)}…`);
-      manager = new PostgresConnectionManager(config.postgresUrl, rlsOwnerId);
+      logger.debug(
+        { src: 'plugin:sql', managerKey: managerKey.slice(0, 8) },
+        'Creating new connection pool'
+      );
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
     }
 
@@ -66,6 +75,12 @@ export function createDatabaseAdapter(
   }
 
   const dataDir = resolvePgliteDir(config.dataDir);
+
+  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
+  if (dataDir && !dataDir.includes('://')) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
@@ -78,7 +93,10 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
-    logger.info('plugin-sql (node) init starting...');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'plugin-sql (node) init starting'
+    );
 
     const adapterRegistered = await runtime
       .isReady()
@@ -87,18 +105,24 @@ export const plugin: Plugin = {
         const message = error instanceof Error ? error.message : String(error);
         if (message.includes('Database adapter not registered')) {
           // Expected on first load before the adapter is created; not a warning condition
-          logger.info('No pre-registered database adapter detected; registering adapter');
+          runtime.logger.info(
+            { src: 'plugin:sql', agentId: runtime.agentId },
+            'No pre-registered database adapter detected; registering adapter'
+          );
         } else {
           // Unexpected readiness error - keep as a warning with details
-          logger.warn(
-            { error },
+          runtime.logger.warn(
+            { src: 'plugin:sql', agentId: runtime.agentId, error: message },
             'Database adapter readiness check error; proceeding to register adapter'
           );
         }
         return false;
       });
     if (adapterRegistered) {
-      logger.info('Database adapter already registered, skipping creation');
+      runtime.logger.info(
+        { src: 'plugin:sql', agentId: runtime.agentId },
+        'Database adapter already registered, skipping creation'
+      );
       return;
     }
 
@@ -115,7 +139,10 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info('Database adapter created and registered');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'Database adapter created and registered'
+    );
   },
 };
 
@@ -124,9 +151,9 @@ export default plugin;
 export { DatabaseMigrationService } from './migration-service';
 export {
   installRLSFunctions,
-  getOrCreateRlsOwner,
-  setOwnerContext,
-  assignAgentToOwner,
+  getOrCreateRlsServer,
+  setServerContext,
+  assignAgentToServer,
   applyRLSToNewTables,
   uninstallRLS,
 } from './rls';

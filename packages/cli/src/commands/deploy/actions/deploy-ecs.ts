@@ -33,7 +33,10 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     loadEnvironmentFiles(cwd);
 
     // Step 1: Validate environment
-    logger.info('🚀 Starting ElizaOS deployment (Docker + AWS ECS)...');
+    logger.info(
+      { src: 'cli', command: 'deploy-ecs' },
+      'Starting ElizaOS deployment (Docker + AWS ECS)'
+    );
 
     const dirInfo = detectDirectoryType(cwd);
     if (!dirInfo.hasPackageJson) {
@@ -44,7 +47,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     }
 
     // Step 2: Check Docker availability
-    logger.info('🐳 Checking Docker availability...');
+    logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Checking Docker availability');
     const dockerAvailable = await checkDockerAvailable();
     if (!dockerAvailable) {
       return {
@@ -74,11 +77,14 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     const projectName = options.projectName || path.basename(cwd); // Use directory name if not specified
     const projectVersion = packageJson.version || '0.0.0';
 
-    logger.info(`📦 Deploying project: ${containerName} v${projectVersion}`);
-    logger.info(`🏷️  Project identifier: ${projectName}`);
+    logger.info(
+      { src: 'cli', command: 'deploy-ecs', containerName, version: projectVersion },
+      'Deploying project'
+    );
+    logger.info({ src: 'cli', command: 'deploy-ecs', projectName }, 'Project identifier');
 
     // Step 5: Check quota and credits
-    logger.info('💳 Checking account quota and credits...');
+    logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Checking account quota and credits');
     const quotaCheck = await checkQuotaAndCredits(apiClient);
     if (!quotaCheck.success) {
       return quotaCheck;
@@ -89,7 +95,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     let localImageTag: string | undefined;
 
     if (!options.skipBuild) {
-      logger.info('🔨 Building Docker image...');
+      logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Building Docker image');
 
       localImageTag = `${sanitizeProjectName(projectName)}:${projectVersion}`;
 
@@ -142,7 +148,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // ECR repository already logged by apiClient.requestImageBuild()
 
     // Step 8: Push image to ECR
-    logger.info('📤 Pushing image to ECR...');
+    logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Pushing image to ECR');
 
     const pushResult = await pushDockerImage({
       imageTag: imageTag!,
@@ -158,7 +164,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       };
     }
 
-    logger.info('✅ Image pushed to ECR');
+    logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Image pushed to ECR');
 
     // Step 9: Clean up local images
     if (localImageTag) {
@@ -169,7 +175,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     const environmentVars = parseEnvironmentVariables(options.env);
 
     // Step 10.5: Check for existing deployment
-    logger.info('🔍 Checking for existing deployments...');
+    logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Checking for existing deployments');
     const existingContainers = await apiClient.listContainers();
     let isUpdate = false;
 
@@ -181,12 +187,20 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       if (existingProject) {
         isUpdate = true;
         logger.info(
-          `🔄 Found existing project "${projectName}". This will be an UPDATE deployment.`
+          {
+            src: 'cli',
+            command: 'deploy-ecs',
+            projectName,
+            containerId: existingProject.id,
+            status: existingProject.status,
+          },
+          'Found existing project. This will be an UPDATE deployment'
         );
-        logger.info(`   Existing container ID: ${existingProject.id}`);
-        logger.info(`   Current status: ${existingProject.status}`);
       } else {
-        logger.info(`🆕 No existing project found. This will be a FRESH deployment.`);
+        logger.info(
+          { src: 'cli', command: 'deploy-ecs' },
+          'No existing project found. This will be a FRESH deployment'
+        );
       }
     }
 
@@ -194,11 +208,22 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     const detectedPlatform = await getDetectedPlatform(options.platform);
     const architecture = detectedPlatform.includes('arm64') ? 'arm64' : 'x86_64';
 
-    logger.info(`🏗️  Target architecture: ${architecture} (from platform: ${detectedPlatform})`);
+    logger.info(
+      { src: 'cli', command: 'deploy-ecs', architecture, platform: detectedPlatform },
+      'Target architecture'
+    );
 
     // Step 12: Select instance type based on architecture
     const instanceDefaults = getInstanceDefaults(architecture);
-    logger.info(`💻 AWS instance type: ${instanceDefaults.instanceType} (${architecture})`);
+    logger.info(
+      {
+        src: 'cli',
+        command: 'deploy-ecs',
+        instanceType: instanceDefaults.instanceType,
+        architecture,
+      },
+      'AWS instance type'
+    );
 
     // Step 13: Create container configuration for ECS
     const containerConfig: ContainerConfig = {
@@ -212,7 +237,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       desired_count: options.desiredCount || 1,
       cpu: options.cpu || instanceDefaults.cpu,
       memory: options.memory || instanceDefaults.memory,
-      architecture: architecture,
+      architecture,
       environment_vars: {
         ...environmentVars,
         PORT: (options.port || 3000).toString(),
@@ -221,7 +246,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       health_check_path: '/health',
     };
 
-    logger.info(`☁️  Deploying to AWS ECS (${isUpdate ? 'update' : 'fresh deployment'})...`);
+    logger.info({ src: 'cli', command: 'deploy-ecs', isUpdate }, 'Deploying to AWS ECS');
 
     const createResponse = await apiClient.createContainer(containerConfig);
 
@@ -235,16 +260,26 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     // Log credits info if present
     if ('creditsDeducted' in createResponse && 'creditsRemaining' in createResponse) {
       logger.info(
-        `💰 Credits deducted: ${createResponse.creditsDeducted} (${createResponse.creditsRemaining} remaining)`
+        {
+          src: 'cli',
+          command: 'deploy-ecs',
+          creditsDeducted: createResponse.creditsDeducted,
+          creditsRemaining: createResponse.creditsRemaining,
+        },
+        'Credits deducted'
       );
     }
 
     const containerId = createResponse.data.id;
-    logger.info(`✅ Container created: ${containerId}`);
+    logger.info({ src: 'cli', command: 'deploy-ecs', containerId }, 'Container created');
     logger.info(
-      `📍 Track deployment: https://www.elizacloud.ai/dashboard/containers/${containerId}`
+      {
+        src: 'cli',
+        command: 'deploy-ecs',
+        url: `https://www.elizacloud.ai/dashboard/containers/${containerId}`,
+      },
+      'Track deployment'
     );
-    logger.info('');
 
     // Step 12: Wait for deployment with beautiful progress spinner
     const deploymentSpinner = ora({
@@ -283,15 +318,27 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       const errorDetails = deploymentResponse.error || 'Deployment failed';
       deploymentSpinner.fail(`Deployment failed: ${errorDetails}`);
 
-      logger.error('');
-      logger.error('💡 Troubleshooting tips:');
-      logger.error('   1. Check container status: elizaos containers list');
-      logger.error('   2. View container logs: elizaos containers logs');
+      logger.error({ src: 'cli', command: 'deploy-ecs' }, 'Troubleshooting tips:');
       logger.error(
-        '   3. Check CloudFormation console: https://console.aws.amazon.com/cloudformation'
+        { src: 'cli', command: 'deploy-ecs' },
+        '1. Check container status: elizaos containers list'
       );
-      logger.error('   4. Verify Docker image runs locally: docker run <image>');
-      logger.error('   5. Ensure health check endpoint returns 200 OK at /health');
+      logger.error(
+        { src: 'cli', command: 'deploy-ecs' },
+        '2. View container logs: elizaos containers logs'
+      );
+      logger.error(
+        { src: 'cli', command: 'deploy-ecs' },
+        '3. Check CloudFormation console: https://console.aws.amazon.com/cloudformation'
+      );
+      logger.error(
+        { src: 'cli', command: 'deploy-ecs' },
+        '4. Verify Docker image runs locally: docker run <image>'
+      );
+      logger.error(
+        { src: 'cli', command: 'deploy-ecs' },
+        '5. Ensure health check endpoint returns 200 OK at /health'
+      );
 
       return {
         success: false,
@@ -316,17 +363,22 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     const container = deploymentResponse.data;
 
     // Step 13: Success!
-    logger.info('✅ Deployment successful!');
-    logger.info(`📍 Container ID: ${container.id}`);
+    logger.info(
+      { src: 'cli', command: 'deploy-ecs', containerId: container.id },
+      'Deployment successful'
+    );
 
     if (container.ecs_service_arn) {
-      logger.info(`🎯 ECS Service: ${container.ecs_service_arn}`);
+      logger.info(
+        { src: 'cli', command: 'deploy-ecs', ecsServiceArn: container.ecs_service_arn },
+        'ECS Service'
+      );
     }
 
     const deploymentUrl = container.load_balancer_url || container.deployment_url;
 
     if (deploymentUrl) {
-      logger.info(`🔗 URL: ${deploymentUrl}`);
+      logger.info({ src: 'cli', command: 'deploy-ecs', url: deploymentUrl }, 'Deployment URL');
     }
 
     return {
@@ -338,7 +390,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error('Deployment error:', errorMessage);
+    logger.error({ src: 'cli', command: 'deploy-ecs', error: errorMessage }, 'Deployment error');
     return {
       success: false,
       error: errorMessage,
@@ -360,7 +412,7 @@ function loadEnvironmentFiles(cwd: string): void {
   for (const envPath of envPaths) {
     if (fs.existsSync(envPath)) {
       dotenv.config({ path: envPath });
-      logger.debug(`Loaded environment from: ${envPath}`);
+      logger.debug({ src: 'cli', command: 'deploy-ecs', envPath }, 'Loaded environment');
     }
   }
 }
@@ -374,12 +426,22 @@ async function checkQuotaAndCredits(apiClient: CloudApiClient): Promise<Deployme
   if (quotaResponse.success && quotaResponse.data) {
     const { quota, credits, pricing } = quotaResponse.data;
 
-    logger.info(`📊 Containers: ${quota.current}/${quota.max} (${quota.remaining} remaining)`);
-    logger.info(`💰 Credit balance: ${credits.balance} credits`);
+    logger.info(
+      {
+        src: 'cli',
+        command: 'deploy-ecs',
+        current: quota.current,
+        max: quota.max,
+        remaining: quota.remaining,
+      },
+      'Container quota'
+    );
+    logger.info({ src: 'cli', command: 'deploy-ecs', balance: credits.balance }, 'Credit balance');
 
     if (quota.remaining === 0) {
       logger.warn(
-        `⚠️  Container limit reached! You have ${quota.current}/${quota.max} containers.`
+        { src: 'cli', command: 'deploy-ecs', current: quota.current, max: quota.max },
+        'Container limit reached'
       );
       return {
         success: false,
@@ -389,16 +451,20 @@ async function checkQuotaAndCredits(apiClient: CloudApiClient): Promise<Deployme
 
     const totalCost = pricing.totalForNewContainer || 2000; // ECS deployments cost more
     if (credits.balance < totalCost) {
-      logger.warn(`⚠️  Insufficient credits for deployment.`);
-      logger.warn(`   Required: ${totalCost} credits`);
-      logger.warn(`   Available: ${credits.balance} credits`);
+      logger.warn(
+        { src: 'cli', command: 'deploy-ecs', required: totalCost, available: credits.balance },
+        'Insufficient credits for deployment'
+      );
       return {
         success: false,
         error: `Insufficient credits. Required: ${totalCost}, Available: ${credits.balance}`,
       };
     }
 
-    logger.info(`💸 Estimated deployment cost: ~${totalCost} credits`);
+    logger.info(
+      { src: 'cli', command: 'deploy-ecs', estimatedCost: totalCost },
+      'Estimated deployment cost'
+    );
   }
 
   return { success: true };
@@ -426,7 +492,10 @@ function sanitizeProjectName(name: string): string {
   if (sanitized.length > MAX_NAME_LENGTH) {
     sanitized = sanitized.substring(0, MAX_NAME_LENGTH);
     sanitized = sanitized.replace(/-+$/, '');
-    logger.warn(`Project name truncated to ${MAX_NAME_LENGTH} characters: '${sanitized}'`);
+    logger.warn(
+      { src: 'cli', command: 'deploy-ecs', maxLength: MAX_NAME_LENGTH, truncated: sanitized },
+      'Project name truncated'
+    );
   }
 
   if (sanitized.startsWith('-')) {
@@ -479,7 +548,10 @@ function parseEnvironmentVariables(envOptions?: string[]): Record<string, string
     }
 
     if (value === '') {
-      logger.warn(`Warning: Environment variable '${key}' has an empty value.`);
+      logger.warn(
+        { src: 'cli', command: 'deploy-ecs', envVar: key },
+        'Environment variable has an empty value'
+      );
     }
 
     environmentVars[key] = value;

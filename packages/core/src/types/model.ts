@@ -69,33 +69,90 @@ export const MODEL_SETTINGS = {
   // Default settings - apply to all model types unless overridden
   DEFAULT_MAX_TOKENS: 'DEFAULT_MAX_TOKENS',
   DEFAULT_TEMPERATURE: 'DEFAULT_TEMPERATURE',
+  DEFAULT_TOP_P: 'DEFAULT_TOP_P',
+  DEFAULT_TOP_K: 'DEFAULT_TOP_K',
+  DEFAULT_MIN_P: 'DEFAULT_MIN_P',
+  DEFAULT_SEED: 'DEFAULT_SEED',
+  DEFAULT_REPETITION_PENALTY: 'DEFAULT_REPETITION_PENALTY',
   DEFAULT_FREQUENCY_PENALTY: 'DEFAULT_FREQUENCY_PENALTY',
   DEFAULT_PRESENCE_PENALTY: 'DEFAULT_PRESENCE_PENALTY',
 
   // TEXT_SMALL specific settings
   TEXT_SMALL_MAX_TOKENS: 'TEXT_SMALL_MAX_TOKENS',
   TEXT_SMALL_TEMPERATURE: 'TEXT_SMALL_TEMPERATURE',
+  TEXT_SMALL_TOP_P: 'TEXT_SMALL_TOP_P',
+  TEXT_SMALL_TOP_K: 'TEXT_SMALL_TOP_K',
+  TEXT_SMALL_MIN_P: 'TEXT_SMALL_MIN_P',
+  TEXT_SMALL_SEED: 'TEXT_SMALL_SEED',
+  TEXT_SMALL_REPETITION_PENALTY: 'TEXT_SMALL_REPETITION_PENALTY',
   TEXT_SMALL_FREQUENCY_PENALTY: 'TEXT_SMALL_FREQUENCY_PENALTY',
   TEXT_SMALL_PRESENCE_PENALTY: 'TEXT_SMALL_PRESENCE_PENALTY',
 
   // TEXT_LARGE specific settings
   TEXT_LARGE_MAX_TOKENS: 'TEXT_LARGE_MAX_TOKENS',
   TEXT_LARGE_TEMPERATURE: 'TEXT_LARGE_TEMPERATURE',
+  TEXT_LARGE_TOP_P: 'TEXT_LARGE_TOP_P',
+  TEXT_LARGE_TOP_K: 'TEXT_LARGE_TOP_K',
+  TEXT_LARGE_MIN_P: 'TEXT_LARGE_MIN_P',
+  TEXT_LARGE_SEED: 'TEXT_LARGE_SEED',
+  TEXT_LARGE_REPETITION_PENALTY: 'TEXT_LARGE_REPETITION_PENALTY',
   TEXT_LARGE_FREQUENCY_PENALTY: 'TEXT_LARGE_FREQUENCY_PENALTY',
   TEXT_LARGE_PRESENCE_PENALTY: 'TEXT_LARGE_PRESENCE_PENALTY',
 
   // OBJECT_SMALL specific settings
   OBJECT_SMALL_MAX_TOKENS: 'OBJECT_SMALL_MAX_TOKENS',
   OBJECT_SMALL_TEMPERATURE: 'OBJECT_SMALL_TEMPERATURE',
+  OBJECT_SMALL_TOP_P: 'OBJECT_SMALL_TOP_P',
+  OBJECT_SMALL_TOP_K: 'OBJECT_SMALL_TOP_K',
+  OBJECT_SMALL_MIN_P: 'OBJECT_SMALL_MIN_P',
+  OBJECT_SMALL_SEED: 'OBJECT_SMALL_SEED',
+  OBJECT_SMALL_REPETITION_PENALTY: 'OBJECT_SMALL_REPETITION_PENALTY',
   OBJECT_SMALL_FREQUENCY_PENALTY: 'OBJECT_SMALL_FREQUENCY_PENALTY',
   OBJECT_SMALL_PRESENCE_PENALTY: 'OBJECT_SMALL_PRESENCE_PENALTY',
 
   // OBJECT_LARGE specific settings
   OBJECT_LARGE_MAX_TOKENS: 'OBJECT_LARGE_MAX_TOKENS',
   OBJECT_LARGE_TEMPERATURE: 'OBJECT_LARGE_TEMPERATURE',
+  OBJECT_LARGE_TOP_P: 'OBJECT_LARGE_TOP_P',
+  OBJECT_LARGE_TOP_K: 'OBJECT_LARGE_TOP_K',
+  OBJECT_LARGE_MIN_P: 'OBJECT_LARGE_MIN_P',
+  OBJECT_LARGE_SEED: 'OBJECT_LARGE_SEED',
+  OBJECT_LARGE_REPETITION_PENALTY: 'OBJECT_LARGE_REPETITION_PENALTY',
   OBJECT_LARGE_FREQUENCY_PENALTY: 'OBJECT_LARGE_FREQUENCY_PENALTY',
   OBJECT_LARGE_PRESENCE_PENALTY: 'OBJECT_LARGE_PRESENCE_PENALTY',
 
+  // TEXT_REASONING_SMALL specific settings
+  TEXT_REASONING_SMALL_MAX_TOKENS: 'TEXT_REASONING_SMALL_MAX_TOKENS',
+  TEXT_REASONING_SMALL_TEMPERATURE: 'TEXT_REASONING_SMALL_TEMPERATURE',
+  TEXT_REASONING_SMALL_TOP_P: 'TEXT_REASONING_SMALL_TOP_P',
+  TEXT_REASONING_SMALL_TOP_K: 'TEXT_REASONING_SMALL_TOP_K',
+  TEXT_REASONING_SMALL_MIN_P: 'TEXT_REASONING_SMALL_MIN_P',
+  TEXT_REASONING_SMALL_SEED: 'TEXT_REASONING_SMALL_SEED',
+  TEXT_REASONING_SMALL_REPETITION_PENALTY: 'TEXT_REASONING_SMALL_REPETITION_PENALTY',
+  TEXT_REASONING_SMALL_FREQUENCY_PENALTY: 'TEXT_REASONING_SMALL_FREQUENCY_PENALTY',
+  TEXT_REASONING_SMALL_PRESENCE_PENALTY: 'TEXT_REASONING_SMALL_PRESENCE_PENALTY',
+
+  // TEXT_REASONING_LARGE specific settings
+  TEXT_REASONING_LARGE_MAX_TOKENS: 'TEXT_REASONING_LARGE_MAX_TOKENS',
+  TEXT_REASONING_LARGE_TEMPERATURE: 'TEXT_REASONING_LARGE_TEMPERATURE',
+  TEXT_REASONING_LARGE_TOP_P: 'TEXT_REASONING_LARGE_TOP_P',
+  TEXT_REASONING_LARGE_TOP_K: 'TEXT_REASONING_LARGE_TOP_K',
+  TEXT_REASONING_LARGE_MIN_P: 'TEXT_REASONING_LARGE_MIN_P',
+  TEXT_REASONING_LARGE_SEED: 'TEXT_REASONING_LARGE_SEED',
+  TEXT_REASONING_LARGE_REPETITION_PENALTY: 'TEXT_REASONING_LARGE_REPETITION_PENALTY',
+  TEXT_REASONING_LARGE_FREQUENCY_PENALTY: 'TEXT_REASONING_LARGE_FREQUENCY_PENALTY',
+  TEXT_REASONING_LARGE_PRESENCE_PENALTY: 'TEXT_REASONING_LARGE_PRESENCE_PENALTY',
+
+  // TEXT_COMPLETION specific settings
+  TEXT_COMPLETION_MAX_TOKENS: 'TEXT_COMPLETION_MAX_TOKENS',
+  TEXT_COMPLETION_TEMPERATURE: 'TEXT_COMPLETION_TEMPERATURE',
+  TEXT_COMPLETION_TOP_P: 'TEXT_COMPLETION_TOP_P',
+  TEXT_COMPLETION_TOP_K: 'TEXT_COMPLETION_TOP_K',
+  TEXT_COMPLETION_MIN_P: 'TEXT_COMPLETION_MIN_P',
+  TEXT_COMPLETION_SEED: 'TEXT_COMPLETION_SEED',
+  TEXT_COMPLETION_REPETITION_PENALTY: 'TEXT_COMPLETION_REPETITION_PENALTY',
+  TEXT_COMPLETION_FREQUENCY_PENALTY: 'TEXT_COMPLETION_FREQUENCY_PENALTY',
+  TEXT_COMPLETION_PRESENCE_PENALTY: 'TEXT_COMPLETION_PRESENCE_PENALTY',
   // Legacy keys for backwards compatibility (will be treated as defaults)
   MODEL_MAX_TOKEN: 'MODEL_MAX_TOKEN',
   MODEL_TEMPERATURE: 'MODEL_TEMPERATURE',
@@ -109,20 +166,63 @@ export const MODEL_SETTINGS = {
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, `ModelType.TEXT_REASONING_SMALL`,
  * `ModelType.TEXT_REASONING_LARGE`, or `ModelType.TEXT_COMPLETION`.
  * It includes essential information like the prompt and various generation controls.
+ *
+ * **Note for Plugin Implementers**: Different LLM providers have varying support for these parameters.
+ * Some providers may not support both `temperature` and `topP` simultaneously, or may have other restrictions.
+ * Plugin implementations should filter out unsupported parameters before calling their provider's API.
+ * Check your provider's documentation to determine which parameters are supported.
  */
 export type GenerateTextParams = {
   /** The input string or prompt that the language model will use to generate text. */
   prompt: string;
   /** Optional. The maximum number of tokens to generate in the response. */
   maxTokens?: number;
+  /** Optional. The minimum number of tokens to generate in the response. */
+  minTokens?: number;
   /** Optional. Controls randomness (0.0-1.0). Lower values are more deterministic, higher are more creative. */
   temperature?: number;
+  /** Optional. Nucleus sampling parameter (0.0-1.0). Controls diversity via nucleus sampling.
+   * Note: Some providers may not support both `temperature` and `topP` simultaneously.
+   * Plugin implementations should filter based on provider capabilities. */
+  topP?: number;
+  /** Optional. Limits the number of highest-probability tokens considered at each step.
+   * Common in Ollama, vLLM, and other local model providers. Alternative/complement to topP. */
+  topK?: number;
+  /** Optional. Minimum probability threshold (0.0-1.0). Discards tokens with probability below this threshold.
+   * Common in node-llama-cpp. Can improve output quality when using higher temperatures by filtering low-probability tokens. */
+  minP?: number;
+  /** Optional. Random seed for reproducible outputs. Useful for testing and debugging. */
+  seed?: number;
+  /** Optional. Repetition penalty (1.0 = no penalty, >1.0 reduces repetition).
+   * Common in Ollama, vLLM, and some Hugging Face models. */
+  repetitionPenalty?: number;
   /** Optional. Penalizes new tokens based on their existing frequency in the text so far. */
   frequencyPenalty?: number;
   /** Optional. Penalizes new tokens based on whether they appear in the text so far. */
   presencePenalty?: number;
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
+  /** Optional. User identifier for tracking and analytics purposes.
+   *
+   * This parameter is used by LLM providers (e.g., OpenAI) to track and monitor API usage per user.
+   * It helps providers identify abuse patterns, implement rate limiting, and provide usage analytics.
+   *
+   * Behavior:
+   * - If not provided (undefined), will automatically default to the agent's character name
+   * - If explicitly set to empty string (""), it will be preserved (not overridden)
+   * - If explicitly set to null, it will be preserved (not overridden)
+   *
+   * Examples:
+   * - `user: "alice"` - Tracks requests from user "alice"
+   * - `user: ""` - Explicitly sends empty user identifier
+   * - `user: undefined` - Auto-populates with character name (e.g., "MyAgent")
+   *
+   * Note: Plugin implementations should pass this parameter to their provider's API when supported.
+   */
+  user?: string | null;
+  /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
+   * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
+  responseFormat?: { type: 'json_object' | 'text' } | string;
 };
 
 /**

@@ -3,6 +3,145 @@ import typescript from '@typescript-eslint/eslint-plugin';
 import typescriptParser from '@typescript-eslint/parser';
 
 /**
+ * Custom ESLint rule: structured-logging
+ *
+ * Enforces structured logging format: logger.level({ src: '<source>', ...context }, 'message')
+ *
+ * @see LOGGING_SPEC.md for full specification
+ */
+const LOGGER_METHODS = ['debug', 'info', 'warn', 'error', 'trace', 'fatal'];
+
+const structuredLoggingRule = {
+  meta: {
+    type: 'problem',
+    docs: {
+      description: 'Enforce structured logging format with src property',
+      category: 'Best Practices',
+      recommended: true,
+    },
+    fixable: null,
+    schema: [],
+    messages: {
+      missingObjectArg:
+        'Logger calls must have an object as first argument: logger.{{method}}({ src: "...", ...context }, "message")',
+      missingSrcProperty:
+        'Logger calls must include "src" property: logger.{{method}}({ src: "...", ...context }, "message")',
+      srcMustBeString: 'The "src" property must be a string literal',
+      missingMessageArg:
+        'Logger calls must have a string message as second argument: logger.{{method}}({ src: "...", ...context }, "message")',
+      messageMustBeString: 'Second argument to logger must be a string message',
+      invalidSrcFormat:
+        'Invalid src format "{{src}}". Use: "component" (core), "plugin:name:type:component" (plugins), or "http" (server)',
+    },
+  },
+  create(context) {
+    // Very permissive: just check src is not empty and has reasonable format
+    // Format examples: "http", "cli", "plugin:bootstrap:action:reply", "core:runtime", etc.
+    const srcRegex = /^[a-z][a-z0-9_:-]*$/i;
+
+    function isLoggerCall(node) {
+      return (
+        node.type === 'CallExpression' &&
+        node.callee.type === 'MemberExpression' &&
+        node.callee.object.type === 'Identifier' &&
+        node.callee.object.name === 'logger' &&
+        node.callee.property.type === 'Identifier' &&
+        LOGGER_METHODS.includes(node.callee.property.name)
+      );
+    }
+
+    function validateSrcFormat(srcValue) {
+      return srcRegex.test(srcValue);
+    }
+
+    return {
+      CallExpression(node) {
+        if (!isLoggerCall(node)) {
+          return;
+        }
+
+        const methodName = node.callee.property.name;
+        const args = node.arguments;
+
+        if (args.length === 0) {
+          context.report({ node, messageId: 'missingObjectArg', data: { method: methodName } });
+          return;
+        }
+
+        const firstArg = args[0];
+
+        // First argument must be an object literal
+        if (firstArg.type !== 'ObjectExpression') {
+          if (
+            firstArg.type === 'Literal' ||
+            firstArg.type === 'TemplateLiteral' ||
+            firstArg.type === 'BinaryExpression'
+          ) {
+            context.report({ node, messageId: 'missingObjectArg', data: { method: methodName } });
+          }
+          return;
+        }
+
+        // Check for src property
+        const srcProperty = firstArg.properties.find(
+          (prop) =>
+            prop.type === 'Property' &&
+            !prop.computed &&
+            ((prop.key.type === 'Identifier' && prop.key.name === 'src') ||
+              (prop.key.type === 'Literal' && prop.key.value === 'src'))
+        );
+
+        if (!srcProperty) {
+          context.report({
+            node: firstArg,
+            messageId: 'missingSrcProperty',
+            data: { method: methodName },
+          });
+          return;
+        }
+
+        // src must be a string literal
+        if (srcProperty.value.type !== 'Literal' || typeof srcProperty.value.value !== 'string') {
+          context.report({ node: srcProperty.value, messageId: 'srcMustBeString' });
+          return;
+        }
+
+        // Validate src format
+        const srcValue = srcProperty.value.value;
+        if (!validateSrcFormat(srcValue)) {
+          context.report({
+            node: srcProperty.value,
+            messageId: 'invalidSrcFormat',
+            data: { src: srcValue },
+          });
+        }
+
+        // Check second argument (message)
+        if (args.length < 2) {
+          context.report({ node, messageId: 'missingMessageArg', data: { method: methodName } });
+          return;
+        }
+
+        const secondArg = args[1];
+        if (secondArg.type === 'ObjectExpression' || secondArg.type === 'ArrayExpression') {
+          context.report({ node: secondArg, messageId: 'messageMustBeString' });
+        }
+      },
+    };
+  },
+};
+
+/**
+ * ElizaOS custom ESLint plugin
+ */
+const elizaPlugin = {
+  meta: { name: '@elizaos/eslint-plugin', version: '1.0.0' },
+  rules: {
+    'structured-logging': structuredLoggingRule,
+  },
+};
+
+/**
  * Base ESLint configuration for ElizaOS packages
  * Provides consistent code quality across all packages
  */
@@ -58,8 +197,12 @@ export const baseConfig = [
     },
     plugins: {
       '@typescript-eslint': typescript,
+      '@elizaos': elizaPlugin,
     },
     rules: {
+      // ElizaOS custom rules - structured logging
+      '@elizaos/structured-logging': 'warn',
+
       // TypeScript specific rules - balanced for maintainability
       '@typescript-eslint/no-unused-vars': [
         'warn',
@@ -163,6 +306,7 @@ export const testOverrides = {
     },
   },
   rules: {
+    '@elizaos/structured-logging': 'off', // Tests can use any log format
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-unused-vars': 'off',
     '@typescript-eslint/no-non-null-assertion': 'off',

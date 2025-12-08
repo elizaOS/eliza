@@ -12,17 +12,21 @@ export class ExtensionManager {
         // Extension names should only contain alphanumeric characters, underscores, and hyphens
         if (!/^[a-zA-Z0-9_-]+$/.test(extension)) {
           logger.warn(
-            `[RuntimeMigrator] Invalid extension name "${extension}" - contains invalid characters`
+            { src: 'plugin:sql', extension },
+            'Invalid extension name - contains invalid characters'
           );
           continue;
         }
 
         // Use sql.identifier for safe escaping of SQL identifiers
         await this.db.execute(sql`CREATE EXTENSION IF NOT EXISTS ${sql.identifier(extension)}`);
-        logger.debug(`[RuntimeMigrator] Extension installed: ${extension}`);
+        logger.debug({ src: 'plugin:sql', extension }, 'Extension installed');
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.warn(`[RuntimeMigrator] Could not install extension ${extension}: ${errorMessage}`);
+        logger.warn(
+          { src: 'plugin:sql', extension, error: errorMessage },
+          'Could not install extension'
+        );
         // Some extensions might not be available or already installed
         // This shouldn't stop the migration process
       }

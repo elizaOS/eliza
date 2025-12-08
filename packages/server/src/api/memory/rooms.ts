@@ -1,4 +1,4 @@
-import type { ElizaOS, Room } from '@elizaos/core';
+import type { ElizaOS, Room, UUID } from '@elizaos/core';
 import { validateUuid, logger, createUniqueUuid, ChannelType } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -36,7 +36,7 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       }
 
       const roomId = createUniqueUuid(runtime, `room-${Date.now()}`);
-      const serverId = req.body.serverId || `server-${Date.now()}`;
+      const messageServerId = req.body.messageServerId;
 
       let resolvedWorldId = worldId;
       if (!resolvedWorldId) {
@@ -47,7 +47,7 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
           id: resolvedWorldId,
           name: worldName,
           agentId: runtime.agentId,
-          serverId: serverId,
+          messageServerId: messageServerId as UUID,
           metadata: metadata,
         });
       }
@@ -58,7 +58,7 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
         source: source,
         type: type,
         channelId: roomId,
-        serverId: serverId,
+        messageServerId: messageServerId as UUID,
         worldId: resolvedWorldId,
         metadata: metadata,
       });
@@ -77,15 +77,20 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
           source: source,
           type: type,
           worldId: resolvedWorldId,
-          serverId: serverId,
+          messageServerId: messageServerId,
           metadata: metadata,
         },
         201
       );
     } catch (error) {
       logger.error(
-        `[ROOM CREATE] Error creating room for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error creating room'
       );
       sendError(
         res,
@@ -128,8 +133,13 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { rooms: agentRooms });
     } catch (error) {
       logger.error(
-        `[ROOMS LIST] Error retrieving rooms for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error retrieving rooms for agent'
       );
       sendError(
         res,
@@ -175,8 +185,14 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       });
     } catch (error) {
       logger.error(
-        `[ROOM DETAILS] Error retrieving room ${roomId} for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          roomId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error retrieving room details'
       );
       sendError(
         res,

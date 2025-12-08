@@ -2,7 +2,7 @@ import type { ElizaOS } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { createMessagingCoreRouter } from './core';
-import { createServersRouter } from './servers';
+import { createMessageServersRouter } from './messageServers';
 import { createChannelsRouter } from './channels';
 import { createSessionsRouter } from './sessions';
 import { createJobsRouter } from './jobs';
@@ -21,7 +21,7 @@ export function messagingRouter(elizaOS: ElizaOS, serverInstance: AgentServer): 
   router.use('/', createMessagingCoreRouter(serverInstance));
 
   // Mount server management functionality
-  router.use('/', createServersRouter(serverInstance));
+  router.use('/', createMessageServersRouter(serverInstance));
 
   // Mount channel management functionality
   router.use('/', createChannelsRouter(elizaOS, serverInstance));

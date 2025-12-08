@@ -122,6 +122,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     getServiceLoadPromise: mock().mockResolvedValue(null),
     getRegisteredServiceTypes: mock().mockReturnValue([]),
     hasService: mock().mockReturnValue(false),
+    hasElizaOS(): this is IAgentRuntime & { elizaOS: any } {
+      return false;
+    },
     registerDatabaseAdapter: mock(),
     setSetting: mock(),
     getSetting: mock((key: string) => {
@@ -265,6 +268,9 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
 
     // Text Generation (required by IAgentRuntime)
     generateText: mock().mockResolvedValue('Mock generated text'),
+
+    // Room Participant Checks
+    isRoomParticipant: mock().mockResolvedValue(false),
 
     // Apply overrides
     ...overrides,

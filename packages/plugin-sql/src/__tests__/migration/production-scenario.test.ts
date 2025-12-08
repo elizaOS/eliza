@@ -100,11 +100,11 @@ describe('Production Migration Scenarios', () => {
           name TEXT,
           source TEXT NOT NULL DEFAULT 'unknown',
           type TEXT NOT NULL DEFAULT 'general',
-          "createdAt" TIMESTAMP DEFAULT NOW(),
+          created_at TIMESTAMP DEFAULT NOW(),
           "worldId" UUID,
-          "serverId" TEXT,
+          message_server_id UUID,
           metadata JSONB,
-          "channelId" TEXT
+          channel_id TEXT
         )
       `);
 
@@ -113,18 +113,18 @@ describe('Production Migration Scenarios', () => {
       const roomId = '223e4567-e89b-12d3-a456-426614174000';
 
       await db.execute(sql`
-        INSERT INTO agents (id, name, settings) 
+        INSERT INTO agents (id, name, settings)
         VALUES (${agentId}::uuid, 'Production Agent', '{"model": "gpt-4"}'::jsonb)
       `);
 
       await db.execute(sql`
-        INSERT INTO rooms (id, "agentId", name, source, type) 
+        INSERT INTO rooms (id, "agentId", name, source, type)
         VALUES (${roomId}::uuid, ${agentId}::uuid, 'Main Room', 'test', 'general')
       `);
 
       await db.execute(sql`
-        INSERT INTO memories ("agentId", "roomId", "entityId", content, type) 
-        VALUES 
+        INSERT INTO memories ("agentId", "roomId", "entityId", content, type)
+        VALUES
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "System initialized"}'::jsonb, 'message'),
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "User preferences loaded"}'::jsonb, 'message'),
         (${agentId}::uuid, ${roomId}::uuid, null, '{"text": "Context established"}'::jsonb, 'message')

@@ -16,7 +16,8 @@ export async function getContainerLogsAction(
 
     if (!apiKey) {
       logger.error(
-        '❌ Error: API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable.'
+        { src: 'cli', command: 'containers-logs' },
+        'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable'
       );
       process.exit(1);
     }
@@ -26,7 +27,10 @@ export async function getContainerLogsAction(
 
     if (!targetContainerId) {
       const projectName = options.projectName || path.basename(process.cwd());
-      logger.info(`🔍 Auto-detecting container for project "${projectName}"...`);
+      logger.info(
+        { src: 'cli', command: 'containers-logs', projectName },
+        'Auto-detecting container for project'
+      );
 
       // Fetch all containers
       const listResponse = await fetch(`${apiUrl}/api/v1/containers`, {
@@ -49,21 +53,38 @@ export async function getContainerLogsAction(
       const matchingContainer = containers.find((c) => c.project_name === projectName);
 
       if (!matchingContainer) {
-        logger.error(`❌ Error: No container found for project "${projectName}"`);
-        logger.info(`\n💡 Available projects:`);
+        logger.error(
+          { src: 'cli', command: 'containers-logs', projectName },
+          'No container found for project'
+        );
+        logger.info({ src: 'cli', command: 'containers-logs' }, 'Available projects:');
         const uniqueProjects = [...new Set(containers.map((c) => c.project_name))];
         uniqueProjects.forEach((proj) => {
-          logger.info(`   - ${proj}`);
+          logger.info({ src: 'cli', command: 'containers-logs', project: proj }, '   - ' + proj);
         });
-        logger.info(`\nRun "elizaos containers list" to see all containers.`);
+        logger.info(
+          { src: 'cli', command: 'containers-logs' },
+          'Run "elizaos containers list" to see all containers'
+        );
         process.exit(1);
       }
 
       targetContainerId = matchingContainer.id;
-      logger.info(`✅ Found container: ${matchingContainer.name} (${targetContainerId})`);
+      logger.info(
+        {
+          src: 'cli',
+          command: 'containers-logs',
+          containerName: matchingContainer.name,
+          containerId: targetContainerId,
+        },
+        'Found container'
+      );
     }
 
-    logger.info(`📜 Fetching logs for container ${targetContainerId}...`);
+    logger.info(
+      { src: 'cli', command: 'containers-logs', containerId: targetContainerId },
+      'Fetching logs for container'
+    );
 
     const queryParams = new URLSearchParams();
     if (options.tail) {
@@ -90,7 +111,7 @@ export async function getContainerLogsAction(
     const logs = result.data?.logs || [];
 
     if (logs.length === 0) {
-      logger.info('\n📜 No logs available yet.\n');
+      logger.info({ src: 'cli', command: 'containers-logs' }, 'No logs available yet');
       return;
     }
 
@@ -105,10 +126,20 @@ export async function getContainerLogsAction(
     console.log('');
 
     if (options.follow) {
-      logger.info('ℹ️  Note: --follow mode requires WebSocket support (coming soon)');
+      logger.info(
+        { src: 'cli', command: 'containers-logs' },
+        'Note: --follow mode requires WebSocket support (coming soon)'
+      );
     }
   } catch (error: unknown) {
-    logger.error(`❌ Error: ${error instanceof Error ? error.message : 'Failed to fetch logs'}`);
+    logger.error(
+      {
+        src: 'cli',
+        command: 'containers-logs',
+        error: error instanceof Error ? error.message : 'Failed to fetch logs',
+      },
+      'Error fetching logs'
+    );
     process.exit(1);
   }
 }

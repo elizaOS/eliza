@@ -63,7 +63,7 @@ export function getSalt(): string {
   }
 
   if (currentEnvSalt === 'secretsalt' && !saltErrorLogged) {
-    logger.warn('SECRET_SALT is not set or using default value');
+    logger.warn({ src: 'core:settings' }, 'SECRET_SALT is not set or using default value');
     saltErrorLogged = true;
   }
 
@@ -93,17 +93,14 @@ export function clearSaltCache(): void {
 export function encryptStringValue(value: string, salt: string): string {
   // Check if value is undefined or null
   if (value === undefined || value === null) {
-    logger.debug('Attempted to encrypt undefined or null value');
     return value; // Return the value as is (undefined or null)
   }
 
   if (typeof value === 'boolean' || typeof value === 'number') {
-    logger.debug('Value is a boolean or number, returning as is');
     return value;
   }
 
   if (typeof value !== 'string') {
-    logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
     return value;
   }
 
@@ -115,7 +112,6 @@ export function encryptStringValue(value: string, salt: string): string {
       const possibleIv = BufferUtils.fromHex(parts[0]);
       if (possibleIv.length === 16) {
         // Value is likely already encrypted, return as is
-        logger.debug('Value appears to be already encrypted, skipping re-encryption');
         return value;
       }
     } catch (e) {
@@ -155,7 +151,6 @@ export function decryptStringValue(value: string, salt: string): string {
       return value;
     }
     if (typeof value !== 'string') {
-      logger.debug(`Value is not a string (type: ${typeof value}), returning as is`);
       return value;
     }
 
@@ -175,9 +170,6 @@ export function decryptStringValue(value: string, salt: string): string {
 
     // Verify IV length
     if (iv.length !== 16) {
-      if (iv.length) {
-        logger.debug(`Invalid IV length (${iv.length}) - expected 16 bytes`);
-      }
       return value; // Return the original value without decryption
     }
 
@@ -191,7 +183,7 @@ export function decryptStringValue(value: string, salt: string): string {
 
     return decrypted;
   } catch (error) {
-    logger.error(`Error decrypting value: ${error}`);
+    logger.error({ src: 'core:settings', error }, 'Decryption failed');
     // Return the encrypted value on error
     return value;
   }
@@ -265,7 +257,7 @@ export async function updateWorldSettings(
   const world = await runtime.getWorld(worldId);
 
   if (!world) {
-    logger.error(`No world found for server ${serverId}`);
+    logger.error({ src: 'core:settings', serverId }, 'World not found');
     return false;
   }
 
@@ -319,7 +311,10 @@ export async function initializeOnboarding(
 ): Promise<WorldSettings | null> {
   // Check if settings state already exists
   if (world.metadata?.settings) {
-    logger.info(`Onboarding state already exists for server ${world.serverId}`);
+    logger.debug(
+      { src: 'core:settings', serverId: world.messageServerId },
+      'Onboarding state already exists'
+    );
     // Get settings from metadata and remove salt
     const saltedSettings = world.metadata.settings as WorldSettings;
     const salt = getSalt();
@@ -346,7 +341,10 @@ export async function initializeOnboarding(
 
   await runtime.updateWorld(world);
 
-  logger.info(`Initialized settings config for server ${world.serverId}`);
+  logger.info(
+    { src: 'core:settings', serverId: world.messageServerId },
+    'Settings config initialized'
+  );
   return worldSettings;
 }
 

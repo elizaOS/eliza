@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:pg16
+    container_name: eliza-test-postgres
+    environment:
+      POSTGRES_USER: eliza_test
+      POSTGRES_PASSWORD: eliza_test_password
+      POSTGRES_DB: eliza_test
+    ports:
+      - '5433:5432'  # Use port 5433 to avoid conflict with existing PostgreSQL
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U eliza_test']
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    tmpfs:
+      - /var/lib/postgresql/data  # Use tmpfs for fast, ephemeral storage in tests

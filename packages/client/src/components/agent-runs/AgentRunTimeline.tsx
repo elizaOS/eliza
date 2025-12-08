@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { elizaSpanAdapter } from '@/lib/eliza-span-adapter';
 import { Loader2 } from 'lucide-react';
 import { useQueries } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import type { RunDetail } from '@elizaos/api-client';
 import { TraceViewer, type TraceViewerData } from '../agent-prism/TraceViewer';
 
@@ -12,7 +12,7 @@ type AgentRunTimelineProps = {
   agentId: UUID;
 };
 
-const elizaClient = createElizaClient();
+const elizaClient = getElizaClient();
 
 export const AgentRunTimeline: React.FC<AgentRunTimelineProps> = ({ agentId }) => {
   const runsQuery = useAgentRuns(agentId);

@@ -72,9 +72,11 @@ export class ConversationManager {
     const client = new ElizaClient({ baseUrl: `http://localhost:${port}` });
 
     // Get default server
-    const servers = await client.messaging.listServers();
-    const defaultServer = servers.servers.find((s) => s.name === 'Default Server');
-    if (!defaultServer) throw new Error('Default server not found');
+    const messageServers = await client.messaging.listMessageServers();
+    const defaultMessageServer = messageServers.messageServers.find(
+      (s) => s.name === 'Default Message Server'
+    );
+    if (!defaultMessageServer) throw new Error('Default message server not found');
 
     // Create test user ID
     const testUserId = stringToUuidCore('11111111-1111-1111-1111-111111111111');
@@ -85,7 +87,7 @@ export class ConversationManager {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: 'scenario-conversation-channel',
-        server_id: defaultServer.id,
+        message_server_id: defaultMessageServer.id,
         participantCentralUserIds: [testUserId],
         type: ChannelType.GROUP,
         metadata: { scenario: true, conversation: true },
