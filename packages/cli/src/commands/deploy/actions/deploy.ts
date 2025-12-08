@@ -11,7 +11,10 @@ import { deployWithECS } from './deploy-ecs';
  */
 export async function deployProject(options: DeployOptions): Promise<DeploymentResult> {
   try {
-    logger.info({ src: 'cli', command: 'deploy' }, 'Starting ElizaOS deployment with Docker + AWS ECS');
+    logger.info(
+      { src: 'cli', command: 'deploy' },
+      'Starting ElizaOS deployment with Docker + AWS ECS'
+    );
     return await deployWithECS(options);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

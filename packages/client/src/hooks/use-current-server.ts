@@ -12,7 +12,9 @@ export function useCurrentMessageServer() {
   return useQuery<UUID>({
     queryKey: ['currentMessageServer'],
     queryFn: async () => {
-      clientLogger.info('[useCurrentMessageServer] Fetching current message server ID from backend');
+      clientLogger.info(
+        '[useCurrentMessageServer] Fetching current message server ID from backend'
+      );
       const elizaClient = getElizaClient();
       const result = await elizaClient.messaging.getCurrentMessageServer();
       clientLogger.info('[useCurrentServer] Current server ID:', result.messageServerId);

@@ -4,7 +4,11 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { expandTildePath, resolvePgliteDir } from '../../../index';
-import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../../test-utils/environment';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  type EnvironmentSnapshot,
+} from '../../test-utils/environment';
 import path from 'node:path';
 
 describe('Utility Functions', () => {
@@ -177,7 +181,7 @@ describe('Utility Functions', () => {
     it('should handle empty string inputs', () => {
       delete process.env.PGLITE_DATA_DIR;
       delete process.env.ELIZA_DATABASE_DIR;
-      
+
       const result = resolvePgliteDir('');
 
       // Empty string triggers default fallback behavior

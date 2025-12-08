@@ -11,7 +11,10 @@ export async function listContainersAction(options: ContainersOptions) {
     const apiUrl = options.apiUrl || 'https://www.elizacloud.ai';
 
     if (!apiKey) {
-      logger.error({ src: 'cli', command: 'containers-list' }, 'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable');
+      logger.error(
+        { src: 'cli', command: 'containers-list' },
+        'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable'
+      );
       process.exit(1);
     }
 
@@ -43,7 +46,10 @@ export async function listContainersAction(options: ContainersOptions) {
       return;
     }
 
-    logger.info({ src: 'cli', command: 'containers-list', count: containers.length }, 'Found containers');
+    logger.info(
+      { src: 'cli', command: 'containers-list', count: containers.length },
+      'Found containers'
+    );
 
     for (const container of containers) {
       console.log(`  ID: ${container.id}`);
@@ -63,7 +69,14 @@ export async function listContainersAction(options: ContainersOptions) {
       console.log('');
     }
   } catch (error: unknown) {
-    logger.error({ src: 'cli', command: 'containers-list', error: error instanceof Error ? error.message : 'Failed to list containers' }, 'Error listing containers');
+    logger.error(
+      {
+        src: 'cli',
+        command: 'containers-list',
+        error: error instanceof Error ? error.message : 'Failed to list containers',
+      },
+      'Error listing containers'
+    );
     process.exit(1);
   }
 }

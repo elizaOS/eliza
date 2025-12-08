@@ -41,7 +41,11 @@ export class DatabaseMigrationService {
       }
     }
     logger.info(
-      { src: 'plugin:sql', schemasDiscovered: this.registeredSchemas.size, totalPlugins: plugins.length },
+      {
+        src: 'plugin:sql',
+        schemasDiscovered: this.registeredSchemas.size,
+        totalPlugins: plugins.length,
+      },
       'Plugin schemas discovered'
     );
   }
@@ -84,7 +88,12 @@ export class DatabaseMigrationService {
 
     // Log migration start
     logger.info(
-      { src: 'plugin:sql', environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT', pluginCount: this.registeredSchemas.size, dryRun: migrationOptions.dryRun },
+      {
+        src: 'plugin:sql',
+        environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT',
+        pluginCount: this.registeredSchemas.size,
+        dryRun: migrationOptions.dryRun,
+      },
       'Starting migrations'
     );
 
@@ -112,10 +121,7 @@ export class DatabaseMigrationService {
           );
         } else {
           // Unexpected error
-          logger.error(
-            { src: 'plugin:sql', pluginName, error: errorMessage },
-            'Migration failed'
-          );
+          logger.error({ src: 'plugin:sql', pluginName, error: errorMessage }, 'Migration failed');
         }
       }
     }
@@ -138,16 +144,19 @@ export class DatabaseMigrationService {
           logger.info({ src: 'plugin:sql' }, 'RLS re-applied successfully');
         } catch (rlsError) {
           const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
-          logger.warn({ src: 'plugin:sql', error: errorMsg }, 'Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)');
+          logger.warn(
+            { src: 'plugin:sql', error: errorMsg },
+            'Failed to re-apply RLS (this is OK if server_id columns are not yet in schemas)'
+          );
         }
       } else {
-        logger.info({ src: 'plugin:sql' }, 'Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)');
+        logger.info(
+          { src: 'plugin:sql' },
+          'Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)'
+        );
       }
     } else {
-      logger.error(
-        { src: 'plugin:sql', failureCount, successCount },
-        'Some migrations failed'
-      );
+      logger.error({ src: 'plugin:sql', failureCount, successCount }, 'Some migrations failed');
 
       // Throw a consolidated error with details about all failures
       const errorSummary = errors.map((e) => `${e.pluginName}: ${e.error.message}`).join('\n  ');

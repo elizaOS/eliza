@@ -58,7 +58,10 @@ export function createAgentLifecycleRouter(
         status: 'active',
       });
     } catch (error) {
-      logger.error({ src: 'http', agentId, error: error instanceof Error ? error.message : String(error) }, 'Error starting agent');
+      logger.error(
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error starting agent'
+      );
       sendError(
         res,
         500,

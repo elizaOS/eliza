@@ -38,7 +38,10 @@ export class SocketIORouter {
   }
 
   setupListeners(io: SocketIOServer) {
-    logger.info({ src: 'ws', agentCount: this.elizaOS.getAgents().length }, 'SocketIO router initialized');
+    logger.info(
+      { src: 'ws', agentCount: this.elizaOS.getAgents().length },
+      'SocketIO router initialized'
+    );
 
     // Setup authentication middleware (runs before connection)
     this.setupAuthenticationMiddleware(io);
@@ -93,7 +96,9 @@ export class SocketIORouter {
         socket.data.allowedRooms = new Set<UUID>(); // Lazy-loaded on first join attempt
         socket.data.roomsCacheLoaded = false; // Track if cache is initialized
 
-        logger.info(`[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId.substring(0, 8)}...`);
+        logger.info(
+          `[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId.substring(0, 8)}...`
+        );
 
         // Track entity -> sockets mapping for targeted cache invalidation
         if (!this.entitySockets.has(entityId)) {
@@ -120,7 +125,9 @@ export class SocketIORouter {
         entityId,
         timestamp: Date.now(),
       });
-      logger.debug(`[SocketIO] Sent 'authenticated' event to socket ${socket.id} with entityId: ${entityId.substring(0, 8)}...`);
+      logger.debug(
+        `[SocketIO] Sent 'authenticated' event to socket ${socket.id} with entityId: ${entityId.substring(0, 8)}...`
+      );
     }
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
@@ -140,7 +147,14 @@ export class SocketIORouter {
     socket.on('update_log_filters', (filters) => this.handleLogFilterUpdate(socket, filters));
     socket.on('disconnect', () => this.handleDisconnect(socket));
     socket.on('error', (error) => {
-      logger.error({ src: 'ws', socketId: socket.id, error: error instanceof Error ? error.message : String(error) }, 'Socket error');
+      logger.error(
+        {
+          src: 'ws',
+          socketId: socket.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Socket error'
+      );
     });
 
     socket.emit('connection_established', {
@@ -169,7 +183,10 @@ export class SocketIORouter {
           break;
       }
     } catch (error: any) {
-      logger.error({ src: 'ws', socketId: socket.id, error: error.message }, 'Error processing message');
+      logger.error(
+        { src: 'ws', socketId: socket.id, error: error.message },
+        'Error processing message'
+      );
     }
   }
 
@@ -182,7 +199,10 @@ export class SocketIORouter {
     try {
       // Guard: Check socket state before async operation
       if (socket.disconnected) {
-        logger.debug({ src: 'ws', socketId: socket.id }, 'Socket disconnected before channel access check');
+        logger.debug(
+          { src: 'ws', socketId: socket.id },
+          'Socket disconnected before channel access check'
+        );
         return false;
       }
 
@@ -203,14 +223,21 @@ export class SocketIORouter {
 
       // Guard: Check socket state after async operation
       if (socket.disconnected) {
-        logger.debug({ src: 'ws', socketId: socket.id }, 'Socket disconnected during channel access check');
+        logger.debug(
+          { src: 'ws', socketId: socket.id },
+          'Socket disconnected during channel access check'
+        );
         return false;
       }
 
       if (isParticipant) {
-        logger.debug(`[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`);
+        logger.debug(
+          `[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`
+        );
       } else {
-        logger.warn(`[SocketIO Security] Entity ${entityId} is NOT participant in channel ${channelId}`);
+        logger.warn(
+          `[SocketIO Security] Entity ${entityId} is NOT participant in channel ${channelId}`
+        );
       }
 
       return isParticipant;
@@ -243,7 +270,10 @@ export class SocketIORouter {
       logger.warn(
         `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) DENIED access to channel ${channelId}`
       );
-      this.sendErrorResponse(socket, `Access denied: You don't have permission to join this channel`);
+      this.sendErrorResponse(
+        socket,
+        `Access denied: You don't have permission to join this channel`
+      );
       return;
     }
 
@@ -251,19 +281,28 @@ export class SocketIORouter {
       const agentUuid = validateUuid(agentId);
       if (agentUuid) {
         this.socketAgent.set(socket.id, agentUuid);
-        logger.debug({ src: 'ws', socketId: socket.id, agentId: agentUuid }, 'Socket associated with agent');
+        logger.debug(
+          { src: 'ws', socketId: socket.id, agentId: agentUuid },
+          'Socket associated with agent'
+        );
       }
     }
 
     socket.join(channelId);
-    logger.debug({ src: 'ws', socketId: socket.id, entityId: socket.data?.entityId, channelId }, 'Socket granted access to channel');
+    logger.debug(
+      { src: 'ws', socketId: socket.id, entityId: socket.data?.entityId, channelId },
+      'Socket granted access to channel'
+    );
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
     if (entityId && (messageServerId || this.serverInstance.messageServerId)) {
       const finalMessageServerId = messageServerId || this.serverInstance.messageServerId;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
-      logger.debug({ src: 'ws', entityId, messageServerId: finalMessageServerId, isDm }, 'Emitting ENTITY_JOINED event');
+      logger.debug(
+        { src: 'ws', entityId, messageServerId: finalMessageServerId, isDm },
+        'Emitting ENTITY_JOINED event'
+      );
 
       // Get the first available runtime (there should typically be one)
       const runtime = this.elizaOS.getAgents()[0];
@@ -281,10 +320,20 @@ export class SocketIORouter {
           source: 'socketio',
         });
       } else {
-        logger.warn({ src: 'ws', socketId: socket.id, entityId }, 'No runtime available to emit ENTITY_JOINED');
+        logger.warn(
+          { src: 'ws', socketId: socket.id, entityId },
+          'No runtime available to emit ENTITY_JOINED'
+        );
       }
     } else {
-      logger.debug({ src: 'ws', entityId, messageServerId: messageServerId || this.serverInstance.messageServerId }, 'Missing entityId or messageServerId - not emitting ENTITY_JOINED event');
+      logger.debug(
+        {
+          src: 'ws',
+          entityId,
+          messageServerId: messageServerId || this.serverInstance.messageServerId,
+        },
+        'Missing entityId or messageServerId - not emitting ENTITY_JOINED event'
+      );
     }
 
     const responsePayload = {
@@ -300,10 +349,12 @@ export class SocketIORouter {
 
   private async handleMessageSubmission(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { senderId, senderName, message, messageServerId, source, metadata, attachments } = payload;
+    const { senderId, senderName, message, messageServerId, source, metadata, attachments } =
+      payload;
 
     // Validate server ID
-    const isValidServerId = messageServerId === this.serverInstance.messageServerId || validateUuid(messageServerId);
+    const isValidServerId =
+      messageServerId === this.serverInstance.messageServerId || validateUuid(messageServerId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
@@ -344,13 +395,28 @@ export class SocketIORouter {
 
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
-        logger.info({ src: 'ws', socketId: socket.id, channelId, messageServerId }, 'Auto-creating channel');
+        logger.info(
+          { src: 'ws', socketId: socket.id, channelId, messageServerId },
+          'Auto-creating channel'
+        );
         try {
           const serverExists = servers.some((s) => s.id === messageServerId);
-          logger.debug({ src: 'ws', socketId: socket.id, messageServerId, serverExists, availableServers: servers.map((s) => s.id) }, 'Server existence check');
+          logger.debug(
+            {
+              src: 'ws',
+              socketId: socket.id,
+              messageServerId,
+              serverExists,
+              availableServers: servers.map((s) => s.id),
+            },
+            'Server existence check'
+          );
 
           if (!serverExists) {
-            logger.error({ src: 'ws', socketId: socket.id, messageServerId }, 'Server does not exist, cannot create channel');
+            logger.error(
+              { src: 'ws', socketId: socket.id, messageServerId },
+              'Server does not exist, cannot create channel'
+            );
             this.sendErrorResponse(socket, `Server ${messageServerId} does not exist`);
             return;
           }
@@ -384,9 +450,15 @@ export class SocketIORouter {
           }
 
           await this.serverInstance.createChannel(channelData, participants);
-          logger.debug({ src: 'ws', socketId: socket.id, channelId, type: isDmChannel ? 'DM' : 'GROUP' }, 'Auto-created channel');
+          logger.debug(
+            { src: 'ws', socketId: socket.id, channelId, type: isDmChannel ? 'DM' : 'GROUP' },
+            'Auto-created channel'
+          );
         } catch (createError: any) {
-          logger.error({ src: 'ws', socketId: socket.id, channelId, error: createError.message }, 'Failed to auto-create channel');
+          logger.error(
+            { src: 'ws', socketId: socket.id, channelId, error: createError.message },
+            'Failed to auto-create channel'
+          );
           this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
           return;
         }
@@ -405,7 +477,8 @@ export class SocketIORouter {
           attachments,
         },
         sourceType: source || 'socketio_client',
-        sourceId: payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        sourceId:
+          payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         inReplyToRootMessageId: null as any,
       };
 
@@ -447,7 +520,10 @@ export class SocketIORouter {
         });
       }
     } catch (error: any) {
-      logger.error({ src: 'ws', socketId: socket.id, error: error.message }, 'Error processing message');
+      logger.error(
+        { src: 'ws', socketId: socket.id, error: error.message },
+        'Error processing message'
+      );
       this.sendErrorResponse(socket, `Error processing your message: ${error.message}`);
     }
   }
@@ -540,7 +616,10 @@ export class SocketIORouter {
     }
 
     if (agentIdAssociated) {
-      logger.info({ src: 'ws', socketId: socket.id, agentId: agentIdAssociated }, 'Client disconnected (associated with agent)');
+      logger.info(
+        { src: 'ws', socketId: socket.id, agentId: agentIdAssociated },
+        'Client disconnected (associated with agent)'
+      );
     } else {
       logger.debug({ src: 'ws', socketId: socket.id }, 'Client disconnected');
     }

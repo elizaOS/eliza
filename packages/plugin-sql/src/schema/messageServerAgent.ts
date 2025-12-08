@@ -12,7 +12,5 @@ export const messageServerAgentsTable = pgTable(
       .notNull()
       .references(() => agentTable.id, { onDelete: 'cascade' }),
   },
-  (table) => [
-    primaryKey({ columns: [table.messageServerId, table.agentId] }),
-  ]
+  (table) => [primaryKey({ columns: [table.messageServerId, table.agentId] })]
 );

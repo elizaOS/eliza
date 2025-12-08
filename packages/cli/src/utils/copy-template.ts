@@ -146,7 +146,10 @@ export async function copyTemplate(
     );
   }
 
-  logger.debug({ src: 'cli', util: 'copy-template', templateType, templateDir, targetDir }, 'Copying template');
+  logger.debug(
+    { src: 'cli', util: 'copy-template', templateType, templateDir, targetDir },
+    'Copying template'
+  );
 
   // Copy template files as-is
   await copyDir(templateDir, targetDir);
@@ -166,7 +169,10 @@ export async function copyTemplate(
     // Remove private field from template package.json since templates should be usable by users
     if (packageJson.private) {
       delete packageJson.private;
-      logger.debug({ src: 'cli', util: 'copy-template' }, 'Removed private field from template package.json');
+      logger.debug(
+        { src: 'cli', util: 'copy-template' },
+        'Removed private field from template package.json'
+      );
     }
 
     // Normalize workspace references only; do not pin versions to CLI version
@@ -185,7 +191,10 @@ export async function copyTemplate(
           const after = normalizeElizaDep(before);
           if (after !== before) {
             if (!isQuietMode()) {
-              logger.info({ src: 'cli', util: 'copy-template', depName, version: after }, 'Setting dependency version');
+              logger.info(
+                { src: 'cli', util: 'copy-template', depName, version: after },
+                'Setting dependency version'
+              );
             }
             packageJson.dependencies[depName] = after;
           }
@@ -200,7 +209,10 @@ export async function copyTemplate(
           const after = normalizeElizaDep(before);
           if (after !== before) {
             if (!isQuietMode()) {
-              logger.info({ src: 'cli', util: 'copy-template', depName, version: after }, 'Setting dev dependency version');
+              logger.info(
+                { src: 'cli', util: 'copy-template', depName, version: after },
+                'Setting dev dependency version'
+              );
             }
             packageJson.devDependencies[depName] = after;
           }
@@ -214,15 +226,28 @@ export async function copyTemplate(
     if (packageJson.name !== projectNameFromPath) {
       packageJson.name = projectNameFromPath;
       if (!isQuietMode()) {
-        logger.info({ src: 'cli', util: 'copy-template', packageName: projectNameFromPath }, 'Setting package name');
+        logger.info(
+          { src: 'cli', util: 'copy-template', packageName: projectNameFromPath },
+          'Setting package name'
+        );
       }
     }
 
     // Write the updated package.json (dependency versions and plugin name changed)
     await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
-    logger.debug({ src: 'cli', util: 'copy-template' }, 'Updated package.json with latest dependency versions');
+    logger.debug(
+      { src: 'cli', util: 'copy-template' },
+      'Updated package.json with latest dependency versions'
+    );
   } catch (error) {
-    logger.error({ src: 'cli', util: 'copy-template', error: error instanceof Error ? error.message : String(error) }, 'Error updating package.json');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'copy-template',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error updating package.json'
+    );
   }
 
   logger.debug({ src: 'cli', util: 'copy-template', templateType }, 'Template copied successfully');
@@ -260,10 +285,21 @@ async function replacePluginNameInFiles(targetDir: string, pluginName: string): 
         content = content.replace(/plugin-quick-starter/g, pluginName);
 
         await fs.writeFile(fullPath, content, 'utf8');
-        logger.debug({ src: 'cli', util: 'copy-template', filePath }, 'Updated plugin name in file');
+        logger.debug(
+          { src: 'cli', util: 'copy-template', filePath },
+          'Updated plugin name in file'
+        );
       }
     } catch (error) {
-      logger.warn({ src: 'cli', util: 'copy-template', filePath, error: error instanceof Error ? error.message : String(error) }, 'Could not update file');
+      logger.warn(
+        {
+          src: 'cli',
+          util: 'copy-template',
+          filePath,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Could not update file'
+      );
     }
   });
 

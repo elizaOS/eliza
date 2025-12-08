@@ -78,7 +78,9 @@ export function createChannelsRouter(
   router.use((req, _res, next) => {
     // Map deprecated server_id to message_server_id
     if (req.body && req.body.server_id && !req.body.message_server_id) {
-      logger.warn('[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.');
+      logger.warn(
+        '[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.'
+      );
       req.body.message_server_id = req.body.server_id;
     }
     next();
@@ -99,7 +101,12 @@ export function createChannelsRouter(
         source_type, // Should be something like 'eliza_gui'
       } = req.body;
 
-      if (!channelIdParam || !validateUuid(author_id) || !content || !validateUuid(message_server_id)) {
+      if (
+        !channelIdParam ||
+        !validateUuid(author_id) ||
+        !content ||
+        !validateUuid(message_server_id)
+      ) {
         return res.status(400).json({
           success: false,
           error: 'Missing required fields: channelId, message_server_id, author_id, content',
@@ -125,14 +132,28 @@ export function createChannelsRouter(
 
         if (!channelExists) {
           // Auto-create the channel if it doesn't exist
-          logger.info({ src: 'http', channelId: channelIdParam, messageServerId: message_server_id }, 'Auto-creating channel');
+          logger.info(
+            { src: 'http', channelId: channelIdParam, messageServerId: message_server_id },
+            'Auto-creating channel'
+          );
           try {
             // First verify the server exists
             const serverExists = servers.some((s) => s.id === message_server_id);
-            logger.debug({ src: 'http', messageServerId: message_server_id, serverExists, availableServers: servers.map((s) => s.id) }, 'Server existence check');
+            logger.debug(
+              {
+                src: 'http',
+                messageServerId: message_server_id,
+                serverExists,
+                availableServers: servers.map((s) => s.id),
+              },
+              'Server existence check'
+            );
 
             if (!serverExists) {
-              logger.error({ src: 'http', messageServerId: message_server_id }, 'Server does not exist, cannot create channel');
+              logger.error(
+                { src: 'http', messageServerId: message_server_id },
+                'Server does not exist, cannot create channel'
+              );
               return res
                 .status(500)
                 .json({ success: false, error: `Server ${message_server_id} does not exist` });
@@ -161,7 +182,6 @@ export function createChannelsRouter(
               },
             };
 
-
             // For DM channels, we need to determine the participants
             const participants = [author_id as UUID];
             if (isDmChannel) {
@@ -170,16 +190,30 @@ export function createChannelsRouter(
               if (otherParticipant && validateUuid(otherParticipant)) {
                 participants.push(otherParticipant as UUID);
               } else {
-                logger.warn({ src: 'http', channelId: channelIdParam, authorId: author_id }, 'DM channel missing second participant');
+                logger.warn(
+                  { src: 'http', channelId: channelIdParam, authorId: author_id },
+                  'DM channel missing second participant'
+                );
               }
             }
 
             await serverInstance.createChannel(channelData, participants);
-            logger.info({ src: 'http', channelId: channelIdParam, type: isDmChannel ? ChannelType.DM : ChannelType.GROUP, participantCount: participants.length }, 'Auto-created channel');
+            logger.info(
+              {
+                src: 'http',
+                channelId: channelIdParam,
+                type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
+                participantCount: participants.length,
+              },
+              'Auto-created channel'
+            );
           } catch (createError: unknown) {
             const errorMessage =
               createError instanceof Error ? createError.message : String(createError);
-            logger.error({ src: 'http', channelId: channelIdParam, error: errorMessage }, 'Failed to auto-create channel');
+            logger.error(
+              { src: 'http', channelId: channelIdParam, error: errorMessage },
+              'Failed to auto-create channel'
+            );
             return res
               .status(500)
               .json({ success: false, error: `Failed to create channel: ${errorMessage}` });
@@ -220,7 +254,10 @@ export function createChannelsRouter(
         };
 
         internalMessageBus.emit('new_message', messageForBus);
-        logger.debug({ src: 'http', messageId: messageForBus.id }, 'GUI Message published to internal bus');
+        logger.debug(
+          { src: 'http', messageId: messageForBus.id },
+          'GUI Message published to internal bus'
+        );
 
         // Emit to SocketIO for real-time display in all connected GUIs
         if (serverInstance.socketIO) {
@@ -238,7 +275,14 @@ export function createChannelsRouter(
 
         res.status(201).json({ success: true, data: messageForBus });
       } catch (error) {
-        logger.error({ src: 'http', channelId: channelIdParam, error: error instanceof Error ? error.message : String(error) }, 'Error processing GUI message');
+        logger.error(
+          {
+            src: 'http',
+            channelId: channelIdParam,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error processing GUI message'
+        );
         res.status(500).json({ success: false, error: 'Failed to process message' });
       }
     }
@@ -292,7 +336,10 @@ export function createChannelsRouter(
         });
         res.json({ success: true, data: { messages: messagesForGui } });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching messages');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching messages'
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch messages' });
       }
     }
@@ -310,7 +357,14 @@ export function createChannelsRouter(
         const channels = await serverInstance.getChannelsForMessageServer(messageServerId);
         res.json({ success: true, data: { channels } });
       } catch (error) {
-        logger.error({ src: 'http', messageServerId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching channels');
+        logger.error(
+          {
+            src: 'http',
+            messageServerId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error fetching channels'
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channels' });
       }
     }
@@ -340,7 +394,10 @@ export function createChannelsRouter(
         if (existingServer) {
           dmServerIdToUse = providedDmServerId;
         } else {
-          logger.warn({ src: 'http', dmServerId: providedDmServerId }, 'Provided dmServerId not found, using current server');
+          logger.warn(
+            { src: 'http', dmServerId: providedDmServerId },
+            'Provided dmServerId not found, using current server'
+          );
           // Use current server if provided ID is invalid
           dmServerIdToUse = serverInstance.messageServerId;
         }
@@ -353,7 +410,15 @@ export function createChannelsRouter(
       );
       res.json({ success: true, data: channel });
     } catch (error: unknown) {
-      logger.error({ src: 'http', currentUserId, targetUserId, error: error instanceof Error ? error.message : String(error) }, 'Error finding/creating DM channel');
+      logger.error(
+        {
+          src: 'http',
+          currentUserId,
+          targetUserId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error finding/creating DM channel'
+      );
       res.status(500).json({ success: false, error: 'Failed to find or create DM channel' });
     }
   });
@@ -415,7 +480,10 @@ export function createChannelsRouter(
       res.status(201).json({ success: true, data: newChannel });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error({ src: 'http', messageServerId: message_server_id, error: errorMessage }, 'Error creating group channel');
+      logger.error(
+        { src: 'http', messageServerId: message_server_id, error: errorMessage },
+        'Error creating group channel'
+      );
       res
         .status(500)
         .json({ success: false, error: 'Failed to create group channel', details: errorMessage });
@@ -437,7 +505,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: channelDetails });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching channel details');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching channel details'
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channel details' });
       }
     }
@@ -455,7 +526,10 @@ export function createChannelsRouter(
         const participants = await serverInstance.getChannelParticipants(channelId);
         res.json({ success: true, data: participants });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching channel participants');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching channel participants'
+        );
         res.status(500).json({ success: false, error: 'Failed to fetch channel participants' });
       }
     }
@@ -500,7 +574,15 @@ export function createChannelsRouter(
           },
         });
       } catch (error) {
-        logger.error({ src: 'http', agentId, channelId, error: error instanceof Error ? error.message : String(error) }, 'Error adding agent to channel');
+        logger.error(
+          {
+            src: 'http',
+            agentId,
+            channelId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error adding agent to channel'
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to add agent to channel',
@@ -559,7 +641,15 @@ export function createChannelsRouter(
           },
         });
       } catch (error) {
-        logger.error({ src: 'http', agentId, channelId, error: error instanceof Error ? error.message : String(error) }, 'Error removing agent from channel');
+        logger.error(
+          {
+            src: 'http',
+            agentId,
+            channelId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error removing agent from channel'
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to remove agent from channel',
@@ -600,7 +690,10 @@ export function createChannelsRouter(
           },
         });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching channel agents');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error fetching channel agents'
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to fetch channel agents',
@@ -640,7 +733,15 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error({ src: 'http', messageId, channelId, error: error instanceof Error ? error.message : String(error) }, 'Error deleting message');
+        logger.error(
+          {
+            src: 'http',
+            messageId,
+            channelId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error deleting message'
+        );
         res.status(500).json({ success: false, error: 'Failed to delete message' });
       }
     }
@@ -673,7 +774,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error clearing messages');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error clearing messages'
+        );
         res.status(500).json({ success: false, error: 'Failed to clear messages' });
       }
     }
@@ -703,7 +807,10 @@ export function createChannelsRouter(
         }
         res.json({ success: true, data: updatedChannel });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error updating channel');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error updating channel'
+        );
         res.status(500).json({ success: false, error: 'Failed to update channel' });
       }
     }
@@ -740,7 +847,10 @@ export function createChannelsRouter(
         }
         res.status(204).send();
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error deleting channel');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error deleting channel'
+        );
         res.status(500).json({ success: false, error: 'Failed to delete channel' });
       }
     }
@@ -791,7 +901,10 @@ export function createChannelsRouter(
           },
         });
       } catch (error: unknown) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error processing media upload');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error processing media upload'
+        );
         res.status(500).json({ success: false, error: 'Failed to process media upload' });
       }
     }
@@ -907,7 +1020,10 @@ Respond with just the title, nothing else.
           data: result,
         });
       } catch (error) {
-        logger.error({ src: 'http', channelId, error: error instanceof Error ? error.message : String(error) }, 'Error summarizing channel');
+        logger.error(
+          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+          'Error summarizing channel'
+        );
         res.status(500).json({
           success: false,
           error: 'Failed to summarize channel',
@@ -979,18 +1095,13 @@ Respond with just the title, nothing else.
    * @deprecated Use POST /channels instead (for creating group channels)
    * Kept for backward compatibility. Will be removed in future versions.
    */
-  (router as any).post(
-    '/central-channels',
-    async (req: express.Request, res: express.Response) => {
-      logger.warn(
-        '[DEPRECATED] POST /central-channels is deprecated. Use POST /channels instead.'
-      );
+  (router as any).post('/central-channels', async (req: express.Request, res: express.Response) => {
+    logger.warn('[DEPRECATED] POST /central-channels is deprecated. Use POST /channels instead.');
 
-      // Parameter mapping handled by middleware, just forward to new endpoint
-      req.url = '/channels';
-      return (router as any).handle(req, res);
-    }
-  );
+    // Parameter mapping handled by middleware, just forward to new endpoint
+    req.url = '/channels';
+    return (router as any).handle(req, res);
+  });
 
   /**
    * @deprecated Use GET /channels/:channelId/details instead

@@ -72,7 +72,14 @@ export const cleanupFile = (filePath: string) => {
       logger.debug({ src: 'http', path: normalizedPath }, 'Successfully cleaned up file');
     }
   } catch (error) {
-    logger.error({ src: 'http', path: filePath, error: error instanceof Error ? error.message : String(error) }, 'Error cleaning up file');
+    logger.error(
+      {
+        src: 'http',
+        path: filePath,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error cleaning up file'
+    );
   }
 };
 
@@ -84,7 +91,10 @@ export const cleanupFiles = (files: Express.Multer.File[]) => {
     files.forEach((file) => {
       // For multer memory storage, no temp files to clean up
       // This function is kept for compatibility
-      logger.debug({ src: 'http', filename: file.originalname }, 'Multer file in memory, no cleanup needed');
+      logger.debug(
+        { src: 'http', filename: file.originalname },
+        'Multer file in memory, no cleanup needed'
+      );
     });
   }
 };
@@ -94,5 +104,8 @@ export const cleanupFiles = (files: Express.Multer.File[]) => {
  */
 export const cleanupUploadedFile = (file: Express.Multer.File) => {
   // For multer memory storage, no temp files to clean up
-  logger.debug({ src: 'http', filename: file.originalname }, 'Multer file in memory, no cleanup needed');
+  logger.debug(
+    { src: 'http', filename: file.originalname },
+    'Multer file in memory, no cleanup needed'
+  );
 };

@@ -19,7 +19,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
   let adminClient: Client;
   let userClient: Client;
 
-  const POSTGRES_URL = process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
+  const POSTGRES_URL =
+    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
   const serverId = uuidv4();
   const aliceId = uuidv4();
   const bobId = uuidv4();
@@ -63,22 +64,29 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Note: Admin is superuser, so RLS doesn't apply - we explicitly set server_id in INSERTs
 
     // Create server
-    await adminClient.query(`
+    await adminClient.query(
+      `
       INSERT INTO servers (id, created_at, updated_at)
       VALUES ($1, NOW(), NOW())
       ON CONFLICT (id) DO NOTHING
-    `, [serverId]);
+    `,
+      [serverId]
+    );
 
     // Create agent
-    await adminClient.query(`
+    await adminClient.query(
+      `
       INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
       VALUES ($1, 'Test Agent RLS', $2, $3, NOW(), NOW())
       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
-    `, [agentId, `rls_test_agent_${serverId.substring(0, 8)}`, serverId]);
+    `,
+      [agentId, `rls_test_agent_${serverId.substring(0, 8)}`, serverId]
+    );
 
     // Create entities
     try {
-      const result = await adminClient.query(`
+      const result = await adminClient.query(
+        `
         INSERT INTO entities (id, agent_id, names, metadata, server_id, created_at)
         VALUES
           ($1, $4, ARRAY['Alice'], '{}'::jsonb, $5, NOW()),
@@ -86,7 +94,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
           ($3, $4, ARRAY['Charlie'], '{}'::jsonb, $5, NOW())
         ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names
         RETURNING id
-      `, [aliceId, bobId, charlieId, agentId, serverId]);
+      `,
+        [aliceId, bobId, charlieId, agentId, serverId]
+      );
       console.log('Entities created:', result.rows.length);
     } catch (err) {
       console.error('Failed to create entities:', err instanceof Error ? err.message : String(err));
@@ -94,19 +104,23 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     }
 
     // Create rooms
-    await adminClient.query(`
+    await adminClient.query(
+      `
       INSERT INTO rooms (id, "agentId", source, type, server_id, created_at)
       VALUES
         ($1, $3, 'test', 'DM', $4, NOW()),
         ($2, $3, 'test', 'GROUP', $4, NOW())
       ON CONFLICT (id) DO NOTHING
-    `, [room1Id, room2Id, agentId, serverId]);
+    `,
+      [room1Id, room2Id, agentId, serverId]
+    );
 
     // Create participants
     // Room1: Alice + Bob
     // Room2: Bob + Charlie
     try {
-      const participantResult = await adminClient.query(`
+      const participantResult = await adminClient.query(
+        `
         INSERT INTO participants (id, "entityId", "roomId", server_id, created_at)
         VALUES
           (gen_random_uuid(), $1, $2, $3, NOW()),
@@ -115,30 +129,52 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
           (gen_random_uuid(), $6, $5, $3, NOW())
         ON CONFLICT DO NOTHING
         RETURNING id, "entityId"
-      `, [aliceId, room1Id, serverId, bobId, room2Id, charlieId]);
-      console.log('Participants created:', participantResult.rows.length, participantResult.rows.map(r => ({e: r.entityId})));
+      `,
+        [aliceId, room1Id, serverId, bobId, room2Id, charlieId]
+      );
+      console.log(
+        'Participants created:',
+        participantResult.rows.length,
+        participantResult.rows.map((r) => ({ e: r.entityId }))
+      );
     } catch (err) {
-      console.error('Failed to create participants:', err instanceof Error ? err.message : String(err));
+      console.error(
+        'Failed to create participants:',
+        err instanceof Error ? err.message : String(err)
+      );
       console.log('UUIDs:', { aliceId, bobId, charlieId, room1Id, room2Id, serverId });
       throw err;
     }
 
     // Create memories
-    await adminClient.query(`
+    await adminClient.query(
+      `
       INSERT INTO memories (id, "agentId", "roomId", content, type, server_id, "createdAt")
       VALUES
         (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', $4, NOW()),
         (gen_random_uuid(), $1, $3, '{"text": "Message in room2"}', 'message', $4, NOW())
-    `, [agentId, room1Id, room2Id, serverId]);
+    `,
+      [agentId, room1Id, room2Id, serverId]
+    );
   });
 
   afterAll(async () => {
     // Cleanup
     try {
-      await adminClient.query(`DELETE FROM memories WHERE "roomId" IN ($1, $2)`, [room1Id, room2Id]);
-      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2)`, [room1Id, room2Id]);
+      await adminClient.query(`DELETE FROM memories WHERE "roomId" IN ($1, $2)`, [
+        room1Id,
+        room2Id,
+      ]);
+      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2)`, [
+        room1Id,
+        room2Id,
+      ]);
       await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
-      await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [aliceId, bobId, charlieId]);
+      await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [
+        aliceId,
+        bobId,
+        charlieId,
+      ]);
       await adminClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
       await adminClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
     } catch (err) {

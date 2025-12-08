@@ -66,7 +66,10 @@ async function gracefulShutdown(signal: string) {
       logger.info({ src: 'cli' }, 'Server stopped successfully');
     }
   } catch (error) {
-    logger.error({ src: 'cli', error: error instanceof Error ? error.message : String(error) }, 'Error stopping server');
+    logger.error(
+      { src: 'cli', error: error instanceof Error ? error.message : String(error) },
+      'Error stopping server'
+    );
   }
 
   // Use appropriate exit codes for different signals
@@ -174,6 +177,9 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error({ src: 'cli', error: error instanceof Error ? error.message : String(error) }, 'An error occurred');
+  logger.error(
+    { src: 'cli', error: error instanceof Error ? error.message : String(error) },
+    'An error occurred'
+  );
   process.exit(1);
 });

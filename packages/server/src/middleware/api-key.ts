@@ -37,7 +37,7 @@ export function apiKeyAuthMiddleware(
     logger.warn(`[API Key] Unauthorized access attempt from ${req.ip}`);
     return res.status(401).json({
       error: 'API key required',
-      message: 'Missing or invalid X-API-KEY header'
+      message: 'Missing or invalid X-API-KEY header',
     });
   }
 

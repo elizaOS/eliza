@@ -18,13 +18,27 @@ export const worldProvider: Provider = {
 
   get: async (runtime: IAgentRuntime, message: Memory) => {
     try {
-      logger.debug({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomId: message.roomId }, 'World provider activated');
+      logger.debug(
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+        },
+        'World provider activated'
+      );
 
       // Get the current room from the message
       const currentRoom = await runtime.getRoom(message.roomId);
 
       if (!currentRoom) {
-        logger.warn({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomId: message.roomId }, 'Room not found');
+        logger.warn(
+          {
+            src: 'plugin:bootstrap:provider:world',
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+          },
+          'Room not found'
+        );
         return {
           data: {
             world: {
@@ -35,13 +49,28 @@ export const worldProvider: Provider = {
         };
       }
 
-      logger.debug({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomName: currentRoom.name, roomType: currentRoom.type }, 'Found room');
+      logger.debug(
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          roomName: currentRoom.name,
+          roomType: currentRoom.type,
+        },
+        'Found room'
+      );
 
       // Get the world for the current room
       const worldId = currentRoom.worldId;
 
       if (!worldId) {
-        logger.warn({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomId: message.roomId }, 'World ID not found');
+        logger.warn(
+          {
+            src: 'plugin:bootstrap:provider:world',
+            agentId: runtime.agentId,
+            roomId: message.roomId,
+          },
+          'World ID not found'
+        );
         return {
           data: {
             world: {
@@ -55,7 +84,10 @@ export const worldProvider: Provider = {
       const world = await runtime.getWorld(worldId);
 
       if (!world) {
-        logger.warn({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, worldId }, 'World not found');
+        logger.warn(
+          { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, worldId },
+          'World not found'
+        );
         return {
           data: {
             world: {
@@ -66,19 +98,37 @@ export const worldProvider: Provider = {
         };
       }
 
-      logger.debug({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, worldName: world.name, worldId: world.id }, 'Found world');
+      logger.debug(
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          worldName: world.name,
+          worldId: world.id,
+        },
+        'Found world'
+      );
 
       // Get all rooms in the current world
       const worldRooms = await runtime.getRooms(worldId);
       logger.debug(
-        { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomCount: worldRooms.length, worldName: world.name },
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          roomCount: worldRooms.length,
+          worldName: world.name,
+        },
         'Found rooms in world'
       );
 
       // Get participants for the current room
       const participants = await runtime.getParticipantsForRoom(message.roomId);
       logger.debug(
-        { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, participantCount: participants.length, roomName: currentRoom.name },
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          participantCount: participants.length,
+          roomName: currentRoom.name,
+        },
         'Found participants in room'
       );
 
@@ -102,7 +152,10 @@ export const worldProvider: Provider = {
       // Categorize rooms by type
       for (const room of worldRooms) {
         if (!room?.id || !room.name) {
-          logger.warn({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomId: room?.id }, 'Room ID or name is missing');
+          logger.warn(
+            { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, roomId: room?.id },
+            'Room ID or name is missing'
+          );
           continue; // Skip if room is null or undefined
         }
         const roomInfo: RoomInfo = {
@@ -185,7 +238,10 @@ export const worldProvider: Provider = {
       // Use addHeader like in entitiesProvider
       const formattedText = addHeader('# World Information', worldInfoText);
 
-      logger.debug({ src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId }, 'World provider completed successfully');
+      logger.debug(
+        { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId },
+        'World provider completed successfully'
+      );
 
       return {
         data,
@@ -194,7 +250,11 @@ export const worldProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        { src: 'plugin:bootstrap:provider:world', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'plugin:bootstrap:provider:world',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error in world provider'
       );
       return {

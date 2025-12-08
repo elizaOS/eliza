@@ -74,14 +74,38 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
   // Overload: returns UUID[] when returnRuntimes is false/undefined
   async addAgents(
-    agents: Array<{ character: Character; plugins?: (Plugin | string)[]; settings?: RuntimeSettings; init?: (runtime: IAgentRuntime) => Promise<void>; databaseAdapter?: IDatabaseAdapter }>,
-    options?: { isTestMode?: boolean; ephemeral?: boolean; skipMigrations?: boolean; autoStart?: boolean; returnRuntimes?: false }
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      settings?: RuntimeSettings;
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+      databaseAdapter?: IDatabaseAdapter;
+    }>,
+    options?: {
+      isTestMode?: boolean;
+      ephemeral?: boolean;
+      skipMigrations?: boolean;
+      autoStart?: boolean;
+      returnRuntimes?: false;
+    }
   ): Promise<UUID[]>;
 
   // Overload: returns IAgentRuntime[] when returnRuntimes is true
   async addAgents(
-    agents: Array<{ character: Character; plugins?: (Plugin | string)[]; settings?: RuntimeSettings; init?: (runtime: IAgentRuntime) => Promise<void>; databaseAdapter?: IDatabaseAdapter }>,
-    options: { isTestMode?: boolean; ephemeral?: boolean; skipMigrations?: boolean; autoStart?: boolean; returnRuntimes: true }
+    agents: Array<{
+      character: Character;
+      plugins?: (Plugin | string)[];
+      settings?: RuntimeSettings;
+      init?: (runtime: IAgentRuntime) => Promise<void>;
+      databaseAdapter?: IDatabaseAdapter;
+    }>,
+    options: {
+      isTestMode?: boolean;
+      ephemeral?: boolean;
+      skipMigrations?: boolean;
+      autoStart?: boolean;
+      returnRuntimes: true;
+    }
   ): Promise<IAgentRuntime[]>;
 
   /**
@@ -146,7 +170,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
       // Filter out plugin-sql if databaseAdapter is provided
       if (agent.databaseAdapter) {
-        resolvedPlugins = resolvedPlugins.filter(p => p.name !== '@elizaos/plugin-sql');
+        resolvedPlugins = resolvedPlugins.filter((p) => p.name !== '@elizaos/plugin-sql');
       }
 
       const runtime = new AgentRuntime({
@@ -512,9 +536,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     };
 
     // 6. Helper to wrap message handling with Entity RLS context if available
-    const handleMessageWithEntityContext = async <T>(
-      handler: () => Promise<T>
-    ): Promise<T> => {
+    const handleMessageWithEntityContext = async <T>(handler: () => Promise<T>): Promise<T> => {
       if (runtime.withEntityContext) {
         return await runtime.withEntityContext(userMessage.entityId, handler);
       } else {

@@ -55,7 +55,14 @@ export const capabilitiesProvider: Provider = {
         text: `# ${runtime.character.name}'s Capabilities\n\n${formattedCapabilities}`,
       };
     } catch (error) {
-      runtime.logger.error({ src: 'plugin:bootstrap:provider:capabilities', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in capabilities provider');
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:provider:capabilities',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in capabilities provider'
+      );
       return {
         text: 'Error retrieving capabilities from services.',
       };

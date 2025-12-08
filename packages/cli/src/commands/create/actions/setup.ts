@@ -47,7 +47,8 @@ export async function setupAIModelConfig(
           content += '# Get your API key by running: elizaos login\n';
           content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
           content += 'ELIZAOS_CLOUD_API_KEY=your_elizaos_cloud_api_key_here\n';
-          content += '# Available models: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash\n';
+          content +=
+            '# Available models: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash\n';
           content += '# ELIZAOS_CLOUD_SMALL_MODEL=gpt-4o-mini\n';
           content += '# ELIZAOS_CLOUD_LARGE_MODEL=gpt-4o\n';
 

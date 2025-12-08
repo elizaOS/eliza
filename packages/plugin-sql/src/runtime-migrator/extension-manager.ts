@@ -11,7 +11,10 @@ export class ExtensionManager {
         // Validate extension name to prevent SQL injection
         // Extension names should only contain alphanumeric characters, underscores, and hyphens
         if (!/^[a-zA-Z0-9_-]+$/.test(extension)) {
-          logger.warn({ src: 'plugin:sql', extension }, 'Invalid extension name - contains invalid characters');
+          logger.warn(
+            { src: 'plugin:sql', extension },
+            'Invalid extension name - contains invalid characters'
+          );
           continue;
         }
 
@@ -20,7 +23,10 @@ export class ExtensionManager {
         logger.debug({ src: 'plugin:sql', extension }, 'Extension installed');
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.warn({ src: 'plugin:sql', extension, error: errorMessage }, 'Could not install extension');
+        logger.warn(
+          { src: 'plugin:sql', extension, error: errorMessage },
+          'Could not install extension'
+        );
         // Some extensions might not be available or already installed
         // This shouldn't stop the migration process
       }

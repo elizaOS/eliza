@@ -57,7 +57,10 @@ export async function validateGitHubToken(token: string): Promise<boolean> {
 
     return false;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Failed to validate GitHub token');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Failed to validate GitHub token'
+    );
     return false;
   }
 }
@@ -99,14 +102,23 @@ export async function forkRepository(
 
     if (response.status === 202) {
       const forkData = (await response.json()) as GitHubRepoResponse;
-      logger.success({ src: 'cli', util: 'github', owner, repo, forkName: forkData.full_name }, 'Forked repository');
+      logger.success(
+        { src: 'cli', util: 'github', owner, repo, forkName: forkData.full_name },
+        'Forked repository'
+      );
       return forkData.full_name;
     }
 
-    logger.error({ src: 'cli', util: 'github', statusText: response.statusText }, 'Failed to fork repository');
+    logger.error(
+      { src: 'cli', util: 'github', statusText: response.statusText },
+      'Failed to fork repository'
+    );
     return null;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Failed to fork repository');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Failed to fork repository'
+    );
     return null;
   }
 }
@@ -158,7 +170,10 @@ export async function createBranch(
 
     // If the requested base branch doesn't exist, try to find an alternative branch
     if (baseResponse.status !== 200) {
-      logger.warn({ src: 'cli', util: 'github', baseBranch }, 'Base branch not found, checking for alternative branches');
+      logger.warn(
+        { src: 'cli', util: 'github', baseBranch },
+        'Base branch not found, checking for alternative branches'
+      );
 
       // List available branches
       const branchesResponse = await fetch(`${GITHUB_API_URL}/repos/${owner}/${repo}/branches`, {
@@ -173,7 +188,10 @@ export async function createBranch(
         if (branches && branches.length > 0) {
           // Use the first available branch as base
           const alternativeBranch = branches[0].name;
-          logger.info({ src: 'cli', util: 'github', alternativeBranch }, 'Using alternative branch as base');
+          logger.info(
+            { src: 'cli', util: 'github', alternativeBranch },
+            'Using alternative branch as base'
+          );
 
           // Try again with the alternative branch
           baseResponse = await fetch(
@@ -187,7 +205,10 @@ export async function createBranch(
           );
         } else {
           // No branches found, could be a fresh fork - create initial empty commit and branch
-          logger.info({ src: 'cli', util: 'github' }, 'No branches found in repository, creating initial commit');
+          logger.info(
+            { src: 'cli', util: 'github' },
+            'No branches found in repository, creating initial commit'
+          );
 
           // Create a blob for empty README
           const blobResponse = await fetch(`${GITHUB_API_URL}/repos/${owner}/${repo}/git/blobs`, {
@@ -300,7 +321,10 @@ export async function createBranch(
     }
 
     if (baseResponse.status !== 200) {
-      logger.error({ src: 'cli', util: 'github', baseBranch, statusText: baseResponse.statusText }, 'Failed to get base branch');
+      logger.error(
+        { src: 'cli', util: 'github', baseBranch, statusText: baseResponse.statusText },
+        'Failed to get base branch'
+      );
       return false;
     }
 
@@ -326,10 +350,16 @@ export async function createBranch(
       return true;
     }
 
-    logger.error({ src: 'cli', util: 'github', statusText: response.statusText }, 'Failed to create branch');
+    logger.error(
+      { src: 'cli', util: 'github', statusText: response.statusText },
+      'Failed to create branch'
+    );
     return false;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Failed to create branch');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Failed to create branch'
+    );
     return false;
   }
 }
@@ -430,18 +460,27 @@ export async function updateFile(
     });
 
     if (response.status === 200 || response.status === 201) {
-      logger.success({ src: 'cli', util: 'github' }, existingContent !== null ? 'File updated' : 'File created');
+      logger.success(
+        { src: 'cli', util: 'github' },
+        existingContent !== null ? 'File updated' : 'File created'
+      );
       return true;
     }
 
     // Log the full error response for debugging
     const errorBody = await response.text();
-    logger.error({ src: 'cli', util: 'github', status: response.status, statusText: response.statusText }, 'Failed to update file');
+    logger.error(
+      { src: 'cli', util: 'github', status: response.status, statusText: response.statusText },
+      'Failed to update file'
+    );
     logger.error({ src: 'cli', util: 'github', errorBody }, 'Response body');
 
     // Check for common GitHub API errors
     if (response.status === 404) {
-      logger.error({ src: 'cli', util: 'github', owner, repo, path }, 'Repository or path not found');
+      logger.error(
+        { src: 'cli', util: 'github', owner, repo, path },
+        'Repository or path not found'
+      );
       // Try to check if the repo exists
       const repoCheck = await fetch(`${GITHUB_API_URL}/repos/${owner}/${repo}`, {
         headers: {
@@ -451,15 +490,24 @@ export async function updateFile(
       });
 
       if (repoCheck.status === 404) {
-        logger.error({ src: 'cli', util: 'github', owner, repo }, 'Repository does not exist or is not accessible');
+        logger.error(
+          { src: 'cli', util: 'github', owner, repo },
+          'Repository does not exist or is not accessible'
+        );
       } else {
-        logger.info({ src: 'cli', util: 'github' }, 'Repository exists, but path is likely invalid');
+        logger.info(
+          { src: 'cli', util: 'github' },
+          'Repository exists, but path is likely invalid'
+        );
       }
     }
 
     return false;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Error updating file');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Error updating file'
+    );
     return false;
   }
 }
@@ -498,10 +546,16 @@ export async function createPullRequest(
       return data.html_url;
     }
 
-    logger.error({ src: 'cli', util: 'github', statusText: response.statusText }, 'Failed to create pull request');
+    logger.error(
+      { src: 'cli', util: 'github', statusText: response.statusText },
+      'Failed to create pull request'
+    );
     return null;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Failed to create pull request');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Failed to create pull request'
+    );
     return null;
   }
 }
@@ -555,7 +609,10 @@ export async function getGitHubCredentials(): Promise<{
         token: envToken,
       };
     }
-    logger.warn({ src: 'cli', util: 'github' }, 'Invalid GitHub token found in environment variables');
+    logger.warn(
+      { src: 'cli', util: 'github' },
+      'Invalid GitHub token found in environment variables'
+    );
   }
 
   // If not in process.env, try to load from .env file
@@ -575,7 +632,10 @@ export async function getGitHubCredentials(): Promise<{
         return { username, token };
       }
     } else {
-      logger.warn({ src: 'cli', util: 'github' }, 'Stored GitHub token is invalid, will prompt for new credentials');
+      logger.warn(
+        { src: 'cli', util: 'github' },
+        'Stored GitHub token is invalid, will prompt for new credentials'
+      );
     }
   }
 
@@ -721,7 +781,10 @@ export async function ensureDirectory(
     // Split repo into owner and repo name for updateFile
     const [owner, repoName] = repo.split('/');
     if (!owner || !repoName) {
-      logger.error({ src: 'cli', util: 'github', repo }, 'Invalid repository format. Expected format: owner/repo');
+      logger.error(
+        { src: 'cli', util: 'github', repo },
+        'Invalid repository format. Expected format: owner/repo'
+      );
       return false;
     }
 
@@ -746,7 +809,10 @@ export async function ensureDirectory(
     logger.error({ src: 'cli', util: 'github', path }, 'Failed to create directory');
     return false;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Error creating directory');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Error creating directory'
+    );
     return false;
   }
 }
@@ -788,7 +854,10 @@ export async function createGitHubRepository(
     // If repo exists, return success
     if (checkResponse.status === 200) {
       const data = await checkResponse.json();
-      logger.info({ src: 'cli', util: 'github', repoUrl: data.html_url }, 'Repository already exists');
+      logger.info(
+        { src: 'cli', util: 'github', repoUrl: data.html_url },
+        'Repository already exists'
+      );
       return { success: true, repoUrl: data.html_url };
     }
 
@@ -894,7 +963,10 @@ export async function pushToGitHub(
     // If git is not initialized or remote doesn't match, start fresh
     if (!gitDirExists || !hasCorrectRemote) {
       if (gitDirExists) {
-        logger.info({ src: 'cli', util: 'github' }, 'Existing git repository has incorrect remote, reinitializing');
+        logger.info(
+          { src: 'cli', util: 'github' },
+          'Existing git repository has incorrect remote, reinitializing'
+        );
         await bunExec('rm', ['-rf', '.git'], { cwd });
       }
 
@@ -905,7 +977,10 @@ export async function pushToGitHub(
 
       // Add remote
       await bunExec('git', ['remote', 'add', 'origin', repoUrl], { cwd });
-      logger.info({ src: 'cli', util: 'github', remote: repoUrl.replace(/\/\/.*?@/, '//***@') }, 'Added remote');
+      logger.info(
+        { src: 'cli', util: 'github', remote: repoUrl.replace(/\/\/.*?@/, '//***@') },
+        'Added remote'
+      );
     } else {
       // Make sure we're on the main branch
       try {
@@ -946,7 +1021,14 @@ export async function pushToGitHub(
       logger.success({ src: 'cli', util: 'github', repoUrl }, 'Pushed to GitHub repository');
       return true;
     } catch (error) {
-      logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Failed to push to GitHub');
+      logger.error(
+        {
+          src: 'cli',
+          util: 'github',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to push to GitHub'
+      );
 
       // Try force pushing if normal push fails
       try {
@@ -957,12 +1039,23 @@ export async function pushToGitHub(
         });
         return true;
       } catch (forcePushError) {
-        logger.error({ src: 'cli', util: 'github', error: forcePushError instanceof Error ? forcePushError.message : String(forcePushError) }, 'Force push also failed');
+        logger.error(
+          {
+            src: 'cli',
+            util: 'github',
+            error:
+              forcePushError instanceof Error ? forcePushError.message : String(forcePushError),
+          },
+          'Force push also failed'
+        );
         return false;
       }
     }
   } catch (error) {
-    logger.error({ src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) }, 'Error in git operations');
+    logger.error(
+      { src: 'cli', util: 'github', error: error instanceof Error ? error.message : String(error) },
+      'Error in git operations'
+    );
     return false;
   }
 }

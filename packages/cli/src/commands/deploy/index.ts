@@ -66,7 +66,10 @@ export const deploy = new Command()
         options.desiredCount &&
         (isNaN(options.desiredCount) || options.desiredCount < 1 || options.desiredCount > 10)
       ) {
-        logger.error({ src: 'cli', command: 'deploy', desiredCount: options.desiredCount }, 'Invalid desired count');
+        logger.error(
+          { src: 'cli', command: 'deploy', desiredCount: options.desiredCount },
+          'Invalid desired count'
+        );
         process.exit(1);
       }
 
@@ -79,7 +82,10 @@ export const deploy = new Command()
         options.memory &&
         (isNaN(options.memory) || options.memory < 512 || options.memory > 2048)
       ) {
-        logger.error({ src: 'cli', command: 'deploy', memory: options.memory }, 'Invalid memory value');
+        logger.error(
+          { src: 'cli', command: 'deploy', memory: options.memory },
+          'Invalid memory value'
+        );
         process.exit(1);
       }
 
@@ -93,15 +99,24 @@ export const deploy = new Command()
       logger.success({ src: 'cli', command: 'deploy' }, 'Deployment completed');
 
       if (result.containerId) {
-        logger.info({ src: 'cli', command: 'deploy', containerId: result.containerId }, 'Container created');
+        logger.info(
+          { src: 'cli', command: 'deploy', containerId: result.containerId },
+          'Container created'
+        );
       }
 
       if (result.serviceArn) {
-        logger.info({ src: 'cli', command: 'deploy', serviceArn: result.serviceArn }, 'ECS Service');
+        logger.info(
+          { src: 'cli', command: 'deploy', serviceArn: result.serviceArn },
+          'ECS Service'
+        );
       }
 
       if (result.taskDefinitionArn) {
-        logger.info({ src: 'cli', command: 'deploy', taskDefinitionArn: result.taskDefinitionArn }, 'Task Definition');
+        logger.info(
+          { src: 'cli', command: 'deploy', taskDefinitionArn: result.taskDefinitionArn },
+          'Task Definition'
+        );
       }
 
       if (result.url) {

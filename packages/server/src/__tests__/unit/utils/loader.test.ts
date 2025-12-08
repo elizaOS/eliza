@@ -36,11 +36,9 @@ describe('Loader Functions', () => {
       const mockCharacter = {
         name: 'Test Character',
         id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-        bio: ['Test character biography']
+        bio: ['Test character biography'],
       };
-      fetchSpy.mockResolvedValueOnce(
-        createMockFetchResponse({ data: mockCharacter })
-      );
+      fetchSpy.mockResolvedValueOnce(createMockFetchResponse({ data: mockCharacter }));
 
       const result = await loadCharactersFromUrl('https://example.com/character.json');
 
@@ -54,9 +52,7 @@ describe('Loader Functions', () => {
         { name: 'Character 1', id: '123e4567-e89b-12d3-a456-426614174001' as UUID, bio: ['Bio 1'] },
         { name: 'Character 2', id: '123e4567-e89b-12d3-a456-426614174002' as UUID, bio: ['Bio 2'] },
       ];
-      fetchSpy.mockResolvedValueOnce(
-        createMockFetchResponse({ data: mockCharacters })
-      );
+      fetchSpy.mockResolvedValueOnce(createMockFetchResponse({ data: mockCharacters }));
 
       const result = await loadCharactersFromUrl(TEST_MULTI_CHARACTER_URL);
 
@@ -99,7 +95,7 @@ describe('Loader Functions', () => {
       const character = {
         name: 'Test',
         id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-        bio: ['Test bio']
+        bio: ['Test bio'],
       };
 
       const result = await jsonToCharacter(character);
@@ -112,7 +108,7 @@ describe('Loader Functions', () => {
       const character = {
         name: 'Test Character',
         id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-        bio: ['Test character bio']
+        bio: ['Test character bio'],
       };
       // The function only replaces spaces with underscores, not hyphens
       process.env['CHARACTER.TEST_CHARACTER.API_KEY'] = 'secret-key';
@@ -142,7 +138,7 @@ describe('Loader Functions', () => {
     it('should handle character without id using name', async () => {
       const character = {
         name: 'Test Name',
-        bio: ['Test character with auto-generated ID']
+        bio: ['Test character with auto-generated ID'],
       };
       process.env['CHARACTER.TEST_NAME.API_KEY'] = 'secret-key';
 
@@ -156,7 +152,7 @@ describe('Loader Functions', () => {
       const character = {
         name: 'Test Character',
         id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
-        bio: ['Test bio']
+        bio: ['Test bio'],
       };
       // No environment variables set for this character
 
@@ -220,5 +216,4 @@ describe('Loader Functions', () => {
       expect(hasValidRemoteUrls()).toBeFalsy();
     });
   });
-
 });

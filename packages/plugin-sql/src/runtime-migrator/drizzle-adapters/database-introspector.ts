@@ -153,7 +153,10 @@ export class DatabaseIntrospector {
       enums[key].values.push(enumInfo.value);
     }
 
-    logger.info({ src: 'plugin:sql', tableCount: Object.keys(tables).length }, 'Database introspection complete');
+    logger.info(
+      { src: 'plugin:sql', tableCount: Object.keys(tables).length },
+      'Database introspection complete'
+    );
 
     return {
       version: '7',

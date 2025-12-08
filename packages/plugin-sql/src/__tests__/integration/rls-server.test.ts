@@ -20,7 +20,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Server Integration', 
   let userClient1: Client;
   let userClient2: Client;
 
-  const POSTGRES_URL = process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/eliza';
+  const POSTGRES_URL =
+    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/eliza';
   const server1Id = uuidv4();
   const server2Id = uuidv4();
 
@@ -62,17 +63,22 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Server Integration', 
     await userClient2.connect();
 
     // Create servers
-    await adminClient.query(`
+    await adminClient.query(
+      `
       INSERT INTO servers (id, created_at, updated_at)
       VALUES ($1, NOW(), NOW()), ($2, NOW(), NOW())
       ON CONFLICT (id) DO NOTHING
-    `, [server1Id, server2Id]);
+    `,
+      [server1Id, server2Id]
+    );
   });
 
   afterAll(async () => {
     // Cleanup
     try {
-      await adminClient.query(`DELETE FROM agents WHERE username IN ('rls_test_server1', 'rls_test_server2')`);
+      await adminClient.query(
+        `DELETE FROM agents WHERE username IN ('rls_test_server1', 'rls_test_server2')`
+      );
       await adminClient.query(`DELETE FROM servers WHERE id IN ($1, $2)`, [server1Id, server2Id]);
     } catch (err) {
       console.warn('Cleanup error:', err);
@@ -88,16 +94,22 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Server Integration', 
     const agent2Id = uuidv4();
 
     // Server 1 creates an agent
-    await userClient1.query(`
+    await userClient1.query(
+      `
       INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
       VALUES ($1, 'Agent Server 1', 'rls_test_server1', $2, NOW(), NOW())
-    `, [agent1Id, server1Id]);
+    `,
+      [agent1Id, server1Id]
+    );
 
     // Server 2 creates an agent
-    await userClient2.query(`
+    await userClient2.query(
+      `
       INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
       VALUES ($1, 'Agent Server 2', 'rls_test_server2', $2, NOW(), NOW())
-    `, [agent2Id, server2Id]);
+    `,
+      [agent2Id, server2Id]
+    );
 
     // Server 1 should only see its own agent
     const result1 = await userClient1.query(`

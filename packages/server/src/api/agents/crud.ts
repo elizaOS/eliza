@@ -49,7 +49,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, { agents: response });
     } catch (error) {
       logger.error({ src: 'http', error }, 'Error retrieving agents');
-      sendError(res, 500, '500', 'Error retrieving agents', error instanceof Error ? error.message : String(error));
+      sendError(
+        res,
+        500,
+        '500',
+        'Error retrieving agents',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -78,7 +84,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, response);
     } catch (error) {
       logger.error({ src: 'http', error, agentId }, 'Error retrieving agent');
-      sendError(res, 500, '500', 'Error retrieving agent', error instanceof Error ? error.message : String(error));
+      sendError(
+        res,
+        500,
+        '500',
+        'Error retrieving agent',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -141,7 +153,10 @@ export function createAgentCrudRouter(
           character: character,
         },
       });
-      logger.success({ src: 'http', agentId: newAgent.id, agentName: character.name }, 'Agent created');
+      logger.success(
+        { src: 'http', agentId: newAgent.id, agentName: character.name },
+        'Agent created'
+      );
     } catch (error) {
       logger.error({ src: 'http', error }, 'Error creating agent');
       res.status(400).json({
@@ -247,7 +262,10 @@ export function createAgentCrudRouter(
               ]);
               logger.warn({ src: 'http', agentId }, 'Restored agent to previous state');
             } catch (restoreError) {
-              logger.error({ src: 'http', error: restoreError, agentId }, 'Failed to restore agent - may be in broken state');
+              logger.error(
+                { src: 'http', error: restoreError, agentId },
+                'Failed to restore agent - may be in broken state'
+              );
             }
 
             throw restartError;
@@ -265,7 +283,13 @@ export function createAgentCrudRouter(
       sendSuccess(res, { ...updatedAgent, status });
     } catch (error) {
       logger.error({ src: 'http', error, agentId }, 'Error updating agent');
-      sendError(res, 500, 'UPDATE_ERROR', 'Error updating agent', error instanceof Error ? error.message : String(error));
+      sendError(
+        res,
+        500,
+        'UPDATE_ERROR',
+        'Error updating agent',
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
 
@@ -329,7 +353,10 @@ export function createAgentCrudRouter(
         lastError = error;
         retryCount++;
 
-        logger.error({ src: 'http', error, agentId, attempt: retryCount, maxRetries: MAX_RETRIES + 1 }, 'Error deleting agent');
+        logger.error(
+          { src: 'http', error, agentId, attempt: retryCount, maxRetries: MAX_RETRIES + 1 },
+          'Error deleting agent'
+        );
 
         if (retryCount > MAX_RETRIES) {
           break;
