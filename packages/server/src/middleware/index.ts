@@ -19,6 +19,7 @@ export { securityMiddleware } from './security';
 // Rate limiting middleware
 export {
   createApiRateLimit,
+  createAuthRateLimit,
   createFileSystemRateLimit,
   createUploadRateLimit,
   createChannelValidationRateLimit,

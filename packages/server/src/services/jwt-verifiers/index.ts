@@ -10,7 +10,7 @@
  * The factory automatically selects the appropriate verifier based on environment variables.
  */
 
-export * from './base';
+export type { IJWTVerifier, JWTVerificationResult } from '../../types/jwt';
 export * from './ed25519-verifier';
 export * from './jwks-verifier';
 export * from './secret-verifier';

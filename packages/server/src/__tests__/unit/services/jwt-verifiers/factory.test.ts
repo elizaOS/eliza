@@ -3,10 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, spyOn } from 'bun:test';
-import { JWTVerifierFactory } from '../../../../services/jwt-verifiers/factory';
-import { Ed25519Verifier } from '../../../../services/jwt-verifiers/ed25519-verifier';
-import { JWKSVerifier } from '../../../../services/jwt-verifiers/jwks-verifier';
-import { SecretVerifier } from '../../../../services/jwt-verifiers/secret-verifier';
+import { JWTVerifierFactory, createJWTVerifier, getJWTConfigStatus } from '../../../../services/jwt-verifiers/factory';
 import { logger } from '@elizaos/core';
 import { generateKeyPair, exportSPKI } from 'jose';
 
@@ -46,7 +43,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(Ed25519Verifier);
+        expect(verifier).not.toBeNull();
         expect(verifier?.getName()).toBe('Ed25519');
       });
 
@@ -55,7 +52,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(Ed25519Verifier);
+        expect(verifier).not.toBeNull();
         expect(verifier?.getName()).toBe('Ed25519');
       });
 
@@ -65,8 +62,8 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(Ed25519Verifier);
-        // The key should be from PRIVY_VERIFICATION_KEY
+        expect(verifier).not.toBeNull();
+        expect(verifier?.getName()).toBe('Ed25519');
       });
 
       it('should prioritize Ed25519 over JWKS', () => {
@@ -75,8 +72,8 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(Ed25519Verifier);
-        expect(verifier).not.toBeInstanceOf(JWKSVerifier);
+        expect(verifier?.getName()).toBe('Ed25519');
+        expect(verifier?.getName()).not.toBe('JWKS');
       });
 
       it('should prioritize Ed25519 over Secret', () => {
@@ -85,8 +82,8 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(Ed25519Verifier);
-        expect(verifier).not.toBeInstanceOf(SecretVerifier);
+        expect(verifier?.getName()).toBe('Ed25519');
+        expect(verifier?.getName()).not.toBe('Secret');
       });
     });
 
@@ -96,7 +93,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
+        expect(verifier).not.toBeNull();
         expect(verifier?.getName()).toBe('JWKS');
       });
 
@@ -106,8 +103,8 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
-        expect(verifier).not.toBeInstanceOf(SecretVerifier);
+        expect(verifier?.getName()).toBe('JWKS');
+        expect(verifier?.getName()).not.toBe('Secret');
       });
 
       it('should support Auth0 JWKS URI', () => {
@@ -115,7 +112,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
+        expect(verifier?.getName()).toBe('JWKS');
       });
 
       it('should support Clerk JWKS URI', () => {
@@ -123,7 +120,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
+        expect(verifier?.getName()).toBe('JWKS');
       });
 
       it('should support Supabase JWKS URI', () => {
@@ -131,7 +128,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
+        expect(verifier?.getName()).toBe('JWKS');
       });
 
       it('should support Google JWKS URI', () => {
@@ -139,7 +136,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(JWKSVerifier);
+        expect(verifier?.getName()).toBe('JWKS');
       });
     });
 
@@ -149,7 +146,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(SecretVerifier);
+        expect(verifier).not.toBeNull();
         expect(verifier?.getName()).toBe('Secret');
       });
 
@@ -158,7 +155,7 @@ describe('JWTVerifierFactory', () => {
 
         const verifier = JWTVerifierFactory.create();
 
-        expect(verifier).toBeInstanceOf(SecretVerifier);
+        expect(verifier?.getName()).toBe('Secret');
       });
     });
 
@@ -257,7 +254,7 @@ describe('JWTVerifierFactory', () => {
       const verifier = JWTVerifierFactory.create();
       const status = JWTVerifierFactory.getConfigStatus();
 
-      expect(verifier).toBeInstanceOf(Ed25519Verifier);
+      expect(verifier?.getName()).toBe('Ed25519');
       expect(status.method).toBe('ed25519');
       expect(status.details).toContain('PRIVY_VERIFICATION_KEY');
     });
@@ -268,7 +265,7 @@ describe('JWTVerifierFactory', () => {
       const verifier = JWTVerifierFactory.create();
       const status = JWTVerifierFactory.getConfigStatus();
 
-      expect(verifier).toBeInstanceOf(JWKSVerifier);
+      expect(verifier?.getName()).toBe('JWKS');
       expect(status.method).toBe('jwks');
       expect(status.details).toContain('my-app.auth0.com');
     });
@@ -279,7 +276,7 @@ describe('JWTVerifierFactory', () => {
       const verifier = JWTVerifierFactory.create();
       const status = JWTVerifierFactory.getConfigStatus();
 
-      expect(verifier).toBeInstanceOf(JWKSVerifier);
+      expect(verifier?.getName()).toBe('JWKS');
       expect(status.method).toBe('jwks');
     });
 
@@ -289,7 +286,7 @@ describe('JWTVerifierFactory', () => {
       const verifier = JWTVerifierFactory.create();
       const status = JWTVerifierFactory.getConfigStatus();
 
-      expect(verifier).toBeInstanceOf(SecretVerifier);
+      expect(verifier?.getName()).toBe('Secret');
       expect(status.method).toBe('secret');
     });
 
@@ -312,7 +309,7 @@ describe('JWTVerifierFactory', () => {
       const verifier = JWTVerifierFactory.create();
 
       // Whitespace-only is truthy, so it will create verifier
-      expect(verifier).toBeInstanceOf(SecretVerifier);
+      expect(verifier?.getName()).toBe('Secret');
     });
 
     it('should handle multiline PRIVY_VERIFICATION_KEY', () => {
@@ -320,7 +317,7 @@ describe('JWTVerifierFactory', () => {
 
       const verifier = JWTVerifierFactory.create();
 
-      expect(verifier).toBeInstanceOf(Ed25519Verifier);
+      expect(verifier?.getName()).toBe('Ed25519');
     });
 
     it('should handle JWKS URI with query parameters', () => {
@@ -328,7 +325,7 @@ describe('JWTVerifierFactory', () => {
 
       const verifier = JWTVerifierFactory.create();
 
-      expect(verifier).toBeInstanceOf(JWKSVerifier);
+      expect(verifier?.getName()).toBe('JWKS');
     });
   });
 
@@ -339,8 +336,8 @@ describe('JWTVerifierFactory', () => {
       const verifier1 = JWTVerifierFactory.create();
       const verifier2 = JWTVerifierFactory.create();
 
-      expect(verifier1).toBeInstanceOf(Ed25519Verifier);
-      expect(verifier2).toBeInstanceOf(Ed25519Verifier);
+      expect(verifier1?.getName()).toBe('Ed25519');
+      expect(verifier2?.getName()).toBe('Ed25519');
       // Note: These will be different instances, not the same object
       expect(verifier1).not.toBe(verifier2);
     });
@@ -354,6 +351,25 @@ describe('JWTVerifierFactory', () => {
       expect(status1).toEqual(status2);
       expect(status1.method).toBe('jwks');
       expect(status2.method).toBe('jwks');
+    });
+  });
+
+  describe('Functional API', () => {
+    it('createJWTVerifier should work like JWTVerifierFactory.create', () => {
+      process.env.JWT_SECRET = 'test-secret';
+
+      const verifier = createJWTVerifier();
+
+      expect(verifier?.getName()).toBe('Secret');
+    });
+
+    it('getJWTConfigStatus should work like JWTVerifierFactory.getConfigStatus', () => {
+      process.env.JWT_JWKS_URI = 'https://test.com/.well-known/jwks.json';
+
+      const status = getJWTConfigStatus();
+
+      expect(status.method).toBe('jwks');
+      expect(status.configured).toBe(true);
     });
   });
 });

@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger, stringToUuid, type UUID } from '@elizaos/core';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
+import { createAuthRateLimit } from '../../middleware/rate-limit';
 
 /**
  * Generate JWT token for authenticated user.
@@ -40,11 +41,12 @@ async function generateAuthToken(username: string, email: string): Promise<strin
 export function createAuthCredentialsRouter(serverInstance: AgentServer): Router {
   const router = Router();
   const db = serverInstance.database;
+  const authRateLimit = createAuthRateLimit();
 
   /**
    * POST /api/auth/register
    */
-  router.post('/register', async (req, res) => {
+  router.post('/register', authRateLimit, async (req, res) => {
     const { email, username, password } = req.body;
 
     if (!email || !email.includes('@')) {
@@ -95,7 +97,7 @@ export function createAuthCredentialsRouter(serverInstance: AgentServer): Router
   /**
    * POST /api/auth/login
    */
-  router.post('/login', async (req, res) => {
+  router.post('/login', authRateLimit, async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {

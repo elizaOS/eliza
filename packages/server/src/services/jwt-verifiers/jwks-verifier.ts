@@ -1,54 +1,65 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { logger, stringToUuid, type UUID } from '@elizaos/core';
-import type { IJWTVerifier, JWTVerificationResult } from './base';
+import type { IJWTVerifier, JWTVerificationResult } from '../../types/jwt';
+import { validateIssuer } from './issuer-validation';
 
 /**
- * JWKS (JSON Web Key Set) Verifier using jose library
+ * Create a JWKS (JSON Web Key Set) Verifier using jose library
  *
  * Supports any provider that exposes a JWKS endpoint:
  * - Auth0, Clerk, Supabase, Google, any OIDC provider
  */
+export function createJWKSVerifier(jwksUri: string): IJWTVerifier {
+  const jwks = createRemoteJWKSet(new URL(jwksUri));
+
+  return {
+    async verify(token: string): Promise<JWTVerificationResult> {
+      try {
+        const { payload } = await jwtVerify(token, jwks);
+
+        const sub = payload.sub;
+        if (!sub) {
+          throw new Error('JWT missing required claim: sub');
+        }
+
+        validateIssuer(payload.iss);
+
+        const entityId = stringToUuid(sub) as UUID;
+
+        return { entityId, sub, payload };
+      } catch (error: any) {
+        logger.error({ src: 'http', error: error.message }, 'JWKS JWT verification failed');
+        throw new Error(`JWT verification failed: ${error.message}`);
+      }
+    },
+
+    getName(): string {
+      return 'JWKS';
+    },
+
+    isConfigured(): boolean {
+      return !!jwksUri;
+    },
+  };
+}
+
+// Backwards compatibility - deprecated, use createJWKSVerifier instead
 export class JWKSVerifier implements IJWTVerifier {
-  private jwks: ReturnType<typeof createRemoteJWKSet>;
-  private jwksUri: string;
+  private verifier: IJWTVerifier;
 
   constructor(jwksUri: string) {
-    this.jwksUri = jwksUri;
-    this.jwks = createRemoteJWKSet(new URL(jwksUri));
+    this.verifier = createJWKSVerifier(jwksUri);
   }
 
-  async verify(token: string): Promise<JWTVerificationResult> {
-    try {
-      const { payload } = await jwtVerify(token, this.jwks);
-
-      const sub = payload.sub;
-      if (!sub) {
-        throw new Error('JWT missing required claim: sub');
-      }
-
-      // Optional: Validate issuer whitelist
-      const issuerWhitelist = process.env.JWT_ISSUER_WHITELIST;
-      if (issuerWhitelist && issuerWhitelist !== '*') {
-        const allowedIssuers = issuerWhitelist.split(',').map((iss) => iss.trim());
-        if (payload.iss && !allowedIssuers.includes(payload.iss)) {
-          throw new Error(`Untrusted issuer: ${payload.iss}`);
-        }
-      }
-
-      const entityId = stringToUuid(sub) as UUID;
-
-      return { entityId, sub, payload };
-    } catch (error: any) {
-      logger.error({ src: 'http', error: error.message }, 'JWKS JWT verification failed');
-      throw new Error(`JWT verification failed: ${error.message}`);
-    }
+  verify(token: string): Promise<JWTVerificationResult> {
+    return this.verifier.verify(token);
   }
 
   getName(): string {
-    return 'JWKS';
+    return this.verifier.getName();
   }
 
   isConfigured(): boolean {
-    return !!this.jwksUri;
+    return this.verifier.isConfigured();
   }
 }

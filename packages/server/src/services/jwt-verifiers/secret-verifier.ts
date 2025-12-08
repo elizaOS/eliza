@@ -1,53 +1,66 @@
 import { jwtVerify } from 'jose';
 import { logger, stringToUuid, type UUID } from '@elizaos/core';
-import type { IJWTVerifier, JWTVerificationResult } from './base';
+import type { IJWTVerifier, JWTVerificationResult } from '../../types/jwt';
+import { validateIssuer } from './issuer-validation';
 
 /**
- * Shared Secret Verifier using jose library
+ * Create a Shared Secret Verifier using jose library
  *
  * For self-signed JWT tokens using HMAC (symmetric) algorithms.
  */
+export function createSecretVerifier(secret: string): IJWTVerifier {
+  const secretBytes = new TextEncoder().encode(secret);
+
+  return {
+    async verify(token: string): Promise<JWTVerificationResult> {
+      try {
+        const { payload } = await jwtVerify(token, secretBytes, {
+          algorithms: ['HS256', 'HS384', 'HS512'],
+        });
+
+        const sub = payload.sub;
+        if (!sub) {
+          throw new Error('JWT missing required claim: sub');
+        }
+
+        validateIssuer(payload.iss);
+
+        const entityId = stringToUuid(sub) as UUID;
+
+        return { entityId, sub, payload };
+      } catch (error: any) {
+        logger.error({ src: 'http', error: error.message }, 'Secret JWT verification failed');
+        throw new Error(`JWT verification failed: ${error.message}`);
+      }
+    },
+
+    getName(): string {
+      return 'Secret';
+    },
+
+    isConfigured(): boolean {
+      return !!secret;
+    },
+  };
+}
+
+// Backwards compatibility - deprecated, use createSecretVerifier instead
 export class SecretVerifier implements IJWTVerifier {
-  private secret: Uint8Array;
+  private verifier: IJWTVerifier;
 
   constructor(secret: string) {
-    this.secret = new TextEncoder().encode(secret);
+    this.verifier = createSecretVerifier(secret);
   }
 
-  async verify(token: string): Promise<JWTVerificationResult> {
-    try {
-      const { payload } = await jwtVerify(token, this.secret, {
-        algorithms: ['HS256', 'HS384', 'HS512'],
-      });
-
-      const sub = payload.sub;
-      if (!sub) {
-        throw new Error('JWT missing required claim: sub');
-      }
-
-      // Optional: Validate issuer whitelist
-      const issuerWhitelist = process.env.JWT_ISSUER_WHITELIST;
-      if (issuerWhitelist && issuerWhitelist !== '*') {
-        const allowedIssuers = issuerWhitelist.split(',').map((iss) => iss.trim());
-        if (payload.iss && !allowedIssuers.includes(payload.iss)) {
-          throw new Error(`Untrusted issuer: ${payload.iss}`);
-        }
-      }
-
-      const entityId = stringToUuid(sub) as UUID;
-
-      return { entityId, sub, payload };
-    } catch (error: any) {
-      logger.error({ src: 'http', error: error.message }, 'Secret JWT verification failed');
-      throw new Error(`JWT verification failed: ${error.message}`);
-    }
+  verify(token: string): Promise<JWTVerificationResult> {
+    return this.verifier.verify(token);
   }
 
   getName(): string {
-    return 'Secret';
+    return this.verifier.getName();
   }
 
   isConfigured(): boolean {
-    return !!this.secret;
+    return this.verifier.isConfigured();
   }
 }
