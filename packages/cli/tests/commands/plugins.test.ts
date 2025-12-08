@@ -9,7 +9,7 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 
 const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 
-describe('ElizaOS Plugin Commands', () => {
+describe('ElizaOS Plugin Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let projectDir: string;
   let originalCwd: string;
@@ -53,7 +53,7 @@ describe('ElizaOS Plugin Commands', () => {
       console.warn('Failed to install dependencies, continuing with tests...', error);
       // Don't fail the test setup if bun install fails - plugins should still be testable
     }
-  });
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT);
 
   beforeEach(() => {
     // Ensure we're in the project directory for each test
@@ -72,7 +72,7 @@ describe('ElizaOS Plugin Commands', () => {
         // Ignore cleanup errors
       }
     }
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
