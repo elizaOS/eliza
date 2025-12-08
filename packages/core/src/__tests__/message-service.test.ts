@@ -68,11 +68,26 @@ describe('DefaultMessageService', () => {
       })),
       useModel: mock(async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
         if (modelType === ModelType.TEXT_SMALL) {
-          // Response for shouldRespond check
-          return '<shouldRespond>true</shouldRespond><reason>User asked a question</reason>';
+          // Response for shouldRespond check (no streaming)
+          return '<response><action>REPLY</action><reason>User asked a question</reason></response>';
         }
-        // Response for message handler
-        return '<thought>Processing message</thought><actions>REPLY</actions><text>Hello! How can I help you?</text>';
+        // Response for message handler - now with streaming support
+        // Must include <response> wrapper for parseKeyValueXml to work
+        const responseText =
+          '<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>';
+        if (params?.stream) {
+          // Return TextStreamResult for streaming - simulate chunked response
+          return {
+            textStream: (async function* () {
+              // Yield in chunks to simulate real streaming
+              yield '<response><thought>Processing message</thought>';
+              yield '<actions>REPLY</actions><providers></providers>';
+              yield '<text>Hello! How can I help you?</text></response>';
+            })(),
+            text: responseText,
+          };
+        }
+        return responseText;
       }),
       processActions: mock(async () => {}),
       evaluate: mock(async () => {}),

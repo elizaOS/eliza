@@ -26,6 +26,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
   router.post('/submit', async (req: express.Request, res: express.Response) => {
     const {
+      messageId,
       channel_id,
       message_server_id, // UUID of message_servers
       author_id, // This should be the agent's runtime.agentId or a dedicated central ID for the agent
@@ -67,8 +68,14 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       });
     }
 
+    // Validate messageId if provided (for streaming coordination)
+    if (messageId && !validateUuid(messageId)) {
+      return res.status(400).json({ success: false, error: 'Invalid messageId format' });
+    }
+
     try {
       const newRootMessageData = {
+        messageId: messageId ? validateUuid(messageId) : undefined,
         channelId: validateUuid(channel_id)!,
         authorId: validateUuid(author_id)!,
         content: content as string,
@@ -87,6 +94,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
         metadata?.attachments ?? raw_message?.attachments
       );
 
+      // Use provided messageId for streaming coordination, or fall back to DB-generated ID
+      const broadcastId = messageId || createdMessage.id;
+
       // Emit to SocketIO for real-time GUI updates
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(channel_id).emit('messageBroadcast', {
@@ -97,7 +107,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           serverId: message_server_id, // Client layer uses serverId (message_server_id)
           createdAt: new Date(createdMessage.createdAt).getTime(),
           source: createdMessage.sourceType,
-          id: createdMessage.id, // Central message ID
+          id: broadcastId, // Use streaming messageId for coordination
           thought: raw_message?.thought,
           actions: raw_message?.actions,
           attachments: transformedAttachments,

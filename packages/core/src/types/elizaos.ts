@@ -1,12 +1,61 @@
 import type { UUID, Content } from './primitives';
 import type { Memory } from './memory';
 import type { IAgentRuntime } from './runtime';
-import type { MessageProcessingResult } from '../services/message-service';
+import type { Character } from './agent';
+import type { State } from './state';
+import type { MessageProcessingOptions, MessageProcessingResult } from '../services/message-service';
 
 /**
- * Options for sending a message to an agent
+ * Batch operation for sending messages
  */
-export interface SendMessageOptions {
+export interface BatchOperation {
+  agentId: UUID;
+  operation: 'message' | 'action' | 'evaluate';
+  payload: any;
+}
+
+/**
+ * Result of a batch operation
+ */
+export interface BatchResult {
+  agentId: UUID;
+  success: boolean;
+  result?: any;
+  error?: Error;
+}
+
+/**
+ * Read-only runtime accessor
+ */
+export interface ReadonlyRuntime {
+  getAgent(id: UUID): IAgentRuntime | undefined;
+  getAgents(): IAgentRuntime[];
+  getState(agentId: UUID): State | undefined;
+}
+
+/**
+ * Health status for an agent
+ */
+export interface HealthStatus {
+  alive: boolean;
+  responsive: boolean;
+  memoryUsage?: number;
+  uptime?: number;
+}
+
+/**
+ * Update operation for an agent
+ */
+export interface AgentUpdate {
+  id: UUID;
+  character: Partial<Character>;
+}
+
+/**
+ * Options for sending a message to an agent.
+ * Extends MessageProcessingOptions with orchestration callbacks for async mode.
+ */
+export interface SendMessageOptions extends MessageProcessingOptions {
   /**
    * Called when the agent generates a response (ASYNC MODE)
    * If provided, method returns immediately (fire & forget)
@@ -25,26 +74,6 @@ export interface SendMessageOptions {
    * Called when processing is complete
    */
   onComplete?: () => Promise<void>;
-
-  /**
-   * Maximum number of retries for failed messages
-   */
-  maxRetries?: number;
-
-  /**
-   * Timeout duration in milliseconds
-   */
-  timeoutDuration?: number;
-
-  /**
-   * Enable multi-step message processing
-   */
-  useMultiStep?: boolean;
-
-  /**
-   * Maximum multi-step iterations
-   */
-  maxMultiStepIterations?: number;
 }
 
 /**

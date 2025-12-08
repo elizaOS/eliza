@@ -673,14 +673,30 @@ export class MessageBusService extends Service {
           },
         },
         {
+          onStreamChunk: async (chunk: string, messageId: UUID) => {
+            // Emit stream chunk to internal bus for Socket.IO broadcast
+            const room = await this.runtime.getRoom(agentRoomId);
+            const channelId = room?.channelId;
+            if (channelId) {
+              internalMessageBus.emit('stream_chunk', {
+                channelId,
+                messageId,
+                chunk,
+                agentId: this.runtime.agentId,
+              });
+            }
+          },
           onResponse: async (responseContent: Content) => {
             logger.info(
               { src: 'service:message-bus', agentId: this.runtime.agentId },
               'Agent generated response, sending to bus'
             );
 
+            const messageId = (responseContent as any).messageId as UUID | undefined;
+
             await this.runtime.createMemory(
               {
+                id: messageId,
                 entityId: this.runtime.agentId,
                 content: responseContent,
                 roomId: agentRoomId,
@@ -882,7 +898,10 @@ export class MessageBusService extends Service {
         }
       }
 
+      const messageId = (content as any).messageId as UUID | undefined;
+
       const payloadToServer = {
+        messageId,
         channel_id: channelId,
         message_server_id: messageServerId,
         author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
