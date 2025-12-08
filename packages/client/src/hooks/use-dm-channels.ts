@@ -145,7 +145,7 @@ export function useCreateDmChannel() {
     mutationFn: async ({
       agentId,
       channelName,
-      messageServerId = '00000000-0000-0000-0000-000000000000' as UUID
+      messageServerId = '00000000-0000-0000-0000-000000000000' as UUID,
     }: {
       agentId: UUID;
       channelName: string;
@@ -187,7 +187,9 @@ export function useCreateDmChannel() {
       });
       // Invalidate queries to refresh the DM channel list for this agent
       // Include serverId in the invalidation to match the query key
-      queryClient.invalidateQueries({ queryKey: ['dmChannels', variables.agentId, currentUserId, variables.messageServerId] });
+      queryClient.invalidateQueries({
+        queryKey: ['dmChannels', variables.agentId, currentUserId, variables.messageServerId],
+      });
       // Also invalidate general channels list if it might show DMs (though less likely)
       queryClient.invalidateQueries({ queryKey: ['channels'] });
     },

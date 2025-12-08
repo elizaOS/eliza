@@ -229,7 +229,12 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        { src: 'http', ip: '192.168.1.100', url: '/api/test/../../../etc/passwd', pattern: 'Path traversal' },
+        {
+          src: 'http',
+          ip: '192.168.1.100',
+          url: '/api/test/../../../etc/passwd',
+          pattern: 'Path traversal',
+        },
         'Suspicious pattern detected'
       );
       expect(next).toHaveBeenCalled();

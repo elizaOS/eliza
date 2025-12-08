@@ -79,7 +79,10 @@ export class CloudApiClient {
    */
   private handleApiError(operation: string, error: unknown): CloudApiErrorResponse {
     const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-    logger.error({ src: 'cli', util: 'api-client', operation, error: errorMessage }, 'API operation failed');
+    logger.error(
+      { src: 'cli', util: 'api-client', operation, error: errorMessage },
+      'API operation failed'
+    );
 
     return {
       success: false,
@@ -229,7 +232,10 @@ export class CloudApiClient {
       return await response.json();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown API error';
-      logger.error({ src: 'cli', util: 'api-client', error: errorMessage }, 'Failed to delete container');
+      logger.error(
+        { src: 'cli', util: 'api-client', error: errorMessage },
+        'Failed to delete container'
+      );
       return {
         success: false,
         error: errorMessage,
@@ -343,7 +349,10 @@ export class CloudApiClient {
       }
 
       logger.info({ src: 'cli', util: 'api-client' }, 'Received ECR credentials');
-      logger.info({ src: 'cli', util: 'api-client', ecrRepositoryUri: data.data.ecrRepositoryUri }, 'ECR repository');
+      logger.info(
+        { src: 'cli', util: 'api-client', ecrRepositoryUri: data.data.ecrRepositoryUri },
+        'ECR repository'
+      );
       return data;
     } catch (error: unknown) {
       return this.handleApiError('request image build credentials', error);
@@ -358,7 +367,7 @@ export function getApiCredentials(): {
   apiKey: string;
   apiUrl: string;
 } | null {
-  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZA_CLOUD_API_KEY;
+  const apiKey = process.env.ELIZAOS_API_KEY || process.env.ELIZAOS_CLOUD_API_KEY;
   const apiUrl =
     process.env.ELIZAOS_API_URL || process.env.ELIZA_CLOUD_API_URL || 'https://www.elizacloud.ai';
 

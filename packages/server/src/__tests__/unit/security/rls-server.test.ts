@@ -18,7 +18,8 @@ describe('AgentServer RLS Configuration', () => {
 
       const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
       const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
-      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
+      const actualServerId =
+        dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
       expect(actualServerId).toBe(serverId);
       expect(actualServerId).not.toBe('00000000-0000-0000-0000-000000000000');
@@ -32,7 +33,8 @@ describe('AgentServer RLS Configuration', () => {
 
       const dataIsolationEnabled = mockConfig.ENABLE_DATA_ISOLATION === 'true';
       const serverId = stringToUuid(mockConfig.ELIZA_SERVER_ID);
-      const actualServerId = dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
+      const actualServerId =
+        dataIsolationEnabled && serverId ? serverId : '00000000-0000-0000-0000-000000000000';
 
       expect(actualServerId).toBe('00000000-0000-0000-0000-000000000000');
       expect(actualServerId).not.toBe(serverId);
@@ -235,7 +237,8 @@ describe('Environment Variable Configuration', () => {
 
     it('should treat undefined as disabled', () => {
       const env = {};
-      const dataIsolationEnabled = (env as { ENABLE_DATA_ISOLATION?: string }).ENABLE_DATA_ISOLATION === 'true';
+      const dataIsolationEnabled =
+        (env as { ENABLE_DATA_ISOLATION?: string }).ENABLE_DATA_ISOLATION === 'true';
       expect(dataIsolationEnabled).toBe(false);
     });
   });
@@ -272,7 +275,8 @@ describe('API Endpoint Security - message_server_id Validation', () => {
 
       // Simulate the conditional check from the endpoints
       const isDataIsolationEnabled = dataIsolationEnabled === 'true';
-      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
+      const isValidMessageServerId =
+        !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
       expect(isValidMessageServerId).toBe(false); // Should reject mismatched message_server_id
     });
@@ -286,7 +290,8 @@ describe('API Endpoint Security - message_server_id Validation', () => {
 
       // Simulate the conditional check from the endpoints
       const isDataIsolationEnabled = dataIsolationEnabled === 'true';
-      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
+      const isValidMessageServerId =
+        !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
       expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation disabled
     });
@@ -300,7 +305,8 @@ describe('API Endpoint Security - message_server_id Validation', () => {
 
       // Simulate the conditional check from the endpoints
       const isDataIsolationEnabled = dataIsolationEnabled === 'true';
-      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
+      const isValidMessageServerId =
+        !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
       expect(isValidMessageServerId).toBe(true); // Should accept any message_server_id when Data Isolation not configured
     });
@@ -314,7 +320,8 @@ describe('API Endpoint Security - message_server_id Validation', () => {
 
       // Simulate the conditional check from the endpoints
       const isDataIsolationEnabled = dataIsolationEnabled === 'true';
-      const isValidMessageServerId = !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
+      const isValidMessageServerId =
+        !isDataIsolationEnabled || requestMessageServerId === serverInstance.messageServerId;
 
       expect(isValidMessageServerId).toBe(true); // Should accept matching message_server_id
     });

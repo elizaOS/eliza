@@ -20,22 +20,13 @@
 // Fixtures - Resource lifecycle management with auto-cleanup
 // ============================================================================
 export { TestServerFixture } from './fixtures/server.fixture';
-export type {
-  ServerFixtureOptions,
-  ServerFixtureResult,
-} from './fixtures/server.fixture';
+export type { ServerFixtureOptions, ServerFixtureResult } from './fixtures/server.fixture';
 
 export { DatabaseFixture } from './fixtures/database.fixture';
-export type {
-  DatabaseFixtureOptions,
-  DatabaseFixtureResult,
-} from './fixtures/database.fixture';
+export type { DatabaseFixtureOptions, DatabaseFixtureResult } from './fixtures/database.fixture';
 
 export { AgentFixture } from './fixtures/agent.fixture';
-export type {
-  AgentFixtureOptions,
-  AgentFixtureResult,
-} from './fixtures/agent.fixture';
+export type { AgentFixtureOptions, AgentFixtureResult } from './fixtures/agent.fixture';
 
 export { SocketIOClientFixture } from './fixtures/socketio-client.fixture';
 export type {
@@ -58,22 +49,13 @@ export type { ChannelInput } from './builders/channel.builder';
 // ============================================================================
 
 // Networking
-export {
-  findAvailablePort,
-  isPortAvailable,
-} from './helpers/networking';
+export { findAvailablePort, isPortAvailable } from './helpers/networking';
 
 // Wait utilities
-export {
-  waitForServerReady,
-  waitFor,
-  delay,
-} from './helpers/wait';
+export { waitForServerReady, waitFor, delay } from './helpers/wait';
 
 // Retry utilities
-export {
-  retry,
-} from './helpers/retry';
+export { retry } from './helpers/retry';
 export type { RetryOptions, BackoffStrategy } from './helpers/retry';
 
 // ============================================================================

@@ -21,7 +21,11 @@
  */
 
 import { AgentServer } from '../../index';
-import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  type EnvironmentSnapshot,
+} from '../test-utils/environment';
 import { findAvailablePort } from '../helpers/networking';
 import { waitForServerReady } from '../helpers/wait';
 
@@ -102,7 +106,7 @@ export class TestServerFixture {
 
       // Discover or use specified port
       const portRange = options.portRange ?? [5000, 9000];
-      this.port = options.port ?? await findAvailablePort(portRange);
+      this.port = options.port ?? (await findAvailablePort(portRange));
 
       // Set SERVER_PORT for MessageBusService
       process.env.SERVER_PORT = this.port.toString();
@@ -170,17 +174,17 @@ export class TestServerFixture {
       try {
         // Stop all agents first
         const agents = this.server.getAllAgents();
-        const agentIds = agents.map(a => a.agentId);
+        const agentIds = agents.map((a) => a.agentId);
 
         if (agentIds.length > 0) {
           await this.server.stopAgents(agentIds);
           // Give agents time to cleanup connections
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
 
         // Stop HTTP server
         await this.server.stop();
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       } catch (error) {
         console.warn('Error during server cleanup:', error);
       }

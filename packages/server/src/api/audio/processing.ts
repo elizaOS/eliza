@@ -76,7 +76,10 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
       cleanupUploadedFile(audioFile);
       sendSuccess(res, { transcription, message: 'Audio transcribed, further processing TBD.' });
     } catch (error) {
-      logger.error({ src: 'http', agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing audio');
+      logger.error(
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error processing audio'
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,
@@ -142,7 +145,10 @@ export function createAudioProcessingRouter(elizaOS: ElizaOS): express.Router {
       logger.success({ src: 'http', agentId }, 'Audio transcribed');
       sendSuccess(res, { text: transcription });
     } catch (error) {
-      logger.error({ src: 'http', agentId, error: error instanceof Error ? error.message : String(error) }, 'Error transcribing audio');
+      logger.error(
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error transcribing audio'
+      );
       cleanupUploadedFile(audioFile);
       sendError(
         res,

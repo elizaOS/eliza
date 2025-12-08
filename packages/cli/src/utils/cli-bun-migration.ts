@@ -88,7 +88,10 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
     );
   }
 
-  logger.info({ src: 'cli', util: 'bun-migration', targetVersion }, 'Starting atomic CLI migration from npm to bun');
+  logger.info(
+    { src: 'cli', util: 'bun-migration', targetVersion },
+    'Starting atomic CLI migration from npm to bun'
+  );
 
   try {
     // Step 2: Install with bun (without removing npm yet)
@@ -101,13 +104,29 @@ export async function migrateCliToBun(targetVersion: string): Promise<void> {
     }
 
     // Step 4: Only now remove npm installation (since bun works)
-    logger.info({ src: 'cli', util: 'bun-migration' }, 'Bun installation successful, removing npm installation');
+    logger.info(
+      { src: 'cli', util: 'bun-migration' },
+      'Bun installation successful, removing npm installation'
+    );
     await removeNpmInstallation();
 
-    logger.info({ src: 'cli', util: 'bun-migration' }, 'CLI migration completed successfully! You may need to restart your terminal');
+    logger.info(
+      { src: 'cli', util: 'bun-migration' },
+      'CLI migration completed successfully! You may need to restart your terminal'
+    );
   } catch (error) {
-    logger.error({ src: 'cli', util: 'bun-migration', error: error instanceof Error ? error.message : String(error) }, 'CLI migration failed');
-    logger.error({ src: 'cli', util: 'bun-migration' }, 'Your original npm installation is still intact');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'bun-migration',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'CLI migration failed'
+    );
+    logger.error(
+      { src: 'cli', util: 'bun-migration' },
+      'Your original npm installation is still intact'
+    );
 
     // Try to clean up failed bun installation
     try {

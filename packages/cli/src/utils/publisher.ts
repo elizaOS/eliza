@@ -56,7 +56,14 @@ export async function testPublishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'publisher', error: error instanceof Error ? error.message : String(error) }, 'Test failed');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'publisher',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Test failed'
+    );
     return false;
   }
 }
@@ -90,14 +97,20 @@ export async function testPublishToGitHub(
       headers: { Authorization: `token ${token}` },
     });
     if (!response.ok) {
-      logger.error({ src: 'cli', util: 'publisher' }, 'Invalid GitHub token or insufficient permissions');
+      logger.error(
+        { src: 'cli', util: 'publisher' },
+        'Invalid GitHub token or insufficient permissions'
+      );
       return false;
     }
     logger.info({ src: 'cli', util: 'publisher' }, 'GitHub token is valid');
 
     // For projects, we only need to check GitHub token validity
     if (packageJson.packageType === 'project') {
-      logger.info({ src: 'cli', util: 'publisher' }, 'Project validation complete - GitHub token is valid');
+      logger.info(
+        { src: 'cli', util: 'publisher' },
+        'Project validation complete - GitHub token is valid'
+      );
       return true;
     }
 
@@ -108,11 +121,17 @@ export async function testPublishToGitHub(
     const [registryOwner, registryRepo] = settings.defaultRegistry.split('/');
 
     // Log the registry we're testing with
-    logger.info({ src: 'cli', util: 'publisher', registryOwner, registryRepo }, 'Testing with registry');
+    logger.info(
+      { src: 'cli', util: 'publisher', registryOwner, registryRepo },
+      'Testing with registry'
+    );
 
     // Check fork permissions and create fork if needed
     const hasFork = await forkExists(token, registryRepo, username);
-    logger.info({ src: 'cli', util: 'publisher', hasFork }, hasFork ? 'Fork exists' : 'Can create fork');
+    logger.info(
+      { src: 'cli', util: 'publisher', hasFork },
+      hasFork ? 'Fork exists' : 'Can create fork'
+    );
 
     if (!hasFork) {
       logger.info({ src: 'cli', util: 'publisher' }, 'Creating fork...');
@@ -130,7 +149,10 @@ export async function testPublishToGitHub(
     // Test branch creation
     const branchName = `test-${packageJson.name.replace(/^@[^/]+\//, '')}-${packageJson.version}`;
     const hasBranch = await branchExists(token, username, registryRepo, branchName);
-    logger.info({ src: 'cli', util: 'publisher', hasBranch }, hasBranch ? 'Test branch exists' : 'Can create branch');
+    logger.info(
+      { src: 'cli', util: 'publisher', hasBranch },
+      hasBranch ? 'Test branch exists' : 'Can create branch'
+    );
 
     if (!hasBranch) {
       logger.info({ src: 'cli', util: 'publisher' }, 'Creating branch...');
@@ -146,7 +168,10 @@ export async function testPublishToGitHub(
     const simpleName = packageJson.name.replace(/^@[^/]+\//, '').replace(/[^a-zA-Z0-9-]/g, '-');
     // Change the path to try "test-files" directory rather than root
     const testPath = `test-files/${simpleName}-test.json`;
-    logger.info({ src: 'cli', util: 'publisher', testPath, branchName }, 'Attempting to create test file');
+    logger.info(
+      { src: 'cli', util: 'publisher', testPath, branchName },
+      'Attempting to create test file'
+    );
 
     // Try to create the directory first if needed
     const dirCreated = await ensureDirectory(
@@ -156,7 +181,10 @@ export async function testPublishToGitHub(
       branchName
     );
     if (!dirCreated) {
-      logger.warn({ src: 'cli', util: 'publisher' }, 'Failed to create test directory, but continuing with file creation');
+      logger.warn(
+        { src: 'cli', util: 'publisher' },
+        'Failed to create test directory, but continuing with file creation'
+      );
     }
 
     const canUpdate = await updateFile(
@@ -176,7 +204,14 @@ export async function testPublishToGitHub(
 
     return true;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'publisher', error: error instanceof Error ? error.message : String(error) }, 'Test failed');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'publisher',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Test failed'
+    );
     return false;
   }
 }
@@ -196,7 +231,14 @@ export async function publishToNpm(cwd: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'publisher', error: error instanceof Error ? error.message : String(error) }, 'Failed to publish to npm');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'publisher',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to publish to npm'
+    );
     return false;
   }
 }
@@ -236,22 +278,34 @@ export async function publishToGitHub(
 
   // Validate required package type
   if (!packageJson.packageType) {
-    logger.error({ src: 'cli', util: 'publisher' }, 'Package type is required. Set "packageType" to either "plugin" or "project" in package.json');
+    logger.error(
+      { src: 'cli', util: 'publisher' },
+      'Package type is required. Set "packageType" to either "plugin" or "project" in package.json'
+    );
     return false;
   }
 
   // Validate that packageType is either plugin or project
   if (packageJson.packageType !== 'plugin' && packageJson.packageType !== 'project') {
-    logger.error({ src: 'cli', util: 'publisher', packageType: packageJson.packageType }, 'Invalid package type. Must be either "plugin" or "project"');
+    logger.error(
+      { src: 'cli', util: 'publisher', packageType: packageJson.packageType },
+      'Invalid package type. Must be either "plugin" or "project"'
+    );
     return false;
   }
 
   if (isTest) {
-    logger.info({ src: 'cli', util: 'publisher' }, 'Running in test mode - no actual changes will be made');
+    logger.info(
+      { src: 'cli', util: 'publisher' },
+      'Running in test mode - no actual changes will be made'
+    );
   }
 
   if (skipRegistry) {
-    logger.info({ src: 'cli', util: 'publisher' }, 'Registry updates will be skipped as requested with --skip-registry flag');
+    logger.info(
+      { src: 'cli', util: 'publisher' },
+      'Registry updates will be skipped as requested with --skip-registry flag'
+    );
   }
 
   // First, create the repository and push code to GitHub
@@ -270,11 +324,17 @@ export async function publishToGitHub(
     }
 
     // Create GitHub repository with only the single appropriate topic
-    logger.info({ src: 'cli', util: 'publisher', username, repoName }, 'Checking/creating GitHub repository');
+    logger.info(
+      { src: 'cli', util: 'publisher', username, repoName },
+      'Checking/creating GitHub repository'
+    );
     const repoResult = await createGitHubRepository(token, repoName, description, false, [topic]);
 
     if (!repoResult.success) {
-      logger.error({ src: 'cli', util: 'publisher', message: repoResult.message }, 'Failed to create GitHub repository');
+      logger.error(
+        { src: 'cli', util: 'publisher', message: repoResult.message },
+        'Failed to create GitHub repository'
+      );
       return false;
     }
 
@@ -291,7 +351,10 @@ export async function publishToGitHub(
       logger.error({ src: 'cli', util: 'publisher' }, 'Failed to push code to GitHub repository');
       return false;
     }
-    logger.success({ src: 'cli', util: 'publisher' }, 'Successfully pushed code to GitHub repository');
+    logger.success(
+      { src: 'cli', util: 'publisher' },
+      'Successfully pushed code to GitHub repository'
+    );
 
     // For projects or when skipRegistry is true, we're done - skip registry update
     if (packageJson.packageType === 'project' || skipRegistry) {
@@ -299,7 +362,10 @@ export async function publishToGitHub(
         packageJson.packageType === 'project'
           ? 'Projects do not need registry updates'
           : 'Registry updates skipped as requested with --skip-registry flag';
-      logger.info({ src: 'cli', util: 'publisher', packageName: packageJson.name, reason }, 'Published to GitHub successfully');
+      logger.info(
+        { src: 'cli', util: 'publisher', packageName: packageJson.name, reason },
+        'Published to GitHub successfully'
+      );
       return {
         success: true,
         prUrl: repoResult.repoUrl,
@@ -311,7 +377,10 @@ export async function publishToGitHub(
   // Skip if we're publishing a project or skipRegistry is true
   if (packageJson.packageType === 'project' || skipRegistry) {
     if (isTest) {
-      logger.info({ src: 'cli', util: 'publisher' }, 'Test successful - project would be published to GitHub only');
+      logger.info(
+        { src: 'cli', util: 'publisher' },
+        'Test successful - project would be published to GitHub only'
+      );
     }
     return true;
   }
@@ -324,7 +393,10 @@ export async function publishToGitHub(
   let forkFullName: string;
 
   if (!hasFork && !isTest) {
-    logger.info({ src: 'cli', util: 'publisher', registry: settings.defaultRegistry }, 'Creating fork of registry');
+    logger.info(
+      { src: 'cli', util: 'publisher', registry: settings.defaultRegistry },
+      'Creating fork of registry'
+    );
     const fork = await forkRepository(token, registryOwner, registryRepo);
     if (!fork) {
       logger.error({ src: 'cli', util: 'publisher' }, 'Failed to fork registry repository');
@@ -349,7 +421,10 @@ export async function publishToGitHub(
     // For plugin names starting with 'plugin-', use only one 'plugin-' prefix
     // Example: plugin-apple -> plugin-apple-0.1.0 (not plugin-plugin-apple-0.1.0)
     branchName = `${packageNameWithoutScope}-${packageJson.version}`;
-    logger.info({ src: 'cli', util: 'publisher', branchName }, 'Using package name directly to avoid duplicate plugin prefix');
+    logger.info(
+      { src: 'cli', util: 'publisher', branchName },
+      'Using package name directly to avoid duplicate plugin prefix'
+    );
   } else {
     // For other package types or non-plugin-prefixed names, use entityType prefix
     branchName = `${entityType}-${packageNameWithoutScope}-${packageJson.version}`;
@@ -383,11 +458,17 @@ export async function publishToGitHub(
         // Check if entry already exists by parsing the JSON
         const index = JSON.parse(indexContent);
         if (index[registryPackageName]) {
-          logger.warn({ src: 'cli', util: 'publisher', registryPackageName }, 'Package already exists in registry');
+          logger.warn(
+            { src: 'cli', util: 'publisher', registryPackageName },
+            'Package already exists in registry'
+          );
           return false;
         }
 
-        logger.info({ src: 'cli', util: 'publisher', registryPackageName, githubRepo }, 'Adding registry entry');
+        logger.info(
+          { src: 'cli', util: 'publisher', registryPackageName, githubRepo },
+          'Adding registry entry'
+        );
 
         // Find the correct alphabetical position to insert the new entry
         const lines = indexContent.split('\n');
@@ -430,7 +511,10 @@ export async function publishToGitHub(
         }
 
         if (insertIndex === -1) {
-          logger.error({ src: 'cli', util: 'publisher' }, 'Could not find insertion point in index.json');
+          logger.error(
+            { src: 'cli', util: 'publisher' },
+            'Could not find insertion point in index.json'
+          );
           return false;
         }
 
@@ -484,7 +568,14 @@ export async function publishToGitHub(
         return false;
       }
     } catch (error) {
-      logger.error({ src: 'cli', util: 'publisher', error: error instanceof Error ? error.message : String(error) }, 'Failed to update index.json');
+      logger.error(
+        {
+          src: 'cli',
+          util: 'publisher',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to update index.json'
+      );
       return false;
     }
 
@@ -520,7 +611,15 @@ Submitted by: @${username}`,
     };
   } else {
     logger.info({ src: 'cli', util: 'publisher' }, 'Test successful - all checks passed');
-    logger.info({ src: 'cli', util: 'publisher', branchName, registryEntry: `${registryPackageName} -> github:${username}/${packageName}` }, 'Would create branch and registry entry');
+    logger.info(
+      {
+        src: 'cli',
+        util: 'publisher',
+        branchName,
+        registryEntry: `${registryPackageName} -> github:${username}/${packageName}`,
+      },
+      'Would create branch and registry entry'
+    );
   }
 
   return true;

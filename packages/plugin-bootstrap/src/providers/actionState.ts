@@ -134,7 +134,14 @@ export const actionStateProvider: Provider = {
         (msg) => msg.content?.type === 'action_result' && msg.metadata?.type === 'action_result'
       );
     } catch (error) {
-      logger?.error({ src: 'plugin:bootstrap:provider:action_state', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to retrieve action memories');
+      logger?.error(
+        {
+          src: 'plugin:bootstrap:provider:action_state',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to retrieve action memories'
+      );
     }
 
     // Format recent action memories

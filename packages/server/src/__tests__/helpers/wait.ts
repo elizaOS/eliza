@@ -43,7 +43,7 @@ export async function waitForServerReady(
     // Exponential backoff: 50ms, 100ms, 200ms, 400ms, 800ms
     const attempt = Math.floor((Date.now() - startTime) / 50);
     const backoff = Math.min(50 * Math.pow(2, attempt), 1000);
-    await new Promise(resolve => setTimeout(resolve, backoff));
+    await new Promise((resolve) => setTimeout(resolve, backoff));
   }
 
   throw new Error(
@@ -75,7 +75,7 @@ export async function waitFor(
     if (await condition()) {
       return;
     }
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await new Promise((resolve) => setTimeout(resolve, interval));
   }
 
   throw new Error(`Condition not met within ${timeout}ms`);
@@ -93,5 +93,5 @@ export async function waitFor(
  * ```
  */
 export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

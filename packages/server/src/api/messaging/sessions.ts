@@ -298,7 +298,10 @@ function mergeTimeoutConfigs(
 
       // Check for NaN or invalid number
       if (isNaN(timeoutValue) || !isFinite(timeoutValue)) {
-        logger.warn({ src: 'http', timeoutMinutes: sessionConfig.timeoutMinutes }, 'Invalid timeout minutes, using default');
+        logger.warn(
+          { src: 'http', timeoutMinutes: sessionConfig.timeoutMinutes },
+          'Invalid timeout minutes, using default'
+        );
         merged.timeoutMinutes = DEFAULT_TIMEOUT_MINUTES;
       } else {
         // Clamp to valid range
@@ -316,7 +319,10 @@ function mergeTimeoutConfigs(
 
       // Check for NaN or invalid number
       if (isNaN(maxDurationValue) || !isFinite(maxDurationValue)) {
-        logger.warn({ src: 'http', maxDurationMinutes: sessionConfig.maxDurationMinutes }, 'Invalid max duration minutes, using default');
+        logger.warn(
+          { src: 'http', maxDurationMinutes: sessionConfig.maxDurationMinutes },
+          'Invalid max duration minutes, using default'
+        );
         merged.maxDurationMinutes = DEFAULT_MAX_DURATION_MINUTES;
       } else {
         // Ensure max duration is at least as long as timeout
@@ -332,7 +338,10 @@ function mergeTimeoutConfigs(
 
       // Check for NaN or invalid number
       if (isNaN(warningValue) || !isFinite(warningValue)) {
-        logger.warn({ src: 'http', warningThresholdMinutes: sessionConfig.warningThresholdMinutes }, 'Invalid warning threshold, using default');
+        logger.warn(
+          { src: 'http', warningThresholdMinutes: sessionConfig.warningThresholdMinutes },
+          'Invalid warning threshold, using default'
+        );
         merged.warningThresholdMinutes = DEFAULT_WARNING_THRESHOLD_MINUTES;
       } else {
         // Ensure warning threshold is at least 1 minute
@@ -416,7 +425,10 @@ function renewSession(session: Session): boolean {
   // Reset warning state on renewal
   session.warningState = undefined;
 
-  logger.debug({ src: 'http', sessionId: session.id, renewalCount: session.renewalCount }, 'Session renewed');
+  logger.debug(
+    { src: 'http', sessionId: session.id, renewalCount: session.renewalCount },
+    'Session renewed'
+  );
   return true;
 }
 
@@ -589,7 +601,16 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
       const agentTimeoutConfig = getAgentTimeoutConfig(agent);
       const finalTimeoutConfig = mergeTimeoutConfigs(body.timeoutConfig, agentTimeoutConfig);
 
-      logger.debug({ src: 'http', agentId: body.agentId, timeoutMinutes: finalTimeoutConfig.timeoutMinutes, autoRenew: finalTimeoutConfig.autoRenew, maxDuration: finalTimeoutConfig.maxDurationMinutes }, 'Creating session');
+      logger.debug(
+        {
+          src: 'http',
+          agentId: body.agentId,
+          timeoutMinutes: finalTimeoutConfig.timeoutMinutes,
+          autoRenew: finalTimeoutConfig.autoRenew,
+          maxDuration: finalTimeoutConfig.maxDurationMinutes,
+        },
+        'Creating session'
+      );
 
       // Create a unique session ID
       const sessionId = uuidv4();
@@ -747,7 +768,10 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
             channelMetadata = channel.metadata;
           }
         } catch (error) {
-          logger.debug({ src: 'http', channelId: session.channelId, error: String(error) }, 'Could not fetch channel metadata');
+          logger.debug(
+            { src: 'http', channelId: session.channelId, error: String(error) },
+            'Could not fetch channel metadata'
+          );
         }
 
         // Merge metadata: channel metadata (includes session metadata) + message-specific metadata
@@ -916,7 +940,14 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
             rawMessage = parsedData as ParsedRawMessage;
           }
         } catch (error) {
-          logger.warn({ src: 'http', messageId: msg.id, error: error instanceof Error ? error.message : String(error) }, 'Failed to parse rawMessage');
+          logger.warn(
+            {
+              src: 'http',
+              messageId: msg.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Failed to parse rawMessage'
+          );
         }
 
         // Transform the entire message to handle attachments in both content and metadata
@@ -1070,7 +1101,16 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         session.renewalCount
       );
 
-      logger.debug({ src: 'http', sessionId, timeoutMinutes: session.timeoutConfig.timeoutMinutes, autoRenew: session.timeoutConfig.autoRenew, maxDuration: session.timeoutConfig.maxDurationMinutes }, 'Session timeout config updated');
+      logger.debug(
+        {
+          src: 'http',
+          sessionId,
+          timeoutMinutes: session.timeoutConfig.timeoutMinutes,
+          autoRenew: session.timeoutConfig.autoRenew,
+          maxDuration: session.timeoutConfig.maxDurationMinutes,
+        },
+        'Session timeout config updated'
+      );
 
       const response = createSessionInfoResponse(session);
       res.json(response);

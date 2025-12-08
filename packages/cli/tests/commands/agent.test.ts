@@ -7,7 +7,7 @@ import { TEST_TIMEOUTS } from '../test-timeouts';
 import { getPlatformOptions, killProcessOnPort, waitForServerReady } from './test-utils';
 import { bunExecSync } from '../utils/bun-test-helpers';
 
-describe('ElizaOS Agent Commands', () => {
+describe('ElizaOS Agent Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let serverProcess: any;
   let testTmpDir: string;
   let testServerPort: string;
@@ -118,7 +118,13 @@ describe('ElizaOS Agent Commands', () => {
 
           if (isError) {
             console.error(`[SERVER STDERR] ${text}`);
-            if (text.includes('Error') || text.includes('error')) {
+            // Only treat actual errors as failures, not warnings about optional extensions
+            // Filter out expected warnings like pgcrypto extension not being available
+            const isFatalError =
+              (text.includes('Error') || text.includes('error')) &&
+              !text.includes('Warn') &&
+              !text.includes('Could not install extension');
+            if (isFatalError) {
               serverError = new Error(text);
             }
           } else {
@@ -182,7 +188,7 @@ describe('ElizaOS Agent Commands', () => {
 
     // Character preloading removed - individual tests will handle character creation as needed
     console.log('[DEBUG] Server setup complete. Individual tests will handle character loading.');
-  });
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT);
 
   afterAll(async () => {
     console.log('[DEBUG] AfterAll cleanup starting...');
@@ -234,7 +240,7 @@ describe('ElizaOS Agent Commands', () => {
         // Ignore cleanup errors
       }
     }
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   it('agent help displays usage information', async () => {
     const cliPath = join(__dirname, '../../src/index.ts');
@@ -539,7 +545,7 @@ describe('ElizaOS Agent Commands', () => {
 });
 
 // Separate test suite that runs after everything else
-describe('ElizaOS Agent Stop All - Final Cleanup', () => {
+describe('ElizaOS Agent Stop All - Final Cleanup', { timeout: TEST_TIMEOUTS.INDIVIDUAL_TEST }, () => {
   it('agent stop --all works for stopping all agents', async () => {
     // This tests the --all flag functionality using pkill
     // This MUST run after all other tests as it kills everything

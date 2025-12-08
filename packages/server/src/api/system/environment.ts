@@ -104,7 +104,11 @@ export function createEnvironmentRouter(): express.Router {
       });
     } catch (error) {
       logger.error(
-        { src: 'http', path: '/local', error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: '/local',
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving local envs'
       );
       if (error instanceof Error && error.stack) {
@@ -157,7 +161,11 @@ export function createEnvironmentRouter(): express.Router {
       });
     } catch (error) {
       logger.error(
-        { src: 'http', path: '/local', error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: '/local',
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error updating local envs'
       );
       res.status(500).json({

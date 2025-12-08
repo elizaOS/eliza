@@ -105,7 +105,14 @@ export const choiceProvider: Provider = {
         text: output,
       };
     } catch (error) {
-      runtime.logger.error({ src: 'plugin:bootstrap:provider:choice', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in options provider');
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:provider:choice',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in options provider'
+      );
       return {
         data: {
           tasks: [],

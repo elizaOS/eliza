@@ -44,7 +44,12 @@ describe('Server RLS Helper Functions', () => {
   describe('RLS Configuration Validation', () => {
     it('should validate RLS environment variables', () => {
       const testCases = [
-        { rlsEnabled: 'true', authToken: 'token-123', postgresUrl: 'postgresql://...', expected: true },
+        {
+          rlsEnabled: 'true',
+          authToken: 'token-123',
+          postgresUrl: 'postgresql://...',
+          expected: true,
+        },
         { rlsEnabled: 'false', authToken: '', postgresUrl: '', expected: false },
         { rlsEnabled: 'true', authToken: '', postgresUrl: 'postgresql://...', expected: false }, // Missing token
         { rlsEnabled: 'true', authToken: 'token', postgresUrl: '', expected: false }, // Missing postgres
@@ -97,7 +102,10 @@ describe('Server RLS Helper Functions', () => {
       const rlsEnabled = true;
       const serverId_value = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
-      const serverName = rlsEnabled && serverId_value ? `Server ${serverId_value.substring(0, 8)}` : 'Default Server';
+      const serverName =
+        rlsEnabled && serverId_value
+          ? `Server ${serverId_value.substring(0, 8)}`
+          : 'Default Server';
 
       expect(serverName).toBe('Server c37e5ad5');
       expect(serverName).not.toBe('Default Server');
@@ -107,7 +115,10 @@ describe('Server RLS Helper Functions', () => {
       const rlsEnabled = false;
       const serverId_value = 'c37e5ad5-bfbc-0be7-b62f-d0ac8702ad01';
 
-      const serverName = rlsEnabled && serverId_value ? `Server ${serverId_value.substring(0, 8)}` : 'Default Server';
+      const serverName =
+        rlsEnabled && serverId_value
+          ? `Server ${serverId_value.substring(0, 8)}`
+          : 'Default Server';
 
       expect(serverName).toBe('Default Server');
     });

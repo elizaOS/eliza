@@ -113,7 +113,10 @@ function detectHostPlatform(): string {
   }
 
   // Default to amd64 for unknown architectures
-  logger.warn({ src: 'cli', util: 'docker-build', arch }, 'Unknown architecture, defaulting to linux/amd64');
+  logger.warn(
+    { src: 'cli', util: 'docker-build', arch },
+    'Unknown architecture, defaulting to linux/amd64'
+  );
   return 'linux/amd64';
 }
 
@@ -131,12 +134,24 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
 
     // Warn if cross-compiling
     if (platform !== hostPlatform) {
-      logger.warn({ src: 'cli', util: 'docker-build', hostPlatform, targetPlatform: platform }, 'Cross-compiling to different platform');
-      logger.warn({ src: 'cli', util: 'docker-build' }, 'This may be slower and requires Docker BuildKit with QEMU emulation');
-      logger.info({ src: 'cli', util: 'docker-build', nativePlatform: hostPlatform }, 'Tip: Set ELIZA_DOCKER_PLATFORM to use native platform');
+      logger.warn(
+        { src: 'cli', util: 'docker-build', hostPlatform, targetPlatform: platform },
+        'Cross-compiling to different platform'
+      );
+      logger.warn(
+        { src: 'cli', util: 'docker-build' },
+        'This may be slower and requires Docker BuildKit with QEMU emulation'
+      );
+      logger.info(
+        { src: 'cli', util: 'docker-build', nativePlatform: hostPlatform },
+        'Tip: Set ELIZA_DOCKER_PLATFORM to use native platform'
+      );
     }
 
-    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag, platform }, 'Building Docker image');
+    logger.info(
+      { src: 'cli', util: 'docker-build', imageTag: options.imageTag, platform },
+      'Building Docker image'
+    );
 
     const dockerfilePath = options.dockerfile
       ? path.join(options.projectPath, options.dockerfile)
@@ -174,7 +189,10 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     // Add context (project directory)
     buildArgs.push(options.projectPath);
 
-    logger.debug({ src: 'cli', util: 'docker-build', command: `docker ${buildArgs.join(' ')}` }, 'Docker build command');
+    logger.debug(
+      { src: 'cli', util: 'docker-build', command: `docker ${buildArgs.join(' ')}` },
+      'Docker build command'
+    );
 
     // Execute Docker build
     const startTime = Date.now();
@@ -187,7 +205,10 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     });
     const buildTime = Date.now() - startTime;
 
-    logger.debug({ src: 'cli', util: 'docker-build', buildTimeSeconds: (buildTime / 1000).toFixed(2) }, 'Docker build completed');
+    logger.debug(
+      { src: 'cli', util: 'docker-build', buildTimeSeconds: (buildTime / 1000).toFixed(2) },
+      'Docker build completed'
+    );
 
     // Log build output if verbose
     if (process.env.VERBOSE) {
@@ -207,7 +228,15 @@ export async function buildDockerImage(options: DockerBuildOptions): Promise<Doc
     // Calculate checksum from image ID
     const checksum = crypto.createHash('sha256').update(imageId).digest('hex');
 
-    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag, sizeMB: (size / 1024 / 1024).toFixed(2) }, 'Image built successfully');
+    logger.info(
+      {
+        src: 'cli',
+        util: 'docker-build',
+        imageTag: options.imageTag,
+        sizeMB: (size / 1024 / 1024).toFixed(2),
+      },
+      'Image built successfully'
+    );
 
     return {
       success: true,
@@ -238,7 +267,10 @@ async function loginToECR(registryUrl: string, authToken: string): Promise<void>
   // Strip https:// protocol if present - Docker login doesn't need it
   const cleanRegistryUrl = registryUrl.replace(/^https?:\/\//, '');
 
-  logger.info({ src: 'cli', util: 'docker-build', registry: cleanRegistryUrl }, 'Logging in to ECR registry');
+  logger.info(
+    { src: 'cli', util: 'docker-build', registry: cleanRegistryUrl },
+    'Logging in to ECR registry'
+  );
 
   // Docker login
   await execa('docker', ['login', '--username', username, '--password-stdin', cleanRegistryUrl], {
@@ -264,7 +296,10 @@ async function tagImageForECR(localTag: string, ecrImageUri: string): Promise<vo
  */
 export async function pushDockerImage(options: DockerPushOptions): Promise<DockerPushResult> {
   try {
-    logger.info({ src: 'cli', util: 'docker-build', imageTag: options.imageTag }, 'Pushing image to ECR');
+    logger.info(
+      { src: 'cli', util: 'docker-build', imageTag: options.imageTag },
+      'Pushing image to ECR'
+    );
 
     // Step 1: Login to ECR
     await loginToECR(options.ecrRegistryUrl, options.ecrAuthToken);
@@ -275,12 +310,18 @@ export async function pushDockerImage(options: DockerPushOptions): Promise<Docke
       // Use the pre-constructed full image URI from API (preferred)
       // Strip https:// protocol if present - Docker doesn't accept it in image tags
       ecrImageUri = options.ecrImageUri.replace(/^https?:\/\//, '');
-      logger.debug({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Using API-provided ECR image URI');
+      logger.debug(
+        { src: 'cli', util: 'docker-build', ecrImageUri },
+        'Using API-provided ECR image URI'
+      );
     } else {
       // Legacy fallback: construct from registry + imageTag
       const cleanRegistryUrl = options.ecrRegistryUrl.replace(/^https?:\/\//, '');
       ecrImageUri = `${cleanRegistryUrl}/${options.imageTag}`;
-      logger.debug({ src: 'cli', util: 'docker-build', ecrImageUri }, 'Constructing ECR image URI from registry');
+      logger.debug(
+        { src: 'cli', util: 'docker-build', ecrImageUri },
+        'Constructing ECR image URI from registry'
+      );
     }
 
     // Step 3: Tag local image for ECR
@@ -430,13 +471,19 @@ export async function cleanupLocalImages(imageTags: string[]): Promise<void> {
     return;
   }
 
-  logger.info({ src: 'cli', util: 'docker-build', count: imageTags.length }, 'Cleaning up local images');
+  logger.info(
+    { src: 'cli', util: 'docker-build', count: imageTags.length },
+    'Cleaning up local images'
+  );
 
   try {
     await execa('docker', ['rmi', ...imageTags, '--force']);
     logger.info({ src: 'cli', util: 'docker-build' }, 'Local images cleaned up');
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.warn({ src: 'cli', util: 'docker-build', error: errorMessage }, 'Failed to clean up some images');
+    logger.warn(
+      { src: 'cli', util: 'docker-build', error: errorMessage },
+      'Failed to clean up some images'
+    );
   }
 }

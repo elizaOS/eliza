@@ -199,10 +199,7 @@ export class SocketIOClientFixture {
   /**
    * Wait for a specific event
    */
-  async waitForEvent<T = unknown>(
-    eventName: string,
-    timeoutMs?: number
-  ): Promise<T> {
+  async waitForEvent<T = unknown>(eventName: string, timeoutMs?: number): Promise<T> {
     if (!this.client) {
       throw new Error('Client not connected. Call connect() first.');
     }
@@ -224,10 +221,7 @@ export class SocketIOClientFixture {
   /**
    * Subscribe to log streaming
    */
-  async subscribeToLogs(filters?: {
-    agentName?: string;
-    level?: string;
-  }): Promise<void> {
+  async subscribeToLogs(filters?: { agentName?: string; level?: string }): Promise<void> {
     if (!this.client) {
       throw new Error('Client not connected. Call connect() first.');
     }
@@ -329,9 +323,7 @@ export class SocketIOClientFixture {
   /**
    * Connect multiple clients in parallel
    */
-  static async connectMany(
-    fixtures: SocketIOClientFixture[]
-  ): Promise<ClientSocket[]> {
+  static async connectMany(fixtures: SocketIOClientFixture[]): Promise<ClientSocket[]> {
     return Promise.all(fixtures.map((f) => f.connect()));
   }
 

@@ -20,7 +20,5 @@ export const cacheTable = pgTable(
       .notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
   },
-  (table) => [
-    primaryKey({ columns: [table.key, table.agentId] }),
-  ]
+  (table) => [primaryKey({ columns: [table.key, table.agentId] })]
 );

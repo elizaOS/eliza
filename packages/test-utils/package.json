@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/test-utils",
   "description": "Utilities and objects for unit testing",
-  "version": "1.6.5-alpha.21",
+  "version": "1.6.6-alpha.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -39,13 +39,13 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "zod": "3.24.2"
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@elizaos/config": "workspace:*",
-    "dotenv": "16.4.5",
-    "prettier": "3.5.3",
-    "typescript": "5.8.2"
+    "dotenv": "^17.2.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "bun run build.ts",
@@ -60,7 +60,7 @@
     "access": "public"
   },
   "resolutions": {
-    "zod": "3.24.2"
+    "zod": "4.1.13"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",

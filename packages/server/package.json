@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/server",
-  "version": "1.6.5-alpha.21",
+  "version": "1.6.6-alpha.0",
   "description": "ElizaOS Server - Core server infrastructure for ElizaOS agents",
   "publishConfig": {
     "access": "public",
@@ -47,12 +47,12 @@
     "@elizaos/client": "workspace:*",
     "@elizaos/config": "workspace:*",
     "@types/bcrypt": "^6.0.0",
-    "@types/node": "^24.0.1",
+    "@types/node": "^24.10.1",
     "bun-fetch-mock": "^1.0.0",
-    "prettier": "3.6.2",
-    "tsx": "4.20.6",
-    "typescript": "^5.5.4",
-    "which": "^5.0.0",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "which": "^6.0.0",
     "ws": "^8.18.0"
   },
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f",

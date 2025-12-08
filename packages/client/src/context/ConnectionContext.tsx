@@ -142,7 +142,7 @@ export const ConnectionProvider = ({ children }: { children: ReactNode }) => {
       toast({
         title: 'Authorization Required',
         description: 'Please provide a valid API key.',
-        variant: 'destructive'
+        variant: 'destructive',
       });
     };
 

@@ -418,4 +418,3 @@ export function loadEnvFile(envPath?: string): boolean {
     return false;
   }
 }
-

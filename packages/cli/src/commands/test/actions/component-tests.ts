@@ -28,7 +28,9 @@ export async function runComponentTests(
 
     if (!typeCheckResult.success) {
       logger.error({ src: 'cli', command: 'test-component' }, 'TypeScript validation failed');
-      typeCheckResult.errors.forEach((error) => logger.error({ src: 'cli', command: 'test-component', error }, 'Type error'));
+      typeCheckResult.errors.forEach((error) =>
+        logger.error({ src: 'cli', command: 'test-component', error }, 'Type error')
+      );
       return { failed: true };
     }
     logger.success({ src: 'cli', command: 'test-component' }, 'TypeScript validation passed');
@@ -40,7 +42,14 @@ export async function runComponentTests(
       await buildProject(cwd, isPlugin);
       logger.success({ src: 'cli', command: 'test-component' }, 'Build completed successfully');
     } catch (buildError) {
-      logger.error({ src: 'cli', command: 'test-component', error: buildError instanceof Error ? buildError.message : String(buildError) }, 'Build failed');
+      logger.error(
+        {
+          src: 'cli',
+          command: 'test-component',
+          error: buildError instanceof Error ? buildError.message : String(buildError),
+        },
+        'Build failed'
+      );
       // Return immediately on build failure
       return { failed: true };
     }
@@ -71,7 +80,10 @@ export async function runComponentTests(
 
   // Bun test automatically discovers test files
 
-  logger.info({ src: 'cli', command: 'test-component', execCommand: `bun ${args.join(' ')}`, targetPath }, 'Executing test command');
+  logger.info(
+    { src: 'cli', command: 'test-component', execCommand: `bun ${args.join(' ')}`, targetPath },
+    'Executing test command'
+  );
 
   try {
     // Use bunExecInherit for real-time output streaming
@@ -86,7 +98,14 @@ export async function runComponentTests(
     logger.info({ src: 'cli', command: 'test-component' }, 'Component tests completed');
     return { failed: !result.success };
   } catch (error) {
-    logger.error({ src: 'cli', command: 'test-component', error: error instanceof Error ? error.message : String(error) }, 'Error running component tests');
+    logger.error(
+      {
+        src: 'cli',
+        command: 'test-component',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error running component tests'
+    );
     return { failed: true };
   }
 }

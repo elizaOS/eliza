@@ -215,7 +215,10 @@ export const formatPosts = ({
       .map((message: Memory) => {
         const entity = entities.find((entity: Entity) => entity.id === message.entityId);
         if (!entity) {
-          logger.warn({ src: 'core:utils', entityId: message.entityId }, 'No entity found for message');
+          logger.warn(
+            { src: 'core:utils', entityId: message.entityId },
+            'No entity found for message'
+          );
         }
         // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';

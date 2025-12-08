@@ -69,7 +69,10 @@ export const muteRoomAction: Action = {
     _responses?: Memory[]
   ): Promise<ActionResult> => {
     if (!state) {
-      logger.error({ src: 'plugin:bootstrap:action:mute_room', agentId: runtime.agentId }, 'State is required for muting a room');
+      logger.error(
+        { src: 'plugin:bootstrap:action:mute_room', agentId: runtime.agentId },
+        'State is required for muting a room'
+      );
       return {
         text: 'State is required for mute room action',
         values: {
@@ -153,7 +156,10 @@ export const muteRoomAction: Action = {
       }
 
       // Default to false if response is unclear
-      logger.warn({ src: 'plugin:bootstrap:action:mute_room', agentId: runtime.agentId, response }, 'Unclear boolean response, defaulting to false');
+      logger.warn(
+        { src: 'plugin:bootstrap:action:mute_room', agentId: runtime.agentId, response },
+        'Unclear boolean response, defaulting to false'
+      );
       return false;
     }
 
@@ -195,7 +201,14 @@ export const muteRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap:action:mute_room', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error muting room');
+        logger.error(
+          {
+            src: 'plugin:bootstrap:action:mute_room',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error muting room'
+        );
         return {
           text: 'Failed to mute room',
           values: {

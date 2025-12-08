@@ -48,7 +48,14 @@ export async function loadConfig(): Promise<AgentConfig> {
     const content = await fs.readFile(configPath, 'utf8');
     return JSON.parse(content) as AgentConfig;
   } catch (error) {
-    logger.warn({ src: 'cli', util: 'config-manager', error: error instanceof Error ? error.message : String(error) }, 'Error loading configuration');
+    logger.warn(
+      {
+        src: 'cli',
+        util: 'config-manager',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error loading configuration'
+    );
     // Return default configuration on error
     return {
       lastUpdated: new Date().toISOString(),
@@ -82,6 +89,13 @@ export async function saveConfig(config: AgentConfig): Promise<void> {
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
     logger.info({ src: 'cli', util: 'config-manager', configPath }, 'Configuration saved');
   } catch (error) {
-    logger.error({ src: 'cli', util: 'config-manager', error: error instanceof Error ? error.message : String(error) }, 'Error saving configuration');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'config-manager',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error saving configuration'
+    );
   }
 }

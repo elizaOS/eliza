@@ -32,7 +32,12 @@ export function createAgentPanelsRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, publicPanels);
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving agent panels'
       );
       sendError(

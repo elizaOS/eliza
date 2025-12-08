@@ -227,14 +227,23 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           const delay = backoffDelay + jitter;
 
           logger.warn(
-            { src: 'plugin:sql', attempt, maxRetries: this.maxRetries, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:sql',
+              attempt,
+              maxRetries: this.maxRetries,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Database operation failed, retrying'
           );
 
           await new Promise((resolve) => setTimeout(resolve, delay));
         } else {
           logger.error(
-            { src: 'plugin:sql', totalAttempts: attempt, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:sql',
+              totalAttempts: attempt,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Max retry attempts reached'
           );
           throw error instanceof Error ? error : new Error(String(error));
@@ -340,7 +349,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
             .limit(1);
 
           if (existing.length > 0) {
-            logger.warn({ src: 'plugin:sql', agentId: agent.id }, 'Attempted to create agent with duplicate ID');
+            logger.warn(
+              { src: 'plugin:sql', agentId: agent.id },
+              'Attempted to create agent with duplicate ID'
+            );
             return false;
           }
         }
@@ -356,7 +368,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: agent.id, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            agentId: agent.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to create agent'
         );
         return false;
@@ -410,7 +426,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to update agent'
         );
         return false;
@@ -524,7 +544,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to delete agent'
         );
         throw error;
@@ -694,7 +718,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', entityId: entities[0]?.id, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            entityId: entities[0]?.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to create entities'
         );
         return false;
@@ -723,7 +751,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       return true;
     } catch (error) {
       logger.error(
-        { src: 'plugin:sql', entityId: entity.id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'plugin:sql',
+          entityId: entity.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Failed to ensure entity exists'
       );
       return false;
@@ -1317,7 +1349,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .filter((row) => Array.isArray(row.embedding));
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', tableName: opts.query_table_name, fieldName: opts.query_field_name, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            tableName: opts.query_table_name,
+            fieldName: opts.query_field_name,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to get cached embeddings'
         );
         if (
@@ -1367,7 +1404,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', type: params.type, roomId: params.roomId, entityId: params.entityId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            type: params.type,
+            roomId: params.roomId,
+            entityId: params.entityId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to create log entry'
         );
         throw error;
@@ -2010,7 +2053,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', memoryId: memory.id, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            memoryId: memory.id,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to update memory'
         );
         return false;
@@ -2351,7 +2398,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', entityId, roomId, agentId: this.agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            entityId,
+            roomId,
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to add participant to room'
         );
         return false;
@@ -2371,7 +2424,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', roomId, agentId: this.agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            roomId,
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to add participants to room'
         );
         return false;
@@ -2401,7 +2459,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return removed;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', entityId, roomId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            entityId,
+            roomId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to remove participant from room'
         );
         return false;
@@ -2528,7 +2591,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         });
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', roomId, entityId, state, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:sql',
+            roomId,
+            entityId,
+            state,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to set participant follow state'
         );
         throw error;
@@ -2566,7 +2635,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), saveParams },
+          {
+            src: 'plugin:sql',
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+            saveParams,
+          },
           'Error creating relationship'
         );
         return false;
@@ -2591,7 +2665,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           .where(eq(relationshipTable.id, relationship.id));
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), relationshipId: relationship.id },
+          {
+            src: 'plugin:sql',
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+            relationshipId: relationship.id,
+          },
           'Error updating relationship'
         );
         throw error;
@@ -2672,11 +2751,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         agentId: (relationship.agent_id || relationship.agentId) as UUID,
         tags: relationship.tags ?? [],
         metadata: (relationship.metadata as { [key: string]: unknown }) ?? {},
-        createdAt: relationship.created_at || relationship.createdAt
-          ? (relationship.created_at || relationship.createdAt) instanceof Date
-            ? (relationship.created_at || relationship.createdAt).toISOString()
-            : new Date(relationship.created_at || relationship.createdAt).toISOString()
-          : new Date().toISOString(),
+        createdAt:
+          relationship.created_at || relationship.createdAt
+            ? (relationship.created_at || relationship.createdAt) instanceof Date
+              ? (relationship.created_at || relationship.createdAt).toISOString()
+              : new Date(relationship.created_at || relationship.createdAt).toISOString()
+            : new Date().toISOString(),
       }));
     });
   }
@@ -2702,7 +2782,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return undefined;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          {
+            src: 'plugin:sql',
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+            key,
+          },
           'Error fetching cache'
         );
         return undefined;
@@ -2736,7 +2821,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          {
+            src: 'plugin:sql',
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+            key,
+          },
           'Error setting cache'
         );
         return false;
@@ -2760,7 +2850,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         return true;
       } catch (error) {
         logger.error(
-          { src: 'plugin:sql', agentId: this.agentId, error: error instanceof Error ? error.message : String(error), key },
+          {
+            src: 'plugin:sql',
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+            key,
+          },
           'Error deleting cache'
         );
         return false;
@@ -3074,7 +3169,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         await this.db.delete(roomTable).where(inArray(roomTable.id, roomIds));
 
         logger.debug(
-          { src: 'plugin:sql', worldId, roomsDeleted: roomIds.length, memoriesDeleted: memoryIdsInRooms.length },
+          {
+            src: 'plugin:sql',
+            worldId,
+            roomsDeleted: roomIds.length,
+            memoriesDeleted: memoryIdsInRooms.length,
+          },
           'World cleanup completed'
         );
       }
@@ -3677,7 +3777,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       const result = await this.db
         .select()
         .from(channelParticipantsTable)
-        .where(and(eq(channelParticipantsTable.channelId, channelId), eq(channelParticipantsTable.entityId, entityId)))
+        .where(
+          and(
+            eq(channelParticipantsTable.channelId, channelId),
+            eq(channelParticipantsTable.entityId, entityId)
+          )
+        )
         .limit(1);
 
       return result.length > 0;
@@ -3721,7 +3826,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       await this.db
         .delete(messageServerAgentsTable)
         .where(
-          and(eq(messageServerAgentsTable.messageServerId, messageServerId), eq(messageServerAgentsTable.agentId, agentId))
+          and(
+            eq(messageServerAgentsTable.messageServerId, messageServerId),
+            eq(messageServerAgentsTable.agentId, agentId)
+          )
         );
     });
   }

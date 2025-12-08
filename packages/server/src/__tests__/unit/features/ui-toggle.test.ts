@@ -54,7 +54,9 @@ describe('UI Disable Feature Integration', () => {
       testScenarios.forEach(([nodeEnv, elizaUIEnable, expected, description]) => {
         const isProduction = nodeEnv === 'production';
         const uiEnabled =
-          elizaUIEnable !== undefined ? (elizaUIEnable as string).toLowerCase() === 'true' : !isProduction;
+          elizaUIEnable !== undefined
+            ? (elizaUIEnable as string).toLowerCase() === 'true'
+            : !isProduction;
 
         expect(uiEnabled).toBe(expected as boolean);
         // Also verify the description makes sense
@@ -94,7 +96,10 @@ describe('UI Disable Feature Integration', () => {
         sendStatus: mockSendStatus,
       };
 
-      const handleUIDisabledRequest = (res: { sendStatus: (code: number) => void }, uiEnabled: boolean) => {
+      const handleUIDisabledRequest = (
+        res: { sendStatus: (code: number) => void },
+        uiEnabled: boolean
+      ) => {
         if (!uiEnabled) {
           res.sendStatus(403); // Standard HTTP 403 Forbidden
         }
@@ -116,7 +121,10 @@ describe('UI Disable Feature Integration', () => {
         use: mockExpressUse,
       };
 
-      const configureSPAFallback = (app: { use: (middleware: string) => void }, uiEnabled: boolean) => {
+      const configureSPAFallback = (
+        app: { use: (middleware: string) => void },
+        uiEnabled: boolean
+      ) => {
         if (uiEnabled) {
           app.use('spa-fallback-middleware');
         } else {

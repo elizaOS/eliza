@@ -97,7 +97,12 @@ export class RuntimeMigrator {
       // Warn if core plugin is not using public schema
       if (isCorePLugin && actualSchema !== 'public') {
         logger.warn(
-          { src: 'plugin:sql', pluginName: '@elizaos/plugin-sql', tableName: tableData.name, actualSchema },
+          {
+            src: 'plugin:sql',
+            pluginName: '@elizaos/plugin-sql',
+            tableName: tableData.name,
+            actualSchema,
+          },
           'Core plugin table should use public schema'
         );
       }
@@ -480,7 +485,10 @@ export class RuntimeMigrator {
           lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
 
           if (!lockAcquired) {
-            logger.info({ src: 'plugin:sql', pluginName }, 'Migration already in progress, waiting for lock');
+            logger.info(
+              { src: 'plugin:sql', pluginName },
+              'Migration already in progress, waiting for lock'
+            );
 
             // Wait for the lock (blocking call)
             await this.db.execute(sql`SELECT pg_advisory_lock(CAST(${lockIdStr} AS bigint))`);
@@ -488,24 +496,38 @@ export class RuntimeMigrator {
 
             logger.info({ src: 'plugin:sql', pluginName }, 'Lock acquired');
           } else {
-            logger.debug({ src: 'plugin:sql', pluginName, lockId: lockIdStr }, 'Advisory lock acquired');
+            logger.debug(
+              { src: 'plugin:sql', pluginName, lockId: lockIdStr },
+              'Advisory lock acquired'
+            );
           }
         } catch (lockError) {
           // If advisory locks fail, log but continue
           // This might happen if the PostgreSQL version doesn't support advisory locks
           logger.warn(
-            { src: 'plugin:sql', pluginName, error: lockError instanceof Error ? lockError.message : String(lockError) },
+            {
+              src: 'plugin:sql',
+              pluginName,
+              error: lockError instanceof Error ? lockError.message : String(lockError),
+            },
             'Failed to acquire advisory lock, continuing without lock'
           );
           lockAcquired = false;
         }
       } else {
         // For PGLite or other development databases, skip advisory locks
-        logger.debug({ src: 'plugin:sql' }, 'Development database detected, skipping advisory locks');
+        logger.debug(
+          { src: 'plugin:sql' },
+          'Development database detected, skipping advisory locks'
+        );
       }
 
       // Install required extensions (same as old migrator)
-      await this.extensionManager.installRequiredExtensions(['vector', 'fuzzystrmatch', 'pgcrypto']);
+      await this.extensionManager.installRequiredExtensions([
+        'vector',
+        'fuzzystrmatch',
+        'pgcrypto',
+      ]);
 
       // Generate current snapshot from schema
       const currentSnapshot = await generateSnapshot(schema);
@@ -525,7 +547,10 @@ export class RuntimeMigrator {
       // We MUST check regardless of whether lastMigration existed before
       const lastMigration = await this.migrationTracker.getLastMigration(pluginName);
       if (lastMigration && lastMigration.hash === currentHash) {
-        logger.info({ src: 'plugin:sql', pluginName, hash: currentHash }, 'No changes detected, skipping migration');
+        logger.info(
+          { src: 'plugin:sql', pluginName, hash: currentHash },
+          'No changes detected, skipping migration'
+        );
         return;
       }
 
@@ -537,7 +562,10 @@ export class RuntimeMigrator {
         const hasExistingTables = await this.introspector.hasExistingTables(pluginName);
 
         if (hasExistingTables) {
-          logger.info({ src: 'plugin:sql', pluginName }, 'No snapshot found but tables exist in database, introspecting');
+          logger.info(
+            { src: 'plugin:sql', pluginName },
+            'No snapshot found but tables exist in database, introspecting'
+          );
 
           // Determine the schema name for introspection
           const schemaName = this.getExpectedSchemaName(pluginName);
@@ -562,7 +590,10 @@ export class RuntimeMigrator {
             const introspectedHash = hashSnapshot(introspectedSnapshot);
             await this.migrationTracker.recordMigration(pluginName, introspectedHash, Date.now());
 
-            logger.info({ src: 'plugin:sql', pluginName }, 'Created initial snapshot from existing database');
+            logger.info(
+              { src: 'plugin:sql', pluginName },
+              'Created initial snapshot from existing database'
+            );
 
             // Set this as the previous snapshot for comparison
             previousSnapshot = introspectedSnapshot;
@@ -613,7 +644,12 @@ export class RuntimeMigrator {
         if (!allowDestructive) {
           // Block the migration and provide clear instructions
           logger.error(
-            { src: 'plugin:sql', pluginName, environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT', warnings: dataLossCheck.warnings },
+            {
+              src: 'plugin:sql',
+              pluginName,
+              environment: isProduction ? 'PRODUCTION' : 'DEVELOPMENT',
+              warnings: dataLossCheck.warnings,
+            },
             'Destructive migration blocked - set ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true or use force option'
           );
 
@@ -642,16 +678,25 @@ export class RuntimeMigrator {
       }
 
       // Log what we're about to do
-      logger.info({ src: 'plugin:sql', pluginName, statementCount: sqlStatements.length }, 'Executing SQL statements');
+      logger.info(
+        { src: 'plugin:sql', pluginName, statementCount: sqlStatements.length },
+        'Executing SQL statements'
+      );
       if (options.verbose) {
         sqlStatements.forEach((stmt, i) => {
-          logger.debug({ src: 'plugin:sql', statementIndex: i + 1, statement: stmt }, 'SQL statement');
+          logger.debug(
+            { src: 'plugin:sql', statementIndex: i + 1, statement: stmt },
+            'SQL statement'
+          );
         });
       }
 
       // Dry run mode - just log what would happen
       if (options.dryRun) {
-        logger.info({ src: 'plugin:sql', pluginName, statements: sqlStatements }, 'DRY RUN mode - not executing statements');
+        logger.info(
+          { src: 'plugin:sql', pluginName, statements: sqlStatements },
+          'DRY RUN mode - not executing statements'
+        );
         return;
       }
 
@@ -664,7 +709,11 @@ export class RuntimeMigrator {
       return;
     } catch (error) {
       logger.error(
-        { src: 'plugin:sql', pluginName, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'plugin:sql',
+          pluginName,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Migration failed'
       );
       throw error;
@@ -681,7 +730,11 @@ export class RuntimeMigrator {
           logger.debug({ src: 'plugin:sql', pluginName }, 'Advisory lock released');
         } catch (unlockError) {
           logger.warn(
-            { src: 'plugin:sql', pluginName, error: unlockError instanceof Error ? unlockError.message : String(unlockError) },
+            {
+              src: 'plugin:sql',
+              pluginName,
+              error: unlockError instanceof Error ? unlockError.message : String(unlockError),
+            },
             'Failed to release advisory lock'
           );
         }
@@ -744,7 +797,10 @@ export class RuntimeMigrator {
           );
         } catch (rollbackError) {
           logger.error(
-            { src: 'plugin:sql', error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError) },
+            {
+              src: 'plugin:sql',
+              error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+            },
             'Failed to rollback transaction'
           );
         }
@@ -840,7 +896,11 @@ export class RuntimeMigrator {
       return dataLossCheck;
     } catch (error) {
       logger.error(
-        { src: 'plugin:sql', pluginName, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'plugin:sql',
+          pluginName,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Failed to check migration'
       );
       throw error;

@@ -123,7 +123,15 @@ async function readStreamSafe(
     const text = await new Response(stream).text();
     return text;
   } catch (error) {
-    logger.debug({ src: 'cli', util: 'bun-exec', streamName, error: error instanceof Error ? error.message : String(error) }, 'Error reading stream');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'bun-exec',
+        streamName,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error reading stream'
+    );
     return '';
   }
 }
@@ -274,7 +282,14 @@ export async function bunExec(
         proc.kill();
         logger.debug({ src: 'cli', util: 'bun-exec' }, 'Killed still-running process');
       } catch (cleanupError) {
-        logger.debug({ src: 'cli', util: 'bun-exec', error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }, 'Process cleanup error');
+        logger.debug(
+          {
+            src: 'cli',
+            util: 'bun-exec',
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          },
+          'Process cleanup error'
+        );
       }
     }
   }

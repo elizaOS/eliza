@@ -14,7 +14,9 @@ export function useAddAgentToMessageServer() {
     },
     onSuccess: (_data, variables) => {
       // Invalidate server agents query
-      queryClient.invalidateQueries({ queryKey: ['messageServerAgents', variables.messageServerId] });
+      queryClient.invalidateQueries({
+        queryKey: ['messageServerAgents', variables.messageServerId],
+      });
       queryClient.invalidateQueries({ queryKey: ['agentMessageServers', variables.agentId] });
 
       toast({
@@ -25,7 +27,8 @@ export function useAddAgentToMessageServer() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to add agent to message server',
+        description:
+          error instanceof Error ? error.message : 'Failed to add agent to message server',
         variant: 'destructive',
       });
     },
@@ -43,7 +46,9 @@ export function useRemoveAgentFromMessageServer() {
     },
     onSuccess: (_data, variables) => {
       // Invalidate server agents query
-      queryClient.invalidateQueries({ queryKey: ['messageServerAgents', variables.messageServerId] });
+      queryClient.invalidateQueries({
+        queryKey: ['messageServerAgents', variables.messageServerId],
+      });
       queryClient.invalidateQueries({ queryKey: ['agentMessageServers', variables.agentId] });
 
       toast({
@@ -54,7 +59,8 @@ export function useRemoveAgentFromMessageServer() {
     onError: (error) => {
       toast({
         title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to remove agent from message server',
+        description:
+          error instanceof Error ? error.message : 'Failed to remove agent from message server',
         variant: 'destructive',
       });
     },

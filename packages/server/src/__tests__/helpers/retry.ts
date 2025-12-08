@@ -53,10 +53,7 @@ export interface RetryOptions {
  * );
  * ```
  */
-export async function retry<T>(
-  fn: () => Promise<T>,
-  options: RetryOptions = {}
-): Promise<T> {
+export async function retry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const {
     maxAttempts = 3,
     initialDelay = 100,
@@ -85,7 +82,7 @@ export async function retry<T>(
 
       // Calculate delay based on backoff strategy
       const delay = calculateDelay(attempt, initialDelay, backoff, maxDelay);
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 

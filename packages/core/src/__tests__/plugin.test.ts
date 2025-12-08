@@ -245,12 +245,12 @@ describe('Plugin Functions', () => {
 
       // Should have both plugins
       expect(resolved).toHaveLength(2);
-      
+
       // Discord should come before bootstrap due to dependency
       const indexDiscord = resolved.findIndex((p) => p.name === '@elizaos/plugin-discord');
       const indexBootstrap = resolved.findIndex((p) => p.name === 'bootstrap');
       expect(indexDiscord).toBeLessThan(indexBootstrap);
-      
+
       // Verify both plugins are present
       expect(resolved.some((p) => p.name === '@elizaos/plugin-discord')).toBe(true);
       expect(resolved.some((p) => p.name === 'bootstrap')).toBe(true);
@@ -288,7 +288,7 @@ describe('Plugin Functions', () => {
 
       // Should have all three plugins, but discord only once
       expect(resolved).toHaveLength(3);
-      
+
       // Count occurrences of discord plugin
       const discordCount = resolved.filter((p) => p.name === '@elizaos/plugin-discord').length;
       expect(discordCount).toBe(1);
@@ -465,7 +465,7 @@ describe('Plugin Functions', () => {
       const indexBootstrap = resolved.findIndex((p) => p.name === 'bootstrap');
       // Discord should come before bootstrap due to dependency
       expect(indexDiscord).toBeLessThan(indexBootstrap);
-      
+
       // Verify the plugin is found correctly
       expect(resolved.some((p) => p.name === '@elizaos/plugin-discord')).toBe(true);
     });

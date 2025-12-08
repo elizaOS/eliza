@@ -73,7 +73,9 @@ export class ConversationManager {
 
     // Get default server
     const messageServers = await client.messaging.listMessageServers();
-    const defaultMessageServer = messageServers.messageServers.find((s) => s.name === 'Default Message Server');
+    const defaultMessageServer = messageServers.messageServers.find(
+      (s) => s.name === 'Default Message Server'
+    );
     if (!defaultMessageServer) throw new Error('Default message server not found');
 
     // Create test user ID
