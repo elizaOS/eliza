@@ -2148,9 +2148,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
 
-    // For streaming responses, wrap with logging that fires on completion
+    // For streaming responses, create a logging wrapper that fires on completion
     if (isStreaming && response && typeof response === 'object' && 'textStream' in response) {
-      return this.wrapStreamWithLogging(
+      return this.createLoggingStream(
         response as TextStreamResult,
         modelType,
         modelKey,
@@ -2224,10 +2224,24 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   /**
-   * Wraps a streaming response with logging that fires when the stream completes.
-   * This ensures timing and usage metrics are captured for streaming responses.
+   * Creates a logging wrapper around a streaming result.
+   * Logs metrics on completion and handles stream errors.
+   *
+   * @example
+   * ```typescript
+   * const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+   *   prompt: 'Hello',
+   *   stream: true,
+   * });
+   *
+   * for await (const chunk of result.textStream) {
+   *   console.log(chunk);
+   * }
+   *
+   * const fullText = await result.text;
+   * ```
    */
-  private wrapStreamWithLogging(
+  private createLoggingStream(
     streamResult: TextStreamResult,
     modelType: ModelTypeName,
     modelKey: string,
@@ -2236,7 +2250,7 @@ export class AgentRuntime implements IAgentRuntime {
     startTime: number,
     provider?: string
   ): TextStreamResult {
-    // Create a wrapped text promise that logs on completion
+    // Create a wrapped text promise that logs on completion and handles errors
     const wrappedText = streamResult.text.then((text) => {
       const elapsedTime =
         (typeof performance !== 'undefined' && typeof performance.now === 'function'
@@ -2289,6 +2303,48 @@ export class AgentRuntime implements IAgentRuntime {
       });
 
       return text;
+    }).catch((error) => {
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
+
+      this.logger.error(
+        {
+          src: 'agent',
+          agentId: this.agentId,
+          model: modelKey,
+          duration: Number(elapsedTime.toFixed(2)),
+          streaming: true,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Streaming error'
+      );
+
+      // Log error for action context
+      this.adapter.log({
+        entityId: this.agentId,
+        roomId: this.currentRoomId ?? this.agentId,
+        body: {
+          modelType,
+          modelKey,
+          params: {
+            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+            prompt: promptContent,
+          },
+          prompt: promptContent,
+          systemPrompt: this.character?.system || null,
+          runId: this.getCurrentRunId(),
+          timestamp: Date.now(),
+          executionTime: elapsedTime,
+          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+          error: error instanceof Error ? error.message : String(error),
+          streaming: true,
+        },
+        type: `useModel:${modelKey}:error`,
+      });
+
+      throw error;
     });
 
     // Return a new stream result with the wrapped text promise

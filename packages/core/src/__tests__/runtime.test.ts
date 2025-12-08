@@ -12,7 +12,7 @@ interface BunMockFunction<T extends (...args: never[]) => unknown> {
   };
 }
 import { AgentRuntime } from '../runtime';
-import { MemoryType, ModelType } from '../types';
+import { MemoryType, ModelType, isStreamableModelType } from '../types';
 import type {
   Action,
   Character,
@@ -23,6 +23,7 @@ import type {
   Provider,
   State,
   UUID,
+  TextStreamResult,
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 const stringToUuid = (id: string): UUID => id as UUID;
@@ -1201,6 +1202,91 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(capturedParams.maxTokens).toBe(2048); // Valid default (model-specific was invalid)
         expect(capturedParams.frequencyPenalty).toBe(0.5); // Valid model-specific
         expect(capturedParams.presencePenalty).toBe(0.8); // Valid legacy
+      });
+    });
+  });
+
+  describe('Streaming Support', () => {
+    describe('isStreamableModelType', () => {
+      it('should return true for TEXT_SMALL', () => {
+        expect(isStreamableModelType(ModelType.TEXT_SMALL)).toBe(true);
+      });
+
+      it('should return true for TEXT_LARGE', () => {
+        expect(isStreamableModelType(ModelType.TEXT_LARGE)).toBe(true);
+      });
+
+      it('should return false for TEXT_EMBEDDING', () => {
+        expect(isStreamableModelType(ModelType.TEXT_EMBEDDING)).toBe(false);
+      });
+
+      it('should return false for OBJECT_SMALL', () => {
+        expect(isStreamableModelType(ModelType.OBJECT_SMALL)).toBe(false);
+      });
+
+      it('should return false for IMAGE', () => {
+        expect(isStreamableModelType(ModelType.IMAGE)).toBe(false);
+      });
+    });
+
+    describe('useModel with streaming', () => {
+      it('should pass stream parameter to model handler', async () => {
+        const mockStreamResult: TextStreamResult = {
+          textStream: (async function* () {
+            yield 'Hello';
+            yield ' World';
+          })(),
+          text: Promise.resolve('Hello World'),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+
+        const mockHandler = mock().mockResolvedValue(mockStreamResult);
+        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
+
+        await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test prompt',
+          stream: true,
+        });
+
+        expect(mockHandler).toHaveBeenCalledTimes(1);
+        const callArgs = mockHandler.mock.calls[0];
+        expect(callArgs[1].stream).toBe(true);
+      });
+
+      it('should return string when stream is false', async () => {
+        const mockHandler = mock().mockResolvedValue('Non-streaming response');
+        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
+
+        const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test prompt',
+          stream: false,
+        });
+
+        expect(typeof result).toBe('string');
+        expect(result).toBe('Non-streaming response');
+      });
+
+      it('should return TextStreamResult when stream is true', async () => {
+        const mockStreamResult: TextStreamResult = {
+          textStream: (async function* () {
+            yield 'Test';
+          })(),
+          text: Promise.resolve('Test'),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+        };
+
+        const mockHandler = mock().mockResolvedValue(mockStreamResult);
+        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
+
+        const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test prompt',
+          stream: true,
+        });
+
+        expect(result).toHaveProperty('textStream');
+        expect(result).toHaveProperty('text');
       });
     });
   });
