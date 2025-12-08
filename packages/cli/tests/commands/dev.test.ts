@@ -223,7 +223,7 @@ describe('ElizaOS Dev Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () =>
     }
 
     console.log('Minimal test project created at:', projectDir);
-  });
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT);
 
   beforeEach(async () => {
     // Setup test port (different from start tests)
@@ -303,7 +303,7 @@ describe('ElizaOS Dev Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () =>
     }
 
     console.log('[AFTERALL] Minimal cleanup complete');
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Helper to capture process output
   const captureProcessOutput = async (
