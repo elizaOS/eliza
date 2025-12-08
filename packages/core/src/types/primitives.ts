@@ -55,6 +55,13 @@ export interface Content {
   mentionContext?: MentionContext;
 
   /**
+   * Internal message ID used for streaming coordination.
+   * Set during response generation to ensure streaming chunks and
+   * final broadcast use the same message ID.
+   */
+  responseMessageId?: UUID;
+
+  /**
    * Additional dynamic properties
    * Use specific properties above instead of this when possible
    */

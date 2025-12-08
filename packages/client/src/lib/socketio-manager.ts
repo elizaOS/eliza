@@ -73,6 +73,14 @@ export type LogStreamData = {
   [key: string]: string | number | boolean | null | undefined;
 };
 
+// Define type for stream chunk events (real-time LLM streaming)
+export type StreamChunkData = {
+  messageId: string;
+  chunk: string;
+  agentId: string;
+  channelId: string;
+};
+
 // A simple class that provides EventEmitter-like interface using Evt internally
 class EventAdapter {
   private events: Record<string, Evt<any>> = {};
@@ -86,6 +94,7 @@ class EventAdapter {
     this.events.channelCleared = Evt.create<ChannelClearedData>();
     this.events.channelDeleted = Evt.create<ChannelDeletedData>();
     this.events.logStream = Evt.create<LogStreamData>();
+    this.events.streamChunk = Evt.create<StreamChunkData>();
   }
 
   on<T = unknown>(eventName: string, listener: (data: T) => void) {
@@ -179,6 +188,10 @@ export class SocketIOManager extends EventAdapter {
 
   public get evtLogStream() {
     return this._getEvt('logStream') as Evt<LogStreamData>;
+  }
+
+  public get evtStreamChunk() {
+    return this._getEvt('streamChunk') as Evt<StreamChunkData>;
   }
 
   private constructor() {
@@ -340,6 +353,14 @@ export class SocketIOManager extends EventAdapter {
 
     this.socket.on('messageComplete', (data) => {
       this.emit('messageComplete', data);
+    });
+
+    // Listen for stream chunks (real-time LLM streaming)
+    this.socket.on('streamChunk', (data: StreamChunkData) => {
+      // Check if this is for one of our active channels
+      if (data.channelId && this.activeChannelIds.has(data.channelId)) {
+        this.emit('streamChunk', data);
+      }
     });
 
     // Listen for control messages

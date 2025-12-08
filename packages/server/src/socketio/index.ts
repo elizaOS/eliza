@@ -11,6 +11,7 @@ import {
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils';
+import internalMessageBus from '../services/message-bus';
 
 /**
  * Socket.io socket.data structure for authenticated sockets
@@ -82,6 +83,23 @@ export class SocketIORouter {
     logger.debug({ src: 'ws', messageTypes }, 'Registered message types');
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
+    });
+
+    // Listen for stream chunks from the internal message bus and broadcast to clients
+    internalMessageBus.on('stream_chunk', (data: unknown) => {
+      const { channelId, messageId, chunk, agentId } = data as {
+        channelId: UUID;
+        messageId: UUID;
+        chunk: string;
+        agentId: UUID;
+      };
+      // Broadcast to all clients in the channel
+      io.to(channelId).emit('streamChunk', {
+        messageId,
+        chunk,
+        agentId,
+        channelId,
+      });
     });
   }
 

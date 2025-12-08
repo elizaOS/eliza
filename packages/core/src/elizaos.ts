@@ -16,54 +16,10 @@ import type {
   SendMessageOptions,
   SendMessageResult,
   IDatabaseAdapter,
+  HealthStatus,
+  ReadonlyRuntime,
 } from './types';
 import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
-
-/**
- * Batch operation for sending messages
- */
-export interface BatchOperation {
-  agentId: UUID;
-  operation: 'message' | 'action' | 'evaluate';
-  payload: unknown;
-}
-
-/**
- * Result of a batch operation
- */
-export interface BatchResult {
-  agentId: UUID;
-  success: boolean;
-  result?: unknown;
-  error?: Error;
-}
-
-/**
- * Read-only runtime accessor
- */
-export interface ReadonlyRuntime {
-  getAgent(id: UUID): IAgentRuntime | undefined;
-  getAgents(): IAgentRuntime[];
-  getState(agentId: UUID): State | undefined;
-}
-
-/**
- * Health status for an agent
- */
-export interface HealthStatus {
-  alive: boolean;
-  responsive: boolean;
-  memoryUsage?: number;
-  uptime?: number;
-}
-
-/**
- * Update operation for an agent
- */
-export interface AgentUpdate {
-  id: UUID;
-  character: Partial<Character>;
-}
 
 /**
  * ElizaOS - Multi-agent orchestration framework
@@ -545,12 +501,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       channelId: userMessage.roomId,
     });
 
-    // 5. Extract processing options
+    // 5. Extract processing options (includes streaming callback)
     const processingOptions: MessageProcessingOptions = {
       maxRetries: options?.maxRetries,
       timeoutDuration: options?.timeoutDuration,
       useMultiStep: options?.useMultiStep,
       maxMultiStepIterations: options?.maxMultiStepIterations,
+      onStreamChunk: options?.onStreamChunk,
     };
 
     // 6. Helper to wrap message handling with Entity RLS context if available

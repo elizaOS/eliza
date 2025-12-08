@@ -933,7 +933,7 @@ export default function Chat({
     }
   };
 
-  const { sendMessage, animatedMessageId } = useSocketChat({
+  const { sendMessage } = useSocketChat({
     channelId: finalChannelIdForHooks,
     currentUserId: currentClientEntityId,
     contextId,
@@ -1638,9 +1638,8 @@ export default function Chat({
                   currentClientEntityId={currentClientEntityId}
                   targetAgentData={targetAgentData}
                   allAgents={allAgents}
-                  animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
-                  contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
+                  scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                  contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1727,9 +1726,8 @@ export default function Chat({
                         currentClientEntityId={currentClientEntityId}
                         targetAgentData={targetAgentData}
                         allAgents={allAgents}
-                        animatedMessageId={animatedMessageId}
-                        scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
-                        contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
+                        scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                        contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}

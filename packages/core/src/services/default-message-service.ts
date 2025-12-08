@@ -5,6 +5,7 @@ import type { Content, UUID, Media, MentionContext } from '../types/primitives';
 import type { State } from '../types/state';
 import type { HandlerCallback } from '../types/components';
 import type { Room } from '../types/environment';
+import type { TextStreamResult } from '../types/model';
 import {
   type IMessageService,
   type MessageProcessingOptions,
@@ -31,6 +32,7 @@ import {
   truncateToCompleteSentence,
   getLocalServerUrl,
   logger,
+  XmlTextStreamExtractor,
 } from '../index';
 
 /**
@@ -40,6 +42,18 @@ interface ImageDescriptionResponse {
   description: string;
   title?: string;
 }
+
+/**
+ * Resolved message options with defaults applied.
+ * Required numeric options + optional streaming callback.
+ */
+type ResolvedMessageOptions = {
+  maxRetries: number;
+  timeoutDuration: number;
+  useMultiStep: boolean;
+  maxMultiStepIterations: number;
+  onStreamChunk?: (chunk: string, messageId: UUID) => Promise<void>;
+};
 
 /**
  * Multi-step workflow execution result
@@ -113,6 +127,7 @@ export class DefaultMessageService implements IMessageService {
       maxMultiStepIterations:
         options?.maxMultiStepIterations ??
         parseInt(String(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6')),
+      onStreamChunk: options?.onStreamChunk,
     };
 
     // Set up timeout monitoring
@@ -212,7 +227,7 @@ export class DefaultMessageService implements IMessageService {
     responseId: string,
     runId: UUID,
     startTime: number,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions
   ): Promise<MessageProcessingResult> {
     try {
       const agentResponses = latestResponseIds.get(runtime.agentId);
@@ -862,7 +877,7 @@ export class DefaultMessageService implements IMessageService {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions
   ): Promise<StrategyResult> {
     state = await runtime.composeState(message, ['ACTIONS']);
 
@@ -877,16 +892,39 @@ export class DefaultMessageService implements IMessageService {
 
     let responseContent: Content | null = null;
 
+    // Generate response message ID early for streaming callbacks
+    const responseMessageId = asUUID(v4());
+
     // Retry if missing required fields
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      // Use streaming for real-time updates
+      const streamResult = await runtime.useModel(ModelType.TEXT_LARGE, { prompt, stream: true });
 
-      runtime.logger.debug({ src: 'service:message', response }, 'Raw LLM response');
+      // Consume the stream, calling onStreamChunk if provided
+      const response = await this.consumeStream(streamResult, opts.onStreamChunk, responseMessageId);
+
+      runtime.logger.info(
+        { src: 'service:message', responseLength: response.length, responsePreview: response.substring(0, 500) },
+        'Raw LLM response received'
+      );
 
       const parsedXml = parseKeyValueXml(response);
-      runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed XML content');
+      runtime.logger.info(
+        {
+          src: 'service:message',
+          parsedXml: parsedXml ? {
+            hasThought: !!parsedXml.thought,
+            thoughtPreview: parsedXml.thought?.substring(0, 100),
+            hasActions: !!parsedXml.actions,
+            actions: parsedXml.actions,
+            hasText: !!parsedXml.text,
+            textPreview: parsedXml.text?.substring(0, 100),
+          } : null,
+        },
+        'Parsed XML content'
+      );
 
       if (parsedXml) {
         const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
@@ -909,12 +947,23 @@ export class DefaultMessageService implements IMessageService {
         };
       } else {
         responseContent = null;
+        runtime.logger.warn(
+          { src: 'service:message', responsePreview: response.substring(0, 300) },
+          'parseKeyValueXml returned null - XML parsing failed'
+        );
       }
 
       retries++;
       if (!responseContent?.thought || !responseContent?.actions) {
         runtime.logger.warn(
-          { src: 'service:message', retries, maxRetries: opts.maxRetries },
+          {
+            src: 'service:message',
+            retries,
+            maxRetries: opts.maxRetries,
+            hasThought: !!responseContent?.thought,
+            hasActions: !!responseContent?.actions,
+            actionsValue: responseContent?.actions,
+          },
           'Missing required fields (thought or actions), retrying'
         );
       }
@@ -947,10 +996,12 @@ export class DefaultMessageService implements IMessageService {
       (!responseContent.providers || responseContent.providers.length === 0);
 
     responseContent.simple = isSimple;
+    // Include message ID for streaming coordination (so broadcast uses same ID)
+    responseContent.responseMessageId = responseMessageId;
 
     const responseMessages: Memory[] = [
       {
-        id: asUUID(v4()),
+        id: responseMessageId,
         entityId: runtime.agentId,
         agentId: runtime.agentId,
         content: responseContent,
@@ -975,7 +1026,7 @@ export class DefaultMessageService implements IMessageService {
     message: Memory,
     state: State,
     callback: HandlerCallback | undefined,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions
   ): Promise<StrategyResult> {
     const traceActionResult: MultiStepActionResult[] = [];
     let accumulatedState: MultiStepState = state as MultiStepState;
@@ -1148,7 +1199,15 @@ export class DefaultMessageService implements IMessageService {
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
     });
 
-    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+    // Generate response message ID early for streaming callbacks
+    const responseMessageId = asUUID(v4());
+
+    // Use streaming for the final summary (user-facing)
+    const streamResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: summaryPrompt,
+      stream: true,
+    });
+    const finalOutput = await this.consumeStream(streamResult, opts.onStreamChunk, responseMessageId);
     const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
@@ -1159,20 +1218,21 @@ export class DefaultMessageService implements IMessageService {
         text: summaryText,
         thought: (typeof summary.thought === 'string' ? summary.thought : 'Final user-facing message after task completion.') || 'Final user-facing message after task completion.',
         simple: true,
+        messageId: responseMessageId,
       };
     }
 
     const responseMessages: Memory[] = responseContent
       ? [
-        {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
+          {
+            id: responseMessageId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          },
+        ]
       : [];
 
     return {
@@ -1181,6 +1241,41 @@ export class DefaultMessageService implements IMessageService {
       state: accumulatedState,
       mode: responseContent ? 'simple' : 'none',
     };
+  }
+
+  /**
+   * Helper to consume a text stream and optionally call onStreamChunk for each chunk.
+   * Only streams content inside <text>...</text> tags to avoid exposing raw XML.
+   * Returns the complete text after the stream ends.
+   */
+  private async consumeStream(
+    streamResult: TextStreamResult,
+    onStreamChunk: ((chunk: string, messageId: UUID) => Promise<void>) | undefined,
+    messageId: UUID
+  ): Promise<string> {
+    if (onStreamChunk) {
+      let fullText = '';
+      const extractor = new XmlTextStreamExtractor();
+
+      for await (const chunk of streamResult.textStream) {
+        fullText += chunk;
+        if (!extractor.done) {
+          const textToStream = extractor.push(chunk);
+          if (textToStream) {
+            try {
+              await onStreamChunk(textToStream, messageId);
+            } catch (err) {
+              logger.warn(
+                { src: 'service:message', error: err instanceof Error ? err.message : String(err) },
+                'onStreamChunk callback failed, continuing stream'
+              );
+            }
+          }
+        }
+      }
+      return fullText;
+    }
+    return streamResult.text;
   }
 
   /**

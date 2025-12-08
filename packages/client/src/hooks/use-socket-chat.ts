@@ -8,6 +8,7 @@ import type {
   MessageDeletedData,
   ChannelClearedData,
   ChannelDeletedData,
+  StreamChunkData,
 } from '@/lib/socketio-manager';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
@@ -44,8 +45,10 @@ export function useSocketChat({
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
   const { getApiKey } = useAuth();
-  const animatedMessageIdRef = useRef<string | null>(null);
   const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
+  // Track streaming messages for this channel instance.
+  // Map is cleared on channel cleanup - safe because handleStreamChunk filters by channelId.
+  const streamingMessagesRef = useRef<Map<string, string>>(new Map()); // messageId → accumulated text
 
   const sendMessage = useCallback(
     async (
@@ -146,9 +149,29 @@ export function useSocketChat({
           isAgent: false,
         });
       } else {
+        const messageId = data.id || randomUUID();
+        const streamingMessages = streamingMessagesRef.current;
+
+        // Check if this message was being streamed
+        if (data.id && streamingMessages.has(data.id)) {
+          // Message was streamed - update with final content and mark streaming complete
+          clientLogger.info('[useSocketChat] Completing streamed message:', data.id);
+          streamingMessages.delete(data.id);
+          onUpdateMessage(data.id, {
+            text: data.text,
+            thought: data.thought,
+            actions: data.actions,
+            attachments: data.attachments,
+            isStreaming: false,
+            prompt: data.prompt,
+            rawMessage: data.rawMessage,
+          });
+          return;
+        }
+
         // Add new message from other participants
         const newUiMsg: UiMessage = {
-          id: (data.id as UUID) || randomUUID(),
+          id: messageId as UUID,
           text: data.text,
           name: data.senderName,
           senderId: data.senderId as UUID,
@@ -171,12 +194,6 @@ export function useSocketChat({
         if (!messageExists) {
           clientLogger.info('[useSocketChat] Adding new UiMessage:', JSON.stringify(newUiMsg));
           onAddMessage(newUiMsg);
-
-          if (isTargetAgent && newUiMsg.id) {
-            animatedMessageIdRef.current = newUiMsg.id;
-          } else {
-            animatedMessageIdRef.current = null;
-          }
         }
       }
     };
@@ -215,6 +232,40 @@ export function useSocketChat({
       }
     };
 
+    const handleStreamChunk = (data: StreamChunkData) => {
+      if (data.channelId !== channelId) return;
+
+      const { messageId, chunk, agentId } = data;
+      const streamingMessages = streamingMessagesRef.current;
+
+      // Check if we already have this message being streamed
+      const existingText = streamingMessages.get(messageId);
+
+      if (existingText === undefined) {
+        // First chunk - create placeholder message
+        const agent = allAgents.find((a) => a.id === agentId);
+        const newUiMsg: UiMessage = {
+          id: messageId as UUID,
+          text: chunk,
+          name: agent?.name || 'Agent',
+          senderId: agentId as UUID,
+          isAgent: true,
+          createdAt: Date.now(),
+          channelId: channelId as UUID,
+          source: 'streaming',
+          isLoading: false,
+          isStreaming: true,
+        };
+        streamingMessages.set(messageId, chunk);
+        onAddMessage(newUiMsg);
+      } else {
+        // Subsequent chunk - update existing message
+        const newText = existingText + chunk;
+        streamingMessages.set(messageId, newText);
+        onUpdateMessage(messageId, { text: newText });
+      }
+    };
+
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
       (d: MessageBroadcastData) => (d.channelId || d.roomId) === channelId,
       handleMessageBroadcasting
@@ -239,6 +290,10 @@ export function useSocketChat({
       (d: ChannelDeletedData) => (d.channelId || d.roomId) === channelId,
       handleChannelDeleted
     );
+    const streamSub = socketIOManager.evtStreamChunk.attach(
+      (d: StreamChunkData) => d.channelId === channelId,
+      handleStreamChunk
+    );
 
     return () => {
       if (channelId) {
@@ -253,8 +308,10 @@ export function useSocketChat({
             `[useSocketChat] useEffect cleanup: Reset joinedChannelRef for ${channelId}`
           );
         }
+        // Clear streaming messages for this channel
+        streamingMessagesRef.current.clear();
       }
-      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub]);
+      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub, streamSub]);
     };
 
     function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {
@@ -264,6 +321,5 @@ export function useSocketChat({
 
   return {
     sendMessage,
-    animatedMessageId: animatedMessageIdRef.current,
   };
 }
