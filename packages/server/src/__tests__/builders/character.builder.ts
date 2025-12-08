@@ -64,12 +64,10 @@ export class CharacterBuilder {
    */
   withSettings(settings: Partial<Character['settings']>): this {
     if (!settings) return this;
-    
+
     this.character.settings = {
       ...this.character.settings,
-      ...Object.fromEntries(
-        Object.entries(settings).filter(([_, v]) => v !== undefined)
-      ),
+      ...Object.fromEntries(Object.entries(settings).filter(([_, v]) => v !== undefined)),
     } as Character['settings'];
     return this;
   }
@@ -92,35 +90,28 @@ export class CharacterBuilder {
    * Create a minimal test agent with sensible defaults
    */
   asTestAgent(): this {
-    return this
-      .withName('Test Agent')
-      .withBio(['A test agent for automated testing'])
+    return this.withName('Test Agent').withBio(['A test agent for automated testing']);
   }
 
   /**
    * Create a minimal database test agent
    */
   asDatabaseTestAgent(): this {
-    return this
-      .withName('Database Test Agent')
-      .withBio(['Agent for database testing'])
+    return this.withName('Database Test Agent').withBio(['Agent for database testing']);
   }
 
   /**
    * Create an agent suitable for Socket.IO tests
    */
   asSocketIOTestAgent(): this {
-    return this
-      .withName('SocketIO Test Agent')
-      .withBio(['Agent for Socket.IO testing'])
+    return this.withName('SocketIO Test Agent').withBio(['Agent for Socket.IO testing']);
   }
 
   /**
    * Create an agent with OpenAI-like configuration
    */
   asOpenAIAgent(): this {
-    return this
-      .withName('OpenAI Test Agent')
+    return this.withName('OpenAI Test Agent')
       .withBio(['Agent configured for OpenAI'])
       .withSettings({
         model: 'gpt-4',
@@ -135,7 +126,9 @@ export class CharacterBuilder {
    */
   build(): Character {
     if (!this.character.name) {
-      throw new Error('Character must have a name. Use .withName() or a preset like .asTestAgent()');
+      throw new Error(
+        'Character must have a name. Use .withName() or a preset like .asTestAgent()'
+      );
     }
 
     if (!this.character.bio || this.character.bio.length === 0) {

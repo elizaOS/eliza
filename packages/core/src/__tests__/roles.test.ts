@@ -20,10 +20,17 @@ describe('roles utilities', () => {
     if (logger_module.logger) {
       const methods = ['error', 'info', 'warn', 'debug'];
       methods.forEach((method) => {
-        if (typeof logger_module.logger[method as keyof typeof logger_module.logger] === 'function') {
-          spyOn(logger_module.logger, method as keyof typeof logger_module.logger).mockImplementation(() => {});
+        if (
+          typeof logger_module.logger[method as keyof typeof logger_module.logger] === 'function'
+        ) {
+          spyOn(
+            logger_module.logger,
+            method as keyof typeof logger_module.logger
+          ).mockImplementation(() => {});
         } else {
-          logger_module.logger[method as keyof typeof logger_module.logger] = mock((bindings: Record<string, unknown>) => {}) as any;
+          logger_module.logger[method as keyof typeof logger_module.logger] = mock(
+            (bindings: Record<string, unknown>) => {}
+          ) as any;
         }
       });
     }

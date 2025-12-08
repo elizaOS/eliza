@@ -108,10 +108,7 @@ export class ChannelBuilder {
    * Create a simple group channel
    */
   asGroupChannel(name: string, serverId: UUID): this {
-    return this.withName(name)
-      .withType(ChannelType.GROUP)
-      .withServerId(serverId)
-      .withMetadata({});
+    return this.withName(name).withType(ChannelType.GROUP).withServerId(serverId).withMetadata({});
   }
 
   /**

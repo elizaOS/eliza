@@ -151,7 +151,14 @@ export function createLoggingRouter(): express.Router {
 
       // Log debug information for troubleshooting
       logger.debug(
-        { src: 'http', path: '/logs', count: filtered.length, total: logEntries.length, level: requestedLevel, agentName: requestedAgentName },
+        {
+          src: 'http',
+          path: '/logs',
+          count: filtered.length,
+          total: logEntries.length,
+          level: requestedLevel,
+          agentName: requestedAgentName,
+        },
         'Logs request processed'
       );
 

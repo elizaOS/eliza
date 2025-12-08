@@ -57,7 +57,10 @@ export const plugin: Plugin = {
       // Try to check if the runtime is ready (has an adapter)
       const isReady = await runtime.isReady();
       if (isReady) {
-        logger.info({ src: 'plugin:sql' }, 'Database adapter already registered, skipping creation');
+        logger.info(
+          { src: 'plugin:sql' },
+          'Database adapter already registered, skipping creation'
+        );
         return;
       }
     } catch (error) {

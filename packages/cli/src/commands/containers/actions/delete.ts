@@ -33,7 +33,10 @@ export async function deleteContainerAction(
     const apiUrl = options.apiUrl || 'https://www.elizacloud.ai';
 
     if (!apiKey) {
-      logger.error({ src: 'cli', command: 'containers-delete' }, 'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable');
+      logger.error(
+        { src: 'cli', command: 'containers-delete' },
+        'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable'
+      );
       process.exit(1);
     }
 
@@ -44,7 +47,10 @@ export async function deleteContainerAction(
 
     if (!targetContainerId) {
       projectName = options.projectName || path.basename(process.cwd());
-      logger.info({ src: 'cli', command: 'containers-delete', projectName }, 'Auto-detecting container for project');
+      logger.info(
+        { src: 'cli', command: 'containers-delete', projectName },
+        'Auto-detecting container for project'
+      );
 
       // Fetch all containers
       const listResponse = await fetch(`${apiUrl}/api/v1/containers`, {
@@ -67,19 +73,28 @@ export async function deleteContainerAction(
       const matchingContainer = containers.find((c) => c.project_name === projectName);
 
       if (!matchingContainer) {
-        logger.error({ src: 'cli', command: 'containers-delete', projectName }, 'No container found for project');
+        logger.error(
+          { src: 'cli', command: 'containers-delete', projectName },
+          'No container found for project'
+        );
         logger.info({ src: 'cli', command: 'containers-delete' }, 'Available projects:');
         const uniqueProjects = [...new Set(containers.map((c) => c.project_name))];
         uniqueProjects.forEach((proj) => {
           logger.info({ src: 'cli', command: 'containers-delete', project: proj }, '   - ' + proj);
         });
-        logger.info({ src: 'cli', command: 'containers-delete' }, 'Run "elizaos containers list" to see all containers');
+        logger.info(
+          { src: 'cli', command: 'containers-delete' },
+          'Run "elizaos containers list" to see all containers'
+        );
         process.exit(1);
       }
 
       targetContainerId = matchingContainer.id;
       containerName = matchingContainer.name;
-      logger.info({ src: 'cli', command: 'containers-delete', containerName, containerId: targetContainerId }, 'Found container');
+      logger.info(
+        { src: 'cli', command: 'containers-delete', containerName, containerId: targetContainerId },
+        'Found container'
+      );
     }
 
     if (!options.force && containerName) {
@@ -109,7 +124,10 @@ export async function deleteContainerAction(
       }
     }
 
-    logger.info({ src: 'cli', command: 'containers-delete', containerId: targetContainerId }, 'Deleting container');
+    logger.info(
+      { src: 'cli', command: 'containers-delete', containerId: targetContainerId },
+      'Deleting container'
+    );
 
     const response = await fetch(`${apiUrl}/api/v1/containers/${targetContainerId}`, {
       method: 'DELETE',
@@ -124,10 +142,23 @@ export async function deleteContainerAction(
       throw new Error(errorData.error || `Failed to delete container: ${response.statusText}`);
     }
 
-    logger.info({ src: 'cli', command: 'containers-delete', containerId: targetContainerId }, 'Container deleted successfully');
-    logger.info({ src: 'cli', command: 'containers-delete' }, 'Note: CloudFormation stack deletion may take a few minutes to complete');
+    logger.info(
+      { src: 'cli', command: 'containers-delete', containerId: targetContainerId },
+      'Container deleted successfully'
+    );
+    logger.info(
+      { src: 'cli', command: 'containers-delete' },
+      'Note: CloudFormation stack deletion may take a few minutes to complete'
+    );
   } catch (error: unknown) {
-    logger.error({ src: 'cli', command: 'containers-delete', error: error instanceof Error ? error.message : 'Failed to delete container' }, 'Error deleting container');
+    logger.error(
+      {
+        src: 'cli',
+        command: 'containers-delete',
+        error: error instanceof Error ? error.message : 'Failed to delete container',
+      },
+      'Error deleting container'
+    );
     process.exit(1);
   }
 }

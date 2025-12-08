@@ -8,12 +8,7 @@ import { stringToUuid, ChannelType } from '@elizaos/core';
 import type { CentralRootMessage } from '../../types/server';
 
 // New architecture imports
-import {
-  TestServerFixture,
-  AgentFixture,
-  ChannelBuilder,
-  MessageBuilder,
-} from '../index';
+import { TestServerFixture, AgentFixture, ChannelBuilder, MessageBuilder } from '../index';
 
 // Helper to generate unique channel IDs for tests
 const generateChannelId = (testName: string): UUID => {
@@ -54,13 +49,15 @@ describe('Database Operations Integration Tests', () => {
       const channelId = generateChannelId('concurrent-messages');
 
       // Create channel with test agent as participant
-      await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asIntegrationTestChannel(serverId, 'concurrent-messages')
-          .withId(channelId)
-          .build(),
-        [testAgentId]
-      );
+      await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .asIntegrationTestChannel(serverId, 'concurrent-messages')
+            .withId(channelId)
+            .build(),
+          [testAgentId]
+        );
 
       // Create multiple messages concurrently using builder
       const messagePromises: Promise<CentralRootMessage>[] = [];
@@ -74,9 +71,7 @@ describe('Database Operations Integration Tests', () => {
           .withSourceType('test')
           .build();
 
-        messagePromises.push(
-          serverFixture.getServer().createMessage(messageInput)
-        );
+        messagePromises.push(serverFixture.getServer().createMessage(messageInput));
       }
 
       const messages = await Promise.all(messagePromises);
@@ -98,50 +93,52 @@ describe('Database Operations Integration Tests', () => {
       const channelId = generateChannelId('referential-integrity');
 
       // Create channel
-      await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .withId(channelId)
-          .withName('Integrity Test Channel')
-          .withType(ChannelType.GROUP)
-          .withServerId(serverId)
-          .build()
-      );
+      await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .withId(channelId)
+            .withName('Integrity Test Channel')
+            .withType(ChannelType.GROUP)
+            .withServerId(serverId)
+            .build()
+        );
 
       // Create messages
-      const message1 = await serverFixture.getServer().createMessage(
-        new MessageBuilder()
-          .withChannelId(channelId)
-          .withAuthorId(stringToUuid('user-1'))
-          .withContent('First message')
-          .withSourceId('integrity-1')
-          .withSourceType('test')
-          .build()
-      );
+      const message1 = await serverFixture
+        .getServer()
+        .createMessage(
+          new MessageBuilder()
+            .withChannelId(channelId)
+            .withAuthorId(stringToUuid('user-1'))
+            .withContent('First message')
+            .withSourceId('integrity-1')
+            .withSourceType('test')
+            .build()
+        );
 
-      await serverFixture.getServer().createMessage(
-        new MessageBuilder()
-          .withChannelId(channelId)
-          .withAuthorId(stringToUuid('user-2'))
-          .withContent('Reply message')
-          .withSourceId('integrity-2')
-          .withSourceType('test')
-          .inReplyTo(message1.id)
-          .build()
-      );
+      await serverFixture
+        .getServer()
+        .createMessage(
+          new MessageBuilder()
+            .withChannelId(channelId)
+            .withAuthorId(stringToUuid('user-2'))
+            .withContent('Reply message')
+            .withSourceId('integrity-2')
+            .withSourceType('test')
+            .inReplyTo(message1.id)
+            .build()
+        );
 
       // Delete channel should cascade delete messages
       await serverFixture.getServer().deleteChannel(channelId);
 
       // Verify channel is deleted
-      const deletedChannel = await serverFixture
-        .getServer()
-        .getChannelDetails(channelId);
+      const deletedChannel = await serverFixture.getServer().getChannelDetails(channelId);
       expect(deletedChannel).toBeNull();
 
       // Verify messages are also deleted
-      const messages = await serverFixture
-        .getServer()
-        .getMessagesForChannel(channelId);
+      const messages = await serverFixture.getServer().getMessagesForChannel(channelId);
       expect(messages).toHaveLength(0);
     });
   });
@@ -156,29 +153,25 @@ describe('Database Operations Integration Tests', () => {
       ];
 
       // Create channel with initial participants + test agent
-      await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .withId(channelId)
-          .asGroupChannel('Participant Test Channel', serverId)
-          .build(),
-        [testAgentId, ...participants.slice(0, 2)]
-      );
+      await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .withId(channelId)
+            .asGroupChannel('Participant Test Channel', serverId)
+            .build(),
+          [testAgentId, ...participants.slice(0, 2)]
+        );
 
       // Verify initial participants (testAgent + 2 participants)
-      let currentParticipants = await serverFixture
-        .getServer()
-        .getChannelParticipants(channelId);
+      let currentParticipants = await serverFixture.getServer().getChannelParticipants(channelId);
       expect(currentParticipants).toHaveLength(3);
 
       // Add third participant
-      await serverFixture
-        .getServer()
-        .addParticipantsToChannel(channelId, [participants[2]]);
+      await serverFixture.getServer().addParticipantsToChannel(channelId, [participants[2]]);
 
       // Verify all participants (testAgent + 3 participants)
-      currentParticipants = await serverFixture
-        .getServer()
-        .getChannelParticipants(channelId);
+      currentParticipants = await serverFixture.getServer().getChannelParticipants(channelId);
       expect(currentParticipants).toHaveLength(4);
       participants.forEach((p) => {
         expect(currentParticipants).toContain(p);
@@ -192,13 +185,15 @@ describe('Database Operations Integration Tests', () => {
       const channelId = generateChannelId('query-filters');
 
       // Create channel with test agent as participant
-      await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .withId(channelId)
-          .asIntegrationTestChannel(serverId, 'query-filters')
-          .build(),
-        [testAgentId]
-      );
+      await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .withId(channelId)
+            .asIntegrationTestChannel(serverId, 'query-filters')
+            .build(),
+          [testAgentId]
+        );
 
       // Create 10 messages with different timestamps using buildMany (reduced from 20 to avoid PGLite concurrency issues)
       const messageInputs = new MessageBuilder()
@@ -215,14 +210,12 @@ describe('Database Operations Integration Tests', () => {
         });
         // In CI, add small delay to let PGLite stabilize (CI environments are slower)
         if (process.env.CI && i < 9) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
       // Test pagination
-      const page1 = await serverFixture
-        .getServer()
-        .getMessagesForChannel(channelId, 3);
+      const page1 = await serverFixture.getServer().getMessagesForChannel(channelId, 3);
       expect(page1).toHaveLength(3);
 
       const page2 = await serverFixture
@@ -259,22 +252,22 @@ describe('Database Operations Integration Tests', () => {
       expect(afterCreateServers).toHaveLength(initialServerCount + 1);
 
       // Add agent to server
-      await serverFixture
-        .getServer()
-        .addAgentToMessageServer(newServer.id, agentId);
+      await serverFixture.getServer().addAgentToMessageServer(newServer.id, agentId);
       const agentsOnServer = await serverFixture
         .getServer()
         .getAgentsForMessageServer(newServer.id);
       expect(agentsOnServer).toContain(agentId);
 
       // Create channel on server
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .withName('Server Channel')
-          .withType(ChannelType.GROUP)
-          .withServerId(newServer.id)
-          .build()
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .withName('Server Channel')
+            .withType(ChannelType.GROUP)
+            .withServerId(newServer.id)
+            .build()
+        );
 
       // Verify channel is associated with server
       const serverChannels = await serverFixture
@@ -283,18 +276,14 @@ describe('Database Operations Integration Tests', () => {
       expect(serverChannels.some((c) => c.id === channel.id)).toBe(true);
 
       // Remove agent from server
-      await serverFixture
-        .getServer()
-        .removeAgentFromMessageServer(newServer.id, agentId);
+      await serverFixture.getServer().removeAgentFromMessageServer(newServer.id, agentId);
       const agentsAfterRemoval = await serverFixture
         .getServer()
         .getAgentsForMessageServer(newServer.id);
       expect(agentsAfterRemoval).not.toContain(agentId);
 
       // Channel should still exist
-      const channelStillExists = await serverFixture
-        .getServer()
-        .getChannelDetails(channel.id);
+      const channelStillExists = await serverFixture.getServer().getChannelDetails(channel.id);
       expect(channelStillExists).toBeDefined();
     });
 
@@ -320,13 +309,15 @@ describe('Database Operations Integration Tests', () => {
       const channelId = generateChannelId('bulk-insertion');
 
       // Create channel with test agent as participant
-      await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .withId(channelId)
-          .asGroupChannel('Bulk Test Channel', serverId)
-          .build(),
-        [testAgentId]
-      );
+      await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder()
+            .withId(channelId)
+            .asGroupChannel('Bulk Test Channel', serverId)
+            .build(),
+          [testAgentId]
+        );
 
       const startTime = Date.now();
 
@@ -345,7 +336,7 @@ describe('Database Operations Integration Tests', () => {
         });
         // In CI, add small delay to let PGLite stabilize (CI environments are slower)
         if (process.env.CI && i < messageInputs.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -355,19 +346,13 @@ describe('Database Operations Integration Tests', () => {
       expect(endTime - startTime).toBeLessThan(5000);
 
       // Verify all messages were created
-      const messages = await serverFixture
-        .getServer()
-        .getMessagesForChannel(channelId, 30);
+      const messages = await serverFixture.getServer().getMessagesForChannel(channelId, 30);
       expect(messages).toHaveLength(20);
     });
 
     it('should handle large result sets', async () => {
       // Create multiple channels using buildMany
-      const channelInputs = new ChannelBuilder().buildMany(
-        20,
-        serverId,
-        'Large Set Channel'
-      );
+      const channelInputs = new ChannelBuilder().buildMany(20, serverId, 'Large Set Channel');
 
       const channelPromises = channelInputs.map((input) =>
         serverFixture.getServer().createChannel(input)
@@ -376,9 +361,7 @@ describe('Database Operations Integration Tests', () => {
       await Promise.all(channelPromises);
 
       // Retrieve all channels for server
-      const channels = await serverFixture
-        .getServer()
-        .getChannelsForMessageServer(serverId);
+      const channels = await serverFixture.getServer().getChannelsForMessageServer(serverId);
       expect(channels.length).toBeGreaterThanOrEqual(20);
     });
   });
@@ -404,13 +387,15 @@ describe('Database Operations Integration Tests', () => {
 
       // Should fail to create channel on non-existent server
       try {
-        await serverFixture.getServer().createChannel(
-          new ChannelBuilder()
-            .withName('Invalid Server Channel')
-            .withType(ChannelType.GROUP)
-            .withServerId(nonExistentServerId)
-            .build()
-        );
+        await serverFixture
+          .getServer()
+          .createChannel(
+            new ChannelBuilder()
+              .withName('Invalid Server Channel')
+              .withType(ChannelType.GROUP)
+              .withServerId(nonExistentServerId)
+              .build()
+          );
       } catch (error: any) {
         // Expected to fail due to foreign key constraint
         expect(error).toBeDefined();

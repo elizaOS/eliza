@@ -48,7 +48,9 @@ export async function checkBunInstallation(): Promise<BunInstallationResult> {
 export function displayBunInstallInstructions(): void {
   const platform = process.platform;
 
-  console.error(emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.'));
+  console.error(
+    emoji.error('Bun is required for ElizaOS CLI but is not installed or not found in PATH.')
+  );
   console.error('');
   console.error(emoji.rocket('Install Bun using the appropriate command for your system:'));
   console.error('');

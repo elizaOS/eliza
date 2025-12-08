@@ -58,11 +58,17 @@ export class TaskService extends Service {
     this.runtime.registerTaskWorker({
       name: 'REPEATING_TEST_TASK',
       validate: async (_runtime, _message, _state) => {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId }, 'Validating repeating test task');
+        this.runtime.logger.debug(
+          { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId },
+          'Validating repeating test task'
+        );
         return true;
       },
       execute: async (_runtime, _options) => {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId }, 'Executing repeating test task');
+        this.runtime.logger.debug(
+          { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId },
+          'Executing repeating test task'
+        );
       },
     });
 
@@ -70,11 +76,17 @@ export class TaskService extends Service {
     this.runtime.registerTaskWorker({
       name: 'ONETIME_TEST_TASK',
       validate: async (_runtime, _message, _state) => {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId }, 'Validating one-time test task');
+        this.runtime.logger.debug(
+          { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId },
+          'Validating one-time test task'
+        );
         return true;
       },
       execute: async (_runtime, _options) => {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId }, 'Executing one-time test task');
+        this.runtime.logger.debug(
+          { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId },
+          'Executing one-time test task'
+        );
       },
     });
 
@@ -117,7 +129,14 @@ export class TaskService extends Service {
       try {
         await this.checkTasks();
       } catch (error) {
-        this.runtime.logger.error({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in task timer');
+        this.runtime.logger.error(
+          {
+            src: 'plugin:bootstrap:service:task',
+            agentId: this.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error in task timer'
+        );
       }
     }, this.TICK_INTERVAL) as unknown as NodeJS.Timeout;
   }
@@ -156,7 +175,12 @@ export class TaskService extends Service {
           }
         } catch (error) {
           this.runtime.logger.error(
-            { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:bootstrap:service:task',
+              agentId: this.runtime.agentId,
+              taskName: task.name,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Error validating task'
           );
           continue;
@@ -224,7 +248,14 @@ export class TaskService extends Service {
 
         if (task.metadata?.updatedAt === task.metadata?.createdAt) {
           if (task.tags?.includes('immediate')) {
-            this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name }, 'Immediately running task');
+            this.runtime.logger.debug(
+              {
+                src: 'plugin:bootstrap:service:task',
+                agentId: this.runtime.agentId,
+                taskName: task.name,
+              },
+              'Immediately running task'
+            );
             await this.executeTask(task);
             continue;
           }
@@ -232,12 +263,27 @@ export class TaskService extends Service {
 
         // Check if enough time has passed since last update
         if (now - taskStartTime >= updateIntervalMs) {
-          this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name, intervalMs: updateIntervalMs }, 'Executing task - interval elapsed');
+          this.runtime.logger.debug(
+            {
+              src: 'plugin:bootstrap:service:task',
+              agentId: this.runtime.agentId,
+              taskName: task.name,
+              intervalMs: updateIntervalMs,
+            },
+            'Executing task - interval elapsed'
+          );
           await this.executeTask(task);
         }
       }
     } catch (error) {
-      this.runtime.logger.error({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error checking tasks');
+      this.runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:service:task',
+          agentId: this.runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error checking tasks'
+      );
     }
   }
 
@@ -249,13 +295,23 @@ export class TaskService extends Service {
   private async executeTask(task: Task) {
     try {
       if (!task || !task.id) {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId }, 'Task not found');
+        this.runtime.logger.debug(
+          { src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId },
+          'Task not found'
+        );
         return;
       }
 
       const worker = this.runtime.getTaskWorker(task.name);
       if (!worker) {
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name }, 'No worker found for task type');
+        this.runtime.logger.debug(
+          {
+            src: 'plugin:bootstrap:service:task',
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+          },
+          'No worker found for task type'
+        );
         return;
       }
 
@@ -268,10 +324,26 @@ export class TaskService extends Service {
             updatedAt: Date.now(),
           },
         });
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name, taskId: task.id }, 'Updated repeating task with new timestamp');
+        this.runtime.logger.debug(
+          {
+            src: 'plugin:bootstrap:service:task',
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          'Updated repeating task with new timestamp'
+        );
       }
 
-      this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name, taskId: task.id }, 'Executing task');
+      this.runtime.logger.debug(
+        {
+          src: 'plugin:bootstrap:service:task',
+          agentId: this.runtime.agentId,
+          taskName: task.name,
+          taskId: task.id,
+        },
+        'Executing task'
+      );
       await worker.execute(this.runtime, task.metadata || {}, task);
       //this.runtime.logger.debug('task.tags are', task.tags);
 
@@ -279,10 +351,26 @@ export class TaskService extends Service {
       if (!task.tags?.includes('repeat')) {
         // For non-repeating tasks, delete the task after execution
         await this.runtime.deleteTask(task.id);
-        this.runtime.logger.debug({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskName: task.name, taskId: task.id }, 'Deleted non-repeating task after execution');
+        this.runtime.logger.debug(
+          {
+            src: 'plugin:bootstrap:service:task',
+            agentId: this.runtime.agentId,
+            taskName: task.name,
+            taskId: task.id,
+          },
+          'Deleted non-repeating task after execution'
+        );
       }
     } catch (error) {
-      this.runtime.logger.error({ src: 'plugin:bootstrap:service:task', agentId: this.runtime.agentId, taskId: task.id, error: error instanceof Error ? error.message : String(error) }, 'Error executing task');
+      this.runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:service:task',
+          agentId: this.runtime.agentId,
+          taskId: task.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error executing task'
+      );
     }
   }
 

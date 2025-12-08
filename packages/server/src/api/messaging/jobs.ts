@@ -226,7 +226,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           listenerCleanupTimeouts.delete(jobId);
         }
       });
-      logger.warn({ src: 'http', removedCount: toRemove.length, currentJobs: jobs.size }, 'Emergency cleanup of oldest jobs');
+      logger.warn(
+        { src: 'http', removedCount: toRemove.length, currentJobs: jobs.size },
+        'Emergency cleanup of oldest jobs'
+      );
     }
   };
 
@@ -296,7 +299,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           const agents = elizaOS.getAgents();
           if (agents && agents.length > 0) {
             agentId = agents[0].agentId;
-            logger.debug({ src: 'http', agentId }, 'No agentId provided, using first available agent');
+            logger.debug(
+              { src: 'http', agentId },
+              'No agentId provided, using first available agent'
+            );
           } else {
             return sendErrorResponse(res, 404, 'No agents available on server');
           }
@@ -357,10 +363,12 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
 
           // Add agent as participant
           await serverInstance.addParticipantsToChannel(channelId, [agentId]);
-
         } catch (error) {
           jobs.delete(jobId);
-          logger.error({ src: 'http', jobId, error: error instanceof Error ? error.message : String(error) }, 'Failed to create job channel');
+          logger.error(
+            { src: 'http', jobId, error: error instanceof Error ? error.message : String(error) },
+            'Failed to create job channel'
+          );
           return sendErrorResponse(res, 500, 'Failed to create job channel');
         }
 
@@ -385,7 +393,6 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           });
 
           job.userMessageId = userMessage.id;
-
 
           // Emit to internal message bus for agent processing
           internalMessageBus.emit('new_message', {
@@ -479,7 +486,15 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
                 metrics.completedJobs++;
                 metrics.totalProcessingTimeMs += processingTime;
 
-                logger.info({ src: 'http', jobId, responseType: actionMessageReceived ? 'action_result' : 'direct', processingTimeMs: processingTime }, 'Job completed');
+                logger.info(
+                  {
+                    src: 'http',
+                    jobId,
+                    responseType: actionMessageReceived ? 'action_result' : 'direct',
+                    processingTimeMs: processingTime,
+                  },
+                  'Job completed'
+                );
 
                 // Remove listener after receiving final response
                 internalMessageBus.off('new_message', responseHandler);
@@ -512,7 +527,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           job.status = JobStatus.FAILED;
           job.error = 'Failed to create user message';
           metrics.failedJobs++;
-          logger.error({ src: 'http', jobId, error: error instanceof Error ? error.message : String(error) }, 'Failed to create message for job');
+          logger.error(
+            { src: 'http', jobId, error: error instanceof Error ? error.message : String(error) },
+            'Failed to create message for job'
+          );
         }
 
         const response: CreateJobResponse = {
@@ -524,7 +542,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
 
         res.status(201).json(response);
       } catch (error) {
-        logger.error({ src: 'http', error: error instanceof Error ? error.message : String(error) }, 'Error creating job');
+        logger.error(
+          { src: 'http', error: error instanceof Error ? error.message : String(error) },
+          'Error creating job'
+        );
         sendErrorResponse(res, 500, 'Failed to create job');
       }
     }
@@ -605,7 +626,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
 
       res.json(response);
     } catch (error) {
-      logger.error({ src: 'http', error: error instanceof Error ? error.message : String(error) }, 'Error listing jobs');
+      logger.error(
+        { src: 'http', error: error instanceof Error ? error.message : String(error) },
+        'Error listing jobs'
+      );
       sendErrorResponse(res, 500, 'Failed to list jobs');
     }
   });
@@ -636,7 +660,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
         const response = jobToResponse(job);
         res.json(response);
       } catch (error) {
-        logger.error({ src: 'http', error: error instanceof Error ? error.message : String(error) }, 'Error getting job');
+        logger.error(
+          { src: 'http', error: error instanceof Error ? error.message : String(error) },
+          'Error getting job'
+        );
         sendErrorResponse(res, 500, 'Failed to get job details');
       }
     }
@@ -645,7 +672,10 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
   // Global error handler for unhandled errors in job processing
   router.use(
     (error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      logger.error({ src: 'http', error: error.message, stack: error.stack }, 'Unhandled error in jobs API');
+      logger.error(
+        { src: 'http', error: error.message, stack: error.stack },
+        'Unhandled error in jobs API'
+      );
 
       // Only respond if headers haven't been sent
       if (!res.headersSent) {

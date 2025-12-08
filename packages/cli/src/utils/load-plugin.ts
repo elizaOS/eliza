@@ -95,7 +95,15 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
       return JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
     }
   } catch (error) {
-    logger.debug({ src: 'cli', util: 'load-plugin', repository, error: error instanceof Error ? error.message : String(error) }, 'Failed to read package.json');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'load-plugin',
+        repository,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to read package.json'
+    );
   }
   return null;
 }
@@ -133,10 +141,16 @@ async function tryImporting(
   try {
     const pathToImport = normalizeImportPath(importPath);
     const module = await import(pathToImport);
-    logger.success({ src: 'cli', util: 'load-plugin', repository, strategy, path: importPath }, 'Plugin loaded');
+    logger.success(
+      { src: 'cli', util: 'load-plugin', repository, strategy, path: importPath },
+      'Plugin loaded'
+    );
     return module;
   } catch (error: any) {
-    logger.debug({ src: 'cli', util: 'load-plugin', strategy, path: importPath, error: error?.message }, 'Import failed');
+    logger.debug(
+      { src: 'cli', util: 'load-plugin', strategy, path: importPath, error: error?.message },
+      'Import failed'
+    );
     return null;
   }
 }
@@ -152,7 +166,10 @@ const importStrategies: ImportStrategy[] = [
       const context = detectPluginContext(repository);
 
       if (context.isLocalDevelopment) {
-        logger.debug({ src: 'cli', util: 'load-plugin', repository }, 'Detected local development plugin');
+        logger.debug(
+          { src: 'cli', util: 'load-plugin', repository },
+          'Detected local development plugin'
+        );
 
         // Ensure the plugin is built
         const isBuilt = await ensurePluginBuilt(context);
@@ -163,12 +180,18 @@ const importStrategies: ImportStrategy[] = [
 
         // Try to load from built output
         if (context.localPath && existsSync(context.localPath)) {
-          logger.info({ src: 'cli', util: 'load-plugin', repository }, 'Loading local development plugin');
+          logger.info(
+            { src: 'cli', util: 'load-plugin', repository },
+            'Loading local development plugin'
+          );
           return tryImporting(context.localPath, 'local development plugin', repository);
         }
 
         // This shouldn't happen if ensurePluginBuilt succeeded, but handle it gracefully
-        logger.warn({ src: 'cli', util: 'load-plugin', repository, expectedPath: context.localPath }, 'Plugin built but output not found');
+        logger.warn(
+          { src: 'cli', util: 'load-plugin', repository, expectedPath: context.localPath },
+          'Plugin built but output not found'
+        );
         provideLocalPluginGuidance(repository, context);
         return null;
       }
@@ -205,7 +228,10 @@ const importStrategies: ImportStrategy[] = [
     tryImport: async (repository: string) => {
       const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
       if (!existsSync(path.dirname(globalPath))) {
-        logger.debug({ src: 'cli', util: 'load-plugin', repository, globalPath: path.dirname(globalPath) }, 'Global node_modules not found, skipping');
+        logger.debug(
+          { src: 'cli', util: 'load-plugin', repository, globalPath: path.dirname(globalPath) },
+          'Global node_modules not found, skipping'
+        );
         return null;
       }
       return tryImporting(globalPath, 'global node_modules', repository);
@@ -279,13 +305,19 @@ export async function loadPluginModule(repository: string): Promise<any | null> 
   const isElizaOS = isElizaOSPackageName(repository);
   const strategies = getStrategiesForPlugin(repository);
 
-  logger.debug({ src: 'cli', util: 'load-plugin', repository, isElizaOS, strategyCount: strategies.length }, 'Loading plugin');
+  logger.debug(
+    { src: 'cli', util: 'load-plugin', repository, isElizaOS, strategyCount: strategies.length },
+    'Loading plugin'
+  );
 
   for (const strategy of strategies) {
     const result = await strategy.tryImport(repository);
     if (result) return result;
   }
 
-  logger.warn({ src: 'cli', util: 'load-plugin', repository }, 'Failed to load plugin with all strategies');
+  logger.warn(
+    { src: 'cli', util: 'load-plugin', repository },
+    'Failed to load plugin with all strategies'
+  );
   return null;
 }

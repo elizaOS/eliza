@@ -29,7 +29,10 @@ function updatePathForBun(): void {
   if (!isInPath) {
     // Prepend Bun's bin directory to PATH
     process.env.PATH = `${bunBinPath}${pathSeparator}${currentPath}`;
-    logger.debug({ src: 'cli', util: 'auto-install-bun', bunBinPath }, 'Added path to PATH for current process');
+    logger.debug(
+      { src: 'cli', util: 'auto-install-bun', bunBinPath },
+      'Added path to PATH for current process'
+    );
   } else {
     logger.debug({ src: 'cli', util: 'auto-install-bun', bunBinPath }, 'Path is already in PATH');
   }
@@ -52,7 +55,14 @@ async function isBunInstalled(): Promise<boolean> {
     return result.success;
   } catch (error) {
     // Handle any unexpected errors
-    logger.debug({ src: 'cli', util: 'auto-install-bun', error: error instanceof Error ? error.message : String(error) }, 'Error checking if Bun is installed');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'auto-install-bun',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error checking if Bun is installed'
+    );
     return false;
   }
 }
@@ -78,7 +88,10 @@ export async function autoInstallBun(): Promise<boolean> {
       await bunExecInherit('sh', ['-c', 'curl -fsSL https://bun.sh/install | bash']);
     }
 
-    logger.info({ src: 'cli', util: 'auto-install-bun' }, 'Bun installation script executed successfully');
+    logger.info(
+      { src: 'cli', util: 'auto-install-bun' },
+      'Bun installation script executed successfully'
+    );
 
     // Update PATH for the current process
     updatePathForBun();
@@ -89,15 +102,31 @@ export async function autoInstallBun(): Promise<boolean> {
 
     // Check if Bun is now available
     if (await isBunInstalled()) {
-      logger.success({ src: 'cli', util: 'auto-install-bun' }, 'Bun has been successfully installed');
+      logger.success(
+        { src: 'cli', util: 'auto-install-bun' },
+        'Bun has been successfully installed'
+      );
       return true;
     } else {
-      logger.error({ src: 'cli', util: 'auto-install-bun' }, 'Bun installation completed but the command is not available in PATH');
-      logger.error({ src: 'cli', util: 'auto-install-bun' }, 'Please restart your terminal or source your shell profile');
+      logger.error(
+        { src: 'cli', util: 'auto-install-bun' },
+        'Bun installation completed but the command is not available in PATH'
+      );
+      logger.error(
+        { src: 'cli', util: 'auto-install-bun' },
+        'Please restart your terminal or source your shell profile'
+      );
       return false;
     }
   } catch (error) {
-    logger.error({ src: 'cli', util: 'auto-install-bun', error: error instanceof Error ? error.message : String(error) }, 'Failed to auto-install Bun');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'auto-install-bun',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to auto-install Bun'
+    );
     return false;
   }
 }

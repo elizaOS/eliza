@@ -122,7 +122,10 @@ export const createChannelValidationRateLimit = () => {
     handler: (req, res) => {
       const clientIp = req.ip || 'unknown';
       const channelId = req.params.channelId || 'unknown';
-      logger.warn({ src: 'http', ip: clientIp, channelId }, 'Channel validation rate limit exceeded');
+      logger.warn(
+        { src: 'http', ip: clientIp, channelId },
+        'Channel validation rate limit exceeded'
+      );
       res.status(429).json({
         success: false,
         error: {

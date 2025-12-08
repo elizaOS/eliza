@@ -61,7 +61,10 @@ export async function findWorldsForOwner(
   entityId: string
 ): Promise<World[] | null> {
   if (!entityId) {
-    logger.error({ src: 'core:roles', agentId: runtime.agentId }, 'User ID is required to find server');
+    logger.error(
+      { src: 'core:roles', agentId: runtime.agentId },
+      'User ID is required to find server'
+    );
     return null;
   }
 

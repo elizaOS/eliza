@@ -182,7 +182,16 @@ export function initializeEmojiSupport(): void {
 
   // Log emoji support status in debug mode
   if (process.env.DEBUG || process.env.ELIZA_DEBUG) {
-    logger.debug({ src: 'cli', util: 'emoji-handler', supported, platform: process.platform, term: process.env.TERM || 'unknown' }, 'Emoji support status');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'emoji-handler',
+        supported,
+        platform: process.platform,
+        term: process.env.TERM || 'unknown',
+      },
+      'Emoji support status'
+    );
   }
 }
 

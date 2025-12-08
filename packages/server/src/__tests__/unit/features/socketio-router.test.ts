@@ -11,7 +11,10 @@ import type { AgentServer } from '../../../index';
 
 // Mock types for testing
 type MockElizaOS = Pick<ElizaOS, 'getAgent' | 'getAgents'>;
-type MockAgentServer = Pick<AgentServer, 'getChannelDetails' | 'createChannel' | 'createMessage' | 'getServers' | 'isChannelParticipant'> & {
+type MockAgentServer = Pick<
+  AgentServer,
+  'getChannelDetails' | 'createChannel' | 'createMessage' | 'getServers' | 'isChannelParticipant'
+> & {
   messageServerId?: string;
 };
 
@@ -92,7 +95,6 @@ describe('SocketIORouter', () => {
     // Create router instance with ElizaOS and AgentServer
     router = new SocketIORouter(mockElizaOS as any, mockServerInstance as any);
   });
-
 
   describe('setupListeners', () => {
     it('should setup connection listener on IO server', () => {
@@ -289,7 +291,9 @@ describe('SocketIORouter', () => {
         messageServerId: '00000000-0000-0000-0000-000000000000',
       };
 
-      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(new Error('Channel not found'));
+      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(
+        new Error('Channel not found')
+      );
       (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
           id: 'msg-123',
@@ -328,7 +332,9 @@ describe('SocketIORouter', () => {
         metadata: { isDm: true },
       };
 
-      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(new Error('Channel not found'));
+      (mockServerInstance.getChannelDetails as jest.Mock).mockRejectedValue(
+        new Error('Channel not found')
+      );
       (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
           id: 'msg-123',

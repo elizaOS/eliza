@@ -140,7 +140,10 @@ export class AgentServer {
                 ...runtime.character,
                 id: runtime.agentId,
               });
-              logger.debug({ src: 'db', agentId: runtime.agentId, agentName: runtime.character.name }, 'Agent persisted to database');
+              logger.debug(
+                { src: 'db', agentId: runtime.agentId, agentName: runtime.character.name },
+                'Agent persisted to database'
+              );
             }
 
             // Assign agent to server if RLS is enabled
@@ -148,7 +151,10 @@ export class AgentServer {
               await assignAgentToServer(this.database, runtime.agentId, this.rlsServerId);
             }
           } catch (error) {
-            logger.error({ src: 'db', error, agentId: runtime.agentId }, 'Failed to persist agent to database');
+            logger.error(
+              { src: 'db', error, agentId: runtime.agentId },
+              'Failed to persist agent to database'
+            );
           }
         }
         await this.registerAgent(runtime);
@@ -284,20 +290,34 @@ export class AgentServer {
 
       if (dataIsolationEnabled) {
         if (!config?.postgresUrl) {
-          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite)');
+          logger.error(
+            { src: 'db' },
+            'ENABLE_DATA_ISOLATION requires PostgreSQL (not compatible with PGLite)'
+          );
           throw new Error('Data isolation requires PostgreSQL database');
         }
 
         if (!elizaServerIdString) {
-          logger.error({ src: 'db' }, 'ENABLE_DATA_ISOLATION requires ELIZA_SERVER_ID environment variable');
-          throw new Error('ELIZA_SERVER_ID environment variable is required when data isolation is enabled');
+          logger.error(
+            { src: 'db' },
+            'ENABLE_DATA_ISOLATION requires ELIZA_SERVER_ID environment variable'
+          );
+          throw new Error(
+            'ELIZA_SERVER_ID environment variable is required when data isolation is enabled'
+          );
         }
 
         // Convert ELIZA_SERVER_ID string to deterministic UUID
         const server_id = stringToUuid(elizaServerIdString);
 
-        logger.info({ src: 'db', serverId: server_id.slice(0, 8), serverIdString: elizaServerIdString }, 'Initializing data isolation (Server RLS + Entity RLS)...');
-        logger.warn({ src: 'db' }, 'Ensure PostgreSQL user is NOT a superuser - superusers bypass RLS');
+        logger.info(
+          { src: 'db', serverId: server_id.slice(0, 8), serverIdString: elizaServerIdString },
+          'Initializing data isolation (Server RLS + Entity RLS)...'
+        );
+        logger.warn(
+          { src: 'db' },
+          'Ensure PostgreSQL user is NOT a superuser - superusers bypass RLS'
+        );
 
         try {
           // Install RLS PostgreSQL functions (includes Entity RLS) but DO NOT apply policies yet
@@ -316,8 +336,14 @@ export class AgentServer {
           // RLS policies will be applied automatically after agent migrations complete
           // via DatabaseMigrationService.runAllPluginMigrations() to avoid server_id column conflicts
 
-          logger.info({ src: 'db' }, 'RLS functions installed and context set (policies will apply after migrations)');
-          logger.info({ src: 'db' }, 'Entity RLS functions ready - entities will be isolated after migrations');
+          logger.info(
+            { src: 'db' },
+            'RLS functions installed and context set (policies will apply after migrations)'
+          );
+          logger.info(
+            { src: 'db' },
+            'Entity RLS functions ready - entities will be isolated after migrations'
+          );
         } catch (rlsError) {
           logger.error({ src: 'db', error: rlsError }, 'Failed to prepare RLS');
           throw new Error(
@@ -370,25 +396,42 @@ export class AgentServer {
       // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
       if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
-        const existingServer = await (this.database as any).getMessageServerByRlsServerId(this.rlsServerId);
+        const existingServer = await (this.database as any).getMessageServerByRlsServerId(
+          this.rlsServerId
+        );
 
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
           this.messageServerId = existingServer.id;
-          logger.info({ src: 'db', messageServerId: this.messageServerId, rlsServerId: this.rlsServerId.substring(0, 8) }, 'Found existing message_server for RLS server');
+          logger.info(
+            {
+              src: 'db',
+              messageServerId: this.messageServerId,
+              rlsServerId: this.rlsServerId.substring(0, 8),
+            },
+            'Found existing message_server for RLS server'
+          );
         } else {
           // First boot: generate new random UUID for message_server (will be linked to rlsServerId via server_id column)
           this.messageServerId = crypto.randomUUID() as UUID;
-          logger.info({ src: 'db', messageServerId: this.messageServerId, rlsServerId: this.rlsServerId.substring(0, 8) }, 'Generating new message_server ID for RLS server');
+          logger.info(
+            {
+              src: 'db',
+              messageServerId: this.messageServerId,
+              rlsServerId: this.rlsServerId.substring(0, 8),
+            },
+            'Generating new message_server ID for RLS server'
+          );
         }
       } else {
         // RLS disabled: use shared default server
         this.messageServerId = '00000000-0000-0000-0000-000000000000';
       }
 
-      const serverName = dataIsolationEnabled && this.rlsServerId
-        ? `Server ${this.messageServerId.substring(0, 8)}`
-        : 'Default Server';
+      const serverName =
+        dataIsolationEnabled && this.rlsServerId
+          ? `Server ${this.messageServerId.substring(0, 8)}`
+          : 'Default Server';
 
       logger.info({ src: 'db', serverId: this.messageServerId }, 'Checking for server...');
       const servers = await (this.database as any).getMessageServers();
@@ -407,7 +450,10 @@ export class AgentServer {
             VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING
           `);
-          logger.info({ src: 'db', serverId: this.messageServerId }, 'Server created via parameterized query');
+          logger.info(
+            { src: 'db', serverId: this.messageServerId },
+            'Server created via parameterized query'
+          );
         } catch (sqlError: any) {
           logger.warn({ src: 'db', error: sqlError }, 'SQL insert failed, trying ORM');
 
@@ -426,13 +472,19 @@ export class AgentServer {
 
         // Verify it was created
         const verifyServers = await (this.database as any).getMessageServers();
-        logger.debug({ src: 'db', serverCount: verifyServers.length }, 'After creation attempt, found servers');
-        
+        logger.debug(
+          { src: 'db', serverCount: verifyServers.length },
+          'After creation attempt, found servers'
+        );
+
         const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
         if (!verifyDefault) {
           throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
         } else {
-          logger.info({ src: 'db', serverId: this.messageServerId }, 'Server creation verified successfully');
+          logger.info(
+            { src: 'db', serverId: this.messageServerId },
+            'Server creation verified successfully'
+          );
         }
         logger.info({ src: 'db', serverId: this.messageServerId }, 'Default server created');
       }
@@ -585,41 +637,57 @@ export class AgentServer {
         skip: (req) => {
           // Skip rate limiting for internal/private IPs (Docker, Kubernetes)
           const ip = req.ip || '';
-          return ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') ||
-                 ip.startsWith('172.') || ip.startsWith('192.168.');
+          return (
+            ip === '127.0.0.1' ||
+            ip === '::1' ||
+            ip.startsWith('10.') ||
+            ip.startsWith('172.') ||
+            ip.startsWith('192.168.')
+          );
         },
       });
 
       // Lightweight health check - always returns 200 OK
-      this.app.get('/healthz', healthCheckRateLimiter, (_req: express.Request, res: express.Response) => {
-        res.json({
-          status: 'ok',
-          timestamp: new Date().toISOString()
-        });
-      });
+      this.app.get(
+        '/healthz',
+        healthCheckRateLimiter,
+        (_req: express.Request, res: express.Response) => {
+          res.json({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      );
 
       // Comprehensive health check - returns 200 if healthy, 503 if no agents
       // Response format matches /api/server/health for consistency
-      this.app.get('/health', healthCheckRateLimiter, (_req: express.Request, res: express.Response) => {
-        const agents = this.elizaOS?.getAgents() || [];
-        const isHealthy = agents.length > 0;
+      this.app.get(
+        '/health',
+        healthCheckRateLimiter,
+        (_req: express.Request, res: express.Response) => {
+          const agents = this.elizaOS?.getAgents() || [];
+          const isHealthy = agents.length > 0;
 
-        const healthcheck = {
-          status: isHealthy ? 'OK' : 'DEGRADED',
-          version: process.env.APP_VERSION || 'unknown',
-          timestamp: new Date().toISOString(),
-          dependencies: {
-            agents: isHealthy ? 'healthy' : 'no_agents',
-          },
-          agentCount: agents.length,
-        };
+          const healthcheck = {
+            status: isHealthy ? 'OK' : 'DEGRADED',
+            version: process.env.APP_VERSION || 'unknown',
+            timestamp: new Date().toISOString(),
+            dependencies: {
+              agents: isHealthy ? 'healthy' : 'no_agents',
+            },
+            agentCount: agents.length,
+          };
 
-        res.status(isHealthy ? 200 : 503).json(healthcheck);
-      });
+          res.status(isHealthy ? 200 : 503).json(healthcheck);
+        }
+      );
 
       // Optional Authentication Middleware
       const serverAuthToken = process.env.ELIZA_SERVER_AUTH_TOKEN;
-      logger.info({ src: 'http' }, 'Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)');
+      logger.info(
+        { src: 'http' },
+        'Public health check endpoints enabled: /healthz and /health (rate limited: 100 req/min)'
+      );
 
       // Optional Authentication Middleware
       logger.info({ src: 'http' }, 'Configuring authentication middleware...');
@@ -630,7 +698,10 @@ export class AgentServer {
       if (serverAuthToken) {
         logger.info({ src: 'http' }, 'Authentication middleware configured - API Key: ENABLED');
       } else {
-        logger.warn({ src: 'http' }, 'Authentication middleware configured - API Key: DISABLED (set ELIZA_SERVER_AUTH_TOKEN to enable)');
+        logger.warn(
+          { src: 'http' },
+          'Authentication middleware configured - API Key: DISABLED (set ELIZA_SERVER_AUTH_TOKEN to enable)'
+        );
       }
 
       // Determine if web UI should be enabled
@@ -758,7 +829,10 @@ export class AgentServer {
 
           res.sendFile(filePath, (err) => {
             if (err && !res.headersSent) {
-              logger.warn({ src: 'http', channelId, file: sanitizedFilename }, 'Channel media file not found');
+              logger.warn(
+                { src: 'http', channelId, file: sanitizedFilename },
+                'Channel media file not found'
+              );
               res.status(404).json({ error: 'File not found' });
             }
           });
@@ -931,7 +1005,10 @@ export class AgentServer {
           this.app.use(express.static(clientPath, staticOptions));
           logger.info({ src: 'http', clientPath }, 'Serving static files');
         } else {
-          logger.warn({ src: 'http' }, 'Client dist not found - web UI unavailable. Build client and server to fix.');
+          logger.warn(
+            { src: 'http' },
+            'Client dist not found - web UI unavailable. Build client and server to fix.'
+          );
         }
       }
 
@@ -966,7 +1043,10 @@ export class AgentServer {
               return scope;
             });
           }
-          logger.error({ src: 'http', error: err, method: req.method, path: req.path }, 'API error');
+          logger.error(
+            { src: 'http', error: err, method: req.method, path: req.path },
+            'API error'
+          );
           res.status(500).json({
             success: false,
             error: {
@@ -1115,10 +1195,16 @@ export class AgentServer {
         if (messageBusConnectorPlugin) {
           await runtime.registerPlugin(messageBusConnectorPlugin);
         } else {
-          logger.error({ src: 'agent', agentId: runtime.agentId }, 'MessageBusConnector plugin not found');
+          logger.error(
+            { src: 'agent', agentId: runtime.agentId },
+            'MessageBusConnector plugin not found'
+          );
         }
       } catch (e) {
-        logger.error({ src: 'agent', error: e, agentId: runtime.agentId }, 'Failed to register MessageBusConnector');
+        logger.error(
+          { src: 'agent', error: e, agentId: runtime.agentId },
+          'Failed to register MessageBusConnector'
+        );
       }
 
       // Register TEE plugin if present
@@ -1136,10 +1222,21 @@ export class AgentServer {
         }
       }
 
-      logger.info({ src: 'agent', agentId: runtime.agentId, agentName: runtime.character.name }, 'Successfully registered agent with core services');
+      logger.info(
+        { src: 'agent', agentId: runtime.agentId, agentName: runtime.character.name },
+        'Successfully registered agent with core services'
+      );
 
       await this.addAgentToMessageServer(this.messageServerId, runtime.agentId);
-      logger.info({ src: 'agent', agentId: runtime.agentId, agentName: runtime.character.name, messageServerId: this.messageServerId }, 'Auto-associated agent with message server');
+      logger.info(
+        {
+          src: 'agent',
+          agentId: runtime.agentId,
+          agentName: runtime.character.name,
+          messageServerId: this.messageServerId,
+        },
+        'Auto-associated agent with message server'
+      );
     } catch (error) {
       logger.error({ src: 'agent', error }, 'Failed to register agent');
       throw error;
@@ -1165,7 +1262,10 @@ export class AgentServer {
         try {
           await agent.stop();
         } catch (stopError) {
-          logger.error({ src: 'agent', error: stopError, agentId }, 'Error stopping agent services');
+          logger.error(
+            { src: 'agent', error: stopError, agentId },
+            'Error stopping agent services'
+          );
         }
       }
 
@@ -1281,7 +1381,10 @@ export class AgentServer {
 
       if (await this.isPortAvailable(port)) {
         if (attempt > 0) {
-          logger.info({ src: 'http', requestedPort: startPort, actualPort: port }, 'Port in use, using alternative');
+          logger.info(
+            { src: 'http', requestedPort: startPort, actualPort: port },
+            'Port in use, using alternative'
+          );
         }
         return port;
       }
@@ -1327,7 +1430,6 @@ export class AgentServer {
   private startHttpServer(port: number): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-
         // Use http server instead of app.listen with explicit host binding and error handling
         // For tests and macOS compatibility, prefer 127.0.0.1 when specified
         const host = process.env.SERVER_HOST || '0.0.0.0';
@@ -1366,7 +1468,6 @@ export class AgentServer {
             logger.error({ src: 'http', error, host, port }, 'Failed to bind server');
             reject(error);
           });
-
       } catch (error) {
         logger.error({ src: 'http', error }, 'Failed to start server');
         reject(error);

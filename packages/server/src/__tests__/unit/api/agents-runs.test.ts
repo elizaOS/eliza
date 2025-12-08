@@ -28,8 +28,8 @@ function makeRuntimeWithLogs(logs: LogEntry[], defaultEntityId: UUID): MockRunti
         body: log.body,
       }));
     },
-    getMemories: async (_params: any) => [],  // Return empty array for messages
-    getAllWorlds: async () => [],  // No worlds needed for this test
+    getMemories: async (_params: any) => [], // Return empty array for messages
+    getAllWorlds: async () => [], // No worlds needed for this test
     getRooms: async (_worldId: UUID) => [],
     getParticipantsForRoom: async (_roomId: UUID) => [],
   };

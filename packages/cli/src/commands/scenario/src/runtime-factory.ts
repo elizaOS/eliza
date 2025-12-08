@@ -302,7 +302,9 @@ export async function askAgentViaApi(
 
     console.log(`🔧 [askAgentViaApi] About to call client.messaging.listMessageServers()...`);
     const { messageServers } = await client.messaging.listMessageServers();
-    console.log(`🔧 [askAgentViaApi] ✅ listMessageServers() returned ${messageServers.length} servers`);
+    console.log(
+      `🔧 [askAgentViaApi] ✅ listMessageServers() returned ${messageServers.length} servers`
+    );
 
     if (messageServers.length === 0) throw new Error('No servers found');
     const defaultMessageServer = messageServers[0];
@@ -399,7 +401,9 @@ export async function askAgentViaApi(
     // Debug: Check what channels exist on the server
     console.log(`🔧 [askAgentViaApi] 🔍 DEBUG: Checking server channels before sync...`);
     try {
-      const messageServerChannels = await client.messaging.getMessageServerChannels(defaultMessageServer.id);
+      const messageServerChannels = await client.messaging.getMessageServerChannels(
+        defaultMessageServer.id
+      );
       console.log(
         `🔧 [askAgentViaApi] 🔍 DEBUG: Server reports ${messageServerChannels.channels.length} total channels`
       );

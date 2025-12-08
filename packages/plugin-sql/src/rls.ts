@@ -248,10 +248,7 @@ export async function getOrCreateRlsServer(
  * Set RLS context on PostgreSQL connection pool
  * This function validates that the server exists and has correct UUID format
  */
-export async function setServerContext(
-  adapter: IDatabaseAdapter,
-  serverId: string
-): Promise<void> {
+export async function setServerContext(adapter: IDatabaseAdapter, serverId: string): Promise<void> {
   // Validate UUID format using @elizaos/core utility
   if (!validateUuid(serverId)) {
     throw new Error(`Invalid server ID format: ${serverId}. Must be a valid UUID.`);
@@ -278,7 +275,9 @@ export async function assignAgentToServer(
 ): Promise<void> {
   // Validate inputs
   if (!agentId || !serverId) {
-    logger.warn(`[Data Isolation] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`);
+    logger.warn(
+      `[Data Isolation] Cannot assign agent to server: invalid agentId (${agentId}) or serverId (${serverId})`
+    );
     return;
   }
 
@@ -292,13 +291,13 @@ export async function assignAgentToServer(
     const currentServerId = agent.server_id;
 
     if (currentServerId === serverId) {
-      logger.debug({ src: 'plugin:sql', agentName: agent.name }, 'Agent already assigned to correct server');
+      logger.debug(
+        { src: 'plugin:sql', agentName: agent.name },
+        'Agent already assigned to correct server'
+      );
     } else {
       // Update agent server using Drizzle
-      await db
-        .update(agentTable)
-        .set({ server_id: serverId })
-        .where(eq(agentTable.id, agentId));
+      await db.update(agentTable).set({ server_id: serverId }).where(eq(agentTable.id, agentId));
 
       if (currentServerId === null) {
         logger.info({ src: 'plugin:sql', agentName: agent.name }, 'Agent assigned to server');
@@ -351,13 +350,19 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       return;
     }
 
-    logger.info({ src: 'plugin:sql' }, 'Disabling RLS globally (keeping server_id columns for schema compatibility)...');
+    logger.info(
+      { src: 'plugin:sql' },
+      'Disabling RLS globally (keeping server_id columns for schema compatibility)...'
+    );
 
     // First, uninstall Entity RLS (depends on Server RLS)
     try {
       await uninstallEntityRLS(adapter);
     } catch (entityRlsError) {
-      logger.debug({ src: 'plugin:sql' }, 'Entity RLS cleanup skipped (not installed or already cleaned)');
+      logger.debug(
+        { src: 'plugin:sql' },
+        'Entity RLS cleanup skipped (not installed or already cleaned)'
+      );
     }
 
     // Create a temporary stored procedure to safely drop policies and disable RLS
@@ -420,7 +425,10 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
     // - Each row keeps its original server_id
     // - When RLS is re-enabled, only NULL rows are backfilled (new data created while RLS was off)
     // - Existing data remains owned by its original server instance
-    logger.info({ src: 'plugin:sql' }, 'Keeping server_id values intact (prevents data theft on re-enable)');
+    logger.info(
+      { src: 'plugin:sql' },
+      'Keeping server_id values intact (prevents data theft on re-enable)'
+    );
 
     // 3. Keep the servers table structure but clear it
     // When RLS is re-enabled, servers will be re-created from server initialization
@@ -746,7 +754,6 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
 
   logger.info('[Entity RLS] Created apply_entity_rls_to_all_tables() function');
 
-
   logger.info('[Entity RLS] Entity RLS functions installed successfully');
 }
 
@@ -792,7 +799,9 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         await db.execute(
           sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON ${schemaName}.${tableName}`)
         );
-        logger.debug(`[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`);
+        logger.debug(
+          `[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`
+        );
       } catch (error) {
         logger.debug(`[Entity RLS] No entity policy on ${schemaName}.${tableName}`);
       }

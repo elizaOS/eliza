@@ -80,7 +80,14 @@ export const start = new Command()
           // Use buildProject function with proper UI feedback and error handling
           await buildProject(cwd, false);
         } catch (error) {
-          logger.error({ src: 'cli', command: 'start', error: error instanceof Error ? error.message : String(error) }, 'Build failed');
+          logger.error(
+            {
+              src: 'cli',
+              command: 'start',
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Build failed'
+          );
           logger.warn({ src: 'cli', command: 'start' }, 'Build failed, continuing with start');
         }
       }
@@ -94,7 +101,10 @@ export const start = new Command()
           const resolvedPath = path.resolve(charPath);
 
           if (!fs.existsSync(resolvedPath)) {
-            logger.error({ src: 'cli', command: 'start', path: resolvedPath }, 'Character file not found');
+            logger.error(
+              { src: 'cli', command: 'start', path: resolvedPath },
+              'Character file not found'
+            );
             throw new Error(`Character file not found: ${resolvedPath}`);
           }
 
@@ -102,13 +112,22 @@ export const start = new Command()
             const character = await loadCharacterTryPath(resolvedPath);
             if (character) {
               characters.push(character);
-              logger.info({ src: 'cli', command: 'start', characterName: character.name }, 'Character loaded');
+              logger.info(
+                { src: 'cli', command: 'start', characterName: character.name },
+                'Character loaded'
+              );
             } else {
-              logger.error({ src: 'cli', command: 'start', path: resolvedPath }, 'Invalid or empty character file');
+              logger.error(
+                { src: 'cli', command: 'start', path: resolvedPath },
+                'Invalid or empty character file'
+              );
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
-            logger.error({ src: 'cli', command: 'start', error: e, path: resolvedPath }, 'Failed to load character');
+            logger.error(
+              { src: 'cli', command: 'start', error: e, path: resolvedPath },
+              'Failed to load character'
+            );
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
@@ -125,19 +144,28 @@ export const start = new Command()
             const project = await loadProject(cwd);
 
             if (project.agents && project.agents.length > 0) {
-              logger.info({ src: 'cli', command: 'start', agentCount: project.agents.length }, 'Found project agents');
+              logger.info(
+                { src: 'cli', command: 'start', agentCount: project.agents.length },
+                'Found project agents'
+              );
               projectAgents = project.agents;
 
               // Log loaded agent names
               for (const agent of project.agents) {
                 if (agent.character) {
-                  logger.info({ src: 'cli', command: 'start', characterName: agent.character.name }, 'Character loaded');
+                  logger.info(
+                    { src: 'cli', command: 'start', characterName: agent.character.name },
+                    'Character loaded'
+                  );
                 }
               }
             }
           }
         } catch (e) {
-          logger.debug({ src: 'cli', command: 'start', error: e }, 'Failed to load project agents, using default');
+          logger.debug(
+            { src: 'cli', command: 'start', error: e },
+            'Failed to load project agents, using default'
+          );
         }
       }
 
@@ -160,7 +188,10 @@ export const start = new Command()
       });
 
       // Server handles initialization, port resolution, and agent startup automatically
-      logger.success({ src: 'cli', command: 'start', agentCount: agentConfigs.length }, 'Server started');
+      logger.success(
+        { src: 'cli', command: 'start', agentCount: agentConfigs.length },
+        'Server started'
+      );
     } catch (e: any) {
       handleError(e);
       process.exit(1);

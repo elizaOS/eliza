@@ -59,10 +59,19 @@ export function createDatabaseAdapter(
       if (dataIsolationEnabled) {
         const rlsServerIdString = process.env.ELIZA_SERVER_ID;
         if (!rlsServerIdString) {
-          throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
+          throw new Error(
+            '[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable'
+          );
         }
         rlsServerId = stringToUuid(rlsServerIdString);
-        logger.debug({ src: 'plugin:sql', rlsServerId: rlsServerId.slice(0, 8), serverIdString: rlsServerIdString }, 'Creating connection pool with RLS server');
+        logger.debug(
+          {
+            src: 'plugin:sql',
+            rlsServerId: rlsServerId.slice(0, 8),
+            serverIdString: rlsServerIdString,
+          },
+          'Creating connection pool with RLS server'
+        );
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -104,30 +113,39 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_, runtime: IAgentRuntime) => {
-    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'plugin-sql init starting');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'plugin-sql init starting'
+    );
 
     // Prefer direct check for existing adapter (avoid readiness heuristics)
     const adapterRegistered =
       typeof (runtime as any).hasDatabaseAdapter === 'function'
         ? (runtime as any).hasDatabaseAdapter()
         : (() => {
-          try {
-            const existing =
-              (runtime as any).getDatabaseAdapter?.() ??
-              (runtime as any).databaseAdapter ??
-              (runtime as any).adapter;
-            return Boolean(existing);
-          } catch {
-            return false;
-          }
-        })();
+            try {
+              const existing =
+                (runtime as any).getDatabaseAdapter?.() ??
+                (runtime as any).databaseAdapter ??
+                (runtime as any).adapter;
+              return Boolean(existing);
+            } catch {
+              return false;
+            }
+          })();
 
     if (adapterRegistered) {
-      runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter already registered, skipping creation');
+      runtime.logger.info(
+        { src: 'plugin:sql', agentId: runtime.agentId },
+        'Database adapter already registered, skipping creation'
+      );
       return;
     }
 
-    runtime.logger.debug({ src: 'plugin:sql', agentId: runtime.agentId }, 'No database adapter found, proceeding to register');
+    runtime.logger.debug(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'No database adapter found, proceeding to register'
+    );
 
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
@@ -143,7 +161,10 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    runtime.logger.info({ src: 'plugin:sql', agentId: runtime.agentId }, 'Database adapter created and registered');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'Database adapter created and registered'
+    );
 
     // Note: DatabaseMigrationService is not registered as a runtime service
     // because migrations are handled at the server level before agents are loaded

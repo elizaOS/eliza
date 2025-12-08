@@ -99,10 +99,7 @@ describe('Participant Integration Tests', () => {
     it('should return false for non-existent room participant check', async () => {
       const nonExistentRoomId = uuidv4() as UUID;
       const nonExistentEntityId = uuidv4() as UUID;
-      const isParticipant = await adapter.isRoomParticipant(
-        nonExistentRoomId,
-        nonExistentEntityId
-      );
+      const isParticipant = await adapter.isRoomParticipant(nonExistentRoomId, nonExistentEntityId);
       expect(isParticipant).toBe(false);
     });
   });

@@ -613,6 +613,7 @@ name: 123 # Error: name must be string
 environment: 'wrong' # Error: environment must be object
 run: 'not-array' # Error: run must be array
 
+
 # Error output includes:
 # - Field path (e.g., "environment.type")
 # - Expected vs actual type

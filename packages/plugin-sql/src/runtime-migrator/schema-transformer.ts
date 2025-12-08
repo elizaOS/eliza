@@ -19,7 +19,10 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
 
   // If schema is already using pgSchema, return as-is
   if (isAlreadyNamespaced(schema, schemaName)) {
-    logger.debug({ src: 'plugin:sql', pluginName, schemaName }, 'Plugin already uses expected schema');
+    logger.debug(
+      { src: 'plugin:sql', pluginName, schemaName },
+      'Plugin already uses expected schema'
+    );
     return schema;
   }
 

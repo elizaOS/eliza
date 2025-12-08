@@ -1,12 +1,6 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 // Direct error handling without bridge layer
-import type {
-  Agent,
-  Content,
-  Memory,
-  UUID,
-  Memory as CoreMemory,
-} from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
   useMutation,
@@ -477,7 +471,7 @@ export function useChannelMessages(
         });
 
         const newUiMessages = response.messages.map((msg) =>
-          mapApiMessageToUi(msg, initialMessageServerId || msg.metadata?.messageServerId as UUID)
+          mapApiMessageToUi(msg, initialMessageServerId || (msg.metadata?.messageServerId as UUID))
         );
 
         setMessages((prev) => {

@@ -23,9 +23,19 @@ export const getDependenciesFromDirectory = (cwd: string): Dependencies | null =
     return { ...dependencies, ...devDependencies };
   } catch (error) {
     if (error instanceof SyntaxError) {
-      logger.warn({ src: 'cli', util: 'plugins-directory', error: error.message }, 'Could not parse package.json');
+      logger.warn(
+        { src: 'cli', util: 'plugins-directory', error: error.message },
+        'Could not parse package.json'
+      );
     } else {
-      logger.warn({ src: 'cli', util: 'plugins-directory', error: error instanceof Error ? error.message : String(error) }, 'Error reading package.json');
+      logger.warn(
+        {
+          src: 'cli',
+          util: 'plugins-directory',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error reading package.json'
+      );
     }
     return null;
   }
