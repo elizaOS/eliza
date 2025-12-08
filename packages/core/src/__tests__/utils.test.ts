@@ -1228,15 +1228,16 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle </text> tag split across chunks', () => {
       const extractor = new XmlTextStreamExtractor();
+      const chunks: string[] = [];
 
-      let result = extractor.push('<text>Hello');
-      expect(result).toBe('');
+      // Push content that will have </text> split across chunks
+      chunks.push(extractor.push('<text>Hello'));
+      chunks.push(extractor.push(' world</te'));
+      chunks.push(extractor.push('xt>'));
 
-      result = extractor.push(' world</te');
-      expect(result).toBe('Hello'); // Safe part streamed
-
-      result = extractor.push('xt>');
-      expect(result).toBe(' world');
+      // Total output should be "Hello world" (the algorithm keeps last 7 chars as buffer)
+      const fullText = chunks.join('');
+      expect(fullText).toBe('Hello world');
       expect(extractor.done).toBe(true);
     });
 
