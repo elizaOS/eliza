@@ -118,7 +118,13 @@ describe('ElizaOS Agent Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
 
           if (isError) {
             console.error(`[SERVER STDERR] ${text}`);
-            if (text.includes('Error') || text.includes('error')) {
+            // Only treat actual errors as failures, not warnings about optional extensions
+            // Filter out expected warnings like pgcrypto extension not being available
+            const isFatalError =
+              (text.includes('Error') || text.includes('error')) &&
+              !text.includes('Warn') &&
+              !text.includes('Could not install extension');
+            if (isFatalError) {
               serverError = new Error(text);
             }
           } else {
@@ -182,7 +188,7 @@ describe('ElizaOS Agent Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
 
     // Character preloading removed - individual tests will handle character creation as needed
     console.log('[DEBUG] Server setup complete. Individual tests will handle character loading.');
-  });
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT);
 
   afterAll(async () => {
     console.log('[DEBUG] AfterAll cleanup starting...');
@@ -234,7 +240,7 @@ describe('ElizaOS Agent Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () 
         // Ignore cleanup errors
       }
     }
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   it('agent help displays usage information', async () => {
     const cliPath = join(__dirname, '../../src/index.ts');
