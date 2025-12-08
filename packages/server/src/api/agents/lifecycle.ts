@@ -28,14 +28,14 @@ export function createAgentLifecycleRouter(
       const agent = await db.getAgent(agentId);
 
       if (!agent) {
-        logger.debug('[AGENT START] Agent not found');
+        logger.debug({ src: 'http', agentId }, 'Agent not found');
         return sendError(res, 404, 'NOT_FOUND', 'Agent not found');
       }
 
       const isActive = !!elizaOS.getAgent(agentId);
 
       if (isActive) {
-        logger.debug(`[AGENT START] Agent ${agentId} is already running`);
+        logger.debug({ src: 'http', agentId }, 'Agent is already running');
         return sendSuccess(res, {
           id: agentId,
           name: agent.name,
@@ -51,7 +51,7 @@ export function createAgentLifecycleRouter(
         throw new Error('Failed to start agent');
       }
 
-      logger.debug(`[AGENT START] Successfully started agent: ${agent.name}`);
+      logger.debug({ src: 'http', agentId, agentName: agent.name }, 'Agent started');
       sendSuccess(res, {
         id: agentId,
         name: agent.name,
@@ -59,8 +59,8 @@ export function createAgentLifecycleRouter(
       });
     } catch (error) {
       logger.error(
-        '[AGENT START] Error starting agent:',
-        error instanceof Error ? error.message : String(error)
+        { src: 'http', agentId, error: error instanceof Error ? error.message : String(error) },
+        'Error starting agent'
       );
       sendError(
         res,
@@ -76,7 +76,7 @@ export function createAgentLifecycleRouter(
   router.post('/:agentId/stop', async (req, res) => {
     const agentId = validateUuid(req.params.agentId);
     if (!agentId) {
-      logger.debug('[AGENT STOP] Invalid agent ID format');
+      logger.debug({ src: 'http' }, 'Invalid agent ID format');
       return sendError(res, 400, 'INVALID_ID', 'Invalid agent ID format');
     }
 
@@ -87,7 +87,7 @@ export function createAgentLifecycleRouter(
 
     await serverInstance?.unregisterAgent(agentId);
 
-    logger.debug(`[AGENT STOP] Successfully stopped agent: ${runtime.character.name} (${agentId})`);
+    logger.debug({ src: 'http', agentId, agentName: runtime.character.name }, 'Agent stopped');
 
     sendSuccess(res, {
       message: 'Agent stopped',

@@ -9,4 +9,4 @@ export {
   processUploadedFile,
   generateSecureFilename,
   ensureUploadDir,
-} from '../../../upload';
+} from '../../../utils/upload';

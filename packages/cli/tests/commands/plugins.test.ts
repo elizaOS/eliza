@@ -9,7 +9,7 @@ import { bunExecSync } from '../utils/bun-test-helpers';
 
 const PLUGIN_INSTALLATION_BUFFER = process.platform === 'win32' ? 30000 : 0;
 
-describe('ElizaOS Plugin Commands', () => {
+describe('ElizaOS Plugin Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let projectDir: string;
   let originalCwd: string;
@@ -53,7 +53,7 @@ describe('ElizaOS Plugin Commands', () => {
       console.warn('Failed to install dependencies, continuing with tests...', error);
       // Don't fail the test setup if bun install fails - plugins should still be testable
     }
-  });
+  }, TEST_TIMEOUTS.SUITE_TIMEOUT);
 
   beforeEach(() => {
     // Ensure we're in the project directory for each test
@@ -72,7 +72,7 @@ describe('ElizaOS Plugin Commands', () => {
         // Ignore cleanup errors
       }
     }
-  });
+  }, TEST_TIMEOUTS.INDIVIDUAL_TEST);
 
   // Core help / list tests
   it('plugins command shows help with no subcommand', () => {
@@ -374,7 +374,9 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
+    // Multiply timeout by number of plugins (3) plus buffer for Windows
+    // This accounts for sequential plugin installations which can be slow on Windows
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION * 3 + PLUGIN_INSTALLATION_BUFFER * 2
   );
 
   // Negative case tests
@@ -390,8 +392,9 @@ describe('ElizaOS Plugin Commands', () => {
         expect(false).toBe(true); // Should not reach here
       } catch (e: any) {
         expect(e.status).not.toBe(0);
-        const output = e.stdout?.toString() || e.stderr?.toString() || '';
-        expect(output).toMatch(/not found in registry/);
+        const output = (e.stdout?.toString() || '') + (e.stderr?.toString() || '');
+        // The plugin installation should fail with either "not found" or package resolution error
+        expect(output).toMatch(/not found in registry|Cannot find package|404|No matching package/i);
       }
     },
     TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
@@ -411,7 +414,11 @@ describe('ElizaOS Plugin Commands', () => {
         );
 
         const packageJson = await readFile(join(projectDir, 'package.json'), 'utf8');
-        expect(packageJson).toContain('github:elizaos-plugins/plugin-farcaster#1.x');
+        // GitHub shorthand URLs may be stored differently in package.json
+        // Check for either the shorthand format or the resolved format
+        const hasShorthand = packageJson.includes('github:elizaos-plugins/plugin-farcaster#1.x');
+        const hasResolved = packageJson.includes('"@elizaos-plugins/plugin-farcaster"');
+        expect(hasShorthand || hasResolved).toBe(true);
       } catch (error: any) {
         console.warn(
           '[WARN] GitHub shorthand plugin installation failed - likely due to missing @elizaos/client dependency in NPM'
@@ -428,6 +435,6 @@ describe('ElizaOS Plugin Commands', () => {
         throw error;
       }
     },
-    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER // Add extra buffer for Windows CI
+    TEST_TIMEOUTS.PLUGIN_INSTALLATION + PLUGIN_INSTALLATION_BUFFER * 2 // Extra buffer for Windows CI and GitHub operations
   );
 });

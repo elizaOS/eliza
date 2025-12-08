@@ -30,14 +30,12 @@ function isAutoInstallAllowed(): boolean {
 export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
   try {
     if (!isAutoInstallAllowed()) {
-      logger.debug(
-        `Auto-install disabled or not allowed in this environment. Skipping install for ${pluginName}.`
-      );
+      logger.debug({ src: 'core:plugin', pluginName }, 'Auto-install disabled, skipping');
       return false;
     }
 
     if (attemptedInstalls.has(pluginName)) {
-      logger.debug(`Auto-install already attempted for ${pluginName}. Skipping.`);
+      logger.debug({ src: 'core:plugin', pluginName }, 'Auto-install already attempted, skipping');
       return false;
     }
     attemptedInstalls.add(pluginName);
@@ -45,7 +43,8 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     // Check if Bun is available before trying to use it
     if (typeof Bun === 'undefined' || typeof Bun.spawn !== 'function') {
       logger.warn(
-        `Bun runtime not available. Cannot auto-install ${pluginName}. Please run: bun add ${pluginName}`
+        { src: 'core:plugin', pluginName },
+        'Bun runtime not available, cannot auto-install'
       );
       return false;
     }
@@ -56,18 +55,20 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
       const code = await check.exited;
       if (code !== 0) {
         logger.warn(
-          `Bun not available on PATH. Cannot auto-install ${pluginName}. Please run: bun add ${pluginName}`
+          { src: 'core:plugin', pluginName },
+          'Bun not available on PATH, cannot auto-install'
         );
         return false;
       }
     } catch {
       logger.warn(
-        `Bun not available on PATH. Cannot auto-install ${pluginName}. Please run: bun add ${pluginName}`
+        { src: 'core:plugin', pluginName },
+        'Bun not available on PATH, cannot auto-install'
       );
       return false;
     }
 
-    logger.info(`Attempting to auto-install missing plugin: ${pluginName}`);
+    logger.info({ src: 'core:plugin', pluginName }, 'Auto-installing missing plugin');
     const install = Bun.spawn(['bun', 'add', pluginName], {
       cwd: process.cwd(),
       env: process.env as Record<string, string>,
@@ -77,15 +78,18 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     const exit = await install.exited;
 
     if (exit === 0) {
-      logger.info(`Successfully installed ${pluginName}. Retrying import...`);
+      logger.info({ src: 'core:plugin', pluginName }, 'Plugin installed, retrying import');
       return true;
     }
 
-    logger.error(`bun add ${pluginName} failed with exit code ${exit}. Please install manually.`);
+    logger.error({ src: 'core:plugin', pluginName, exitCode: exit }, 'Plugin installation failed');
     return false;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error(`Unexpected error during auto-install of ${pluginName}: ${message}`);
+    logger.error(
+      { src: 'core:plugin', pluginName, error: message },
+      'Unexpected error during auto-install'
+    );
     return false;
   }
 }
@@ -188,7 +192,7 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
       // Attempt to dynamically import the plugin
       pluginModule = await import(pluginName);
     } catch (error) {
-      logger.warn(`Failed to load plugin ${pluginName}: ${error}`);
+      logger.warn({ src: 'core:plugin', pluginName, error }, 'Failed to load plugin');
       // Attempt auto-install if allowed and not already attempted
       const attempted = await tryInstallPlugin(pluginName);
       if (!attempted) {
@@ -199,14 +203,15 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
         pluginModule = await import(pluginName);
       } catch (secondError) {
         logger.error(
-          `Auto-install attempted for ${pluginName} but import still failed: ${secondError}`
+          { src: 'core:plugin', pluginName, error: secondError },
+          'Import failed after auto-install'
         );
         return null;
       }
     }
 
     if (!pluginModule) {
-      logger.error(`Failed to load module for plugin ${pluginName}.`);
+      logger.error({ src: 'core:plugin', pluginName }, 'Failed to load plugin module');
       return null;
     }
 
@@ -235,17 +240,38 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
             return produced as Plugin;
           }
         } catch (err) {
-          logger.debug(`Factory export threw for ${pluginName}: ${err}`);
+          logger.debug({ src: 'core:plugin', pluginName, error: err }, 'Factory export threw');
         }
       }
     }
 
-    logger.warn(`Could not find a valid plugin export in ${pluginName}.`);
+    logger.warn({ src: 'core:plugin', pluginName }, 'No valid plugin export found');
     return null;
   } catch (error) {
-    logger.error(`Error loading plugin ${pluginName}: ${error}`);
+    logger.error({ src: 'core:plugin', pluginName, error }, 'Error loading plugin');
     return null;
   }
+}
+
+// ============================================================================
+// Plugin Name Mapping Utilities
+// ============================================================================
+
+/**
+ * Normalizes a plugin name by extracting the short name from scoped packages
+ * Examples:
+ *  - '@elizaos/plugin-discord' -> 'discord'
+ *  - '@elizaos/plugin-sql' -> 'sql'
+ *  - 'bootstrap' -> 'bootstrap'
+ *  - 'plugin-custom' -> 'plugin-custom'
+ */
+export function normalizePluginName(pluginName: string): string {
+  // Match patterns like @elizaos/plugin-{name} or @{scope}/plugin-{name}
+  const scopedMatch = pluginName.match(/^@[^/]+\/plugin-(.+)$/);
+  if (scopedMatch) {
+    return scopedMatch[1];
+  }
+  return pluginName;
 }
 
 // ============================================================================
@@ -255,6 +281,8 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
 /**
  * Resolve plugin dependencies with circular dependency detection
  * Performs topological sorting of plugins to ensure dependencies are loaded in the correct order
+ *
+ * Supports both scoped package names (@elizaos/plugin-discord) and short names (discord)
  */
 export function resolvePluginDependencies(
   availablePlugins: Map<string, Plugin>,
@@ -264,44 +292,93 @@ export function resolvePluginDependencies(
   const visited = new Set<string>();
   const visiting = new Set<string>();
 
+  // Create enhanced lookup map supporting both naming conventions
+  // Allows finding plugins by short name ('discord') or scoped name ('@elizaos/plugin-discord')
+  const lookupMap = new Map<string, Plugin>();
+  for (const [key, plugin] of availablePlugins.entries()) {
+    lookupMap.set(key, plugin);
+    if (plugin.name !== key) {
+      lookupMap.set(plugin.name, plugin);
+    }
+    // Only add scoped name if plugin.name is not already scoped
+    if (!plugin.name.startsWith('@')) {
+      lookupMap.set(`@elizaos/plugin-${plugin.name}`, plugin);
+    }
+    const normalizedKey = normalizePluginName(key);
+    if (normalizedKey !== key) {
+      lookupMap.set(normalizedKey, plugin);
+    }
+  }
+
   function visit(pluginName: string) {
-    if (!availablePlugins.has(pluginName)) {
-      logger.warn(`Plugin dependency "${pluginName}" not found and will be skipped.`);
+    // Try to find the plugin using the lookup map
+    const plugin = lookupMap.get(pluginName);
+
+    if (!plugin) {
+      // Try normalized name as fallback
+      const normalizedName = normalizePluginName(pluginName);
+      const pluginByNormalized = lookupMap.get(normalizedName);
+
+      if (!pluginByNormalized) {
+        logger.warn({ src: 'core:plugin', pluginName }, 'Plugin dependency not found, skipping');
+        return;
+      }
+
+      // Use the normalized name for the rest of the resolution
+      return visit(pluginByNormalized.name);
+    }
+
+    // Use the actual plugin.name for tracking to ensure consistency
+    const canonicalName = plugin.name;
+
+    if (visited.has(canonicalName)) return;
+    if (visiting.has(canonicalName)) {
+      logger.error(
+        { src: 'core:plugin', pluginName: canonicalName },
+        'Circular dependency detected'
+      );
       return;
     }
-    if (visited.has(pluginName)) return;
-    if (visiting.has(pluginName)) {
-      logger.error(`Circular dependency detected involving plugin: ${pluginName}`);
-      return;
+
+    visiting.add(canonicalName);
+
+    const deps = [...(plugin.dependencies || [])];
+    if (isTestMode) {
+      deps.push(...(plugin.testDependencies || []));
+    }
+    for (const dep of deps) {
+      visit(dep);
     }
 
-    visiting.add(pluginName);
-    const plugin = availablePlugins.get(pluginName);
-    if (plugin) {
-      const deps = [...(plugin.dependencies || [])];
-      if (isTestMode) {
-        deps.push(...(plugin.testDependencies || []));
-      }
-      for (const dep of deps) {
-        visit(dep);
-      }
-    }
-    visiting.delete(pluginName);
-    visited.add(pluginName);
-    resolutionOrder.push(pluginName);
+    visiting.delete(canonicalName);
+    visited.add(canonicalName);
+    resolutionOrder.push(canonicalName);
   }
 
-  for (const name of availablePlugins.keys()) {
-    if (!visited.has(name)) {
-      visit(name);
+  // Visit all plugins using their canonical names
+  for (const plugin of availablePlugins.values()) {
+    if (!visited.has(plugin.name)) {
+      visit(plugin.name);
     }
   }
 
+  // Map back to actual plugin objects using the original availablePlugins map
   const finalPlugins = resolutionOrder
-    .map((name) => availablePlugins.get(name))
+    .map((name) => {
+      // Find by name in the original map
+      for (const plugin of availablePlugins.values()) {
+        if (plugin.name === name) {
+          return plugin;
+        }
+      }
+      return null;
+    })
     .filter((p): p is Plugin => Boolean(p));
 
-  logger.info({ plugins: finalPlugins.map((p) => p.name) }, `Final plugins being loaded:`);
+  logger.debug(
+    { src: 'core:plugin', plugins: finalPlugins.map((p) => p.name) },
+    'Plugins resolved'
+  );
 
   return finalPlugins;
 }
@@ -323,11 +400,63 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
   // Validate the provided plugin object
   const validation = validatePlugin(nameOrPlugin);
   if (!validation.isValid) {
-    logger.error(`Invalid plugin provided: ${validation.errors.join(', ')}`);
+    logger.error({ src: 'core:plugin', errors: validation.errors }, 'Invalid plugin provided');
     return null;
   }
 
   return nameOrPlugin;
+}
+
+/**
+ * Helper function to queue a plugin dependency for resolution if it hasn't been queued or loaded already.
+ *
+ * This function handles plugin name normalization to prevent duplicate queuing when dependencies
+ * are specified using different naming conventions (e.g., '@elizaos/plugin-discord' vs 'discord').
+ *
+ * @param depName - The dependency name to queue (can be scoped or short name)
+ * @param seenDependencies - Set tracking all dependency names that have been processed
+ * @param pluginMap - Map of already loaded plugins keyed by their canonical names
+ * @param queue - The resolution queue to add the dependency to if not already present
+ *
+ * @remarks
+ * The function normalizes the dependency name and checks multiple sources to determine if it's
+ * already queued:
+ * - Direct name match in seenDependencies
+ * - Normalized name match in seenDependencies
+ * - Normalized name match against pluginMap keys
+ * - Name match against plugin names in pluginMap values
+ *
+ * If the dependency is not found in any of these sources, it's added to both seenDependencies
+ * (with both original and normalized names) and the resolution queue.
+ */
+function queueDependency(
+  depName: string,
+  seenDependencies: Set<string>,
+  pluginMap: Map<string, Plugin>,
+  queue: (string | Plugin)[]
+): void {
+  const normalizedDepName = normalizePluginName(depName);
+
+  // Check if already queued or loaded (by any name variant)
+  // Normalize both dependency name and plugin names for consistent matching
+  const alreadyQueued =
+    seenDependencies.has(depName) ||
+    seenDependencies.has(normalizedDepName) ||
+    // Check if any plugin map key normalizes to the same name
+    Array.from(pluginMap.keys()).some((key) => normalizePluginName(key) === normalizedDepName) ||
+    // Check if any plugin's name normalizes to the same name
+    Array.from(pluginMap.values()).some(
+      (p) =>
+        normalizePluginName(p.name) === normalizedDepName ||
+        p.name === depName ||
+        p.name === normalizedDepName
+    );
+
+  if (!alreadyQueued) {
+    seenDependencies.add(depName);
+    seenDependencies.add(normalizedDepName);
+    queue.push(depName);
+  }
 }
 
 /**
@@ -342,34 +471,32 @@ async function resolvePluginsImpl(
 ): Promise<Plugin[]> {
   const pluginMap = new Map<string, Plugin>();
   const queue: (string | Plugin)[] = [...plugins];
+  const seenDependencies = new Set<string>();
 
   while (queue.length > 0) {
     const next = queue.shift()!;
     const loaded = await loadPlugin(next);
     if (!loaded) continue;
 
-    if (!pluginMap.has(loaded.name)) {
-      pluginMap.set(loaded.name, loaded);
+    const canonicalName = loaded.name;
 
-      // Add regular dependencies
+    if (!pluginMap.has(canonicalName)) {
+      pluginMap.set(canonicalName, loaded);
+
+      // Queue regular dependencies
       for (const depName of loaded.dependencies ?? []) {
-        if (!pluginMap.has(depName)) {
-          queue.push(depName);
-        }
+        queueDependency(depName, seenDependencies, pluginMap, queue);
       }
 
-      // Add test dependencies if in test mode
+      // Queue test dependencies if in test mode
       if (isTestMode) {
         for (const depName of loaded.testDependencies ?? []) {
-          if (!pluginMap.has(depName)) {
-            queue.push(depName);
-          }
+          queueDependency(depName, seenDependencies, pluginMap, queue);
         }
       }
     }
   }
 
-  // Resolve dependencies and return ordered list
   return resolvePluginDependencies(pluginMap, isTestMode);
 }
 
@@ -399,10 +526,10 @@ export async function resolvePlugins(
   const pluginObjects = plugins.filter((p): p is Plugin => typeof p !== 'string');
 
   if (plugins.some((p) => typeof p === 'string')) {
+    const skippedPlugins = plugins.filter((p) => typeof p === 'string');
     logger.warn(
-      'Browser environment: String plugin references are not supported. ' +
-        'Only Plugin objects will be used. Skipped plugins: ' +
-        plugins.filter((p) => typeof p === 'string').join(', ')
+      { src: 'core:plugin', skippedPlugins },
+      'Browser environment: String plugin references not supported'
     );
   }
 

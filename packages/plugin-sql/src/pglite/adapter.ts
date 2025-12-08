@@ -37,6 +37,22 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     this.db = drizzle(this.manager.getConnection() as any);
   }
 
+  /**
+   * Execute a callback with entity context for Entity RLS
+   * PGLite: No RLS support, just execute the callback in a simple transaction
+   *
+   * This is a public method because it's part of the adapter's public API
+   * for operations that need entity-scoped database access.
+   */
+  public async withEntityContext<T>(
+    _entityId: UUID | null,
+    callback: (tx: any) => Promise<T>
+  ): Promise<T> {
+    // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
+    // The entityId parameter is ignored since PGLite doesn't support RLS
+    return this.db.transaction(callback);
+  }
+
   // Methods required by TypeScript but not in base class
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
     // Delegate to the correct method name
@@ -46,7 +62,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn('getMemoriesByServerId called but not implemented - returning empty array');
+    logger.warn({ src: 'plugin:sql' }, 'getMemoriesByServerId called but not implemented');
     return [];
   }
 
@@ -84,7 +100,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
-      logger.warn('Database is shutting down');
+      logger.warn({ src: 'plugin:sql' }, 'Database is shutting down');
       return null as unknown as T;
     }
     return operation();
@@ -96,7 +112,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    * @returns {Promise<void>} A Promise that resolves when the database initialization is complete.
    */
   async init(): Promise<void> {
-    logger.debug('PGliteDatabaseAdapter initialized, skipping automatic migrations.');
+    logger.debug({ src: 'plugin:sql' }, 'PGliteDatabaseAdapter initialized');
   }
 
   /**

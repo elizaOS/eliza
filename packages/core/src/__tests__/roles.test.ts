@@ -13,17 +13,24 @@ describe('roles utilities', () => {
 
     // Set up scoped mocks for this test
     spyOn(entities, 'createUniqueUuid').mockImplementation(
-      (_runtime, serverId) => `unique-${serverId}` as UUID
+      (_runtime: IAgentRuntime, serverId: string) => `unique-${serverId}` as UUID
     );
 
     // Mock logger if it doesn't have the methods
     if (logger_module.logger) {
       const methods = ['error', 'info', 'warn', 'debug'];
       methods.forEach((method) => {
-        if (typeof logger_module.logger[method] === 'function') {
-          spyOn(logger_module.logger, method).mockImplementation(() => {});
+        if (
+          typeof logger_module.logger[method as keyof typeof logger_module.logger] === 'function'
+        ) {
+          spyOn(
+            logger_module.logger,
+            method as keyof typeof logger_module.logger
+          ).mockImplementation(() => {});
         } else {
-          logger_module.logger[method] = mock(() => {});
+          logger_module.logger[method as keyof typeof logger_module.logger] = mock(
+            (bindings: Record<string, unknown>) => {}
+          ) as any;
         }
       });
     }
@@ -45,7 +52,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['user-123-456-789-abc-def012345678' as UUID]: Role.ADMIN,
@@ -75,7 +82,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {},
       };
 
@@ -90,7 +97,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           someOtherData: 'value',
         },
@@ -107,7 +114,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['user-456-789-abc-def-012345678901' as UUID]: Role.OWNER,
@@ -128,7 +135,7 @@ describe('roles utilities', () => {
         id: 'world-123' as UUID,
         name: 'Test World',
         agentId: 'agent-123' as UUID,
-        serverId: 'server-123',
+        messageServerId: 'server-123',
         metadata: {
           roles: {
             ['owner-user-123-456-789-abcdef0123' as UUID]: Role.OWNER,
@@ -170,7 +177,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             ownership: {
               ownerId: 'user-123',
@@ -181,7 +188,7 @@ describe('roles utilities', () => {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
           metadata: {
             ownership: {
               ownerId: 'other-user',
@@ -192,7 +199,7 @@ describe('roles utilities', () => {
           id: 'world-3' as UUID,
           name: 'World 3',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-3',
+          messageServerId: 'server-3',
           metadata: {
             ownership: {
               ownerId: 'user-123',
@@ -217,7 +224,10 @@ describe('roles utilities', () => {
       const result = await findWorldsForOwner(mockRuntime, '');
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
+      expect(logger.error).toHaveBeenCalledWith(
+        { src: 'core:roles', agentId: mockRuntime.agentId },
+        'User ID is required to find server'
+      );
     });
 
     it('should return null when entityId is null', async () => {
@@ -226,7 +236,10 @@ describe('roles utilities', () => {
       const result = await findWorldsForOwner(mockRuntime, null as any);
 
       expect(result).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith('User ID is required to find server');
+      expect(logger.error).toHaveBeenCalledWith(
+        { src: 'core:roles', agentId: mockRuntime.agentId },
+        'User ID is required to find server'
+      );
     });
 
     it('should return null when no worlds exist', async () => {
@@ -237,7 +250,10 @@ describe('roles utilities', () => {
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
       expect(result).toBeNull();
-      expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
+      expect(logger.debug).toHaveBeenCalledWith(
+        { src: 'core:roles', agentId: mockRuntime.agentId },
+        'No worlds found for agent'
+      );
     });
 
     it('should return null when getAllWorlds returns null', async () => {
@@ -248,7 +264,10 @@ describe('roles utilities', () => {
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
       expect(result).toBeNull();
-      expect(logger.info).toHaveBeenCalledWith('No worlds found for this agent');
+      expect(logger.debug).toHaveBeenCalledWith(
+        { src: 'core:roles', agentId: mockRuntime.agentId },
+        'No worlds found for agent'
+      );
     });
 
     it('should return null when no worlds match the owner', async () => {
@@ -257,7 +276,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             ownership: {
               ownerId: 'other-user-1',
@@ -268,7 +287,7 @@ describe('roles utilities', () => {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
           metadata: {
             ownership: {
               ownerId: 'other-user-2',
@@ -290,14 +309,14 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {},
         },
         {
           id: 'world-2' as UUID,
           name: 'World 2',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-2',
+          messageServerId: 'server-2',
         } as World,
       ];
 
@@ -314,7 +333,7 @@ describe('roles utilities', () => {
           id: 'world-1' as UUID,
           name: 'World 1',
           agentId: 'agent-123' as UUID,
-          serverId: 'server-1',
+          messageServerId: 'server-1',
           metadata: {
             someOtherData: 'value',
           },

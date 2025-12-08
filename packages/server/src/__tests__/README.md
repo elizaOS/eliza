@@ -1,152 +1,268 @@
-# Server Package Tests
+# Server Tests
 
-This directory contains comprehensive tests for the `@elizaos/server` package.
+Comprehensive test suite for the ElizaOS server package.
 
-## Test Structure
+## 📊 Test Coverage
 
-### 1. **Basic Functionality Tests** (`basic-functionality.test.ts`)
+**Total: 385 passing tests | 22 skipped**
 
-- ✅ **Working** - Core logic tests without external dependencies
-- Tests path utilities, UUID validation, security patterns
-- Tests rate limiting concepts and middleware patterns
-- Tests server configuration logic
-
-### 2. **Validation Tests** (`validation.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Tests validation functions with mocking
-- Tests `validateChannelId`, `validateAgentId`, etc.
-- Tests security logging and pattern detection
-- Tests error handling for various input types
-
-### 3. **Middleware Tests** (`middleware.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Tests middleware functions
-- Tests `agentExistsMiddleware`, `validateUuidMiddleware`
-- Tests security middleware and rate limiting
-- Tests content type validation
-
-### 4. **AgentServer Integration Tests** (`agent-server.test.ts`)
-
-- ⚠️ **Needs dependency resolution** - Full AgentServer class tests
-- Tests server initialization and lifecycle
-- Tests agent registration and management
-- Tests database operations and error handling
-
-### 5. **API Endpoint Tests** (`api.test.ts`)
-
-- ⚠️ **Needs supertest dependency** - HTTP endpoint integration tests
-- Tests health check, agent, and channel endpoints
-- Tests security headers and CORS
-- Tests authentication and error handling
-
-### 6. **Utility Tests** (`utils.test.ts`)
-
-- ⚠️ **Needs mocking fixes** - Tests utility functions
-- Tests `expandTildePath` and `resolvePgliteDir`
-- Tests path security and environment handling
-
-## Running Tests
-
-### Run All Working Tests
-
-```bash
-bun test test/basic-functionality.test.ts
+```
+├── unit/            → 155 tests  (Unit tests for individual components)
+├── integration/     → 152 tests  (End-to-end integration tests)
+├── features/        →  47 tests  (Feature-specific tests)
+├── security/        →  36 tests  (Security and RLS tests)
+├── compatibility/   →  13 tests  (CLI/API compatibility)
+└── test-utils/      →  13 tests  (Test utilities and mocks)
 ```
 
-### Run All Tests (some may fail due to dependencies)
+## 🗂️ Directory Structure
 
-```bash
-npm test
+```
+__tests__/
+├── unit/                    # Unit tests for isolated components
+│   ├── api/                 # API endpoint tests
+│   │   ├── agents-runs.test.ts
+│   │   └── health-endpoints.test.ts
+│   ├── middleware/          # Middleware tests
+│   │   ├── auth-middleware.test.ts
+│   │   └── middleware.test.ts
+│   ├── services/            # Service layer tests
+│   │   ├── agent-server.test.ts
+│   │   ├── message-bus-compatibility.test.ts
+│   │   └── message-bus.test.ts (skipped - timeouts)
+│   └── utils/               # Utility function tests
+│       ├── client-path-resolution.test.ts
+│       ├── file-utils.test.ts
+│       ├── loader-uuid.test.ts
+│       ├── loader.test.ts
+│       ├── port-autodiscovery.test.ts
+│       ├── utils.test.ts
+│       └── validation.test.ts
+│
+├── integration/             # Integration tests with real components
+│   ├── agent-server-interaction.test.ts
+│   ├── bootstrap-autoload.test.ts
+│   ├── database-operations.test.ts (skipped - test interference)
+│   ├── jobs-message-flow.test.ts
+│   └── socketio-message-flow.test.ts
+│
+├── security/                # Security and access control tests
+│   └── rls-server.test.ts  # Row Level Security (RLS) multi-tenant tests
+│
+├── features/                # Feature-specific tests
+│   ├── character-file-size-regression.test.ts
+│   ├── server-core.test.ts (rate limiting, middleware patterns, config, UI toggle)
+│   ├── socketio-router.test.ts
+│   └── ui-toggle.test.ts
+│
+├── compatibility/           # API/CLI compatibility tests
+│   ├── cli-compatibility.test.ts  # Verifies exported API contracts
+│   └── cli-patterns.test.ts       # Tests usage patterns
+│
+└── test-utils/              # Shared test utilities
+    ├── environment.ts       # Environment cleanup helpers
+    ├── mocks.ts            # Mock factories (runtime, database, etc.)
+    └── mocks.test.ts       # Tests for mock utilities
 ```
 
-### Run with Coverage
+## 🏃 Running Tests
 
 ```bash
-bun test --coverage
+# Run all tests
+bun test packages/server/
+
+# Run specific category
+bun test packages/server/src/__tests__/unit/
+bun test packages/server/src/__tests__/integration/
+bun test packages/server/src/__tests__/security/
+
+# Run single file
+bun test packages/server/src/__tests__/unit/utils/validation.test.ts
+
+# Watch mode
+bun test packages/server/ --watch
 ```
 
-### Watch Mode
+## 🧪 Test Categories
 
-```bash
-bun test --watch test/basic-functionality.test.ts
+### Unit Tests (`unit/`)
+
+Test individual components in isolation without external dependencies.
+
+- **API**: HTTP endpoint handlers, request/response formatting
+- **Middleware**: Authentication, validation, rate limiting, security
+- **Services**: Core business logic (AgentServer, MessageBus)
+- **Utils**: Pure functions (path resolution, validation, UUID generation, file handling)
+
+### Integration Tests (`integration/`)
+
+Test interactions between multiple components with real dependencies.
+
+- Agent server lifecycle (startup, registration, shutdown)
+- Database operations (CRUD, transactions, integrity)
+- Socket.IO message flow (real-time communication)
+- Job processing with message bus
+- Bootstrap plugin auto-loading
+
+### Security Tests (`security/`)
+
+Test security-critical features and access controls.
+
+- Row Level Security (RLS) multi-tenancy
+- Server ID assignment and validation
+- Connection pool isolation
+- Endpoint security
+
+### Feature Tests (`features/`)
+
+Test complete features end-to-end.
+
+- Character file size limits (regression tests)
+- UI enable/disable toggle
+- Socket.IO router
+- Server core patterns (rate limiting, middleware, configuration)
+
+### Compatibility Tests (`compatibility/`)
+
+Ensure CLI and API compatibility across versions.
+
+- Export structure validation
+- Usage pattern verification
+- Breaking change detection
+
+## 🛠️ Test Utilities
+
+### Environment Helpers (`test-utils/environment.ts`)
+
+Helpers for test isolation and environment cleanup:
+
+```typescript
+import { setupTestEnvironment, teardownTestEnvironment } from './test-utils/environment';
+
+let envSnapshot: EnvironmentSnapshot;
+
+beforeEach(() => {
+  envSnapshot = setupTestEnvironment(); // Clean env + clear ElizaPaths cache
+});
+
+afterEach(() => {
+  teardownTestEnvironment(envSnapshot); // Restore original state
+});
 ```
 
-## Test Categories
+### Mock Factories (`test-utils/mocks.ts`)
 
-### ✅ **Unit Tests**
+Centralized mocks for common objects:
 
-- Individual function testing
-- Logic validation without dependencies
-- Security pattern detection
-- Configuration handling
-
-### ⚠️ **Integration Tests**
-
-- Full server functionality
-- Database integration
-- HTTP endpoint testing
-- Middleware chain testing
-
-### 🔧 **Mocking Strategy**
-
-- Mock external dependencies (`@elizaos/core`, `@elizaos/plugin-sql`)
-- Mock file system operations
-- Mock HTTP requests/responses
-- Mock database operations
-
-## Dependencies Needed for Full Test Suite
-
-```bash
-npm install --save-dev supertest @types/supertest
+```typescript
+import {
+  createMockAgentRuntime,
+  createMockDatabaseAdapter,
+  createMockExpressRequest,
+  createMockExpressResponse,
+  createMockSocketIOServer,
+  createMockHttpServer,
+} from './test-utils/mocks';
 ```
 
-## Test Coverage Goals
+## ⚠️ Skipped Tests
 
-- **Target**: 80%+ code coverage
-- **Focus Areas**:
-  - Validation functions (100%)
-  - Security middleware (90%+)
-  - Core server functionality (85%+)
-  - Error handling (90%+)
+**22 tests currently skipped:**
 
-## Security Testing
+| File                          | Reason                                              | Status              |
+| ----------------------------- | --------------------------------------------------- | ------------------- |
+| `message-bus.test.ts`         | Timeouts due to async event handling complexity     | Known issue         |
+| `database-operations.test.ts` | Test interference in full run (passes in isolation) | Needs isolation fix |
+| `agents-runs.test.ts`         | Test interference in full run (passes in isolation) | Needs isolation fix |
+| Various loader tests          | File system operations cause hangs with Bun         | Known Bun issue     |
 
-The tests include comprehensive security validation:
+## 📝 Writing Tests
 
-1. **Input Validation**
-   - UUID format checking
-   - Suspicious pattern detection
-   - Path traversal prevention
+### Best Practices
 
-2. **Injection Prevention**
-   - Script injection detection
-   - SQL injection pattern recognition
-   - XSS attempt identification
+1. **Use test utilities** - Leverage `test-utils/environment.ts` for env cleanup
+2. **Isolate tests** - Each test should be independent (use beforeEach/afterEach)
+3. **Mock external dependencies** - Use factories from `test-utils/mocks.ts`
+4. **Clear descriptive names** - Test names should explain what they verify
+5. **Organize by feature** - Group related tests in describe blocks
 
-3. **Rate Limiting**
-   - Brute force protection
-   - API abuse prevention
-   - Channel validation limiting
+### Example Test Structure
 
-## Known Issues
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  type EnvironmentSnapshot,
+} from '../test-utils/environment';
 
-1. **Workspace Dependencies**: Some tests fail due to workspace dependency resolution
-2. **Mock Complexity**: Complex mocking required for database operations
-3. **Integration Challenges**: Full server initialization requires extensive mocking
+describe('Feature Name', () => {
+  let envSnapshot: EnvironmentSnapshot;
 
-## Improvements Needed
+  beforeEach(() => {
+    envSnapshot = setupTestEnvironment();
+  });
 
-1. Fix workspace dependency issues
-2. Simplify mocking strategy
-3. Add more edge case tests
-4. Implement performance tests
-5. Add end-to-end testing scenarios
+  afterEach(() => {
+    teardownTestEnvironment(envSnapshot);
+  });
 
-## Test Philosophy
+  describe('Specific Functionality', () => {
+    it('should do something specific', () => {
+      // Arrange
+      const input = 'test-value';
 
-The testing approach prioritizes:
+      // Act
+      const result = functionUnderTest(input);
 
-1. **Security First**: Comprehensive security validation
-2. **Independent Testing**: Tests that can run without complex setup
-3. **Real-world Scenarios**: Tests that reflect actual usage patterns
-4. **Error Coverage**: Thorough error condition testing
+      // Assert
+      expect(result).toBe('expected-value');
+    });
+  });
+});
+```
+
+## 🔧 Troubleshooting
+
+### Tests Failing After Moving Files
+
+If you move test files, update relative imports:
+
+```typescript
+// Before (in __tests__/):
+import { AgentServer } from '../index';
+
+// After (in __tests__/unit/services/):
+import { AgentServer } from '../../../index';
+```
+
+### Test Isolation Issues
+
+If tests pass individually but fail in suite:
+
+1. Check for environment variable pollution
+2. Ensure `clearCache()` is called in cleanup
+3. Verify database/server cleanup in `afterEach`
+
+### Import Errors
+
+Common import path patterns:
+
+| Location           | Import Server Code | Import Test Utils   |
+| ------------------ | ------------------ | ------------------- |
+| `unit/utils/`      | `../../../`        | `../../test-utils/` |
+| `unit/middleware/` | `../../../`        | `../../test-utils/` |
+| `integration/`     | `../../`           | `../test-utils/`    |
+| `features/`        | `../../`           | `../test-utils/`    |
+
+## 📚 Additional Resources
+
+- [Bun Test Documentation](https://bun.sh/docs/cli/test)
+- [ElizaOS Core Testing Guide](../../../core/__tests__/README.md)
+- [Server Architecture](../README.md)
+
+---
+
+**Last Updated:** 2025-11-20
+**Test Framework:** Bun Test
+**Coverage Target:** >80% for critical paths

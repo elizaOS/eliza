@@ -16,14 +16,14 @@ export function createHealthRouter(elizaOS: ElizaOS, serverInstance: AgentServer
 
   // Hello world endpoint
   router.get('/hello', (_req, res) => {
-    logger.info('Hello endpoint hit');
+    logger.debug({ src: 'http', path: '/hello' }, 'Hello endpoint hit');
     res.setHeader('Content-Type', 'application/json');
     res.send(JSON.stringify({ message: 'Hello World!' }));
   });
 
   // System status endpoint
   router.get('/status', (_req, res) => {
-    logger.info('Status endpoint hit');
+    logger.debug({ src: 'http', path: '/status' }, 'Status endpoint hit');
     res.setHeader('Content-Type', 'application/json');
     res.send(
       JSON.stringify({
@@ -36,7 +36,7 @@ export function createHealthRouter(elizaOS: ElizaOS, serverInstance: AgentServer
 
   // Comprehensive health check
   router.get('/health', (_req, res) => {
-    logger.log({ apiRoute: '/health' }, 'Health check route hit');
+    logger.debug({ src: 'http', path: '/health' }, 'Health check route hit');
     const healthcheck = {
       status: 'OK',
       version: process.env.APP_VERSION || 'unknown',
@@ -52,7 +52,7 @@ export function createHealthRouter(elizaOS: ElizaOS, serverInstance: AgentServer
 
   // Server stop endpoint
   router.post('/stop', (_req, res) => {
-    logger.log({ apiRoute: '/stop' }, 'Server stopping...');
+    logger.info({ src: 'http', path: '/stop' }, 'Server stopping');
     serverInstance?.stop(); // Use optional chaining in case server is undefined
     res.json({ message: 'Server stopping...' });
   });

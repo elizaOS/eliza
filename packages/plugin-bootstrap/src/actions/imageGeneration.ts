@@ -81,10 +81,11 @@ export const generateImageAction = {
       if (!imageResponse || imageResponse.length === 0 || !imageResponse[0]?.url) {
         logger.error(
           {
-            imageResponse,
+            src: 'plugin:bootstrap:action:image_generation',
+            agentId: runtime.agentId,
             imagePrompt,
           },
-          'generateImageAction: Image generation failed - no valid response received'
+          'Image generation failed - no valid response received'
         );
         return {
           text: 'Image generation failed',
@@ -104,7 +105,10 @@ export const generateImageAction = {
 
       const imageUrl = imageResponse[0].url;
 
-      logger.info(`[GENERATE_IMAGE] Received image URL: ${imageUrl}`);
+      logger.info(
+        { src: 'plugin:bootstrap:action:image_generation', agentId: runtime.agentId, imageUrl },
+        'Received image URL'
+      );
 
       // Determine file extension from URL or default to png
       const getFileExtension = (url: string): string => {
@@ -163,10 +167,11 @@ export const generateImageAction = {
       const err = error as Error;
       logger.error(
         {
-          message: err.message,
-          stack: err.stack,
+          src: 'plugin:bootstrap:action:image_generation',
+          agentId: runtime.agentId,
+          error: err.message,
         },
-        'generateImageAction: Exception during image generation'
+        'Exception during image generation'
       );
       return {
         text: 'Image generation failed',

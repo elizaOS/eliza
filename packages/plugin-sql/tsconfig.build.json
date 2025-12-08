@@ -14,6 +14,8 @@
     "src/types.ts",
     "src/utils.browser.ts",
     "src/migration-service.ts",
+    "src/migrations.ts",
+    "src/rls.ts",
     "src/runtime-migrator/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "src/**/__tests__/**", "src/**/*.test.ts", "src/**/*.spec.ts"]

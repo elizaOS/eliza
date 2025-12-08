@@ -1,9 +1,9 @@
 import { logger, validateUuid, type UUID } from '@elizaos/core';
 import express from 'express';
-import internalMessageBus from '../../bus'; // Import the bus
+import internalMessageBus from '../../services/message-bus'; // Import the bus
 import type { AgentServer } from '../../index';
-import type { MessageServiceStructure as MessageService } from '../../types';
-import { attachmentsToApiUrls } from '../../utils/media-transformer';
+import type { MessageServiceStructure as MessageService } from '../../types/server';
+import { attachmentsToApiUrls, validateServerIdForRls } from '../../utils';
 
 /**
  * Core messaging functionality - message submission and ingestion
@@ -11,11 +11,23 @@ import { attachmentsToApiUrls } from '../../utils/media-transformer';
 export function createMessagingCoreRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
+  // Middleware to handle deprecated parameter names (backward compatibility)
+  router.use((req, _res, next) => {
+    // Map deprecated server_id to message_server_id
+    if (req.body && req.body.server_id && !req.body.message_server_id) {
+      logger.warn(
+        '[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.'
+      );
+      req.body.message_server_id = req.body.server_id;
+    }
+    next();
+  });
+
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
   (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
     const {
       channel_id,
-      server_id, // This is the server_id
+      message_server_id, // UUID of message_servers
       author_id, // This should be the agent's runtime.agentId or a dedicated central ID for the agent
       content,
       in_reply_to_message_id, // This is a root_message.id
@@ -24,21 +36,26 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata, // Should include agent_name if author_id is agent's runtime.agentId
     } = req.body;
 
-    // RLS security: Only allow access to current server's data
-    const isValidServerId = server_id === serverInstance.serverId;
-
     if (
       !validateUuid(channel_id) ||
+      !validateUuid(message_server_id) ||
       !validateUuid(author_id) ||
       !content ||
-      !isValidServerId ||
       !source_type ||
       !raw_message
     ) {
       return res.status(400).json({
         success: false,
         error:
-          'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
+          'Missing required fields: channel_id, message_server_id, author_id, content, source_type, raw_message',
+      });
+    }
+
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(message_server_id, serverInstance)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: message_server_id does not match current server',
       });
     }
 
@@ -77,7 +94,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: content,
           roomId: channel_id, // For SocketIO, room is the central channel_id
-          serverId: server_id, // Client layer uses serverId
+          serverId: message_server_id, // Client layer uses serverId (message_server_id)
           createdAt: new Date(createdMessage.createdAt).getTime(),
           source: createdMessage.sourceType,
           id: createdMessage.id, // Central message ID
@@ -92,8 +109,13 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       res.status(201).json({ success: true, data: createdMessage });
     } catch (error) {
       logger.error(
-        '[Messages Router /submit] Error submitting agent message:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: '/submit',
+          channelId: channel_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error submitting agent message'
       );
       res.status(500).json({ success: false, error: 'Failed to submit agent message' });
     }
@@ -103,7 +125,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     const {
       messageId,
       channel_id,
-      server_id,
+      message_server_id,
       author_id,
       content,
       in_reply_to_message_id,
@@ -112,21 +134,26 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       metadata,
     } = req.body;
 
-    // RLS security: Only allow access to current server's data
-    const isValidServerId = server_id === serverInstance.serverId;
-
     if (
       !validateUuid(channel_id) ||
+      !validateUuid(message_server_id) ||
       !validateUuid(author_id) ||
       !content ||
-      !isValidServerId ||
       !source_type ||
       !raw_message
     ) {
       return res.status(400).json({
         success: false,
         error:
-          'Missing required fields: channel_id, server_id, author_id, content, source_type, raw_message',
+          'Missing required fields: channel_id, message_server_id, author_id, content, source_type, raw_message',
+      });
+    }
+
+    // RLS security: Only allow access to current server's data
+    if (!validateServerIdForRls(message_server_id, serverInstance)) {
+      return res.status(403).json({
+        success: false,
+        error: 'Forbidden: message_server_id does not match current server',
       });
     }
 
@@ -167,7 +194,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: savedMessage.content,
           roomId: channel_id,
-          serverId: server_id,
+          messageServerId: message_server_id as UUID,
           createdAt: new Date(savedMessage.createdAt).getTime(),
           source: savedMessage.sourceType,
           id: savedMessage.id,
@@ -182,8 +209,13 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(201).json({ success: true, data: savedMessage });
     } catch (error) {
       logger.error(
-        '[POST /actions] Error creating action:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: '/action',
+          channelId: channel_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error creating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to create action' });
     }
@@ -203,7 +235,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       in_reply_to_message_id,
       metadata,
       author_id,
-      server_id,
+      server_message_id,
     } = req.body ?? {};
 
     if (in_reply_to_message_id && !validateUuid(in_reply_to_message_id)) {
@@ -213,12 +245,6 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
     if (author_id && !validateUuid(author_id)) {
       return res.status(400).json({ success: false, error: 'Invalid author_id format' });
-    }
-    // RLS security: Only allow access to current server's data
-    if (server_id && server_id !== serverInstance.serverId) {
-      return res
-        .status(403)
-        .json({ success: false, error: 'Forbidden: server_id does not match current server' });
     }
 
     try {
@@ -247,7 +273,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: updated.content,
           roomId: updated.channelId,
-          serverId: server_id, // optional; include if client provides
+          messageServerId: server_message_id as UUID,
           createdAt: new Date(updated.createdAt).getTime(),
           source: updated.sourceType,
           id: updated.id,
@@ -262,8 +288,13 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(200).json({ success: true, data: updated });
     } catch (error) {
       logger.error(
-        '[PATCH /action/:id] Error updating action:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          messageId: id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error updating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to update action' });
     }
@@ -275,7 +306,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     if (
       !messagePayload.channel_id ||
-      !messagePayload.server_id ||
+      !messagePayload.message_server_id ||
       !messagePayload.author_id ||
       !messagePayload.content
     ) {
@@ -301,7 +332,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       const messageForBus: MessageService = {
         id: createdRootMessage.id!,
         channel_id: createdRootMessage.channelId,
-        server_id: messagePayload.server_id as UUID, // Pass through the original server_id
+        message_server_id: messagePayload.message_server_id as UUID, // Pass through the original message_server_id
         author_id: createdRootMessage.authorId, // This is the central ID used for storage
         author_display_name: messagePayload.author_display_name, // Pass through display name
         content: createdRootMessage.content,
@@ -314,9 +345,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       };
 
       internalMessageBus.emit('new_message', messageForBus);
-      logger.info(
-        '[Messages Router /ingest-external] Published to internal message bus:',
-        createdRootMessage.id
+      logger.debug(
+        { src: 'http', path: '/ingest-external', messageId: createdRootMessage.id },
+        'Published to internal message bus'
       );
 
       // Also emit to SocketIO for real-time GUI updates if anyone is watching this channel
@@ -326,7 +357,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: messageForBus.author_display_name || 'User',
           text: messageForBus.content,
           roomId: messageForBus.channel_id,
-          serverId: messageForBus.server_id, // Client layer uses serverId
+          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,
@@ -340,8 +371,12 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       });
     } catch (error) {
       logger.error(
-        '[Messages Router /ingest-external] Error ingesting external message:',
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: '/ingest-external',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error ingesting external message'
       );
       res.status(500).json({ success: false, error: 'Failed to ingest message' });
     }

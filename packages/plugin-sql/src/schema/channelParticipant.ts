@@ -7,9 +7,7 @@ export const channelParticipantsTable = pgTable(
     channelId: text('channel_id')
       .notNull()
       .references(() => channelTable.id, { onDelete: 'cascade' }),
-    userId: text('user_id').notNull(), // This is a central UUID (can be an agentId or a dedicated central user ID)
+    entityId: text('entity_id').notNull(), // Entity UUID (can be an agentId or a dedicated central user ID)
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.channelId, table.userId] }),
-  })
+  (table) => [primaryKey({ columns: [table.channelId, table.entityId] })]
 );

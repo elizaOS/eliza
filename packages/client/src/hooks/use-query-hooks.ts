@@ -1,27 +1,17 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 // Direct error handling without bridge layer
-import { createElizaClient } from '@/lib/api-client-config';
-import type {
-  Agent,
-  Content,
-  Memory,
-  UUID,
-  Memory as CoreMemory,
-  AgentStatus,
-} from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
 import {
   useQuery,
   useMutation,
   useQueryClient,
   useQueries,
   UseQueryResult,
-  type DefinedUseQueryResult,
-  type UndefinedInitialDataOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from './use-toast';
-import { getEntityId, randomUUID, moment } from '@/lib/utils';
+import { getEntityId } from '@/lib/utils';
 import type {
   ServerMessage,
   AgentWithStatus,
@@ -33,20 +23,18 @@ import { useNavigate } from 'react-router-dom';
 import {
   mapApiAgentToClient,
   mapApiChannelToClient,
-  mapApiServerToClient,
-  mapApiServersToClient,
   mapApiChannelsToClient,
+  mapApiServersToClient,
   mapApiMessageToUi,
   mapApiLogToClient,
   mapApiMemoryToClient,
-  mapEnumToApiStatus,
-  apiDateToTimestamp,
   type AgentLog,
 } from '@/lib/api-type-mappers';
 import type { ListRunsParams, RunDetail, RunSummary } from '@elizaos/api-client';
+import { getElizaClient } from '@/lib/api-client-config';
 
-// Create ElizaClient instance for direct API calls
-const elizaClient = createElizaClient();
+// Helper to always get the current client instance (important after API key updates)
+const getClient = () => getElizaClient();
 
 /**
  * Represents content with additional user information.
@@ -130,7 +118,7 @@ export function useAgents(options = {}) {
   return useQuery<{ data: { agents: Partial<AgentWithStatus>[] } }>({
     queryKey: ['agents'],
     queryFn: async () => {
-      const result = await elizaClient.agents.listAgents();
+      const result = await getClient().agents.listAgents();
       // Map the API agents to client format
       const mappedAgents = result.agents.map((agent) => mapApiAgentToClient(agent));
       return { data: { agents: mappedAgents } };
@@ -164,7 +152,7 @@ export function useAgent(agentId: UUID | undefined | null, options = {}) {
     queryKey: ['agent', agentId],
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID is required');
-      const result = await elizaClient.agents.getAgent(agentId);
+      const result = await getClient().agents.getAgent(agentId);
       return { data: mapApiAgentToClient(result) };
     },
     staleTime: STALE_TIMES.FREQUENT, // Use shorter stale time for real-time data
@@ -200,7 +188,7 @@ export function useAgentRuns(
     queryKey: ['agent', agentId, 'runs', serializedParams],
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID is required');
-      return elizaClient.runs.listRuns(agentId, sanitizedParams as ListRunsParams | undefined);
+      return getClient().runs.listRuns(agentId, sanitizedParams as ListRunsParams | undefined);
     },
     enabled: Boolean(agentId),
     staleTime: STALE_TIMES.FREQUENT,
@@ -226,7 +214,7 @@ export function useAgentRunDetail(
     queryKey: ['agent', agentId, 'runs', 'detail', runId, roomId ?? null],
     queryFn: async () => {
       if (!agentId || !runId) throw new Error('Agent ID and Run ID are required');
-      return elizaClient.runs.getRun(agentId, runId, roomId ?? undefined);
+      return getClient().runs.getRun(agentId, runId, roomId ?? undefined);
     },
     enabled: Boolean(agentId && runId),
     staleTime: STALE_TIMES.FREQUENT,
@@ -253,7 +241,7 @@ export function useStartAgent() {
   return useMutation<{ data: { id: UUID; name: string; status: string } }, Error, UUID>({
     mutationFn: async (agentId: UUID) => {
       try {
-        const result = await elizaClient.agents.startAgent(agentId);
+        const result = await getClient().agents.startAgent(agentId);
         return { data: { id: agentId, name: 'Agent', status: result.status } };
       } catch (error) {
         // Use the centralized error handler, but preserve specific agent logic
@@ -309,7 +297,7 @@ export function useStopAgent() {
 
   return useMutation<{ data: { message: string } }, Error, UUID>({
     mutationFn: async (agentId: UUID) => {
-      const result = await elizaClient.agents.stopAgent(agentId);
+      const result = await getClient().agents.stopAgent(agentId);
       return { data: { message: `Agent ${result.status}` } };
     },
     onMutate: async (agentId) => {
@@ -370,7 +358,7 @@ export type UiMessage = Content & {
  */
 export function useChannelMessages(
   channelId: UUID | undefined, // Changed from UUID | null
-  initialServerId?: UUID | undefined // Changed from UUID (optional was already undefined)
+  initialMessageServerId?: UUID | undefined // Changed from UUID (optional was already undefined)
 ): {
   data: UiMessage[] | undefined;
   isLoading: boolean;
@@ -452,13 +440,13 @@ export function useChannelMessages(
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
-        serverId: serverIdToUse || sm.metadata?.serverId || sm.serverId || initialServerId,
+        messageServerId: serverIdToUse || sm.metadata?.messageServerId || initialMessageServerId,
         source: sm.sourceType,
         isLoading: false,
         prompt: isAgent ? sm.metadata?.prompt : undefined,
       };
     },
-    [currentClientCentralId, initialServerId]
+    [currentClientCentralId, initialMessageServerId]
   );
 
   const fetchMessages = useCallback(
@@ -477,13 +465,13 @@ export function useChannelMessages(
       setInternalError(null);
 
       try {
-        const response = await elizaClient.messaging.getChannelMessages(channelId, {
+        const response = await getClient().messaging.getChannelMessages(channelId, {
           limit: 30,
           before: beforeTimestamp ? new Date(beforeTimestamp).toISOString() : undefined,
         });
 
         const newUiMessages = response.messages.map((msg) =>
-          mapApiMessageToUi(msg, initialServerId || msg.metadata?.serverId)
+          mapApiMessageToUi(msg, initialMessageServerId || (msg.metadata?.messageServerId as UUID))
         );
 
         setMessages((prev) => {
@@ -511,8 +499,8 @@ export function useChannelMessages(
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [channelId, transformServerMessageToUiMessage, initialServerId]
-  ); // Add initialServerId to deps
+    [channelId, transformServerMessageToUiMessage, initialMessageServerId]
+  ); // Add initialMessageServerId to deps
 
   useEffect(() => {
     // Initial fetch when channelId changes or becomes available
@@ -603,11 +591,11 @@ export function useChannelMessages(
   };
 }
 
-export function useGroupChannelMessages(channelId: UUID | null, initialServerId?: UUID) {
+export function useGroupChannelMessages(channelId: UUID | null, initialMessageServerId?: UUID) {
   // This hook now becomes an alias or a slightly specialized version of useChannelMessages
   // if group-specific logic (like different source filtering) isn't handled here.
   // For now, it can directly use useChannelMessages.
-  return useChannelMessages(channelId ?? undefined, initialServerId);
+  return useChannelMessages(channelId ?? undefined, initialMessageServerId);
 }
 
 // Hook for fetching agent actions
@@ -622,7 +610,7 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
   return useQuery({
     queryKey: ['agentActions', agentId, roomId, excludeTypes],
     queryFn: async () => {
-      const response = await elizaClient.agents.getAgentLogs(agentId, {
+      const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
       // Map the API logs to client format
@@ -643,7 +631,7 @@ export function useDeleteLog() {
 
   return useMutation({
     mutationFn: async ({ agentId, logId }: { agentId: UUID; logId: UUID }) => {
-      await elizaClient.agents.deleteAgentLog(agentId, logId);
+      await getClient().agents.deleteAgentLog(agentId, logId);
       return { agentId, logId };
     },
 
@@ -710,8 +698,8 @@ export function useAgentMemories(
         includeEmbedding,
       };
       const result = channelId
-        ? await elizaClient.memory.getRoomMemories(agentId, channelId, params)
-        : await elizaClient.memory.getAgentMemories(agentId, params);
+        ? await getClient().memory.getRoomMemories(agentId, channelId, params)
+        : await getClient().memory.getAgentMemories(agentId, params);
       console.log('Agent memories result:', {
         agentId,
         tableName,
@@ -742,7 +730,7 @@ export function useDeleteMemory() {
 
   return useMutation({
     mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: UUID }) => {
-      await elizaClient.memory.deleteMemory(agentId, memoryId);
+      await getClient().memory.deleteMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
     onSuccess: (data) => {
@@ -770,7 +758,7 @@ export function useDeleteAllMemories() {
 
   return useMutation({
     mutationFn: async ({ agentId, roomId }: { agentId: UUID; roomId: UUID }) => {
-      await elizaClient.memory.clearRoomMemories(agentId, roomId);
+      await getClient().memory.clearRoomMemories(agentId, roomId);
       return { agentId };
     },
     onSuccess: (data) => {
@@ -803,7 +791,7 @@ export function useUpdateMemory() {
       memoryId: UUID;
       memoryData: Partial<Memory>;
     }) => {
-      const result = await elizaClient.memory.updateMemory(agentId, memoryId, memoryData);
+      const result = await getClient().memory.updateMemory(agentId, memoryId, memoryData);
       return { agentId, memoryId, result };
     },
 
@@ -854,7 +842,7 @@ export function useDeleteGroupMemory() {
 
   return useMutation({
     mutationFn: async ({ serverId, memoryId }: { serverId: UUID; memoryId: UUID }) => {
-      await elizaClient.messaging.deleteMessage(serverId, memoryId);
+      await getClient().messaging.deleteMessage(serverId, memoryId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -868,7 +856,7 @@ export function useClearGroupChat() {
 
   return useMutation({
     mutationFn: async (serverId: UUID) => {
-      await elizaClient.messaging.clearChannelHistory(serverId);
+      await getClient().messaging.clearChannelHistory(serverId);
       return { serverId };
     },
     onSuccess: ({ serverId }) => {
@@ -905,7 +893,7 @@ export function useAgentPanels(agentId: UUID | undefined | null, options = {}) {
     queryKey: ['agentPanels', agentId],
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID required');
-      const result = await elizaClient.agents.getAgentPanels(agentId);
+      const result = await getClient().agents.getAgentPanels(agentId);
       return { success: true, data: result.panels };
     },
     enabled: Boolean(agentId),
@@ -950,7 +938,7 @@ export function useAgentsWithDetails(): AgentsWithDetailsResult {
     queries: agentIds.map((id) => ({
       queryKey: ['agent', id] as const,
       queryFn: async () => {
-        const result = await elizaClient.agents.getAgent(id);
+        const result = await getClient().agents.getAgent(id);
         return { data: result };
       },
       staleTime: STALE_TIMES.FREQUENT,
@@ -995,7 +983,7 @@ export function useAgentInternalActions(
     queryKey: ['agentInternalActions', agentId, agentPerspectiveRoomId],
     queryFn: async () => {
       if (!agentId) return []; // Or throw error, depending on desired behavior for null agentId
-      const response = await elizaClient.agents.getAgentLogs(agentId, {
+      const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
       // Map the API logs to client format
@@ -1012,7 +1000,7 @@ export function useDeleteAgentInternalLog() {
   const { toast } = useToast();
   return useMutation<void, Error, { agentId: UUID; logId: UUID }>({
     mutationFn: async ({ agentId, logId }: { agentId: UUID; logId: UUID }) => {
-      await elizaClient.agents.deleteAgentLog(agentId, logId);
+      await getClient().agents.deleteAgentLog(agentId, logId);
     },
     onSuccess: (_, { agentId }) => {
       queryClient.invalidateQueries({ queryKey: ['agentInternalActions', agentId] });
@@ -1048,7 +1036,7 @@ export function useAgentInternalMemories(
     ],
     queryFn: async () => {
       if (!agentId || !agentPerspectiveRoomId) return Promise.resolve([]);
-      const response = await elizaClient.memory.getAgentInternalMemories(
+      const response = await getClient().memory.getAgentInternalMemories(
         agentId,
         agentPerspectiveRoomId,
         includeEmbedding
@@ -1065,7 +1053,7 @@ export function useDeleteAgentInternalMemory() {
   const { toast } = useToast();
   return useMutation<{ agentId: UUID; memoryId: UUID }, Error, { agentId: UUID; memoryId: UUID }>({
     mutationFn: async ({ agentId, memoryId }: { agentId: UUID; memoryId: UUID }) => {
-      await elizaClient.memory.deleteAgentInternalMemory(agentId, memoryId);
+      await getClient().memory.deleteAgentInternalMemory(agentId, memoryId);
       return { agentId, memoryId };
     },
     onSuccess: (_data, variables) => {
@@ -1096,7 +1084,7 @@ export function useDeleteAllAgentInternalMemories() {
     { agentId: UUID; agentPerspectiveRoomId: UUID }
   >({
     mutationFn: async ({ agentId, agentPerspectiveRoomId }) => {
-      await elizaClient.memory.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
+      await getClient().memory.deleteAllAgentInternalMemories(agentId, agentPerspectiveRoomId);
       return { agentId, agentPerspectiveRoomId };
     },
     onSuccess: (_data, variables) => {
@@ -1131,7 +1119,7 @@ export function useUpdateAgentInternalMemory() {
     { agentId: UUID; memoryId: UUID; memoryData: Partial<CoreMemory> }
   >({
     mutationFn: async ({ agentId, memoryId, memoryData }) => {
-      const response = await elizaClient.memory.updateAgentInternalMemory(
+      const response = await getClient().memory.updateAgentInternalMemory(
         agentId,
         memoryId,
         memoryData
@@ -1161,8 +1149,8 @@ export function useServers(options = {}) {
   return useQuery<{ data: { servers: ClientMessageServer[] } }>({
     queryKey: ['servers'],
     queryFn: async () => {
-      const result = await elizaClient.messaging.listServers();
-      return { data: { servers: mapApiServersToClient(result.servers) } };
+      const result = await getClient().messaging.listMessageServers();
+      return { data: { servers: mapApiServersToClient(result.messageServers) } };
     },
     staleTime: STALE_TIMES.RARE,
     refetchInterval: !network.isOffline ? STALE_TIMES.RARE : false,
@@ -1176,7 +1164,7 @@ export function useChannels(serverId: UUID | undefined, options = {}) {
     queryKey: ['channels', serverId],
     queryFn: async () => {
       if (!serverId) return Promise.resolve({ data: { channels: [] } });
-      const result = await elizaClient.messaging.getServerChannels(serverId);
+      const result = await getClient().messaging.getMessageServerChannels(serverId);
       return { data: { channels: mapApiChannelsToClient(result.channels) } };
     },
     enabled: !!serverId,
@@ -1193,7 +1181,7 @@ export function useChannelDetails(channelId: UUID | undefined, options = {}) {
     queryKey: ['channelDetails', channelId],
     queryFn: async () => {
       if (!channelId) return Promise.resolve({ success: true, data: null });
-      const result = await elizaClient.messaging.getChannelDetails(channelId);
+      const result = await getClient().messaging.getChannelDetails(channelId);
       return { success: true, data: mapApiChannelToClient(result) };
     },
     enabled: !!channelId,
@@ -1211,7 +1199,7 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
     queryFn: async () => {
       if (!channelId) return Promise.resolve({ success: true, data: [] });
       try {
-        const result = await elizaClient.messaging.getChannelParticipants(channelId);
+        const result = await getClient().messaging.getChannelParticipants(channelId);
 
         // Handle different possible response formats
         let participants = [];
@@ -1245,7 +1233,7 @@ export function useDeleteChannelMessage() {
     { channelId: UUID; messageId: UUID }
   >({
     mutationFn: async ({ channelId, messageId }) => {
-      await elizaClient.messaging.deleteMessage(channelId, messageId);
+      await getClient().messaging.deleteMessage(channelId, messageId);
       return { channelId, messageId };
     },
     onSuccess: (_data, variables) => {
@@ -1269,7 +1257,7 @@ export function useClearChannelMessages() {
   const { toast } = useToast();
   return useMutation<{ channelId: UUID }, Error, UUID>({
     mutationFn: async (channelId: UUID) => {
-      await elizaClient.messaging.clearChannelHistory(channelId);
+      await getClient().messaging.clearChannelHistory(channelId);
       return { channelId };
     },
     onSuccess: (_data, variables_channelId) => {
@@ -1297,7 +1285,7 @@ export function useDeleteChannel() {
 
   return useMutation<void, Error, { channelId: UUID; serverId: UUID }>({
     mutationFn: async ({ channelId }) => {
-      await elizaClient.messaging.deleteChannel(channelId);
+      await getClient().messaging.deleteChannel(channelId);
     },
     onSuccess: (_data, variables) => {
       toast({

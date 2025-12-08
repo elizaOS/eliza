@@ -74,7 +74,7 @@ describe('settings utilities', () => {
       id: 'world-123' as any,
       name: 'Test World',
       agentId: 'agent-123' as any,
-      serverId: 'server-123',
+      messageServerId: 'server-123',
       metadata: {},
     };
   });
@@ -813,6 +813,7 @@ describe('settings utilities', () => {
   describe('Character settings merge with complex objects', () => {
     it('should handle complex character settings without corrupting them during .env merge', async () => {
       const { setDefaultSecretsFromEnv } = await import('../secrets');
+      const { loadEnvFile } = await import('../utils/environment');
       const fs = await import('node:fs');
       const path = await import('node:path');
       const os = await import('node:os');
@@ -820,12 +821,20 @@ describe('settings utilities', () => {
       const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-complex-test-'));
       const originalCwd = process.cwd();
 
+      // Track keys we add to process.env for cleanup
+      const testEnvKeys = new Set<string>();
+
       try {
         process.chdir(testDir);
 
         const envContent = `SIMPLE_KEY=simple-value
 ANOTHER_KEY=another-value`;
         fs.writeFileSync(path.join(testDir, '.env'), envContent);
+
+        // Load .env file into process.env
+        loadEnvFile(path.join(testDir, '.env'));
+        testEnvKeys.add('SIMPLE_KEY');
+        testEnvKeys.add('ANOTHER_KEY');
 
         const character: Character = {
           name: 'TestChar',
@@ -842,7 +851,7 @@ ANOTHER_KEY=another-value`;
           },
         };
 
-        await setDefaultSecretsFromEnv(character);
+        await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
         // Verify complex objects are preserved
         expect(character.settings!.discord).toEqual({
@@ -853,14 +862,23 @@ ANOTHER_KEY=another-value`;
           botToken: 'bot-token',
         });
 
-        // Verify simple overrides work
+        // Verify existing settings root values are preserved
         expect(character.settings!.SIMPLE_KEY).toBe('character-override');
 
-        // Verify non-overridden .env values are added
-        expect(character.settings!.ANOTHER_KEY).toBe('another-value');
+        // Verify .env values are NOT merged into settings root (no duplication)
+        expect(character.settings!.ANOTHER_KEY).toBeUndefined();
+
+        // Verify .env values are merged into settings.secrets
+        expect((character.settings!.secrets as any).SIMPLE_KEY).toBe('simple-value');
+        expect((character.settings!.secrets as any).ANOTHER_KEY).toBe('another-value');
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });
+
+        // Clean up test environment variables
+        for (const key of testEnvKeys) {
+          delete (process.env as any)[key];
+        }
       }
     });
   });

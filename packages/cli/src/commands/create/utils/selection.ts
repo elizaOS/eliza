@@ -15,6 +15,11 @@ export async function getLocalAvailableDatabases(): Promise<string[]> {
 export function getAvailableAIModels(): AIModelOption[] {
   return [
     {
+      title: 'elizaOS Cloud (Recommended)',
+      value: 'elizacloud',
+      description: 'Multi-model AI via elizaOS Cloud - GPT-4o, Claude, Gemini & more',
+    },
+    {
       title: 'Local AI (Ollama)',
       value: 'local',
       description: 'Local models via Ollama, no API required',
@@ -47,7 +52,7 @@ export function getAvailableAIModels(): AIModelOption[] {
  * Models with embeddings don't need a separate embedding provider.
  */
 export function hasEmbeddingSupport(aiModel: string): boolean {
-  const modelsWithEmbeddings = ['local', 'openai', 'google'];
+  const modelsWithEmbeddings = ['elizacloud', 'local', 'openai', 'google', 'openrouter'];
   return modelsWithEmbeddings.includes(aiModel);
 }
 
@@ -106,7 +111,7 @@ export async function selectAIModel(): Promise<string> {
       value: model.value,
       hint: model.description,
     })),
-    initialValue: 'local',
+    initialValue: 'elizacloud',
   });
 
   if (clack.isCancel(aiModel)) {
@@ -136,6 +141,11 @@ export function getAvailableEmbeddingModels(): AIModelOption[] {
       title: 'Google Generative AI',
       value: 'google',
       description: 'Google embedding models',
+    },
+    {
+      title: 'OpenRouter',
+      value: 'openrouter',
+      description: 'Access multiple embedding models',
     },
   ];
 }

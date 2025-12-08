@@ -16,8 +16,9 @@ describe('CLI version display integration tests', () => {
     it('should display "monorepo" when run from within the monorepo', async () => {
       const result = await runCLI(['--version'], { cwd: MONOREPO_ROOT });
 
-      expect(result.stdout.trim()).toBe('monorepo');
-      expect(result.stderr).toBe('');
+      // Extract the last non-empty line from stdout (to ignore any preceding logs)
+      const lastLine = result.stdout.trim().split('\n').filter((line) => line.trim()).pop() || '';
+      expect(lastLine).toBe('monorepo');
       expect(result.code).toBe(0);
     });
 

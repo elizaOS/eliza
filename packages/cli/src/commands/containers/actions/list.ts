@@ -12,12 +12,13 @@ export async function listContainersAction(options: ContainersOptions) {
 
     if (!apiKey) {
       logger.error(
-        '❌ Error: API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable.'
+        { src: 'cli', command: 'containers-list' },
+        'API key is required. Use --api-key or set ELIZA_SERVER_AUTH_TOKEN environment variable'
       );
       process.exit(1);
     }
 
-    logger.info('📋 Fetching container list...');
+    logger.info({ src: 'cli', command: 'containers-list' }, 'Fetching container list');
 
     const response = await fetch(`${apiUrl}/api/v1/containers`, {
       method: 'GET',
@@ -41,11 +42,14 @@ export async function listContainersAction(options: ContainersOptions) {
     }
 
     if (containers.length === 0) {
-      logger.info('\n📦 No containers found.\n');
+      logger.info({ src: 'cli', command: 'containers-list' }, 'No containers found');
       return;
     }
 
-    logger.info(`\n📦 Found ${containers.length} container(s):\n`);
+    logger.info(
+      { src: 'cli', command: 'containers-list', count: containers.length },
+      'Found containers'
+    );
 
     for (const container of containers) {
       console.log(`  ID: ${container.id}`);
@@ -66,7 +70,12 @@ export async function listContainersAction(options: ContainersOptions) {
     }
   } catch (error: unknown) {
     logger.error(
-      `❌ Error: ${error instanceof Error ? error.message : 'Failed to list containers'}`
+      {
+        src: 'cli',
+        command: 'containers-list',
+        error: error instanceof Error ? error.message : 'Failed to list containers',
+      },
+      'Error listing containers'
     );
     process.exit(1);
   }

@@ -464,9 +464,8 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
     it('should handle foreign key constraints correctly', async () => {
       console.log('\n🔍 Testing foreign key constraints...\n');
 
-      const { polymarketMarketsTable, polymarketTokensTable } = await import(
-        '../plugin-schema/test-plugin-schema.ts'
-      );
+      const { polymarketMarketsTable, polymarketTokensTable } =
+        await import('../plugin-schema/test-plugin-schema.ts');
 
       // Try to insert a token with non-existent conditionId (should fail)
       const invalidConditionId = 'non_existent_' + Date.now();
@@ -505,9 +504,8 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
     it('should handle transactions correctly across schema boundaries', async () => {
       console.log('\n🔍 Testing transactions with polymarket schema...\n');
 
-      const { polymarketMarketsTable, polymarketTokensTable } = await import(
-        '../plugin-schema/test-plugin-schema.ts'
-      );
+      const { polymarketMarketsTable, polymarketTokensTable } =
+        await import('../plugin-schema/test-plugin-schema.ts');
 
       const testConditionId = 'tx_test_' + Date.now();
       let transactionSucceeded = false;

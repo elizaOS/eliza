@@ -50,7 +50,10 @@ export const extractPluginEnvRequirements = async (
     for (const possiblePath of possiblePaths) {
       if (existsSync(possiblePath)) {
         packageJsonPath = possiblePath;
-        logger.debug({ packageJsonPath }, `Found plugin package.json at:`);
+        logger.debug(
+          { src: 'cli', util: 'plugins-env-vars', packageJsonPath },
+          'Found plugin package.json'
+        );
         break;
       }
     }
@@ -65,7 +68,10 @@ export const extractPluginEnvRequirements = async (
             const pkgJsonPath = path.join(nodeModulesPath, pkg, 'package.json');
             if (existsSync(pkgJsonPath)) {
               packageJsonPath = pkgJsonPath;
-              logger.debug({ packageJsonPath }, `Found matching plugin package.json at:`);
+              logger.debug(
+                { src: 'cli', util: 'plugins-env-vars', packageJsonPath },
+                'Found matching plugin package.json'
+              );
               break;
             }
           }
@@ -74,8 +80,14 @@ export const extractPluginEnvRequirements = async (
     }
 
     if (!packageJsonPath) {
-      logger.debug({ packageName }, `Plugin package.json not found`);
-      logger.debug({ paths: possiblePaths }, `Searched paths:`);
+      logger.debug(
+        { src: 'cli', util: 'plugins-env-vars', packageName },
+        'Plugin package.json not found'
+      );
+      logger.debug(
+        { src: 'cli', util: 'plugins-env-vars', paths: possiblePaths },
+        'Searched paths'
+      );
       return {};
     }
 
@@ -85,18 +97,34 @@ export const extractPluginEnvRequirements = async (
     // Extract environment variables from agentConfig.pluginParameters
     const agentConfig = packageJson.agentConfig;
     if (!agentConfig || !agentConfig.pluginParameters) {
-      logger.debug(`No agentConfig.pluginParameters found in ${packageName} at ${packageJsonPath}`);
+      logger.debug(
+        { src: 'cli', util: 'plugins-env-vars', packageName, packageJsonPath },
+        'No agentConfig.pluginParameters found'
+      );
       return {};
     }
 
     logger.debug(
-      { packageName, vars: Object.keys(agentConfig.pluginParameters) },
+      {
+        src: 'cli',
+        util: 'plugins-env-vars',
+        packageName,
+        vars: Object.keys(agentConfig.pluginParameters),
+      },
       'Found environment variables'
     );
 
     return agentConfig.pluginParameters;
   } catch (error) {
-    logger.debug({ error, packageName }, 'Error reading plugin package.json');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'plugins-env-vars',
+        error: error instanceof Error ? error.message : String(error),
+        packageName,
+      },
+      'Error reading plugin package.json'
+    );
     return {};
   }
 };
@@ -465,10 +493,16 @@ export const promptForPluginEnvVars = async (packageName: string, cwd: string): 
     }
 
     if (packageFound) {
-      logger.debug(`Package ${packageName} found but has no environment variables defined`);
+      logger.debug(
+        { src: 'cli', util: 'plugins-env-vars', packageName },
+        'Package found but has no environment variables defined'
+      );
       clack.log.success(`No environment variables required for ${packageName}`);
     } else {
-      logger.debug(`Package ${packageName} not found in node_modules`);
+      logger.debug(
+        { src: 'cli', util: 'plugins-env-vars', packageName },
+        'Package not found in node_modules'
+      );
       clack.log.warn(
         `Could not find ${packageName} in node_modules. Environment variables may need to be configured manually.`
       );

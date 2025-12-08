@@ -10,61 +10,135 @@ import {
 } from '@elizaos/core';
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
-import { attachmentsToApiUrls } from '../utils/media-transformer';
+import { attachmentsToApiUrls } from '../utils';
+
+/**
+ * Socket.io socket.data structure for authenticated sockets
+ * These properties are set by the authentication middleware
+ */
+export interface SocketData {
+  entityId?: UUID;
+  allowedRooms?: Set<UUID>;
+  roomsCacheLoaded?: boolean;
+}
 
 export class SocketIORouter {
   private elizaOS: ElizaOS;
-  private connections: Map<string, UUID>; // socket.id -> agentId (for agent-specific interactions like log streaming, if any)
+  private socketAgent: Map<string, UUID>; // socket.id → agentId (for agent-specific interactions like log streaming)
+  private entitySockets: Map<UUID, Set<string>>; // entityId → socket.ids (for targeted cache invalidation when permissions change)
   private logStreamConnections: Map<string, { agentName?: string; level?: string }>;
   private serverInstance: AgentServer;
 
   constructor(elizaOS: ElizaOS, serverInstance: AgentServer) {
     this.elizaOS = elizaOS;
-    this.connections = new Map();
+    this.socketAgent = new Map();
+    this.entitySockets = new Map();
     this.logStreamConnections = new Map();
     this.serverInstance = serverInstance;
-    logger.info(`[SocketIO] Router initialized with ${this.elizaOS.getAgents().length} agents`);
   }
 
   setupListeners(io: SocketIOServer) {
-    logger.info(`[SocketIO] Setting up Socket.IO event listeners`);
+    logger.info(
+      { src: 'ws', agentCount: this.elizaOS.getAgents().length },
+      'SocketIO router initialized'
+    );
+
+    // Setup authentication middleware (runs before connection)
+    this.setupAuthenticationMiddleware(io);
+
     const messageTypes = Object.keys(SOCKET_MESSAGE_TYPE).map(
       (key) => `${key}: ${SOCKET_MESSAGE_TYPE[key as keyof typeof SOCKET_MESSAGE_TYPE]}`
     );
-    logger.info(`[SocketIO] Registered message types: ${messageTypes.join(', ')}`);
+    logger.debug({ src: 'ws', messageTypes }, 'Registered message types');
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
     });
   }
 
+  /**
+   * Authentication middleware - Production-grade WebSocket security
+   *
+   * Runs on every WebSocket handshake to:
+   * 1. Verify API Key (if configured)
+   * 2. Extract entityId from client handshake
+   * 3. Initialize security context on socket.data
+   * 4. Track entity->sockets mapping for cache invalidation
+   */
+  private setupAuthenticationMiddleware(io: SocketIOServer) {
+    io.use(async (socket, next) => {
+      try {
+        // API Key authentication (if configured)
+        if (process.env.SERVER_API_KEY) {
+          const apiKey = socket.handshake.auth.apiKey || socket.handshake.headers['x-api-key'];
+
+          if (!apiKey || apiKey !== process.env.SERVER_API_KEY) {
+            logger.warn(`[SocketIO Auth] Invalid or missing API Key from socket ${socket.id}`);
+            return next(new Error('Invalid or missing API Key'));
+          }
+
+          logger.debug(`[SocketIO Auth] API Key verified for socket ${socket.id}`);
+        }
+
+        // Entity identification via client-provided entityId
+        const clientEntityId = socket.handshake.auth.entityId;
+        let entityId: UUID;
+
+        if (!clientEntityId || !validateUuid(clientEntityId)) {
+          logger.warn(`[SocketIO Auth] Invalid or missing entityId: ${clientEntityId}`);
+          return next(new Error('Valid entityId required'));
+        }
+
+        entityId = clientEntityId as UUID;
+        logger.debug(`[SocketIO Auth] Using client entityId: ${entityId.substring(0, 8)}...`);
+
+        // Initialize socket security context with the determined entityId
+        socket.data.entityId = entityId;
+        socket.data.allowedRooms = new Set<UUID>(); // Lazy-loaded on first join attempt
+        socket.data.roomsCacheLoaded = false; // Track if cache is initialized
+
+        logger.info(
+          `[SocketIO Auth] Socket ${socket.id} authenticated for entity ${entityId.substring(0, 8)}...`
+        );
+
+        // Track entity -> sockets mapping for targeted cache invalidation
+        if (!this.entitySockets.has(entityId)) {
+          this.entitySockets.set(entityId, new Set());
+        }
+        this.entitySockets.get(entityId)!.add(socket.id);
+
+        next();
+      } catch (error: any) {
+        logger.error(`[SocketIO Auth] Authentication error:`, error?.message || error);
+        next(new Error('Authentication failed'));
+      }
+    });
+  }
+
   private handleNewConnection(socket: Socket, _io: SocketIOServer) {
-    logger.info(`[SocketIO] New connection: ${socket.id}`);
+    logger.debug({ src: 'ws', socketId: socket.id }, 'New connection');
+
+    // Send authenticated event with the entityId determined by the server
+    // This allows the client to sync its local entityId with the server's decision
+    const entityId = socket.data.entityId;
+    if (entityId) {
+      socket.emit('authenticated', {
+        entityId,
+        timestamp: Date.now(),
+      });
+      logger.debug(
+        `[SocketIO] Sent 'authenticated' event to socket ${socket.id} with entityId: ${entityId.substring(0, 8)}...`
+      );
+    }
 
     socket.on(String(SOCKET_MESSAGE_TYPE.ROOM_JOINING), (payload) => {
-      logger.debug(
-        `[SocketIO] Channel joining event received directly: ${JSON.stringify(payload)}`
-      );
       this.handleChannelJoining(socket, payload);
     });
 
     socket.on(String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE), (payload) => {
-      const messagePreview =
-        payload.message?.substring(0, 50) + (payload.message?.length > 50 ? '...' : '');
-      const channelId = payload.channelId || payload.roomId;
-      logger.info(
-        `[SocketIO] SEND_MESSAGE event received directly: ${JSON.stringify({
-          senderId: payload.senderId,
-          channelId: channelId,
-          messagePreview,
-        })}`
-      );
       this.handleMessageSubmission(socket, payload);
     });
 
     socket.on('message', (data) => {
-      logger.info(
-        `[SocketIO] Generic 'message' event received: ${JSON.stringify(data)} (SocketID: ${socket.id})`
-      );
       this.handleGenericMessage(socket, data);
     });
 
@@ -74,16 +148,14 @@ export class SocketIORouter {
     socket.on('disconnect', () => this.handleDisconnect(socket));
     socket.on('error', (error) => {
       logger.error(
-        `[SocketIO] Socket error for ${socket.id}: ${error.message}`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'ws',
+          socketId: socket.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Socket error'
       );
     });
-
-    if (process.env.NODE_ENV === 'development') {
-      socket.onAny((event, ...args) => {
-        logger.info(`[SocketIO DEBUG ${socket.id}] Event '${event}': ${JSON.stringify(args)}`);
-      });
-    }
 
     socket.emit('connection_established', {
       message: 'Connected to Eliza Socket.IO server',
@@ -94,68 +166,142 @@ export class SocketIORouter {
   private handleGenericMessage(socket: Socket, data: any) {
     try {
       if (!(data && typeof data === 'object' && 'type' in data && 'payload' in data)) {
-        logger.warn(
-          `[SocketIO ${socket.id}] Malformed 'message' event data: ${JSON.stringify(data)}`
-        );
+        logger.warn({ src: 'ws', socketId: socket.id }, 'Malformed message event data');
         return;
       }
       const { type, payload } = data;
 
       switch (type) {
         case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
-          logger.info(`[SocketIO ${socket.id}] Handling channel joining via 'message' event`);
           this.handleChannelJoining(socket, payload);
           break;
         case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
-          logger.info(`[SocketIO ${socket.id}] Handling message sending via 'message' event`);
           this.handleMessageSubmission(socket, payload);
           break;
         default:
-          logger.warn(
-            `[SocketIO ${socket.id}] Unknown message type received in 'message' event: ${type}`
-          );
+          logger.warn({ src: 'ws', socketId: socket.id, type }, 'Unknown message type');
           break;
       }
     } catch (error: any) {
       logger.error(
-        `[SocketIO ${socket.id}] Error processing 'message' event: ${error.message}`,
-        error
+        { src: 'ws', socketId: socket.id, error: error.message },
+        'Error processing message'
       );
     }
   }
 
-  private handleChannelJoining(socket: Socket, payload: any) {
-    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { agentId, entityId, serverId, metadata } = payload;
+  /**
+   * Verify if socket's entity has permission to access a channel.
+   * Returns true if entity is a channel participant or if data isolation is disabled.
+   * Includes disconnection guards to prevent operations on stale sockets.
+   */
+  private async verifyChannelAccess(socket: Socket, channelId: UUID): Promise<boolean> {
+    try {
+      // Guard: Check socket state before async operation
+      if (socket.disconnected) {
+        logger.debug(
+          { src: 'ws', socketId: socket.id },
+          'Socket disconnected before channel access check'
+        );
+        return false;
+      }
 
-    logger.debug(
-      `[SocketIO] handleChannelJoining called with payload:`,
-      JSON.stringify(payload, null, 2)
-    );
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+      if (!dataIsolationEnabled) {
+        logger.debug(`[SocketIO Security] Data isolation disabled - allowing channel access`);
+        return true;
+      }
+
+      const entityId = socket.data?.entityId;
+      if (!entityId) {
+        logger.warn(`[SocketIO Security] No entityId in socket data - denying access`);
+        return false;
+      }
+
+      const isParticipant = await this.serverInstance.isChannelParticipant(channelId, entityId);
+
+      // Guard: Check socket state after async operation
+      if (socket.disconnected) {
+        logger.debug(
+          { src: 'ws', socketId: socket.id },
+          'Socket disconnected during channel access check'
+        );
+        return false;
+      }
+
+      if (isParticipant) {
+        logger.debug(
+          `[SocketIO Security] Entity ${entityId} is participant in channel ${channelId}`
+        );
+      } else {
+        logger.warn(
+          `[SocketIO Security] Entity ${entityId} is NOT participant in channel ${channelId}`
+        );
+      }
+
+      return isParticipant;
+    } catch (error: any) {
+      logger.error(`[SocketIO Security] Error verifying channel access:`, error?.message || error);
+      return false; // Fail closed - deny on error
+    }
+  }
+
+  /**
+   * Handle channel joining with production-grade security
+   *
+   * Security features:
+   * 1. Lazy-loading cache: Load allowed rooms only on first join attempt
+   * 2. Hybrid approach: Check cache first, then DB if not found (new room)
+   * 3. Permission verification: Block joins to rooms user doesn't have access to
+   */
+  private async handleChannelJoining(socket: Socket, payload: any) {
+    const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
+    const { agentId, entityId, messageServerId, metadata } = payload;
 
     if (!channelId) {
       this.sendErrorResponse(socket, `channelId is required for joining.`);
       return;
     }
 
+    // SECURITY: Verify permission to join this channel
+    const hasPermission = await this.verifyChannelAccess(socket, channelId as UUID);
+    if (!hasPermission) {
+      logger.warn(
+        `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) DENIED access to channel ${channelId}`
+      );
+      this.sendErrorResponse(
+        socket,
+        `Access denied: You don't have permission to join this channel`
+      );
+      return;
+    }
+
     if (agentId) {
       const agentUuid = validateUuid(agentId);
       if (agentUuid) {
-        this.connections.set(socket.id, agentUuid);
-        logger.info(`[SocketIO] Socket ${socket.id} associated with agent ${agentUuid}`);
+        this.socketAgent.set(socket.id, agentUuid);
+        logger.debug(
+          { src: 'ws', socketId: socket.id, agentId: agentUuid },
+          'Socket associated with agent'
+        );
       }
     }
 
     socket.join(channelId);
-    logger.info(`[SocketIO] Socket ${socket.id} joined Socket.IO channel: ${channelId}`);
+    logger.debug(
+      { src: 'ws', socketId: socket.id, entityId: socket.data?.entityId, channelId },
+      'Socket granted access to channel'
+    );
 
     // Emit ENTITY_JOINED event for bootstrap plugin to handle world/entity creation
-    if (entityId && (serverId || this.serverInstance.serverId)) {
-      const finalServerId = serverId || this.serverInstance.serverId;
+    if (entityId && (messageServerId || this.serverInstance.messageServerId)) {
+      const finalMessageServerId = messageServerId || this.serverInstance.messageServerId;
       const isDm = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
-      logger.info(
-        `[SocketIO] Emitting ENTITY_JOINED event for entityId: ${entityId}, serverId: ${finalServerId}, isDm: ${isDm}`
+      logger.debug(
+        { src: 'ws', entityId, messageServerId: finalMessageServerId, isDm },
+        'Emitting ENTITY_JOINED event'
       );
 
       // Get the first available runtime (there should typically be one)
@@ -164,7 +310,7 @@ export class SocketIORouter {
         runtime.emitEvent(EventType.ENTITY_JOINED as any, {
           entityId: entityId as UUID,
           runtime,
-          worldId: finalServerId, // Use serverId as worldId identifier
+          worldId: finalMessageServerId, // Use messageServerId as worldId identifier
           roomId: channelId as UUID,
           metadata: {
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
@@ -173,48 +319,47 @@ export class SocketIORouter {
           },
           source: 'socketio',
         });
-
-        logger.info(`[SocketIO] ENTITY_JOINED event emitted successfully for ${entityId}`);
       } else {
-        logger.warn(`[SocketIO] No runtime available to emit ENTITY_JOINED event`);
+        logger.warn(
+          { src: 'ws', socketId: socket.id, entityId },
+          'No runtime available to emit ENTITY_JOINED'
+        );
       }
     } else {
       logger.debug(
-        `[SocketIO] Missing entityId (${entityId}) or serverId (${serverId || this.serverInstance.serverId}) - not emitting ENTITY_JOINED event`
+        {
+          src: 'ws',
+          entityId,
+          messageServerId: messageServerId || this.serverInstance.messageServerId,
+        },
+        'Missing entityId or messageServerId - not emitting ENTITY_JOINED event'
       );
     }
 
-    const successMessage = `Socket ${socket.id} successfully joined channel ${channelId}.`;
     const responsePayload = {
-      message: successMessage,
+      message: `Socket ${socket.id} successfully joined channel ${channelId}.`,
       channelId,
-      roomId: channelId, // Keep for backward compatibility
+      roomId: channelId,
       ...(agentId && { agentId: validateUuid(agentId) || agentId }),
     };
     socket.emit('channel_joined', responsePayload);
-    socket.emit('room_joined', responsePayload); // Keep for backward compatibility
-    logger.info(`[SocketIO] ${successMessage}`);
+    socket.emit('room_joined', responsePayload);
+    logger.debug({ src: 'ws', socketId: socket.id, channelId }, 'Socket joined channel');
   }
 
   private async handleMessageSubmission(socket: Socket, payload: any) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { senderId, senderName, message, serverId, source, metadata, attachments } = payload;
-
-    logger.info(
-      `[SocketIO ${socket.id}] Received SEND_MESSAGE for central submission: channel ${channelId} from ${senderName || senderId}`
-    );
-    logger.info(
-      `[SocketIO ${socket.id}] Full payload for debugging:`,
-      JSON.stringify(payload, null, 2)
-    );
+    const { senderId, senderName, message, messageServerId, source, metadata, attachments } =
+      payload;
 
     // Validate server ID
-    const isValidServerId = serverId === this.serverInstance.serverId || validateUuid(serverId);
+    const isValidServerId =
+      messageServerId === this.serverInstance.messageServerId || validateUuid(messageServerId);
 
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
-        `For SEND_MESSAGE: channelId, serverId (server_id), senderId (author_id), and message are required.`
+        `For SEND_MESSAGE: channelId, messageServerId (message_server_id), senderId (author_id), and message are required.`
       );
       return;
     }
@@ -223,16 +368,12 @@ export class SocketIORouter {
       // Check if this is a DM channel and emit ENTITY_JOINED for proper world setup
       const isDmForWorldSetup = metadata?.isDm || metadata?.channelType === ChannelType.DM;
       if (isDmForWorldSetup && senderId) {
-        logger.info(
-          `[SocketIO] Detected DM channel during message submission, emitting ENTITY_JOINED for proper world setup`
-        );
-
         const runtime = this.elizaOS.getAgents()[0];
         if (runtime) {
           runtime.emitEvent(EventType.ENTITY_JOINED as any, {
             entityId: senderId as UUID,
             runtime,
-            worldId: serverId, // Use serverId as worldId identifier
+            worldId: messageServerId, // Use messageServerId as worldId identifier
             roomId: channelId as UUID,
             metadata: {
               type: ChannelType.DM,
@@ -241,53 +382,50 @@ export class SocketIORouter {
             },
             source: 'socketio_message',
           });
-
-          logger.info(`[SocketIO] ENTITY_JOINED event emitted for DM channel setup: ${senderId}`);
         }
       }
 
       // Ensure the channel exists before creating the message
-      logger.info(
-        `[SocketIO ${socket.id}] Checking if channel ${channelId} exists before creating message`
-      );
-      let channelExists = false;
-      try {
-        const existingChannel = await this.serverInstance.getChannelDetails(channelId as UUID);
-        channelExists = !!existingChannel;
-        logger.info(`[SocketIO ${socket.id}] Channel ${channelId} exists: ${channelExists}`);
-      } catch (error: any) {
-        logger.info(
-          `[SocketIO ${socket.id}] Channel ${channelId} does not exist, will create it. Error: ${error.message}`
-        );
-      }
+      // Fetch channel details and servers in parallel for better performance
+      const [existingChannel, servers] = await Promise.all([
+        this.serverInstance.getChannelDetails(channelId as UUID).catch(() => null),
+        this.serverInstance.getServers(),
+      ]);
+      const channelExists = !!existingChannel;
 
       if (!channelExists) {
         // Auto-create the channel if it doesn't exist
         logger.info(
-          `[SocketIO ${socket.id}] Auto-creating channel ${channelId} with serverId ${serverId}`
+          { src: 'ws', socketId: socket.id, channelId, messageServerId },
+          'Auto-creating channel'
         );
         try {
-          // First verify the server exists
-          const servers = await this.serverInstance.getServers();
-          const serverExists = servers.some((s) => s.id === serverId);
-          logger.info(
-            `[SocketIO ${socket.id}] Server ${serverId} exists: ${serverExists}. Available servers: ${servers.map((s) => s.id).join(', ')}`
+          const serverExists = servers.some((s) => s.id === messageServerId);
+          logger.debug(
+            {
+              src: 'ws',
+              socketId: socket.id,
+              messageServerId,
+              serverExists,
+              availableServers: servers.map((s) => s.id),
+            },
+            'Server existence check'
           );
 
           if (!serverExists) {
             logger.error(
-              `[SocketIO ${socket.id}] Server ${serverId} does not exist, cannot create channel`
+              { src: 'ws', socketId: socket.id, messageServerId },
+              'Server does not exist, cannot create channel'
             );
-            this.sendErrorResponse(socket, `Server ${serverId} does not exist`);
+            this.sendErrorResponse(socket, `Server ${messageServerId} does not exist`);
             return;
           }
 
-          // Determine if this is likely a DM based on the context
           const isDmChannel = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
           const channelData = {
             id: channelId as UUID, // Use the specific channel ID from the client
-            messageServerId: serverId as UUID,
+            messageServerId: messageServerId as UUID,
             name: isDmChannel
               ? `DM ${channelId.substring(0, 8)}`
               : `Chat ${channelId.substring(0, 8)}`,
@@ -302,45 +440,28 @@ export class SocketIORouter {
             },
           };
 
-          logger.info(
-            `[SocketIO ${socket.id}] Creating channel with data:`,
-            JSON.stringify(channelData, null, 2)
-          );
-
-          // For DM channels, we need to determine the participants
           let participants = [senderId as UUID];
           if (isDmChannel) {
-            // Try to extract the other participant from metadata or payload
             const otherParticipant =
               metadata?.targetUserId || metadata?.recipientId || payload.targetUserId;
             if (otherParticipant && validateUuid(otherParticipant)) {
               participants.push(otherParticipant as UUID);
-              logger.info(
-                `[SocketIO ${socket.id}] DM channel will include participants: ${participants.join(', ')}`
-              );
-            } else {
-              logger.warn(
-                `[SocketIO ${socket.id}] DM channel missing second participant, only adding sender: ${senderId}`
-              );
             }
           }
 
           await this.serverInstance.createChannel(channelData, participants);
-          logger.info(
-            `[SocketIO ${socket.id}] Auto-created ${isDmChannel ? ChannelType.DM : ChannelType.GROUP} channel ${channelId} for message submission with ${participants.length} participants`
+          logger.debug(
+            { src: 'ws', socketId: socket.id, channelId, type: isDmChannel ? 'DM' : 'GROUP' },
+            'Auto-created channel'
           );
         } catch (createError: any) {
           logger.error(
-            `[SocketIO ${socket.id}] Failed to auto-create channel ${channelId}:`,
-            createError
+            { src: 'ws', socketId: socket.id, channelId, error: createError.message },
+            'Failed to auto-create channel'
           );
           this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
           return;
         }
-      } else {
-        logger.info(
-          `[SocketIO ${socket.id}] Channel ${channelId} already exists, proceeding with message creation`
-        );
       }
 
       const newRootMessageData = {
@@ -352,17 +473,16 @@ export class SocketIORouter {
           ...(metadata || {}),
           user_display_name: senderName,
           socket_id: socket.id,
-          serverId: serverId as UUID,
+          messageServerId: messageServerId as UUID,
           attachments,
         },
         sourceType: source || 'socketio_client',
+        sourceId:
+          payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        inReplyToRootMessageId: null as any,
       };
 
       const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
-
-      logger.info(
-        `[SocketIO ${socket.id}] Message from ${senderId} (msgId: ${payload.messageId || 'N/A'}) submitted to central store (central ID: ${createdRootMessage.id}). It will be processed by agents and broadcasted upon their reply.`
-      );
 
       // Transform attachments for web client
       const transformedAttachments = attachmentsToApiUrls(attachments);
@@ -375,7 +495,7 @@ export class SocketIORouter {
         text: message,
         channelId: channelId,
         roomId: channelId, // Keep for backward compatibility
-        serverId: serverId, // Use serverId at message server layer
+        messageServerId: messageServerId, // Use messageS erverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
         attachments: transformedAttachments,
@@ -384,64 +504,68 @@ export class SocketIORouter {
       // Broadcast to everyone in the channel except the sender
       socket.to(channelId).emit('messageBroadcast', messageBroadcast);
 
-      // Also send back to the sender with the server-assigned ID
-      socket.emit('messageBroadcast', {
-        ...messageBroadcast,
-        clientMessageId: payload.messageId,
-      });
+      // Also send back to the sender with the server-assigned ID (if still connected)
+      if (socket.connected) {
+        socket.emit('messageBroadcast', {
+          ...messageBroadcast,
+          clientMessageId: payload.messageId,
+        });
 
-      socket.emit('messageAck', {
-        clientMessageId: payload.messageId,
-        messageId: createdRootMessage.id,
-        status: 'received_by_server_and_processing',
-        channelId,
-        roomId: channelId, // Keep for backward compatibility
-      });
+        socket.emit('messageAck', {
+          clientMessageId: payload.messageId,
+          messageId: createdRootMessage.id,
+          status: 'received_by_server_and_processing',
+          channelId,
+          roomId: channelId, // Keep for backward compatibility
+        });
+      }
     } catch (error: any) {
       logger.error(
-        `[SocketIO ${socket.id}] Error during central submission for message: ${error.message}`,
-        error
+        { src: 'ws', socketId: socket.id, error: error.message },
+        'Error processing message'
       );
-      this.sendErrorResponse(socket, `[SocketIO] Error processing your message: ${error.message}`);
+      this.sendErrorResponse(socket, `Error processing your message: ${error.message}`);
     }
   }
 
   private sendErrorResponse(socket: Socket, errorMessage: string) {
-    logger.error(`[SocketIO ${socket.id}] Sending error to client: ${errorMessage}`);
-    socket.emit('messageError', {
-      error: errorMessage,
-    });
+    logger.warn({ src: 'ws', socketId: socket.id, error: errorMessage }, 'Sending error to client');
+    if (socket.connected) {
+      socket.emit('messageError', {
+        error: errorMessage,
+      });
+    }
   }
 
   private handleLogSubscription(socket: Socket) {
     this.logStreamConnections.set(socket.id, {});
-    logger.info(`[SocketIO ${socket.id}] Client subscribed to log stream`);
-    socket.emit('log_subscription_confirmed', {
-      subscribed: true,
-      message: 'Successfully subscribed to log stream',
-    });
+    if (socket.connected) {
+      socket.emit('log_subscription_confirmed', {
+        subscribed: true,
+        message: 'Successfully subscribed to log stream',
+      });
+    }
   }
 
   private handleLogUnsubscription(socket: Socket) {
     this.logStreamConnections.delete(socket.id);
-    logger.info(`[SocketIO ${socket.id}] Client unsubscribed from log stream`);
-    socket.emit('log_subscription_confirmed', {
-      subscribed: false,
-      message: 'Successfully unsubscribed from log stream',
-    });
+    if (socket.connected) {
+      socket.emit('log_subscription_confirmed', {
+        subscribed: false,
+        message: 'Successfully unsubscribed from log stream',
+      });
+    }
   }
 
   private handleLogFilterUpdate(socket: Socket, filters: { agentName?: string; level?: string }) {
     const existingFilters = this.logStreamConnections.get(socket.id);
     if (existingFilters !== undefined) {
       this.logStreamConnections.set(socket.id, { ...existingFilters, ...filters });
-      logger.info(`[SocketIO ${socket.id}] Updated log filters:`, JSON.stringify(filters));
       socket.emit('log_filters_updated', {
         success: true,
         filters: this.logStreamConnections.get(socket.id),
       });
     } else {
-      logger.warn(`[SocketIO ${socket.id}] Cannot update filters: not subscribed to log stream`);
       socket.emit('log_filters_updated', {
         success: false,
         error: 'Not subscribed to log stream',
@@ -475,15 +599,29 @@ export class SocketIORouter {
   }
 
   private handleDisconnect(socket: Socket) {
-    const agentIdAssociated = this.connections.get(socket.id);
-    this.connections.delete(socket.id);
+    const agentIdAssociated = this.socketAgent.get(socket.id);
+    this.socketAgent.delete(socket.id);
     this.logStreamConnections.delete(socket.id);
+
+    // Cleanup entitySockets mapping
+    if (socket.data?.entityId) {
+      const entityId = socket.data.entityId as UUID;
+      const sockets = this.entitySockets.get(entityId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          this.entitySockets.delete(entityId);
+        }
+      }
+    }
+
     if (agentIdAssociated) {
       logger.info(
-        `[SocketIO] Client ${socket.id} (associated with agent ${agentIdAssociated}) disconnected.`
+        { src: 'ws', socketId: socket.id, agentId: agentIdAssociated },
+        'Client disconnected (associated with agent)'
       );
     } else {
-      logger.info(`[SocketIO] Client ${socket.id} disconnected.`);
+      logger.debug({ src: 'ws', socketId: socket.id }, 'Client disconnected');
     }
   }
 }

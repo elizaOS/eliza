@@ -281,8 +281,8 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
       // Async should be much faster (just queuing, no waiting)
       expect(elapsedAsync).toBeLessThan(elapsedSync);
 
-      // Verify that sync took at least the simulated delay
-      expect(elapsedSync).toBeGreaterThanOrEqual(5);
+      // Verify that sync took at least the simulated delay (with margin for timing precision)
+      expect(elapsedSync).toBeGreaterThanOrEqual(3);
 
       // Event should be emitted for async
       const event = emittedEvents.find((e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED);

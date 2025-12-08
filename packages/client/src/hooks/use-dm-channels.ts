@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createElizaClient } from '@/lib/api-client-config';
+import { getElizaClient } from '@/lib/api-client-config';
 import { useToast } from '@/hooks/use-toast';
 import { type UUID, ChannelType } from '@elizaos/core';
 import type { MessageChannel } from '@/types';
@@ -23,7 +23,7 @@ export function useGetOrCreateDmChannel() {
         '[useGetOrCreateDmChannel] Getting or creating canonical DM channel with target:',
         targetUserId
       );
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       const result = await elizaClient.messaging.getOrCreateDmChannel({
         participantIds: [currentUserId, targetUserId],
       });
@@ -58,12 +58,12 @@ export function useGetOrCreateDmChannel() {
  */
 export function useDmChannelsForAgent(
   agentId: UUID | undefined,
-  serverId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
+  messageServerId: UUID = '00000000-0000-0000-0000-000000000000' as UUID
 ) {
   const currentUserId = getEntityId();
 
   return useQuery<MessageChannel[]>({
-    queryKey: ['dmChannels', agentId, currentUserId, serverId], // Include serverId in the key
+    queryKey: ['dmChannels', agentId, currentUserId, messageServerId], // Include messageServerId in the key
     queryFn: async () => {
       if (!agentId) return [];
       clientLogger.info(
@@ -71,8 +71,8 @@ export function useDmChannelsForAgent(
         agentId
       );
 
-      const elizaClient = createElizaClient();
-      const result = await elizaClient.messaging.getServerChannels(serverId);
+      const elizaClient = getElizaClient();
+      const result = await elizaClient.messaging.getMessageServerChannels(messageServerId);
       const apiChannels = result.channels || [];
 
       // Map API channels to client type
@@ -145,16 +145,16 @@ export function useCreateDmChannel() {
     mutationFn: async ({
       agentId,
       channelName,
-      serverId = '00000000-0000-0000-0000-000000000000' as UUID,
+      messageServerId = '00000000-0000-0000-0000-000000000000' as UUID,
     }: {
       agentId: UUID;
       channelName: string;
-      serverId?: UUID;
+      messageServerId?: UUID;
     }) => {
       clientLogger.info('[useCreateDmChannel] Creating new distinct DM channel with agent:', {
         agentId,
         channelName,
-        serverId,
+        messageServerId,
       });
 
       if (!channelName || !channelName.trim()) {
@@ -162,13 +162,13 @@ export function useCreateDmChannel() {
         throw new Error('Channel name cannot be empty for a new DM conversation.');
       }
 
-      const elizaClient = createElizaClient();
+      const elizaClient = getElizaClient();
       const result = await elizaClient.messaging.createGroupChannel({
         name: channelName.trim(),
         participantIds: [currentUserId, agentId],
         metadata: {
           type: ChannelType.DM, // Set type to DM
-          server_id: serverId, // Use the provided server ID
+          message_server_id: messageServerId, // Use the provided messageServerId
           isDm: true, // Mark it as a DM type conversation
           user1: currentUserId, // Explicitly store participants for filtering
           user2: agentId,
@@ -188,7 +188,7 @@ export function useCreateDmChannel() {
       // Invalidate queries to refresh the DM channel list for this agent
       // Include serverId in the invalidation to match the query key
       queryClient.invalidateQueries({
-        queryKey: ['dmChannels', variables.agentId, currentUserId, variables.serverId],
+        queryKey: ['dmChannels', variables.agentId, currentUserId, variables.messageServerId],
       });
       // Also invalidate general channels list if it might show DMs (though less likely)
       queryClient.invalidateQueries({ queryKey: ['channels'] });

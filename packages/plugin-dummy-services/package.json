@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-dummy-services",
-  "version": "1.6.5-beta.0",
+  "version": "1.6.5-alpha.23",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -23,17 +23,19 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "uuid": "^9.0.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "prettier": "3.5.3",
-    "typescript": "5.8.2"
+    "@elizaos/config": "workspace:*",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts --watch",
     "test": "bun test",
-    "lint": "prettier --write ./src",
+    "lint": "eslint src/ && prettier --write ./src",
+    "lint:check": "eslint src/",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src"
