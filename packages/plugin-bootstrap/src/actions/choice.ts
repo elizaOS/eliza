@@ -91,7 +91,10 @@ export const choiceAction: Action = {
 
   validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
     if (!state) {
-      logger.error('State is required for validating the action');
+      logger.error(
+        { src: 'plugin:bootstrap:action:choice', agentId: runtime.agentId },
+        'State is required for validating the action'
+      );
       throw new Error('State is required for validating the action');
     }
 
@@ -129,7 +132,14 @@ export const choiceAction: Action = {
         pendingTasks.some((task) => task.metadata?.options)
       );
     } catch (error) {
-      logger.error({ error }, 'Error validating choice action');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:action:choice',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error validating choice action'
+      );
       return false;
     }
   },
@@ -339,7 +349,14 @@ export const choiceAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error({ error }, 'Error executing task with option');
+        logger.error(
+          {
+            src: 'plugin:bootstrap:action:choice',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error executing task with option'
+        );
         await callback?.({
           text: 'There was an error processing your selection.',
           actions: ['SELECT_OPTION_ERROR'],

@@ -8,7 +8,7 @@ import { createJobsRouter, type JobsRouter } from '../../../api/messaging/jobs';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 import { JobStatus, JobValidation } from '../../../types/jobs';
-import internalMessageBus from '../../../bus';
+import internalMessageBus from '../../../services/message-bus';
 
 // Mock dependencies
 const mockAgents = new Map<UUID, IAgentRuntime>();

@@ -9,6 +9,7 @@ import {
   promptAndStoreOllamaEmbeddingConfig,
   promptAndStoreGoogleKey,
   promptAndStoreOpenRouterKey,
+  promptAndStoreElizaCloudKey,
   setupPgLite,
 } from '@/src/utils';
 import { installPluginWithSpinner } from '@/src/utils/spinner-utils';
@@ -30,6 +31,35 @@ export async function setupAIModelConfig(
 ): Promise<void> {
   try {
     switch (aiModel) {
+      case 'elizacloud': {
+        // Configure elizaOS Cloud for multi-model AI
+        if (isNonInteractive) {
+          let content = '';
+          if (existsSync(envFilePath)) {
+            content = await fs.readFile(envFilePath, 'utf8');
+          }
+
+          if (content && !content.endsWith('\n')) {
+            content += '\n';
+          }
+
+          content += '\n# elizaOS Cloud Configuration\n';
+          content += '# Get your API key by running: elizaos login\n';
+          content += '# Or visit: https://www.elizacloud.ai/dashboard/api-keys\n';
+          content += 'ELIZAOS_CLOUD_API_KEY=your_elizaos_cloud_api_key_here\n';
+          content +=
+            '# Available models: gpt-4o-mini, gpt-4o, claude-3-5-sonnet, gemini-2.0-flash\n';
+          content += '# ELIZAOS_CLOUD_SMALL_MODEL=gpt-4o-mini\n';
+          content += '# ELIZAOS_CLOUD_LARGE_MODEL=gpt-4o\n';
+
+          await fs.writeFile(envFilePath, content, 'utf8');
+        } else {
+          // Interactive mode - prompt for elizaOS Cloud API key or login
+          await promptAndStoreElizaCloudKey(envFilePath);
+        }
+        break;
+      }
+
       case 'local': {
         // Configure Ollama for local AI usage
         if (isNonInteractive) {
@@ -366,6 +396,7 @@ export async function setupEmbeddingModelConfig(
  */
 function resolveModelToPlugin(modelName: string): string | null {
   const modelToPlugin: Record<string, string> = {
+    elizacloud: 'elizacloud', // elizaOS Cloud multi-model AI plugin
     openai: 'openai',
     claude: 'anthropic',
     anthropic: 'anthropic',
@@ -451,7 +482,8 @@ export async function setupProjectEnvironment(
 
   // Always install Ollama plugin as fallback if not already installed
   // This is required because the default Eliza character always includes it
-  if (aiModel !== 'local' && embeddingModel !== 'local') {
+  // Skip for elizaOS Cloud since it provides all functionality including embeddings
+  if (aiModel !== 'local' && aiModel !== 'elizacloud' && embeddingModel !== 'local') {
     await installPluginWithSpinner('ollama', targetDir, 'as universal fallback');
   }
 }

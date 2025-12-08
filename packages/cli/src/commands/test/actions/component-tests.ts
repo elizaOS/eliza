@@ -23,30 +23,39 @@ export async function runComponentTests(
 
   // Run TypeScript validation first
   if (!options.skipTypeCheck) {
-    logger.info('Running TypeScript validation...');
+    logger.info({ src: 'cli', command: 'test-component' }, 'Running TypeScript validation');
     const typeCheckResult = await runTypeCheck(cwd, true);
 
     if (!typeCheckResult.success) {
-      logger.error('TypeScript validation failed:');
-      typeCheckResult.errors.forEach((error) => logger.error(error));
+      logger.error({ src: 'cli', command: 'test-component' }, 'TypeScript validation failed');
+      typeCheckResult.errors.forEach((error) =>
+        logger.error({ src: 'cli', command: 'test-component', error }, 'Type error')
+      );
       return { failed: true };
     }
-    logger.success('TypeScript validation passed');
+    logger.success({ src: 'cli', command: 'test-component' }, 'TypeScript validation passed');
   }
   // Build the project or plugin first unless skip-build is specified
   if (!options.skipBuild) {
     try {
-      logger.info(`Building ${isPlugin ? 'plugin' : 'project'}...`);
+      logger.info({ src: 'cli', command: 'test-component', isPlugin }, 'Building project');
       await buildProject(cwd, isPlugin);
-      logger.success(`Build completed successfully`);
+      logger.success({ src: 'cli', command: 'test-component' }, 'Build completed successfully');
     } catch (buildError) {
-      logger.error(`Build failed: ${buildError}`);
+      logger.error(
+        {
+          src: 'cli',
+          command: 'test-component',
+          error: buildError instanceof Error ? buildError.message : String(buildError),
+        },
+        'Build failed'
+      );
       // Return immediately on build failure
       return { failed: true };
     }
   }
 
-  logger.info('Running component tests...');
+  logger.info({ src: 'cli', command: 'test-component' }, 'Running component tests');
 
   // Bun test uses built-in configuration
 
@@ -57,7 +66,7 @@ export async function runComponentTests(
   if (options.name) {
     const baseName = processFilterName(options.name);
     if (baseName) {
-      logger.info(`Using test filter: ${baseName}`);
+      logger.info({ src: 'cli', command: 'test-component', filter: baseName }, 'Using test filter');
       args.push('-t', baseName);
     }
   }
@@ -71,7 +80,10 @@ export async function runComponentTests(
 
   // Bun test automatically discovers test files
 
-  logger.info(`Executing: bun ${args.join(' ')} in ${targetPath}`);
+  logger.info(
+    { src: 'cli', command: 'test-component', execCommand: `bun ${args.join(' ')}`, targetPath },
+    'Executing test command'
+  );
 
   try {
     // Use bunExecInherit for real-time output streaming
@@ -83,10 +95,17 @@ export async function runComponentTests(
       },
     });
 
-    logger.info('Component tests completed');
+    logger.info({ src: 'cli', command: 'test-component' }, 'Component tests completed');
     return { failed: !result.success };
   } catch (error) {
-    logger.error({ error }, 'Error running component tests:');
+    logger.error(
+      {
+        src: 'cli',
+        command: 'test-component',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error running component tests'
+    );
     return { failed: true };
   }
 }

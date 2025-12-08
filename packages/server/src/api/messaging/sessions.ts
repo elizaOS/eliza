@@ -9,7 +9,7 @@ import {
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentServer, CentralRootMessage } from '../../index';
-import { transformMessageAttachments } from '../../utils/media-transformer';
+import { transformMessageAttachments } from '../../utils';
 import type {
   Session,
   SessionTimeoutConfig,
@@ -72,18 +72,18 @@ function safeParseInt(
 
   // Check for NaN or invalid number
   if (isNaN(parsed) || !isFinite(parsed)) {
-    logger.warn(`[Sessions API] Invalid integer value: "${value}", using fallback: ${fallback}`);
+    logger.warn({ src: 'http', value, fallback }, 'Invalid integer value, using fallback');
     return fallback;
   }
 
   // Apply bounds if specified
   let result = parsed;
   if (min !== undefined && result < min) {
-    logger.warn(`[Sessions API] Value ${result} is below minimum ${min}, clamping to minimum`);
+    logger.warn({ src: 'http', value: result, min }, 'Value below minimum, clamping');
     result = min;
   }
   if (max !== undefined && result > max) {
-    logger.warn(`[Sessions API] Value ${result} is above maximum ${max}, clamping to maximum`);
+    logger.warn({ src: 'http', value: result, max }, 'Value above maximum, clamping');
     result = max;
   }
 
@@ -299,7 +299,8 @@ function mergeTimeoutConfigs(
       // Check for NaN or invalid number
       if (isNaN(timeoutValue) || !isFinite(timeoutValue)) {
         logger.warn(
-          `[Sessions API] Invalid timeout minutes in session config: ${sessionConfig.timeoutMinutes}, using default`
+          { src: 'http', timeoutMinutes: sessionConfig.timeoutMinutes },
+          'Invalid timeout minutes, using default'
         );
         merged.timeoutMinutes = DEFAULT_TIMEOUT_MINUTES;
       } else {
@@ -319,7 +320,8 @@ function mergeTimeoutConfigs(
       // Check for NaN or invalid number
       if (isNaN(maxDurationValue) || !isFinite(maxDurationValue)) {
         logger.warn(
-          `[Sessions API] Invalid max duration minutes in session config: ${sessionConfig.maxDurationMinutes}, using default`
+          { src: 'http', maxDurationMinutes: sessionConfig.maxDurationMinutes },
+          'Invalid max duration minutes, using default'
         );
         merged.maxDurationMinutes = DEFAULT_MAX_DURATION_MINUTES;
       } else {
@@ -337,7 +339,8 @@ function mergeTimeoutConfigs(
       // Check for NaN or invalid number
       if (isNaN(warningValue) || !isFinite(warningValue)) {
         logger.warn(
-          `[Sessions API] Invalid warning threshold minutes in session config: ${sessionConfig.warningThresholdMinutes}, using default`
+          { src: 'http', warningThresholdMinutes: sessionConfig.warningThresholdMinutes },
+          'Invalid warning threshold, using default'
         );
         merged.warningThresholdMinutes = DEFAULT_WARNING_THRESHOLD_MINUTES;
       } else {
@@ -422,8 +425,9 @@ function renewSession(session: Session): boolean {
   // Reset warning state on renewal
   session.warningState = undefined;
 
-  logger.info(
-    `[Sessions API] Renewed session ${session.id}, renewal count: ${session.renewalCount}`
+  logger.debug(
+    { src: 'http', sessionId: session.id, renewalCount: session.renewalCount },
+    'Session renewed'
   );
   return true;
 }
@@ -597,9 +601,15 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
       const agentTimeoutConfig = getAgentTimeoutConfig(agent);
       const finalTimeoutConfig = mergeTimeoutConfigs(body.timeoutConfig, agentTimeoutConfig);
 
-      // Log timeout configuration
-      logger.info(
-        `[Sessions API] Creating session with timeout config: agentId=${body.agentId}, timeout=${finalTimeoutConfig.timeoutMinutes}, autoRenew=${finalTimeoutConfig.autoRenew}, maxDuration=${finalTimeoutConfig.maxDurationMinutes}`
+      logger.debug(
+        {
+          src: 'http',
+          agentId: body.agentId,
+          timeoutMinutes: finalTimeoutConfig.timeoutMinutes,
+          autoRenew: finalTimeoutConfig.autoRenew,
+          maxDuration: finalTimeoutConfig.maxDurationMinutes,
+        },
+        'Creating session'
       );
 
       // Create a unique session ID
@@ -730,7 +740,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         const timeSinceCreation = Date.now() - session.createdAt.getTime();
 
         if (timeSinceCreation >= maxDurationMs) {
-          logger.warn(`[Sessions API] Session ${sessionId} has reached maximum duration`);
+          logger.warn({ src: 'http', sessionId }, 'Session reached maximum duration');
         }
       } else if (!session.timeoutConfig.autoRenew) {
         // Just update last activity without renewing
@@ -744,7 +754,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           sentAt: new Date(),
         };
 
-        logger.info(`[Sessions API] Session ${sessionId} is near expiration, warning state set`);
+        logger.debug({ src: 'http', sessionId }, 'Session near expiration, warning state set');
         // In a real implementation, you might want to send a notification to the client here
       }
 
@@ -759,7 +769,8 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           }
         } catch (error) {
           logger.debug(
-            `[Sessions API] Could not fetch channel metadata for ${session.channelId}: ${error}`
+            { src: 'http', channelId: session.channelId, error: String(error) },
+            'Could not fetch channel metadata'
           );
         }
 
@@ -886,7 +897,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           .slice(0, messageLimit);
 
         if (allMessages.length === fetchLimit) {
-          logger.debug(`[Sessions API] Range query hit limit of ${fetchLimit} messages`);
+          logger.debug({ src: 'http', fetchLimit }, 'Range query hit message limit');
         }
       } else if (afterDate) {
         // Forward pagination: messages newer than a timestamp
@@ -930,8 +941,12 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           }
         } catch (error) {
           logger.warn(
-            `[Sessions API] Failed to parse rawMessage for message ${msg.id}`,
-            error instanceof Error ? error.message : String(error)
+            {
+              src: 'http',
+              messageId: msg.id,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Failed to parse rawMessage'
           );
         }
 
@@ -1086,8 +1101,15 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         session.renewalCount
       );
 
-      logger.info(
-        `[Sessions API] Updated timeout config for session ${sessionId}: timeout=${session.timeoutConfig.timeoutMinutes}, autoRenew=${session.timeoutConfig.autoRenew}, maxDuration=${session.timeoutConfig.maxDurationMinutes}`
+      logger.debug(
+        {
+          src: 'http',
+          sessionId,
+          timeoutMinutes: session.timeoutConfig.timeoutMinutes,
+          autoRenew: session.timeoutConfig.autoRenew,
+          maxDuration: session.timeoutConfig.maxDurationMinutes,
+        },
+        'Session timeout config updated'
       );
 
       const response = createSessionInfoResponse(session);
@@ -1122,13 +1144,12 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
       if (session.timeoutConfig.autoRenew) {
         const renewed = renewSession(session);
         if (renewed) {
-          logger.info(`[Sessions API] Session renewed via heartbeat: ${sessionId}`);
+          logger.debug({ src: 'http', sessionId }, 'Session renewed via heartbeat');
         }
       }
 
       // Return updated session info
       const response = createSessionInfoResponse(session);
-      logger.debug(`[Sessions API] Heartbeat received for session: ${sessionId}`);
 
       res.json(response);
     })
@@ -1151,15 +1172,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
       // Remove session from memory
       sessions.delete(sessionId);
 
-      // Optionally, you could also delete the channel and messages
-      // Note: This is commented out to avoid data loss, but could be enabled
-      // try {
-      //   await serverInstance.deleteChannel(session.channelId);
-      // } catch (error) {
-      //   logger.warn(`Failed to delete channel for session ${sessionId}:`, error instanceof Error ? error.message : String(error));
-      // }
-
-      logger.info(`[Sessions API] Deleted session ${sessionId}`);
+      logger.info({ src: 'http', sessionId }, 'Session deleted');
 
       res.json({
         success: true,
@@ -1202,7 +1215,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
     for (const [sessionId, session] of sessions.entries()) {
       // Validate session structure before processing
       if (!isValidSession(session)) {
-        logger.warn(`[Sessions API] Invalid session structure for ${sessionId}, removing`);
+        logger.warn({ src: 'http', sessionId }, 'Invalid session structure, removing');
         sessions.delete(sessionId);
         cleanedCount++;
         continue;
@@ -1213,7 +1226,7 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         sessions.delete(sessionId);
         cleanedCount++;
         expiredCount++;
-        logger.info(`[Sessions API] Cleaned up expired session: ${sessionId}`);
+        logger.debug({ src: 'http', sessionId }, 'Cleaned up expired session');
       }
       // Check if we should warn about upcoming expiration
       else if (shouldWarnAboutExpiration(session) && !session.warningState?.sent) {
@@ -1222,14 +1235,12 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
           sentAt: now,
         };
         warningCount++;
-        logger.info(`[Sessions API] Session ${sessionId} will expire soon`);
+        logger.debug({ src: 'http', sessionId }, 'Session will expire soon');
       }
     }
 
-    if (cleanedCount > 0 || warningCount > 0) {
-      logger.info(
-        `[Sessions API] Cleanup cycle completed: ${cleanedCount} expired sessions removed, ${warningCount} warnings issued`
-      );
+    if (cleanedCount > 0) {
+      logger.info({ src: 'http', cleanedCount, warningCount }, 'Session cleanup completed');
     }
   }, CLEANUP_INTERVAL_MS);
 
@@ -1242,7 +1253,6 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
     if (activeCleanupIntervals.has(cleanupInterval)) {
       clearInterval(cleanupInterval);
       activeCleanupIntervals.delete(cleanupInterval);
-      logger.info('[Sessions API] Cleanup interval cleared');
     }
   };
 
@@ -1251,7 +1261,6 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
     processHandlersRegistered = true;
 
     const globalCleanup = () => {
-      logger.info('[Sessions API] Global cleanup initiated');
       // Clear all active intervals
       for (const interval of activeCleanupIntervals) {
         clearInterval(interval);

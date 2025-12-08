@@ -74,8 +74,13 @@ export function createAgentLogsRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, filteredLogs);
     } catch (error) {
       logger.error(
-        `[AGENT LOGS] Error retrieving logs for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error retrieving agent logs'
       );
       sendError(
         res,
@@ -105,8 +110,14 @@ export function createAgentLogsRouter(elizaOS: ElizaOS): express.Router {
       res.status(204).send();
     } catch (error) {
       logger.error(
-        `[LOG DELETE] Error deleting log ${logId} for agent ${agentId}:`,
-        error instanceof Error ? error.message : String(error)
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          logId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error deleting log'
       );
       sendError(
         res,

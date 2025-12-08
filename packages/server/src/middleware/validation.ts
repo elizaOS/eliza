@@ -45,7 +45,7 @@ export const validateUuidMiddleware = (paramName: string) => {
     if (!validatedUuid) {
       // Log security event for invalid IDs
       const clientIp = req.ip || 'unknown';
-      logger.warn(`[SECURITY] Invalid ${paramName} from ${clientIp}: ${paramValue}`);
+      logger.warn({ src: 'http', ip: clientIp, paramName, paramValue }, 'Invalid parameter');
       return sendError(res, 400, 'INVALID_ID', `Invalid ${paramName} format`);
     }
 
@@ -71,7 +71,7 @@ export const validateChannelIdMiddleware = () => {
 
     if (!validatedChannelId) {
       // Rate limit failed attempts to prevent brute force
-      logger.warn(`[SECURITY] Failed channel ID validation from ${clientIp}: ${channelId}`);
+      logger.warn({ src: 'http', ip: clientIp, channelId }, 'Failed channel ID validation');
       return sendError(res, 400, 'INVALID_CHANNEL_ID', 'Invalid channel ID format');
     }
 

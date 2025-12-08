@@ -54,22 +54,22 @@ const shutdownState = {
 async function gracefulShutdown(signal: string) {
   // Atomically check and set shutdown flag to prevent race conditions
   if (!shutdownState.tryInitiateShutdown()) {
-    logger.debug(`Ignoring ${signal} - shutdown already in progress`);
+    logger.debug({ src: 'cli', signal }, 'Ignoring signal - shutdown already in progress');
     return;
   }
-  logger.info(`Received ${signal}, shutting down gracefully...`);
+  logger.info({ src: 'cli', signal }, 'Received signal, shutting down gracefully');
 
   try {
     // Stop the dev server if it's running
     const serverWasStopped = await stopServer();
     if (serverWasStopped) {
-      logger.info('Server stopped successfully');
+      logger.info({ src: 'cli' }, 'Server stopped successfully');
     }
   } catch (error) {
-    // Extract error message for better debugging
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`Error stopping server: ${errorMessage}`);
-    logger.debug({ error }, 'Full error details:');
+    logger.error(
+      { src: 'cli', error: error instanceof Error ? error.message : String(error) },
+      'Error stopping server'
+    );
   }
 
   // Use appropriate exit codes for different signals
@@ -105,6 +105,21 @@ async function main() {
     process.env.ELIZA_NO_AUTO_INSTALL = 'true';
   }
 
+  // Check for logging flags early (before command parsing)
+  // Note: -d is NOT used as shorthand for --debug to avoid confusion with the deprecated --dir flag
+  if (process.argv.includes('--debug')) {
+    process.env.LOG_LEVEL = 'debug';
+  }
+  if (process.argv.includes('--verbose')) {
+    process.env.LOG_LEVEL = 'trace';
+  }
+  if (process.argv.includes('--quiet') || process.argv.includes('-q')) {
+    process.env.LOG_LEVEL = 'error';
+  }
+  if (process.argv.includes('--log-json')) {
+    process.env.LOG_JSON_FORMAT = 'true';
+  }
+
   // Get version - will return 'monorepo' if in monorepo context
   const version = getVersion();
 
@@ -125,7 +140,11 @@ async function main() {
     .name('elizaos')
     .version(version, '-v, --version', 'output the version number')
     .option('--no-emoji', 'Disable emoji output')
-    .option('--no-auto-install', 'Disable automatic Bun installation');
+    .option('--no-auto-install', 'Disable automatic Bun installation')
+    .option('-d, --debug', 'Enable debug logs (LOG_LEVEL=debug)')
+    .option('--verbose', 'Enable verbose logs (LOG_LEVEL=trace)')
+    .option('-q, --quiet', 'Only show errors (LOG_LEVEL=error)')
+    .option('--log-json', 'Output logs in JSON format');
 
   // Add global options but hide them from global help
   // They will still be passed to all commands for backward compatibility
@@ -158,6 +177,9 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error({ error }, 'An error occurred:');
+  logger.error(
+    { src: 'cli', error: error instanceof Error ? error.message : String(error) },
+    'An error occurred'
+  );
   process.exit(1);
 });

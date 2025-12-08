@@ -37,7 +37,14 @@ export async function openBrowser(url: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    logger.error('Failed to open browser:', error instanceof Error ? error.message : String(error));
+    logger.error(
+      {
+        src: 'cli',
+        util: 'browser',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to open browser'
+    );
     return false;
   }
 }

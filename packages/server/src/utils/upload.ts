@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import multer from 'multer';
 import { validateUuid, logger } from '@elizaos/core';
-import { createSecureUploadDir, sanitizeFilename } from './api/shared/file-utils.js';
+import { createSecureUploadDir, sanitizeFilename } from '../api/shared/file-utils.js';
 import {
   MAX_FILE_SIZE,
   ALLOWED_AUDIO_MIME_TYPES,
   ALLOWED_MEDIA_MIME_TYPES,
-} from './api/shared/constants.js';
+} from '../api/shared/constants.js';
 
 // Helper function to generate secure filename
 export function generateSecureFilename(originalName: string): string {
@@ -28,7 +28,7 @@ export function ensureUploadDir(id: string, type: 'agents' | 'channels'): string
     fs.mkdirSync(uploadDir, { recursive: true });
   }
 
-  logger.debug(`[UPLOAD] Secure ${type.slice(0, -1)} upload directory created: ${uploadDir}`);
+  logger.debug({ src: 'http', type, uploadDir }, 'Secure upload directory created');
   return uploadDir;
 }
 
@@ -145,13 +145,13 @@ export async function processUploadedFile(
     // Construct URL
     const url = `/media/uploads/${type}/${targetId}/${filename}`;
 
-    logger.debug(`[UPLOAD] File processed successfully: ${filename}`);
+    logger.debug({ src: 'http', filename }, 'File processed successfully');
 
     return { filename, path: finalPath, url };
   } catch (error) {
     logger.error(
-      '[UPLOAD] Error processing uploaded file:',
-      error instanceof Error ? error.message : String(error)
+      { src: 'http', error: error instanceof Error ? error.message : String(error) },
+      'Error processing uploaded file'
     );
     throw error;
   }

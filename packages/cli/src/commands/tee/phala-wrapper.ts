@@ -26,7 +26,7 @@ export const phalaCliCommand = new Command('phala')
       idx >= 0 ? raw.slice(idx + 1) : Array.isArray(commandArgs[0]) ? commandArgs[0] : [];
 
     try {
-      logger.info({ args }, 'Running Phala CLI command');
+      logger.info({ src: 'cli', command: 'tee-phala', args }, 'Running Phala CLI command');
 
       // Use npx with --yes flag to auto-install without prompting
       // Security fix: Remove shell: true as args are already properly escaped as array
@@ -36,32 +36,48 @@ export const phalaCliCommand = new Command('phala')
 
       phalaProcess.on('error', (err) => {
         const error = err as NodeJS.ErrnoException;
-        logger.error({ error, args }, 'Failed to execute Phala CLI');
+        logger.error(
+          { src: 'cli', command: 'tee-phala', error: error.message, args },
+          'Failed to execute Phala CLI'
+        );
 
         if (error.code === 'ENOENT') {
-          logger.error(`\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`);
-          logger.error('   Visit https://nodejs.org or use a version manager like nvm');
-          logger.error(
+          console.error(
+            `\n${emoji.error('Error: npx not found. Please install Node.js and npm:')}`
+          );
+          console.error('   Visit https://nodejs.org or use a version manager like nvm');
+          console.error(
             '   curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash'
           );
         } else {
-          logger.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
-          logger.error({ args }, '   Try running directly: npx phala [args]');
+          console.error(`\n${emoji.error('Error: Failed to execute Phala CLI')}`);
+          console.error('   Try running directly: npx phala [args]');
         }
         process.exit(1);
       });
 
       phalaProcess.on('exit', (code) => {
         if (code !== 0) {
-          logger.warn({ code }, 'Phala CLI exited with non-zero code');
+          logger.warn(
+            { src: 'cli', command: 'tee-phala', code },
+            'Phala CLI exited with non-zero code'
+          );
         }
         process.exit(code || 0);
       });
     } catch (error) {
-      logger.error({ error, args }, 'Error running Phala CLI');
-      logger.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
-      logger.error({ args }, '   Try running Phala CLI directly with: npx phala [args]');
-      logger.error('   Or visit https://www.npmjs.com/package/phala for more information');
+      logger.error(
+        {
+          src: 'cli',
+          command: 'tee-phala',
+          error: error instanceof Error ? error.message : String(error),
+          args,
+        },
+        'Error running Phala CLI'
+      );
+      console.error(`\n${emoji.error('Error: Failed to run Phala CLI')}`);
+      console.error('   Try running Phala CLI directly with: npx phala [args]');
+      console.error('   Or visit https://www.npmjs.com/package/phala for more information');
       process.exit(1);
     }
   })

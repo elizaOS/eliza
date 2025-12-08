@@ -14,7 +14,10 @@ export class PostgresConnectionManager {
 
     if (rlsServerId) {
       poolConfig.application_name = rlsServerId;
-      logger.debug(`[RLS] Pool configured with application_name: ${rlsServerId.substring(0, 8)}...`);
+      logger.debug(
+        { src: 'plugin:sql', rlsServerId: rlsServerId.substring(0, 8) },
+        'Pool configured with RLS server'
+      );
     }
 
     this.pool = new Pool(poolConfig);
@@ -41,7 +44,8 @@ export class PostgresConnectionManager {
       return true;
     } catch (error) {
       logger.error(
-        `Failed to connect to the database: ${error instanceof Error ? error.message : String(error)}`
+        { src: 'plugin:sql', error: error instanceof Error ? error.message : String(error) },
+        'Failed to connect to the database'
       );
       return false;
     } finally {

@@ -37,7 +37,7 @@ export const validateChannelId = (channelId: string, clientIp?: string): UUID | 
   if (!validatedUuid) {
     // Log invalid channel ID attempts for security monitoring
     if (clientIp) {
-      logger.warn(`[SECURITY] Invalid channel ID attempted from ${clientIp}: ${channelId}`);
+      logger.warn({ src: 'http', ip: clientIp, channelId }, 'Invalid channel ID attempted');
     }
     return null;
   }
@@ -48,7 +48,7 @@ export const validateChannelId = (channelId: string, clientIp?: string): UUID | 
 
   if (hasSuspiciousPattern) {
     if (clientIp) {
-      logger.warn(`[SECURITY] Suspicious channel ID pattern from ${clientIp}: ${channelId}`);
+      logger.warn({ src: 'http', ip: clientIp, channelId }, 'Suspicious channel ID pattern');
     }
     return null;
   }

@@ -60,8 +60,9 @@ export interface SendMessageResult {
   /**
    * Processing result (only in SYNC mode)
    * Contains information about message processing success and agent responses
+   * Access via result.processing instead of result.result for clarity
    */
-  result?: MessageProcessingResult;
+  processing?: MessageProcessingResult;
 }
 
 /**
@@ -102,7 +103,7 @@ export interface IElizaOS {
    *   roomId: channelId,
    *   content: { text: "Hello!" }
    * });
-   * console.log(result.result.responses); // Agent's replies
+   * console.log(result.processing?.responseContent); // Agent's response
    *
    * @example
    * // ASYNC mode - fire and forget

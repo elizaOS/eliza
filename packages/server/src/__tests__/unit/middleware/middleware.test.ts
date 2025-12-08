@@ -132,7 +132,8 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        '[SECURITY] Invalid testId from 192.168.1.100: invalid-uuid'
+        { src: 'http', ip: '192.168.1.100', paramName: 'testId', paramValue: 'invalid-uuid' },
+        'Invalid parameter'
       );
       expect(res.status).toHaveBeenCalledWith(400);
       expect(next).not.toHaveBeenCalled();
@@ -183,7 +184,8 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        '[SECURITY] Failed channel ID validation from 192.168.1.100: invalid-channel-id'
+        { src: 'http', ip: '192.168.1.100', channelId: 'invalid-channel-id' },
+        'Failed channel ID validation'
       );
       expect(res.status).toHaveBeenCalledWith(400);
       expect(next).not.toHaveBeenCalled();
@@ -214,7 +216,8 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        '[SECURITY] Suspicious User-Agent from 192.168.1.100: Mozilla/5.0 <script>alert(1)</script>'
+        { src: 'http', ip: '192.168.1.100', userAgent: 'Mozilla/5.0 <script>alert(1)</script>' },
+        'Suspicious User-Agent detected'
       );
       expect(next).toHaveBeenCalled();
     });
@@ -226,7 +229,13 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        '[SECURITY] Path traversal detected from 192.168.1.100: /api/test/../../../etc/passwd'
+        {
+          src: 'http',
+          ip: '192.168.1.100',
+          url: '/api/test/../../../etc/passwd',
+          pattern: 'Path traversal',
+        },
+        'Suspicious pattern detected'
       );
       expect(next).toHaveBeenCalled();
     });
@@ -238,7 +247,8 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[SECURITY] XSS attempt detected from 192.168.1.100')
+        { src: 'http', ip: '192.168.1.100', url: '/api/test', pattern: 'XSS attempt' },
+        'Suspicious pattern detected'
       );
       expect(next).toHaveBeenCalled();
     });
@@ -250,7 +260,8 @@ describe('Middleware Functions', () => {
       middleware(req as express.Request, res as express.Response, next);
 
       expect(loggerWarnSpy).toHaveBeenCalledWith(
-        '[SECURITY] SQL injection pattern detected from 192.168.1.100: /api/test?id=1 UNION SELECT * FROM users'
+        { src: 'http', ip: '192.168.1.100', url: '/api/test?id=1 UNION SELECT * FROM users' },
+        'SQL injection pattern detected'
       );
       expect(next).toHaveBeenCalled();
     });

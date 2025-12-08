@@ -1,5 +1,6 @@
 import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
+import { mkdirSync } from 'node:fs';
 import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
@@ -58,10 +59,19 @@ export function createDatabaseAdapter(
       if (dataIsolationEnabled) {
         const rlsServerIdString = process.env.ELIZA_SERVER_ID;
         if (!rlsServerIdString) {
-          throw new Error('[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable');
+          throw new Error(
+            '[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable'
+          );
         }
         rlsServerId = stringToUuid(rlsServerIdString);
-        logger.debug(`[Data Isolation] Creating connection pool with server_id: ${rlsServerId.slice(0, 8)}… (from ELIZA_SERVER_ID="${rlsServerIdString}")`);
+        logger.debug(
+          {
+            src: 'plugin:sql',
+            rlsServerId: rlsServerId.slice(0, 8),
+            serverIdString: rlsServerIdString,
+          },
+          'Creating connection pool with RLS server'
+        );
       }
 
       globalSingletons.postgresConnectionManager = new PostgresConnectionManager(
@@ -74,6 +84,11 @@ export function createDatabaseAdapter(
 
   // Only resolve PGLite directory when we're actually using PGLite
   const dataDir = resolvePgliteDir(config.dataDir);
+
+  // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
+  if (dataDir && !dataDir.includes('://')) {
+    mkdirSync(dataDir, { recursive: true });
+  }
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
@@ -98,7 +113,10 @@ export const plugin: Plugin = {
   priority: 0,
   schema: schema,
   init: async (_, runtime: IAgentRuntime) => {
-    logger.info('plugin-sql init starting...');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'plugin-sql init starting'
+    );
 
     // Prefer direct check for existing adapter (avoid readiness heuristics)
     const adapterRegistered =
@@ -117,11 +135,17 @@ export const plugin: Plugin = {
           })();
 
     if (adapterRegistered) {
-      logger.info('Database adapter already registered, skipping creation');
+      runtime.logger.info(
+        { src: 'plugin:sql', agentId: runtime.agentId },
+        'Database adapter already registered, skipping creation'
+      );
       return;
     }
 
-    logger.debug('No database adapter found, proceeding to register new adapter');
+    runtime.logger.debug(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'No database adapter found, proceeding to register'
+    );
 
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
@@ -137,7 +161,10 @@ export const plugin: Plugin = {
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info('Database adapter created and registered');
+    runtime.logger.info(
+      { src: 'plugin:sql', agentId: runtime.agentId },
+      'Database adapter created and registered'
+    );
 
     // Note: DatabaseMigrationService is not registered as a runtime service
     // because migrations are handled at the server level before agents are loaded

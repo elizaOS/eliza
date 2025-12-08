@@ -96,8 +96,13 @@ async function readPackageJson(repository: string): Promise<PackageJson | null> 
     }
   } catch (error) {
     logger.debug(
-      `Failed to read package.json for '${repository}':`,
-      error instanceof Error ? error.message : String(error)
+      {
+        src: 'cli',
+        util: 'load-plugin',
+        repository,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to read package.json'
     );
   }
   return null;
@@ -136,10 +141,16 @@ async function tryImporting(
   try {
     const pathToImport = normalizeImportPath(importPath);
     const module = await import(pathToImport);
-    logger.success(`Successfully loaded plugin '${repository}' using ${strategy} (${importPath})`);
+    logger.success(
+      { src: 'cli', util: 'load-plugin', repository, strategy, path: importPath },
+      'Plugin loaded'
+    );
     return module;
   } catch (error: any) {
-    logger.debug(`Import failed using ${strategy} ('${importPath}'):`, error);
+    logger.debug(
+      { src: 'cli', util: 'load-plugin', strategy, path: importPath, error: error?.message },
+      'Import failed'
+    );
     return null;
   }
 }
@@ -155,7 +166,10 @@ const importStrategies: ImportStrategy[] = [
       const context = detectPluginContext(repository);
 
       if (context.isLocalDevelopment) {
-        logger.debug(`Detected local development for plugin: ${repository}`);
+        logger.debug(
+          { src: 'cli', util: 'load-plugin', repository },
+          'Detected local development plugin'
+        );
 
         // Ensure the plugin is built
         const isBuilt = await ensurePluginBuilt(context);
@@ -166,12 +180,18 @@ const importStrategies: ImportStrategy[] = [
 
         // Try to load from built output
         if (context.localPath && existsSync(context.localPath)) {
-          logger.info(`Loading local development plugin: ${repository}`);
+          logger.info(
+            { src: 'cli', util: 'load-plugin', repository },
+            'Loading local development plugin'
+          );
           return tryImporting(context.localPath, 'local development plugin', repository);
         }
 
         // This shouldn't happen if ensurePluginBuilt succeeded, but handle it gracefully
-        logger.warn(`Plugin built but output not found at expected path: ${context.localPath}`);
+        logger.warn(
+          { src: 'cli', util: 'load-plugin', repository, expectedPath: context.localPath },
+          'Plugin built but output not found'
+        );
         provideLocalPluginGuidance(repository, context);
         return null;
       }
@@ -209,7 +229,8 @@ const importStrategies: ImportStrategy[] = [
       const globalPath = path.resolve(getGlobalNodeModulesPath(), repository);
       if (!existsSync(path.dirname(globalPath))) {
         logger.debug(
-          `Global node_modules directory not found at ${path.dirname(globalPath)}, skipping for ${repository}`
+          { src: 'cli', util: 'load-plugin', repository, globalPath: path.dirname(globalPath) },
+          'Global node_modules not found, skipping'
         );
         return null;
       }
@@ -285,7 +306,8 @@ export async function loadPluginModule(repository: string): Promise<any | null> 
   const strategies = getStrategiesForPlugin(repository);
 
   logger.debug(
-    `Loading ${isElizaOS ? 'ElizaOS' : 'third-party'} plugin: ${repository} (${strategies.length} strategies)`
+    { src: 'cli', util: 'load-plugin', repository, isElizaOS, strategyCount: strategies.length },
+    'Loading plugin'
   );
 
   for (const strategy of strategies) {
@@ -293,6 +315,9 @@ export async function loadPluginModule(repository: string): Promise<any | null> 
     if (result) return result;
   }
 
-  logger.warn(`Failed to load plugin module '${repository}' using all relevant strategies.`);
+  logger.warn(
+    { src: 'cli', util: 'load-plugin', repository },
+    'Failed to load plugin with all strategies'
+  );
   return null;
 }

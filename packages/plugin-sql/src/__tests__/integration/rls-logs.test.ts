@@ -21,7 +21,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   let aliceClient: Client;
   let bobClient: Client;
 
-  const POSTGRES_URL = process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
+  const POSTGRES_URL =
+    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
   const serverId = uuidv4();
   const aliceId = uuidv4();
   const bobId = uuidv4();
@@ -159,8 +160,16 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     // Cleanup test data
     try {
       await adminClient.query(`DELETE FROM logs WHERE server_id = $1`, [serverId]);
-      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2, $3)`, [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId]);
-      await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2, $3)`, [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId]);
+      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2, $3)`, [
+        sharedRoomId,
+        alicePrivateRoomId,
+        bobPrivateRoomId,
+      ]);
+      await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2, $3)`, [
+        sharedRoomId,
+        alicePrivateRoomId,
+        bobPrivateRoomId,
+      ]);
       await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2)`, [aliceId, bobId]);
       await adminClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
       await adminClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
@@ -203,26 +212,32 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     // Alice should see her 2 logs (shared room + private room)
     await aliceClient.query('BEGIN');
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
-    const aliceResult = await aliceClient.query(`
+    const aliceResult = await aliceClient.query(
+      `
       SELECT id, "entityId", "roomId", type
       FROM logs
       WHERE "entityId" = $1
       ORDER BY created_at DESC
-    `, [aliceId]);
+    `,
+      [aliceId]
+    );
     await aliceClient.query('COMMIT');
 
     expect(aliceResult.rows).toHaveLength(2);
-    expect(aliceResult.rows.every(row => row.entityId === aliceId)).toBe(true);
+    expect(aliceResult.rows.every((row) => row.entityId === aliceId)).toBe(true);
 
     // Bob should see his 1 log (private room only)
     await bobClient.query('BEGIN');
     await bobClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
-    const bobResult = await bobClient.query(`
+    const bobResult = await bobClient.query(
+      `
       SELECT id, "entityId", "roomId", type
       FROM logs
       WHERE "entityId" = $1
       ORDER BY created_at DESC
-    `, [bobId]);
+    `,
+      [bobId]
+    );
     await bobClient.query('COMMIT');
 
     expect(bobResult.rows).toHaveLength(1);
@@ -232,11 +247,14 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   it('should allow Alice to see logs from shared room (Agent + Alice)', async () => {
     await aliceClient.query('BEGIN');
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
-    const result = await aliceClient.query(`
+    const result = await aliceClient.query(
+      `
       SELECT id, "entityId", "roomId", type
       FROM logs
       WHERE "roomId" = $1
-    `, [sharedRoomId]);
+    `,
+      [sharedRoomId]
+    );
     await aliceClient.query('COMMIT');
 
     // Alice should see the log from shared room
@@ -248,11 +266,14 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   it('should block Bob from seeing Alice private room logs', async () => {
     await bobClient.query('BEGIN');
     await bobClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
-    const result = await bobClient.query(`
+    const result = await bobClient.query(
+      `
       SELECT id, "entityId", "roomId", type
       FROM logs
       WHERE "roomId" = $1
-    `, [alicePrivateRoomId]);
+    `,
+      [alicePrivateRoomId]
+    );
     await bobClient.query('COMMIT');
 
     // Bob should NOT see Alice's private logs (RLS blocks)
@@ -262,11 +283,14 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   it('should block Alice from seeing Bob private room logs', async () => {
     await aliceClient.query('BEGIN');
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
-    const result = await aliceClient.query(`
+    const result = await aliceClient.query(
+      `
       SELECT id, "entityId", "roomId", type
       FROM logs
       WHERE "roomId" = $1
-    `, [bobPrivateRoomId]);
+    `,
+      [bobPrivateRoomId]
+    );
     await aliceClient.query('COMMIT');
 
     // Alice should NOT see Bob's private logs (RLS blocks)

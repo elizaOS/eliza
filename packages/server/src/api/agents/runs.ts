@@ -17,7 +17,14 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
   const buildCacheKey = (
     agentId: UUID,
-    query: { roomId?: unknown; status?: unknown; limit?: unknown; from?: unknown; to?: unknown; entityId?: unknown }
+    query: {
+      roomId?: unknown;
+      status?: unknown;
+      limit?: unknown;
+      from?: unknown;
+      to?: unknown;
+      entityId?: unknown;
+    }
   ) =>
     JSON.stringify({
       agentId,
@@ -58,7 +65,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       // Try cache for the common polling path (no explicit time filters)
       // Include entityId in cache key since results are user-specific with RLS
       const cacheKey =
-        !fromTime && !toTime ? buildCacheKey(agentId, { roomId, status, limit: limitNum, entityId }) : null;
+        !fromTime && !toTime
+          ? buildCacheKey(agentId, { roomId, status, limit: limitNum, entityId })
+          : null;
       if (cacheKey) {
         const cached = runsCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {

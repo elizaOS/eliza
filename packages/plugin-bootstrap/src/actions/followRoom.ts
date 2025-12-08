@@ -69,7 +69,10 @@ export const followRoomAction: Action = {
     _responses?: Memory[]
   ): Promise<ActionResult> => {
     if (!state) {
-      logger.error('State is required for followRoomAction');
+      logger.error(
+        { src: 'plugin:bootstrap:action:follow_room', agentId: runtime.agentId },
+        'State is required for followRoomAction'
+      );
       return {
         text: 'State is required for follow room action',
         values: {
@@ -154,7 +157,10 @@ export const followRoomAction: Action = {
       }
 
       // Default to false if response is unclear
-      logger.warn(`Unclear boolean response: ${response}, defaulting to false`);
+      logger.warn(
+        { src: 'plugin:bootstrap:action:follow_room', agentId: runtime.agentId, response },
+        'Unclear boolean response, defaulting to false'
+      );
       return false;
     }
 
@@ -196,7 +202,14 @@ export const followRoomAction: Action = {
           success: true,
         };
       } catch (error) {
-        logger.error({ error }, 'Error following room');
+        logger.error(
+          {
+            src: 'plugin:bootstrap:action:follow_room',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error following room'
+        );
         return {
           text: 'Failed to follow room',
           values: {

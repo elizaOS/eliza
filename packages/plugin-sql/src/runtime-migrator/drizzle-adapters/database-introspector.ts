@@ -16,7 +16,7 @@ export class DatabaseIntrospector {
    * @returns Schema snapshot of current database state
    */
   async introspectSchema(schemaName: string = 'public'): Promise<SchemaSnapshot> {
-    logger.info(`[DatabaseIntrospector] Starting introspection for schema: ${schemaName}`);
+    logger.info({ src: 'plugin:sql', schemaName }, 'Starting database introspection');
 
     const tables: any = {};
     const schemas: any = {};
@@ -29,7 +29,7 @@ export class DatabaseIntrospector {
       const tableName = tableInfo.table_name;
       const tableSchema = tableInfo.table_schema || 'public';
 
-      logger.debug(`[DatabaseIntrospector] Introspecting table: ${tableSchema}.${tableName}`);
+      logger.debug({ src: 'plugin:sql', tableSchema, tableName }, 'Introspecting table');
 
       // Get columns for this table
       const columns = await this.getColumns(tableSchema, tableName);
@@ -154,7 +154,8 @@ export class DatabaseIntrospector {
     }
 
     logger.info(
-      `[DatabaseIntrospector] Introspection complete. Found ${Object.keys(tables).length} tables`
+      { src: 'plugin:sql', tableCount: Object.keys(tables).length },
+      'Database introspection complete'
     );
 
     return {

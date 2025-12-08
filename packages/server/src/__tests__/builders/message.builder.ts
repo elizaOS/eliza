@@ -15,7 +15,7 @@
  */
 
 import type { UUID } from '@elizaos/core';
-import type { CentralRootMessage } from '../../types';
+import type { CentralRootMessage } from '../../types/server';
 
 /**
  * Message input type for createMessage API
@@ -181,7 +181,7 @@ export class MessageBuilder {
    *
    * @throws Error if required fields are missing
    */
-  build(): MessageInput {
+  build(): Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'> {
     if (!this.message.channelId) {
       throw new Error(
         'Message must have a channelId. Use .withChannelId() or a preset like .asSimpleMessage()'
@@ -218,7 +218,20 @@ export class MessageBuilder {
       this.message.inReplyToRootMessageId = null as any;
     }
 
-    return this.message as MessageInput;
+    // Type assertion ensures required fields are present after validation
+    // After validation, we know these fields are defined
+    return {
+      channelId: this.message.channelId!,
+      authorId: this.message.authorId!,
+      content: this.message.content!,
+      rawMessage: this.message.rawMessage,
+      sourceId: this.message.sourceId,
+      sourceType: this.message.sourceType,
+      ...(this.message.inReplyToRootMessageId !== undefined && {
+        inReplyToRootMessageId: this.message.inReplyToRootMessageId,
+      }),
+      ...(this.message.metadata && { metadata: this.message.metadata }),
+    };
   }
 
   /**

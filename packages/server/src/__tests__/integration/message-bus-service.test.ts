@@ -5,15 +5,10 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { MessageBusService } from '../../services/message';
-import { EventType, type UUID } from '@elizaos/core';
-import internalMessageBus from '../../bus';
+import { EventType, type UUID, stringToUuid } from '@elizaos/core';
+import internalMessageBus from '../../services/message-bus';
 
-import {
-  TestServerFixture,
-  AgentFixture,
-  ChannelBuilder,
-  MessageBuilder,
-} from '../index';
+import { TestServerFixture, AgentFixture, ChannelBuilder, MessageBuilder } from '../index';
 
 describe('MessageBusService Integration Tests', () => {
   let serverFixture: TestServerFixture;
@@ -41,7 +36,7 @@ describe('MessageBusService Integration Tests', () => {
     runtime = agentSetup.runtime;
 
     // Start message bus service with real runtime
-    service = await MessageBusService.start(runtime) as MessageBusService;
+    service = (await MessageBusService.start(runtime)) as MessageBusService;
 
     // Fetch valid channel IDs after service creation
     await (service as any).fetchValidChannelIds();
@@ -76,12 +71,12 @@ describe('MessageBusService Integration Tests', () => {
   describe('Message Handling', () => {
     it('should handle new messages from the bus', async () => {
       // Create channel with test agent as participant
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asIntegrationTestChannel(serverId, 'message-handling')
-          .build(),
-        [testAgentId]
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder().asIntegrationTestChannel(serverId, 'message-handling').build(),
+          [testAgentId]
+        );
 
       // Track if message passes all checks (before elizaOS.sendMessage which may have DB issues)
       let allChecksPassed = false;
@@ -99,7 +94,7 @@ describe('MessageBusService Integration Tests', () => {
         id: 'msg-test-1' as UUID,
         channel_id: channel.id,
         server_id: serverId,
-        author_id: 'user-123' as UUID,
+        author_id: stringToUuid('user-123'),
         content: 'Test message',
         raw_message: { content: 'Test message' },
         source_id: 'test-src-1',
@@ -109,7 +104,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait for async processing
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       // Restore
       (service as any).handleIncomingMessage = originalHandleIncomingMessage;
@@ -120,12 +115,12 @@ describe('MessageBusService Integration Tests', () => {
 
     it('should skip messages from self', async () => {
       // Create channel with test agent
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asIntegrationTestChannel(serverId, 'self-message')
-          .build(),
-        [testAgentId]
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder().asIntegrationTestChannel(serverId, 'self-message').build(),
+          [testAgentId]
+        );
 
       // Track if message processing starts (RUN_STARTED would be emitted)
       let messageProcessed = false;
@@ -152,7 +147,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Restore
       runtime.emitEvent = originalEmit;
@@ -163,11 +158,11 @@ describe('MessageBusService Integration Tests', () => {
 
     it('should skip messages if agent not in channel', async () => {
       // Create channel WITHOUT the test agent
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asGroupChannel('Channel Without Agent', serverId)
-          .build()
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder().asGroupChannel('Channel Without Agent', serverId).build()
+        );
 
       // Track if message processing starts
       let messageProcessed = false;
@@ -184,7 +179,7 @@ describe('MessageBusService Integration Tests', () => {
         id: 'msg-not-participant' as UUID,
         channel_id: channel.id,
         server_id: serverId,
-        author_id: 'user-456' as UUID,
+        author_id: stringToUuid('user-456'),
         content: 'Message in other channel',
         raw_message: { content: 'Message in other channel' },
         source_id: 'test-src-3',
@@ -194,7 +189,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Restore
       runtime.emitEvent = originalEmit;
@@ -207,22 +202,24 @@ describe('MessageBusService Integration Tests', () => {
   describe('Message Deletion Handling', () => {
     it('should handle message deletion events', async () => {
       // Create channel and message
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asIntegrationTestChannel(serverId, 'deletion-test')
-          .build(),
-        [testAgentId]
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder().asIntegrationTestChannel(serverId, 'deletion-test').build(),
+          [testAgentId]
+        );
 
-      const message = await serverFixture.getServer().createMessage(
-        new MessageBuilder()
-          .withChannelId(channel.id)
-          .withAuthorId('user-789' as UUID)
-          .withContent('Message to delete')
-          .withSourceId('test-del-1')
-          .withSourceType('test')
-          .build()
-      );
+      const message = await serverFixture
+        .getServer()
+        .createMessage(
+          new MessageBuilder()
+            .withChannelId(channel.id)
+            .withAuthorId(stringToUuid('user-789'))
+            .withContent('Message to delete')
+            .withSourceId('test-del-1')
+            .withSourceType('test')
+            .build()
+        );
 
       // Track if deleteMessage is called on messageService
       let deleteMessageCalled = false;
@@ -240,7 +237,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Restore
       if (runtime.messageService && originalDeleteMessage) {
@@ -256,22 +253,27 @@ describe('MessageBusService Integration Tests', () => {
   describe('Channel Clearing', () => {
     it('should handle channel clear events', async () => {
       // Create channel with messages
-      const channel = await serverFixture.getServer().createChannel(
-        new ChannelBuilder()
-          .asIntegrationTestChannel(serverId, 'clear-test')
-          .build(),
-        [testAgentId]
-      );
+      const channel = await serverFixture
+        .getServer()
+        .createChannel(
+          new ChannelBuilder().asIntegrationTestChannel(serverId, 'clear-test').build(),
+          [testAgentId]
+        );
 
       // Create multiple messages
-      const messages = new MessageBuilder().buildMany(
-        3,
-        channel.id,
-        (i) => `user-clear-${i}` as UUID
+      const messages = new MessageBuilder().buildMany(3, channel.id, (i) =>
+        stringToUuid(`user-clear-${i}`)
       );
 
       for (const msgInput of messages) {
-        await serverFixture.getServer().createMessage(msgInput);
+        await serverFixture.getServer().createMessage({
+          channelId: msgInput.channelId,
+          authorId: msgInput.authorId,
+          content: msgInput.content,
+          sourceId: msgInput.sourceId,
+          sourceType: msgInput.sourceType,
+          metadata: msgInput.metadata,
+        });
       }
 
       // Track if clearChannel is called on messageService
@@ -290,7 +292,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Restore
       if (runtime.messageService && originalClearChannel) {
@@ -319,7 +321,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait for processing
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Service should handle the event (no errors)
       expect(service).toBeDefined();
@@ -334,14 +336,14 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Should handle gracefully
       expect(service).toBeDefined();
     });
 
     it('should ignore updates for other agents', async () => {
-      const otherAgentId = 'other-agent-123' as UUID;
+      const otherAgentId = stringToUuid('other-agent-123');
 
       // Emit event for different agent
       internalMessageBus.emit('server_agent_update', {
@@ -351,7 +353,7 @@ describe('MessageBusService Integration Tests', () => {
       });
 
       // Wait
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Service should ignore (no action needed)
       expect(service).toBeDefined();
@@ -365,7 +367,7 @@ describe('MessageBusService Integration Tests', () => {
       expect(async () => {
         await MessageBusService.stop(runtime);
         // Restart for other tests
-        service = await MessageBusService.start(runtime) as MessageBusService;
+        service = (await MessageBusService.start(runtime)) as MessageBusService;
       }).not.toThrow();
     });
   });

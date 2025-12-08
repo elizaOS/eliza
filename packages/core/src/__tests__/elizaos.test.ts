@@ -225,13 +225,147 @@ describe('ElizaOS', () => {
     });
   });
 
-  describe('Unified Messaging API', () => {
+  describe('Serverless Mode', () => {
     const testCharacter: Character = {
       name: 'TestAgent',
       bio: 'A test agent',
       system: 'You are a test agent',
     };
 
+    it('should not store runtime in registry when ephemeral is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          returnRuntimes: true,
+        }
+      );
+
+      // Should return runtimes
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('object');
+
+      const runtime = result[0] as any;
+      expect(runtime.agentId).toBeDefined();
+
+      // Should NOT be in registry
+      expect(elizaOS.getAgent(runtime.agentId)).toBeUndefined();
+    });
+
+    it('should return UUIDs by default (not runtimes)', async () => {
+      const result = await elizaOS.addAgents([
+        { character: testCharacter, plugins: [mockSqlPlugin] },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('string');
+    });
+
+    it('should return runtimes when returnRuntimes is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          returnRuntimes: true,
+        }
+      );
+
+      expect(result).toHaveLength(1);
+      expect(typeof result[0]).toBe('object');
+      expect((result[0] as any).agentId).toBeDefined();
+    });
+
+    it('should auto-start when autoStart is true', async () => {
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      );
+
+      const runtime = result[0] as any;
+      // Runtime should have messageService after initialize
+      expect(runtime.messageService).toBeDefined();
+    });
+
+    it('should use provided databaseAdapter', async () => {
+      const customAdapter = { ...mockAdapter, _custom: true } as any;
+
+      const result = await elizaOS.addAgents(
+        [
+          {
+            character: testCharacter,
+            plugins: [],
+            databaseAdapter: customAdapter,
+          },
+        ],
+        {
+          returnRuntimes: true,
+        }
+      );
+
+      const runtime = result[0] as any;
+      expect(runtime.adapter).toBe(customAdapter);
+    });
+
+    it('should emit event with ephemeral flag', async () => {
+      const addedHandler = mock();
+      elizaOS.addEventListener('agents:added', (e: Event) => {
+        addedHandler((e as CustomEvent).detail);
+      });
+
+      await elizaOS.addAgents([{ character: testCharacter, plugins: [mockSqlPlugin] }], {
+        ephemeral: true,
+      });
+
+      expect(addedHandler).toHaveBeenCalledTimes(1);
+      expect(addedHandler.mock.calls[0][0].ephemeral).toBe(true);
+    });
+  });
+
+  describe('sendMessage with runtime', () => {
+    const testCharacter: Character = {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      system: 'You are a test agent',
+    };
+
+    it('should accept runtime directly instead of UUID', async () => {
+      const [runtime] = (await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      )) as any[];
+
+      // Mock messageService
+      const handleMessageMock = mock().mockResolvedValue({ success: true });
+      runtime.messageService = { handleMessage: handleMessageMock };
+      runtime.ensureConnection = mock().mockResolvedValue(undefined);
+
+      const result = await elizaOS.sendMessage(runtime, {
+        entityId: uuidv4() as UUID,
+        roomId: uuidv4() as UUID,
+        content: { text: 'Hello' },
+      });
+
+      expect(result.messageId).toBeDefined();
+      expect(handleMessageMock).toHaveBeenCalled();
+    });
+
+    it('should throw error for unknown UUID', async () => {
+      const unknownId = uuidv4() as UUID;
+
+      await expect(
+        elizaOS.sendMessage(unknownId, {
+          entityId: uuidv4() as UUID,
+          roomId: uuidv4() as UUID,
+          content: { text: 'Hello' },
+        })
+      ).rejects.toThrow(`Agent ${unknownId} not found in registry`);
+    });
   });
 
   describe('Event System', () => {

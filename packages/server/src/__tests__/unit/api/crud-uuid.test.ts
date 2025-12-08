@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, mock } from 'bun:test';
 import type { Agent, Character, UUID } from '@elizaos/core';
 import { stringToUuid } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
-import { jsonToCharacter } from '../../../loader';
+import { jsonToCharacter } from '../../../services/loader';
 
 /**
  * Test suite to verify that agent operations work correctly with UUID-based identification

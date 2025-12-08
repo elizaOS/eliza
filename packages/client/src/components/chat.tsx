@@ -309,7 +309,8 @@ export default function Chat({
   const queryClient = useQueryClient();
 
   // Fetch current server ID from backend if not provided as prop
-  const { data: currentMessageServerId, isLoading: isLoadingMessageServerId } = useCurrentMessageServer();
+  const { data: currentMessageServerId, isLoading: isLoadingMessageServerId } =
+    useCurrentMessageServer();
 
   // Use persistent sidebar state
   const { isVisible: showSidebar, setSidebarVisible, toggleSidebar } = useSidebarState();
@@ -527,7 +528,10 @@ export default function Chat({
         // Mark as auto-created so the effect doesn't attempt a duplicate.
         autoCreatedDmRef.current = true;
 
-        clientLogger.info('[Chat] About to create DM channel with messageServerId:', finalMessageServerIdForHooks);
+        clientLogger.info(
+          '[Chat] About to create DM channel with messageServerId:',
+          finalMessageServerIdForHooks
+        );
         const newChannel = await createDmChannelMutation.mutateAsync({
           agentId: agentIdForNewChannel,
           channelName: newChatName, // Provide a unique name
@@ -549,7 +553,16 @@ export default function Chat({
         });
       }
     },
-    [chatType, createDmChannelMutation, updateChatState, safeScrollToBottom, latestChannel, finalMessageServerIdForHooks, targetAgentData, toast]
+    [
+      chatType,
+      createDmChannelMutation,
+      updateChatState,
+      safeScrollToBottom,
+      latestChannel,
+      finalMessageServerIdForHooks,
+      targetAgentData,
+      toast,
+    ]
   );
 
   // Handle DM channel selection

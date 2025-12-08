@@ -80,10 +80,15 @@ export const start = new Command()
           // Use buildProject function with proper UI feedback and error handling
           await buildProject(cwd, false);
         } catch (error) {
-          logger.error('Build error:', error instanceof Error ? error.message : String(error));
-          logger.warn(
-            'Build failed, but continuing with start. Some features may not work correctly.'
+          logger.error(
+            {
+              src: 'cli',
+              command: 'start',
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Build failed'
           );
+          logger.warn({ src: 'cli', command: 'start' }, 'Build failed, continuing with start');
         }
       }
 
@@ -96,7 +101,10 @@ export const start = new Command()
           const resolvedPath = path.resolve(charPath);
 
           if (!fs.existsSync(resolvedPath)) {
-            logger.error(`Character file not found: ${resolvedPath}`);
+            logger.error(
+              { src: 'cli', command: 'start', path: resolvedPath },
+              'Character file not found'
+            );
             throw new Error(`Character file not found: ${resolvedPath}`);
           }
 
@@ -104,15 +112,22 @@ export const start = new Command()
             const character = await loadCharacterTryPath(resolvedPath);
             if (character) {
               characters.push(character);
-              logger.info(`Successfully loaded character: ${character.name}`);
+              logger.info(
+                { src: 'cli', command: 'start', characterName: character.name },
+                'Character loaded'
+              );
             } else {
               logger.error(
-                `Failed to load character from ${resolvedPath}: Invalid or empty character file`
+                { src: 'cli', command: 'start', path: resolvedPath },
+                'Invalid or empty character file'
               );
               throw new Error(`Invalid character file: ${resolvedPath}`);
             }
           } catch (e) {
-            logger.error({ error: e, resolvedPath }, `Failed to load character from path:`);
+            logger.error(
+              { src: 'cli', command: 'start', error: e, path: resolvedPath },
+              'Failed to load character'
+            );
             throw new Error(`Invalid character file: ${resolvedPath}`);
           }
         }
@@ -125,23 +140,32 @@ export const start = new Command()
           // Check if we're in a directory that might contain agents - allow any directory with package.json
           // except those explicitly detected as non-ElizaOS (covers projects, plugins, monorepos, etc.)
           if (dirInfo.hasPackageJson && dirInfo.type !== 'non-elizaos-dir') {
-            logger.info('No character files specified, attempting to load project agents...');
+            logger.info({ src: 'cli', command: 'start' }, 'Loading project agents');
             const project = await loadProject(cwd);
 
             if (project.agents && project.agents.length > 0) {
-              logger.info(`Found ${project.agents.length} agent(s) in project configuration`);
+              logger.info(
+                { src: 'cli', command: 'start', agentCount: project.agents.length },
+                'Found project agents'
+              );
               projectAgents = project.agents;
 
               // Log loaded agent names
               for (const agent of project.agents) {
                 if (agent.character) {
-                  logger.info(`Loaded character: ${agent.character.name}`);
+                  logger.info(
+                    { src: 'cli', command: 'start', characterName: agent.character.name },
+                    'Character loaded'
+                  );
                 }
               }
             }
           }
         } catch (e) {
-          logger.debug({ error: e }, 'Failed to load project agents, will use default character:');
+          logger.debug(
+            { src: 'cli', command: 'start', error: e },
+            'Failed to load project agents, using default'
+          );
         }
       }
 
@@ -164,7 +188,10 @@ export const start = new Command()
       });
 
       // Server handles initialization, port resolution, and agent startup automatically
-      logger.success(`Server started with ${agentConfigs.length} agents`);
+      logger.success(
+        { src: 'cli', command: 'start', agentCount: agentConfigs.length },
+        'Server started'
+      );
     } catch (e: any) {
       handleError(e);
       process.exit(1);
