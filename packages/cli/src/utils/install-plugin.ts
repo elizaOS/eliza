@@ -33,7 +33,14 @@ function getCliDirectory(): string | null {
 
     return null;
   } catch (error) {
-    logger.error({ src: 'cli', util: 'install-plugin', error: error instanceof Error ? error.message : String(error) }, 'Failed to determine CLI directory');
+    logger.error(
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Failed to determine CLI directory'
+    );
     return null;
   }
 }
@@ -49,11 +56,17 @@ async function verifyPluginImport(repository: string, context: string): Promise<
   const loadedModule = await loadPluginModule(repository);
 
   if (loadedModule) {
-    logger.debug({ src: 'cli', util: 'install-plugin', repository, context }, 'Successfully verified plugin after installation');
+    logger.debug(
+      { src: 'cli', util: 'install-plugin', repository, context },
+      'Successfully verified plugin after installation'
+    );
     return true;
   } else {
     // The loadPluginModule function already logs detailed errors
-    logger.warn({ src: 'cli', util: 'install-plugin', repository, context }, 'Plugin installed but could not be loaded/verified');
+    logger.warn(
+      { src: 'cli', util: 'install-plugin', repository, context },
+      'Plugin installed but could not be loaded/verified'
+    );
     return false;
   }
 }
@@ -82,7 +95,10 @@ async function attemptInstallation(
 
     // If installation failed, return false immediately
     if (!installResult.success || !installResult.installedIdentifier) {
-      logger.warn({ src: 'cli', util: 'install-plugin', context }, 'Installation failed for plugin');
+      logger.warn(
+        { src: 'cli', util: 'install-plugin', context },
+        'Installation failed for plugin'
+      );
       return false;
     }
 
@@ -91,14 +107,36 @@ async function attemptInstallation(
       return true;
     }
     if (skipVerification || process.env.ELIZA_SKIP_PLUGIN_VERIFY) {
-      logger.info({ src: 'cli', util: 'install-plugin', installedIdentifier: installResult.installedIdentifier }, 'Installation successful, skipping verification');
+      logger.info(
+        {
+          src: 'cli',
+          util: 'install-plugin',
+          installedIdentifier: installResult.installedIdentifier,
+        },
+        'Installation successful, skipping verification'
+      );
       return true;
     }
-    logger.debug({ src: 'cli', util: 'install-plugin', installedIdentifier: installResult.installedIdentifier }, 'Installation successful, verifying import');
+    logger.debug(
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        installedIdentifier: installResult.installedIdentifier,
+      },
+      'Installation successful, verifying import'
+    );
     return await verifyPluginImport(installResult.installedIdentifier, context);
   } catch (installError) {
     // Catch any unexpected errors during the process
-    logger.warn({ src: 'cli', util: 'install-plugin', context, error: installError instanceof Error ? installError.message : String(installError) }, 'Error during installation attempt');
+    logger.warn(
+      {
+        src: 'cli',
+        util: 'install-plugin',
+        context,
+        error: installError instanceof Error ? installError.message : String(installError),
+      },
+      'Error during installation attempt'
+    );
     return false;
   }
 }
@@ -123,8 +161,14 @@ export async function installPlugin(
   // Check if we're trying to install a plugin into its own directory
   const context = detectPluginContext(packageName);
   if (context.isLocalDevelopment) {
-    logger.warn({ src: 'cli', util: 'install-plugin', packageName }, 'Prevented self-installation of plugin');
-    logger.info({ src: 'cli', util: 'install-plugin' }, 'You are developing this plugin locally. Use bun run build to build it instead of installing');
+    logger.warn(
+      { src: 'cli', util: 'install-plugin', packageName },
+      'Prevented self-installation of plugin'
+    );
+    logger.info(
+      { src: 'cli', util: 'install-plugin' },
+      'You are developing this plugin locally. Use bun run build to build it instead of installing'
+    );
     return false;
   }
 

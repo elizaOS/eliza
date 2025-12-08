@@ -143,8 +143,10 @@ export abstract class Service {
  * @template ConfigType The configuration type for this service
  * @template ResultType The result type returned by the service operations
  */
-export interface TypedService<ConfigType extends Metadata = Metadata, ResultType = unknown>
-  extends Service {
+export interface TypedService<
+  ConfigType extends Metadata = Metadata,
+  ResultType = unknown,
+> extends Service {
   /**
    * The configuration for this service instance
    */

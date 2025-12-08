@@ -10,7 +10,6 @@ export function hasCharacterSecrets(character: Character): boolean {
   );
 }
 
-
 /**
  * Node.js-only implementation of environment variables loading
  * This is lazy-loaded only in Node environments

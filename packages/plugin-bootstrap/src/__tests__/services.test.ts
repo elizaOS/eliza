@@ -211,7 +211,7 @@ describe('TaskService', () => {
     }) as any;
 
     // Spy on runtime logger instead of global logger
-    const loggerErrorSpy = spyOn(mockRuntime.logger, 'error').mockImplementation(() => { });
+    const loggerErrorSpy = spyOn(mockRuntime.logger, 'error').mockImplementation(() => {});
 
     // Expose the private method for testing
     const executeTaskMethod = (taskService as any).executeTask.bind(taskService);
@@ -225,7 +225,12 @@ describe('TaskService', () => {
 
     // Verify error was logged on runtime.logger
     expect(loggerErrorSpy).toHaveBeenCalledWith(
-      { src: 'plugin:bootstrap:service:task', agentId: mockRuntime.agentId, taskId: testTask.id, error: expect.any(String) },
+      {
+        src: 'plugin:bootstrap:service:task',
+        agentId: mockRuntime.agentId,
+        taskId: testTask.id,
+        error: expect.any(String),
+      },
       'Error executing task'
     );
 
@@ -256,7 +261,7 @@ describe('Service Registry', () => {
 
   beforeEach(() => {
     mock.restore();
-    spyOn(logger, 'warn').mockImplementation(() => { });
+    spyOn(logger, 'warn').mockImplementation(() => {});
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();

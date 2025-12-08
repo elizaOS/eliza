@@ -30,6 +30,8 @@ async function buildAll() {
         'path',
         'postgres',
         'pg',
+        'pg-native',
+        'libpq',
       ],
       sourcemap: true,
       minify: false,

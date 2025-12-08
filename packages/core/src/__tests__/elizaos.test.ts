@@ -233,12 +233,13 @@ describe('ElizaOS', () => {
     };
 
     it('should not store runtime in registry when ephemeral is true', async () => {
-      const result = await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ], {
-        ephemeral: true,
-        returnRuntimes: true,
-      });
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          returnRuntimes: true,
+        }
+      );
 
       // Should return runtimes
       expect(result).toHaveLength(1);
@@ -261,11 +262,12 @@ describe('ElizaOS', () => {
     });
 
     it('should return runtimes when returnRuntimes is true', async () => {
-      const result = await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ], {
-        returnRuntimes: true,
-      });
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          returnRuntimes: true,
+        }
+      );
 
       expect(result).toHaveLength(1);
       expect(typeof result[0]).toBe('object');
@@ -273,12 +275,13 @@ describe('ElizaOS', () => {
     });
 
     it('should auto-start when autoStart is true', async () => {
-      const result = await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ], {
-        autoStart: true,
-        returnRuntimes: true,
-      });
+      const result = await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      );
 
       const runtime = result[0] as any;
       // Runtime should have messageService after initialize
@@ -288,15 +291,18 @@ describe('ElizaOS', () => {
     it('should use provided databaseAdapter', async () => {
       const customAdapter = { ...mockAdapter, _custom: true } as any;
 
-      const result = await elizaOS.addAgents([
+      const result = await elizaOS.addAgents(
+        [
+          {
+            character: testCharacter,
+            plugins: [],
+            databaseAdapter: customAdapter,
+          },
+        ],
         {
-          character: testCharacter,
-          plugins: [],
-          databaseAdapter: customAdapter,
-        },
-      ], {
-        returnRuntimes: true,
-      });
+          returnRuntimes: true,
+        }
+      );
 
       const runtime = result[0] as any;
       expect(runtime.adapter).toBe(customAdapter);
@@ -308,9 +314,7 @@ describe('ElizaOS', () => {
         addedHandler((e as CustomEvent).detail);
       });
 
-      await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ], {
+      await elizaOS.addAgents([{ character: testCharacter, plugins: [mockSqlPlugin] }], {
         ephemeral: true,
       });
 
@@ -327,13 +331,14 @@ describe('ElizaOS', () => {
     };
 
     it('should accept runtime directly instead of UUID', async () => {
-      const [runtime] = await elizaOS.addAgents([
-        { character: testCharacter, plugins: [mockSqlPlugin] },
-      ], {
-        ephemeral: true,
-        autoStart: true,
-        returnRuntimes: true,
-      }) as any[];
+      const [runtime] = (await elizaOS.addAgents(
+        [{ character: testCharacter, plugins: [mockSqlPlugin] }],
+        {
+          ephemeral: true,
+          autoStart: true,
+          returnRuntimes: true,
+        }
+      )) as any[];
 
       // Mock messageService
       const handleMessageMock = mock().mockResolvedValue({ success: true });

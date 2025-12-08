@@ -149,7 +149,10 @@ export async function processUploadedFile(
 
     return { filename, path: finalPath, url };
   } catch (error) {
-    logger.error({ src: 'http', error: error instanceof Error ? error.message : String(error) }, 'Error processing uploaded file');
+    logger.error(
+      { src: 'http', error: error instanceof Error ? error.message : String(error) },
+      'Error processing uploaded file'
+    );
     throw error;
   }
 }

@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { teeCommand } from '../../src/commands/tee';
 import { phalaCliCommand } from '../../src/commands/tee/phala-wrapper';
 import { bunExecSync } from '../utils/bun-test-helpers';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
 // Check if npx is available
 function isNpxAvailable(): boolean {
@@ -17,7 +18,7 @@ function isNpxAvailable(): boolean {
 // Skip Phala tests in CI or when npx is not available
 const skipPhalaTests = process.env.CI === 'true' || !isNpxAvailable();
 
-describe('TEE Command', () => {
+describe('TEE Command', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   describe('teeCommand', () => {
     it('should be a Commander command', () => {
       expect(teeCommand).toBeInstanceOf(Command);

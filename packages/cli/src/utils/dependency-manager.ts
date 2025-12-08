@@ -36,7 +36,10 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
     try {
       packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     } catch (parseError) {
-      logger.debug({ src: 'cli', util: 'dependency-manager', error: parseError, packageJsonPath }, 'Error parsing package.json');
+      logger.debug(
+        { src: 'cli', util: 'dependency-manager', error: parseError, packageJsonPath },
+        'Error parsing package.json'
+      );
       return false;
     }
 
@@ -45,7 +48,10 @@ export function hasElizaOSCli(packageJsonPath: string): boolean {
 
     return '@elizaos/cli' in dependencies || '@elizaos/cli' in devDependencies;
   } catch (error) {
-    logger.debug({ src: 'cli', util: 'dependency-manager', error, packageJsonPath }, 'Error reading package.json');
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager', error, packageJsonPath },
+      'Error reading package.json'
+    );
     return false;
   }
 }
@@ -82,7 +88,10 @@ export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
 
   // Need package.json to install dependencies
   if (!dirInfo.hasPackageJson) {
-    logger.debug({ src: 'cli', util: 'dependency-manager' }, 'No package.json, skipping auto-install');
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager' },
+      'No package.json, skipping auto-install'
+    );
     return false;
   }
 
@@ -101,7 +110,10 @@ export function shouldAutoInstallCli(cwd: string = process.cwd()): boolean {
  */
 export async function installElizaOSCli(cwd: string = process.cwd()): Promise<boolean> {
   try {
-    logger.info({ src: 'cli', util: 'dependency-manager' }, 'Adding @elizaos/cli as dev dependency');
+    logger.info(
+      { src: 'cli', util: 'dependency-manager' },
+      'Adding @elizaos/cli as dev dependency'
+    );
 
     const result = await runBunWithSpinner(['add', '--dev', '@elizaos/cli'], cwd, {
       spinnerText: 'Installing @elizaos/cli with bun...',
@@ -111,15 +123,27 @@ export async function installElizaOSCli(cwd: string = process.cwd()): Promise<bo
     });
 
     if (result.success) {
-      logger.info({ src: 'cli', util: 'dependency-manager' }, '@elizaos/cli added as dev dependency');
+      logger.info(
+        { src: 'cli', util: 'dependency-manager' },
+        '@elizaos/cli added as dev dependency'
+      );
       return true;
     } else {
-      logger.warn({ src: 'cli', util: 'dependency-manager' }, 'Failed to install @elizaos/cli (optional)');
-      logger.debug({ src: 'cli', util: 'dependency-manager', error: result.error }, 'Installation error');
+      logger.warn(
+        { src: 'cli', util: 'dependency-manager' },
+        'Failed to install @elizaos/cli (optional)'
+      );
+      logger.debug(
+        { src: 'cli', util: 'dependency-manager', error: result.error },
+        'Installation error'
+      );
       return false;
     }
   } catch (error) {
-    logger.warn({ src: 'cli', util: 'dependency-manager' }, 'Failed to install @elizaos/cli (optional)');
+    logger.warn(
+      { src: 'cli', util: 'dependency-manager' },
+      'Failed to install @elizaos/cli (optional)'
+    );
     logger.debug({ src: 'cli', util: 'dependency-manager', error }, 'Installation error');
     return false;
   }
@@ -142,7 +166,10 @@ export async function ensureElizaOSCli(cwd: string = process.cwd()): Promise<voi
   const success = await installElizaOSCli(cwd);
 
   if (success) {
-    logger.info({ src: 'cli', util: 'dependency-manager' }, 'Local CLI available for better performance');
+    logger.info(
+      { src: 'cli', util: 'dependency-manager' },
+      'Local CLI available for better performance'
+    );
   }
 }
 
@@ -161,14 +188,20 @@ export async function getLatestElizaOSCliVersion(): Promise<string | null> {
         const info = JSON.parse(result.stdout);
         return info.version || info.dist?.version || 'latest';
       } catch (parseError) {
-        logger.debug({ src: 'cli', util: 'dependency-manager', error: parseError }, 'Error parsing bun info output');
+        logger.debug(
+          { src: 'cli', util: 'dependency-manager', error: parseError },
+          'Error parsing bun info output'
+        );
         return null;
       }
     }
 
     return null;
   } catch (error) {
-    logger.debug({ src: 'cli', util: 'dependency-manager', error }, 'Error getting @elizaos/cli version');
+    logger.debug(
+      { src: 'cli', util: 'dependency-manager', error },
+      'Error getting @elizaos/cli version'
+    );
     return null;
   }
 }
@@ -220,7 +253,14 @@ export async function ensurePackageJson(cwd: string = process.cwd()): Promise<bo
     logger.info({ src: 'cli', util: 'dependency-manager' }, 'Created package.json');
     return true;
   } catch (error) {
-    logger.warn({ src: 'cli', util: 'dependency-manager', error: error instanceof Error ? error.message : String(error) }, 'Could not create package.json');
+    logger.warn(
+      {
+        src: 'cli',
+        util: 'dependency-manager',
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Could not create package.json'
+    );
     return false;
   }
 }

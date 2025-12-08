@@ -15,7 +15,9 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   router.use((req, _res, next) => {
     // Map deprecated server_id to message_server_id
     if (req.body && req.body.server_id && !req.body.message_server_id) {
-      logger.warn('[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.');
+      logger.warn(
+        '[DEPRECATED] Parameter "server_id" is deprecated. Use "message_server_id" instead.'
+      );
       req.body.message_server_id = req.body.server_id;
     }
     next();
@@ -107,7 +109,12 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       res.status(201).json({ success: true, data: createdMessage });
     } catch (error) {
       logger.error(
-        { src: 'http', path: '/submit', channelId: channel_id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: '/submit',
+          channelId: channel_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error submitting agent message'
       );
       res.status(500).json({ success: false, error: 'Failed to submit agent message' });
@@ -202,7 +209,12 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(201).json({ success: true, data: savedMessage });
     } catch (error) {
       logger.error(
-        { src: 'http', path: '/action', channelId: channel_id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: '/action',
+          channelId: channel_id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error creating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to create action' });
@@ -253,7 +265,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       // Transform attachments for web client
       const transformedAttachments = attachmentsToApiUrls(
         metadata?.attachments ?? raw_message?.attachments
-      );  
+      );
 
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(updated.channelId).emit('messageBroadcast', {
@@ -261,7 +273,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: updated.content,
           roomId: updated.channelId,
-          messageServerId: server_message_id as UUID, 
+          messageServerId: server_message_id as UUID,
           createdAt: new Date(updated.createdAt).getTime(),
           source: updated.sourceType,
           id: updated.id,
@@ -276,7 +288,12 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       return res.status(200).json({ success: true, data: updated });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, messageId: id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          messageId: id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error updating action'
       );
       return res.status(500).json({ success: false, error: 'Failed to update action' });
@@ -340,7 +357,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: messageForBus.author_display_name || 'User',
           text: messageForBus.content,
           roomId: messageForBus.channel_id,
-          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId  
+          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,
@@ -354,7 +371,11 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       });
     } catch (error) {
       logger.error(
-        { src: 'http', path: '/ingest-external', error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: '/ingest-external',
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error ingesting external message'
       );
       res.status(500).json({ success: false, error: 'Failed to ingest message' });

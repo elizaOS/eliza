@@ -176,9 +176,8 @@ describe('Schema Evolution Test: Drop Column with Production Schema', () => {
 
     // Now create V2 schema WITHOUT username column (destructive change!)
     // We need to recreate the agent table definition without username
-    const { pgTable, text, uuid, boolean, timestamp, jsonb, unique } = await import(
-      'drizzle-orm/pg-core'
-    );
+    const { pgTable, text, uuid, boolean, timestamp, jsonb, unique } =
+      await import('drizzle-orm/pg-core');
 
     const agentTableV2 = pgTable(
       'agents',

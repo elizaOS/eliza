@@ -4,8 +4,9 @@ import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { safeChangeDirectory } from './test-utils';
+import { TEST_TIMEOUTS } from '../test-timeouts';
 
-describe('ElizaOS Publish Commands', () => {
+describe('ElizaOS Publish Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let originalCwd: string;
   let originalPath: string;

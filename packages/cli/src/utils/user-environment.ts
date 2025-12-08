@@ -96,7 +96,10 @@ export class UserEnvironment {
       // @ts-ignore - This file is generated at build time
       const { CLI_VERSION, CLI_NAME } = await import('../version.js').catch(() => {
         // Fallback if version file doesn't exist (e.g., during development)
-        logger.debug({ src: 'cli', util: 'user-environment' }, 'Version file not found, using fallback values');
+        logger.debug(
+          { src: 'cli', util: 'user-environment' },
+          'Version file not found, using fallback values'
+        );
         return {
           CLI_VERSION: '0.0.0-dev',
           CLI_NAME: '@elizaos/cli',
@@ -109,7 +112,14 @@ export class UserEnvironment {
         path: process.argv[1] || '',
       };
     } catch (error) {
-      logger.warn({ src: 'cli', util: 'user-environment', error: error instanceof Error ? error.message : String(error) }, 'Error getting CLI info');
+      logger.warn(
+        {
+          src: 'cli',
+          util: 'user-environment',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error getting CLI info'
+      );
       return {
         version: '0.0.0',
         name: '@elizaos/cli',
@@ -122,7 +132,10 @@ export class UserEnvironment {
    * Detects the active package manager - always returns bun for ElizaOS CLI
    */
   private async getPackageManagerInfo(): Promise<PackageManagerInfo> {
-    logger.debug({ src: 'cli', util: 'user-environment' }, 'Using bun as the package manager for ElizaOS CLI');
+    logger.debug(
+      { src: 'cli', util: 'user-environment' },
+      'Using bun as the package manager for ElizaOS CLI'
+    );
 
     const isNpx = process.env.npm_execpath?.includes('npx');
     // Check if running via bunx by looking for bunx cache patterns in the script path
@@ -145,11 +158,21 @@ export class UserEnvironment {
         version = stdout.trim();
         logger.debug({ src: 'cli', util: 'user-environment', version }, 'Bun version detected');
       } catch (e) {
-        logger.debug({ src: 'cli', util: 'user-environment', error: e instanceof Error ? e.message : String(e) }, 'Could not get bun version');
+        logger.debug(
+          {
+            src: 'cli',
+            util: 'user-environment',
+            error: e instanceof Error ? e.message : String(e),
+          },
+          'Could not get bun version'
+        );
 
         // Attempt auto-installation if conditions are met
         if (shouldAutoInstall()) {
-          logger.info({ src: 'cli', util: 'user-environment' }, 'Attempting to automatically install Bun');
+          logger.info(
+            { src: 'cli', util: 'user-environment' },
+            'Attempting to automatically install Bun'
+          );
           const installSuccess = await autoInstallBun();
 
           if (installSuccess) {
@@ -157,10 +180,17 @@ export class UserEnvironment {
             try {
               const { stdout } = await bunExecSimple('bun', ['--version']);
               version = stdout.trim();
-              logger.debug({ src: 'cli', util: 'user-environment', version }, 'Bun version after auto-install');
+              logger.debug(
+                { src: 'cli', util: 'user-environment', version },
+                'Bun version after auto-install'
+              );
             } catch (retryError) {
               logger.error(
-                { src: 'cli', util: 'user-environment', error: retryError instanceof Error ? retryError.message : String(retryError) },
+                {
+                  src: 'cli',
+                  util: 'user-environment',
+                  error: retryError instanceof Error ? retryError.message : String(retryError),
+                },
                 'Failed to verify Bun installation after auto-install'
               );
               // Continue to manual installation instructions
@@ -171,23 +201,47 @@ export class UserEnvironment {
         // If auto-installation failed or was not attempted, show manual instructions
         if (!version) {
           const platform = process.platform;
-          logger.error({ src: 'cli', util: 'user-environment' }, 'Bun is required for ElizaOS CLI but is not installed or not found in PATH');
-          logger.error({ src: 'cli', util: 'user-environment' }, 'Install Bun using the appropriate command for your system');
+          logger.error(
+            { src: 'cli', util: 'user-environment' },
+            'Bun is required for ElizaOS CLI but is not installed or not found in PATH'
+          );
+          logger.error(
+            { src: 'cli', util: 'user-environment' },
+            'Install Bun using the appropriate command for your system'
+          );
 
           if (platform === 'win32') {
-            logger.error({ src: 'cli', util: 'user-environment' }, 'Windows: powershell -c "irm bun.sh/install.ps1 | iex"');
+            logger.error(
+              { src: 'cli', util: 'user-environment' },
+              'Windows: powershell -c "irm bun.sh/install.ps1 | iex"'
+            );
           } else {
-            logger.error({ src: 'cli', util: 'user-environment' }, 'Linux/macOS: curl -fsSL https://bun.sh/install | bash');
+            logger.error(
+              { src: 'cli', util: 'user-environment' },
+              'Linux/macOS: curl -fsSL https://bun.sh/install | bash'
+            );
             if (platform === 'darwin') {
-              logger.error({ src: 'cli', util: 'user-environment' }, 'macOS (Homebrew): brew install bun');
+              logger.error(
+                { src: 'cli', util: 'user-environment' },
+                'macOS (Homebrew): brew install bun'
+              );
             }
           }
 
-          logger.error({ src: 'cli', util: 'user-environment' }, 'More options: https://bun.sh/docs/installation');
-          logger.error({ src: 'cli', util: 'user-environment' }, 'After installation, restart your terminal or source your shell profile');
+          logger.error(
+            { src: 'cli', util: 'user-environment' },
+            'More options: https://bun.sh/docs/installation'
+          );
+          logger.error(
+            { src: 'cli', util: 'user-environment' },
+            'After installation, restart your terminal or source your shell profile'
+          );
 
           // Force exit the process - Bun is required for ElizaOS CLI
-          logger.error({ src: 'cli', util: 'user-environment' }, 'Exiting: Bun installation is required to continue');
+          logger.error(
+            { src: 'cli', util: 'user-environment' },
+            'Exiting: Bun installation is required to continue'
+          );
           process.exit(1);
         }
       }
@@ -297,7 +351,10 @@ export class UserEnvironment {
     // Resolve .env from current working directory up to monorepo root (if any), or only cwd if not in monorepo
     const envFilePath = resolveEnvFile(process.cwd(), monorepoRoot ?? undefined);
 
-    logger.debug({ src: 'cli', util: 'user-environment', monorepoRoot: monorepoRoot || 'Not in monorepo' }, 'Detected monorepo root');
+    logger.debug(
+      { src: 'cli', util: 'user-environment', monorepoRoot: monorepoRoot || 'Not in monorepo' },
+      'Detected monorepo root'
+    );
 
     return {
       elizaDir,
@@ -321,7 +378,10 @@ export class UserEnvironment {
       return this.cachedInfo[cacheKey];
     }
 
-    logger.debug({ src: 'cli', util: 'user-environment', directory: cacheKey }, 'Gathering environment information');
+    logger.debug(
+      { src: 'cli', util: 'user-environment', directory: cacheKey },
+      'Gathering environment information'
+    );
 
     const [os, cli, packageManager, paths, env] = await Promise.all([
       this.getOSInfo(),
@@ -399,16 +459,34 @@ export class UserEnvironment {
       try {
         const { stdout } = await bunExecSimple('npm', ['view', packageName, 'version']);
         if (stdout?.trim()) {
-          logger.info({ src: 'cli', util: 'user-environment', packageName, version: stdout.trim() }, 'Found latest version from npm');
+          logger.info(
+            { src: 'cli', util: 'user-environment', packageName, version: stdout.trim() },
+            'Found latest version from npm'
+          );
           return stdout.trim();
         }
       } catch (npmError) {
-        logger.warn({ src: 'cli', util: 'user-environment', error: npmError instanceof Error ? npmError.message : String(npmError) }, 'Could not get latest version from npm');
+        logger.warn(
+          {
+            src: 'cli',
+            util: 'user-environment',
+            error: npmError instanceof Error ? npmError.message : String(npmError),
+          },
+          'Could not get latest version from npm'
+        );
       }
 
       return '0.25.9'; // Default fallback
     } catch (error) {
-      logger.warn({ src: 'cli', util: 'user-environment', packageName, error: error instanceof Error ? error.message : String(error) }, 'Error getting package version');
+      logger.warn(
+        {
+          src: 'cli',
+          util: 'user-environment',
+          packageName,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error getting package version'
+      );
       return '0.25.9';
     }
   }
@@ -431,7 +509,14 @@ export class UserEnvironment {
 
       return pluginPackages;
     } catch (error) {
-      logger.warn({ src: 'cli', util: 'user-environment', error: error instanceof Error ? error.message : String(error) }, 'Error getting local packages');
+      logger.warn(
+        {
+          src: 'cli',
+          util: 'user-environment',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error getting local packages'
+      );
       return [];
     }
   }

@@ -14,7 +14,10 @@ export class PostgresConnectionManager {
 
     if (rlsServerId) {
       poolConfig.application_name = rlsServerId;
-      logger.debug({ src: 'plugin:sql', rlsServerId: rlsServerId.substring(0, 8) }, 'Pool configured with RLS server');
+      logger.debug(
+        { src: 'plugin:sql', rlsServerId: rlsServerId.substring(0, 8) },
+        'Pool configured with RLS server'
+      );
     }
 
     this.pool = new Pool(poolConfig);

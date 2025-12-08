@@ -30,10 +30,7 @@ function isAutoInstallAllowed(): boolean {
 export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
   try {
     if (!isAutoInstallAllowed()) {
-      logger.debug(
-        { src: 'core:plugin', pluginName },
-        'Auto-install disabled, skipping'
-      );
+      logger.debug({ src: 'core:plugin', pluginName }, 'Auto-install disabled, skipping');
       return false;
     }
 
@@ -89,7 +86,10 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
     return false;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    logger.error({ src: 'core:plugin', pluginName, error: message }, 'Unexpected error during auto-install');
+    logger.error(
+      { src: 'core:plugin', pluginName, error: message },
+      'Unexpected error during auto-install'
+    );
     return false;
   }
 }
@@ -202,7 +202,10 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
       try {
         pluginModule = await import(pluginName);
       } catch (secondError) {
-        logger.error({ src: 'core:plugin', pluginName, error: secondError }, 'Import failed after auto-install');
+        logger.error(
+          { src: 'core:plugin', pluginName, error: secondError },
+          'Import failed after auto-install'
+        );
         return null;
       }
     }
@@ -278,7 +281,7 @@ export function normalizePluginName(pluginName: string): string {
 /**
  * Resolve plugin dependencies with circular dependency detection
  * Performs topological sorting of plugins to ensure dependencies are loaded in the correct order
- * 
+ *
  * Supports both scoped package names (@elizaos/plugin-discord) and short names (discord)
  */
 export function resolvePluginDependencies(
@@ -330,7 +333,10 @@ export function resolvePluginDependencies(
 
     if (visited.has(canonicalName)) return;
     if (visiting.has(canonicalName)) {
-      logger.error({ src: 'core:plugin', pluginName: canonicalName }, 'Circular dependency detected');
+      logger.error(
+        { src: 'core:plugin', pluginName: canonicalName },
+        'Circular dependency detected'
+      );
       return;
     }
 
@@ -369,7 +375,10 @@ export function resolvePluginDependencies(
     })
     .filter((p): p is Plugin => Boolean(p));
 
-  logger.debug({ src: 'core:plugin', plugins: finalPlugins.map((p) => p.name) }, 'Plugins resolved');
+  logger.debug(
+    { src: 'core:plugin', plugins: finalPlugins.map((p) => p.name) },
+    'Plugins resolved'
+  );
 
   return finalPlugins;
 }
@@ -400,15 +409,15 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
 
 /**
  * Helper function to queue a plugin dependency for resolution if it hasn't been queued or loaded already.
- * 
+ *
  * This function handles plugin name normalization to prevent duplicate queuing when dependencies
  * are specified using different naming conventions (e.g., '@elizaos/plugin-discord' vs 'discord').
- * 
+ *
  * @param depName - The dependency name to queue (can be scoped or short name)
  * @param seenDependencies - Set tracking all dependency names that have been processed
  * @param pluginMap - Map of already loaded plugins keyed by their canonical names
  * @param queue - The resolution queue to add the dependency to if not already present
- * 
+ *
  * @remarks
  * The function normalizes the dependency name and checks multiple sources to determine if it's
  * already queued:
@@ -416,7 +425,7 @@ export async function loadPlugin(nameOrPlugin: string | Plugin): Promise<Plugin 
  * - Normalized name match in seenDependencies
  * - Normalized name match against pluginMap keys
  * - Name match against plugin names in pluginMap values
- * 
+ *
  * If the dependency is not found in any of these sources, it's added to both seenDependencies
  * (with both original and normalized names) and the resolution queue.
  */
@@ -434,9 +443,7 @@ function queueDependency(
     seenDependencies.has(depName) ||
     seenDependencies.has(normalizedDepName) ||
     // Check if any plugin map key normalizes to the same name
-    Array.from(pluginMap.keys()).some(
-      (key) => normalizePluginName(key) === normalizedDepName
-    ) ||
+    Array.from(pluginMap.keys()).some((key) => normalizePluginName(key) === normalizedDepName) ||
     // Check if any plugin's name normalizes to the same name
     Array.from(pluginMap.values()).some(
       (p) =>

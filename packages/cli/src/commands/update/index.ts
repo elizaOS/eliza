@@ -70,7 +70,10 @@ export const update = new Command()
           return;
         }
 
-        logger.debug({ src: 'cli', command: 'update', dirType: directoryInfo.type }, 'Directory detected');
+        logger.debug(
+          { src: 'cli', command: 'update', dirType: directoryInfo.type },
+          'Directory detected'
+        );
 
         if (!isInProject) {
           handleInvalidDirectory(directoryInfo);

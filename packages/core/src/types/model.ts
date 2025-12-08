@@ -203,20 +203,20 @@ export type GenerateTextParams = {
   /** Optional. A list of sequences at which the model will stop generating further tokens. */
   stopSequences?: string[];
   /** Optional. User identifier for tracking and analytics purposes.
-   * 
+   *
    * This parameter is used by LLM providers (e.g., OpenAI) to track and monitor API usage per user.
    * It helps providers identify abuse patterns, implement rate limiting, and provide usage analytics.
-   * 
+   *
    * Behavior:
    * - If not provided (undefined), will automatically default to the agent's character name
    * - If explicitly set to empty string (""), it will be preserved (not overridden)
    * - If explicitly set to null, it will be preserved (not overridden)
-   * 
+   *
    * Examples:
    * - `user: "alice"` - Tracks requests from user "alice"
    * - `user: ""` - Explicitly sends empty user identifier
    * - `user: undefined` - Auto-populates with character name (e.g., "MyAgent")
-   * 
+   *
    * Note: Plugin implementations should pass this parameter to their provider's API when supported.
    */
   user?: string | null;

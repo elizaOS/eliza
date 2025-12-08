@@ -154,7 +154,10 @@ export const updateEntityAction: Action = {
   ): Promise<ActionResult> => {
     try {
       if (!state) {
-        logger.error({ src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId }, 'State is required for the updateEntity action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId },
+          'State is required for the updateEntity action'
+        );
         return {
           text: 'State is required for updateEntity action',
           values: {
@@ -171,7 +174,10 @@ export const updateEntityAction: Action = {
       }
 
       if (!callback) {
-        logger.error({ src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId }, 'Callback is required for the updateEntity action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId },
+          'Callback is required for the updateEntity action'
+        );
         return {
           text: 'Callback is required for updateEntity action',
           values: {
@@ -188,7 +194,10 @@ export const updateEntityAction: Action = {
       }
 
       if (!responses) {
-        logger.error({ src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId }, 'Responses are required for the updateEntity action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId },
+          'Responses are required for the updateEntity action'
+        );
         return {
           text: 'Responses are required for updateEntity action',
           values: {
@@ -205,7 +214,10 @@ export const updateEntityAction: Action = {
       }
 
       if (!message) {
-        logger.error({ src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId }, 'Message is required for the updateEntity action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId },
+          'Message is required for the updateEntity action'
+        );
         return {
           text: 'Message is required for updateEntity action',
           values: {
@@ -278,7 +290,11 @@ export const updateEntityAction: Action = {
         }
       } catch (error: any) {
         logger.error(
-          { src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:bootstrap:action:update_entity',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Failed to parse component data'
         );
         await callback({
@@ -394,7 +410,14 @@ export const updateEntityAction: Action = {
         };
       }
     } catch (error) {
-      logger.error({ src: 'plugin:bootstrap:action:update_entity', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in updateEntity handler');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:action:update_entity',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in updateEntity handler'
+      );
       await callback?.({
         text: 'There was an error processing the entity information.',
         actions: ['UPDATE_ENTITY_ERROR'],

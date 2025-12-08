@@ -234,10 +234,7 @@ describe('File Utilities', () => {
     });
 
     it('should handle files with null tempFilePath', () => {
-      const files: TestFileObject[] = [
-        { tempFilePath: null },
-        { tempFilePath: undefined },
-      ];
+      const files: TestFileObject[] = [{ tempFilePath: null }, { tempFilePath: undefined }];
 
       expect(() => cleanupFiles(files as unknown as Express.Multer.File[])).not.toThrow();
     });
@@ -250,7 +247,7 @@ describe('File Utilities', () => {
 
       // Just validate the function accepts the correct structure
       expect(Array.isArray(files)).toBe(true);
-      expect(files.every(f => typeof f === 'object')).toBe(true);
+      expect(files.every((f) => typeof f === 'object')).toBe(true);
     });
   });
 

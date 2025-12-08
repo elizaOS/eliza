@@ -101,7 +101,14 @@ export class MessageBusService extends Service {
     this.serverInstance = getGlobalAgentServer();
     this.boundHandleIncomingMessage = (data: unknown) => {
       this.handleIncomingMessage(data).catch((error) => {
-        logger.error({ src: 'service:message-bus', agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error handling incoming message');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentName: this.runtime.character.name,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error handling incoming message'
+        );
       });
     };
     this.boundHandleServerAgentUpdate = this.handleServerAgentUpdate.bind(this);
@@ -122,7 +129,10 @@ export class MessageBusService extends Service {
   }
 
   private async connectToMessageBus() {
-    logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId }, 'Subscribing to internal message bus');
+    logger.info(
+      { src: 'service:message-bus', agentId: this.runtime.agentId },
+      'Subscribing to internal message bus'
+    );
     internalMessageBus.on('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.on('server_agent_update', this.boundHandleServerAgentUpdate);
     internalMessageBus.on('message_deleted', this.boundHandleMessageDeleted);
@@ -165,19 +175,60 @@ export class MessageBusService extends Service {
                   this.validChannelIds.add(channel.id as UUID);
                 }
               });
-              logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, messageServerId, channelCount: data.data.channels.length }, 'Fetched channels from server');
+              logger.info(
+                {
+                  src: 'service:message-bus',
+                  agentId: this.runtime.agentId,
+                  messageServerId,
+                  channelCount: data.data.channels.length,
+                },
+                'Fetched channels from server'
+              );
             }
           } else {
-            logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, messageServerId, status: response.status }, 'Failed to fetch channels from server');
+            logger.warn(
+              {
+                src: 'service:message-bus',
+                agentId: this.runtime.agentId,
+                messageServerId,
+                status: response.status,
+              },
+              'Failed to fetch channels from server'
+            );
           }
         } catch (serverError) {
-          logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId, error: serverError instanceof Error ? serverError.message : String(serverError) }, 'Error fetching channels from server');
+          logger.error(
+            {
+              src: 'service:message-bus',
+              agentId: this.runtime.agentId,
+              agentName: this.runtime.character.name,
+              messageServerId,
+              error: serverError instanceof Error ? serverError.message : String(serverError),
+            },
+            'Error fetching channels from server'
+          );
         }
       }
 
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelCount: this.validChannelIds.size, serverCount: messageServersToCheck.size }, 'Loaded valid channel IDs from servers');
+      logger.info(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          channelCount: this.validChannelIds.size,
+          serverCount: messageServersToCheck.size,
+        },
+        'Loaded valid channel IDs from servers'
+      );
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error fetching valid channel IDs');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error fetching valid channel IDs'
+      );
     }
   }
 
@@ -186,7 +237,10 @@ export class MessageBusService extends Service {
       const serverApiUrl = this.getCentralMessageServerUrl();
 
       if (!validateUuid(channelId)) {
-        logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId }, 'Invalid channel ID format');
+        logger.warn(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, channelId },
+          'Invalid channel ID format'
+        );
         return [];
       }
 
@@ -205,9 +259,15 @@ export class MessageBusService extends Service {
         if (detailsResponse.ok) {
           // Channel exists, add it to our valid set for future use
           this.validChannelIds.add(channelId);
-          logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId }, 'Discovered new channel');
+          logger.info(
+            { src: 'service:message-bus', agentId: this.runtime.agentId, channelId },
+            'Discovered new channel'
+          );
         } else {
-          logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId }, 'Channel does not exist or is not accessible');
+          logger.warn(
+            { src: 'service:message-bus', agentId: this.runtime.agentId, channelId },
+            'Channel does not exist or is not accessible'
+          );
           return [];
         }
       }
@@ -230,7 +290,16 @@ export class MessageBusService extends Service {
       }
       return [];
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, channelId, error: error instanceof Error ? error.message : String(error) }, 'Error fetching channel participants');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          channelId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error fetching channel participants'
+      );
       return [];
     }
   }
@@ -253,18 +322,51 @@ export class MessageBusService extends Service {
           this.subscribedMessageServers = new Set(data.data.messageServers);
           // Always include the server
           this.subscribedMessageServers.add(this.serverInstance.messageServerId);
-          logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, serverCount: this.subscribedMessageServers.size, messageServerId: this.serverInstance.messageServerId }, 'Agent subscribed to servers');
+          logger.info(
+            {
+              src: 'service:message-bus',
+              agentId: this.runtime.agentId,
+              agentName: this.runtime.character.name,
+              serverCount: this.subscribedMessageServers.size,
+              messageServerId: this.serverInstance.messageServerId,
+            },
+            'Agent subscribed to servers'
+          );
         }
       } else {
         // Even if the request fails, ensure we're subscribed to the server
         this.subscribedMessageServers.add(this.serverInstance.messageServerId);
-        logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: this.serverInstance.messageServerId }, 'Failed to fetch agent servers, added default server');
+        logger.warn(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            messageServerId: this.serverInstance.messageServerId,
+          },
+          'Failed to fetch agent servers, added default server'
+        );
       }
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error fetching agent servers');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error fetching agent servers'
+      );
       // Even on error, ensure we're subscribed to the server
       this.subscribedMessageServers.add(this.serverInstance.messageServerId);
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: this.serverInstance.messageServerId }, 'Added default server after error');
+      logger.info(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          messageServerId: this.serverInstance.messageServerId,
+        },
+        'Added default server after error'
+      );
     }
   }
 
@@ -275,29 +377,66 @@ export class MessageBusService extends Service {
 
     if (data.type === 'agent_added_to_server') {
       this.subscribedMessageServers.add(data.messageServerId);
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: data.messageServerId }, 'Agent added to server');
+      logger.info(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          messageServerId: data.messageServerId,
+        },
+        'Agent added to server'
+      );
       // Refresh channel IDs to include channels from the new server
       await this.fetchValidChannelIds();
     } else if (data.type === 'agent_removed_from_server') {
       this.subscribedMessageServers.delete(data.messageServerId);
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: data.messageServerId }, 'Agent removed from server');
+      logger.info(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          messageServerId: data.messageServerId,
+        },
+        'Agent removed from server'
+      );
       // Refresh channel IDs to remove channels from the removed server
       await this.fetchValidChannelIds();
     }
   }
 
-  private async validateMessageServerSubscription(message: MessageServiceMessage): Promise<boolean> {
+  private async validateMessageServerSubscription(
+    message: MessageServiceMessage
+  ): Promise<boolean> {
     if (!this.subscribedMessageServers.has(message.message_server_id)) {
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: message.message_server_id }, 'Agent not subscribed to server, ignoring message');
+      logger.debug(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          messageServerId: message.message_server_id,
+        },
+        'Agent not subscribed to server, ignoring message'
+      );
       return false;
     }
-    logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageServerId: message.message_server_id }, 'Passed server subscription check');
+    logger.debug(
+      {
+        src: 'service:message-bus',
+        agentId: this.runtime.agentId,
+        agentName: this.runtime.character.name,
+        messageServerId: message.message_server_id,
+      },
+      'Passed server subscription check'
+    );
     return true;
   }
 
   private async validateNotSelfMessage(message: MessageServiceMessage): Promise<boolean> {
     if (message.author_id === this.runtime.agentId) {
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId }, 'Agent is author, ignoring message');
+      logger.debug(
+        { src: 'service:message-bus', agentId: this.runtime.agentId },
+        'Agent is author, ignoring message'
+      );
       return false;
     }
     return true;
@@ -321,7 +460,10 @@ export class MessageBusService extends Service {
       });
     } catch (error: any) {
       if (error.message && error.message.includes('worlds_pkey')) {
-        logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, worldId: agentWorldId }, 'World already exists');
+        logger.debug(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, worldId: agentWorldId },
+          'World already exists'
+        );
       } else {
         throw error;
       }
@@ -343,7 +485,10 @@ export class MessageBusService extends Service {
       });
     } catch (error: any) {
       if (error.message && error.message.includes('rooms_pkey')) {
-        logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId }, 'Room already exists');
+        logger.debug(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId },
+          'Room already exists'
+        );
       } else {
         throw error;
       }
@@ -375,7 +520,14 @@ export class MessageBusService extends Service {
   public async handleIncomingMessage(data: unknown) {
     // Validate the incoming data structure
     if (!data || typeof data !== 'object') {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name }, 'Invalid message data received');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+        },
+        'Invalid message data received'
+      );
       return;
     }
 
@@ -388,27 +540,54 @@ export class MessageBusService extends Service {
       !messageData.author_id ||
       !messageData.content
     ) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, hasId: !!messageData.id, hasChannelId: !!messageData.channel_id, hasAuthorId: !!messageData.author_id, hasContent: !!messageData.content }, 'Message missing required fields');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          hasId: !!messageData.id,
+          hasChannelId: !!messageData.channel_id,
+          hasAuthorId: !!messageData.author_id,
+          hasContent: !!messageData.content,
+        },
+        'Message missing required fields'
+      );
       return;
     }
 
     const message = messageData as MessageServiceMessage;
-    logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId: message.id }, 'Received message from central bus');
+    logger.info(
+      { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: message.id },
+      'Received message from central bus'
+    );
 
     const participants = await this.getChannelParticipants(message.channel_id);
 
     if (!participants.includes(this.runtime.agentId)) {
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: message.channel_id }, 'Agent not a participant in channel, ignoring message');
+      logger.debug(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          channelId: message.channel_id,
+        },
+        'Agent not a participant in channel, ignoring message'
+      );
       return;
     }
 
-    logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: message.channel_id }, 'Agent is participant, processing message');
+    logger.debug(
+      { src: 'service:message-bus', agentId: this.runtime.agentId, channelId: message.channel_id },
+      'Agent is participant, processing message'
+    );
 
     try {
       if (!(await this.validateMessageServerSubscription(message))) return;
       if (!(await this.validateNotSelfMessage(message))) return;
 
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId }, 'All checks passed, processing message');
+      logger.debug(
+        { src: 'service:message-bus', agentId: this.runtime.agentId },
+        'All checks passed, processing message'
+      );
 
       // Get ElizaOS instance
       const elizaOS = getGlobalElizaOS();
@@ -426,7 +605,10 @@ export class MessageBusService extends Service {
       // Check if this memory already exists (in case of duplicate processing)
       const existingMemory = await this.runtime.getMemoryById(uniqueMemoryId);
       if (existingMemory) {
-        logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, memoryId: uniqueMemoryId }, 'Memory already exists, skipping duplicate');
+        logger.debug(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, memoryId: uniqueMemoryId },
+          'Memory already exists, skipping duplicate'
+        );
         return;
       }
 
@@ -472,7 +654,10 @@ export class MessageBusService extends Service {
         },
         {
           onResponse: async (responseContent: Content) => {
-            logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId }, 'Agent generated response, sending to bus');
+            logger.info(
+              { src: 'service:message-bus', agentId: this.runtime.agentId },
+              'Agent generated response, sending to bus'
+            );
 
             await this.runtime.createMemory(
               {
@@ -495,7 +680,15 @@ export class MessageBusService extends Service {
             );
           },
           onError: async (error: Error) => {
-            logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error.message }, 'Error processing message via sendMessage');
+            logger.error(
+              {
+                src: 'service:message-bus',
+                agentId: this.runtime.agentId,
+                agentName: this.runtime.character.name,
+                error: error.message,
+              },
+              'Error processing message via sendMessage'
+            );
           },
         }
       );
@@ -507,13 +700,24 @@ export class MessageBusService extends Service {
       const messageServerId = (world as any)?.messageServerId as UUID;
       await this.notifyMessageComplete(channelId, messageServerId);
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error processing incoming message');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error processing incoming message'
+      );
     }
   }
 
   private async handleMessageDeleted(data: any) {
     try {
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId }, 'Received message_deleted event');
+      logger.info(
+        { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId },
+        'Received message_deleted event'
+      );
 
       // Convert the central message ID to the agent's unique memory ID
       const agentMemoryId = createUniqueUuid(this.runtime, data.messageId);
@@ -523,38 +727,85 @@ export class MessageBusService extends Service {
 
       if (existingMemory) {
         if (!this.runtime.messageService) {
-          logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name }, 'messageService not initialized, cannot delete message');
+          logger.error(
+            {
+              src: 'service:message-bus',
+              agentId: this.runtime.agentId,
+              agentName: this.runtime.character.name,
+            },
+            'messageService not initialized, cannot delete message'
+          );
           return;
         }
 
         await this.runtime.messageService.deleteMessage(this.runtime, existingMemory);
-        logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId }, 'Successfully processed message deletion');
+        logger.debug(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId },
+          'Successfully processed message deletion'
+        );
       } else {
-        logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId }, 'No memory found for deleted message');
+        logger.warn(
+          { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId },
+          'No memory found for deleted message'
+        );
       }
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error handling message deletion');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error handling message deletion'
+      );
     }
   }
 
   private async handleChannelCleared(data: any) {
     try {
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: data.channelId }, 'Received channel_cleared event');
+      logger.info(
+        { src: 'service:message-bus', agentId: this.runtime.agentId, channelId: data.channelId },
+        'Received channel_cleared event'
+      );
 
       // Convert the central channel ID to the agent's unique room ID
       const agentRoomId = createUniqueUuid(this.runtime, data.channelId);
 
       if (!this.runtime.messageService) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name }, 'messageService not initialized, cannot clear channel');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+          },
+          'messageService not initialized, cannot clear channel'
+        );
         return;
       }
 
       // Use message service to clear the channel
       await this.runtime.messageService.clearChannel(this.runtime, agentRoomId, data.channelId);
 
-      logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: data.channelId, roomId: agentRoomId }, 'Successfully processed channel clear');
+      logger.info(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          channelId: data.channelId,
+          roomId: agentRoomId,
+        },
+        'Successfully processed channel clear'
+      );
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error handling channel clear');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error handling channel clear'
+      );
     }
   }
 
@@ -573,7 +824,16 @@ export class MessageBusService extends Service {
       const messageServerId = world?.messageServerId as UUID;
 
       if (!channelId || !messageServerId) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, roomId: agentRoomId, worldId: agentWorldId }, 'Cannot map room/world to central IDs');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            roomId: agentRoomId,
+            worldId: agentWorldId,
+          },
+          'Cannot map room/world to central IDs'
+        );
         return;
       }
 
@@ -582,7 +842,14 @@ export class MessageBusService extends Service {
         content.actions?.includes('IGNORE') || !content.text || content.text.trim() === '';
 
       if (shouldSkip) {
-        logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, reason: content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text' }, 'Skipping response');
+        logger.debug(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            reason: content.actions?.includes('IGNORE') ? 'IGNORE action' : 'No text',
+          },
+          'Skipping response'
+        );
         return;
       }
 
@@ -618,7 +885,10 @@ export class MessageBusService extends Service {
         },
       };
 
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId, messageServerId }, 'Sending response to central server');
+      logger.debug(
+        { src: 'service:message-bus', agentId: this.runtime.agentId, channelId, messageServerId },
+        'Sending response to central server'
+      );
 
       // Actual fetch to the central server API
       const baseUrl = this.getCentralMessageServerUrl();
@@ -632,10 +902,26 @@ export class MessageBusService extends Service {
       });
 
       if (!response.ok) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, status: response.status }, 'Error sending response to central server');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            status: response.status,
+          },
+          'Error sending response to central server'
+        );
       }
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error sending agent response to bus');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error sending agent response to bus'
+      );
     }
   }
 
@@ -655,7 +941,16 @@ export class MessageBusService extends Service {
       const messageServerId = (world as any)?.messageServerId as UUID;
 
       if (!channelId || !messageServerId) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, roomId: agentRoomId, worldId: agentWorldId }, 'Cannot map room/world to central IDs');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            roomId: agentRoomId,
+            worldId: agentWorldId,
+          },
+          'Cannot map room/world to central IDs'
+        );
         return;
       }
 
@@ -694,7 +989,10 @@ export class MessageBusService extends Service {
       const baseUrl = this.getCentralMessageServerUrl();
       const submitUrl = new URL('/api/messaging/action', baseUrl).toString();
 
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId }, 'Sending action to central server');
+      logger.debug(
+        { src: 'service:message-bus', agentId: this.runtime.agentId, messageId },
+        'Sending action to central server'
+      );
 
       const response = await fetch(submitUrl, {
         method: 'POST',
@@ -703,11 +1001,27 @@ export class MessageBusService extends Service {
       });
 
       if (!response.ok) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, status: response.status }, 'POST /action failed');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            status: response.status,
+          },
+          'POST /action failed'
+        );
       }
       return response;
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error in notifyActionStart');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in notifyActionStart'
+      );
     }
   }
 
@@ -727,7 +1041,16 @@ export class MessageBusService extends Service {
       const messageServerId = (world as any)?.messageServerId as UUID;
 
       if (!channelId || !messageServerId) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, roomId: agentRoomId, worldId: agentWorldId }, 'Cannot map room/world to central IDs');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            roomId: agentRoomId,
+            worldId: agentWorldId,
+          },
+          'Cannot map room/world to central IDs'
+        );
         return;
       }
 
@@ -763,7 +1086,10 @@ export class MessageBusService extends Service {
       const baseUrl = this.getCentralMessageServerUrl();
       const patchUrl = new URL(`/api/messaging/action/${messageId}`, baseUrl).toString();
 
-      logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId }, 'Sending action update to central server');
+      logger.debug(
+        { src: 'service:message-bus', agentId: this.runtime.agentId, messageId },
+        'Sending action update to central server'
+      );
 
       const response = await fetch(patchUrl, {
         method: 'PATCH',
@@ -772,11 +1098,28 @@ export class MessageBusService extends Service {
       });
 
       if (!response.ok) {
-        logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, messageId, status: response.status }, 'PATCH /action failed');
+        logger.error(
+          {
+            src: 'service:message-bus',
+            agentId: this.runtime.agentId,
+            agentName: this.runtime.character.name,
+            messageId,
+            status: response.status,
+          },
+          'PATCH /action failed'
+        );
       }
       return response;
     } catch (error) {
-      logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error in notifyActionUpdate');
+      logger.error(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          agentName: this.runtime.character.name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in notifyActionUpdate'
+      );
     }
   }
 
@@ -791,7 +1134,14 @@ export class MessageBusService extends Service {
         body: JSON.stringify({ channel_id: channelId, message_server_id: messageServerId }),
       });
     } catch (error) {
-      logger.warn({ src: 'service:message-bus', agentId: this.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to notify completion');
+      logger.warn(
+        {
+          src: 'service:message-bus',
+          agentId: this.runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to notify completion'
+      );
     }
   }
 
@@ -835,14 +1185,20 @@ export class MessageBusService extends Service {
 
       // Only allow HTTP/HTTPS protocols
       if (!['http:', 'https:'].includes(url.protocol)) {
-        logger.warn({ src: 'service:message-bus', protocol: url.protocol }, 'Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL');
+        logger.warn(
+          { src: 'service:message-bus', protocol: url.protocol },
+          'Unsafe protocol in CENTRAL_MESSAGE_SERVER_URL'
+        );
         return defaultUrl;
       }
 
       // Only allow safe localhost variants and block private/internal IPs
       const allowedHosts = ['localhost', '127.0.0.1', '::1'];
       if (!allowedHosts.includes(url.hostname)) {
-        logger.warn({ src: 'service:message-bus', hostname: url.hostname }, 'Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL');
+        logger.warn(
+          { src: 'service:message-bus', hostname: url.hostname },
+          'Unsafe hostname in CENTRAL_MESSAGE_SERVER_URL'
+        );
         return defaultUrl;
       }
 
@@ -850,7 +1206,10 @@ export class MessageBusService extends Service {
       if (url.port) {
         const portNum = parseInt(url.port, 10);
         if (isNaN(portNum) || portNum <= 0 || portNum > 65535) {
-          logger.warn({ src: 'service:message-bus', port: url.port }, 'Invalid port in CENTRAL_MESSAGE_SERVER_URL');
+          logger.warn(
+            { src: 'service:message-bus', port: url.port },
+            'Invalid port in CENTRAL_MESSAGE_SERVER_URL'
+          );
           return defaultUrl;
         }
       }
@@ -862,13 +1221,23 @@ export class MessageBusService extends Service {
 
       return url.toString().replace(/\/$/, ''); // Remove trailing slash
     } catch (error) {
-      logger.error({ src: 'service:message-bus', baseUrl }, 'Invalid URL format in CENTRAL_MESSAGE_SERVER_URL');
+      logger.error(
+        { src: 'service:message-bus', baseUrl },
+        'Invalid URL format in CENTRAL_MESSAGE_SERVER_URL'
+      );
       return defaultUrl;
     }
   }
 
   async stop(): Promise<void> {
-    logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name }, 'MessageBusService stopping');
+    logger.info(
+      {
+        src: 'service:message-bus',
+        agentId: this.runtime.agentId,
+        agentName: this.runtime.character.name,
+      },
+      'MessageBusService stopping'
+    );
     internalMessageBus.off('new_message', this.boundHandleIncomingMessage);
     internalMessageBus.off('server_agent_update', this.boundHandleServerAgentUpdate);
     internalMessageBus.off('message_deleted', this.boundHandleMessageDeleted);

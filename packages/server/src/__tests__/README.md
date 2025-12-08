@@ -86,6 +86,7 @@ bun test packages/server/ --watch
 ## 🧪 Test Categories
 
 ### Unit Tests (`unit/`)
+
 Test individual components in isolation without external dependencies.
 
 - **API**: HTTP endpoint handlers, request/response formatting
@@ -94,6 +95,7 @@ Test individual components in isolation without external dependencies.
 - **Utils**: Pure functions (path resolution, validation, UUID generation, file handling)
 
 ### Integration Tests (`integration/`)
+
 Test interactions between multiple components with real dependencies.
 
 - Agent server lifecycle (startup, registration, shutdown)
@@ -103,6 +105,7 @@ Test interactions between multiple components with real dependencies.
 - Bootstrap plugin auto-loading
 
 ### Security Tests (`security/`)
+
 Test security-critical features and access controls.
 
 - Row Level Security (RLS) multi-tenancy
@@ -111,6 +114,7 @@ Test security-critical features and access controls.
 - Endpoint security
 
 ### Feature Tests (`features/`)
+
 Test complete features end-to-end.
 
 - Character file size limits (regression tests)
@@ -119,6 +123,7 @@ Test complete features end-to-end.
 - Server core patterns (rate limiting, middleware, configuration)
 
 ### Compatibility Tests (`compatibility/`)
+
 Ensure CLI and API compatibility across versions.
 
 - Export structure validation
@@ -156,7 +161,7 @@ import {
   createMockExpressRequest,
   createMockExpressResponse,
   createMockSocketIOServer,
-  createMockHttpServer
+  createMockHttpServer,
 } from './test-utils/mocks';
 ```
 
@@ -164,12 +169,12 @@ import {
 
 **22 tests currently skipped:**
 
-| File | Reason | Status |
-|------|--------|--------|
-| `message-bus.test.ts` | Timeouts due to async event handling complexity | Known issue |
+| File                          | Reason                                              | Status              |
+| ----------------------------- | --------------------------------------------------- | ------------------- |
+| `message-bus.test.ts`         | Timeouts due to async event handling complexity     | Known issue         |
 | `database-operations.test.ts` | Test interference in full run (passes in isolation) | Needs isolation fix |
-| `agents-runs.test.ts` | Test interference in full run (passes in isolation) | Needs isolation fix |
-| Various loader tests | File system operations cause hangs with Bun | Known Bun issue |
+| `agents-runs.test.ts`         | Test interference in full run (passes in isolation) | Needs isolation fix |
+| Various loader tests          | File system operations cause hangs with Bun         | Known Bun issue     |
 
 ## 📝 Writing Tests
 
@@ -185,7 +190,11 @@ import {
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { setupTestEnvironment, teardownTestEnvironment, type EnvironmentSnapshot } from '../test-utils/environment';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  type EnvironmentSnapshot,
+} from '../test-utils/environment';
 
 describe('Feature Name', () => {
   let envSnapshot: EnvironmentSnapshot;
@@ -230,6 +239,7 @@ import { AgentServer } from '../../../index';
 ### Test Isolation Issues
 
 If tests pass individually but fail in suite:
+
 1. Check for environment variable pollution
 2. Ensure `clearCache()` is called in cleanup
 3. Verify database/server cleanup in `afterEach`
@@ -238,12 +248,12 @@ If tests pass individually but fail in suite:
 
 Common import path patterns:
 
-| Location | Import Server Code | Import Test Utils |
-|----------|-------------------|-------------------|
-| `unit/utils/` | `../../../` | `../../test-utils/` |
-| `unit/middleware/` | `../../../` | `../../test-utils/` |
-| `integration/` | `../../` | `../test-utils/` |
-| `features/` | `../../` | `../test-utils/` |
+| Location           | Import Server Code | Import Test Utils   |
+| ------------------ | ------------------ | ------------------- |
+| `unit/utils/`      | `../../../`        | `../../test-utils/` |
+| `unit/middleware/` | `../../../`        | `../../test-utils/` |
+| `integration/`     | `../../`           | `../test-utils/`    |
+| `features/`        | `../../`           | `../test-utils/`    |
 
 ## 📚 Additional Resources
 

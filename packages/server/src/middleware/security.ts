@@ -66,7 +66,10 @@ export const securityMiddleware = () => {
     // Check for other suspicious patterns
     for (const indicator of suspiciousIndicators) {
       if (url.includes(indicator.pattern) || queryString.includes(indicator.pattern)) {
-        logger.warn({ src: 'http', ip: clientIp, url, pattern: indicator.name }, 'Suspicious pattern detected');
+        logger.warn(
+          { src: 'http', ip: clientIp, url, pattern: indicator.name },
+          'Suspicious pattern detected'
+        );
         break;
       }
     }

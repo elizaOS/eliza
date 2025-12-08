@@ -122,9 +122,7 @@ export default function ConnectionStatus() {
                 <p className="text-xs">Try refreshing the connection or check server logs.</p>
               )}
               {isUnauthorized && (
-                <p className="text-xs">
-                  Check the API key configured in your client settings.
-                </p>
+                <p className="text-xs">Check the API key configured in your client settings.</p>
               )}
             </div>
           </TooltipContent>

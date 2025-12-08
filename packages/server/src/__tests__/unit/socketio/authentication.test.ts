@@ -110,9 +110,7 @@ describe('SocketIO Authentication', () => {
       await authMiddleware(mockSocket, next);
 
       expect(next).toHaveBeenCalledWith(); // Called without error
-      expect(loggerDebugSpy).toHaveBeenCalledWith(
-        expect.stringContaining('API Key verified')
-      );
+      expect(loggerDebugSpy).toHaveBeenCalledWith(expect.stringContaining('API Key verified'));
     });
 
     it('should skip API key check when SERVER_API_KEY is not set', async () => {
@@ -203,9 +201,7 @@ describe('SocketIO Authentication', () => {
 
       expect(next).toHaveBeenCalledWith(); // Called without error
       expect(mockSocket.data.entityId).toBe(entityId);
-      expect(loggerDebugSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Using client entityId')
-      );
+      expect(loggerDebugSpy).toHaveBeenCalledWith(expect.stringContaining('Using client entityId'));
     });
   });
 

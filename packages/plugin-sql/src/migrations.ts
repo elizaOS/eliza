@@ -33,7 +33,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
     // This ensures the snapshot matches the current database state after our migrations
     logger.debug('[Migration] → Clearing RuntimeMigrator snapshot cache...');
     try {
-      await db.execute(sql`DELETE FROM migrations._snapshots WHERE plugin_name = '@elizaos/plugin-sql'`);
+      await db.execute(
+        sql`DELETE FROM migrations._snapshots WHERE plugin_name = '@elizaos/plugin-sql'`
+      );
       logger.debug('[Migration] ✓ Snapshot cache cleared');
     } catch (error) {
       // If migrations schema doesn't exist yet, that's fine - no cache to clear
@@ -92,7 +94,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         if (serverId && !messageServerId) {
           // Only server_id exists → rename it to message_server_id
           logger.debug(`[Migration] → Renaming ${tableName}.server_id to message_server_id...`);
-          await db.execute(sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "server_id" TO "message_server_id"`));
+          await db.execute(
+            sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "server_id" TO "message_server_id"`)
+          );
           logger.debug(`[Migration] ✓ Renamed ${tableName}.server_id → message_server_id`);
 
           // If the column was text, try to convert to UUID (if data is UUID-compatible)
@@ -100,59 +104,100 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
             try {
               // CRITICAL: Drop DEFAULT constraint before type conversion
               // This prevents "default for column cannot be cast automatically" errors
-              logger.debug(`[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`);
-              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`));
+              logger.debug(
+                `[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`
+              );
+              await db.execute(
+                sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`)
+              );
               logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
 
-              logger.debug(`[Migration] → Converting ${tableName}.message_server_id from text to uuid...`);
-              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING "message_server_id"::uuid`));
+              logger.debug(
+                `[Migration] → Converting ${tableName}.message_server_id from text to uuid...`
+              );
+              await db.execute(
+                sql.raw(
+                  `ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING "message_server_id"::uuid`
+                )
+              );
               logger.debug(`[Migration] ✓ Converted ${tableName}.message_server_id to uuid`);
             } catch (convertError) {
-              logger.warn(`[Migration] ⚠️ Could not convert ${tableName}.message_server_id to uuid - data may not be valid UUIDs`);
+              logger.warn(
+                `[Migration] ⚠️ Could not convert ${tableName}.message_server_id to uuid - data may not be valid UUIDs`
+              );
               // If conversion fails, set to NULL for rows with invalid UUIDs
               // This allows the migration to continue
-              logger.debug(`[Migration] → Setting invalid UUIDs to NULL in ${tableName}.message_server_id...`);
-              await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING CASE WHEN "message_server_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN "message_server_id"::uuid ELSE NULL END`));
+              logger.debug(
+                `[Migration] → Setting invalid UUIDs to NULL in ${tableName}.message_server_id...`
+              );
+              await db.execute(
+                sql.raw(
+                  `ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING CASE WHEN "message_server_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN "message_server_id"::uuid ELSE NULL END`
+                )
+              );
             }
           }
 
           // If the column should be NOT NULL but has NULLs, we need to handle that
           // For channels, it's NOT NULL in the new schema
           if (tableName === 'channels') {
-            const nullCountResult = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`));
+            const nullCountResult = await db.execute(
+              sql.raw(
+                `SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`
+              )
+            );
             const nullCount = nullCountResult.rows?.[0]?.count;
             if (nullCount && parseInt(nullCount) > 0) {
-              logger.warn(`[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`);
-              await db.execute(sql.raw(`DELETE FROM "${tableName}" WHERE "message_server_id" IS NULL`));
-              logger.debug(`[Migration] ✓ Deleted ${nullCount} rows with NULL message_server_id from ${tableName}`);
+              logger.warn(
+                `[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`
+              );
+              await db.execute(
+                sql.raw(`DELETE FROM "${tableName}" WHERE "message_server_id" IS NULL`)
+              );
+              logger.debug(
+                `[Migration] ✓ Deleted ${nullCount} rows with NULL message_server_id from ${tableName}`
+              );
             }
 
             // Make it NOT NULL
             logger.debug(`[Migration] → Making ${tableName}.message_server_id NOT NULL...`);
-            await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" SET NOT NULL`));
+            await db.execute(
+              sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" SET NOT NULL`)
+            );
             logger.debug(`[Migration] ✓ Set ${tableName}.message_server_id NOT NULL`);
           }
         } else if (serverId && messageServerId) {
           // Both exist → just drop server_id (will be re-added by RuntimeMigrator for RLS)
           logger.debug(`[Migration] → ${tableName} has both columns, dropping server_id...`);
           await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "server_id" CASCADE`));
-          logger.debug(`[Migration] ✓ Dropped ${tableName}.server_id (will be re-added by RuntimeMigrator for RLS)`);
+          logger.debug(
+            `[Migration] ✓ Dropped ${tableName}.server_id (will be re-added by RuntimeMigrator for RLS)`
+          );
         } else if (!serverId && messageServerId) {
           // Only message_server_id exists - check if it needs type conversion from TEXT to UUID
           // This handles idempotency when migration partially ran before rollback
           if (messageServerId.data_type === 'text') {
-            logger.debug(`[Migration] → ${tableName}.message_server_id exists but is TEXT, needs UUID conversion...`);
+            logger.debug(
+              `[Migration] → ${tableName}.message_server_id exists but is TEXT, needs UUID conversion...`
+            );
 
             // CRITICAL: Drop DEFAULT constraint before type conversion
             // This prevents "default for column cannot be cast automatically" errors
-            logger.debug(`[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`);
-            await db.execute(sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`));
+            logger.debug(
+              `[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`
+            );
+            await db.execute(
+              sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`)
+            );
             logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
 
             // Convert TEXT to UUID using MD5 hash for non-UUID text values
             // This creates deterministic UUIDs from text values, preserving data
-            logger.debug(`[Migration] → Converting ${tableName}.message_server_id from text to uuid (generating UUIDs from text)...`);
-            await db.execute(sql.raw(`
+            logger.debug(
+              `[Migration] → Converting ${tableName}.message_server_id from text to uuid (generating UUIDs from text)...`
+            );
+            await db.execute(
+              sql.raw(`
               ALTER TABLE "${tableName}"
               ALTER COLUMN "message_server_id" TYPE uuid
               USING CASE
@@ -160,7 +205,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
                 THEN "message_server_id"::uuid
                 ELSE md5("message_server_id")::uuid
               END
-            `));
+            `)
+            );
             logger.debug(`[Migration] ✓ Converted ${tableName}.message_server_id to uuid`);
           } else {
             logger.debug(`[Migration] ⊘ ${tableName}.message_server_id already UUID, skipping`);
@@ -202,7 +248,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       for (const row of tablesToClean) {
         const tableName = row.table_name as string;
         try {
-          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN IF EXISTS server_id CASCADE`));
+          await db.execute(
+            sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN IF EXISTS server_id CASCADE`)
+          );
           logger.debug(`[Migration] ✓ Dropped server_id from ${tableName}`);
         } catch (error) {
           logger.debug(`[Migration] ⊘ Could not drop server_id from ${tableName}`);
@@ -226,7 +274,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
 
       const tables = tablesResult.rows || [];
       const hasServerAgents = tables.some((t: any) => t.table_name === 'server_agents');
-      const hasMessageServerAgents = tables.some((t: any) => t.table_name === 'message_server_agents');
+      const hasMessageServerAgents = tables.some(
+        (t: any) => t.table_name === 'message_server_agents'
+      );
 
       if (hasServerAgents && !hasMessageServerAgents) {
         // Rename server_agents → message_server_agents
@@ -235,8 +285,14 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         logger.debug('[Migration] ✓ Renamed server_agents → message_server_agents');
 
         // Now rename server_id column → message_server_id
-        logger.debug('[Migration] → Renaming message_server_agents.server_id to message_server_id...');
-        await db.execute(sql.raw(`ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`));
+        logger.debug(
+          '[Migration] → Renaming message_server_agents.server_id to message_server_id...'
+        );
+        await db.execute(
+          sql.raw(
+            `ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`
+          )
+        );
         logger.debug('[Migration] ✓ Renamed message_server_agents.server_id → message_server_id');
       } else if (!hasServerAgents && !hasMessageServerAgents) {
         // Neither table exists - RuntimeMigrator will create message_server_agents
@@ -259,12 +315,20 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
 
         if (hasServerId && !hasMessageServerId) {
           // Rename server_id → message_server_id
-          logger.debug('[Migration] → Renaming message_server_agents.server_id to message_server_id...');
-          await db.execute(sql.raw(`ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`));
+          logger.debug(
+            '[Migration] → Renaming message_server_agents.server_id to message_server_id...'
+          );
+          await db.execute(
+            sql.raw(
+              `ALTER TABLE "message_server_agents" RENAME COLUMN "server_id" TO "message_server_id"`
+            )
+          );
           logger.debug('[Migration] ✓ Renamed message_server_agents.server_id → message_server_id');
         } else if (!hasServerId && !hasMessageServerId) {
           // Table exists but doesn't have either column - truncate it
-          logger.debug('[Migration] → message_server_agents exists without required columns, truncating...');
+          logger.debug(
+            '[Migration] → message_server_agents exists without required columns, truncating...'
+          );
           await db.execute(sql`TRUNCATE TABLE message_server_agents CASCADE`);
           logger.debug('[Migration] ✓ Truncated message_server_agents');
         } else {
@@ -295,11 +359,15 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       if (hasUserId && !hasEntityId) {
         // Rename user_id → entity_id
         logger.debug('[Migration] → Renaming channel_participants.user_id to entity_id...');
-        await db.execute(sql.raw(`ALTER TABLE "channel_participants" RENAME COLUMN "user_id" TO "entity_id"`));
+        await db.execute(
+          sql.raw(`ALTER TABLE "channel_participants" RENAME COLUMN "user_id" TO "entity_id"`)
+        );
         logger.debug('[Migration] ✓ Renamed channel_participants.user_id → entity_id');
       } else if (!hasUserId && !hasEntityId) {
         // Table exists but has neither column - truncate it so RuntimeMigrator can add entity_id
-        logger.debug('[Migration] → channel_participants exists without entity_id or user_id, truncating...');
+        logger.debug(
+          '[Migration] → channel_participants exists without entity_id or user_id, truncating...'
+        );
         await db.execute(sql`TRUNCATE TABLE channel_participants CASCADE`);
         logger.debug('[Migration] ✓ Truncated channel_participants');
       } else {

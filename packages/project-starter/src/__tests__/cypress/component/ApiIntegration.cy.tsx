@@ -41,7 +41,11 @@ const DataFetchingComponent: React.FC<{ agentId: string }> = ({ agentId }) => {
   return (
     <div data-testid="data-display">
       <h2>Agent: {agentId}</h2>
-      <ul>{data?.items?.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul>
+      <ul>
+        {data?.items?.map((item: string, index: number) => (
+          <li key={index}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 };

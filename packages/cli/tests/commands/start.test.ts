@@ -12,7 +12,7 @@ import {
 } from './test-utils';
 import { bunExecSimple } from '../../src/utils/bun-exec';
 
-describe('ElizaOS Start Commands', () => {
+describe('ElizaOS Start Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
   let testTmpDir: string;
   let elizaosPath: string;
   let originalCwd: string;

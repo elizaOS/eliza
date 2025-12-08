@@ -102,7 +102,14 @@ const factsProvider: Provider = {
         text,
       };
     } catch (error) {
-      runtime.logger.error({ src: 'plugin:bootstrap:provider:facts', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in factsProvider');
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap:provider:facts',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in factsProvider'
+      );
       return {
         values: {
           facts: '',

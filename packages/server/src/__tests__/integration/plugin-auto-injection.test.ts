@@ -73,7 +73,7 @@ describe('Bootstrap Auto-Loading', () => {
           {
             character: testCharacter,
             plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
-          }
+          },
         ],
         {
           isTestMode: true,
@@ -169,7 +169,7 @@ describe('Bootstrap Auto-Loading', () => {
           {
             character: testCharacter,
             plugins: [mockCharacterPlugin], // Use mock plugin at runtime level
-          }
+          },
         ],
         {
           isTestMode: true,
@@ -253,9 +253,11 @@ describe('Bootstrap Auto-Loading', () => {
         .withPlugins([])
         .build();
 
-      const runtimes = await serverFixture.getServer().startAgents([{ character: agent1 }, { character: agent2 }], {
-        isTestMode: true,
-      });
+      const runtimes = await serverFixture
+        .getServer()
+        .startAgents([{ character: agent1 }, { character: agent2 }], {
+          isTestMode: true,
+        });
 
       expect(runtimes).toHaveLength(2);
 

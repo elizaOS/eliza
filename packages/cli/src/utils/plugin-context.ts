@@ -68,7 +68,10 @@ export function detectPluginContext(pluginName: string): PluginContext {
     const localPath = path.resolve(cwd, mainEntry);
     const needsBuild = !existsSync(localPath);
 
-    logger.debug({ src: 'cli', util: 'plugin-context', pluginName, localPath, needsBuild }, 'Detected local plugin development');
+    logger.debug(
+      { src: 'cli', util: 'plugin-context', pluginName, localPath, needsBuild },
+      'Detected local plugin development'
+    );
 
     return {
       isLocalDevelopment: true,
@@ -102,7 +105,10 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
         logger.success({ src: 'cli', util: 'plugin-context' }, 'Plugin built successfully');
         return true;
       } else {
-        logger.error({ src: 'cli', util: 'plugin-context', expectedPath: localPath }, 'Build completed but output not found');
+        logger.error(
+          { src: 'cli', util: 'plugin-context', expectedPath: localPath },
+          'Build completed but output not found'
+        );
         return false;
       }
     } catch (error) {
@@ -111,8 +117,14 @@ export async function ensurePluginBuilt(context: PluginContext): Promise<boolean
     }
   }
 
-  logger.error({ src: 'cli', util: 'plugin-context' }, 'Plugin not built and no build script found');
-  logger.info({ src: 'cli', util: 'plugin-context' }, 'Add a build script to package.json or run bun run build');
+  logger.error(
+    { src: 'cli', util: 'plugin-context' },
+    'Plugin not built and no build script found'
+  );
+  logger.info(
+    { src: 'cli', util: 'plugin-context' },
+    'Add a build script to package.json or run bun run build'
+  );
   return false;
 }
 
@@ -124,11 +136,20 @@ export function provideLocalPluginGuidance(pluginName: string, context: PluginCo
     return;
   }
 
-  logger.info({ src: 'cli', util: 'plugin-context', pluginName }, 'Local plugin development detected');
+  logger.info(
+    { src: 'cli', util: 'plugin-context', pluginName },
+    'Local plugin development detected'
+  );
 
   if (context.needsBuild) {
-    logger.info({ src: 'cli', util: 'plugin-context' }, 'To fix: 1) bun run build, 2) verify output, 3) re-run');
+    logger.info(
+      { src: 'cli', util: 'plugin-context' },
+      'To fix: 1) bun run build, 2) verify output, 3) re-run'
+    );
   } else {
-    logger.info({ src: 'cli', util: 'plugin-context' }, 'Plugin built but failed to load, try rebuilding');
+    logger.info(
+      { src: 'cli', util: 'plugin-context' },
+      'Plugin built but failed to load, try rebuilding'
+    );
   }
 }

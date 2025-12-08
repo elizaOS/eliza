@@ -84,7 +84,12 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       );
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error creating room'
       );
       sendError(
@@ -128,7 +133,12 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { rooms: agentRooms });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving rooms for agent'
       );
       sendError(
@@ -175,7 +185,13 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
       });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, roomId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          roomId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving room details'
       );
       sendError(

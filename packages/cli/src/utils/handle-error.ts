@@ -21,15 +21,24 @@ export function handleError(error: unknown) {
   if (isNoSpace) {
     logger.error({ src: 'cli', util: 'error-handler' }, 'No space left on device');
     if (error instanceof Error) {
-      logger.error({ src: 'cli', util: 'error-handler', error: error.message, stack: error.stack }, 'Error details');
+      logger.error(
+        { src: 'cli', util: 'error-handler', error: error.message, stack: error.stack },
+        'Error details'
+      );
     } else {
       logger.error({ src: 'cli', util: 'error-handler', error: String(error) }, 'Error details');
     }
   } else {
     if (error instanceof Error) {
-      logger.error({ src: 'cli', util: 'error-handler', error: error.message, stack: error.stack }, 'Error occurred');
+      logger.error(
+        { src: 'cli', util: 'error-handler', error: error.message, stack: error.stack },
+        'Error occurred'
+      );
     } else {
-      logger.error({ src: 'cli', util: 'error-handler', errorType: typeof error, error: String(error) }, 'Unknown error');
+      logger.error(
+        { src: 'cli', util: 'error-handler', errorType: typeof error, error: String(error) },
+        'Unknown error'
+      );
     }
   }
   process.exit(1);

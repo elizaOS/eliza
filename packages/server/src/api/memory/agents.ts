@@ -60,7 +60,12 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving memories for room'
       );
       sendError(
@@ -133,7 +138,12 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error retrieving agent memories'
       );
       sendError(
@@ -202,7 +212,16 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       logger.success({ src: 'http', path: req.path, agentId, memoryId }, 'Memory updated');
       sendSuccess(res, { id: memoryId, message: 'Memory updated successfully' });
     } catch (error) {
-      logger.error({ src: 'http', path: req.path, agentId, memoryId, error: error instanceof Error ? error.message : String(error) }, 'Error updating memory');
+      logger.error(
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          memoryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error updating memory'
+      );
       sendError(
         res,
         500,
@@ -233,7 +252,12 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { deleted, message: 'All agent memories cleared successfully' });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId: req.params.agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId: req.params.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error deleting all agent memories'
       );
       sendError(
@@ -271,7 +295,13 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       res.status(204).send();
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId: req.params.agentId, roomId: req.params.roomId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId: req.params.agentId,
+          roomId: req.params.roomId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error deleting all memories'
       );
       sendError(
@@ -305,7 +335,13 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       sendSuccess(res, { message: 'Memory deleted successfully' });
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId: req.params.agentId, memoryId: req.params.memoryId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId: req.params.agentId,
+          memoryId: req.params.memoryId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error deleting memory'
       );
       sendError(

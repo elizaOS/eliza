@@ -349,7 +349,10 @@ async function readCharactersFromStorage(characterPaths: string[]): Promise<stri
       characterPaths.push(path.join(uploadDir, fileName));
     }
   } catch (err) {
-    logger.error({ src: 'http', error: (err as Error).message }, 'Error reading character storage directory');
+    logger.error(
+      { src: 'http', error: (err as Error).message },
+      'Error reading character storage directory'
+    );
   }
 
   return characterPaths;
@@ -381,7 +384,10 @@ export async function loadCharacters(charactersArg: string): Promise<Character[]
       } catch (error) {
         // Log error but continue loading other characters
         const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.error({ src: 'http', path: characterPath, error: errorMsg }, 'Failed to load character');
+        logger.error(
+          { src: 'http', path: characterPath, error: errorMsg },
+          'Failed to load character'
+        );
       }
     }
   }

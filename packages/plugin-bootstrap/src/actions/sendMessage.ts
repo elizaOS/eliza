@@ -146,7 +146,10 @@ export const sendMessageAction: Action = {
   ): Promise<ActionResult> => {
     try {
       if (!state) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'State is required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'State is required for sendMessage action'
+        );
         return {
           text: 'State is required for sendMessage action',
           values: {
@@ -162,7 +165,10 @@ export const sendMessageAction: Action = {
         };
       }
       if (!callback) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'Callback is required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'Callback is required for sendMessage action'
+        );
         return {
           text: 'Callback is required for sendMessage action',
           values: {
@@ -178,7 +184,10 @@ export const sendMessageAction: Action = {
         };
       }
       if (!responses) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'Responses are required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'Responses are required for sendMessage action'
+        );
         return {
           text: 'Responses are required for sendMessage action',
           values: {
@@ -353,7 +362,11 @@ export const sendMessageAction: Action = {
           };
         } catch (error: any) {
           logger.error(
-            { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:bootstrap:action:send_message',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Failed to send direct message'
           );
           await callback({
@@ -470,7 +483,11 @@ export const sendMessageAction: Action = {
           };
         } catch (error: any) {
           logger.error(
-            { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:bootstrap:action:send_message',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Failed to send room message'
           );
           await callback({
@@ -514,7 +531,14 @@ export const sendMessageAction: Action = {
         success: false,
       };
     } catch (error) {
-      logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in sendMessage handler');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:action:send_message',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in sendMessage handler'
+      );
       await callback?.({
         text: 'There was an error processing your message request.',
         actions: ['SEND_MESSAGE_ERROR'],

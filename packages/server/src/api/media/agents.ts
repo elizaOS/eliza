@@ -88,7 +88,14 @@ export function createAgentMediaRouter(): express.Router {
       const result = await saveUploadedFile(req.file, agentId);
 
       logger.info(
-        { src: 'http', path: req.path, agentId, mediaType, filename: result.filename, url: result.url },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          mediaType,
+          filename: result.filename,
+          url: result.url,
+        },
         'Successfully uploaded media'
       );
 
@@ -100,7 +107,15 @@ export function createAgentMediaRouter(): express.Router {
         size: req.file.size,
       });
     } catch (error) {
-      logger.error({ src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing media upload');
+      logger.error(
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error processing media upload'
+      );
       sendError(
         res,
         500,

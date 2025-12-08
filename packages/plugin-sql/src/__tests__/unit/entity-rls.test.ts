@@ -110,7 +110,10 @@ describe('Entity RLS Column Detection', () => {
       };
 
       const shouldApplyRLS =
-        columns.has_room_id || columns.has_channel_id || columns.has_entity_id || columns.has_author_id;
+        columns.has_room_id ||
+        columns.has_channel_id ||
+        columns.has_entity_id ||
+        columns.has_author_id;
 
       expect(shouldApplyRLS).toBe(false);
     });
@@ -343,7 +346,9 @@ describe('Entity RLS Security Properties', () => {
       expect(aliceEntityId).not.toBe(bobEntityId);
 
       // Both should be valid UUIDs
-      expect(aliceEntityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(aliceEntityId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
       expect(bobEntityId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
 
@@ -395,7 +400,9 @@ describe('Entity RLS Security Properties', () => {
       ];
 
       // Bob should NOT see messages from room-123
-      const bobCanSee = participants.some((p) => p.entity_id === bobEntityId && p.channel_id === 'room-123');
+      const bobCanSee = participants.some(
+        (p) => p.entity_id === bobEntityId && p.channel_id === 'room-123'
+      );
 
       expect(bobCanSee).toBe(false);
     });

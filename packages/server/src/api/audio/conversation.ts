@@ -146,7 +146,12 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
       );
     } catch (error) {
       logger.error(
-        { src: 'http', path: req.path, agentId, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'http',
+          path: req.path,
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error processing conversation'
       );
       sendError(
