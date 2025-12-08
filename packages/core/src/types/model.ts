@@ -223,7 +223,94 @@ export type GenerateTextParams = {
   /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
    * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
   responseFormat?: { type: 'json_object' | 'text' } | string;
+  /**
+   * Optional. Enable streaming mode for text generation.
+   * When true, the model returns a TextStreamResult instead of a string.
+   *
+   * Streaming allows processing tokens as they are generated, enabling:
+   * - Real-time UI updates (typing effect)
+   * - Lower perceived latency
+   * - Early response handling
+   *
+   * Note: Not all providers support streaming. If unsupported, the model
+   * will fall back to non-streaming mode and return the complete response.
+   *
+   * @default false
+   */
+  stream?: boolean;
 };
+
+/**
+ * Token usage information from a model response.
+ * Provides metrics about token consumption for billing and monitoring.
+ */
+export interface TokenUsage {
+  /** Number of tokens in the input prompt */
+  promptTokens: number;
+  /** Number of tokens in the generated response */
+  completionTokens: number;
+  /** Total tokens used (promptTokens + completionTokens) */
+  totalTokens: number;
+}
+
+/**
+ * Represents a single chunk in a text stream.
+ * Each chunk contains a piece of the generated text.
+ */
+export interface TextStreamChunk {
+  /** The text content of this chunk */
+  text: string;
+  /** Whether this is the final chunk in the stream */
+  done: boolean;
+}
+
+/**
+ * Result of a streaming text generation request.
+ * Provides an async iterable for consuming text chunks as they arrive.
+ *
+ * @example
+ * ```typescript
+ * const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+ *   prompt: "Hello",
+ *   stream: true
+ * }) as TextStreamResult;
+ *
+ * let fullText = '';
+ * for await (const chunk of result.textStream) {
+ *   fullText += chunk;
+ *   console.log('Received:', chunk);
+ * }
+ *
+ * // After stream completes
+ * const usage = await result.usage;
+ * console.log('Total tokens:', usage.totalTokens);
+ * ```
+ */
+export interface TextStreamResult {
+  /**
+   * Async iterable that yields text chunks as they are generated.
+   * Each iteration provides a string chunk of the response.
+   */
+  textStream: AsyncIterable<string>;
+
+  /**
+   * Promise that resolves to the complete text after streaming finishes.
+   * Useful when you need the full response after streaming.
+   */
+  text: Promise<string>;
+
+  /**
+   * Promise that resolves to token usage information after streaming completes.
+   * May be undefined if the provider doesn't report usage for streaming.
+   */
+  usage: Promise<TokenUsage | undefined>;
+
+  /**
+   * Promise that resolves to the finish reason after streaming completes.
+   * Common values: 'stop', 'length', 'content-filter'
+   */
+  finishReason: Promise<string | undefined>;
+}
 
 /**
  * Options for the simplified generateText API.
@@ -398,7 +485,14 @@ export interface ModelParamsMap {
 }
 
 /**
- * Map of model types to their return value types
+ * Map of model types to their DEFAULT return value types.
+ *
+ * Note: For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*),
+ * the actual return type depends on the parameters and is handled by overloads:
+ * - `{ prompt }`: Returns `string` (this default)
+ * - `{ prompt, stream: true }`: Returns `TextStreamResult` (via overload)
+ *
+ * The overloads in IAgentRuntime.useModel() provide the correct type inference.
  */
 export interface ModelResultMap {
   [ModelType.TEXT_SMALL]: string;
@@ -418,6 +512,19 @@ export interface ModelResultMap {
   [ModelType.OBJECT_LARGE]: Record<string, unknown>;
   // Allow string index for custom model types
   [key: string]: unknown;
+}
+
+/**
+ * Type guard to check if a model type supports streaming.
+ */
+export function isStreamableModelType(modelType: ModelTypeName): boolean {
+  return [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+    ModelType.TEXT_REASONING_SMALL,
+    ModelType.TEXT_REASONING_LARGE,
+    ModelType.TEXT_COMPLETION,
+  ].includes(modelType as any);
 }
 
 /**

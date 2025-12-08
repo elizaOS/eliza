@@ -14,6 +14,9 @@ import type {
   ModelTypeName,
   GenerateTextOptions,
   GenerateTextResult,
+  GenerateTextParams,
+  TextStreamResult,
+  TextGenerationModelType,
 } from './model';
 import type { Plugin, RuntimeEventStorage, Route } from './plugin';
 import type { Content, UUID } from './primitives';
@@ -142,6 +145,40 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
+  /**
+   * Use a model for inference with proper type inference based on parameters.
+   *
+   * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
+   * - `{ prompt }`: Returns `Promise<string>` (backwards compatible)
+   * - `{ prompt, stream: true }`: Returns `Promise<TextStreamResult>` (streaming)
+   *
+   * @example
+   * ```typescript
+   * // Simple text (returns string)
+   * const text = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello" });
+   *
+   * // Streaming (returns TextStreamResult)
+   * const stream = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello", stream: true });
+   * for await (const chunk of stream.textStream) {
+   *   console.log(chunk);
+   * }
+   * ```
+   */
+  // Overload 1: Streaming text generation → TextStreamResult
+  useModel(
+    modelType: TextGenerationModelType,
+    params: GenerateTextParams & { stream: true },
+    provider?: string
+  ): Promise<TextStreamResult>;
+
+  // Overload 2: Simple text generation → string
+  useModel(
+    modelType: TextGenerationModelType,
+    params: GenerateTextParams & { stream?: false },
+    provider?: string
+  ): Promise<string>;
+
+  // Overload 3: Generic fallback for other model types
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
     params: Omit<ModelParamsMap[T], 'runtime'>,

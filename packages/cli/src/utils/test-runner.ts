@@ -64,8 +64,8 @@ export class TestRunner {
     const testingPlugin = process.env.ELIZA_TESTING_PLUGIN === 'true';
 
     if (testingPlugin && projectAgent?.plugins) {
-      // Find the plugin that's not a core plugin (like sql)
-      const corePlugins = ['@elizaos/plugin-sql'];
+      // Find the plugin that's not a core plugin (like sql or bootstrap)
+      const corePlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap', 'bootstrap'];
       const nonCorePlugins = projectAgent.plugins.filter(
         (plugin) => !corePlugins.includes(plugin.name)
       );
