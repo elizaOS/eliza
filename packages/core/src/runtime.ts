@@ -38,6 +38,7 @@ import {
   type ModelParamsMap,
   type ModelResultMap,
   type ModelTypeName,
+  type TextStreamResult,
   type Plugin,
   type RuntimeEventStorage,
   type Route,
@@ -2141,7 +2142,25 @@ export class AgentRuntime implements IAgentRuntime {
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()
         : Date.now();
+
+    // Check if streaming mode is requested
+    const isStreaming = isPlainObject(modelParams) && (modelParams as any).stream === true;
+
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
+
+    // For streaming responses, wrap with logging that fires on completion
+    if (isStreaming && response && typeof response === 'object' && 'textStream' in response) {
+      return this.wrapStreamWithLogging(
+        response as TextStreamResult,
+        modelType,
+        modelKey,
+        params,
+        promptContent,
+        startTime,
+        provider
+      ) as R;
+    }
+
     const elapsedTime =
       (typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()
@@ -2202,6 +2221,83 @@ export class AgentRuntime implements IAgentRuntime {
     });
 
     return response as R;
+  }
+
+  /**
+   * Wraps a streaming response with logging that fires when the stream completes.
+   * This ensures timing and usage metrics are captured for streaming responses.
+   */
+  private wrapStreamWithLogging(
+    streamResult: TextStreamResult,
+    modelType: ModelTypeName,
+    modelKey: string,
+    params: any,
+    promptContent: string | null,
+    startTime: number,
+    provider?: string
+  ): TextStreamResult {
+    // Create a wrapped text promise that logs on completion
+    const wrappedText = streamResult.text.then((text) => {
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
+
+      this.logger.trace(
+        { src: 'agent', agentId: this.agentId, model: modelKey, duration: Number(elapsedTime.toFixed(2)), streaming: true },
+        'Model output (stream complete)'
+      );
+
+      // Log prompt for action context
+      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+        if (this.currentActionContext) {
+          this.currentActionContext.prompts.push({
+            modelType: modelKey,
+            prompt: promptContent,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      // Log for backward compatibility
+      this.adapter.log({
+        entityId: this.agentId,
+        roomId: this.currentRoomId ?? this.agentId,
+        body: {
+          modelType,
+          modelKey,
+          params: {
+            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+            prompt: promptContent,
+          },
+          prompt: promptContent,
+          systemPrompt: this.character?.system || null,
+          runId: this.getCurrentRunId(),
+          timestamp: Date.now(),
+          executionTime: elapsedTime,
+          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+          actionContext: this.currentActionContext
+            ? {
+                actionName: this.currentActionContext.actionName,
+                actionId: this.currentActionContext.actionId,
+              }
+            : undefined,
+          response: '[streaming response]',
+          streaming: true,
+        },
+        type: `useModel:${modelKey}`,
+      });
+
+      return text;
+    });
+
+    // Return a new stream result with the wrapped text promise
+    return {
+      textStream: streamResult.textStream,
+      text: wrappedText,
+      usage: streamResult.usage,
+      finishReason: streamResult.finishReason,
+    };
   }
 
   /**
