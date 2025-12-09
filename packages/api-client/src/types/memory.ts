@@ -7,11 +7,11 @@ export interface Memory {
   agentId: UUID;
   roomId?: UUID;
   type: string;
-  content: any;
+  content: unknown;
   embedding?: number[];
   createdAt: Date;
   updatedAt: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Room {
@@ -21,7 +21,7 @@ export interface Room {
   type?: string;
   createdAt: Date;
   updatedAt: Date;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface MemoryParams extends PaginationParams {
@@ -32,14 +32,14 @@ export interface MemoryParams extends PaginationParams {
 }
 
 export interface MemoryUpdateParams {
-  content?: any;
-  metadata?: Record<string, any>;
+  content?: unknown;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RoomCreateParams {
   name: string;
   type?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface WorldCreateParams {

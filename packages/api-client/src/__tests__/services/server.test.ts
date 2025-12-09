@@ -16,6 +16,14 @@ import type {
   ServerDebugInfo,
   LogSubmitParams,
 } from '../../types/server';
+import { ApiClientConfig } from '../../types/base';
+
+// Helper type to access protected methods in tests
+type MockableServerService = ServerService & {
+  get: ReturnType<typeof mock>;
+  post: ReturnType<typeof mock>;
+  delete: ReturnType<typeof mock>;
+};
 
 // Mock the BaseApiClient
 mock.module('../../lib/base-client', () => ({
@@ -42,20 +50,23 @@ afterAll(() => {
 });
 
 describe('ServerService', () => {
-  let serverService: ServerService;
-  let mockGet: any;
-  let mockPost: any;
-  let mockDelete: any;
+  let serverService: MockableServerService;
+  let mockGet: ReturnType<typeof mock>;
+  let mockPost: ReturnType<typeof mock>;
+  let mockDelete: ReturnType<typeof mock>;
 
   beforeEach(() => {
     mockGet = mock(() => Promise.resolve({}));
     mockPost = mock(() => Promise.resolve({}));
     mockDelete = mock(() => Promise.resolve({}));
 
-    serverService = new ServerService({ baseUrl: 'http://localhost:3000', apiKey: 'test-key' });
-    (serverService as any).get = mockGet;
-    (serverService as any).post = mockPost;
-    (serverService as any).delete = mockDelete;
+    serverService = new ServerService({
+      baseUrl: 'http://localhost:3000',
+      apiKey: 'test-key',
+    }) as MockableServerService;
+    serverService.get = mockGet;
+    serverService.post = mockPost;
+    serverService.delete = mockDelete;
   });
 
   afterEach(() => {
@@ -70,11 +81,13 @@ describe('ServerService', () => {
     });
 
     it('should throw error when config is null', () => {
-      expect(() => new ServerService(null as any)).toThrow();
+      // Testing error handling with null config
+      expect(() => new ServerService(null as ApiClientConfig)).toThrow();
     });
 
     it('should throw error when config is undefined', () => {
-      expect(() => new ServerService(undefined as any)).toThrow();
+      // Testing error handling with undefined config
+      expect(() => new ServerService(undefined as ApiClientConfig)).toThrow();
     });
   });
 

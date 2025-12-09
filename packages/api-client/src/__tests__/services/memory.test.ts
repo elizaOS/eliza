@@ -3,6 +3,14 @@ import { MemoryService } from '../../services/memory';
 import { ApiClientConfig } from '../../types/base';
 import { UUID } from '@elizaos/core';
 
+// Helper type to access protected methods in tests
+type MockableMemoryService = MemoryService & {
+  get: ReturnType<typeof mock>;
+  post: ReturnType<typeof mock>;
+  patch: ReturnType<typeof mock>;
+  delete: ReturnType<typeof mock>;
+};
+
 // Test UUIDs in proper format
 const TEST_AGENT_ID = '550e8400-e29b-41d4-a716-446655440001' as UUID;
 const TEST_ROOM_ID = '550e8400-e29b-41d4-a716-446655440002' as UUID;
@@ -10,31 +18,39 @@ const TEST_MEMORY_ID = '550e8400-e29b-41d4-a716-446655440003' as UUID;
 const TEST_MESSAGE_SERVER_ID = '550e8400-e29b-41d4-a716-446655440004' as UUID;
 
 describe('MemoryService', () => {
-  let memoryService: MemoryService;
+  let memoryService: MockableMemoryService;
   const mockConfig: ApiClientConfig = {
     baseUrl: 'http://localhost:3000',
     apiKey: 'test-key',
   };
 
   beforeEach(() => {
-    memoryService = new MemoryService(mockConfig);
+    memoryService = new MemoryService(mockConfig) as MockableMemoryService;
     // Mock the HTTP methods
-    (memoryService as any).get = mock(() => Promise.resolve({}));
-    (memoryService as any).post = mock(() => Promise.resolve({}));
-    (memoryService as any).patch = mock(() => Promise.resolve({}));
-    (memoryService as any).delete = mock(() => Promise.resolve({}));
+    memoryService.get = mock(() => Promise.resolve({}));
+    memoryService.post = mock(() => Promise.resolve({}));
+    memoryService.patch = mock(() => Promise.resolve({}));
+    memoryService.delete = mock(() => Promise.resolve({}));
   });
 
   afterEach(() => {
-    const getMock = (memoryService as any).get;
-    const postMock = (memoryService as any).post;
-    const patchMock = (memoryService as any).patch;
-    const deleteMock = (memoryService as any).delete;
+    const getMock = memoryService.get;
+    const postMock = memoryService.post;
+    const patchMock = memoryService.patch;
+    const deleteMock = memoryService.delete;
 
-    if (getMock?.mockClear) getMock.mockClear();
-    if (postMock?.mockClear) postMock.mockClear();
-    if (patchMock?.mockClear) patchMock.mockClear();
-    if (deleteMock?.mockClear) deleteMock.mockClear();
+    if (getMock?.mockClear) {
+      getMock.mockClear();
+    }
+    if (postMock?.mockClear) {
+      postMock.mockClear();
+    }
+    if (patchMock?.mockClear) {
+      patchMock.mockClear();
+    }
+    if (deleteMock?.mockClear) {
+      deleteMock.mockClear();
+    }
   });
 
   describe('constructor', () => {
@@ -43,7 +59,8 @@ describe('MemoryService', () => {
     });
 
     it('should throw error when initialized with invalid configuration', () => {
-      expect(() => new MemoryService(null as any)).toThrow();
+      // Testing error handling with null config
+      expect(() => new MemoryService(null as ApiClientConfig)).toThrow();
     });
   });
 
@@ -71,27 +88,25 @@ describe('MemoryService', () => {
           },
         ],
       };
-      (memoryService as any).get.mockResolvedValue(mockMemories);
+      memoryService.get.mockResolvedValue(mockMemories);
 
       const result = await memoryService.getAgentMemories(TEST_AGENT_ID);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
-        `/api/memory/${TEST_AGENT_ID}/memories`,
-        { params: undefined }
-      );
+      expect(memoryService.get).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/memories`, {
+        params: undefined,
+      });
       expect(result).toEqual(mockMemories);
     });
 
     it('should handle pagination parameters', async () => {
       const params = { limit: 10, offset: 20 };
-      (memoryService as any).get.mockResolvedValue({ memories: [] });
+      memoryService.get.mockResolvedValue({ memories: [] });
 
       await memoryService.getAgentMemories(TEST_AGENT_ID, params);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
-        `/api/memory/${TEST_AGENT_ID}/memories`,
-        { params }
-      );
+      expect(memoryService.get).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/memories`, {
+        params,
+      });
     });
   });
 
@@ -110,11 +125,11 @@ describe('MemoryService', () => {
           },
         ],
       };
-      (memoryService as any).get.mockResolvedValue(mockMemories);
+      memoryService.get.mockResolvedValue(mockMemories);
 
       const result = await memoryService.getRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
+      expect(memoryService.get).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}/memories`,
         { params: undefined }
       );
@@ -123,11 +138,11 @@ describe('MemoryService', () => {
 
     it('should handle memory parameters', async () => {
       const params = { limit: 5 };
-      (memoryService as any).get.mockResolvedValue({ memories: [] });
+      memoryService.get.mockResolvedValue({ memories: [] });
 
       await memoryService.getRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID, params);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
+      expect(memoryService.get).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}/memories`,
         { params }
       );
@@ -146,11 +161,11 @@ describe('MemoryService', () => {
         createdAt: new Date('2024-01-01T00:00:00Z'),
         updatedAt: new Date('2024-01-01T00:00:00Z'),
       };
-      (memoryService as any).patch.mockResolvedValue(mockUpdatedMemory);
+      memoryService.patch.mockResolvedValue(mockUpdatedMemory);
 
       const result = await memoryService.updateMemory(TEST_AGENT_ID, TEST_MEMORY_ID, updateParams);
 
-      expect((memoryService as any).patch).toHaveBeenCalledWith(
+      expect(memoryService.patch).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/memories/${TEST_MEMORY_ID}`,
         updateParams
       );
@@ -161,13 +176,11 @@ describe('MemoryService', () => {
   describe('clearAgentMemories', () => {
     it('should clear agent memories successfully', async () => {
       const mockResponse = { deleted: 10 };
-      (memoryService as any).delete.mockResolvedValue(mockResponse);
+      memoryService.delete.mockResolvedValue(mockResponse);
 
       const result = await memoryService.clearAgentMemories(TEST_AGENT_ID);
 
-      expect((memoryService as any).delete).toHaveBeenCalledWith(
-        `/api/memory/${TEST_AGENT_ID}/memories`
-      );
+      expect(memoryService.delete).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/memories`);
       expect(result).toEqual(mockResponse);
     });
   });
@@ -175,11 +188,11 @@ describe('MemoryService', () => {
   describe('clearRoomMemories', () => {
     it('should clear room memories successfully', async () => {
       const mockResponse = { deleted: 5 };
-      (memoryService as any).delete.mockResolvedValue(mockResponse);
+      memoryService.delete.mockResolvedValue(mockResponse);
 
       const result = await memoryService.clearRoomMemories(TEST_AGENT_ID, TEST_ROOM_ID);
 
-      expect((memoryService as any).delete).toHaveBeenCalledWith(
+      expect(memoryService.delete).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/memories/all/${TEST_ROOM_ID}`
       );
       expect(result).toEqual(mockResponse);
@@ -206,11 +219,11 @@ describe('MemoryService', () => {
           },
         ],
       };
-      (memoryService as any).get.mockResolvedValue(mockRooms);
+      memoryService.get.mockResolvedValue(mockRooms);
 
       const result = await memoryService.listAgentRooms(TEST_AGENT_ID);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/rooms`);
+      expect(memoryService.get).toHaveBeenCalledWith(`/api/memory/${TEST_AGENT_ID}/rooms`);
       expect(result).toEqual(mockRooms);
     });
   });
@@ -225,11 +238,11 @@ describe('MemoryService', () => {
         updatedAt: new Date('2024-01-01T00:00:00Z'),
         metadata: { description: 'A test room' },
       };
-      (memoryService as any).get.mockResolvedValue(mockRoom);
+      memoryService.get.mockResolvedValue(mockRoom);
 
       const result = await memoryService.getRoom(TEST_AGENT_ID, TEST_ROOM_ID);
 
-      expect((memoryService as any).get).toHaveBeenCalledWith(
+      expect(memoryService.get).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/rooms/${TEST_ROOM_ID}`
       );
       expect(result).toEqual(mockRoom);
@@ -248,11 +261,11 @@ describe('MemoryService', () => {
         updatedAt: new Date('2024-01-01T00:00:00Z'),
         metadata: roomParams.metadata,
       };
-      (memoryService as any).post.mockResolvedValue(mockCreatedRoom);
+      memoryService.post.mockResolvedValue(mockCreatedRoom);
 
       const result = await memoryService.createRoom(TEST_AGENT_ID, roomParams);
 
-      expect((memoryService as any).post).toHaveBeenCalledWith(
+      expect(memoryService.post).toHaveBeenCalledWith(
         `/api/memory/${TEST_AGENT_ID}/rooms`,
         roomParams
       );
@@ -261,15 +274,22 @@ describe('MemoryService', () => {
   });
 
   describe('createWorldFromServer', () => {
-    const worldParams = { messageServerId: TEST_MESSAGE_SERVER_ID, name: 'New World', description: 'A new world' };
+    const worldParams = {
+      messageServerId: TEST_MESSAGE_SERVER_ID,
+      name: 'New World',
+      description: 'A new world',
+    };
 
     it('should create world from server successfully', async () => {
       const mockResponse = { worldId: 'world-new' as UUID };
-      (memoryService as any).post.mockResolvedValue(mockResponse);
+      memoryService.post.mockResolvedValue(mockResponse);
 
-      const result = await memoryService.createWorldFromMessageServer(TEST_MESSAGE_SERVER_ID, worldParams);
+      const result = await memoryService.createWorldFromMessageServer(
+        TEST_MESSAGE_SERVER_ID,
+        worldParams
+      );
 
-      expect((memoryService as any).post).toHaveBeenCalledWith(
+      expect(memoryService.post).toHaveBeenCalledWith(
         `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}`,
         worldParams
       );
@@ -280,11 +300,11 @@ describe('MemoryService', () => {
   describe('deleteWorld', () => {
     it('should delete world successfully', async () => {
       const mockResponse = { success: true };
-      (memoryService as any).delete.mockResolvedValue(mockResponse);
+      memoryService.delete.mockResolvedValue(mockResponse);
 
       const result = await memoryService.deleteWorld(TEST_MESSAGE_SERVER_ID);
 
-      expect((memoryService as any).delete).toHaveBeenCalledWith(
+      expect(memoryService.delete).toHaveBeenCalledWith(
         `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}`
       );
       expect(result).toEqual(mockResponse);
@@ -294,11 +314,11 @@ describe('MemoryService', () => {
   describe('clearWorldMemories', () => {
     it('should clear world memories successfully', async () => {
       const mockResponse = { deleted: 15 };
-      (memoryService as any).delete.mockResolvedValue(mockResponse);
+      memoryService.delete.mockResolvedValue(mockResponse);
 
       const result = await memoryService.clearWorldMemories(TEST_MESSAGE_SERVER_ID);
 
-      expect((memoryService as any).delete).toHaveBeenCalledWith(
+      expect(memoryService.delete).toHaveBeenCalledWith(
         `/api/memory/groups/${TEST_MESSAGE_SERVER_ID}/memories`
       );
       expect(result).toEqual(mockResponse);
@@ -307,13 +327,13 @@ describe('MemoryService', () => {
 
   describe('error handling', () => {
     it('should handle network errors', async () => {
-      (memoryService as any).get.mockRejectedValue(new Error('Network error'));
+      memoryService.get.mockRejectedValue(new Error('Network error'));
 
       await expect(memoryService.getAgentMemories(TEST_AGENT_ID)).rejects.toThrow('Network error');
     });
 
     it('should handle API errors', async () => {
-      (memoryService as any).post.mockRejectedValue(new Error('API error'));
+      memoryService.post.mockRejectedValue(new Error('API error'));
 
       await expect(memoryService.createRoom(TEST_AGENT_ID, { name: 'test' })).rejects.toThrow(
         'API error'

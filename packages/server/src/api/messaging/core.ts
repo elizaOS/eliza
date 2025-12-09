@@ -24,7 +24,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
-  (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
+  router.post('/submit', async (req: express.Request, res: express.Response) => {
     const {
       channel_id,
       message_server_id, // UUID of message_servers
@@ -121,7 +121,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
-  (router as any).post('/action', async (req: express.Request, res: express.Response) => {
+  router.post('/action', async (req: express.Request, res: express.Response) => {
     const {
       messageId,
       channel_id,
@@ -221,7 +221,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
-  (router as any).patch('/action/:id', async (req: express.Request, res: express.Response) => {
+  router.patch('/action/:id', async (req: express.Request, res: express.Response) => {
     const { id } = req.params;
 
     if (!validateUuid(id)) {
@@ -301,7 +301,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
-  (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {
+  router.post('/ingest-external', async (req: express.Request, res: express.Response) => {
     const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated
 
     if (

@@ -215,7 +215,8 @@ export class MessageBuilder {
     // Explicitly set optional fields to null if undefined
     // This prevents Drizzle from using SQL 'default' keyword
     if (this.message.inReplyToRootMessageId === undefined) {
-      this.message.inReplyToRootMessageId = null as any;
+      // inReplyToRootMessageId is UUID | undefined, but we need null for database
+      this.message.inReplyToRootMessageId = null as UUID | null;
     }
 
     // Type assertion ensures required fields are present after validation
@@ -264,8 +265,12 @@ export class MessageBuilder {
     for (let i = 1; i <= count; i++) {
       const builder = new MessageBuilder();
       // Copy current state (excluding channel/author/content)
-      if (this.message.sourceType) builder.withSourceType(this.message.sourceType);
-      if (this.message.metadata) builder.withMetadata(this.message.metadata);
+      if (this.message.sourceType) {
+        builder.withSourceType(this.message.sourceType);
+      }
+      if (this.message.metadata) {
+        builder.withMetadata(this.message.metadata);
+      }
 
       // Set incremental values
       const author = typeof authorId === 'function' ? authorId(i) : authorId;

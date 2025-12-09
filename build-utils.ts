@@ -353,50 +353,35 @@ export function watchFiles(
     }
   };
 
-  try {
-    // Create the watcher with proper error handling
-    watcher = watch(directory, { recursive: true }, (eventType, filename) => {
-      if (isCleanedUp) return;
+  // Create the watcher with proper error handling
+  watcher = watch(directory, { recursive: true }, (eventType, filename) => {
+    if (isCleanedUp) return;
 
-      if (filename && extensions.some((ext) => filename.endsWith(ext))) {
-        // Debounce to avoid multiple rapid rebuilds
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
+    if (filename && extensions.some((ext) => filename.endsWith(ext))) {
+      // Debounce to avoid multiple rapid rebuilds
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+
+      debounceTimer = setTimeout(() => {
+        if (!isCleanedUp) {
+          console.log(`\n📝 File changed: ${filename}`);
+          onChange();
         }
+      }, debounceMs);
+    }
+  });
 
-        debounceTimer = setTimeout(() => {
-          if (!isCleanedUp) {
-            console.log(`\n📝 File changed: ${filename}`);
-            onChange();
-          }
-        }, debounceMs);
+  // Handle watcher errors
+  if (watcher && typeof watcher.on === 'function') {
+    watcher.on('error', (error: Error) => {
+      console.error('Watch error:', error.message);
+      if (error.message.includes('EMFILE')) {
+        console.error(
+          'Too many open files. Consider increasing your system limits or reducing the watch scope.'
+        );
       }
     });
-
-    // Handle watcher errors
-    if (watcher && typeof watcher.on === 'function') {
-      watcher.on('error', (error: Error) => {
-        console.error('Watch error:', error.message);
-        if (error.message.includes('EMFILE')) {
-          console.error(
-            'Too many open files. Consider increasing your system limits or reducing the watch scope.'
-          );
-        }
-      });
-    }
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to start file watcher: ${errorMessage}`);
-
-    if (errorMessage.includes('EMFILE')) {
-      console.error('\n⚠️  Too many open files error detected!');
-      console.error('Try one of these solutions:');
-      console.error('  1. Increase system file limit: ulimit -n 4096');
-      console.error('  2. Close other applications using file watchers');
-      console.error('  3. Reduce the scope of watched directories');
-    }
-
-    throw error;
   }
 
   // Register cleanup handlers only once per watcher
@@ -446,73 +431,67 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
     console.log(`🚀 Building ${packageName}...\n`);
   }
 
-  try {
-    // Clean previous build
-    await cleanBuild(buildOptions.outdir);
+  // Clean previous build
+  await cleanBuild(buildOptions.outdir);
 
-    // Create build configuration
-    const configTimer = getTimer();
-    const config = await createElizaBuildConfig(buildOptions);
-    console.log(`✓ Configuration prepared (${configTimer.elapsed()}ms)`);
+  // Create build configuration
+  const configTimer = getTimer();
+  const config = await createElizaBuildConfig(buildOptions);
+  console.log(`✓ Configuration prepared (${configTimer.elapsed()}ms)`);
 
-    // Build with Bun
-    console.log('\nBundling with Bun...');
-    const buildTimer = getTimer();
-    const result = await Bun.build(config);
+  // Build with Bun
+  console.log('\nBundling with Bun...');
+  const buildTimer = getTimer();
+  const result = await Bun.build(config);
 
-    if (!result.success) {
-      console.error('✗ Build failed:', result.logs);
-      onBuildComplete?.(false);
-      return false;
-    }
-
-    const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
-    const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
-    console.log(
-      `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
-    );
-
-    // Run post-build tasks
-    const postBuildTasks: Promise<void | null>[] = [];
-
-    // Add TypeScript declarations generation if requested
-    if (buildOptions.generateDts) {
-      postBuildTasks.push(
-        generateDts('./tsconfig.build.json').catch((err) => {
-          console.error('⚠ TypeScript declarations generation failed:', err);
-          // Don't throw here, as it's often non-critical
-          return null;
-        })
-      );
-    }
-
-    // Add asset copying if specified
-    if (buildOptions.assets?.length) {
-      postBuildTasks.push(
-        copyAssets(buildOptions.assets).catch((err) => {
-          console.error('✗ Asset copying failed:', err);
-          throw err; // Asset copying failure is critical
-        })
-      );
-    }
-
-    // Execute all post-build tasks
-    if (postBuildTasks.length > 0) {
-      const postBuildTimer = getTimer();
-      await Promise.all(postBuildTasks);
-      console.log(`✓ Post-build tasks completed (${postBuildTimer.elapsed()}ms)`);
-    }
-
-    console.log(`\n✅ ${packageName} build complete!`);
-    console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms`);
-
-    onBuildComplete?.(true);
-    return true;
-  } catch (error) {
-    console.error('Build error:', error);
+  if (!result.success) {
+    console.error('✗ Build failed:', result.logs);
     onBuildComplete?.(false);
     return false;
   }
+
+  const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
+  const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
+  console.log(
+    `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
+  );
+
+  // Run post-build tasks
+  const postBuildTasks: Promise<void | null>[] = [];
+
+  // Add TypeScript declarations generation if requested
+  if (buildOptions.generateDts) {
+    postBuildTasks.push(
+      generateDts('./tsconfig.build.json').catch((err) => {
+        console.error('⚠ TypeScript declarations generation failed:', err);
+        // Don't throw here, as it's often non-critical
+        return null;
+      })
+    );
+  }
+
+  // Add asset copying if specified
+  if (buildOptions.assets?.length) {
+    postBuildTasks.push(
+      copyAssets(buildOptions.assets).catch((err) => {
+        console.error('✗ Asset copying failed:', err);
+        throw err; // Asset copying failure is critical
+      })
+    );
+  }
+
+  // Execute all post-build tasks
+  if (postBuildTasks.length > 0) {
+    const postBuildTimer = getTimer();
+    await Promise.all(postBuildTasks);
+    console.log(`✓ Post-build tasks completed (${postBuildTimer.elapsed()}ms)`);
+  }
+
+  console.log(`\n✅ ${packageName} build complete!`);
+  console.log(`⏱️  Total build time: ${totalTimer.elapsed()}ms`);
+
+  onBuildComplete?.(true);
+  return true;
 }
 
 /**
@@ -538,18 +517,13 @@ export function createBuildRunner(options: BuildRunnerOptions) {
     if (buildSuccess) {
       const srcDir = join(process.cwd(), 'src');
 
-      try {
-        // Store the cleanup function returned by watchFiles
-        // The watcher stays active throughout the entire session
-        cleanupWatcher = watchFiles(srcDir, async () => {
-          await build(true);
-          console.log('📁 Watching src/ directory for changes...');
-          console.log('💡 Press Ctrl+C to stop\n');
-        });
-      } catch (error: unknown) {
-        console.error('Failed to start watch mode:', error);
-        process.exit(1);
-      }
+      // Store the cleanup function returned by watchFiles
+      // The watcher stays active throughout the entire session
+      cleanupWatcher = watchFiles(srcDir, async () => {
+        await build(true);
+        console.log('📁 Watching src/ directory for changes...');
+        console.log('💡 Press Ctrl+C to stop\n');
+      });
     }
   }
 

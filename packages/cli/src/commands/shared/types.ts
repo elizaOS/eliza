@@ -8,7 +8,7 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     message: string;
-    details?: unknown;
+    details?: Record<string, string | number | boolean | null> | string | number | boolean | null;
   };
 }
 
@@ -19,5 +19,5 @@ export interface AgentBasic {
   id: string;
   name: string;
   status?: string;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | null | undefined;
 }

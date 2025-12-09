@@ -7,7 +7,7 @@ import { stringToUuid } from '../utils';
 
 describe('generateText', () => {
   let runtime: AgentRuntime;
-  let mockUseModel: any;
+  let mockUseModel: ReturnType<typeof mock<AgentRuntime['useModel']>>;
 
   const mockCharacter: Character = {
     id: stringToUuid('test-character'),
@@ -153,7 +153,7 @@ describe('generateText', () => {
     const input = 'Test prompt';
     await runtime.generateText(input, {
       includeCharacter: false,
-      user: null as any,
+      user: null,
     });
 
     expect(mockUseModel).toHaveBeenCalledTimes(1);
@@ -327,7 +327,7 @@ describe('generateText', () => {
 
   it('should handle undefined character for user auto-population', async () => {
     runtime = new AgentRuntime({
-      character: undefined as any,
+      character: undefined as Character | undefined,
     });
     mockUseModel = mock().mockResolvedValue('Response');
     runtime.useModel = mockUseModel;

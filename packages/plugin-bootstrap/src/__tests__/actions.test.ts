@@ -758,7 +758,7 @@ describe('Generate Image Action', () => {
       if (modelType === ModelType.TEXT_LARGE) {
         // Return XML with <prompt>
         return Promise.resolve(
-          `<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>`
+          '<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>'
         );
       }
       if (modelType === ModelType.IMAGE) {

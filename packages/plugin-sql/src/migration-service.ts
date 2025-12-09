@@ -1,4 +1,4 @@
-import { logger, type Plugin } from '@elizaos/core';
+import { logger, type Plugin, type IDatabaseAdapter } from '@elizaos/core';
 import { RuntimeMigrator } from './runtime-migrator';
 import type { DrizzleDatabase } from './types';
 import { migrateToEntityRLS } from './migrations';
@@ -6,7 +6,7 @@ import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } f
 
 export class DatabaseMigrationService {
   private db: DrizzleDatabase | null = null;
-  private registeredSchemas = new Map<string, any>();
+  private registeredSchemas = new Map<string, Record<string, unknown>>();
   private migrator: RuntimeMigrator | null = null;
 
   constructor() {
@@ -23,7 +23,13 @@ export class DatabaseMigrationService {
     // TEMPORARY: Migrate from develop to feat/entity-rls (Owner RLS → Server RLS + Entity RLS)
     // This runs before the RuntimeMigrator to ensure schema compatibility
     // Can be removed after users have migrated from develop to this branch
-    await migrateToEntityRLS({ db } as any);
+    // migrateToEntityRLS expects IDatabaseAdapter, but we have db directly
+    // Create a minimal adapter wrapper
+    interface AdapterWrapper extends IDatabaseAdapter {
+      db: DrizzleDatabase;
+    }
+    const adapterWrapper: AdapterWrapper = { db } as AdapterWrapper;
+    await migrateToEntityRLS(adapterWrapper);
 
     this.migrator = new RuntimeMigrator(db);
     await this.migrator.initialize();
@@ -36,8 +42,12 @@ export class DatabaseMigrationService {
    */
   discoverAndRegisterPluginSchemas(plugins: Plugin[]): void {
     for (const plugin of plugins) {
-      if ((plugin as any).schema) {
-        this.registeredSchemas.set(plugin.name, (plugin as any).schema);
+      interface PluginWithSchema extends Plugin {
+        schema?: Record<string, unknown>;
+      }
+      const pluginWithSchema = plugin as PluginWithSchema;
+      if (pluginWithSchema.schema) {
+        this.registeredSchemas.set(plugin.name, pluginWithSchema.schema);
       }
     }
     logger.info(
@@ -55,7 +65,7 @@ export class DatabaseMigrationService {
    * @param pluginName - Plugin identifier
    * @param schema - Drizzle schema object
    */
-  registerSchema(pluginName: string, schema: any): void {
+  registerSchema(pluginName: string, schema: Record<string, unknown>): void {
     this.registeredSchemas.set(pluginName, schema);
     logger.debug({ src: 'plugin:sql', pluginName }, 'Schema registered');
   }
@@ -138,9 +148,14 @@ export class DatabaseMigrationService {
       if (dataIsolationEnabled) {
         try {
           logger.info({ src: 'plugin:sql' }, 'Re-applying Row Level Security...');
-          await installRLSFunctions({ db: this.db } as any);
-          await applyRLSToNewTables({ db: this.db } as any);
-          await applyEntityRLSToAllTables({ db: this.db } as any);
+          // RLS functions expect IDatabaseAdapter, create wrapper
+          interface AdapterWrapper extends IDatabaseAdapter {
+            db: DrizzleDatabase;
+          }
+          const adapterWrapper: AdapterWrapper = { db: this.db } as AdapterWrapper;
+          await installRLSFunctions(adapterWrapper);
+          await applyRLSToNewTables(adapterWrapper);
+          await applyEntityRLSToAllTables(adapterWrapper);
           logger.info({ src: 'plugin:sql' }, 'RLS re-applied successfully');
         } catch (rlsError) {
           const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);

@@ -95,7 +95,12 @@ const DEFAULT_MESSAGE_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID
 
 // Helper function to convert action message to ToolPart format
 const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
-  const rawMessage = message.rawMessage as any; // Type assertion to access raw message properties
+  // rawMessage is unknown, but we need to access its properties
+  interface RawMessageWithActionStatus {
+    actionStatus?: string;
+    [key: string]: unknown;
+  }
+  const rawMessage = (message.rawMessage as RawMessageWithActionStatus) || {};
 
   // Map actionStatus to ToolPart state
   const mapActionStatusToState = (status: string): ToolPart['state'] => {
@@ -967,7 +972,14 @@ export default function Chat({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      handleSendMessage(e as unknown as React.FormEvent<HTMLFormElement>);
+      // Create a synthetic form event from the keyboard event
+      const syntheticEvent = {
+        ...e,
+        preventDefault: () => e.preventDefault(),
+        currentTarget: e.currentTarget,
+        target: e.target,
+      } as React.FormEvent<HTMLFormElement>;
+      handleSendMessage(syntheticEvent);
     }
   };
 
@@ -1629,8 +1641,8 @@ export default function Chat({
                   targetAgentData={targetAgentData}
                   allAgents={allAgents}
                   animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
-                  contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
+                  scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
+                  contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1718,8 +1730,8 @@ export default function Chat({
                         targetAgentData={targetAgentData}
                         allAgents={allAgents}
                         animatedMessageId={animatedMessageId}
-                        scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
-                        contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
+                        scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
+                        contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}

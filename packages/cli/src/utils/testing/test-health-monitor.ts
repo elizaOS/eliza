@@ -115,7 +115,7 @@ export class TestHealthMonitor {
       // Convert dates
       data.lastRun = new Date(data.lastRun);
       data.testHistory = data.testHistory || [];
-      data.testHistory.forEach((run: any) => {
+      data.testHistory.forEach((run: { date: string | Date; [key: string]: unknown }) => {
         run.date = new Date(run.date);
       });
       return data;

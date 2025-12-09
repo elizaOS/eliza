@@ -414,13 +414,13 @@ describe('Parameter Override System', () => {
       const overrides: ParameterOverride[] = [
         { path: 'plugins[0].enabled', value: false },
         { path: 'plugins[1].config.apiKey', value: 'new-api-key' },
-        { path: 'environment.type', value: 'e2b' },
+        { path: 'environment.type', value: 'local' },
       ];
 
       const result = applyParameterOverrides(baseScenario, overrides);
       expect(result.plugins[0].enabled).toBe(false);
       expect(result.plugins[1].config.apiKey).toBe('new-api-key');
-      expect(result.environment.type).toBe('e2b');
+      expect(result.environment.type).toBe('local');
     });
 
     it('should handle evaluation overrides', () => {

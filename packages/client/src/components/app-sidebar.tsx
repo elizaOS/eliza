@@ -163,7 +163,7 @@ const GroupRow = ({
           {/* Name */}
           <span className="text-base truncate max-w-36">
             {channel.name ||
-              generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+              generateGroupName(channel, undefined, currentClientId)}
           </span>
           <div className="flex items-center gap-2">
             {/* Avatars */}
@@ -384,7 +384,7 @@ const ChannelsForServer = ({
                         {/* Use generateGroupName - assumes channel.participants exists or will be added */}
                         {generateGroupName(
                           channel,
-                          (channel as any).participants || [],
+                          undefined,
                           currentClientId
                         )}
                       </span>

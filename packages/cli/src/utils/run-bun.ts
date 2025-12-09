@@ -33,8 +33,9 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
         `Bun command failed with exit code ${result.exitCode}: ${result.stderr || result.stdout}`
       );
     }
-  } catch (error: any) {
-    if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
+  } catch (error: unknown) {
+    const errorObj = error as Error & { code?: string; message?: string };
+    if (errorObj.code === 'ENOENT' || errorObj.message?.includes('bun: command not found')) {
       throw new Error(`Bun command not found. ${displayBunInstallationTipCompact()}`);
     }
 
@@ -42,7 +43,7 @@ export async function runBunCommand(args: string[], cwd: string, silent = false)
     if (
       isCI &&
       isInstallCommand &&
-      (error.message?.includes('frozen-lockfile') || error.message?.includes('install'))
+      (errorObj.message?.includes('frozen-lockfile') || errorObj.message?.includes('install'))
     ) {
       console.warn('CI-optimized install failed, retrying with basic args...');
       const retryResult = silent

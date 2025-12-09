@@ -34,11 +34,15 @@ export function mock<T = any>(implementation?: (...args: any[]) => T): MockFunct
     }
 
     if (shouldReject) {
-      return Promise.reject(mockRejectedValueValue) as any;
+      // When mockRejectedValue is used, T is expected to be a Promise type
+      // Cast Promise.reject directly to T (caller knows T is Promise<Something>)
+      return Promise.reject(mockRejectedValueValue) as T;
     }
 
     if (shouldResolve) {
-      return Promise.resolve(mockResolvedValueValue) as any;
+      // When mockResolvedValue is used, T is expected to be a Promise type
+      // Cast Promise.resolve directly to T (caller knows T is Promise<Something>)
+      return Promise.resolve(mockResolvedValueValue) as T;
     }
 
     return mockReturnValueValue as T;

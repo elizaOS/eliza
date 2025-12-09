@@ -41,7 +41,7 @@ async function loadSecretsNodeImpl(character: Character): Promise<boolean> {
   // Store existing secrets before merge (preserve all other settings as-is)
   const existingSecrets =
     character.settings.secrets && typeof character.settings.secrets === 'object'
-      ? { ...(character.settings.secrets as Record<string, any>) }
+      ? { ...(character.settings.secrets as Record<string, string>) }
       : {};
 
   // ONLY merge environment variables into settings.secrets

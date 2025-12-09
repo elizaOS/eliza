@@ -1,4 +1,4 @@
-import { AgentRuntime, Service } from '@elizaos/core';
+import { IAgentRuntime, Service } from '@elizaos/core';
 import { Scenario } from './schema';
 // @ts-ignore - lodash types not available
 import _ from 'lodash';
@@ -15,7 +15,7 @@ interface MockExecutionHistory {
 }
 
 export class MockEngine {
-  private originalGetService: AgentRuntime['getService'];
+  private originalGetService: IAgentRuntime['getService'];
   private mockRegistry: Map<string, MockDefinition[]> = new Map();
   private mockHistory: MockExecutionHistory[] = [];
   private logger: {
@@ -25,7 +25,7 @@ export class MockEngine {
     error: (msg: string) => void;
   };
 
-  constructor(private runtime: AgentRuntime) {
+  constructor(private runtime: IAgentRuntime) {
     this.originalGetService = this.runtime.getService.bind(this.runtime);
     this.logger = runtime.logger || console;
   }
@@ -52,7 +52,8 @@ export class MockEngine {
       }
 
       // Return a proxy for the service that intercepts all method calls
-      return new Proxy(originalService as object, {
+      // The Proxy preserves the service interface while intercepting method calls
+      const proxiedService = new Proxy(originalService as object, {
         get: (target, prop: string, receiver) => {
           const key = `${name}.${prop}`;
 
@@ -83,7 +84,9 @@ export class MockEngine {
             return Reflect.get(target, prop, receiver)(...args);
           };
         },
-      }) as unknown as T;
+      });
+      // Type assertion: Proxy preserves the service interface
+      return proxiedService as T;
     };
   }
 
@@ -138,14 +141,9 @@ export class MockEngine {
 
     // Handle dynamic response template (SECURITY FIX: No more arbitrary code execution)
     if (mock.responseFn) {
-      try {
-        const input = this.extractInputFromArgs(args);
-        const context = this.buildRequestContext(args);
-        return this.parseResponseTemplate(mock.responseFn, { args, input, context });
-      } catch (error) {
-        this.logger.error(`Response template error: ${error}`);
-        throw error;
-      }
+      const input = this.extractInputFromArgs(args);
+      const context = this.buildRequestContext(args);
+      return this.parseResponseTemplate(mock.responseFn, { args, input, context });
     }
 
     // Return static response
@@ -260,7 +258,7 @@ export class MockEngine {
   /**
    * Match input parameters
    */
-  private matchesInput(input: Record<string, any>, expectedInput: Record<string, any>): boolean {
+  private matchesInput(input: Record<string, unknown>, expectedInput: Record<string, unknown>): boolean {
     for (const [key, value] of Object.entries(expectedInput)) {
       if (!_.isEqual(input[key], value)) {
         return false;
@@ -273,8 +271,8 @@ export class MockEngine {
    * Match context parameters
    */
   private matchesContext(
-    context: Record<string, any>,
-    expectedContext: Record<string, any>
+    context: Record<string, unknown>,
+    expectedContext: Record<string, unknown>
   ): boolean {
     for (const [key, value] of Object.entries(expectedContext)) {
       if (!_.isEqual(context[key], value)) {
@@ -478,7 +476,7 @@ export class MockEngine {
       // Navigate the property path safely
       for (const prop of propertyPath) {
         if (current && typeof current === 'object' && prop in current) {
-          current = (current as any)[prop];
+          current = (current as Record<string, unknown>)[prop];
         } else {
           return undefined;
         }

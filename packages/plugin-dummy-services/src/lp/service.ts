@@ -1,4 +1,4 @@
-import { IAgentRuntime, Service, logger } from '@elizaos/core';
+import { IAgentRuntime, Service } from '@elizaos/core';
 
 // Define LP-specific types locally since they're not in core
 export interface LpPositionDetails {
@@ -78,7 +78,7 @@ export class DummyLpService extends Service {
     };
   }
 
-  async getPosition(positionId: string): Promise<LpPositionDetails | null> {
+  async getPosition(_positionId: string): Promise<LpPositionDetails | null> {
     return {
       poolAddress: '0xPool',
       tokenA: '0xTokenA',
@@ -87,7 +87,7 @@ export class DummyLpService extends Service {
     };
   }
 
-  async addLiquidity(params: {
+  async addLiquidity(_params: {
     poolAddress: string;
     tokenAMint: string;
     tokenBMint: string;
@@ -110,7 +110,7 @@ export class DummyLpService extends Service {
     };
   }
 
-  async removeLiquidity(params: {
+  async removeLiquidity(_params: {
     poolAddress: string;
     lpTokenMint: string;
     lpTokenAmountLamports: string;
@@ -131,14 +131,14 @@ export class DummyLpService extends Service {
     };
   }
 
-  async collectFees(positionId: string): Promise<TransactionResult> {
+  async collectFees(_positionId: string): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',
       success: true,
     };
   }
 
-  async getBalances(address: string): Promise<TokenBalance[]> {
+  async getBalances(_address: string): Promise<TokenBalance[]> {
     return [
       {
         token: '0xTokenA',
@@ -232,11 +232,11 @@ export class DummyLpService extends Service {
   }
 
   async swap(
-    tokenIn: string,
-    tokenOut: string,
-    amountIn: bigint,
-    minAmountOut: bigint,
-    slippage?: number
+    _tokenIn: string,
+    _tokenOut: string,
+    _amountIn: bigint,
+    _minAmountOut: bigint,
+    _slippage?: number
   ): Promise<TransactionResult> {
     return {
       hash: '0xDummyHash',

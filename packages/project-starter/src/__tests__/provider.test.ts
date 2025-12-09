@@ -103,7 +103,7 @@ function createRealRuntime(): IAgentRuntime {
     getService: (serviceType: string) => {
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
 // Create realistic memory object
@@ -227,7 +227,7 @@ describe('Provider Tests', () => {
         const invalidMemory = {
           // Missing properties that would be required
           id: uuidv4(),
-        } as unknown as Memory;
+        } as Partial<Memory> as Memory;
 
         const state = {
           values: {},

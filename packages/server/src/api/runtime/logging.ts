@@ -68,19 +68,19 @@ export function createLoggingRouter(): express.Router {
             // Map log level string to numeric value
             let level: number = LOG_LEVELS.info; // Default
             const levelLower = levelStr.trim().toLowerCase();
-            if (levelLower === 'error') level = LOG_LEVELS.error;
-            else if (levelLower === 'warn') level = LOG_LEVELS.warn;
-            else if (levelLower === 'info') level = LOG_LEVELS.info;
-            else if (levelLower === 'log') level = LOG_LEVELS.log;
-            else if (levelLower === 'progress') level = LOG_LEVELS.progress;
-            else if (levelLower === 'success') level = LOG_LEVELS.success;
-            else if (levelLower === 'debug') level = LOG_LEVELS.debug;
-            else if (levelLower === 'trace') level = LOG_LEVELS.trace;
-            else if (levelLower === 'fatal') level = LOG_LEVELS.fatal;
+            if (levelLower === 'error') {level = LOG_LEVELS.error;}
+            else if (levelLower === 'warn') {level = LOG_LEVELS.warn;}
+            else if (levelLower === 'info') {level = LOG_LEVELS.info;}
+            else if (levelLower === 'log') {level = LOG_LEVELS.log;}
+            else if (levelLower === 'progress') {level = LOG_LEVELS.progress;}
+            else if (levelLower === 'success') {level = LOG_LEVELS.success;}
+            else if (levelLower === 'debug') {level = LOG_LEVELS.debug;}
+            else if (levelLower === 'trace') {level = LOG_LEVELS.trace;}
+            else if (levelLower === 'fatal') {level = LOG_LEVELS.fatal;}
 
             return {
               time: new Date(timestamp).getTime(),
-              level: level,
+              level,
               msg: message.trim(),
             };
           } else {
@@ -166,7 +166,7 @@ export function createLoggingRouter(): express.Router {
         logs: filtered,
         count: filtered.length,
         total: logEntries.length,
-        requestedLevel: requestedLevel,
+        requestedLevel,
         agentName: requestedAgentName,
         agentId: requestedAgentId,
         levels: Object.keys(LOG_LEVELS),
@@ -180,8 +180,8 @@ export function createLoggingRouter(): express.Router {
   };
 
   // GET and POST endpoints for logs
-  (router as any).get('/logs', logsHandler);
-  (router as any).post('/logs', logsHandler);
+  router.get('/logs', logsHandler);
+  router.post('/logs', logsHandler);
 
   // Handler for clearing logs
   const logsClearHandler = (_req: express.Request, res: express.Response) => {
@@ -200,7 +200,7 @@ export function createLoggingRouter(): express.Router {
   };
 
   // DELETE endpoint for clearing logs
-  (router as any).delete('/logs', logsClearHandler);
+  router.delete('/logs', logsClearHandler);
 
   return router;
 }

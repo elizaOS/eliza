@@ -181,7 +181,7 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
 
     if (existingContainers.success && existingContainers.data) {
       const existingProject = existingContainers.data.find(
-        (c: any) => c.project_name === projectName
+        (c: { project_name?: string }) => c.project_name === projectName
       );
 
       if (existingProject) {

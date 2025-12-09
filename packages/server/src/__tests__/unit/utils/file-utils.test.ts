@@ -119,7 +119,7 @@ describe('File Utilities', () => {
     });
 
     it('should truncate long filenames while preserving extension', () => {
-      const longName = 'a'.repeat(300) + '.jpg';
+      const longName = `${'a'.repeat(300)}.jpg`;
       const result = sanitizeFilename(longName);
 
       expect(result.length).toBeLessThanOrEqual(255);
@@ -230,13 +230,15 @@ describe('File Utilities', () => {
     });
 
     it('should handle undefined files gracefully', () => {
-      expect(() => cleanupFiles(undefined as unknown as Express.Multer.File[])).not.toThrow();
+      // Testing error handling with invalid input type
+      expect(() => cleanupFiles(undefined as Express.Multer.File[])).not.toThrow();
     });
 
     it('should handle files with null tempFilePath', () => {
       const files: TestFileObject[] = [{ tempFilePath: null }, { tempFilePath: undefined }];
 
-      expect(() => cleanupFiles(files as unknown as Express.Multer.File[])).not.toThrow();
+      // Testing error handling with incompatible file object types
+      expect(() => cleanupFiles(files as Express.Multer.File[])).not.toThrow();
     });
 
     it('should validate array structure', () => {
