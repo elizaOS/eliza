@@ -276,7 +276,15 @@ export function AgentMemoryViewer({ agentId, agentName, channelId }: AgentMemory
         return agent?.name || agentName;
       } else {
         // For users, use raw metadata or fallback
-        return (memory.metadata as any)?.raw?.senderName || memory.metadata?.source || 'User';
+        // MessageMetadata extends BaseMetadata which doesn't have raw, but CustomMetadata might
+        interface MetadataWithRaw {
+          raw?: {
+            senderName?: string;
+          };
+          source?: string;
+        }
+        const metadata = memory.metadata as MetadataWithRaw | undefined;
+        return metadata?.raw?.senderName || metadata?.source || 'User';
       }
     };
 

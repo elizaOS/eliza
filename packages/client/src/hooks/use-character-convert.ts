@@ -1,4 +1,4 @@
-import { Character, Content } from '@elizaos/core';
+import { Character, Content, Metadata } from '@elizaos/core';
 import { usePlugins } from '@/hooks/use-plugins';
 
 const PROVIDER_PLUGIN_MAPPINGS: Record<string, string> = {
@@ -19,11 +19,11 @@ export interface V1Character {
   clients?: string[];
   modelProvider?: string;
   bio?: string | string[];
-  messageExamples?: any[][];
+  messageExamples?: Array<Array<{ user?: string; content?: Content } | string>>;
   username?: string;
   system?: string;
   settings?: {
-    [key: string]: string | boolean | number | Record<string, any>;
+    [key: string]: string | boolean | number | Metadata;
   };
   topics?: string[];
   style?: {
@@ -34,7 +34,7 @@ export interface V1Character {
   adjectives?: string[];
   postExamples?: string[];
   // Additional properties that might exist
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export function useConvertCharacter() {
@@ -96,7 +96,7 @@ export function useConvertCharacter() {
     return Array.from(matched).sort();
   };
 
-  function isV1MessageExampleFormat(example: any): example is { user: string; content: Content } {
+  function isV1MessageExampleFormat(example: unknown): example is { user: string; content: Content } {
     return typeof example === 'object' && example !== null && 'user' in example;
   }
 
@@ -104,8 +104,8 @@ export function useConvertCharacter() {
     const bio = [...(Array.isArray(v1.bio) ? v1.bio : v1.bio ? [v1.bio] : []), ...(v1.lore ?? [])];
 
     const messageExamples =
-      (v1.messageExamples ?? []).map((thread: any[]) =>
-        thread.map((msg: any) => {
+      (v1.messageExamples ?? []).map((thread: Array<{ user?: string; content?: Content } | string>) =>
+        thread.map((msg: { user?: string; content?: Content } | string) => {
           if (isV1MessageExampleFormat(msg)) {
             return {
               name: msg.user,

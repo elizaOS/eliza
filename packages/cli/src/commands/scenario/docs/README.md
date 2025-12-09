@@ -142,35 +142,7 @@ bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/e
 bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/basic-conversation.scenario.yaml
 ```
 
-#### 2. E2B Sandboxed Tests
-
-**Production Commands:**
-
-```bash
-# Run E2B environment test
-elizaos scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
-
-# Run E2B fallback test
-elizaos scenario run packages/cli/src/commands/scenario/examples/e2b-fallback.scenario.yaml
-
-# Run mock E2B test
-elizaos scenario run packages/cli/src/commands/scenario/examples/mock-e2b-test.scenario.yaml
-```
-
-**Local Development Commands:**
-
-```bash
-# Run E2B environment test
-bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-test.scenario.yaml
-
-# Run E2B fallback test
-bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/e2b-fallback.scenario.yaml
-
-# Run mock E2B test
-bun packages/cli/dist/index.js scenario run packages/cli/src/commands/scenario/examples/mock-e2b-test.scenario.yaml
-```
-
-#### 3. Mock Service Tests
+#### 2. Mock Service Tests
 
 **Production Commands:**
 
@@ -471,7 +443,6 @@ bun packages/cli/dist/index.js report generate packages/cli/src/commands/scenari
 ### **Required Environment Variables**
 
 ```env
-E2B_API_KEY=your_key_here      # Required for E2B sandboxed tests
 OPENAI_API_KEY=your_key_here   # Required for LLM judge evaluations
 ```
 
@@ -528,7 +499,7 @@ bun packages/cli/dist/index.js report generate packages/cli/src/commands/scenari
 name: 'Test Name'
 description: 'Test Description'
 environment:
-  type: 'local' # or "e2b"
+  type: 'local'
   setup:
     # Environment-specific setup
 mocks:
@@ -556,7 +527,7 @@ plugins:
   - '@elizaos/plugin-bootstrap'
   - '@elizaos/plugin-openai'
 environment:
-  type: 'local' # or "e2b"
+  type: 'local'
 run:
   - name: 'Conversation Name'
     input: 'Initial user message'
@@ -609,7 +580,7 @@ judgment:
 name: 'Simple File Creation Test'
 description: 'Tests basic file creation in local environment'
 environment:
-  type: 'e2b'
+  type: 'local'
   setup:
     workingDirectory: '/tmp/test'
 mocks:
@@ -779,7 +750,6 @@ The scenario system is built on several key components:
 
 2. **Environment Providers**
    - Local ([#5575](https://github.com/elizaOS/eliza/issues/5575))
-   - E2B Sandbox ([#5576](https://github.com/elizaOS/eliza/issues/5576))
 
 3. **Mock Engine** ([#5577](https://github.com/elizaOS/eliza/issues/5577))
    - Service call interception
@@ -799,14 +769,7 @@ The scenario system is built on several key components:
 
 ## Common Issues
 
-1. **E2B Hanging**: If E2B tests hang, check:
-   - E2B_API_KEY is set correctly
-   - Network connectivity
-   - E2B service status
-   - Plugin loading issues (check logs for plugin loading steps)
-   - Database initialization problems
-
-2. **Mock Failures**: For mock test failures:
+1. **Mock Failures**: For mock test failures:
    - Verify mock service name matches exactly
    - Check response format matches service expectations
    - Ensure all required methods are mocked
@@ -953,7 +916,6 @@ This comprehensive system was implemented through Epic [#5781](https://github.co
 - [CLI Command Implementation](https://github.com/elizaOS/eliza/issues/5573)
 - [YAML Parser](https://github.com/elizaOS/eliza/issues/5574)
 - [Local Environment](https://github.com/elizaOS/eliza/issues/5575)
-- [E2B Integration](https://github.com/elizaOS/eliza/issues/5576)
 - [Mock Engine](https://github.com/elizaOS/eliza/issues/5577)
 - [Evaluation Engine](https://github.com/elizaOS/eliza/issues/5578)
 - [Final Judgment](https://github.com/elizaOS/eliza/issues/5579)

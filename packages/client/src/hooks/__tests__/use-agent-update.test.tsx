@@ -146,13 +146,13 @@ describe('useAgentUpdate hook', () => {
     };
 
     // Use renderHook to properly test the React hook
-    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as MockAgent));
 
     // Get the necessary functions
     const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    result.current.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as MockAgent);
 
     // Verify that updateField or updateSettings was called for each field in the template
 
@@ -228,13 +228,13 @@ describe('useAgentUpdate hook', () => {
     };
 
     // Use renderHook to properly test the React hook
-    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as MockAgent));
 
     // Get the necessary functions
     const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    result.current.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as MockAgent);
 
     // Verify updateSettings was called with the complex nested object
     expect(updateSettings).toHaveBeenCalledWith(

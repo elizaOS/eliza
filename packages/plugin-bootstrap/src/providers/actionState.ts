@@ -8,6 +8,18 @@ import {
 } from '@elizaos/core';
 
 /**
+ * Working memory entry from action execution
+ */
+interface WorkingMemoryEntry {
+  actionName?: string;
+  result?: {
+    text?: string;
+    data?: unknown;
+  };
+  timestamp?: number;
+}
+
+/**
  * Provider for sharing action execution state and plan between actions
  * Makes previous action results and execution plan available to subsequent actions
  */
@@ -25,8 +37,8 @@ export const actionStateProvider: Provider = {
     // Format action plan for display
     let planText = '';
     if (actionPlan && actionPlan.totalSteps > 1) {
-      const completedSteps = actionPlan.steps.filter((s: any) => s.status === 'completed').length;
-      const failedSteps = actionPlan.steps.filter((s: any) => s.status === 'failed').length;
+      const completedSteps = actionPlan.steps.filter((s) => s.status === 'completed').length;
+      const failedSteps = actionPlan.steps.filter((s) => s.status === 'failed').length;
 
       planText = addHeader(
         '# Action Execution Plan',
@@ -36,7 +48,7 @@ export const actionStateProvider: Provider = {
           `**Status:** ${completedSteps} completed, ${failedSteps} failed`,
           '',
           '## Steps:',
-          ...actionPlan.steps.map((step: any, index: number) => {
+          ...actionPlan.steps.map((step, index: number) => {
             const icon =
               step.status === 'completed'
                 ? '✓'
@@ -71,30 +83,41 @@ export const actionStateProvider: Provider = {
     let resultsText = '';
     if (actionResults.length > 0) {
       const formattedResults = actionResults
-        .map((result: any, index: number) => {
-          const actionName = result.data?.actionName || 'Unknown Action';
-          const success = result.success; // Now required field
-          const status = success ? 'Success' : 'Failed';
+        .map(
+          (
+            result: {
+              data?: { actionName?: string };
+              success: boolean;
+              text?: string;
+              error?: string;
+              values?: Record<string, unknown>;
+            },
+            index: number
+          ) => {
+            const actionName = result.data?.actionName || 'Unknown Action';
+            const success = result.success; // Now required field
+            const status = success ? 'Success' : 'Failed';
 
-          let resultText = `**${index + 1}. ${actionName}** - ${status}`;
+            let resultText = `**${index + 1}. ${actionName}** - ${status}`;
 
-          if (result.text) {
-            resultText += `\n   Output: ${result.text}`;
+            if (result.text) {
+              resultText += `\n   Output: ${result.text}`;
+            }
+
+            if (result.error) {
+              resultText += `\n   Error: ${result.error}`;
+            }
+
+            if (result.values && Object.keys(result.values).length > 0) {
+              const values = Object.entries(result.values)
+                .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
+                .join('\n');
+              resultText += `\n   Values:\n${values}`;
+            }
+
+            return resultText;
           }
-
-          if (result.error) {
-            resultText += `\n   Error: ${result.error}`;
-          }
-
-          if (result.values && Object.keys(result.values).length > 0) {
-            const values = Object.entries(result.values)
-              .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-              .join('\n');
-            resultText += `\n   Values:\n${values}`;
-          }
-
-          return resultText;
-        })
+        )
         .join('\n\n');
 
       resultsText = addHeader('# Previous Action Results', formattedResults);
@@ -106,11 +129,28 @@ export const actionStateProvider: Provider = {
     let memoryText = '';
     if (Object.keys(workingMemory).length > 0) {
       const memoryEntries = Object.entries(workingMemory)
-        .sort((a: any, b: any) => (b[1].timestamp || 0) - (a[1].timestamp || 0))
+        .sort((a, b) => {
+          const aTimestamp =
+            a[1] &&
+            typeof a[1] === 'object' &&
+            'timestamp' in a[1] &&
+            typeof a[1].timestamp === 'number'
+              ? a[1].timestamp
+              : 0;
+          const bTimestamp =
+            b[1] &&
+            typeof b[1] === 'object' &&
+            'timestamp' in b[1] &&
+            typeof b[1].timestamp === 'number'
+              ? b[1].timestamp
+              : 0;
+          return bTimestamp - aTimestamp;
+        })
         .slice(0, 10) // Show last 10 entries
-        .map(([key, value]: [string, any]) => {
-          if (value.actionName && value.result) {
-            return `**${value.actionName}**: ${value.result.text || JSON.stringify(value.result.data)}`;
+        .map(([key, value]: [string, unknown]) => {
+          const valueObj = value && typeof value === 'object' ? (value as WorkingMemoryEntry) : null;
+          if (valueObj?.actionName && valueObj.result) {
+            return `**${valueObj.actionName}**: ${valueObj.result.text || JSON.stringify(valueObj.result.data)}`;
           }
           return `**${key}**: ${JSON.stringify(value)}`;
         })
@@ -175,7 +215,9 @@ export const actionStateProvider: Provider = {
               const text = mem.content?.text || '';
 
               let memText = `  - ${actionName} (${status})`;
-              if (planStep) memText += ` [${planStep}]`;
+              if (planStep) {
+                memText += ` [${planStep}]`;
+              }
               if (text && text !== `Executed action: ${actionName}`) {
                 memText += `: ${text}`;
               }
@@ -210,8 +252,8 @@ export const actionStateProvider: Provider = {
         currentActionStep: actionPlan?.currentStep || 0,
         totalActionSteps: actionPlan?.totalSteps || 0,
         actionResults: resultsText,
-        completedActions: actionResults.filter((r: any) => r.success).length,
-        failedActions: actionResults.filter((r: any) => !r.success).length,
+        completedActions: actionResults.filter((r) => r.success).length,
+        failedActions: actionResults.filter((r) => !r.success).length,
       },
       text: allText || 'No action state available',
     };

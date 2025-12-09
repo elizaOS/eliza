@@ -1,7 +1,7 @@
 name: 'LLM Judge Failure Test'
 description: 'Tests the LLM judge evaluator with both passing and failing cases'
 environment:
-  type: e2b
+  type: local
 setup:
   virtual_fs:
     'data.json': '{"name": "test", "value": 42}'

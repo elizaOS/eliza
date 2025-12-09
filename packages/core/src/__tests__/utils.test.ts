@@ -313,7 +313,7 @@ describe('Utils Comprehensive Tests', () => {
           }
           return null;
         }),
-      } as unknown as IAgentRuntime;
+      } as Partial<IAgentRuntime> as IAgentRuntime;
     });
 
     it('should trim tokens to specified limit', async () => {
@@ -462,23 +462,25 @@ describe('Utils Comprehensive Tests', () => {
   describe('formatMessages', () => {
     const mockEntities: Entity[] = [
       {
-        id: 'entity-1' as any,
+        id: 'entity-1' as UUID,
         names: ['Alice'],
-        agentId: 'agent-1' as any,
+        metadata: {},
+        agentId: 'agent-1' as UUID,
       },
       {
-        id: 'entity-2' as any,
+        id: 'entity-2' as UUID,
         names: ['Bob'],
-        agentId: 'agent-1' as any,
+        metadata: {},
+        agentId: 'agent-1' as UUID,
       },
     ];
 
     it('should format messages with basic content', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now() - 60000, // 1 minute ago
           content: {
             text: 'Hello world',
@@ -498,9 +500,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should format messages with actions and thoughts', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-2' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-2' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: {
             text: 'Doing something',
@@ -522,9 +524,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should handle attachments', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: {
             text: 'Check this out',
@@ -547,16 +549,16 @@ describe('Utils Comprehensive Tests', () => {
     it('should filter out messages without entityId', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: null as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: null as UUID, // Testing with null value
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: { text: 'Should be filtered', source: 'chat' } as Content,
         },
         {
-          id: 'msg-2' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-2' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: { text: 'Should appear', source: 'chat' } as Content,
         },
@@ -572,18 +574,19 @@ describe('Utils Comprehensive Tests', () => {
   describe('formatPosts', () => {
     const mockEntities: Entity[] = [
       {
-        id: 'entity-1' as any,
+        id: 'entity-1' as UUID,
         names: ['Alice'],
-        agentId: 'agent-1' as any,
+        metadata: {},
+        agentId: 'agent-1' as UUID,
       },
     ];
 
     it('should format posts grouped by room', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now() - 3600000,
           content: {
             text: 'First message',
@@ -591,9 +594,9 @@ describe('Utils Comprehensive Tests', () => {
           } as Content,
         },
         {
-          id: 'msg-2' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-2' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: {
             text: 'Second message',
@@ -615,13 +618,13 @@ describe('Utils Comprehensive Tests', () => {
     it('should include reply information', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: {
             text: 'Reply message',
-            inReplyTo: '12345678-1234-1234-1234-123456789012' as any,
+            inReplyTo: '12345678-1234-1234-1234-123456789012' as UUID,
             source: 'chat',
           } as Content,
         },
@@ -635,9 +638,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should format without conversation header when specified', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: { text: 'Message', source: 'chat' } as Content,
         },
@@ -656,9 +659,9 @@ describe('Utils Comprehensive Tests', () => {
       // This tests line 209 - logger.warn when entity not found
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'non-existent-entity' as any,
-          roomId: 'room-1' as any,
+          id: 'msg-1' as UUID,
+          entityId: 'non-existent-entity' as UUID,
+          roomId: 'room-1' as UUID,
           createdAt: Date.now(),
           content: {
             text: 'Message from unknown entity',
@@ -679,9 +682,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should handle messages without roomId', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as any,
-          entityId: 'entity-1' as any,
-          roomId: null as any, // No roomId
+          id: 'msg-1' as UUID,
+          entityId: 'entity-1' as UUID,
+          roomId: null as UUID, // No roomId - testing with null value
           createdAt: Date.now(),
           content: {
             text: 'Message without room',
@@ -740,11 +743,12 @@ describe('Utils Comprehensive Tests', () => {
     });
 
     it('should throw TypeError for non-string/non-number input', () => {
-      expect(() => stringToUuid(null as any)).toThrow(TypeError);
-      expect(() => stringToUuid(undefined as any)).toThrow(TypeError);
-      expect(() => stringToUuid({} as any)).toThrow(TypeError);
-      expect(() => stringToUuid([] as any)).toThrow(TypeError);
-      expect(() => stringToUuid(true as any)).toThrow(TypeError);
+      // These are intentional type errors to test error handling
+      expect(() => stringToUuid(null as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid(undefined as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid({} as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid([] as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid(true as string | number)).toThrow(TypeError);
     });
 
     it('should generate consistent UUID for same input', () => {
@@ -898,18 +902,19 @@ describe('Utils Comprehensive Tests', () => {
     it('should compose prompt from State object', () => {
       const mockState: State = {
         // Required State properties
-        userId: 'user-123' as any,
-        agentId: 'agent-123' as any,
-        roomId: 'room-123' as any,
+        userId: 'user-123' as UUID,
+        agentId: 'agent-123' as UUID,
+        roomId: 'room-123' as UUID,
         bio: 'I am a helpful assistant',
         lore: 'Created to help with tasks',
         senderName: 'Assistant',
         actors: 'user123',
         actorsData: [
           {
-            id: 'actor-1' as any,
+            id: 'actor-1' as UUID,
             names: ['John'],
-            agentId: 'agent-123' as any,
+            metadata: {},
+            agentId: 'agent-123' as UUID,
           },
         ],
         // Template values
@@ -917,9 +922,9 @@ describe('Utils Comprehensive Tests', () => {
         relevantKnowledge: 'Relevant facts',
         recentMessagesData: [
           {
-            id: 'msg-1' as any,
-            entityId: 'entity-1' as any,
-            roomId: 'room-123' as any,
+            id: 'msg-1' as UUID,
+            entityId: 'entity-1' as UUID,
+            roomId: 'room-123' as UUID,
             createdAt: Date.now(),
             content: {
               text: 'Hello',
@@ -944,23 +949,25 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle State with array data', () => {
       const mockState: State = {
-        userId: 'user-123' as any,
-        agentId: 'agent-123' as any,
-        roomId: 'room-123' as any,
+        userId: 'user-123' as UUID,
+        agentId: 'agent-123' as UUID,
+        roomId: 'room-123' as UUID,
         bio: 'Assistant bio',
         lore: 'Assistant lore',
         senderName: 'User',
         actors: '',
         actorsData: [
           {
-            id: 'actor-1' as any,
+            id: 'actor-1' as UUID,
             names: ['Alice'],
-            agentId: 'agent-123' as any,
+            metadata: {},
+            agentId: 'agent-123' as UUID,
           },
           {
-            id: 'actor-2' as any,
+            id: 'actor-2' as UUID,
             names: ['Bob'],
-            agentId: 'agent-123' as any,
+            metadata: {},
+            agentId: 'agent-123' as UUID,
           },
         ],
         recentMessagesData: [],
@@ -980,9 +987,9 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle missing properties in State', () => {
       const mockState: State = {
-        userId: 'user-123' as any,
-        agentId: 'agent-123' as any,
-        roomId: 'room-123' as any,
+        userId: 'user-123' as UUID,
+        agentId: 'agent-123' as UUID,
+        roomId: 'room-123' as UUID,
         bio: '',
         lore: '',
         senderName: '',
@@ -1128,8 +1135,8 @@ describe('Utils Comprehensive Tests', () => {
         createdAt: 2,
         content: { text: 'there', source: 'chat' },
       },
-    ] as any;
-    const entities = [{ id: 'e1', names: ['Alice'] }] as any;
+    ] as Memory[];
+    const entities: Entity[] = [{ id: 'e1' as UUID, names: ['Alice'], metadata: {}, agentId: 'agent-1' as UUID }];
     const result = utils.formatPosts({ messages, entities });
     expect(result).toContain('Conversation:');
     expect(result).toContain('Alice');
@@ -1146,7 +1153,7 @@ describe('Utils Comprehensive Tests', () => {
           return [];
         }
       ),
-    } as any;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
     const result = await utils.trimTokens('a b c d e', 3, runtime);
     expect(result).toBe('c d e');
   });

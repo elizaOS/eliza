@@ -192,7 +192,7 @@ export const start = new Command()
         { src: 'cli', command: 'start', agentCount: agentConfigs.length },
         'Server started'
       );
-    } catch (e: any) {
+    } catch (e: unknown) {
       handleError(e);
       process.exit(1);
     }

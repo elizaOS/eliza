@@ -24,7 +24,7 @@ import type { MessageProcessingOptions, MessageProcessingResult } from './servic
 export interface BatchOperation {
   agentId: UUID;
   operation: 'message' | 'action' | 'evaluate';
-  payload: any;
+  payload: unknown;
 }
 
 /**
@@ -33,7 +33,7 @@ export interface BatchOperation {
 export interface BatchResult {
   agentId: UUID;
   success: boolean;
-  result?: any;
+  result?: unknown;
   error?: Error;
 }
 
@@ -181,7 +181,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
       // Register pre-initialized database adapter if provided
       if (agent.databaseAdapter) {
-        runtime.registerDatabaseAdapter(agent.databaseAdapter);
+        (runtime as IAgentRuntime).registerDatabaseAdapter(agent.databaseAdapter);
       }
 
       runtime.elizaOS = this;
@@ -552,14 +552,8 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Fire and forget with callback
 
       const callback = async (content: Content) => {
-        try {
-          if (options.onResponse) {
-            await options.onResponse(content);
-          }
-        } catch (error) {
-          if (options.onError) {
-            await options.onError(error instanceof Error ? error : new Error(String(error)));
-          }
+        if (options.onResponse) {
+          await options.onResponse(content);
         }
         return [];
       };
@@ -567,13 +561,9 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Wrap message handling with Entity RLS context
       handleMessageWithEntityContext(() =>
         runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
-      )
-        .then(() => {
-          if (options.onComplete) options.onComplete();
-        })
-        .catch((error: Error) => {
-          if (options.onError) options.onError(error);
-        });
+      ).then(() => {
+        if (options.onComplete) options.onComplete();
+      });
 
       // Emit event for tracking
       this.dispatchEvent(
@@ -652,19 +642,8 @@ export class ElizaOS extends EventTarget implements IElizaOS {
   ): Promise<Array<{ agentId: UUID; result: SendMessageResult; error?: Error }>> {
     const results = await Promise.all(
       messages.map(async ({ agentId, message, options }) => {
-        try {
-          const result = await this.sendMessage(agentId, message, options);
-          return { agentId, result };
-        } catch (error) {
-          return {
-            agentId,
-            result: {
-              messageId: (message.id || '') as UUID,
-              userMessage: message as Memory,
-            },
-            error: error instanceof Error ? error : new Error(String(error)),
-          };
-        }
+        const result = await this.sendMessage(agentId, message, options);
+        return { agentId, result };
       })
     );
 
@@ -737,10 +716,9 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
         // Access the most recent state from the runtime's state cache
         // Note: This returns the cached state for the most recent message
-        const agentRuntime = agent as any;
-        if (agentRuntime.stateCache && agentRuntime.stateCache.size > 0) {
+        if (agent.stateCache && agent.stateCache.size > 0) {
           // Get the most recent state from the cache
-          const states = Array.from(agentRuntime.stateCache.values());
+          const states = Array.from(agent.stateCache.values());
           return states[states.length - 1] as State;
         }
         return undefined;

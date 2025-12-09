@@ -3,28 +3,40 @@ import { AudioService } from '../../services/audio';
 import { ApiClientConfig } from '../../types/base';
 import { UUID } from '@elizaos/core';
 
+// Helper type to access protected/private methods in tests
+type MockableAudioService = AudioService & {
+  request: ReturnType<typeof mock>;
+  post: ReturnType<typeof mock>;
+  requestBinary: ReturnType<typeof mock>;
+  processAudioInput: (audio: Blob | Buffer | string) => Blob | string;
+};
+
 // Test UUIDs in proper format
 const TEST_AGENT_ID = '550e8400-e29b-41d4-a716-446655440001' as UUID;
 
 describe('AudioService', () => {
-  let audioService: AudioService;
+  let audioService: MockableAudioService;
   const mockConfig: ApiClientConfig = {
     baseUrl: 'http://localhost:3000',
     apiKey: 'test-key',
   };
 
   beforeEach(() => {
-    audioService = new AudioService(mockConfig);
+    audioService = new AudioService(mockConfig) as MockableAudioService;
     // Mock the HTTP methods
-    (audioService as any).request = mock(() => Promise.resolve({}));
-    (audioService as any).post = mock(() => Promise.resolve({}));
+    audioService.request = mock(() => Promise.resolve({}));
+    audioService.post = mock(() => Promise.resolve({}));
   });
 
   afterEach(() => {
-    const requestMock = (audioService as any).request;
-    const postMock = (audioService as any).post;
-    if (requestMock?.mockClear) requestMock.mockClear();
-    if (postMock?.mockClear) postMock.mockClear();
+    const requestMock = audioService.request;
+    const postMock = audioService.post;
+    if (requestMock?.mockClear) {
+      requestMock.mockClear();
+    }
+    if (postMock?.mockClear) {
+      postMock.mockClear();
+    }
   });
 
   describe('constructor', () => {
@@ -33,7 +45,8 @@ describe('AudioService', () => {
     });
 
     it('should throw error when initialized with invalid configuration', () => {
-      expect(() => new AudioService(null as any)).toThrow();
+      // Testing error handling with null config
+      expect(() => new AudioService(null as ApiClientConfig)).toThrow();
     });
   });
 
@@ -47,11 +60,11 @@ describe('AudioService', () => {
 
     it('should handle speech conversation successfully', async () => {
       const mockResponse = { text: 'Hello there!', audio: 'base64-audio-data', duration: 2.5 };
-      (audioService as any).request.mockResolvedValue(mockResponse);
+      audioService.request.mockResolvedValue(mockResponse);
 
       const result = await audioService.speechConversation(TEST_AGENT_ID, params);
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -63,26 +76,26 @@ describe('AudioService', () => {
 
     it('should handle audio blob input', async () => {
       const mockResponse = { response: 'Success' };
-      (audioService as any).request.mockResolvedValue(mockResponse);
+      audioService.request.mockResolvedValue(mockResponse);
 
       await audioService.speechConversation(TEST_AGENT_ID, params);
 
-      expect((audioService as any).request).toHaveBeenCalled();
+      expect(audioService.request).toHaveBeenCalled();
     });
 
     it('should handle string audio input', async () => {
       const stringParams = { ...params, audio: 'audio-string-data' };
-      (audioService as any).request.mockResolvedValue({ response: 'Success' });
+      audioService.request.mockResolvedValue({ response: 'Success' });
 
       await audioService.speechConversation(TEST_AGENT_ID, stringParams);
 
-      expect((audioService as any).request).toHaveBeenCalled();
+      expect(audioService.request).toHaveBeenCalled();
     });
   });
 
   describe('Audio Processing Bug Fixes', () => {
     beforeEach(() => {
-      (audioService as any).request.mockResolvedValue({ text: 'Hello world' });
+      audioService.request.mockResolvedValue({ text: 'Hello world' });
     });
 
     it('should handle base64 data URL strings correctly', async () => {
@@ -92,7 +105,7 @@ describe('AudioService', () => {
 
       await audioService.speechConversation(TEST_AGENT_ID, { audio: base64Audio });
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -107,7 +120,7 @@ describe('AudioService', () => {
 
       await audioService.speechConversation(TEST_AGENT_ID, { audio: base64String });
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -121,7 +134,7 @@ describe('AudioService', () => {
 
       await audioService.speechConversation(TEST_AGENT_ID, { audio: filePath });
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -136,7 +149,7 @@ describe('AudioService', () => {
         constructor: { name: 'Buffer' },
         readUInt8: mock(() => 0),
         // Mock Buffer data
-        [Symbol.iterator]: function* () {
+        *[Symbol.iterator]() {
           yield 1;
           yield 2;
           yield 3;
@@ -144,18 +157,20 @@ describe('AudioService', () => {
         length: 3,
       };
 
-      // Mock the isBuffer method to return true for our test
-      const originalProcessAudioInput = (audioService as any).processAudioInput;
-      (audioService as any).processAudioInput = mock((audio: any) => {
-        if (audio === mockBuffer) {
+      // Mock the processAudioInput method to handle our mock buffer
+      const originalProcessAudioInput = audioService.processAudioInput;
+      audioService.processAudioInput = mock((audio: Blob | Buffer | string) => {
+        // Mock buffer is Buffer-like but not a real Buffer instance
+        if (audio === (mockBuffer as Buffer)) {
           return new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/wav' });
         }
         return originalProcessAudioInput.call(audioService, audio);
       });
 
-      await audioService.speechConversation(TEST_AGENT_ID, { audio: mockBuffer as any });
+      // Mock buffer is Buffer-like and will be handled by processAudioInput
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: mockBuffer as Buffer });
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -166,10 +181,10 @@ describe('AudioService', () => {
 
     it('should handle ArrayBuffer objects correctly', async () => {
       const arrayBuffer = new ArrayBuffer(8);
+      // ArrayBuffer will be converted by processAudioInput - testing type compatibility
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: arrayBuffer as Buffer });
 
-      await audioService.speechConversation(TEST_AGENT_ID, { audio: arrayBuffer as any });
-
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -180,10 +195,10 @@ describe('AudioService', () => {
 
     it('should handle Uint8Array objects correctly', async () => {
       const uint8Array = new Uint8Array([1, 2, 3, 4]);
+      // Uint8Array will be converted by processAudioInput - testing type compatibility
+      await audioService.speechConversation(TEST_AGENT_ID, { audio: uint8Array as Buffer });
 
-      await audioService.speechConversation(TEST_AGENT_ID, { audio: uint8Array as any });
-
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/conversation`,
         expect.objectContaining({
@@ -194,9 +209,11 @@ describe('AudioService', () => {
 
     it('should throw error for unsupported audio types', async () => {
       const unsupportedAudio = { some: 'object' };
-
+      // Testing error handling with invalid audio type
       await expect(
-        audioService.speechConversation(TEST_AGENT_ID, { audio: unsupportedAudio as any })
+        audioService.speechConversation(TEST_AGENT_ID, {
+          audio: unsupportedAudio as Blob | Buffer | string,
+        })
       ).rejects.toThrow('Unsupported audio input type: object');
     });
 
@@ -225,11 +242,11 @@ describe('AudioService', () => {
         mockUint8Array[i] = i;
       }
 
-      (audioService as any).requestBinary = mock(() => Promise.resolve(mockAudioBuffer));
+      audioService.requestBinary = mock(() => Promise.resolve(mockAudioBuffer));
 
       const result = await audioService.generateSpeech(TEST_AGENT_ID, params);
 
-      expect((audioService as any).requestBinary).toHaveBeenCalledWith(
+      expect(audioService.requestBinary).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech/generate`,
         { body: params }
@@ -249,11 +266,11 @@ describe('AudioService', () => {
 
     it('should synthesize audio message successfully', async () => {
       const mockResponse = { audio: 'synthesized-audio', format: 'wav' };
-      (audioService as any).post.mockResolvedValue(mockResponse);
+      audioService.post.mockResolvedValue(mockResponse);
 
       const result = await audioService.synthesizeAudioMessage(TEST_AGENT_ID, params);
 
-      expect((audioService as any).post).toHaveBeenCalledWith(
+      expect(audioService.post).toHaveBeenCalledWith(
         `/api/audio/${TEST_AGENT_ID}/audio-messages/synthesize`,
         params
       );
@@ -271,11 +288,11 @@ describe('AudioService', () => {
 
     it('should transcribe audio successfully', async () => {
       const mockResponse = { text: 'Transcribed text', confidence: 0.95 };
-      (audioService as any).request.mockResolvedValue(mockResponse);
+      audioService.request.mockResolvedValue(mockResponse);
 
       const result = await audioService.transcribe(TEST_AGENT_ID, params);
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/transcriptions`,
         expect.objectContaining({
@@ -292,11 +309,11 @@ describe('AudioService', () => {
 
     it('should process speech successfully', async () => {
       const mockResponse = { text: 'Processed response', audio: 'response-audio', duration: 1.5 };
-      (audioService as any).request.mockResolvedValue(mockResponse);
+      audioService.request.mockResolvedValue(mockResponse);
 
       const result = await audioService.processSpeech(TEST_AGENT_ID, audioBlob, metadata);
 
-      expect((audioService as any).request).toHaveBeenCalledWith(
+      expect(audioService.request).toHaveBeenCalledWith(
         'POST',
         `/api/audio/${TEST_AGENT_ID}/speech`,
         expect.objectContaining({
@@ -308,17 +325,17 @@ describe('AudioService', () => {
 
     it('should handle speech processing without metadata', async () => {
       const mockResponse = { response: 'Processed' };
-      (audioService as any).request.mockResolvedValue(mockResponse);
+      audioService.request.mockResolvedValue(mockResponse);
 
       await audioService.processSpeech(TEST_AGENT_ID, audioBlob);
 
-      expect((audioService as any).request).toHaveBeenCalled();
+      expect(audioService.request).toHaveBeenCalled();
     });
   });
 
   describe('error handling', () => {
     it('should handle network errors', async () => {
-      (audioService as any).request.mockRejectedValue(new Error('Network error'));
+      audioService.request.mockRejectedValue(new Error('Network error'));
 
       await expect(
         audioService.speechConversation(TEST_AGENT_ID, { audio: new Blob() })
@@ -326,7 +343,7 @@ describe('AudioService', () => {
     });
 
     it('should handle API errors', async () => {
-      (audioService as any).requestBinary = mock(() => Promise.reject(new Error('API error')));
+      audioService.requestBinary = mock(() => Promise.reject(new Error('API error')));
 
       await expect(audioService.generateSpeech(TEST_AGENT_ID, { text: 'test' })).rejects.toThrow(
         'API error'

@@ -84,7 +84,7 @@ export interface PackageJson {
   packageType?: 'plugin' | 'project';
   agentConfig?: {
     pluginType: string;
-    pluginParameters: Record<string, any>;
+    pluginParameters: Record<string, unknown>;
   };
   eliza?: {
     type: string;

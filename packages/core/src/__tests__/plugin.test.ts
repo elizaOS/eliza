@@ -23,11 +23,11 @@ describe('Plugin Functions', () => {
   afterEach(() => {
     for (const k of Object.keys(process.env)) {
       if (!(k in originalEnv)) {
-        delete (process.env as any)[k];
+        delete process.env[k];
       }
     }
     for (const [k, v] of Object.entries(originalEnv)) {
-      (process.env as any)[k] = v;
+      process.env[k] = v;
     }
   });
 
@@ -579,7 +579,7 @@ describe('Plugin Functions', () => {
 
     beforeEach(() => {
       // Reset environment to allow auto-install
-      process.env = { ...originalEnv } as any;
+      process.env = { ...originalEnv } as Record<string, string | undefined>;
       process.env.NODE_ENV = 'development';
       delete process.env.CI;
       delete process.env.ELIZA_TEST_MODE;
@@ -589,7 +589,7 @@ describe('Plugin Functions', () => {
 
     afterEach(() => {
       (Bun as any).spawn = originalSpawn;
-      process.env = { ...originalEnv } as any;
+      process.env = { ...originalEnv } as Record<string, string | undefined>;
     });
 
     test('returns false when auto-install disallowed by ELIZA_NO_PLUGIN_AUTO_INSTALL', async () => {

@@ -34,35 +34,26 @@ export async function waitForServerReady(options: ServerHealthOptions): Promise<
     let controller: AbortController | undefined;
     let timeoutId: NodeJS.Timeout | undefined;
 
-    try {
-      controller = new AbortController();
-      timeoutId = setTimeout(() => {
-        if (controller) {
-          controller.abort();
-        }
-      }, requestTimeout);
-
-      const response = await fetch(url, {
-        signal: controller.signal,
-      });
-
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = undefined;
+    controller = new AbortController();
+    timeoutId = setTimeout(() => {
+      if (controller) {
+        controller.abort();
       }
+    }, requestTimeout);
 
-      if (response.ok) {
-        // Server is ready, give it one more second to stabilize
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        return;
-      }
-    } catch (error) {
-      // Server not ready yet, continue polling
-    } finally {
-      // Ensure cleanup happens even if there's an exception
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
+    const response = await fetch(url, {
+      signal: controller.signal,
+    });
+
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+
+    if (response.ok) {
+      // Server is ready, give it one more second to stabilize
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return;
     }
 
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
@@ -88,30 +79,21 @@ export async function pingServer(options: ServerHealthOptions): Promise<boolean>
   let controller: AbortController | undefined;
   let timeoutId: NodeJS.Timeout | undefined;
 
-  try {
-    controller = new AbortController();
-    timeoutId = setTimeout(() => {
-      if (controller) {
-        controller.abort();
-      }
-    }, requestTimeout);
-
-    const response = await fetch(url, {
-      signal: controller.signal,
-    });
-
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      timeoutId = undefined;
+  controller = new AbortController();
+  timeoutId = setTimeout(() => {
+    if (controller) {
+      controller.abort();
     }
+  }, requestTimeout);
 
-    return response.ok;
-  } catch (error) {
-    return false;
-  } finally {
-    // Ensure cleanup happens even if there's an exception
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
+  const response = await fetch(url, {
+    signal: controller.signal,
+  });
+
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    timeoutId = undefined;
   }
+
+  return response.ok;
 }

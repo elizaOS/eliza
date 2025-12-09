@@ -1,4 +1,5 @@
 import {
+  type HandlerOptions,
   type Action,
   type ActionExample,
   ChannelType,
@@ -323,7 +324,9 @@ function categorizeSettings(worldSettings: WorldSettings): {
 
   for (const [key, setting] of Object.entries(worldSettings)) {
     // Skip internal settings
-    if (key.startsWith('_')) continue;
+    if (key.startsWith('_')) {
+      continue;
+    }
 
     const typedSetting = setting as Setting;
 
@@ -455,7 +458,9 @@ async function processSettingUpdates(
     // Process all updates
     for (const update of updates) {
       const setting = updatedState[update.key];
-      if (!setting) continue;
+      if (!setting) {
+        continue;
+      }
 
       // Check dependencies if they exist
       if (setting.dependsOn?.length) {
@@ -926,7 +931,7 @@ export const updateSettingsAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     try {
@@ -1159,7 +1164,7 @@ export const updateSettingsAction: Action = {
         const allConfigured = requiredUnconfigured.length === 0;
 
         return {
-          text: `Settings updated successfully`,
+          text: 'Settings updated successfully',
           values: {
             success: true,
             settingsUpdated: extractedSettings.length,

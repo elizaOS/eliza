@@ -80,7 +80,7 @@ graph TD
 
 1.  **Parse YAML**: Read the file from disk and parse it using `js-yaml`.
 2.  **Validate Schema**: The parsed object is validated against a set of TypeScript interfaces to ensure it is well-formed. Mismatches will cause an immediate exit with a clear error.
-3.  **Initialize Environment Provider**: Based on the `environment.type` field (`e2b` or `local`), instantiate the corresponding provider. If `e2b` is specified, the runner will verify that the `@elizaos/plugin-e2b` is available.
+3.  **Initialize Environment Provider**: Based on the `environment.type` field (`local`), instantiate the corresponding provider.
 4.  **Execute `setup` Block**: The runner sequentially processes the `setup` instructions:
     - **Mocks**: The Mocking Engine (see below) is configured.
     - **Virtual FS**: Files are written to the environment via the provider.
@@ -140,7 +140,6 @@ interface EnvironmentProvider {
 ```
 
 - **`LocalEnvironmentProvider`**: Implements the interface using Node.js `child_process` for execution and `fs` for file operations on the host machine.
-- **`E2BEnvironmentProvider`**: Implements the interface by calling the `@elizaos/plugin-e2b` service. It uses `e2bService.writeFileToSandbox()` and `e2bService.runCommand()` under the hood.
 
 ---
 
@@ -485,7 +484,7 @@ name: string                    # Required: Human-readable scenario name
 description: string             # Required: Detailed description
 plugins: PluginReference[]     # Optional: Plugin configurations
 environment:                   # Required: Environment configuration
-  type: "e2b" | "local"        # Required: Environment type
+  type: "local"                  # Required: Environment type (only 'local' is supported)
 setup:                         # Optional: Setup configuration
   mocks: Mock[]               # Optional: Mock definitions
   virtual_fs: Record<string, string>  # Optional: Virtual file system

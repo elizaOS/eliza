@@ -20,7 +20,7 @@ const upload = multer({
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype as any)) {
+    if (ALLOWED_MEDIA_MIME_TYPES.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error('Invalid file type'));

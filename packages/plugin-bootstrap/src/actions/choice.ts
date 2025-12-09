@@ -4,6 +4,7 @@ import {
   composePrompt,
   getUserServerRole,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -148,7 +149,7 @@ export const choiceAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
     _responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -226,7 +227,12 @@ export const choiceAction: Action = {
     });
 
     const parsed = parseKeyValueXml(result);
-    const { taskId, selectedOption } = parsed as any;
+    // parseKeyValueXml returns Record<string, unknown> | null
+    interface ParsedChoice {
+      taskId?: string;
+      selectedOption?: string;
+    }
+    const { taskId, selectedOption } = (parsed as ParsedChoice) || {};
 
     if (taskId && selectedOption) {
       // Find the task by matching the shortened UUID

@@ -16,14 +16,6 @@ import type {
 } from '../types';
 
 /**
- * MockDatabaseAdapter class extends DatabaseAdapter class and provides mock implementations for various database operations.
- * @extends {DatabaseAdapter}
- */
-/**
- * MockDatabaseAdapter class extends DatabaseAdapter class and provides mock implementations for various database operations.
- * @extends {DatabaseAdapter}
- */
-/**
  * Mock Database Adapter class that extends DatabaseAdapter.
  *
  * @class
@@ -53,7 +45,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
   runPluginMigrations(
-    _plugins: Array<{ name: string; schema?: any }>,
+    _plugins: Array<{ name: string; schema?: Record<string, string | number | boolean | null | Record<string, unknown>> }>,
     _options?: {
       verbose?: boolean;
       force?: boolean;
@@ -378,7 +370,7 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
 
-  getConnection(): Promise<any> {
+  getConnection(): Promise<Record<string, unknown>> {
     throw new Error('Method not implemented.');
   }
 
@@ -543,12 +535,12 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     return [
       {
         id: 'memory-id' as UUID,
-        content: 'Test Memory',
+        content: { text: 'Test Memory' },
         roomId: params.roomIds[0],
         entityId: 'user-id' as UUID,
         agentId: params.agentId ?? ('agent-id' as UUID),
       },
-    ] as unknown as Memory[];
+    ];
   }
 
   // Mock method for getting cached embeddings
@@ -610,12 +602,12 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     return [
       {
         id: 'memory-id' as UUID,
-        content: 'Test Memory',
+        content: { text: 'Test Memory' },
         roomId: params.roomId,
         entityId: 'user-id' as UUID,
         agentId: 'agent-id' as UUID,
       },
-    ] as unknown as Memory[];
+    ];
   }
 
   // Mock method for getting account by ID
@@ -667,12 +659,12 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     return [
       {
         id: 'memory-id' as UUID,
-        content: 'Test Memory',
+        content: { text: 'Test Memory' },
         roomId: params.roomId,
         entityId: 'user-id' as UUID,
         agentId: 'agent-id' as UUID,
       },
-    ] as unknown as Memory[];
+    ];
   }
 
   /**
@@ -685,11 +677,11 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     return [
       {
         id: 'actor-id' as UUID,
-        name: 'Test Entity',
-        username: 'testactor',
-        roomId: 'room-id' as UUID, // Ensure roomId is provided
+        names: ['Test Entity'],
+        metadata: { username: 'testactor' },
+        agentId: 'agent-id' as UUID,
       },
-    ] as unknown as Entity[];
+    ];
   }
 }
 

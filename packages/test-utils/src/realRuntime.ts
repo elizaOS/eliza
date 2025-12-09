@@ -49,7 +49,10 @@ export class RuntimeTestHarness {
    */
   async createTestRuntime(config: RuntimeConfig): Promise<IAgentRuntime> {
     try {
-      logger.info(`Creating real test runtime for ${this.testId}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', testId: this.testId },
+        `Creating real test runtime for ${this.testId}`
+      );
 
       // Create isolated test database
       const databaseAdapter = await this.databaseManager.createIsolatedDatabase(
@@ -81,10 +84,17 @@ export class RuntimeTestHarness {
       // Store for cleanup
       this.runtimes.set(runtime.agentId, runtime);
 
-      logger.info(`Successfully created real runtime ${runtime.agentId}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', agentId: runtime.agentId },
+        `Successfully created real runtime ${runtime.agentId}`
+      );
       return runtime;
     } catch (error) {
       logger.error(
+        {
+          src: 'test-utils:real-runtime',
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Failed to create test runtime: ${error instanceof Error ? error.message : String(error)}`
       );
       throw new Error(
@@ -100,7 +110,10 @@ export class RuntimeTestHarness {
   private async loadPlugin(pluginName: string): Promise<Plugin> {
     try {
       // Dynamic plugin loading for testing
-      logger.info(`Attempting to load plugin: ${pluginName}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', pluginName },
+        `Attempting to load plugin: ${pluginName}`
+      );
 
       // Try to dynamically import the plugin
       let pluginModule;
@@ -108,6 +121,11 @@ export class RuntimeTestHarness {
         pluginModule = await import(pluginName);
       } catch (importError) {
         logger.warn(
+          {
+            src: 'test-utils:real-runtime',
+            pluginName,
+            error: importError instanceof Error ? importError.message : String(importError),
+          },
           `Could not import ${pluginName}: ${importError instanceof Error ? importError.message : String(importError)}`
         );
         throw importError;
@@ -120,10 +138,18 @@ export class RuntimeTestHarness {
         throw new Error(`Invalid plugin export from ${pluginName}`);
       }
 
-      logger.info(`Successfully loaded plugin: ${pluginName}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', pluginName },
+        `Successfully loaded plugin: ${pluginName}`
+      );
       return plugin as Plugin;
     } catch (error) {
       logger.error(
+        {
+          src: 'test-utils:real-runtime',
+          pluginName,
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Failed to load plugin ${pluginName}: ${error instanceof Error ? error.message : String(error)}`
       );
 
@@ -270,6 +296,10 @@ export class RuntimeTestHarness {
       return [...new Set(actions)]; // Remove duplicates
     } catch (error) {
       logger.warn(
+        {
+          src: 'test-utils:real-runtime',
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Could not retrieve executed actions: ${error instanceof Error ? error.message : String(error)}`
       );
       return [];
@@ -362,15 +392,26 @@ export class RuntimeTestHarness {
    */
   async cleanup(): Promise<void> {
     try {
-      logger.info(`Cleaning up test harness ${this.testId}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', testId: this.testId },
+        `Cleaning up test harness ${this.testId}`
+      );
 
       // Stop all runtimes
       for (const [runtimeId, runtime] of this.runtimes) {
         try {
           await runtime.stop();
-          logger.debug(`Stopped runtime ${runtimeId}`);
+          logger.debug(
+            { src: 'test-utils:real-runtime', runtimeId },
+            `Stopped runtime ${runtimeId}`
+          );
         } catch (error) {
           logger.warn(
+            {
+              src: 'test-utils:real-runtime',
+              runtimeId,
+              error: error instanceof Error ? error.message : String(error),
+            },
             `Error stopping runtime ${runtimeId}: ${error instanceof Error ? error.message : String(error)}`
           );
         }
@@ -382,9 +423,16 @@ export class RuntimeTestHarness {
       // Cleanup databases
       await this.databaseManager.cleanup();
 
-      logger.info(`Successfully cleaned up test harness ${this.testId}`);
+      logger.info(
+        { src: 'test-utils:real-runtime', testId: this.testId },
+        `Successfully cleaned up test harness ${this.testId}`
+      );
     } catch (error) {
       logger.error(
+        {
+          src: 'test-utils:real-runtime',
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
       );
       throw error;

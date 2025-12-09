@@ -239,7 +239,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Handle facts - parseKeyValueXml returns nested structures differently
     // Facts might be a single object or an array depending on the count
-    let factsArray: any[] = [];
+    let factsArray: Array<Record<string, unknown>> = [];
     if (reflection.facts.fact) {
       // Normalize to array
       factsArray = Array.isArray(reflection.facts.fact)
@@ -250,7 +250,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     // Store new facts
     const newFacts =
       factsArray.filter(
-        (fact: any) =>
+        (fact: Record<string, unknown>) =>
           fact &&
           typeof fact === 'object' &&
           fact.already_known === 'false' &&
@@ -261,7 +261,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       ) || [];
 
     await Promise.all(
-      newFacts.map(async (fact: any) => {
+      newFacts.map(async (fact: Record<string, unknown>) => {
         const factMemory = {
           id: asUUID(v4()),
           entityId: agentId,
@@ -281,7 +281,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     );
 
     // Handle relationships - similar structure normalization
-    let relationshipsArray: any[] = [];
+    let relationshipsArray: Array<Record<string, unknown>> = [];
     if (reflection.relationships.relationship) {
       relationshipsArray = Array.isArray(reflection.relationships.relationship)
         ? reflection.relationships.relationship
@@ -309,9 +309,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       // Parse tags from comma-separated string
       const tags = relationship.tags
         ? relationship.tags
-            .split(',')
-            .map((tag: string) => tag.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((tag: string) => tag.trim())
+          .filter(Boolean)
         : [];
 
       if (existingRelationship) {
@@ -332,7 +332,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         await runtime.createRelationship({
           sourceEntityId: sourceId,
           targetEntityId: targetId,
-          tags: tags,
+          tags,
           metadata: {
             interactions: 1,
             ...(relationship.metadata || {}),

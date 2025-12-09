@@ -88,8 +88,8 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
   if (!validationResult.success) {
     const errorDetails = validationResult.error?.issues
       ? validationResult.error.issues
-          .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-          .join('; ')
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ')
       : validationResult.error?.message || 'Unknown validation error';
 
     throw new Error(`Character validation failed: ${errorDetails}`);
@@ -115,9 +115,9 @@ export async function jsonToCharacter(character: unknown): Promise<Character> {
   // Priority: name-based prefixes (backward compatible) first, then ID-based (for explicit IDs)
   const namePrefixes = validatedCharacter.name
     ? [
-        `CHARACTER.${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}.`,
-        `${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`,
-      ]
+      `CHARACTER.${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}.`,
+      `${validatedCharacter.name.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_`,
+    ]
     : [];
   // ID-based prefix as fallback for explicitly set UUIDs
   const idPrefix = `CHARACTER.${validatedCharacter.id!.toUpperCase().replace(/-/g, '_')}.`;
@@ -286,17 +286,17 @@ export async function loadCharacterTryPath(characterPath: string): Promise<Chara
   const jsonPathsToTry = hasJsonExtension
     ? []
     : [
-        jsonPath,
-        path.resolve(process.cwd(), jsonPath),
-        path.resolve(process.cwd(), '..', '..', jsonPath),
-        path.resolve(process.cwd(), '..', '..', '..', jsonPath),
-        path.resolve(process.cwd(), 'agent', jsonPath),
-        path.resolve(__dirname, jsonPath),
-        path.resolve(__dirname, 'characters', path.basename(jsonPath)),
-        path.resolve(__dirname, '../characters', path.basename(jsonPath)),
-        path.resolve(__dirname, '../../characters', path.basename(jsonPath)),
-        path.resolve(__dirname, '../../../characters', path.basename(jsonPath)),
-      ];
+      jsonPath,
+      path.resolve(process.cwd(), jsonPath),
+      path.resolve(process.cwd(), '..', '..', jsonPath),
+      path.resolve(process.cwd(), '..', '..', '..', jsonPath),
+      path.resolve(process.cwd(), 'agent', jsonPath),
+      path.resolve(__dirname, jsonPath),
+      path.resolve(__dirname, 'characters', path.basename(jsonPath)),
+      path.resolve(__dirname, '../characters', path.basename(jsonPath)),
+      path.resolve(__dirname, '../../characters', path.basename(jsonPath)),
+      path.resolve(__dirname, '../../../characters', path.basename(jsonPath)),
+    ];
 
   // Combine the paths to try both variants
   const pathsToTry = Array.from(new Set([...basePathsToTry, ...jsonPathsToTry]));

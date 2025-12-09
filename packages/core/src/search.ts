@@ -757,7 +757,7 @@ interface StemmingRule {
   /** A RegExp pattern or string to match suffixes. */
   pattern: RegExp | string;
   /** The replacement string or function. */
-  replacement: string | ((substring: string, ...args: any[]) => string);
+  replacement: string | ((substring: string, ...args: unknown[]) => string);
   /** Optional minimum measure (complexity) of the word stem for the rule to apply. */
   minMeasure?: number;
 }
@@ -790,7 +790,7 @@ class Tokenizer {
   /** Custom stemming rules. */
   readonly stemmingRules: {
     pattern: RegExp;
-    replacement: string | ((substring: string, ...args: any[]) => string);
+    replacement: string | ((substring: string, ...args: unknown[]) => string);
     minMeasure?: number;
   }[];
 
@@ -1021,7 +1021,7 @@ interface SearchResult {
   /** The BM25 relevance score for the document. Higher scores indicate better relevance. */
   score: number;
   /** The actual document object (optional, depends on how results are retrieved). */
-  doc?: any; // Consider using a generic <T> for BM25 class if docs are typed
+  doc?: Record<string, unknown>;
 }
 
 /**
@@ -1061,14 +1061,14 @@ export class BM25 {
   /** Boost factors for different fields within documents. */
   readonly fieldBoosts: { [key: string]: number };
   /** Array storing the original documents added to the index. */
-  documents: any[]; // Consider using a generic <T>
+  documents: Array<Record<string, unknown>>;
 
   /**
    * Creates a new BM25 search instance.
    * @param docs - Optional array of initial documents (objects with string fields) to index.
    * @param options - Configuration options for BM25 parameters (k1, b), tokenizer (stopWords, stemming, minLength), and field boosts.
    */
-  constructor(docs?: any[], options: BM25Options = {}) {
+  constructor(docs?: Array<Record<string, unknown>>, options: BM25Options = {}) {
     const opts = { ...DEFAULT_OPTIONS, ...options };
     this.termFrequencySaturation = opts.k1!; // Non-null assertion as DEFAULT_OPTIONS provides it
     this.lengthNormalizationFactor = opts.b!; // Non-null assertion
@@ -1104,7 +1104,7 @@ export class BM25 {
    * @returns An object containing the calculated index data.
    * @internal
    */
-  private processDocuments(docs: any[]): {
+  private processDocuments(docs: Array<Record<string, unknown>>): {
     documentLengths: Uint32Array;
     termToIndex: Map<string, number>;
     documentFrequency: Uint32Array;
@@ -1374,7 +1374,7 @@ export class BM25 {
    * @param doc - The document object (with string fields) to add.
    * @throws {Error} If the document is null or undefined.
    */
-  async addDocument(doc: any): Promise<void> {
+  async addDocument(doc: Record<string, unknown>): Promise<void> {
     if (!doc) throw new Error('Document cannot be null');
 
     const docIndex = this.documentLengths.length; // Index for the new document
@@ -1442,11 +1442,6 @@ export class BM25 {
       // Ensure termIndexVal is within bounds of documentFrequency before incrementing
       if (termIndexVal < this.documentFrequency.length) {
         this.documentFrequency[termIndexVal]++;
-      } else {
-        // This case should ideally not be reached if array was resized correctly
-        console.error(
-          `Error: termIndexVal ${termIndexVal} is out of bounds for documentFrequency (length ${this.documentFrequency.length}). This indicates an issue with array resizing or term indexing.`
-        );
       }
     });
 
@@ -1499,7 +1494,7 @@ export class BM25 {
    * @returns The document object.
    * @throws {Error} If the index is out of bounds.
    */
-  getDocument(index: number): any {
+  getDocument(index: number): Record<string, unknown> {
     // Consider using a generic <T>
     if (index < 0 || index >= this.documents.length) {
       throw new Error(`Document index ${index} out of bounds (0-${this.documents.length - 1})`);
@@ -1532,12 +1527,7 @@ export class BM25 {
    * This method processes documents sequentially in the main thread.
    * @param docs - An array of documents to add.
    */
-  async addDocuments(docs: any[]): Promise<void[]> {
-    // Allow Promise<void> return type
-    // Using Promise.all to potentially run additions concurrently if addDocument becomes async
-    // Although the current addDocument is sync, this structure allows future flexibility.
+  async addDocuments(docs: Array<Record<string, unknown>>): Promise<void[]> {
     return Promise.all(docs.map((doc) => this.addDocument(doc)));
-    // Note: If addDocument remains purely synchronous, a simple forEach would also work:
-    // docs.forEach(doc => this.addDocument(doc));
   }
 }

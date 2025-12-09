@@ -13,6 +13,7 @@ import type {
   State,
   ActionResult,
   UUID,
+  Logger,
 } from '@elizaos/core';
 import { mock } from './mockUtils';
 
@@ -104,7 +105,21 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       progress: () => {},
       log: () => {},
       clear: () => {},
-      child: () => ({}) as any,
+      child: () =>
+        ({
+          level: 'info',
+          trace: () => {},
+          debug: () => {},
+          info: () => {},
+          warn: () => {},
+          error: () => {},
+          fatal: () => {},
+          success: () => {},
+          progress: () => {},
+          log: () => {},
+          clear: () => {},
+          child: () => ({}) as Logger,
+        }) as Logger,
     },
     stateCache,
 
@@ -154,7 +169,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
       data: {},
       text: '',
     } as State),
-    useModel: mock().mockResolvedValue('Mock response') as any,
+    useModel: mock().mockResolvedValue('Mock response') as IAgentRuntime['useModel'],
     registerModel: mock(),
     getModel: mock().mockReturnValue(undefined),
     registerEvent: mock(),

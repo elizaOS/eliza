@@ -33,7 +33,7 @@ describe('CLI API Exports', () => {
       const { AgentServer } = await import('../../../index');
       const server = new AgentServer();
 
-      expect(server.hasOwnProperty('isInitialized')).toBe(true);
+      expect(Object.hasOwn(server, 'isInitialized')).toBe(true);
       expect(typeof server.isInitialized).toBe('boolean');
     });
   });

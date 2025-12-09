@@ -14,7 +14,7 @@ const mockAgents = new Map<UUID, IAgentRuntime>();
 const mockElizaOS = {
   getAgent: jest.fn((id: UUID) => mockAgents.get(id)),
   getAgents: jest.fn(() => Array.from(mockAgents.values())),
-} as unknown as ElizaOS;
+} as Partial<ElizaOS> as ElizaOS;
 const mockServerInstance = {
   createChannel: jest.fn().mockResolvedValue({
     id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -30,7 +30,7 @@ const mockServerInstance = {
     metadata: {},
   }),
   getMessagesForChannel: jest.fn().mockResolvedValue([]),
-} as unknown as AgentServer;
+} as Partial<AgentServer> as AgentServer;
 
 // Helper function to validate UUID format
 function isValidUuid(id: string): boolean {
@@ -54,7 +54,7 @@ function createMockAgent(agentId: string, settings?: Record<string, any>): IAgen
       id: agentId as UUID,
       settings: settings || {},
     },
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
 // Helper to simulate Express request/response using supertest-like approach
@@ -74,7 +74,7 @@ async function simulateRequest(
     const req: any = {
       method: method.toUpperCase(),
       url: path,
-      path: path,
+      path,
       originalUrl: path,
       baseUrl: '',
       body: body || {},
@@ -83,16 +83,16 @@ async function simulateRequest(
       headers: {
         'content-type': 'application/json',
       },
-      get: function (header: string) {
+      get(header: string) {
         return this.headers[header.toLowerCase()];
       },
-      header: function (header: string) {
+      header(header: string) {
         return this.headers[header.toLowerCase()];
       },
-      accepts: function () {
+      accepts() {
         return 'application/json';
       },
-      is: function (type: string) {
+      is(type: string) {
         return type === 'application/json';
       },
     };
@@ -102,14 +102,14 @@ async function simulateRequest(
       headers: {},
       locals: {},
       headersSent: false,
-      status: function (code: number) {
+      status(code: number) {
         if (!responseSent) {
           responseStatus = code;
           this.statusCode = code;
         }
         return this;
       },
-      json: function (data: any) {
+      json(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -117,7 +117,7 @@ async function simulateRequest(
         }
         return this;
       },
-      send: function (data: any) {
+      send(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -125,15 +125,15 @@ async function simulateRequest(
         }
         return this;
       },
-      setHeader: function (name: string, value: string) {
+      setHeader(name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      set: function (name: string, value: string) {
+      set(name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      end: function () {
+      end() {
         if (!responseSent) {
           responseSent = true;
           resolve({ status: responseStatus, body: responseBody });

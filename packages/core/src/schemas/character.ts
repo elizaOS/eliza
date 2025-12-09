@@ -106,7 +106,7 @@ export const styleSchema = z
 export const settingsSchema = z
   .record(
     z.string(),
-    z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.any())])
+    z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.unknown())])
   )
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');
@@ -210,17 +210,8 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
  * @returns Validation result with success flag and either data or error
  */
 export function parseAndValidateCharacter(jsonString: string): CharacterValidationResult {
-  try {
-    const parsed = JSON.parse(jsonString);
-    return validateCharacter(parsed);
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        message: `Invalid JSON: ${error instanceof Error ? error.message : 'Unknown JSON parsing error'}`,
-      },
-    };
-  }
+  const parsed = JSON.parse(jsonString);
+  return validateCharacter(parsed);
 }
 
 /**
