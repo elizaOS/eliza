@@ -77,7 +77,7 @@ describe('Integration: HelloWorld Action with StarterService', () => {
 
     // Execute the action
     await helloWorldAction?.handler(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       mockMessage,
       mockState,
       {},
@@ -116,7 +116,7 @@ describe('Integration: Plugin initialization and service registration', () => {
     if (starterPlugin.init) {
       await starterPlugin.init(
         { EXAMPLE_PLUGIN_VARIABLE: 'test-value' },
-        mockRuntime as unknown as IAgentRuntime
+        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime
       );
 
       // Directly mock the service registration that happens during initialization
@@ -124,7 +124,7 @@ describe('Integration: Plugin initialization and service registration', () => {
       if (starterPlugin.services) {
         const StarterServiceClass = starterPlugin.services[0];
         const serviceInstance = await StarterServiceClass.start(
-          mockRuntime as unknown as IAgentRuntime
+          mockRuntime as Partial<IAgentRuntime> as IAgentRuntime
         );
 
         // Register the Service class to match the core API

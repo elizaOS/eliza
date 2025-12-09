@@ -50,7 +50,7 @@ describe('SQL Plugin Test Exclusion', () => {
         agentId: 'test-agent',
         character: { name: 'test-character', bio: 'test bio' } as Character,
         plugins: [sqlPlugin, myPlugin],
-      } as unknown as IAgentRuntime;
+      } as Partial<IAgentRuntime> as IAgentRuntime;
 
       // Create project agent with only the plugin we're testing
       const projectAgent: ProjectAgent = {
@@ -149,7 +149,7 @@ describe('SQL Plugin Test Exclusion', () => {
       agentId: 'test-agent',
       character: { name: 'test-character', bio: 'test bio' } as Character,
       plugins: [],
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     // TestRunner with project agent
     const testRunner = new TestRunner(mockRuntime, projectAgent);

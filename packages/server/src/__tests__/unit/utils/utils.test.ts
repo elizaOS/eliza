@@ -177,7 +177,7 @@ describe('Utility Functions', () => {
     it('should handle empty string inputs', () => {
       delete process.env.PGLITE_DATA_DIR;
       delete process.env.ELIZA_DATABASE_DIR;
-      
+
       const result = resolvePgliteDir('');
 
       // Empty string triggers default fallback behavior

@@ -14,7 +14,7 @@ interface PackageJson {
 
 interface ImportStrategy {
   name: string;
-  tryImport: (repository: string) => Promise<any | null>;
+  tryImport: (repository: string) => Promise<Record<string, unknown> | null>;
 }
 
 const DEFAULT_ENTRY_POINT = 'dist/index.js';
@@ -129,14 +129,15 @@ async function tryImporting(
   importPath: string,
   strategy: string,
   repository: string
-): Promise<any | null> {
+): Promise<Record<string, unknown> | null> {
   try {
     const pathToImport = normalizeImportPath(importPath);
     const module = await import(pathToImport);
     logger.success({ src: 'cli', util: 'load-plugin', repository, strategy, path: importPath }, 'Plugin loaded');
-    return module;
-  } catch (error: any) {
-    logger.debug({ src: 'cli', util: 'load-plugin', strategy, path: importPath, error: error?.message }, 'Import failed');
+    return module as Record<string, unknown>;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.debug({ src: 'cli', util: 'load-plugin', strategy, path: importPath, error: errorMessage }, 'Import failed');
     return null;
   }
 }
@@ -275,7 +276,7 @@ function getStrategiesForPlugin(repository: string): ImportStrategy[] {
  * @param repository - The plugin repository/package name to load.
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
-export async function loadPluginModule(repository: string): Promise<any | null> {
+export async function loadPluginModule(repository: string): Promise<Record<string, unknown> | null> {
   const isElizaOS = isElizaOSPackageName(repository);
   const strategies = getStrategiesForPlugin(repository);
 

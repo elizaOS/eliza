@@ -7,7 +7,7 @@ import express from 'express';
 import { createVersionRouter } from '../../../api/system/version';
 import packageJson from '../../../../package.json';
 
-// SKIPPED: These tests pass in isolation but fail in full test runs due to 
+// SKIPPED: These tests pass in isolation but fail in full test runs due to
 // test interference/concurrency issues. The problem is not the tests themselves
 // but the test execution environment causing port conflicts or state pollution.
 describe.skip('Version API - Test interference in full runs', () => {
@@ -45,7 +45,7 @@ describe.skip('Version API - Test interference in full runs', () => {
           reject(new Error('Failed to get server address'));
         }
       });
-      
+
       server.on('error', (err: Error) => {
         reject(err);
       });

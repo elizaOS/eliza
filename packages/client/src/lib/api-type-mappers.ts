@@ -6,7 +6,7 @@ import {
   MessageServer as ApiMessageServer,
   Memory as ApiMemory,
 } from '@elizaos/api-client';
-import { Agent, AgentStatus, UUID, ChannelType, Memory } from '@elizaos/core';
+import { Agent, AgentStatus, UUID, ChannelType, Memory, Media } from '@elizaos/core';
 import type {
   AgentWithStatus,
   MessageChannel as ClientMessageChannel,
@@ -123,15 +123,22 @@ export function mapApiChannelsToClient(apiChannels: ApiMessageChannel[]): Client
 export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMessage {
   // Ensure attachments are properly typed as Media[]
   const attachments =
-    apiMessage.metadata?.attachments?.map((att: any) => ({
-      id: att.id || crypto.randomUUID(),
-      url: att.url,
-      title: att.title || att.name,
-      source: att.source,
-      description: att.description,
-      text: att.text,
-      contentType: att.contentType || att.type,
-    })) || undefined;
+    apiMessage.metadata?.attachments?.map((att: unknown): Media => {
+      // Type guard for attachment-like objects
+      if (typeof att !== 'object' || att === null) {
+        throw new Error('Invalid attachment format');
+      }
+      const attachment = att as Record<string, unknown>;
+      return {
+        id: (typeof attachment.id === 'string' ? attachment.id : crypto.randomUUID()),
+        url: typeof attachment.url === 'string' ? attachment.url : '',
+        title: typeof attachment.title === 'string' ? attachment.title : (typeof attachment.name === 'string' ? attachment.name : undefined),
+        source: typeof attachment.source === 'string' ? attachment.source : undefined,
+        description: typeof attachment.description === 'string' ? attachment.description : undefined,
+        text: typeof attachment.text === 'string' ? attachment.text : undefined,
+        contentType: typeof attachment.contentType === 'string' ? attachment.contentType : (typeof attachment.type === 'string' ? attachment.type : undefined),
+      };
+    }) || undefined;
 
   const messageType = apiMessage.sourceType;
   const rawMessage = apiMessage.rawMessage;
@@ -175,7 +182,7 @@ export interface AgentLog {
   message?: string;
   details?: string;
   roomId?: UUID;
-  body?: any;
+  body?: Record<string, unknown>;
   createdAt?: number;
 }
 

@@ -9,7 +9,10 @@ interface PackageInfo {
   name: string;
   main?: string;
   scripts?: Record<string, string>;
-  [key: string]: any;
+  version?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  [key: string]: string | Record<string, string> | undefined;
 }
 
 interface PluginContext {

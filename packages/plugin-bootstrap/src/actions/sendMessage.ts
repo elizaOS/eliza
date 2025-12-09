@@ -7,6 +7,7 @@ import {
   composePromptFromState,
   findEntityByName,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -140,13 +141,16 @@ export const sendMessageAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
     try {
       if (!state) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'State is required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'State is required for sendMessage action'
+        );
         return {
           text: 'State is required for sendMessage action',
           values: {
@@ -162,7 +166,10 @@ export const sendMessageAction: Action = {
         };
       }
       if (!callback) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'Callback is required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'Callback is required for sendMessage action'
+        );
         return {
           text: 'Callback is required for sendMessage action',
           values: {
@@ -178,7 +185,10 @@ export const sendMessageAction: Action = {
         };
       }
       if (!responses) {
-        logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId }, 'Responses are required for sendMessage action');
+        logger.error(
+          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+          'Responses are required for sendMessage action'
+        );
         return {
           text: 'Responses are required for sendMessage action',
           values: {
@@ -297,7 +307,11 @@ export const sendMessageAction: Action = {
           };
         }
 
-        const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
+        interface ServiceWithSendDirectMessage {
+          sendDirectMessage?: (target: string, content: Content) => Promise<void>;
+        }
+        const service = runtime.getService(source) as ServiceWithSendDirectMessage | null;
+        const sendDirectMessage = service?.sendDirectMessage;
 
         if (!sendDirectMessage) {
           await callback({
@@ -351,9 +365,13 @@ export const sendMessageAction: Action = {
             },
             success: true,
           };
-        } catch (error: any) {
+        } catch (error: unknown) {
           logger.error(
-            { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:bootstrap:action:send_message',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Failed to send direct message'
           );
           await callback({
@@ -413,7 +431,11 @@ export const sendMessageAction: Action = {
           };
         }
 
-        const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
+        interface ServiceWithSendRoomMessage {
+          sendRoomMessage?: (target: string, content: Content) => Promise<void>;
+        }
+        const service = runtime.getService(source) as ServiceWithSendRoomMessage | null;
+        const sendRoomMessage = service?.sendRoomMessage;
 
         if (!sendRoomMessage) {
           await callback({
@@ -468,9 +490,13 @@ export const sendMessageAction: Action = {
             },
             success: true,
           };
-        } catch (error: any) {
+        } catch (error: unknown) {
           logger.error(
-            { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+            {
+              src: 'plugin:bootstrap:action:send_message',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
             'Failed to send room message'
           );
           await callback({
@@ -509,12 +535,19 @@ export const sendMessageAction: Action = {
         },
         data: {
           actionName: 'SEND_MESSAGE',
-          error: 'Unknown target type: ' + targetData.targetType,
+          error: `Unknown target type: ${targetData.targetType}`,
         },
         success: false,
       };
     } catch (error) {
-      logger.error({ src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in sendMessage handler');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:action:send_message',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in sendMessage handler'
+      );
       await callback?.({
         text: 'There was an error processing your message request.',
         actions: ['SEND_MESSAGE_ERROR'],

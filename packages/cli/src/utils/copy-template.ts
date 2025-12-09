@@ -223,6 +223,7 @@ export async function copyTemplate(
     logger.debug({ src: 'cli', util: 'copy-template' }, 'Updated package.json with latest dependency versions');
   } catch (error) {
     logger.error({ src: 'cli', util: 'copy-template', error: error instanceof Error ? error.message : String(error) }, 'Error updating package.json');
+    throw error;
   }
 
   logger.debug({ src: 'cli', util: 'copy-template', templateType }, 'Template copied successfully');

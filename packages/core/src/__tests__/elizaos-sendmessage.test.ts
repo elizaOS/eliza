@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { ElizaOS } from '../elizaos';
-import type { Character, UUID, Content, Memory } from '../types';
+import type { Character, UUID, Content, Memory, HandlerCallback, IAgentRuntime } from '../types';
 import type {
   MessageProcessingResult,
   MessageProcessingOptions,
@@ -31,9 +31,9 @@ describe('ElizaOS.sendMessage', () => {
     // Create mock for messageService.handleMessage
     handleMessageMock = mock(
       async (
-        runtime: any,
+        runtime: IAgentRuntime,
         message: Memory,
-        callback: any,
+        callback: HandlerCallback | undefined,
         options?: MessageProcessingOptions
       ): Promise<MessageProcessingResult> => {
         const agentResponse: Content = {

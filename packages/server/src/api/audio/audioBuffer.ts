@@ -42,6 +42,7 @@ export interface AudioProcessingResult {
   mimeType: string;
 }
 
+/* eslint-disable no-redeclare */
 export async function convertToAudioBuffer(speechResponse: any): Promise<Buffer>;
 export async function convertToAudioBuffer(
   speechResponse: any,
@@ -51,6 +52,7 @@ export async function convertToAudioBuffer(
   speechResponse: any,
   detectMimeType?: boolean
 ): Promise<Buffer | AudioProcessingResult> {
+  /* eslint-enable no-redeclare */
   let resultBuffer: Buffer;
 
   if (Buffer.isBuffer(speechResponse)) {
@@ -63,8 +65,8 @@ export async function convertToAudioBuffer(
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-        if (value) chunks.push(value);
+        if (done) {break;}
+        if (value) {chunks.push(value);}
       }
       resultBuffer = Buffer.concat(chunks);
     } finally {

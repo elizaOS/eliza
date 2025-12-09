@@ -22,6 +22,36 @@ export interface SocketData {
   roomsCacheLoaded?: boolean;
 }
 
+interface ChannelJoiningPayload {
+  channelId?: UUID;
+  roomId?: UUID;
+  agentId?: UUID;
+  entityId?: UUID;
+  messageServerId?: UUID;
+  metadata?: Record<string, unknown>;
+}
+
+interface MessageSubmissionPayload {
+  channelId?: UUID;
+  roomId?: UUID;
+  senderId?: UUID;
+  senderName?: string;
+  message?: string;
+  messageServerId?: UUID;
+  source?: string;
+  metadata?: Record<string, unknown>;
+  attachments?: Array<Record<string, unknown>>;
+}
+
+interface GenericMessageData {
+  type: string;
+  payload: Record<string, unknown>;
+}
+
+interface LogEntry {
+  [key: string]: unknown;
+}
+
 export class SocketIORouter {
   private elizaOS: ElizaOS;
   private socketAgent: Map<string, UUID>; // socket.id → agentId (for agent-specific interactions like log streaming)
@@ -102,8 +132,9 @@ export class SocketIORouter {
         this.entitySockets.get(entityId)!.add(socket.id);
 
         next();
-      } catch (error: any) {
-        logger.error(`[SocketIO Auth] Authentication error:`, error?.message || error);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error('[SocketIO Auth] Authentication error:', errorMessage);
         next(new Error('Authentication failed'));
       }
     });
@@ -149,7 +180,7 @@ export class SocketIORouter {
     });
   }
 
-  private handleGenericMessage(socket: Socket, data: any) {
+  private handleGenericMessage(socket: Socket, data: GenericMessageData) {
     try {
       if (!(data && typeof data === 'object' && 'type' in data && 'payload' in data)) {
         logger.warn({ src: 'ws', socketId: socket.id }, 'Malformed message event data');
@@ -168,8 +199,8 @@ export class SocketIORouter {
           logger.warn({ src: 'ws', socketId: socket.id, type }, 'Unknown message type');
           break;
       }
-    } catch (error: any) {
-      logger.error({ src: 'ws', socketId: socket.id, error: error.message }, 'Error processing message');
+    } catch (error: unknown) {
+      logger.error({ src: 'ws', socketId: socket.id, error: error instanceof Error ? error.message : String(error) }, 'Error processing message');
     }
   }
 
@@ -189,13 +220,13 @@ export class SocketIORouter {
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
 
       if (!dataIsolationEnabled) {
-        logger.debug(`[SocketIO Security] Data isolation disabled - allowing channel access`);
+        logger.debug('[SocketIO Security] Data isolation disabled - allowing channel access');
         return true;
       }
 
       const entityId = socket.data?.entityId;
       if (!entityId) {
-        logger.warn(`[SocketIO Security] No entityId in socket data - denying access`);
+        logger.warn('[SocketIO Security] No entityId in socket data - denying access');
         return false;
       }
 
@@ -214,8 +245,8 @@ export class SocketIORouter {
       }
 
       return isParticipant;
-    } catch (error: any) {
-      logger.error(`[SocketIO Security] Error verifying channel access:`, error?.message || error);
+    } catch (error: unknown) {
+      logger.error('[SocketIO Security] Error verifying channel access:', error instanceof Error ? error.message : String(error));
       return false; // Fail closed - deny on error
     }
   }
@@ -228,12 +259,12 @@ export class SocketIORouter {
    * 2. Hybrid approach: Check cache first, then DB if not found (new room)
    * 3. Permission verification: Block joins to rooms user doesn't have access to
    */
-  private async handleChannelJoining(socket: Socket, payload: any) {
+  private async handleChannelJoining(socket: Socket, payload: ChannelJoiningPayload) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
     const { agentId, entityId, messageServerId, metadata } = payload;
 
     if (!channelId) {
-      this.sendErrorResponse(socket, `channelId is required for joining.`);
+      this.sendErrorResponse(socket, 'channelId is required for joining.');
       return;
     }
 
@@ -243,7 +274,7 @@ export class SocketIORouter {
       logger.warn(
         `[SocketIO Security] Socket ${socket.id} (entity ${socket.data?.entityId}) DENIED access to channel ${channelId}`
       );
-      this.sendErrorResponse(socket, `Access denied: You don't have permission to join this channel`);
+      this.sendErrorResponse(socket, 'Access denied: You don\'t have permission to join this channel');
       return;
     }
 
@@ -268,7 +299,7 @@ export class SocketIORouter {
       // Get the first available runtime (there should typically be one)
       const runtime = this.elizaOS.getAgents()[0];
       if (runtime) {
-        runtime.emitEvent(EventType.ENTITY_JOINED as any, {
+        runtime.emitEvent(EventType.ENTITY_JOINED, {
           entityId: entityId as UUID,
           runtime,
           worldId: finalMessageServerId, // Use messageServerId as worldId identifier
@@ -298,7 +329,7 @@ export class SocketIORouter {
     logger.debug({ src: 'ws', socketId: socket.id, channelId }, 'Socket joined channel');
   }
 
-  private async handleMessageSubmission(socket: Socket, payload: any) {
+  private async handleMessageSubmission(socket: Socket, payload: MessageSubmissionPayload) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
     const { senderId, senderName, message, messageServerId, source, metadata, attachments } = payload;
 
@@ -308,7 +339,7 @@ export class SocketIORouter {
     if (!validateUuid(channelId) || !isValidServerId || !validateUuid(senderId) || !message) {
       this.sendErrorResponse(
         socket,
-        `For SEND_MESSAGE: channelId, messageServerId (message_server_id), senderId (author_id), and message are required.`
+        'For SEND_MESSAGE: channelId, messageServerId (message_server_id), senderId (author_id), and message are required.'
       );
       return;
     }
@@ -319,7 +350,7 @@ export class SocketIORouter {
       if (isDmForWorldSetup && senderId) {
         const runtime = this.elizaOS.getAgents()[0];
         if (runtime) {
-          runtime.emitEvent(EventType.ENTITY_JOINED as any, {
+          runtime.emitEvent(EventType.ENTITY_JOINED, {
             entityId: senderId as UUID,
             runtime,
             worldId: messageServerId, // Use messageServerId as worldId identifier
@@ -374,7 +405,7 @@ export class SocketIORouter {
             },
           };
 
-          let participants = [senderId as UUID];
+          const participants = [senderId as UUID];
           if (isDmChannel) {
             const otherParticipant =
               metadata?.targetUserId || metadata?.recipientId || payload.targetUserId;
@@ -385,9 +416,10 @@ export class SocketIORouter {
 
           await this.serverInstance.createChannel(channelData, participants);
           logger.debug({ src: 'ws', socketId: socket.id, channelId, type: isDmChannel ? 'DM' : 'GROUP' }, 'Auto-created channel');
-        } catch (createError: any) {
-          logger.error({ src: 'ws', socketId: socket.id, channelId, error: createError.message }, 'Failed to auto-create channel');
-          this.sendErrorResponse(socket, `Failed to create channel: ${createError.message}`);
+        } catch (createError: unknown) {
+          const errorMessage = createError instanceof Error ? createError.message : String(createError);
+          logger.error({ src: 'ws', socketId: socket.id, channelId, error: errorMessage }, 'Failed to auto-create channel');
+          this.sendErrorResponse(socket, `Failed to create channel: ${errorMessage}`);
           return;
         }
       }
@@ -406,7 +438,7 @@ export class SocketIORouter {
         },
         sourceType: source || 'socketio_client',
         sourceId: payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        inReplyToRootMessageId: null as any,
+        inReplyToRootMessageId: null as UUID | null,
       };
 
       const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
@@ -417,12 +449,12 @@ export class SocketIORouter {
       // Immediately broadcast the message to all clients in the channel
       const messageBroadcast = {
         id: createdRootMessage.id,
-        senderId: senderId,
+        senderId,
         senderName: senderName || 'User',
         text: message,
-        channelId: channelId,
+        channelId,
         roomId: channelId, // Keep for backward compatibility
-        messageServerId: messageServerId, // Use messageS erverId at message server layer
+        messageServerId, // Use messageS erverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
         attachments: transformedAttachments,
@@ -446,9 +478,10 @@ export class SocketIORouter {
           roomId: channelId, // Keep for backward compatibility
         });
       }
-    } catch (error: any) {
-      logger.error({ src: 'ws', socketId: socket.id, error: error.message }, 'Error processing message');
-      this.sendErrorResponse(socket, `Error processing your message: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ src: 'ws', socketId: socket.id, error: errorMessage }, 'Error processing message');
+      this.sendErrorResponse(socket, `Error processing your message: ${errorMessage}`);
     }
   }
 
@@ -497,8 +530,8 @@ export class SocketIORouter {
     }
   }
 
-  public broadcastLog(io: SocketIOServer, logEntry: any) {
-    if (this.logStreamConnections.size === 0) return;
+  public broadcastLog(io: SocketIOServer, logEntry: LogEntry) {
+    if (this.logStreamConnections.size === 0) {return;}
     const logData = { type: 'log_entry', payload: logEntry };
     this.logStreamConnections.forEach((filters, socketId) => {
       const socket = io.sockets.sockets.get(socketId);

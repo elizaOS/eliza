@@ -34,7 +34,12 @@ export class TestDatabaseManager {
           try {
             // Don't import plugin-sql directly to avoid circular dependency
             // Instead, use global registration if available
-            const sqlPlugin = (globalThis as any).__elizaOS_sqlPlugin;
+            interface GlobalWithSqlPlugin {
+              __elizaOS_sqlPlugin?: {
+                createDatabaseAdapter?: (config: unknown, agentId: UUID) => IDatabaseAdapter;
+              };
+            }
+            const sqlPlugin = (globalThis as GlobalWithSqlPlugin).__elizaOS_sqlPlugin;
 
             if (!sqlPlugin?.createDatabaseAdapter) {
               throw new Error('SQL plugin not available - falling back to mock database');
@@ -241,11 +246,11 @@ export class TestDatabaseManager {
           return [];
         }
 
-        let memories = Array.from(tableData.values()) as any[];
+        let memories = Array.from(tableData.values()) as Memory[];
 
         // Apply filters
         if (params.roomId) {
-          memories = memories.filter((m: any) => m.roomId === params.roomId);
+          memories = memories.filter((m) => m.roomId === params.roomId);
         }
 
         if (params.entityId) {
@@ -253,7 +258,7 @@ export class TestDatabaseManager {
         }
 
         // Sort by creation time (newest first)
-        memories.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+        memories.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
         // Apply limit
         if (params.count) {
@@ -272,16 +277,18 @@ export class TestDatabaseManager {
           return [];
         }
 
-        let memories = Array.from(tableData.values()) as any[];
+        let memories = Array.from(tableData.values()) as Memory[];
 
         if (params.roomId) {
-          memories = memories.filter((m: any) => m.roomId === params.roomId);
+          memories = memories.filter((m) => m.roomId === params.roomId);
         }
 
         // Simple text matching instead of vector search
         if (params.query) {
-          memories = memories.filter((m: any) =>
-            m.content?.text?.toLowerCase().includes(params.query.toLowerCase())
+          memories = memories.filter((m) =>
+            typeof m.content === 'object' && m.content !== null && 'text' in m.content && typeof m.content.text === 'string'
+              ? m.content.text.toLowerCase().includes(params.query.toLowerCase())
+              : false
           );
         }
 
@@ -328,7 +335,7 @@ export class TestDatabaseManager {
           memories = memories.slice(0, params.limit);
         }
 
-        return memories as any[];
+        return memories;
       },
 
       async getCachedEmbeddings() {
@@ -802,7 +809,8 @@ export class TestDatabaseManager {
       },
     };
 
-    return adapter as unknown as IDatabaseAdapter;
+    // Mock adapter implements IDatabaseAdapter interface
+    return adapter as IDatabaseAdapter;
   }
 
   /**

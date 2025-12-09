@@ -9,7 +9,7 @@ export interface EnhancedEvaluationResult {
   evaluator_type: string;
   success: boolean;
   summary: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
 }
 
 export interface LLMJudgeResult {
@@ -28,7 +28,7 @@ export const EnhancedEvaluationResultSchema = z.object({
   evaluator_type: z.string(),
   success: z.boolean(),
   summary: z.string(),
-  details: z.record(z.string(), z.any()),
+  details: z.record(z.string(), z.unknown()),
 });
 
 export const CapabilityCheckSchema = z.object({
@@ -289,7 +289,7 @@ export const ScenarioSchema = z.object({
   description: z.string(),
   plugins: z.array(PluginReferenceSchema).optional(),
   environment: z.object({
-    type: z.enum(['e2b', 'local']),
+    type: z.enum(['local']),
   }),
   setup: SetupSchema.optional(),
   run: z.array(RunStepSchema),
@@ -318,9 +318,9 @@ export interface TrajectoryStep {
     | string
     | {
         name: string;
-        parameters: Record<string, any>;
+        parameters: Record<string, unknown>;
       }
-    | any;
+    | Record<string, unknown>;
 }
 
 /**
@@ -353,7 +353,7 @@ export interface ScenarioRunResult {
   matrix_combination_id: string;
 
   /** The specific parameter values used for this run */
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
 
   /** Performance and resource metrics collected during execution */
   metrics: ScenarioRunMetrics;

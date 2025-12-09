@@ -101,7 +101,7 @@ function createRealRuntime(): IAgentRuntime {
       logger.info(`GetService: ${serviceType}`);
       return null;
     },
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
 // Create realistic memory object

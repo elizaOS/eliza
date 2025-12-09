@@ -42,11 +42,7 @@ export interface DataDirStatus {
 }
 
 export async function ensureElizaDir() {
-  try {
-    await fs.mkdir(ELIZA_DIR, { recursive: true });
-  } catch (error) {
-    // Directory already exists
-  }
+  await fs.mkdir(ELIZA_DIR, { recursive: true });
 }
 
 export async function getRegistrySettings(): Promise<RegistrySettings> {
@@ -219,13 +215,9 @@ const DEFAULT_REGISTRY: Record<string, string> = {
  * Saves the registry index to the cache file
  */
 export async function saveRegistryCache(registry: Record<string, string>): Promise<void> {
-  try {
-    await ensureElizaDir();
-    await fs.writeFile(REGISTRY_CACHE_FILE, JSON.stringify(registry, null, 2));
-    logger.debug({ src: 'cli', util: 'registry' }, 'Registry cache saved successfully');
-  } catch (error) {
-    logger.debug({ src: 'cli', util: 'registry', error: error instanceof Error ? error.message : String(error) }, 'Failed to save registry cache');
-  }
+  await ensureElizaDir();
+  await fs.writeFile(REGISTRY_CACHE_FILE, JSON.stringify(registry, null, 2));
+  logger.debug({ src: 'cli', util: 'registry' }, 'Registry cache saved successfully');
 }
 
 /**

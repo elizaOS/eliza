@@ -145,7 +145,9 @@ export const recentMessagesProvider: Provider = {
                 const error = mem.content?.error || '';
 
                 let memText = `  - ${actionName} (${status})`;
-                if (planStep) memText += ` [${planStep}]`;
+                if (planStep) {
+                  memText += ` [${planStep}]`;
+                }
                 if (error) {
                   memText += `: Error - ${error}`;
                 } else if (text && text !== `Executed action: ${actionName}`) {
@@ -236,9 +238,9 @@ export const recentMessagesProvider: Provider = {
 
       const focusHeader = hasReceivedMessage
         ? addHeader(
-            '# Focus your response',
-            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-          )
+          '# Focus your response',
+          `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+        )
         : '';
 
       // Preload all necessary entities for both types of interactions
@@ -372,7 +374,14 @@ export const recentMessagesProvider: Provider = {
         text,
       };
     } catch (error) {
-      logger.error({ src: 'plugin:bootstrap:provider:recent_messages', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in recentMessagesProvider');
+      logger.error(
+        {
+          src: 'plugin:bootstrap:provider:recent_messages',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error in recentMessagesProvider'
+      );
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {

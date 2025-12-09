@@ -1,4 +1,5 @@
 import {
+  type HandlerOptions,
   type Action,
   type ActionExample,
   ChannelType,
@@ -32,7 +33,9 @@ import {
  */
 const canModifyRole = (currentRole: Role, targetRole: Role | null, newRole: Role): boolean => {
   // User's can't change their own role
-  if (targetRole === currentRole) return false;
+  if (targetRole === currentRole) {
+    return false;
+  }
 
   switch (currentRole) {
     // Owners can do everything
@@ -88,11 +91,14 @@ export const updateRoleAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     if (!state) {
-      logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId }, 'State is required for role assignment');
+      logger.error(
+        { src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId },
+        'State is required for role assignment'
+      );
       return {
         text: 'State is required for role assignment',
         values: {
@@ -121,7 +127,10 @@ export const updateRoleAction: Action = {
     }
 
     if (!world) {
-      logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId }, 'World not found');
+      logger.error(
+        { src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId },
+        'World not found'
+      );
       await callback?.({
         text: "I couldn't find the world. This action only works in a world.",
       });
@@ -203,7 +212,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         ? parsedXml.assignments.assignment
         : [parsedXml.assignments.assignment];
 
-      assignments = assignmentArray.map((a: any) => ({
+      assignments = assignmentArray.map((a: Record<string, unknown>) => ({
         entityId: a.entityId,
         newRole: a.newRole as Role,
       }));
@@ -235,9 +244,16 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
     for (const assignment of assignments) {
-      let targetEntity = entities.find((e) => e.id === assignment.entityId);
+      const targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
-        logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, entityId: assignment.entityId }, 'Could not find an ID to assign to');
+        logger.error(
+          {
+            src: 'plugin:bootstrap:action:update_role',
+            agentId: runtime.agentId,
+            entityId: assignment.entityId,
+          },
+          'Could not find an ID to assign to'
+        );
         failedUpdates.push({
           entityId: assignment.entityId,
           reason: 'Entity not found',
@@ -282,9 +298,19 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     if (worldUpdated) {
       try {
         await runtime.updateWorld(world);
-        logger.info({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, serverId }, 'Updated roles in world metadata');
+        logger.info(
+          { src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, serverId },
+          'Updated roles in world metadata'
+        );
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap:action:update_role', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to save world updates');
+        logger.error(
+          {
+            src: 'plugin:bootstrap:action:update_role',
+            agentId: runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to save world updates'
+        );
         return {
           text: 'Failed to save role updates',
           values: {

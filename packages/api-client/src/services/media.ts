@@ -11,8 +11,12 @@ export class MediaService extends BaseApiClient {
 
     formData.append('file', params.file, params.filename);
 
-    if (params.contentType) formData.append('contentType', params.contentType);
-    if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
+    if (params.contentType) {
+      formData.append('contentType', params.contentType);
+    }
+    if (params.metadata) {
+      formData.append('metadata', JSON.stringify(params.metadata));
+    }
 
     return this.request<MediaUploadResponse>('POST', `/api/media/agents/${agentId}/upload-media`, {
       body: formData,

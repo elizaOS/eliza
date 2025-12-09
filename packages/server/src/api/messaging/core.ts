@@ -22,7 +22,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for AGENT REPLIES or direct submissions to the central bus FROM AGENTS/SYSTEM
-  (router as any).post('/submit', async (req: express.Request, res: express.Response) => {
+  router.post('/submit', async (req: express.Request, res: express.Response) => {
     const {
       channel_id,
       message_server_id, // UUID of message_servers
@@ -114,7 +114,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
-  (router as any).post('/action', async (req: express.Request, res: express.Response) => {
+  router.post('/action', async (req: express.Request, res: express.Response) => {
     const {
       messageId,
       channel_id,
@@ -209,7 +209,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
     }
   });
 
-  (router as any).patch('/action/:id', async (req: express.Request, res: express.Response) => {
+  router.patch('/action/:id', async (req: express.Request, res: express.Response) => {
     const { id } = req.params;
 
     if (!validateUuid(id)) {
@@ -253,7 +253,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
       // Transform attachments for web client
       const transformedAttachments = attachmentsToApiUrls(
         metadata?.attachments ?? raw_message?.attachments
-      );  
+      );
 
       if (serverInstance.socketIO) {
         serverInstance.socketIO.to(updated.channelId).emit('messageBroadcast', {
@@ -261,7 +261,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: metadata?.agentName || 'Agent',
           text: updated.content,
           roomId: updated.channelId,
-          messageServerId: server_message_id as UUID, 
+          messageServerId: server_message_id as UUID,
           createdAt: new Date(updated.createdAt).getTime(),
           source: updated.sourceType,
           id: updated.id,
@@ -284,7 +284,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
   });
 
   // Endpoint for INGESTING messages from EXTERNAL platforms (e.g., Discord plugin)
-  (router as any).post('/ingest-external', async (req: express.Request, res: express.Response) => {
+  router.post('/ingest-external', async (req: express.Request, res: express.Response) => {
     const messagePayload = req.body as Partial<MessageService>; // Partial because ID, created_at will be generated
 
     if (
@@ -340,7 +340,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
           senderName: messageForBus.author_display_name || 'User',
           text: messageForBus.content,
           roomId: messageForBus.channel_id,
-          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId  
+          messageServerId: messageForBus.message_server_id as UUID, // Client layer uses messageServerId
           createdAt: messageForBus.created_at,
           source: messageForBus.source_type,
           id: messageForBus.id,

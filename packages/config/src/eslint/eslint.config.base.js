@@ -92,7 +92,11 @@ const structuredLoggingRule = {
         );
 
         if (!srcProperty) {
-          context.report({ node: firstArg, messageId: 'missingSrcProperty', data: { method: methodName } });
+          context.report({
+            node: firstArg,
+            messageId: 'missingSrcProperty',
+            data: { method: methodName },
+          });
           return;
         }
 
@@ -105,7 +109,11 @@ const structuredLoggingRule = {
         // Validate src format
         const srcValue = srcProperty.value.value;
         if (!validateSrcFormat(srcValue)) {
-          context.report({ node: srcProperty.value, messageId: 'invalidSrcFormat', data: { src: srcValue } });
+          context.report({
+            node: srcProperty.value,
+            messageId: 'invalidSrcFormat',
+            data: { src: srcValue },
+          });
         }
 
         // Check second argument (message)

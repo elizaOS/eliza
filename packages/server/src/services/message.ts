@@ -70,6 +70,20 @@ function getGlobalAgentServer(): AgentServer {
 }
 
 // This interface defines the structure of messages coming from the server
+interface ServerAgentUpdatePayload {
+  agentId: UUID;
+  type: 'agent_added_to_server' | 'agent_removed_from_server';
+  messageServerId: UUID;
+}
+
+interface MessageDeletedPayload {
+  messageId: UUID;
+}
+
+interface ChannelClearedPayload {
+  channelId: UUID;
+}
+
 export interface MessageServiceMessage {
   id: UUID; // root_message.id
   channel_id: UUID;
@@ -90,9 +104,9 @@ export class MessageBusService extends Service {
   capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
   private boundHandleIncomingMessage: (data: unknown) => void;
-  private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
-  private boundHandleMessageDeleted: (data: any) => Promise<void>;
-  private boundHandleChannelCleared: (data: any) => Promise<void>;
+  private boundHandleServerAgentUpdate: (data: ServerAgentUpdatePayload) => Promise<void>;
+  private boundHandleMessageDeleted: (data: MessageDeletedPayload) => Promise<void>;
+  private boundHandleChannelCleared: (data: ChannelClearedPayload) => Promise<void>;
   private subscribedMessageServers: Set<UUID> = new Set();
   private serverInstance: AgentServer;
 
@@ -160,7 +174,7 @@ export class MessageBusService extends Service {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
               // Add channel IDs to the set
-              data.data.channels.forEach((channel: any) => {
+              data.data.channels.forEach((channel: Record<string, unknown>) => {
                 if (channel.id && validateUuid(channel.id)) {
                   this.validChannelIds.add(channel.id as UUID);
                 }
@@ -268,7 +282,7 @@ export class MessageBusService extends Service {
     }
   }
 
-  private async handleServerAgentUpdate(data: any) {
+  private async handleServerAgentUpdate(data: ServerAgentUpdatePayload) {
     if (data.agentId !== this.runtime.agentId) {
       return; // Not for this agent
     }
@@ -319,8 +333,8 @@ export class MessageBusService extends Service {
           ...(message.metadata?.serverMetadata || {}),
         },
       });
-    } catch (error: any) {
-      if (error.message && error.message.includes('worlds_pkey')) {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('worlds_pkey')) {
         logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, worldId: agentWorldId }, 'World already exists');
       } else {
         throw error;
@@ -341,7 +355,7 @@ export class MessageBusService extends Service {
           ...(message.metadata?.channelMetadata || {}),
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error.message && error.message.includes('rooms_pkey')) {
         logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId }, 'Room already exists');
       } else {
@@ -379,7 +393,15 @@ export class MessageBusService extends Service {
       return;
     }
 
-    const messageData = data as any;
+    // Type guard for MessageServiceMessage
+    interface MessageDataCandidate {
+      id?: unknown;
+      channel_id?: unknown;
+      author_id?: unknown;
+      content?: unknown;
+      [key: string]: unknown;
+    }
+    const messageData = data as MessageDataCandidate;
 
     // Validate required fields
     if (
@@ -405,8 +427,8 @@ export class MessageBusService extends Service {
     logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: message.channel_id }, 'Agent is participant, processing message');
 
     try {
-      if (!(await this.validateMessageServerSubscription(message))) return;
-      if (!(await this.validateNotSelfMessage(message))) return;
+      if (!(await this.validateMessageServerSubscription(message))) {return;}
+      if (!(await this.validateNotSelfMessage(message))) {return;}
 
       logger.debug({ src: 'service:message-bus', agentId: this.runtime.agentId }, 'All checks passed, processing message');
 
@@ -504,14 +526,14 @@ export class MessageBusService extends Service {
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
       await this.notifyMessageComplete(channelId, messageServerId);
     } catch (error) {
       logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, error: error instanceof Error ? error.message : String(error) }, 'Error processing incoming message');
     }
   }
 
-  private async handleMessageDeleted(data: any) {
+  private async handleMessageDeleted(data: MessageDeletedPayload) {
     try {
       logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId }, 'Received message_deleted event');
 
@@ -537,7 +559,7 @@ export class MessageBusService extends Service {
     }
   }
 
-  private async handleChannelCleared(data: any) {
+  private async handleChannelCleared(data: ChannelClearedPayload) {
     try {
       logger.info({ src: 'service:message-bus', agentId: this.runtime.agentId, channelId: data.channelId }, 'Received channel_cleared event');
 
@@ -652,7 +674,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
 
       if (!channelId || !messageServerId) {
         logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, roomId: agentRoomId, worldId: agentWorldId }, 'Cannot map room/world to central IDs');
@@ -663,7 +685,7 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
       }
 
       const payloadToServer = {
@@ -724,7 +746,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
 
       if (!channelId || !messageServerId) {
         logger.error({ src: 'service:message-bus', agentId: this.runtime.agentId, agentName: this.runtime.character.name, roomId: agentRoomId, worldId: agentWorldId }, 'Cannot map room/world to central IDs');
@@ -735,7 +757,7 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
       }
 
       const patchPayload = {
@@ -781,7 +803,7 @@ export class MessageBusService extends Service {
   }
 
   private async notifyMessageComplete(channelId?: UUID, messageServerId?: UUID) {
-    if (!channelId || !messageServerId) return;
+    if (!channelId || !messageServerId) {return;}
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());

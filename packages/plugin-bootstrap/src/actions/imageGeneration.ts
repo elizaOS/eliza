@@ -51,7 +51,7 @@ export const generateImageAction = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
+    _options?: HandlerOptions,
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -105,7 +105,10 @@ export const generateImageAction = {
 
       const imageUrl = imageResponse[0].url;
 
-      logger.info({ src: 'plugin:bootstrap:action:image_generation', agentId: runtime.agentId, imageUrl }, 'Received image URL');
+      logger.info(
+        { src: 'plugin:bootstrap:action:image_generation', agentId: runtime.agentId, imageUrl },
+        'Received image URL'
+      );
 
       // Determine file extension from URL or default to png
       const getFileExtension = (url: string): string => {
@@ -117,7 +120,7 @@ export const generateImageAction = {
             return extension;
           }
           // Extension not in allowed list, fall through to default
-        } catch (e) {
+        } catch (_e) {
           // URL parsing failed (malformed URL), fall back to png
         }
         return 'png'; // Default fallback for invalid/unknown extensions

@@ -88,7 +88,7 @@ export class DummyWalletService extends Service {
     const amountBigInt = BigInt(amount);
     const solBalance = this.balances.get('SOL') || BigInt(0);
     if (solBalance < amountBigInt) {
-      throw new Error(`Insufficient SOL balance`);
+      throw new Error('Insufficient SOL balance');
     }
     this.balances.set('SOL', solBalance - amountBigInt);
     return `dummy-tx-${Date.now()}`;

@@ -80,9 +80,10 @@ export async function removeFromBunLock(packageName: string, directory: string):
         logger.warn({ src: 'cli', util: 'package-manager', packageName, error: result.stderr || 'Unknown error' }, 'Failed to remove package from bun.lock');
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Handle unexpected errors (e.g., bunExec itself throwing)
-    logger.warn({ src: 'cli', util: 'package-manager', packageName, error: error.message }, 'Unexpected error removing package from bun.lock');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.warn({ src: 'cli', util: 'package-manager', packageName, error: errorMessage }, 'Unexpected error removing package from bun.lock');
   }
 }
 
@@ -125,12 +126,14 @@ export async function executeInstallation(
       : packageName;
 
     return { success: true, installedIdentifier };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorObj = error as Error & { code?: string; message?: string };
     // Check if it's a bun not found error
-    if (error.code === 'ENOENT' || error.message?.includes('bun: command not found')) {
+    if (errorObj.code === 'ENOENT' || errorObj.message?.includes('bun: command not found')) {
       logger.warn({ src: 'cli', util: 'package-manager' }, 'Installation failed - bun command not found');
     } else {
-      logger.warn({ src: 'cli', util: 'package-manager', finalSpecifier, error: error.message }, 'Installation failed');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn({ src: 'cli', util: 'package-manager', finalSpecifier, error: errorMessage }, 'Installation failed');
     }
     return { success: false, installedIdentifier: null };
   }

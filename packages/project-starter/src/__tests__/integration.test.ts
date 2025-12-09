@@ -104,7 +104,7 @@ describe('Integration: Runtime Initialization', () => {
       getProviderResults: mock().mockResolvedValue([]),
       evaluateProviders: mock().mockResolvedValue([]),
       evaluate: mock().mockResolvedValue([]),
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     // Ensure we're testing safely - to avoid parallel test race conditions
     const originalInit = plugin.init;

@@ -1,5 +1,5 @@
 import { IAgentRuntime } from '@elizaos/core';
-import { TestCase, TestSuite } from '@elizaos/core';
+import { TestSuite } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 
 export const dummyServicesScenariosSuite: TestSuite = {
@@ -7,7 +7,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
   tests: [
     {
       name: 'Dummy test placeholder',
-      async fn(runtime: IAgentRuntime) {
+      async fn(_runtime: IAgentRuntime) {
         logger.info('Dummy services test placeholder');
         // Test cases don't return values, they just throw on failure
       },

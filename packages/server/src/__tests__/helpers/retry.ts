@@ -89,7 +89,10 @@ export async function retry<T>(
     }
   }
 
-  throw lastError!;
+  if (lastError) {
+    throw lastError;
+  }
+  throw new Error('Retry failed without error');
 }
 
 /**

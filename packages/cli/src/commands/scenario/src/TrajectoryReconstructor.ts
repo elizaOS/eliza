@@ -5,7 +5,7 @@
  * and memories WITHOUT modifying the core runtime.
  */
 
-import { AgentRuntime, UUID } from '@elizaos/core';
+import { IAgentRuntime, UUID } from '@elizaos/core';
 
 /**
  * Agent trajectory step (matching GitHub ticket #5785 specification)
@@ -22,9 +22,9 @@ export interface TrajectoryStep {
     | string
     | {
         name: string;
-        parameters: Record<string, any>;
+        parameters: Record<string, unknown>;
       }
-    | any;
+    | Record<string, unknown>;
 }
 
 export interface ReconstructedTrajectory {
@@ -36,9 +36,9 @@ export interface ReconstructedTrajectory {
 }
 
 export class TrajectoryReconstructor {
-  private runtime: AgentRuntime;
+  private runtime: IAgentRuntime;
 
-  constructor(runtime: AgentRuntime) {
+  constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
   }
 
@@ -95,30 +95,32 @@ export class TrajectoryReconstructor {
       console.log(`\n--- Memory ${index + 1}/${memories.length} ---`);
       console.log(`ID: ${mem.id}`);
       console.log(`CreatedAt: ${mem.createdAt} (${new Date(mem.createdAt || 0).toISOString()})`);
-      console.log(`Type: ${(mem as any).type || 'undefined'}`);
+      const memWithType = mem as Memory & { type?: string };
+      console.log(`Type: ${memWithType.type || 'undefined'}`);
       console.log(`Content Type: ${typeof mem.content}`);
 
-      if (mem.content && typeof mem.content === 'object') {
-        console.log(`Content.type: ${(mem.content as any)?.type}`);
-        console.log(`Content keys:`, Object.keys(mem.content));
+      if (mem.content && typeof mem.content === 'object' && mem.content !== null) {
+        const contentObj = mem.content as Record<string, unknown>;
+        console.log(`Content.type: ${contentObj.type || 'undefined'}`);
+        console.log(`Content keys:`, Object.keys(contentObj));
 
         // Log full content for action results (this is what works in evaluator)
-        if ((mem.content as any)?.type === 'action_result') {
+        if (contentObj.type === 'action_result') {
           console.log(
             `🎯 FOUND ACTION_RESULT - FULL CONTENT:`,
             JSON.stringify(mem.content, null, 2)
           );
         } else if (
-          (mem.content as any)?.type === 'user' ||
-          (mem.content as any)?.type === 'agent'
+          contentObj.type === 'user' ||
+          contentObj.type === 'agent'
         ) {
           console.log(
             `💬 MESSAGE CONTENT:`,
             JSON.stringify(
               {
-                type: (mem.content as any).type,
-                text: (mem.content as any).text,
-                content: (mem.content as any).content,
+                type: contentObj.type,
+                text: contentObj.text,
+                content: contentObj.content,
               },
               null,
               2
@@ -135,23 +137,29 @@ export class TrajectoryReconstructor {
     console.log(`🔍 [TrajectoryReconstructor] ===== MEMORY ANALYSIS END =====\n`);
 
     // Use same filtering as the working evaluator for action_result memories
-    const actionMemories = memories.filter(
-      (mem) =>
-        mem && typeof mem.content === 'object' && (mem.content as any)?.type === 'action_result'
-    );
+    const actionMemories = memories.filter((mem) => {
+      if (!mem || typeof mem.content !== 'object' || mem.content === null) {
+        return false;
+      }
+      const contentObj = mem.content as Record<string, unknown>;
+      return contentObj.type === 'action_result';
+    });
 
     // NEW: Also handle message memories for conversation scenarios
-    const messageMemories = memories.filter(
-      (mem) =>
-        mem &&
-        typeof mem.content === 'object' &&
-        ((mem.content as any)?.type === 'agent' ||
-          (mem.content as any)?.type === 'user' ||
-          // Handle memories without explicit type but with thought/actions (agent responses)
-          ((mem.content as any)?.thought && (mem.content as any)?.actions) ||
-          // Handle user messages (scenario messages)
-          (mem.content as any)?.source === 'scenario_message')
-    );
+    const messageMemories = memories.filter((mem) => {
+      if (!mem || typeof mem.content !== 'object' || mem.content === null) {
+        return false;
+      }
+      const contentObj = mem.content as Record<string, unknown>;
+      return (
+        contentObj.type === 'agent' ||
+        contentObj.type === 'user' ||
+        // Handle memories without explicit type but with thought/actions (agent responses)
+        (typeof contentObj.thought !== 'undefined' && typeof contentObj.actions !== 'undefined') ||
+        // Handle user messages (scenario messages)
+        contentObj.source === 'scenario_message'
+      );
+    });
 
     console.log(
       `🎯 [TrajectoryReconstructor] Processing ${actionMemories.length} action memories and ${messageMemories.length} message memories...`
@@ -163,21 +171,28 @@ export class TrajectoryReconstructor {
 
     // Process action memories to build trajectory (using EXACT same approach as working evaluator)
     for (const memory of actionMemories) {
-      const content = memory.content as any;
+      const content = memory.content as Record<string, unknown> & {
+        actionName?: string;
+        actionParams?: Record<string, unknown>;
+        actionResult?: Record<string, unknown> & { text?: string };
+        thought?: string;
+        planThought?: string;
+        actionStatus?: string;
+      };
 
       console.log(`\n🔄 Processing action memory ${memory.id}...`);
-      console.log(`   actionName: ${content?.actionName}`);
-      console.log(`   actionParams:`, content?.actionParams);
-      console.log(`   actionResult:`, content?.actionResult);
-      console.log(`   thought:`, content?.thought);
-      console.log(`   planThought:`, content?.planThought);
-      console.log(`   actionStatus:`, content?.actionStatus);
+      console.log(`   actionName: ${content.actionName || 'undefined'}`);
+      console.log(`   actionParams:`, content.actionParams || {});
+      console.log(`   actionResult:`, content.actionResult || {});
+      console.log(`   thought:`, content.thought || 'undefined');
+      console.log(`   planThought:`, content.planThought || 'undefined');
+      console.log(`   actionStatus:`, content.actionStatus || 'undefined');
 
       // Extract action information (same structure as TrajectoryContainsActionEvaluator)
-      const actionName = content?.actionName || 'unknown';
-      const actionParams = content?.actionParams || {};
-      const actionResult = content?.actionResult || {};
-      const thought = content?.thought || content?.planThought || '';
+      const actionName = content.actionName || 'unknown';
+      const actionParams = content.actionParams || {};
+      const actionResult = content.actionResult || {};
+      const thought = content.thought || content.planThought || '';
 
       // Get observation content from various possible locations
       let observationContent = '';
@@ -239,20 +254,26 @@ export class TrajectoryReconstructor {
       `\n💬 [TrajectoryReconstructor] Processing ${messageMemories.length} message memories...`
     );
     for (const memory of messageMemories) {
-      const content = memory.content as any;
+      const content = memory.content as Record<string, unknown> & {
+        type?: string;
+        text?: string;
+        source?: string;
+        thought?: string;
+        actions?: unknown;
+      };
       const timestamp = new Date(memory.createdAt || Date.now()).toISOString();
 
       console.log(`\n🔄 Processing message memory ${memory.id}...`);
-      console.log(`   type: ${content?.type}`);
-      console.log(`   text: ${content?.text?.substring(0, 100)}...`);
-      console.log(`   source: ${content?.source}`);
-      console.log(`   thought: ${content?.thought ? 'present' : 'absent'}`);
+      console.log(`   type: ${content.type || 'undefined'}`);
+      console.log(`   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`);
+      console.log(`   source: ${content.source || 'undefined'}`);
+      console.log(`   thought: ${content.thought ? 'present' : 'absent'}`);
       console.log(`   Content Type: ${typeof content}`);
       console.log(`   Content Keys: ${Object.keys(content || {}).join(', ')}`);
       console.log(`   Full Content: ${JSON.stringify(content, null, 2)}`);
 
       // Determine if this is an agent message or user message
-      const isAgentMessage = content?.type === 'agent' || (content?.thought && content?.actions);
+      const isAgentMessage = content.type === 'agent' || (typeof content.thought !== 'undefined' && typeof content.actions !== 'undefined');
 
       // Create thought step from agent messages
       if (isAgentMessage && content?.thought) {
@@ -323,7 +344,12 @@ export class TrajectoryReconstructor {
         );
         console.log(
           `📊 [TrajectoryReconstructor] Actions found:`,
-          trajectory.steps.filter((s) => s.type === 'action').map((s) => (s.content as any).name)
+          trajectory.steps
+            .filter((s) => s.type === 'action')
+            .map((s) => {
+              const content = s.content as Record<string, unknown>;
+              return (content.name as string) || 'unknown';
+            })
         );
         console.log(
           `📊 [TrajectoryReconstructor] First step sample:`,

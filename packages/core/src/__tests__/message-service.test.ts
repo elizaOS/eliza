@@ -66,7 +66,7 @@ describe('DefaultMessageService', () => {
         data: {},
         values: {},
       })),
-      useModel: mock(async (modelType: (typeof ModelType)[keyof typeof ModelType], params: any) => {
+      useModel: mock(async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
         if (modelType === ModelType.TEXT_SMALL) {
           // Response for shouldRespond check
           return '<shouldRespond>true</shouldRespond><reason>User asked a question</reason>';
@@ -405,8 +405,8 @@ describe('DefaultMessageService', () => {
       await messageService.handleMessage(mockRuntime as IAgentRuntime, message, mockCallback);
 
       // Check that RUN_ENDED was called
-      const emitEventCalls = (mockRuntime.emitEvent as any).mock.calls;
-      const runEndedCall = emitEventCalls.find((call: any) => call[0] === EventType.RUN_ENDED);
+      const emitEventCalls = (mockRuntime.emitEvent as ReturnType<typeof mock>).mock.calls;
+      const runEndedCall = emitEventCalls.find((call: unknown[]) => Array.isArray(call) && call[0] === EventType.RUN_ENDED);
       expect(runEndedCall).toBeDefined();
     });
 

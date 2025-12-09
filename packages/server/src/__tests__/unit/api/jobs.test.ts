@@ -7,7 +7,7 @@ import express from 'express';
 import { createJobsRouter, type JobsRouter } from '../../../api/messaging/jobs';
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
-import { JobStatus, JobValidation } from '../../../types/jobs';
+import { JobStatus, JobValidation, type JobDetailsResponse } from '../../../types/jobs';
 import internalMessageBus from '../../../services/message-bus';
 
 // Mock dependencies
@@ -15,7 +15,7 @@ const mockAgents = new Map<UUID, IAgentRuntime>();
 const mockElizaOS = {
   getAgent: jest.fn((id: UUID) => mockAgents.get(id)),
   getAgents: jest.fn(() => Array.from(mockAgents.values())),
-} as unknown as ElizaOS;
+} as Partial<ElizaOS> as ElizaOS;
 
 const mockServerInstance = {
   createChannel: jest.fn().mockResolvedValue({
@@ -31,7 +31,7 @@ const mockServerInstance = {
     createdAt: Date.now(),
     metadata: {},
   }),
-} as unknown as AgentServer;
+} as Partial<AgentServer> as AgentServer;
 
 // Helper to create mock agent
 function createMockAgent(agentId: string): IAgentRuntime {
@@ -41,7 +41,7 @@ function createMockAgent(agentId: string): IAgentRuntime {
       name: 'Test Agent',
       id: agentId as UUID,
     },
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
 // Helper to simulate Express requests
@@ -61,7 +61,7 @@ async function simulateRequest(
     const req: express.Request = {
       method: method.toUpperCase(),
       url: path,
-      path: path,
+      path,
       originalUrl: path,
       baseUrl: '',
       body: body || {},
@@ -71,30 +71,30 @@ async function simulateRequest(
         'content-type': 'application/json',
         ...headers,
       },
-      get: function (header: string) {
+      get(header: string) {
         return (this as any).headers[header.toLowerCase()];
       },
-      header: function (header: string) {
+      header(header: string) {
         return (this as any).headers[header.toLowerCase()];
       },
       accepts: jest.fn(() => 'application/json'),
       is: jest.fn((type: string) => type === 'application/json'),
       ip: '127.0.0.1',
-    } as unknown as express.Request;
+    } as Partial<express.Request> as express.Request;
 
     const res: express.Response = {
       statusCode: 200,
       headers: {},
       locals: {},
       headersSent: false,
-      status: function (code: number) {
+      status(code: number) {
         if (!responseSent) {
           responseStatus = code;
           (this as any).statusCode = code;
         }
         return this;
       },
-      json: function (data: unknown) {
+      json(data: unknown) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -102,7 +102,7 @@ async function simulateRequest(
         }
         return this;
       },
-      send: function (data: unknown) {
+      send(data: unknown) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -112,13 +112,13 @@ async function simulateRequest(
       },
       setHeader: jest.fn(),
       set: jest.fn(),
-      end: function () {
+      end() {
         if (!responseSent) {
           responseSent = true;
           resolve({ status: responseStatus, body: responseBody });
         }
       },
-    } as unknown as express.Response;
+    } as Partial<express.Response> as express.Response;
 
     const next = (err?: Error) => {
       if (!responseSent) {
@@ -549,9 +549,13 @@ describe('Jobs API', () => {
       });
 
       expect(res.status).toBe(200);
-      const body = res.body as Record<string, unknown>;
-      const jobs = body.jobs as unknown[];
-      expect(jobs.length).toBeLessThanOrEqual(3);
+      interface JobsListResponse {
+        jobs: JobDetailsResponse[];
+        total: number;
+        filtered: number;
+      }
+      const body = res.body as JobsListResponse;
+      expect(body.jobs.length).toBeLessThanOrEqual(3);
     });
   });
 

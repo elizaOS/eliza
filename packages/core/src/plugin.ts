@@ -28,70 +28,56 @@ function isAutoInstallAllowed(): boolean {
  * Returns true if installation succeeded, false otherwise
  */
 export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
-  try {
-    if (!isAutoInstallAllowed()) {
-      logger.debug(
-        { src: 'core:plugin', pluginName },
-        'Auto-install disabled, skipping'
-      );
-      return false;
-    }
-
-    if (attemptedInstalls.has(pluginName)) {
-      logger.debug({ src: 'core:plugin', pluginName }, 'Auto-install already attempted, skipping');
-      return false;
-    }
-    attemptedInstalls.add(pluginName);
-
-    // Check if Bun is available before trying to use it
-    if (typeof Bun === 'undefined' || typeof Bun.spawn !== 'function') {
-      logger.warn(
-        { src: 'core:plugin', pluginName },
-        'Bun runtime not available, cannot auto-install'
-      );
-      return false;
-    }
-
-    // Verify Bun availability on PATH
-    try {
-      const check = Bun.spawn(['bun', '--version'], { stdout: 'pipe', stderr: 'pipe' });
-      const code = await check.exited;
-      if (code !== 0) {
-        logger.warn(
-          { src: 'core:plugin', pluginName },
-          'Bun not available on PATH, cannot auto-install'
-        );
-        return false;
-      }
-    } catch {
-      logger.warn(
-        { src: 'core:plugin', pluginName },
-        'Bun not available on PATH, cannot auto-install'
-      );
-      return false;
-    }
-
-    logger.info({ src: 'core:plugin', pluginName }, 'Auto-installing missing plugin');
-    const install = Bun.spawn(['bun', 'add', pluginName], {
-      cwd: process.cwd(),
-      env: process.env as Record<string, string>,
-      stdout: 'inherit',
-      stderr: 'inherit',
-    });
-    const exit = await install.exited;
-
-    if (exit === 0) {
-      logger.info({ src: 'core:plugin', pluginName }, 'Plugin installed, retrying import');
-      return true;
-    }
-
-    logger.error({ src: 'core:plugin', pluginName, exitCode: exit }, 'Plugin installation failed');
-    return false;
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    logger.error({ src: 'core:plugin', pluginName, error: message }, 'Unexpected error during auto-install');
+  if (!isAutoInstallAllowed()) {
+    logger.debug(
+      { src: 'core:plugin', pluginName },
+      'Auto-install disabled, skipping'
+    );
     return false;
   }
+
+  if (attemptedInstalls.has(pluginName)) {
+    logger.debug({ src: 'core:plugin', pluginName }, 'Auto-install already attempted, skipping');
+    return false;
+  }
+  attemptedInstalls.add(pluginName);
+
+  // Check if Bun is available before trying to use it
+  if (typeof Bun === 'undefined' || typeof Bun.spawn !== 'function') {
+    logger.warn(
+      { src: 'core:plugin', pluginName },
+      'Bun runtime not available, cannot auto-install'
+    );
+    return false;
+  }
+
+  // Verify Bun availability on PATH
+  const check = Bun.spawn(['bun', '--version'], { stdout: 'pipe', stderr: 'pipe' });
+  const code = await check.exited;
+  if (code !== 0) {
+    logger.warn(
+      { src: 'core:plugin', pluginName },
+      'Bun not available on PATH, cannot auto-install'
+    );
+    return false;
+  }
+
+  logger.info({ src: 'core:plugin', pluginName }, 'Auto-installing missing plugin');
+  const install = Bun.spawn(['bun', 'add', pluginName], {
+    cwd: process.cwd(),
+    env: process.env as Record<string, string>,
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  const exit = await install.exited;
+
+  if (exit === 0) {
+    logger.info({ src: 'core:plugin', pluginName }, 'Plugin installed, retrying import');
+    return true;
+  }
+
+  logger.error({ src: 'core:plugin', pluginName, exitCode: exit }, 'Plugin installation failed');
+  return false;
 }
 
 // ============================================================================
@@ -184,28 +170,11 @@ export function validatePlugin(plugin: unknown): { isValid: boolean; errors: str
  * Load and prepare a plugin for use
  */
 export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
-  try {
-    // Try to load the plugin module
-    let pluginModule: unknown;
+  // Try to load the plugin module
+  let pluginModule: unknown;
 
-    try {
-      // Attempt to dynamically import the plugin
-      pluginModule = await import(pluginName);
-    } catch (error) {
-      logger.warn({ src: 'core:plugin', pluginName, error }, 'Failed to load plugin');
-      // Attempt auto-install if allowed and not already attempted
-      const attempted = await tryInstallPlugin(pluginName);
-      if (!attempted) {
-        return null;
-      }
-      // Retry import once after successful installation attempt
-      try {
-        pluginModule = await import(pluginName);
-      } catch (secondError) {
-        logger.error({ src: 'core:plugin', pluginName, error: secondError }, 'Import failed after auto-install');
-        return null;
-      }
-    }
+  // Attempt to dynamically import the plugin
+  pluginModule = await import(pluginName);
 
     if (!pluginModule) {
       logger.error({ src: 'core:plugin', pluginName }, 'Failed to load plugin module');
@@ -231,23 +200,15 @@ export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin |
       }
       // Try factory functions that return a Plugin
       if (typeof potentialPlugin === 'function' && potentialPlugin.length === 0) {
-        try {
-          const produced = potentialPlugin();
-          if (isValidPluginShape(produced)) {
-            return produced as Plugin;
-          }
-        } catch (err) {
-          logger.debug({ src: 'core:plugin', pluginName, error: err }, 'Factory export threw');
+        const produced = potentialPlugin();
+        if (isValidPluginShape(produced)) {
+          return produced as Plugin;
         }
       }
     }
 
     logger.warn({ src: 'core:plugin', pluginName }, 'No valid plugin export found');
     return null;
-  } catch (error) {
-    logger.error({ src: 'core:plugin', pluginName, error }, 'Error loading plugin');
-    return null;
-  }
 }
 
 // ============================================================================

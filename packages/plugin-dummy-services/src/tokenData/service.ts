@@ -22,7 +22,7 @@ export interface TokenData {
   holders?: number;
   sourceProvider?: string;
   lastUpdatedAt?: Date;
-  raw?: any;
+  raw?: Record<string, unknown>;
 }
 
 /**
@@ -99,7 +99,7 @@ export class DummyTokenDataService extends Service {
     }));
   }
 
-  async getTokenDetails(address: string, chain: string = 'solana'): Promise<any | null> {
+  async getTokenDetails(address: string, chain: string = 'solana'): Promise<TokenData | null> {
     // Generate a consistent symbol from address (first 4 chars after prefix)
     const symbol = address.startsWith('So')
       ? address.substring(2, 6)

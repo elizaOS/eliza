@@ -151,10 +151,15 @@ export class DummyBrowserService extends Service {
   }
 
   async evaluateScript<T = any>(script: string): Promise<T> {
-    logger.debug('Evaluating script:', script.substring(0, 100) + '...');
+    logger.debug('Evaluating script:', `${script.substring(0, 100)}...`);
 
     // Return dummy result
-    return { success: true, data: 'dummy-script-result' } as any;
+    // Return type matches the expected browser service script execution result
+    interface ScriptExecutionResult {
+      success: boolean;
+      data: string;
+    }
+    return { success: true, data: 'dummy-script-result' } as ScriptExecutionResult;
   }
 
   async goBack(): Promise<void> {

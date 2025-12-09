@@ -53,7 +53,10 @@ export const roleProvider: Provider = {
       throw new Error('No server ID found');
     }
 
-    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'Using server ID');
+    logger.info(
+      { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+      'Using server ID'
+    );
 
     // Get world data instead of using cache
     const worldId = createUniqueUuid(runtime, serverId);
@@ -78,7 +81,10 @@ export const roleProvider: Provider = {
     const roles = world.metadata.roles || {};
 
     if (Object.keys(roles).length === 0) {
-      logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId }, 'No roles found for server');
+      logger.info(
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
+        'No roles found for server'
+      );
       return {
         data: {
           roles: [],
@@ -90,7 +96,14 @@ export const roleProvider: Provider = {
       };
     }
 
-    logger.info({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, roleCount: Object.keys(roles).length }, 'Found roles');
+    logger.info(
+      {
+        src: 'plugin:bootstrap:provider:roles',
+        agentId: runtime.agentId,
+        roleCount: Object.keys(roles).length,
+      },
+      'Found roles'
+    );
 
     // Group users by role
     const owners: { name: string; username: string; names: string[] }[] = [];
@@ -118,7 +131,10 @@ export const roleProvider: Provider = {
       }
 
       if (!name || !username || !names) {
-        logger.warn({ src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId }, 'User has no name or username, skipping');
+        logger.warn(
+          { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, entityId },
+          'User has no name or username, skipping'
+        );
         continue;
       }
 

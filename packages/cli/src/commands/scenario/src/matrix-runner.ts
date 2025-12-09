@@ -11,8 +11,6 @@ import {
   MatrixConfigRuntime,
   MatrixAxisRuntime,
   MatrixExecutionContext,
-  // CombinationResult, // unused
-  // MatrixExecutionResult, // unused
 } from './matrix-types';
 
 /**
@@ -106,7 +104,7 @@ export function createRuntimeConfig(config: MatrixConfig): MatrixConfigRuntime {
  * @param axes - Array of matrix axes with their values
  * @returns Array of parameter sets, each representing one combination
  */
-function generateCartesianProduct(axes: MatrixAxisRuntime[]): Array<Record<string, any>> {
+function generateCartesianProduct(axes: MatrixAxisRuntime[]): Array<Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>> {
   if (axes.length === 0) {
     return [];
   }
@@ -121,7 +119,7 @@ function generateCartesianProduct(axes: MatrixAxisRuntime[]): Array<Record<strin
   const [firstAxis, ...remainingAxes] = axes;
   const remainingProduct = generateCartesianProduct(remainingAxes);
 
-  const result: Array<Record<string, any>> = [];
+  const result: Array<Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>> = [];
 
   for (const value of firstAxis.values) {
     for (const combination of remainingProduct) {
@@ -142,7 +140,7 @@ function generateCartesianProduct(axes: MatrixAxisRuntime[]): Array<Record<strin
  * @param index - The index of this combination in the matrix
  * @returns A unique string identifier
  */
-function generateCombinationId(parameters: Record<string, any>, index: number): string {
+function generateCombinationId(parameters: Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>, index: number): string {
   // Create a stable hash of the parameters for uniqueness
   const parameterKeys = Object.keys(parameters).sort();
   const parameterHash = parameterKeys
@@ -229,7 +227,7 @@ export function filterCombinations(
  */
 export function validateCombinations(
   combinations: MatrixCombination[],
-  _baseScenario: any
+  _baseScenario: Scenario
 ): { valid: boolean; invalidCombinations: string[]; errors: string[] } {
   // This will be fully implemented when integrated with the parameter override system
   // For now, we'll do basic validation

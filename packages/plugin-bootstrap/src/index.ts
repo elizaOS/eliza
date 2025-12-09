@@ -148,7 +148,10 @@ export async function processAttachments(
   if (!attachments || attachments.length === 0) {
     return [];
   }
-  runtime.logger.debug({ src: 'plugin:bootstrap', agentId: runtime.agentId, count: attachments.length }, 'Processing attachments');
+  runtime.logger.debug(
+    { src: 'plugin:bootstrap', agentId: runtime.agentId, count: attachments.length },
+    'Processing attachments'
+  );
 
   const processedAttachments: Media[] = [];
 
@@ -161,14 +164,19 @@ export async function processAttachments(
       const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
       // Only process images that don't already have descriptions
       if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
-        runtime.logger.debug({ src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url }, 'Generating description for image');
+        runtime.logger.debug(
+          { src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url },
+          'Generating description for image'
+        );
 
         let imageUrl = url;
 
         if (!isRemote) {
           // Only convert local/internal media to base64
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+          if (!res.ok) {
+            throw new Error(`Failed to fetch image: ${res.statusText}`);
+          }
 
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -192,7 +200,11 @@ export async function processAttachments(
               processedAttachment.text = parsedXml.text || parsedXml.description || '';
 
               runtime.logger.debug(
-                { src: 'plugin:bootstrap', agentId: runtime.agentId, descriptionPreview: processedAttachment.description?.substring(0, 100) },
+                {
+                  src: 'plugin:bootstrap',
+                  agentId: runtime.agentId,
+                  descriptionPreview: processedAttachment.description?.substring(0, 100),
+                },
                 'Generated description'
               );
             } else {
@@ -208,7 +220,11 @@ export async function processAttachments(
                 processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
 
                 runtime.logger.debug(
-                  { src: 'plugin:bootstrap', agentId: runtime.agentId, descriptionPreview: processedAttachment.description?.substring(0, 100) },
+                  {
+                    src: 'plugin:bootstrap',
+                    agentId: runtime.agentId,
+                    descriptionPreview: processedAttachment.description?.substring(0, 100),
+                  },
                   'Used fallback XML parsing'
                 );
               } else {
@@ -225,43 +241,74 @@ export async function processAttachments(
             processedAttachment.text = response.description;
 
             runtime.logger.debug(
-              { src: 'plugin:bootstrap', agentId: runtime.agentId, descriptionPreview: processedAttachment.description?.substring(0, 100) },
+              {
+                src: 'plugin:bootstrap',
+                agentId: runtime.agentId,
+                descriptionPreview: processedAttachment.description?.substring(0, 100),
+              },
               'Generated description'
             );
           } else {
-            runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId }, 'Unexpected response format for image description');
+            runtime.logger.warn(
+              { src: 'plugin:bootstrap', agentId: runtime.agentId },
+              'Unexpected response format for image description'
+            );
           }
         } catch (error) {
-          runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error generating image description');
+          runtime.logger.error(
+            {
+              src: 'plugin:bootstrap',
+              agentId: runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Error generating image description'
+          );
           // Continue processing without description
         }
       } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch document: ${res.statusText}`);
+        }
 
         const contentType = res.headers.get('content-type') || '';
         const isPlainText = contentType.startsWith('text/plain');
 
         if (isPlainText) {
-          runtime.logger.debug({ src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url }, 'Processing plain text document');
+          runtime.logger.debug(
+            { src: 'plugin:bootstrap', agentId: runtime.agentId, url: attachment.url },
+            'Processing plain text document'
+          );
 
           const textContent = await res.text();
           processedAttachment.text = textContent;
           processedAttachment.title = processedAttachment.title || 'Text File';
 
           runtime.logger.debug(
-            { src: 'plugin:bootstrap', agentId: runtime.agentId, textPreview: processedAttachment.text?.substring(0, 100) },
+            {
+              src: 'plugin:bootstrap',
+              agentId: runtime.agentId,
+              textPreview: processedAttachment.text?.substring(0, 100),
+            },
             'Extracted text content'
           );
         } else {
-          runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId, contentType }, 'Skipping non-plain-text document');
+          runtime.logger.warn(
+            { src: 'plugin:bootstrap', agentId: runtime.agentId, contentType },
+            'Skipping non-plain-text document'
+          );
         }
       }
 
       processedAttachments.push(processedAttachment);
     } catch (error) {
       runtime.logger.error(
-        { src: 'plugin:bootstrap', agentId: runtime.agentId, attachmentUrl: attachment.url, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'plugin:bootstrap',
+          agentId: runtime.agentId,
+          attachmentUrl: attachment.url,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Failed to process attachment'
       );
       // Add the original attachment if processing fails
@@ -292,7 +339,9 @@ export function shouldRespond(
   }
 
   function normalizeEnvList(value: unknown): string[] {
-    if (!value || typeof value !== 'string') return [];
+    if (!value || typeof value !== 'string') {
+      return [];
+    }
     const cleaned = value.trim().replace(/^[\[]|[\]]$/g, '');
     return cleaned
       .split(',')
@@ -379,12 +428,22 @@ const reactionReceivedHandler = async ({
 }) => {
   try {
     await runtime.createMemory(message, 'messages');
-  } catch (error: any) {
-    if (error.code === '23505') {
-      runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId }, 'Duplicate reaction memory, skipping');
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === '23505') {
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap', agentId: runtime.agentId },
+        'Duplicate reaction memory, skipping'
+      );
       return;
     }
-    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error in reaction handler');
+    runtime.logger.error(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error in reaction handler'
+    );
   }
 };
 
@@ -422,14 +481,14 @@ const postGeneratedHandler = async ({
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
     messageServerId: userId as UUID,
-    worldId: worldId,
+    worldId,
   });
 
   const message = {
     id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
-    roomId: roomId,
+    roomId,
     content: {},
     metadata: {
       entityName: runtime.character.name,
@@ -449,9 +508,15 @@ const postGeneratedHandler = async ({
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
-    state.values.twitterUserName =
-      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
+  interface TwitterMetadata {
+    twitter?: {
+      userName?: string;
+    };
+    userName?: string;
+  }
+  const metadata = entity?.metadata as TwitterMetadata | undefined;
+  if (metadata?.twitter?.userName || metadata?.userName) {
+    state.values.twitterUserName = metadata.twitter?.userName || metadata.userName;
   }
 
   const prompt = composePromptFromState({
@@ -558,7 +623,10 @@ const postGeneratedHandler = async ({
   if (RM) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
-        runtime.logger.info({ src: 'plugin:bootstrap', agentId: runtime.agentId, cleanedText }, 'Already recently posted that, retrying');
+        runtime.logger.info(
+          { src: 'plugin:bootstrap', agentId: runtime.agentId, cleanedText },
+          'Already recently posted that, retrying'
+        );
         postGeneratedHandler({
           runtime,
           callback,
@@ -589,7 +657,10 @@ const postGeneratedHandler = async ({
     googleRefusalRegex.test(cleanedText) ||
     generalRefusalRegex.test(cleanedText)
   ) {
-    runtime.logger.info({ src: 'plugin:bootstrap', agentId: runtime.agentId, cleanedText }, 'Got prompt moderation refusal, retrying');
+    runtime.logger.info(
+      { src: 'plugin:bootstrap', agentId: runtime.agentId, cleanedText },
+      'Got prompt moderation refusal, retrying'
+    );
     postGeneratedHandler({
       runtime,
       callback,
@@ -661,11 +732,22 @@ const syncSingleUser = async (
 ) => {
   try {
     const entity = await runtime.getEntityById(entityId);
-    runtime.logger.info({ src: 'plugin:bootstrap', agentId: runtime.agentId, entityId, username: entity?.metadata?.username }, 'Syncing user');
+    runtime.logger.info(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        entityId,
+        username: entity?.metadata?.username,
+      },
+      'Syncing user'
+    );
 
     // Ensure we're not using WORLD type and that we have a valid channelId
     if (!channelId) {
-      runtime.logger.warn({ src: 'plugin:bootstrap', agentId: runtime.agentId, entityId: entity?.id }, 'Cannot sync user without a valid channelId');
+      runtime.logger.warn(
+        { src: 'plugin:bootstrap', agentId: runtime.agentId, entityId: entity?.id },
+        'Cannot sync user without a valid channelId'
+      );
       return;
     }
 
@@ -687,7 +769,13 @@ const syncSingleUser = async (
         : undefined;
 
     runtime.logger.info(
-      { src: 'plugin:bootstrap', agentId: runtime.agentId, type, isDM: type === ChannelType.DM, worldMetadata },
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        type,
+        isDM: type === ChannelType.DM,
+        worldMetadata,
+      },
       'syncSingleUser'
     );
 
@@ -709,17 +797,41 @@ const syncSingleUser = async (
     try {
       const createdWorld = await runtime.getWorld(worldId);
       runtime.logger.info(
-        { src: 'plugin:bootstrap', agentId: runtime.agentId, worldId, metadata: createdWorld?.metadata },
+        {
+          src: 'plugin:bootstrap',
+          agentId: runtime.agentId,
+          worldId,
+          metadata: createdWorld?.metadata,
+        },
         'Created world check'
       );
     } catch (error) {
-      runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to verify created world');
+      runtime.logger.error(
+        {
+          src: 'plugin:bootstrap',
+          agentId: runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Failed to verify created world'
+      );
     }
 
-    runtime.logger.success({ src: 'plugin:bootstrap', agentId: runtime.agentId, agentName: runtime.character.name, entityId: entity?.id }, 'Successfully synced user');
+    runtime.logger.success(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        agentName: runtime.character.name,
+        entityId: entity?.id,
+      },
+      'Successfully synced user'
+    );
   } catch (error) {
     runtime.logger.error(
-      { src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'Error syncing user'
     );
   }
@@ -736,14 +848,24 @@ const handleServerSync = async ({
   source,
   onComplete,
 }: WorldPayload) => {
-  runtime.logger.debug({ src: 'plugin:bootstrap', agentId: runtime.agentId, serverName: world.name }, 'Handling server sync event');
+  runtime.logger.debug(
+    { src: 'plugin:bootstrap', agentId: runtime.agentId, serverName: world.name },
+    'Handling server sync event'
+  );
   try {
     await runtime.ensureConnections(entities, rooms, source, world);
-    runtime.logger.debug({ src: 'plugin:bootstrap', agentId: runtime.agentId, worldName: world.name }, 'Successfully synced standardized world structure');
+    runtime.logger.debug(
+      { src: 'plugin:bootstrap', agentId: runtime.agentId, worldName: world.name },
+      'Successfully synced standardized world structure'
+    );
     onComplete?.();
   } catch (error) {
     runtime.logger.error(
-      { src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
       'Error processing standardized server data'
     );
   }
@@ -766,7 +888,12 @@ const controlMessageHandler = async ({
 }) => {
   try {
     runtime.logger.debug(
-      { src: 'plugin:bootstrap', agentId: runtime.agentId, action: message.payload.action, roomId: message.roomId },
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        action: message.payload.action,
+        roomId: message.roomId,
+      },
       'Processing control message'
     );
 
@@ -782,9 +909,12 @@ const controlMessageHandler = async ({
 
     if (websocketServiceName) {
       const websocketService = runtime.getService(websocketServiceName);
+      interface WebSocketServiceWithSendMessage {
+        sendMessage: (message: { type: string; payload: unknown }) => Promise<void>;
+      }
       if (websocketService && 'sendMessage' in websocketService) {
         // Send the control message through the WebSocket service
-        await (websocketService as any).sendMessage({
+        await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
           type: 'controlMessage',
           payload: {
             action: message.payload.action,
@@ -810,7 +940,14 @@ const controlMessageHandler = async ({
       );
     }
   } catch (error) {
-    runtime.logger.error({ src: 'plugin:bootstrap', agentId: runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error processing control message');
+    runtime.logger.error(
+      {
+        src: 'plugin:bootstrap',
+        agentId: runtime.agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      'Error processing control message'
+    );
   }
 };
 
@@ -829,7 +966,14 @@ const events: PluginEvents = {
 
   [EventType.MESSAGE_SENT]: [
     async (payload: MessagePayload) => {
-      payload.runtime.logger.debug({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, text: payload.message.content.text }, 'Message sent');
+      payload.runtime.logger.debug(
+        {
+          src: 'plugin:bootstrap',
+          agentId: payload.runtime.agentId,
+          text: payload.message.content.text,
+        },
+        'Message sent'
+      );
     },
   ],
 
@@ -853,15 +997,24 @@ const events: PluginEvents = {
       );
 
       if (!payload.worldId) {
-        payload.runtime.logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId }, 'No worldId provided for entity joined');
+        payload.runtime.logger.error(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId },
+          'No worldId provided for entity joined'
+        );
         return;
       }
       if (!payload.roomId) {
-        payload.runtime.logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId }, 'No roomId provided for entity joined');
+        payload.runtime.logger.error(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId },
+          'No roomId provided for entity joined'
+        );
         return;
       }
       if (!payload.metadata?.type) {
-        payload.runtime.logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId }, 'No type provided for entity joined');
+        payload.runtime.logger.error(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId },
+          'No type provided for entity joined'
+        );
         return;
       }
 
@@ -890,12 +1043,21 @@ const events: PluginEvents = {
           await payload.runtime.updateEntity(entity);
         }
         payload.runtime.logger.info(
-          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, entityId: payload.entityId, worldId: payload.worldId },
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            entityId: payload.entityId,
+            worldId: payload.worldId,
+          },
           'User left world'
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         payload.runtime.logger.error(
-          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) },
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
           'Error handling user left'
         );
       }
@@ -907,7 +1069,18 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (roomId: UUID, worldId: UUID, actionName: string) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              actionName: string,
+              status: string
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionStart(
               payload.roomId,
@@ -918,7 +1091,14 @@ const events: PluginEvents = {
           }
         }
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error sending refetch request');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error sending refetch request'
+        );
       }
     },
     async (payload: ActionEventPayload) => {
@@ -939,11 +1119,22 @@ const events: PluginEvents = {
           },
         });
         logger.debug(
-          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, actionName: payload.content?.actions?.[0] },
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            actionName: payload.content?.actions?.[0],
+          },
           'Logged ACTION_STARTED event'
         );
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to log ACTION_STARTED event');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to log ACTION_STARTED event'
+        );
       }
     },
   ],
@@ -953,7 +1144,18 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (roomId: UUID, worldId: UUID, actionName: string) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              actionName: string,
+              status: string
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionUpdate(
               payload.roomId,
@@ -964,7 +1166,14 @@ const events: PluginEvents = {
           }
         }
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Error sending refetch request');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error sending refetch request'
+        );
       }
     },
   ],
@@ -972,7 +1181,12 @@ const events: PluginEvents = {
   [EventType.EVALUATOR_STARTED]: [
     async (payload: EvaluatorEventPayload) => {
       logger.debug(
-        { src: 'plugin:bootstrap:evaluator', agentId: payload.runtime.agentId, evaluatorName: payload.evaluatorName, evaluatorId: payload.evaluatorId },
+        {
+          src: 'plugin:bootstrap:evaluator',
+          agentId: payload.runtime.agentId,
+          evaluatorName: payload.evaluatorName,
+          evaluatorId: payload.evaluatorId,
+        },
         'Evaluator started'
       );
     },
@@ -982,7 +1196,14 @@ const events: PluginEvents = {
     async (payload: EvaluatorEventPayload) => {
       const status = payload.error ? 'failed' : 'completed';
       logger.debug(
-        { src: 'plugin:bootstrap:evaluator', agentId: payload.runtime.agentId, status, evaluatorName: payload.evaluatorName, evaluatorId: payload.evaluatorId, error: payload.error?.message },
+        {
+          src: 'plugin:bootstrap:evaluator',
+          agentId: payload.runtime.agentId,
+          status,
+          evaluatorName: payload.evaluatorName,
+          evaluatorId: payload.evaluatorId,
+          error: payload.error?.message,
+        },
         'Evaluator completed'
       );
     },
@@ -1005,9 +1226,19 @@ const events: PluginEvents = {
             source: payload.source || 'unknown',
           },
         });
-        logger.debug({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, runId: payload.runId }, 'Logged RUN_STARTED event');
+        logger.debug(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, runId: payload.runId },
+          'Logged RUN_STARTED event'
+        );
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to log RUN_STARTED event');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to log RUN_STARTED event'
+        );
       }
     },
   ],
@@ -1033,11 +1264,23 @@ const events: PluginEvents = {
           },
         });
         logger.debug(
-          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, runId: payload.runId, status: payload.status },
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            runId: payload.runId,
+            status: payload.status,
+          },
           'Logged RUN_ENDED event'
         );
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to log RUN_ENDED event');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to log RUN_ENDED event'
+        );
       }
     },
   ],
@@ -1062,9 +1305,19 @@ const events: PluginEvents = {
             source: payload.source || 'unknown',
           },
         });
-        logger.debug({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, runId: payload.runId }, 'Logged RUN_TIMEOUT event');
+        logger.debug(
+          { src: 'plugin:bootstrap', agentId: payload.runtime.agentId, runId: payload.runId },
+          'Logged RUN_TIMEOUT event'
+        );
       } catch (error) {
-        logger.error({ src: 'plugin:bootstrap', agentId: payload.runtime.agentId, error: error instanceof Error ? error.message : String(error) }, 'Failed to log RUN_TIMEOUT event');
+        logger.error(
+          {
+            src: 'plugin:bootstrap',
+            agentId: payload.runtime.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to log RUN_TIMEOUT event'
+        );
       }
     },
   ],
@@ -1090,7 +1343,7 @@ export const bootstrapPlugin: Plugin = {
     actions.updateSettingsAction,
     actions.generateImageAction,
   ],
-  events: events,
+  events,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
     providers.evaluatorsProvider,

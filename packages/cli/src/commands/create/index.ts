@@ -21,7 +21,7 @@ export const create = new Command('create')
   .argument('[name]', 'name of the project/plugin/agent to create')
   .option('-y, --yes', 'skip prompts and use defaults')
   .option('-t, --type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
-  .action(async (name?: string, opts?: any) => {
+  .action(async (name?: string, opts?: Record<string, unknown>) => {
     let projectType: string | undefined; // Declare outside try block for catch access
 
     try {

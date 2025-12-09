@@ -57,7 +57,12 @@ export class MigrationTracker {
           ORDER BY created_at DESC 
           LIMIT 1`
     );
-    return (result.rows[0] as any) || null;
+    interface MigrationRow {
+      id: number;
+      hash: string;
+      created_at: string;
+    }
+    return (result.rows[0] as MigrationRow) || null;
   }
 
   async recordMigration(pluginName: string, hash: string, createdAt: number): Promise<void> {

@@ -48,19 +48,19 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
           name: worldName,
           agentId: runtime.agentId,
           messageServerId: messageServerId as UUID,
-          metadata: metadata,
+          metadata,
         });
       }
 
       await runtime.ensureRoomExists({
         id: roomId,
-        name: name,
-        source: source,
-        type: type,
+        name,
+        source,
+        type,
         channelId: roomId,
         messageServerId: messageServerId as UUID,
         worldId: resolvedWorldId,
-        metadata: metadata,
+        metadata,
       });
 
       await runtime.addParticipant(runtime.agentId, roomId);
@@ -71,14 +71,14 @@ export function createRoomManagementRouter(elizaOS: ElizaOS): express.Router {
         res,
         {
           id: roomId,
-          name: name,
-          agentId: agentId,
+          name,
+          agentId,
           createdAt: Date.now(),
-          source: source,
-          type: type,
+          source,
+          type,
           worldId: resolvedWorldId,
-          messageServerId: messageServerId,
-          metadata: metadata,
+          messageServerId,
+          metadata,
         },
         201
       );

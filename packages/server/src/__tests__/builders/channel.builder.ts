@@ -108,10 +108,7 @@ export class ChannelBuilder {
    * Create a simple group channel
    */
   asGroupChannel(name: string, serverId: UUID): this {
-    return this.withName(name)
-      .withType(ChannelType.GROUP)
-      .withServerId(serverId)
-      .withMetadata({});
+    return this.withName(name).withType(ChannelType.GROUP).withServerId(serverId).withMetadata({});
   }
 
   /**
@@ -242,7 +239,9 @@ export class ChannelBuilder {
       const builder = new ChannelBuilder();
       // Copy current state (default to GROUP type if not set)
       builder.withType(this.channel.type || ChannelType.GROUP);
-      if (this.channel.metadata) builder.withMetadata(this.channel.metadata);
+      if (this.channel.metadata) {
+        builder.withMetadata(this.channel.metadata);
+      }
 
       // Set incremental name
       builder.withName(`${prefix} ${i}`).withServerId(serverId);

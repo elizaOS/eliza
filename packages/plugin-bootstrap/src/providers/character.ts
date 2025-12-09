@@ -27,9 +27,9 @@ export const characterProvider: Provider = {
     // Handle bio (string or random selection from array)
     const bioText = Array.isArray(character.bio)
       ? character.bio
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 10)
-          .join(' ')
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 10)
+        .join(' ')
       : character.bio || '';
 
     const bio = addHeader(`# About ${character.name}`, bioText);
@@ -52,19 +52,19 @@ export const characterProvider: Provider = {
     const topics =
       character.topics && character.topics.length > 0
         ? `${character.name} is also interested in ${character.topics
-            .filter((topic) => topic !== topicString)
-            .sort(() => 0.5 - Math.random())
-            .slice(0, 5)
-            .map((topic, index, array) => {
-              if (index === array.length - 2) {
-                return `${topic} and `;
-              }
-              if (index === array.length - 1) {
-                return topic;
-              }
-              return `${topic}, `;
-            })
-            .join('')}`
+          .filter((topic) => topic !== topicString)
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 5)
+          .map((topic, index, array) => {
+            if (index === array.length - 2) {
+              return `${topic} and `;
+            }
+            if (index === array.length - 1) {
+              return topic;
+            }
+            return `${topic}, `;
+          })
+          .join('')}`
         : '';
 
     // Select random adjective if available
@@ -79,13 +79,13 @@ export const characterProvider: Provider = {
     const formattedCharacterPostExamples = !character.postExamples
       ? ''
       : character.postExamples
-          .sort(() => 0.5 - Math.random())
-          .map((post) => {
-            const messageString = `${post}`;
-            return messageString;
-          })
-          .slice(0, 50)
-          .join('\n');
+        .sort(() => 0.5 - Math.random())
+        .map((post) => {
+          const messageString = `${post}`;
+          return messageString;
+        })
+        .slice(0, 50)
+        .join('\n');
 
     const characterPostExamples =
       formattedCharacterPostExamples &&
@@ -97,37 +97,37 @@ export const characterProvider: Provider = {
     const formattedCharacterMessageExamples = !character.messageExamples
       ? ''
       : character.messageExamples
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 5)
-          .map((example) => {
-            const exampleNames = Array.from({ length: 5 }, () =>
-              Math.random().toString(36).substring(2, 8)
-            );
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 5)
+        .map((example) => {
+          const exampleNames = Array.from({ length: 5 }, () =>
+            Math.random().toString(36).substring(2, 8)
+          );
 
-            return example
-              .map((message) => {
-                let messageString = `${message.name}: ${message.content.text}${
-                  message.content.action || message.content.actions
-                    ? ` (actions: ${message.content.action || message.content.actions?.join(', ')})`
-                    : ''
-                }`;
-                exampleNames.forEach((name, index) => {
-                  const placeholder = `{{name${index + 1}}}`;
-                  messageString = messageString.replaceAll(placeholder, name);
-                });
-                return messageString;
-              })
-              .join('\n');
-          })
-          .join('\n\n');
+          return example
+            .map((message) => {
+              let messageString = `${message.name}: ${message.content.text}${
+                message.content.action || message.content.actions
+                  ? ` (actions: ${message.content.action || message.content.actions?.join(', ')})`
+                  : ''
+              }`;
+              exampleNames.forEach((name, index) => {
+                const placeholder = `{{name${index + 1}}}`;
+                messageString = messageString.replaceAll(placeholder, name);
+              });
+              return messageString;
+            })
+            .join('\n');
+        })
+        .join('\n\n');
 
     const characterMessageExamples =
       formattedCharacterMessageExamples &&
       formattedCharacterMessageExamples.replaceAll('\n', '').length > 0
         ? addHeader(
-            `# Example Conversations for ${character.name}`,
-            formattedCharacterMessageExamples
-          )
+          `# Example Conversations for ${character.name}`,
+          formattedCharacterMessageExamples
+        )
         : '';
 
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
@@ -139,26 +139,26 @@ export const characterProvider: Provider = {
       (character?.style?.all?.length && character?.style?.all?.length > 0) ||
       (character?.style?.post?.length && character?.style?.post?.length > 0)
         ? addHeader(
-            `# Post Directions for ${character.name}`,
-            (() => {
-              const all = character?.style?.all || [];
-              const post = character?.style?.post || [];
-              return [...all, ...post].join('\n');
-            })()
-          )
+          `# Post Directions for ${character.name}`,
+          (() => {
+            const all = character?.style?.all || [];
+            const post = character?.style?.post || [];
+            return [...all, ...post].join('\n');
+          })()
+        )
         : '';
 
     const messageDirections =
       (character?.style?.all?.length && character?.style?.all?.length > 0) ||
       (character?.style?.chat?.length && character?.style?.chat?.length > 0)
         ? addHeader(
-            `# Message Directions for ${character.name}`,
-            (() => {
-              const all = character?.style?.all || [];
-              const chat = character?.style?.chat || [];
-              return [...all, ...chat].join('\n');
-            })()
-          )
+          `# Message Directions for ${character.name}`,
+          (() => {
+            const all = character?.style?.all || [];
+            const chat = character?.style?.chat || [];
+            return [...all, ...chat].join('\n');
+          })()
+        )
         : '';
 
     const directions = isPostFormat ? postDirections : messageDirections;

@@ -11,7 +11,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
 
   // GET /server/current - Get current server's ID (for this running instance)
   // This is the serverId that clients should use when creating channels/messages
-  (router as any).get('/message-server/current', async (_req: express.Request, res: express.Response) => {
+  router.get('/message-server/current', async (_req: express.Request, res: express.Response) => {
     try {
       res.json({
         success: true,
@@ -29,7 +29,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   });
 
   // GET /message-servers - List all message servers
-  (router as any).get('/message-servers', async (_req: express.Request, res: express.Response) => {
+  router.get('/message-servers', async (_req: express.Request, res: express.Response) => {
     try {
       const messageServers = await serverInstance.getServers();
       res.json({ success: true, data: { messageServers } });
@@ -43,7 +43,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   });
 
   // POST /servers - Create a new server
-  (router as any).post('/servers', async (req: express.Request, res: express.Response) => {
+  router.post('/servers', async (req: express.Request, res: express.Response) => {
     const { name, sourceType, sourceId, metadata } = req.body;
 
     if (!name || !sourceType) {
@@ -75,7 +75,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   // ===============================
 
   // POST /servers/:serverId/agents - Add agent to server
-  (router as any).post(
+  router.post(
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
       const serverId = validateUuid(req.params.serverId);
@@ -127,7 +127,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   );
 
   // DELETE /servers/:serverId/agents/:agentId - Remove agent from server
-  (router as any).delete(
+  router.delete(
     '/servers/:serverId/agents/:agentId',
     async (req: express.Request, res: express.Response) => {
       const serverId = validateUuid(req.params.serverId);
@@ -179,7 +179,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   );
 
   // GET /servers/:serverId/agents - List agents in server
-  (router as any).get(
+  router.get(
     '/servers/:serverId/agents',
     async (req: express.Request, res: express.Response) => {
       const serverId = validateUuid(req.params.serverId);
@@ -219,7 +219,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
   );
 
   // GET /agents/:agentId/message-servers - List message servers agent belongs to
-  (router as any).get(
+  router.get(
     '/agents/:agentId/message-servers',
     async (req: express.Request, res: express.Response) => {
       const agentId = validateUuid(req.params.agentId);
@@ -258,7 +258,7 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
    * @deprecated Use GET /message-servers instead
    * Kept for backward compatibility. Will be removed in future versions.
    */
-  (router as any).get('/central-servers', async (_req: express.Request, res: express.Response) => {
+  router.get('/central-servers', async (_req: express.Request, res: express.Response) => {
     logger.warn(
       '[DEPRECATED] GET /central-servers is deprecated. Use GET /message-servers instead.'
     );
