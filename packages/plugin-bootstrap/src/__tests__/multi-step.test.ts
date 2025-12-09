@@ -522,7 +522,7 @@ async function runMultiStepCoreTest({
   // Simulate the multi-step workflow for testing
   const traceActionResult: any[] = [];
   let accumulatedState = state;
-  const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6');
+  const maxIterations = parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6', 10);
   let iterationCount = 0;
 
   while (iterationCount < maxIterations) {
@@ -590,7 +590,7 @@ async function runMultiStepCoreTest({
           traceActionResult.push({
             data: { actionName: providerName },
             success: false,
-            error: `Provider returned no result`,
+            error: 'Provider returned no result',
           });
           continue;
         }

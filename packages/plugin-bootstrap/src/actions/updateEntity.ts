@@ -13,6 +13,7 @@ import {
   composePromptFromState,
   findEntityByName,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -148,7 +149,7 @@ export const updateEntityAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -281,14 +282,14 @@ export const updateEntityAction: Action = {
       });
 
       // Parse the generated data
-      let parsedResult: any;
+      let parsedResult: Record<string, unknown>;
       try {
         parsedResult = parseKeyValueXml(result);
 
         if (!parsedResult || !parsedResult.source || !parsedResult.data) {
           throw new Error('Invalid response format - missing source or data');
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         logger.error(
           {
             src: 'plugin:bootstrap:action:update_entity',
@@ -313,7 +314,7 @@ export const updateEntityAction: Action = {
             error: error.message,
           },
           success: false,
-          error: error,
+          error,
         };
       }
 

@@ -1,4 +1,5 @@
 import {
+  type HandlerOptions,
   type Action,
   type ActionExample,
   composePromptFromState,
@@ -72,7 +73,7 @@ export const replyAction = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
+    _options?: HandlerOptions,
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {

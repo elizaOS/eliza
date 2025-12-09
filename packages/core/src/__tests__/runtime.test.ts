@@ -1,5 +1,16 @@
 import { beforeEach, afterEach, describe, expect, it } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
+
+// Helper type for bun:test mocks with additional methods
+interface BunMockFunction<T extends (...args: never[]) => unknown> {
+  (...args: Parameters<T>): ReturnType<T>;
+  mockResolvedValue: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mock: {
+    calls: Parameters<T>[][];
+    results: ReturnType<T>[];
+  };
+}
 import { AgentRuntime } from '../runtime';
 import { MemoryType, ModelType } from '../types';
 import type {
@@ -273,22 +284,22 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         enabled: true,
       });
 
-      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      (mockDatabaseAdapter.getRoomsByIds as any).mockResolvedValue([]);
-      (mockDatabaseAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
+      (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
+      (mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>).mockResolvedValue([]);
 
       await runtime.initialize(); // Initialize to process registrations
 
@@ -300,7 +311,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
   });
 
   describe('Initialization', () => {
-    let ensureAgentExistsSpy: any;
+    let ensureAgentExistsSpy: ReturnType<typeof spyOn<AgentRuntime, 'ensureAgentExists'>>;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
       ensureAgentExistsSpy = spyOn(AgentRuntime.prototype, 'ensureAgentExists').mockResolvedValue({
@@ -310,22 +321,22 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       });
-      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      (mockDatabaseAdapter.getEntitiesByIds as any).mockResolvedValue([
+      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
         },
       ]);
-      (mockDatabaseAdapter.getRoomsByIds as any).mockResolvedValue([]);
-      (mockDatabaseAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
+      (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
+      (mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>).mockResolvedValue([]);
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
@@ -405,7 +416,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = spyOn(runtimeWithMigrations as any, 'runPluginMigrations');
+      const runMigrationsSpy = spyOn(runtimeWithMigrations, 'runPluginMigrations' as keyof AgentRuntime);
 
       // Initialize with skipMigrations = true
       await runtimeWithMigrations.initialize({ skipMigrations: true });
@@ -422,7 +433,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = spyOn(runtimeDefault as any, 'runPluginMigrations');
+      const runMigrationsSpy = spyOn(runtimeDefault, 'runPluginMigrations' as keyof AgentRuntime);
 
       // Initialize without skipMigrations option (default behavior)
       await runtimeDefault.initialize();
@@ -935,7 +946,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         // Test: Explicitly set user to null should be preserved
         await runtime.useModel(ModelType.TEXT_SMALL, {
           prompt: 'test prompt',
-          user: null as any,
+          user: null,
         });
 
         expect(capturedParams.user).toBeNull();

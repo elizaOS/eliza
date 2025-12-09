@@ -2,11 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { AgentsService } from '../../services/agents';
 import { MemoryService } from '../../services/memory';
 import { ApiClientConfig } from '../../types/base';
+import { UUID } from '@elizaos/core';
 
 describe('No Content Response Fix Integration', () => {
   let agentsService: AgentsService;
   let memoryService: MemoryService;
-  let fetchMock: any;
+  let fetchMock: typeof global.fetch;
 
   const mockConfig: ApiClientConfig = {
     baseUrl: 'http://localhost:3000',
@@ -26,9 +27,9 @@ describe('No Content Response Fix Integration', () => {
 
   it('should handle deleteAgent with 204 response without runtime errors', async () => {
     // Mock a 204 No Content response
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (url: string, options?: RequestInit) => {
       expect(url).toContain('/api/agents/test-agent-id');
-      expect(options.method).toBe('DELETE');
+      expect(options?.method).toBe('DELETE');
 
       return {
         ok: true,
@@ -42,7 +43,7 @@ describe('No Content Response Fix Integration', () => {
       } as Response;
     };
 
-    const result = await agentsService.deleteAgent('test-agent-id' as any);
+    const result = await agentsService.deleteAgent('test-agent-id' as UUID);
 
     // Verify the result has the expected structure
     expect(result).toEqual({ success: true });
@@ -56,9 +57,9 @@ describe('No Content Response Fix Integration', () => {
   });
 
   it('should handle deleteAgentLog with 204 response safely', async () => {
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (url: string, options?: RequestInit) => {
       expect(url).toContain('/api/agents/test-agent-id/logs/test-log-id');
-      expect(options.method).toBe('DELETE');
+      expect(options?.method).toBe('DELETE');
 
       return {
         ok: true,
@@ -72,16 +73,19 @@ describe('No Content Response Fix Integration', () => {
       } as Response;
     };
 
-    const result = await agentsService.deleteAgentLog('test-agent-id' as any, 'test-log-id' as any);
+    const result = await agentsService.deleteAgentLog(
+      'test-agent-id' as UUID,
+      'test-log-id' as UUID
+    );
 
     expect(result).toEqual({ success: true });
     expect(result.success).toBe(true);
   });
 
   it('should handle clearAgentMemories with 204 response safely', async () => {
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (url: string, options?: RequestInit) => {
       expect(url).toContain('/api/memory/test-agent-id/memories');
-      expect(options.method).toBe('DELETE');
+      expect(options?.method).toBe('DELETE');
 
       return {
         ok: true,
@@ -95,7 +99,7 @@ describe('No Content Response Fix Integration', () => {
       } as Response;
     };
 
-    const result = await memoryService.clearAgentMemories('test-agent-id' as any);
+    const result = await memoryService.clearAgentMemories('test-agent-id' as UUID);
 
     // The service expects a specific return type
     expect(result).toEqual({ success: true });
@@ -105,7 +109,7 @@ describe('No Content Response Fix Integration', () => {
   it('should handle multiple 204 operations without type assertion errors', async () => {
     let callCount = 0;
 
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (_url: string, _options?: RequestInit) => {
       callCount++;
 
       return {
@@ -121,9 +125,9 @@ describe('No Content Response Fix Integration', () => {
     };
 
     // Test multiple operations that return 204
-    const deleteResult = await agentsService.deleteAgent('agent-1' as any);
-    const logDeleteResult = await agentsService.deleteAgentLog('agent-1' as any, 'log-1' as any);
-    const memoryResult = await memoryService.clearAgentMemories('agent-1' as any);
+    const deleteResult = await agentsService.deleteAgent('agent-1' as UUID);
+    const logDeleteResult = await agentsService.deleteAgentLog('agent-1' as UUID, 'log-1' as UUID);
+    const memoryResult = await memoryService.clearAgentMemories('agent-1' as UUID);
 
     expect(callCount).toBe(3);
 
@@ -139,7 +143,7 @@ describe('No Content Response Fix Integration', () => {
   });
 
   it('should handle empty content-length responses safely', async () => {
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (_url: string, _options?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -152,14 +156,14 @@ describe('No Content Response Fix Integration', () => {
       } as Response;
     };
 
-    const result = await agentsService.deleteAgent('test-agent-id' as any);
+    const result = await agentsService.deleteAgent('test-agent-id' as UUID);
 
     expect(result).toEqual({ success: true });
     expect(result.success).toBe(true);
   });
 
   it('should handle JSON parse failures for successful responses', async () => {
-    global.fetch = async (url: string, options: any) => {
+    global.fetch = async (_url: string, _options?: RequestInit) => {
       return {
         ok: true,
         status: 200,
@@ -172,7 +176,7 @@ describe('No Content Response Fix Integration', () => {
       } as Response;
     };
 
-    const result = await agentsService.deleteAgent('test-agent-id' as any);
+    const result = await agentsService.deleteAgent('test-agent-id' as UUID);
 
     expect(result).toEqual({ success: true });
     expect(result.success).toBe(true);
@@ -191,7 +195,7 @@ describe('No Content Response Fix Integration', () => {
         },
       }) as Response;
 
-    const result = await agentsService.deleteAgent('test-agent-id' as any);
+    const result = await agentsService.deleteAgent('test-agent-id' as UUID);
 
     // Before the fix, this would fail because result would be an empty object {}
     // but the type system would think it has a 'success' property

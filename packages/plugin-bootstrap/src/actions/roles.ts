@@ -1,4 +1,5 @@
 import {
+  type HandlerOptions,
   type Action,
   type ActionExample,
   ChannelType,
@@ -32,7 +33,9 @@ import {
  */
 const canModifyRole = (currentRole: Role, targetRole: Role | null, newRole: Role): boolean => {
   // User's can't change their own role
-  if (targetRole === currentRole) return false;
+  if (targetRole === currentRole) {
+    return false;
+  }
 
   switch (currentRole) {
     // Owners can do everything
@@ -88,7 +91,7 @@ export const updateRoleAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     if (!state) {
@@ -209,7 +212,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         ? parsedXml.assignments.assignment
         : [parsedXml.assignments.assignment];
 
-      assignments = assignmentArray.map((a: any) => ({
+      assignments = assignmentArray.map((a: Record<string, unknown>) => ({
         entityId: a.entityId,
         newRole: a.newRole as Role,
       }));
@@ -241,7 +244,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
     for (const assignment of assignments) {
-      let targetEntity = entities.find((e) => e.id === assignment.entityId);
+      const targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
         logger.error(
           {

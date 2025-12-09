@@ -117,18 +117,14 @@ function shouldLog(messageLevel: string, currentLevel: string): boolean {
  * Safe JSON stringify that handles circular references
  */
 function safeStringify(obj: unknown): string {
-  try {
-    const seen = new WeakSet();
-    return JSON.stringify(obj, (_, value) => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) return '[Circular]';
-        seen.add(value);
-      }
-      return value;
-    });
-  } catch {
-    return String(obj);
-  }
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (_, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+    return value;
+  });
 }
 
 /**
@@ -324,13 +320,22 @@ const getAdzeActiveLevel = () => {
 const adzeActiveLevel = getAdzeActiveLevel();
 
 // Reusable custom level configuration - improved colors and emojis for better terminal readability
-const customLevelConfig: Record<string, any> = {
+interface AdzeLevelConfig {
+  levelName: string;
+  level: number;
+  style: string;
+  terminalStyle: readonly string[];
+  method: keyof Console;
+  emoji: string;
+}
+
+const customLevelConfig: Record<string, AdzeLevelConfig> = {
   alert: {
     levelName: 'alert',
     level: 0,
     style: 'font-size: 12px; color: #ff0000;',
     terminalStyle: ['bgRed' as const, 'white' as const, 'bold' as const], // Critical - keep background
-    method: 'error' as any,
+    method: 'error' as keyof Console,
     emoji: '', // Visual scanning help
   },
   error: {
@@ -338,7 +343,7 @@ const customLevelConfig: Record<string, any> = {
     level: 1,
     style: 'font-size: 12px; color: #ff0000;',
     terminalStyle: ['bgRed' as const, 'whiteBright' as const, 'bold' as const], // Loud and bright - white on red
-    method: 'error' as any,
+    method: 'error' as keyof Console,
     emoji: '',
   },
   warn: {
@@ -346,7 +351,7 @@ const customLevelConfig: Record<string, any> = {
     level: 2,
     style: 'font-size: 12px; color: #ffaa00;',
     terminalStyle: ['bgYellow' as const, 'black' as const, 'bold' as const], // Bright but less than error - black on yellow
-    method: 'warn' as any,
+    method: 'warn' as keyof Console,
     emoji: '',
   },
   info: {
@@ -354,7 +359,7 @@ const customLevelConfig: Record<string, any> = {
     level: 3,
     style: 'font-size: 12px; color: #0099ff;',
     terminalStyle: ['cyan' as const], // Minimal - just cyan text, no background
-    method: 'info' as any,
+    method: 'info' as keyof Console,
     emoji: '',
   },
   fail: {
@@ -362,7 +367,7 @@ const customLevelConfig: Record<string, any> = {
     level: 4,
     style: 'font-size: 12px; color: #ff6600;',
     terminalStyle: ['red' as const, 'underline' as const], // Red underlined text, no background
-    method: 'error' as any,
+    method: 'error' as keyof Console,
     emoji: '',
   },
   success: {
@@ -370,7 +375,7 @@ const customLevelConfig: Record<string, any> = {
     level: 5,
     style: 'font-size: 12px; color: #00cc00;',
     terminalStyle: ['green' as const], // Minimal - just green text
-    method: 'log' as any,
+    method: 'log' as keyof Console,
     emoji: '',
   },
   log: {
@@ -378,7 +383,7 @@ const customLevelConfig: Record<string, any> = {
     level: 6,
     style: 'font-size: 12px; color: #888888;',
     terminalStyle: ['white' as const], // Minimal - just white text
-    method: 'log' as any,
+    method: 'log' as keyof Console,
     emoji: '',
   },
   debug: {
@@ -386,7 +391,7 @@ const customLevelConfig: Record<string, any> = {
     level: 7,
     style: 'font-size: 12px; color: #9b59b6;',
     terminalStyle: ['gray' as const, 'dim' as const], // Dark and subtle since off by default
-    method: 'debug' as any,
+    method: 'debug' as keyof Console,
     emoji: '',
   },
   verbose: {
@@ -394,7 +399,7 @@ const customLevelConfig: Record<string, any> = {
     level: 8,
     style: 'font-size: 12px; color: #666666;',
     terminalStyle: ['gray' as const, 'dim' as const, 'italic' as const], // Very subtle
-    method: 'debug' as any,
+    method: 'debug' as keyof Console,
     emoji: '',
   },
 };
@@ -404,28 +409,24 @@ const adzeStore = setup({
   format: raw ? 'json' : 'pretty',
   timestampFormatter: showTimestamps ? undefined : () => '',
   withEmoji: false,
-  levels: customLevelConfig,
+  levels: customLevelConfig as unknown as Record<string, { levelName: string; level: number; style: string; terminalStyle: Array<'bgRed' | 'white' | 'bold' | 'whiteBright' | 'bgYellow' | 'black' | 'cyan' | 'red' | 'underline' | 'green' | 'gray' | 'dim' | 'italic' | 'yellow' | 'blue' | 'magenta' | 'blackBright' | 'strikethrough'>; method: 'error' | 'debug' | 'log' | 'info' | 'warn' | 'clear' | 'dir' | 'dirxml' | 'group' | 'groupCollapsed' | 'groupEnd' | 'table'; emoji: string }>,
 });
 
 // Mirror Adze output to in-memory storage
-adzeStore.addListener('*', (log: any) => {
-  try {
-    const d = log.data;
-    const msg = Array.isArray(d?.message)
-      ? d.message.map((m: unknown) => (typeof m === 'string' ? m : safeStringify(m))).join(' ')
-      : typeof d?.message === 'string'
-        ? d.message
-        : '';
+adzeStore.addListener('*', (log: { data?: { message?: string | unknown[]; level?: number } }) => {
+  const d = log.data;
+  const msg = Array.isArray(d?.message)
+    ? d.message.map((m: unknown) => (typeof m === 'string' ? m : safeStringify(m))).join(' ')
+    : typeof d?.message === 'string'
+      ? d.message
+      : '';
 
-    const entry: LogEntry = {
-      time: Date.now(),
-      level: typeof d?.level === 'number' ? d.level : undefined,
-      msg,
-    };
-    globalInMemoryDestination.write(entry);
-  } catch {
-    // Silent fail - don't break logging
-  }
+  const entry: LogEntry = {
+    time: Date.now(),
+    level: typeof d?.level === 'number' ? d.level : undefined,
+    msg,
+  };
+  globalInMemoryDestination.write(entry);
 });
 
 // ============================================================================
@@ -436,7 +437,8 @@ adzeStore.addListener('*', (log: any) => {
  * Creates a sealed Adze logger instance with namespaces and metadata
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
-  let chain = adze as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let chain: ReturnType<typeof adze.ns> | typeof adze = adze as ReturnType<typeof adze.ns> | typeof adze;
 
   // Add namespaces if provided
   const namespaces: string[] = [];
@@ -447,9 +449,9 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   }
 
   // Add metadata (excluding namespace properties)
-  const metaBase = { ...base };
-  delete (metaBase as any).namespace;
-  delete (metaBase as any).namespaces;
+  const metaBase: Record<string, unknown> = { ...base };
+  delete metaBase.namespace;
+  delete metaBase.namespaces;
 
   // Add server context metadata (always, for observability)
   // Only add defaults if user hasn't provided them
@@ -472,25 +474,20 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     metaBase.serverId = serverId;
   }
 
-  // Add hostname (for JSON format or when explicitly needed)
-  if (raw && !metaBase.hostname) {
-    // Get hostname in a way that works in both Node and browser
-    let hostname = 'unknown';
-    if (typeof process !== 'undefined' && process.platform) {
-      // Node.js environment
-      try {
+    // Add hostname (for JSON format or when explicitly needed)
+    if (raw && !metaBase.hostname) {
+      // Get hostname in a way that works in both Node and browser
+      let hostname = 'unknown';
+      if (typeof process !== 'undefined' && process.platform) {
+        // Node.js environment
         const os = require('os');
         hostname = os.hostname();
-      } catch {
-        // Fallback if os module not available
-        hostname = 'localhost';
+      } else if (typeof window !== 'undefined' && window.location) {
+        // Browser environment
+        hostname = window.location.hostname || 'browser';
       }
-    } else if (typeof window !== 'undefined' && window.location) {
-      // Browser environment
-      hostname = window.location.hostname || 'browser';
+      metaBase.hostname = hostname;
     }
-    metaBase.hostname = hostname;
-  }
 
   // This ensures the sealed logger inherits the correct log level and styling
   const globalConfig = {
@@ -498,10 +495,10 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     format: raw ? 'json' : 'pretty',
     timestampFormatter: showTimestamps ? undefined : () => '',
     withEmoji: false,
-    levels: customLevelConfig, // Use same reusable config
+    levels: customLevelConfig as Record<string, { levelName: string; level: number; style: string; terminalStyle: string[]; method: keyof Console; emoji: string }>, // Use same reusable config
   };
 
-  return chain.meta(metaBase).seal(globalConfig);
+  return chain.meta(metaBase).seal(globalConfig as unknown as Parameters<ReturnType<typeof chain.meta>['seal']>[0]);
 }
 
 /**
@@ -573,7 +570,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       }
 
       const message = formatArgs(...args);
-      const consoleMethod =
+      const consoleMethod: keyof Console =
         method === 'fatal'
           ? 'error'
           : method === 'trace' || method === 'verbose'
@@ -582,12 +579,15 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
               ? 'info'
               : method === 'log'
                 ? 'log'
-                : (console as any)[method]
-                  ? method
+                : method in console && typeof console[method as keyof Console] === 'function'
+                  ? (method as keyof Console)
                   : 'log';
 
-      if (typeof (console as any)[consoleMethod] === 'function') {
-        (console as any)[consoleMethod](message);
+      const consoleFn = console[consoleMethod];
+      if (consoleFn && typeof consoleFn === 'function') {
+        // TypeScript doesn't know that consoleMethod excludes non-function properties
+        // but we've already checked typeof consoleFn === 'function', so it's safe
+        (consoleFn as (...args: unknown[]) => void)(message);
       }
     };
 
@@ -595,13 +595,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
      * Safely redact sensitive data from an object (browser version)
      */
     const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
-      try {
-        const copy = { ...obj };
-        redact(copy);
-        return copy;
-      } catch {
-        return obj;
-      }
+      const copy = { ...obj };
+      redact(copy);
+      return copy;
     };
 
     const adaptArgs = (
@@ -667,33 +663,29 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     captureIfError(method, args);
 
     // Capture to in-memory destination for API access (even for namespaced loggers)
-    try {
-      let msg = '';
-      if (args.length > 0) {
-        msg = args
-          .map((arg) => {
-            if (typeof arg === 'string') return arg;
-            if (arg instanceof Error) return arg.message;
-            return safeStringify(arg);
-          })
-          .join(' ');
-      }
-
-      // Include namespace in the message if present
-      if (base.namespace) {
-        msg = `#${base.namespace}  ${msg}`;
-      }
-
-      const entry: LogEntry = {
-        time: Date.now(),
-        level: LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
-        msg,
-      };
-
-      globalInMemoryDestination.write(entry);
-    } catch {
-      // Silent fail - don't break logging
+    let msg = '';
+    if (args.length > 0) {
+      msg = args
+        .map((arg) => {
+          if (typeof arg === 'string') return arg;
+          if (arg instanceof Error) return arg.message;
+          return safeStringify(arg);
+        })
+        .join(' ');
     }
+
+    // Include namespace in the message if present
+    if (base.namespace) {
+      msg = `#${base.namespace}  ${msg}`;
+    }
+
+    const entry: LogEntry = {
+      time: Date.now(),
+      level: LOG_LEVEL_PRIORITY[method.toLowerCase()] || LOG_LEVEL_PRIORITY.info,
+      msg,
+    };
+
+    globalInMemoryDestination.write(entry);
 
     // Map Eliza methods to correct Adze invocations
     let adzeMethod = method;
@@ -716,11 +708,10 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       adzeMethod = 'verbose';
     }
 
-    try {
-      (sealed as any)[adzeMethod](...adzeArgs);
-    } catch (error) {
-      // Fallback to console if Adze fails
-      console.log(`[${method.toUpperCase()}]`, ...args);
+    // Adze sealed logger has dynamic method names, use type assertion for method access
+    const sealedRecord = sealed as unknown as Record<string, (...args: unknown[]) => void>;
+    if (adzeMethod in sealedRecord && typeof sealedRecord[adzeMethod] === 'function') {
+      sealedRecord[adzeMethod](...adzeArgs);
     }
   };
 
@@ -729,17 +720,12 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Creates a shallow copy to avoid mutating the original
    */
   const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
-    try {
-      // Create a shallow copy to avoid mutating original
-      const copy = { ...obj };
-      // fast-redact returns the redacted string when serialize:false
-      // but mutates the object in place, so we use the copy
-      redact(copy);
-      return copy;
-    } catch {
-      // If redaction fails, return original (don't break logging)
-      return obj;
-    }
+    // Create a shallow copy to avoid mutating original
+    const copy = { ...obj };
+    // fast-redact returns the redacted string when serialize:false
+    // but mutates the object in place, so we use the copy
+    redact(copy);
+    return copy;
   };
 
   /**
@@ -803,12 +789,8 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Clear console and memory buffer
    */
   const clear = (): void => {
-    try {
-      if (typeof console?.clear === 'function') {
-        console.clear();
-      }
-    } catch {
-      // Silent fail
+    if (typeof console?.clear === 'function') {
+      console.clear();
     }
     globalInMemoryDestination.clear();
   };

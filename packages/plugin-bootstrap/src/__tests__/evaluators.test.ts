@@ -93,12 +93,17 @@ describe('Reflection Evaluator', () => {
     mockMessage.content = { ...mockMessage.content, channelType: ChannelType.GROUP };
     // Mock getRelationships and getMemories as they are called before composePrompt
     mockRuntime.getRelationships.mockResolvedValue([]);
-    mockRuntime.getMemories &&
+    if (mockRuntime.getMemories) {
       (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]);
+    }
 
     // Set up the reflection template
-    if (!mockRuntime.character) mockRuntime.character = {} as any;
-    if (!mockRuntime.character.templates) mockRuntime.character.templates = {};
+    if (!mockRuntime.character) {
+      mockRuntime.character = {} as any;
+    }
+    if (!mockRuntime.character.templates) {
+      mockRuntime.character.templates = {};
+    }
     mockRuntime.character.templates.reflectionTemplate =
       'Test reflection template {{recentMessages}}';
 
@@ -184,8 +189,9 @@ describe('Reflection Evaluator', () => {
 
     // Arrange
     mockRuntime.getRelationships.mockResolvedValue([]); // Ensure getRelationships returns an array
-    mockRuntime.getMemories &&
-      (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]); // Ensure getMemories for knownFacts returns an array
+    if (mockRuntime.getMemories) {
+      (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValue([]);
+    } // Ensure getMemories for knownFacts returns an array
 
     // Mock XML response
     mockRuntime.useModel.mockResolvedValueOnce(`<response>
@@ -383,7 +389,7 @@ describe('Reflection Evaluator', () => {
     mockRuntime.getCache.mockResolvedValueOnce('previous-message-id');
 
     // Mock the getMemories method to return a list of messages
-    mockRuntime.getMemories &&
+    if (mockRuntime.getMemories) {
       (mockRuntime.getMemories as ReturnType<typeof mock>).mockResolvedValueOnce([
         { id: 'previous-message-id' },
         { id: 'message-1' },
@@ -391,6 +397,7 @@ describe('Reflection Evaluator', () => {
         { id: 'message-3' },
         { id: 'message-4' },
       ]);
+    }
 
     // Basic validation checks
     expect(reflectionEvaluator).toHaveProperty('name');

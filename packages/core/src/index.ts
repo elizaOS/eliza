@@ -48,10 +48,15 @@ export * from './search';
 export * from './elizaos';
 
 // Environment detection utilities
+interface GlobalWithWindow {
+  window?: Window;
+  document?: Document;
+}
+
 export const isBrowser =
   typeof globalThis !== 'undefined' &&
-  typeof (globalThis as any).window !== 'undefined' &&
-  typeof (globalThis as any).document !== 'undefined';
+  typeof (globalThis as GlobalWithWindow).window !== 'undefined' &&
+  typeof (globalThis as GlobalWithWindow).document !== 'undefined';
 export const isNode =
   typeof process !== 'undefined' &&
   typeof process.versions !== 'undefined' &&

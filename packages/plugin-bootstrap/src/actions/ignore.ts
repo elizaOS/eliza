@@ -42,7 +42,7 @@ export const ignoreAction: Action = {
     _runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
-    _options: any,
+    _options?: HandlerOptions,
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<void> => {

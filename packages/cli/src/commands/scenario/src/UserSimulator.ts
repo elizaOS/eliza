@@ -1,7 +1,7 @@
 // File: packages/cli/src/commands/scenario/src/UserSimulator.ts
 // User simulator for generating realistic user responses in multi-turn conversations
 
-import { AgentRuntime, ModelType } from '@elizaos/core';
+import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { ConversationTurn, SimulationContext, UserSimulatorConfig } from './conversation-types';
 
 /**
@@ -9,10 +9,10 @@ import { ConversationTurn, SimulationContext, UserSimulatorConfig } from './conv
  * Uses LLM to simulate believable user behavior in conversations
  */
 export class UserSimulator {
-  private runtime: AgentRuntime;
+  private runtime: IAgentRuntime;
   private config: UserSimulatorConfig;
 
-  constructor(runtime: AgentRuntime, config: UserSimulatorConfig) {
+  constructor(runtime: IAgentRuntime, config: UserSimulatorConfig) {
     this.runtime = runtime;
     this.config = config;
   }

@@ -66,20 +66,23 @@ export class DummyWebSearchService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyWebSearchService initialized');
+    logger.info({ src: 'plugin:dummy-services:web-search' }, 'DummyWebSearchService initialized');
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyWebSearchService stopped');
+    logger.info({ src: 'plugin:dummy-services:web-search' }, 'DummyWebSearchService stopped');
   }
 
   async search(options: SearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing web search', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:web-search', options }, 'Performing web search');
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
 
-    logger.debug(`Generating ${limit} dummy search results for: ${options.query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', limit, query: options.query },
+      `Generating ${limit} dummy search results for: ${options.query}`
+    );
 
     for (let i = 0; i < limit; i++) {
       results.push({
@@ -101,12 +104,15 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchNews(options: NewsSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing news search', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:web-search', options }, 'Performing news search');
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
 
-    logger.debug(`Generating ${limit} dummy news results for: ${options.query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', limit, query: options.query },
+      `Generating ${limit} dummy news results for: ${options.query}`
+    );
 
     for (let i = 0; i < limit; i++) {
       results.push({
@@ -129,12 +135,15 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchImages(options: ImageSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing image search', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:web-search', options }, 'Performing image search');
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
 
-    logger.debug(`Generating ${limit} dummy image results for: ${options.query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', limit, query: options.query },
+      `Generating ${limit} dummy image results for: ${options.query}`
+    );
 
     for (let i = 0; i < limit; i++) {
       results.push({
@@ -157,12 +166,15 @@ export class DummyWebSearchService extends Service {
   }
 
   async searchVideos(options: VideoSearchOptions): Promise<SearchResponse> {
-    logger.debug('Performing video search', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:web-search', options }, 'Performing video search');
 
     const limit = options.limit || 10;
     const results: SearchResult[] = [];
 
-    logger.debug(`Generating ${limit} dummy video results for: ${options.query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', limit, query: options.query },
+      `Generating ${limit} dummy video results for: ${options.query}`
+    );
 
     for (let i = 0; i < limit; i++) {
       results.push({
@@ -186,7 +198,10 @@ export class DummyWebSearchService extends Service {
   }
 
   async autocomplete(query: string): Promise<string[]> {
-    logger.debug(`Getting autocomplete suggestions for: ${query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', query },
+      `Getting autocomplete suggestions for: ${query}`
+    );
 
     return [
       `${query} tutorial`,
@@ -201,7 +216,10 @@ export class DummyWebSearchService extends Service {
   }
 
   async getTrendingSearches(region?: string): Promise<string[]> {
-    logger.debug(`Getting trending searches for region: ${region || 'global'}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', region: region || 'global' },
+      `Getting trending searches for region: ${region || 'global'}`
+    );
 
     return [
       'artificial intelligence',
@@ -216,7 +234,10 @@ export class DummyWebSearchService extends Service {
   }
 
   async getRelatedSearches(query: string): Promise<string[]> {
-    logger.debug(`Getting related searches for: ${query}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:web-search', query },
+      `Getting related searches for: ${query}`
+    );
 
     return [
       `${query} alternatives`,

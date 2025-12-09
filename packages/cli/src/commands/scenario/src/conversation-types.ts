@@ -50,8 +50,8 @@ export interface ConversationConfig {
   total_timeout_ms: number;
   user_simulator: UserSimulatorConfig;
   termination_conditions: TerminationCondition[];
-  turn_evaluations: any[]; // EvaluationSchema[]
-  final_evaluations: any[]; // EvaluationSchema[]
+  turn_evaluations: Array<{ type: string; [key: string]: unknown }>; // EvaluationSchema[]
+  final_evaluations: Array<{ type: string; [key: string]: unknown }>; // EvaluationSchema[]
   debug_options: {
     log_user_simulation: boolean;
     log_turn_decisions: boolean;

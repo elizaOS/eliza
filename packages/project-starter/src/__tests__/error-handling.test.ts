@@ -26,7 +26,7 @@ describe('Error Handling', () => {
         // Create a custom mock runtime
         const mockRuntime = {
           // This is just a simple object for testing
-        } as unknown as IAgentRuntime;
+        } as Partial<IAgentRuntime> as IAgentRuntime;
 
         const mockMessage = {
           entityId: uuidv4(),
@@ -67,7 +67,7 @@ describe('Error Handling', () => {
     it('should throw an error when stopping non-existent service', async () => {
       const mockRuntime = {
         getService: mock().mockReturnValue(null),
-      } as unknown as IAgentRuntime;
+      } as Partial<IAgentRuntime> as IAgentRuntime;
 
       let caughtError = null;
       try {
@@ -90,7 +90,7 @@ describe('Error Handling', () => {
 
       const mockRuntime = {
         getService: mock().mockReturnValue(mockServiceWithError),
-      } as unknown as IAgentRuntime;
+      } as Partial<IAgentRuntime> as IAgentRuntime;
 
       // The error should be propagated
       let caughtError = null;
@@ -144,9 +144,10 @@ describe('Error Handling', () => {
 
       if (provider) {
         // Create invalid inputs to test error handling
-        const mockRuntime = null as unknown as IAgentRuntime;
-        const mockMessage = null as unknown as Memory;
-        const mockState = null as unknown as State;
+        // Testing error handling with null values - intentionally invalid inputs
+        const mockRuntime = null as IAgentRuntime;
+        const mockMessage = null as Memory;
+        const mockState = null as State;
 
         // The provider should handle null inputs gracefully
         try {

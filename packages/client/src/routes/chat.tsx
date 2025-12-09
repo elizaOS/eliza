@@ -52,7 +52,7 @@ function AgentRouteContent() {
         knowledge: agentDataResponse.data.knowledge || [],
         plugins: agentDataResponse.data.plugins || [],
         settings: agentDataResponse.data.settings || {},
-        secrets: (agentDataResponse.data as any).secrets || {},
+        secrets: agentDataResponse.data.secrets || {},
         style: agentDataResponse.data.style || {},
         templates: agentDataResponse.data.templates || {},
         enabled:

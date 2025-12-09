@@ -1,5 +1,6 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { mock, describe, it, expect, beforeEach } from 'bun:test';
+import { UUID } from '@elizaos/core';
 import { useAgentTabState } from '../use-agent-tab-state';
 
 // Mock clientLogger
@@ -107,14 +108,14 @@ describe('useAgentTabState', () => {
     localStorage.setItem('eliza-agent-tab-states', JSON.stringify(savedStates));
 
     const { result, rerender } = renderHook(({ agentId }) => useAgentTabState(agentId), {
-      initialProps: { agentId: '550e8400-e29b-41d4-a716-446655440000' as any },
+      initialProps: { agentId: '550e8400-e29b-41d4-a716-446655440000' as UUID },
     });
 
     await waitFor(() => {
       expect(result.current.currentTab).toBe('memories');
     });
 
-    rerender({ agentId: '550e8400-e29b-41d4-a716-446655440001' as any });
+    rerender({ agentId: '550e8400-e29b-41d4-a716-446655440001' as UUID });
 
     await waitFor(() => {
       expect(result.current.currentTab).toBe('actions');

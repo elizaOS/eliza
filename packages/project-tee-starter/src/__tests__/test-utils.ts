@@ -35,7 +35,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     evaluateProviders: mock().mockResolvedValue([]),
     evaluate: mock().mockResolvedValue([]),
     ...overrides,
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 
   return mockRuntime;
 }

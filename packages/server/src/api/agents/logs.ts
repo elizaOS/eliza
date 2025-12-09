@@ -55,12 +55,17 @@ export function createAgentLogsRouter(elizaOS: ElizaOS): express.Router {
           }
 
           // Check the modelType in the log body for model-related operations
-          if (log.body && typeof log.body === 'object') {
-            const body = log.body as any;
+          if (log.body && typeof log.body === 'object' && log.body !== null) {
+            interface LogBodyWithModelType {
+              modelType?: string;
+              [key: string]: unknown;
+            }
+            const body = log.body as LogBodyWithModelType;
             if (
               body.modelType &&
+              typeof body.modelType === 'string' &&
               excludeTypesArray.some((excludeType) =>
-                body.modelType.toLowerCase().includes(excludeType.toLowerCase())
+                body.modelType!.toLowerCase().includes(excludeType.toLowerCase())
               )
             ) {
               return false;

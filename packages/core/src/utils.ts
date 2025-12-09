@@ -112,7 +112,7 @@ export const composePromptFromState = ({
   const filteredKeys = stateKeys.filter((key) => !['text', 'values', 'data'].includes(key));
 
   // this flattens out key/values in text/values/data
-  const filteredState = filteredKeys.reduce((acc: Record<string, any>, key) => {
+  const filteredState = filteredKeys.reduce((acc: Record<string, unknown>, key) => {
     acc[key] = state[key];
     return acc;
   }, {});
@@ -220,7 +220,6 @@ export const formatPosts = ({
             'No entity found for message'
           );
         }
-        // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
         const displayName = entity?.names[0] || 'unknown';
 
@@ -350,7 +349,7 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * @param text - The input text containing the XML structure.
  * @returns An object with key-value pairs extracted from the XML, or null if parsing fails.
  */
-export function parseKeyValueXml(text: string): Record<string, any> | null {
+export function parseKeyValueXml(text: string): Record<string, unknown> | null {
   if (!text) return null;
 
   // First, try to find a specific <response> block (the one we actually want)
@@ -450,7 +449,7 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     xmlContent = fb.content;
   }
 
-  const result: Record<string, any> = {};
+  const result: Record<string, unknown> = {};
 
   // Safer linear scan to extract direct child <key>value</key> elements
   // Avoids potentially expensive backtracking from broad regexes
@@ -582,21 +581,16 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
  * @param text - The input text from which to extract and parse the JSON object.
  * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
  */
-export function parseJSONObjectFromText(text: string): Record<string, any> | null {
-  let jsonData = null;
+export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
   const jsonBlockMatch = text.match(jsonBlockPattern);
 
-  try {
-    if (jsonBlockMatch) {
-      // Parse the JSON from inside the code block
-      jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-    } else {
-      // Try to parse the text directly if it's not in a code block
-      jsonData = JSON.parse(normalizeJsonString(text.trim()));
-    }
-  } catch (_e) {
-    // logger.warn("Could not parse text as JSON, returning null");
-    return null; // Keep null return on error
+  let jsonData: Record<string, unknown> | null = null;
+  if (jsonBlockMatch) {
+    // Parse the JSON from inside the code block
+    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
+  } else {
+    // Try to parse the text directly if it's not in a code block
+    jsonData = JSON.parse(normalizeJsonString(text.trim()));
   }
 
   // Ensure we have a non-null object that's not an array
@@ -604,8 +598,7 @@ export function parseJSONObjectFromText(text: string): Record<string, any> | nul
     return jsonData;
   }
 
-  // logger.warn("Could not parse text as JSON object, returning null");
-  return null; // Return null if not a valid object
+  return null;
 }
 
 /**
@@ -638,17 +631,6 @@ export const normalizeJsonString = (str: string) => {
 
   return str;
 };
-
-// why is this here? maybe types.ts is more appropriate
-// and shouldn't the name include x/twitter
-/*
-export type ActionResponse = {
-  like: boolean;
-  retweet: boolean;
-  quote?: boolean;
-  reply?: boolean;
-};
-*/
 
 /**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
@@ -707,6 +689,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
 
   const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
     prompt,
+    modelType: ModelType.TEXT_TOKENIZER_ENCODE,
   });
 
   // If already within limits, return unchanged
@@ -720,12 +703,13 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
   // Decode back to text
   return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
     tokens: truncatedTokens,
+    modelType: ModelType.TEXT_TOKENIZER_DECODE,
   });
 }
 
 export function safeReplacer() {
   const seen = new WeakSet();
-  return function (_key: string, value: any) {
+  return function (_key: string, value: unknown) {
     if (typeof value === 'object' && value !== null) {
       if (seen.has(value)) {
         return '[Circular]';
@@ -847,19 +831,15 @@ let webCryptoAvailable: boolean | null = null;
 function checkWebCrypto(): boolean {
   if (webCryptoAvailable !== null) return webCryptoAvailable;
 
-  try {
-    // Check for crypto.subtle (WebCrypto API)
-    if (
-      typeof globalThis !== 'undefined' &&
-      globalThis.crypto &&
-      globalThis.crypto.subtle &&
-      typeof globalThis.crypto.subtle.digest === 'function'
-    ) {
-      webCryptoAvailable = true;
-      return true;
-    }
-  } catch {
-    // Ignore errors
+  // Check for crypto.subtle (WebCrypto API)
+  if (
+    typeof globalThis !== 'undefined' &&
+    globalThis.crypto &&
+    globalThis.crypto.subtle &&
+    typeof globalThis.crypto.subtle.digest === 'function'
+  ) {
+    webCryptoAvailable = true;
+    return true;
   }
 
   webCryptoAvailable = false;
@@ -907,14 +887,10 @@ function getCachedSha1(message: string): Uint8Array {
  */
 async function sha1BytesAsync(message: string): Promise<Uint8Array> {
   if (checkWebCrypto()) {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(message);
-      const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', data);
-      return new Uint8Array(hashBuffer);
-    } catch {
-      // Fall through to pure JS
-    }
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', data);
+    return new Uint8Array(hashBuffer);
   }
 
   // Fallback to pure JS implementation

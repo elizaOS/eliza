@@ -42,11 +42,7 @@ export interface DataDirStatus {
 }
 
 export async function ensureElizaDir() {
-  try {
-    await fs.mkdir(ELIZA_DIR, { recursive: true });
-  } catch (error) {
-    // Directory already exists
-  }
+  await fs.mkdir(ELIZA_DIR, { recursive: true });
 }
 
 export async function getRegistrySettings(): Promise<RegistrySettings> {

@@ -862,7 +862,7 @@ export default function CharacterForm({
     ...customComponents.map((component) => ({
       value: `custom-${component.name}`,
       label: component.name,
-      shortLabel: (component as any).shortLabel || component.name.split(' ')[0], // Use first word
+      shortLabel: (component as { shortLabel?: string }).shortLabel || component.name.split(' ')[0], // Use first word
     })),
   ];
 

@@ -158,8 +158,8 @@ export async function ensureIsolatedDatabase(dbPath: string): Promise<void> {
  */
 export async function writeTemporaryScenario(
   scenarioPath: string,
-  baseScenario: any,
-  parameters: Record<string, any>
+  baseScenario: Record<string, unknown>,
+  parameters: Record<string, unknown>
 ): Promise<void> {
   try {
     // Simple parameter application for isolated runs
@@ -184,7 +184,7 @@ export async function writeTemporaryScenario(
  * Simple utility to set nested properties using dot notation.
  * This is a simplified version that avoids complex dependencies.
  */
-function setNestedProperty(obj: any, path: string, value: any): void {
+function setNestedProperty(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');
   let current = obj;
 
@@ -313,12 +313,12 @@ export function getIsolatedTempDir(prefix: string = 'eliza-matrix'): string {
  * @param baseScenario - The scenario that will be executed
  * @returns Estimated disk space in bytes
  */
-export function estimateRunDiskSpace(baseScenario: any): number {
+export function estimateRunDiskSpace(baseScenario: { run?: Array<{ evaluations?: unknown[] }> }): number {
   // Basic estimation based on scenario complexity
   const baseSize = 50 * 1024 * 1024; // 50 MB base
   const runCount = baseScenario.run?.length || 1;
   const evaluationCount =
-    baseScenario.run?.reduce((sum: number, run: any) => sum + (run.evaluations?.length || 0), 0) ||
+    baseScenario.run?.reduce((sum: number, run: { evaluations?: unknown[] }) => sum + (run.evaluations?.length || 0), 0) ||
     0;
 
   // Estimate additional space based on complexity
