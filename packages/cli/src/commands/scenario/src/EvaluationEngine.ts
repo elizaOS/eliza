@@ -1,4 +1,4 @@
-import { AgentRuntime, ModelType } from '@elizaos/core';
+import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema } from './schema';
 import { z } from 'zod';
@@ -19,14 +19,14 @@ export interface Evaluator {
   evaluate(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult>;
 }
 
 export class EvaluationEngine {
   private evaluators = new Map<string, Evaluator>();
 
-  constructor(private runtime: AgentRuntime) {
+  constructor(private runtime: IAgentRuntime) {
     // Register all known evaluators
     this.register('string_contains', new StringContainsEvaluator());
     this.register('regex_match', new RegexMatchEvaluator());
@@ -162,7 +162,7 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
     _runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult> {
     if (params.type !== 'trajectory_contains_action')
       throw new Error(
@@ -187,12 +187,18 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
       });
 
       // Filter for action_result memories - look for both content.type and metadata.type
-      const actionResults = actionMemories.filter((mem) => {
-        if (!mem || typeof mem.content !== 'object') return false;
+      // Type guard for action result content
+      const isActionResultContent = (content: unknown): content is Record<string, unknown> & { actionName?: string; actionStatus?: string; error?: string } => {
+        return typeof content === 'object' && content !== null;
+      };
 
-        const contentType = mem.content?.type;
+      const actionResults = actionMemories.filter((mem) => {
+        if (!mem || typeof mem.content !== 'object' || mem.content === null) return false;
+
+        const contentType = isActionResultContent(mem.content) ? (mem.content.type as string | undefined) : undefined;
         const metadataType = mem.metadata?.type;
-        const hasActionName = (mem.content as any)?.actionName || (mem.metadata as any)?.actionName;
+        const contentObj = isActionResultContent(mem.content) ? mem.content : null;
+        const hasActionName = contentObj?.actionName || (mem.metadata as Record<string, unknown>)?.actionName;
 
         return (
           contentType === 'action_result' ||
@@ -208,8 +214,11 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
 
       // Check if any action matches the specified name (normalized) - check both content and metadata
       const matchingAction = actionResults.find((mem) => {
-        const contentActionName = (mem.content as any)?.actionName;
-        const metadataActionName = (mem.metadata as any)?.actionName;
+        const contentObj = isActionResultContent(mem.content) ? mem.content : null;
+        const contentActionName = typeof contentObj?.actionName === 'string' ? contentObj.actionName : undefined;
+        const metadataActionName = typeof (mem.metadata as Record<string, unknown>)?.actionName === 'string' 
+          ? (mem.metadata as Record<string, unknown>).actionName as string 
+          : undefined;
         const contentNormalized = normalize(contentActionName);
         const metadataNormalized = normalize(metadataActionName);
 
@@ -223,11 +232,12 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
         };
       }
 
-      const actionStatus = (matchingAction.content as any)?.actionStatus || 'unknown';
+      const contentObj = isActionResultContent(matchingAction.content) ? matchingAction.content : null;
+      const actionStatus = contentObj?.actionStatus || 'unknown';
       const message =
         actionStatus === 'completed'
           ? `Action '${params.action}' was executed successfully`
-          : `Action '${params.action}' was executed but failed: ${(matchingAction.content as any)?.error || 'Unknown error'}`;
+          : `Action '${params.action}' was executed but failed: ${contentObj?.error || 'Unknown error'}`;
 
       return {
         success: true, // Success means the action was found
@@ -246,7 +256,7 @@ class LLMJudgeEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult> {
     if (params.type !== 'llm_judge')
       throw new Error(`Mismatched evaluator: expected 'llm_judge', received '${params.type}'`);
@@ -256,7 +266,7 @@ class LLMJudgeEvaluator implements Evaluator {
     // Try OBJECT_SMALL first, then TEXT_LARGE/TEXT_SMALL
     const candidateModels = [ModelType.OBJECT_SMALL, ModelType.TEXT_LARGE, ModelType.TEXT_SMALL];
     const temperature = params.temperature || 0.1;
-    const jsonSchema = (params.json_schema as any) || this.getDefaultJudgmentSchema();
+    const jsonSchema = (params.json_schema as Record<string, unknown> | undefined) || this.getDefaultJudgmentSchema();
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
@@ -278,19 +288,22 @@ CRITICAL: You must respond with a JSON object that EXACTLY matches this schema:
 ${JSON.stringify(jsonSchema, null, 2)}
 
 The response MUST include these exact field names:
-${Object.keys(jsonSchema.properties).join(', ')}
+${typeof jsonSchema === 'object' && jsonSchema !== null && 'properties' in jsonSchema && typeof jsonSchema.properties === 'object' && jsonSchema.properties !== null
+  ? Object.keys(jsonSchema.properties).join(', ')
+  : 'N/A'}
 
 Do not use any other field names. Use only the exact field names specified above.`;
 
     try {
       // Check if the picked model is available; if not, return gracefully
-      const availableModels = (runtime as any).models; // unused
-      const modelKeys =
-        availableModels && typeof availableModels.keys === 'function'
-          ? Array.from(availableModels.keys())
-          : Object.keys(availableModels || {});
-      console.log(`🔍 [LLMJudgeEvaluator] Available models: ${JSON.stringify(availableModels)}`);
-      console.log(`🔍 [LLMJudgeEvaluator] Model keys: ${JSON.stringify(modelKeys)}`);
+      // Note: models property is internal to runtime, accessing for debugging only
+      // const availableModels = (runtime as IAgentRuntime & { models?: Map<string, unknown> | Record<string, unknown> }).models; // unused
+      // const modelKeys =
+      //   availableModels && typeof availableModels.keys === 'function'
+      //     ? Array.from(availableModels.keys())
+      //     : Object.keys(availableModels || {});
+      // console.log(`🔍 [LLMJudgeEvaluator] Available models: ${JSON.stringify(availableModels)}`);
+      // console.log(`🔍 [LLMJudgeEvaluator] Model keys: ${JSON.stringify(modelKeys)}`);
       const modelHandler = runtime.getModel(modelType);
       console.log(`🔍 [LLMJudgeEvaluator] Model handler: ${JSON.stringify(modelHandler)}`);
       console.log(`🔍 [LLMJudgeEvaluator] Model type: ${modelType}`);
@@ -306,7 +319,7 @@ Do not use any other field names. Use only the exact field names specified above
       // const openaiService = runtime.getService('openai');
 
       // Check all loaded services
-      // const allServices = (runtime as any).services;
+      // const allServices = runtime.services;
 
       // Do not include runtime here; runtime.useModel will inject it
       const objectParams: Omit<ObjectGenerationParams, 'runtime'> = {
@@ -314,7 +327,7 @@ Do not use any other field names. Use only the exact field names specified above
         schema: jsonSchema,
         temperature,
         output: 'object',
-      } as any;
+      };
 
       const response = await Promise.race([
         runtime.useModel(modelType, objectParams),
@@ -329,12 +342,16 @@ Do not use any other field names. Use only the exact field names specified above
       // Compare with expected result
       const success = this.compareWithExpected(parsedResponse, expected);
 
+      const responseObj = parsedResponse as Record<string, unknown>;
+      const judgment = responseObj.judgment as string | undefined;
+      const confidence = responseObj.confidence as number | undefined;
+
       return {
         success,
-        message: `LLM judgment: ${(parsedResponse as any).judgment} (confidence: ${(parsedResponse as any).confidence}). Expected: "${expected}". Result: ${success}`,
+        message: `LLM judgment: ${judgment || 'unknown'} (confidence: ${confidence ?? 'unknown'}). Expected: "${expected}". Result: ${success}`,
       };
-    } catch (error: any) {
-      const msg = error?.message || String(error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       const isTimeout = msg.toLowerCase().includes('timeout');
       return {
         success: false,
@@ -376,12 +393,13 @@ Do not use any other field names. Use only the exact field names specified above
     }
   }
 
-  private convertToZodSchema(schema: any): z.ZodObject<any> {
+  private convertToZodSchema(schema: Record<string, unknown>): z.ZodObject<Record<string, z.ZodTypeAny>> {
     // Convert JSON schema to Zod schema
     const properties: Record<string, z.ZodTypeAny> = {};
 
-    for (const [key, prop] of Object.entries(schema.properties || {})) {
-      const propSchema = prop as any;
+    const schemaProperties = (schema.properties as Record<string, { type?: string; enum?: string[]; minimum?: number; maximum?: number }> | undefined) || {};
+    for (const [key, prop] of Object.entries(schemaProperties)) {
+      const propSchema = prop;
 
       if (propSchema.type === 'string') {
         let zodProp: z.ZodTypeAny = z.string();
@@ -406,8 +424,8 @@ Do not use any other field names. Use only the exact field names specified above
     return z.object(properties);
   }
 
-  private compareWithExpected(parsedResponse: any, expected: string): boolean {
-    const judgment = parsedResponse.judgment.toLowerCase();
+  private compareWithExpected(parsedResponse: Record<string, unknown>, expected: string): boolean {
+    const judgment = (parsedResponse.judgment as string | undefined)?.toLowerCase() || '';
     const expectedLower = expected.toLowerCase();
 
     // Handle yes/no expectations

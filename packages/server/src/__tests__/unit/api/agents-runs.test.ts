@@ -49,7 +49,7 @@ async function simulateRequest(
     const req: any = {
       method: method.toUpperCase(),
       url: path,
-      path: path,
+      path,
       originalUrl: path,
       query: {},
       params: {},
@@ -58,13 +58,13 @@ async function simulateRequest(
     };
 
     const res: any = {
-      status: function (code: number) {
+      status(code: number) {
         if (!responseSent) {
           responseStatus = code;
         }
         return this;
       },
-      json: function (data: any) {
+      json(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -72,7 +72,7 @@ async function simulateRequest(
         }
         return this;
       },
-      send: function (data: any) {
+      send(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -82,7 +82,7 @@ async function simulateRequest(
       },
       setHeader: () => {},
       set: () => {},
-      end: function () {
+      end() {
         if (!responseSent) {
           responseSent = true;
           resolve({ status: responseStatus, body: responseBody });

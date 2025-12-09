@@ -387,7 +387,7 @@ describe('Backwards Compatibility', () => {
         {
           name: 'Code Test',
           description: 'Code execution test',
-          environment: { type: 'e2b' as const },
+          environment: { type: 'local' as const },
           run: [{ lang: 'python', code: "print('test')", evaluations: [] }],
           judgment: { strategy: 'any_pass' as const },
         },

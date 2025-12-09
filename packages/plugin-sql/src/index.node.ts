@@ -17,7 +17,8 @@ interface GlobalSingletons {
   postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
-const globalSymbols = globalThis as unknown as Record<symbol, GlobalSingletons>;
+// Type assertion needed because globalThis doesn't include symbol keys in its type definition
+const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }

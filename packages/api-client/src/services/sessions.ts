@@ -30,7 +30,9 @@ function toTimestampString(
   value: Date | string | number | undefined,
   paramName: string
 ): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
 
   let timestamp: number;
 

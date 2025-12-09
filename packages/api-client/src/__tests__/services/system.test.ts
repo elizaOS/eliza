@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test';
 import { SystemService } from '../../services/system';
 import { LocalEnvironmentUpdateParams } from '../../types/system';
+import { ApiClientConfig } from '../../types/base';
+
+// Helper type to access protected methods in tests
+type MockableSystemService = SystemService & {
+  get: ReturnType<typeof mock>;
+  post: ReturnType<typeof mock>;
+};
 
 // Mock the BaseApiClient
 mock.module('../../lib/base-client', () => ({
@@ -27,17 +34,20 @@ afterAll(() => {
 });
 
 describe('SystemService', () => {
-  let systemService: SystemService;
-  let mockGet: any;
-  let mockPost: any;
+  let systemService: MockableSystemService;
+  let mockGet: ReturnType<typeof mock>;
+  let mockPost: ReturnType<typeof mock>;
 
   beforeEach(() => {
     mockGet = mock(() => Promise.resolve({}));
     mockPost = mock(() => Promise.resolve({}));
 
-    systemService = new SystemService({ baseUrl: 'http://localhost:3000', apiKey: 'test-key' });
-    (systemService as any).get = mockGet;
-    (systemService as any).post = mockPost;
+    systemService = new SystemService({
+      baseUrl: 'http://localhost:3000',
+      apiKey: 'test-key',
+    }) as MockableSystemService;
+    systemService.get = mockGet;
+    systemService.post = mockPost;
   });
 
   afterEach(() => {
@@ -51,11 +61,13 @@ describe('SystemService', () => {
     });
 
     it('should throw error when config is null', () => {
-      expect(() => new SystemService(null as any)).toThrow();
+      // Testing error handling with null config
+      expect(() => new SystemService(null as ApiClientConfig)).toThrow();
     });
 
     it('should throw error when config is undefined', () => {
-      expect(() => new SystemService(undefined as any)).toThrow();
+      // Testing error handling with undefined config
+      expect(() => new SystemService(undefined as ApiClientConfig)).toThrow();
     });
   });
 
@@ -188,16 +200,22 @@ describe('SystemService', () => {
 
       expect(result.success).toBe(true);
       expect(mockPost).toHaveBeenCalledWith('/api/system/env/local', {
-        content: (emptyConfig as any).variables,
+        content: emptyConfig.variables,
       });
     });
 
     it('should handle null configuration', async () => {
-      await expect(systemService.updateLocalEnvironment(null as any)).rejects.toThrow();
+      // Testing error handling with null params
+      await expect(
+        systemService.updateLocalEnvironment(null as LocalEnvironmentUpdateParams)
+      ).rejects.toThrow();
     });
 
     it('should handle undefined configuration', async () => {
-      await expect(systemService.updateLocalEnvironment(undefined as any)).rejects.toThrow();
+      // Testing error handling with undefined params
+      await expect(
+        systemService.updateLocalEnvironment(undefined as LocalEnvironmentUpdateParams)
+      ).rejects.toThrow();
     });
 
     it('should handle partial configuration updates', async () => {
@@ -353,7 +371,10 @@ describe('SystemService', () => {
       };
       mockPost.mockResolvedValue({ success: true, message: 'Local env updated' });
 
-      const result = await systemService.updateLocalEnvironment(configWithNulls as any);
+      // Config with null values - testing that nulls are handled correctly
+      const result = await systemService.updateLocalEnvironment(
+        configWithNulls as LocalEnvironmentUpdateParams
+      );
 
       expect(result.success).toBe(true);
     });

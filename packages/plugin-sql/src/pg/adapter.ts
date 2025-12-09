@@ -1,5 +1,5 @@
 import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
@@ -12,7 +12,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   private manager: PostgresConnectionManager;
 
-  constructor(agentId: UUID, manager: PostgresConnectionManager, _schema?: any) {
+  constructor(agentId: UUID, manager: PostgresConnectionManager, _schema?: Record<string, unknown>) {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();
@@ -31,7 +31,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: any) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
     return await this.manager.withEntityContext(entityId, callback);
   }
@@ -85,8 +85,9 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return await this.withRetry(async () => {
       const client = await this.manager.getClient();
       try {
-        // Cast to any to avoid type conflicts between different pg versions
-        const db = drizzle(client as any);
+        // drizzle-orm/node-postgres accepts PoolClient from pg package
+        // PoolClient is compatible with drizzle's expected client type
+        const db = drizzle(client);
         this.db = db;
 
         return await operation();
@@ -168,7 +169,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return super.getMemoryById(memoryId);
   }
 
-  searchMemories(params: any): Promise<any[]> {
+  searchMemories(params: { roomId: UUID; limit?: number; start?: number; end?: number }): Promise<Memory[]> {
     return super.searchMemories(params);
   }
 

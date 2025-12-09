@@ -72,7 +72,13 @@ export function setupSocketIO(
 // Setup log streaming integration with the logger
 function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
   // Access the logger's destination to hook into log events
-  const loggerInstance = logger as any;
+  // Note: This accesses internal implementation details via Symbol
+  type LoggerWithDestination = typeof logger & {
+    [Symbol.for('pino-destination')]?: {
+      write: (data: string | unknown) => void;
+    };
+  };
+  const loggerInstance = logger as LoggerWithDestination;
   const destination = loggerInstance[Symbol.for('pino-destination')];
 
   if (destination && typeof destination.write === 'function') {
@@ -80,7 +86,7 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
     const originalWrite = destination.write.bind(destination);
 
     // Override write method to broadcast logs via WebSocket
-    destination.write = function (data: string | any) {
+    destination.write = function (data: string | unknown) {
       // Call original write first
       originalWrite(data);
 
@@ -90,7 +96,7 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
         if (typeof data === 'string') {
           try {
             logEntry = JSON.parse(data);
-          } catch (parseError) {
+          } catch (_parseError) {
             // If JSON parsing fails, treat as plain text log
             logEntry = { message: data, level: 'info' };
           }
@@ -105,7 +111,7 @@ function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
 
         // Broadcast to WebSocket clients
         router.broadcastLog(io, logEntry);
-      } catch (error) {
+      } catch (_error) {
         // Ignore JSON parse errors for non-log data
       }
     };
@@ -169,11 +175,15 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
 
     function findRouteInRuntime(runtime: IAgentRuntime) {
       for (const route of runtime.routes) {
-        if (handled) break;
+        if (handled) {
+          break;
+        }
 
         // Check if HTTP method matches
         const methodMatches = req.method.toLowerCase() === route.type.toLowerCase();
-        if (!methodMatches) continue;
+        if (!methodMatches) {
+          continue;
+        }
 
         // moved to runtime::registerPlugin so we don't need to do this on each request
         //const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`;
@@ -357,7 +367,9 @@ export function createPluginRouteHandler(elizaOS: ElizaOS): express.RequestHandl
       // check in all agents...
       for (const runtime of elizaOS.getAgents()) {
         // Iterate over all agents
-        if (handled) break; // If handled by a previous agent's route (e.g. specific match)
+        if (handled) {
+          break; // If handled by a previous agent's route (e.g. specific match)
+        }
 
         handled = findRouteInRuntime(runtime);
       } // End agent loop for global matching

@@ -148,7 +148,7 @@ describe('Validation Functions', () => {
   describe('getRuntime', () => {
     it('should return runtime when agent exists', () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000' as UUID;
-      const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
+      const mockRuntime = { id: 'test-runtime' } as Partial<IAgentRuntime> as IAgentRuntime;
       const mockElizaOS = {
         getAgent: jest.fn(() => mockRuntime),
       } as any;

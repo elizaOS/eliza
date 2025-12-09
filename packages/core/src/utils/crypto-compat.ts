@@ -22,22 +22,31 @@
  * @returns {boolean} True if Node.js or Bun crypto is available
  */
 function hasNodeCrypto(): boolean {
-  try {
-    return (
-      typeof require !== 'undefined' &&
-      typeof process !== 'undefined' &&
-      (process.versions?.node !== undefined || process.versions?.bun !== undefined)
-    );
-  } catch {
-    return false;
-  }
+  return (
+    typeof require !== 'undefined' &&
+    typeof process !== 'undefined' &&
+    (process.versions?.node !== undefined || process.versions?.bun !== undefined)
+  );
 }
 
 /**
  * Get the appropriate crypto module for the current environment
- * @returns {any} Native crypto in Node.js/Bun, crypto-browserify in browser
+ * @returns Native crypto in Node.js/Bun, crypto-browserify in browser
  */
-function getCryptoModule(): any {
+function getCryptoModule(): {
+  createHash: (algorithm: string) => {
+    update: (data: string | Uint8Array) => ReturnType<typeof getCryptoModule>['createHash'];
+    digest: () => Buffer;
+  };
+  createCipheriv: (algorithm: string, key: Uint8Array, iv: Uint8Array) => {
+    update: (data: Buffer, inputEncoding?: string, outputEncoding?: string) => Buffer | string;
+    final: (encoding?: string) => Buffer | string;
+  };
+  createDecipheriv: (algorithm: string, key: Uint8Array, iv: Uint8Array) => {
+    update: (data: Buffer, inputEncoding?: string, outputEncoding?: string) => Buffer | string;
+    final: (encoding?: string) => Buffer | string;
+  };
+} {
   if (hasNodeCrypto()) {
     return require('crypto');
   }
@@ -228,7 +237,9 @@ export async function createHashAsync(
   if (hasNodeCrypto()) {
     // Use Node.js native crypto for better performance
     const crypto = getCryptoModule();
-    return new Uint8Array(crypto.createHash(algorithm).update(bytes).digest());
+    const hash = crypto.createHash(algorithm);
+    hash.update(bytes);
+    return new Uint8Array(hash.digest());
   }
 
   // Use Web Crypto API in browser for async operations
@@ -270,7 +281,17 @@ export function createCipheriv(
 
   // Use crypto-browserify in browser, native crypto in Node.js
   const crypto = getCryptoModule();
-  return crypto.createCipheriv(algorithm, key, iv);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  return {
+    update(data: string, inputEncoding: string, outputEncoding: string): string {
+      const result = cipher.update(Buffer.from(data, inputEncoding as BufferEncoding), undefined, outputEncoding as BufferEncoding);
+      return typeof result === 'string' ? result : result.toString(outputEncoding as BufferEncoding);
+    },
+    final(encoding: string): string {
+      const result = cipher.final(encoding as BufferEncoding);
+      return typeof result === 'string' ? result : result.toString(encoding as BufferEncoding);
+    },
+  };
 }
 
 /**
@@ -308,7 +329,17 @@ export function createDecipheriv(
 
   // Use crypto-browserify in browser, native crypto in Node.js
   const crypto = getCryptoModule();
-  return crypto.createDecipheriv(algorithm, key, iv);
+  const decipher = crypto.createDecipheriv(algorithm, key, iv);
+  return {
+    update(data: string, inputEncoding: string, outputEncoding: string): string {
+      const result = decipher.update(Buffer.from(data, inputEncoding as BufferEncoding), undefined, outputEncoding as BufferEncoding);
+      return typeof result === 'string' ? result : result.toString(outputEncoding as BufferEncoding);
+    },
+    final(encoding: string): string {
+      const result = decipher.final(encoding as BufferEncoding);
+      return typeof result === 'string' ? result : result.toString(encoding as BufferEncoding);
+    },
+  };
 }
 
 /**
@@ -345,8 +376,13 @@ export async function encryptAsync(
   if (hasNodeCrypto()) {
     // Use Node.js native crypto for better performance
     const crypto = getCryptoModule();
+    const dataBuffer = Buffer.from(data);
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+    const updateResult = cipher.update(dataBuffer);
+    const finalResult = cipher.final();
+    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
+    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    const encrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(encrypted);
   }
 
@@ -388,8 +424,13 @@ export async function decryptAsync(
   if (hasNodeCrypto()) {
     // Use Node.js native crypto for better performance
     const crypto = getCryptoModule();
+    const dataBuffer = Buffer.from(data);
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
+    const updateResult = decipher.update(dataBuffer);
+    const finalResult = decipher.final();
+    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
+    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    const decrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(decrypted);
   }
 

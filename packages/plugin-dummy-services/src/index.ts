@@ -25,7 +25,7 @@ export const dummyServicesPlugin: Plugin = {
     DummyEmailService,
   ],
   tests: [dummyServicesScenariosSuite],
-  init: async (runtime) => {
+  init: async (_runtime) => {
     console.log('Dummy Services Plugin Initialized');
   },
 };

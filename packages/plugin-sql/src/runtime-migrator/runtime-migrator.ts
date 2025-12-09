@@ -482,7 +482,10 @@ export class RuntimeMigrator {
             sql`SELECT pg_try_advisory_lock(CAST(${lockIdStr} AS bigint)) as acquired`
           );
 
-          lockAcquired = (lockResult.rows[0] as any)?.acquired === true;
+          interface LockResultRow {
+            acquired: boolean;
+          }
+          lockAcquired = (lockResult.rows[0] as LockResultRow)?.acquired === true;
 
           if (!lockAcquired) {
             logger.info(

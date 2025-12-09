@@ -30,7 +30,7 @@ export class RunDataAggregator {
   // Run identification
   public runId?: string;
   public combinationId?: string;
-  public parameters?: Record<string, any>;
+  public parameters?: Record<string, unknown>;
   public startTime?: Date;
 
   // Collected data
@@ -52,7 +52,7 @@ export class RunDataAggregator {
    * Initialize a new run with the specified identifiers and parameters.
    * This should be called at the start of each scenario execution.
    */
-  public startRun(runId: string, combinationId: string, parameters: Record<string, any>): void {
+  public startRun(runId: string, combinationId: string, parameters: Record<string, unknown>): void {
     this.runId = runId;
     this.combinationId = combinationId;
     this.parameters = parameters;

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getElizaClient } from '@/lib/api-client-config';
 import clientLogger from '@/lib/logger';
+import type { Agent } from '@elizaos/api-client';
 
 // Registry configuration - centralized for maintainability
 const REGISTRY_ORG = 'elizaos-plugins';
@@ -84,7 +85,10 @@ export function usePlugins() {
               const agentDetailResponse = await elizaClient.agents.getAgent(activeAgent.id);
 
               // Extract plugins from the agent response
-              const plugins = (agentDetailResponse as any)?.plugins;
+              interface AgentWithPlugins extends Agent {
+                plugins?: string[];
+              }
+              const plugins = (agentDetailResponse as AgentWithPlugins)?.plugins;
               if (Array.isArray(plugins)) {
                 agentPlugins = plugins;
               }

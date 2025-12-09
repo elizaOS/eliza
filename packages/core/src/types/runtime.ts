@@ -20,6 +20,7 @@ import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
 import type { TaskWorker } from './task';
+import type { EventPayloadMap, EventHandler, EventPayload } from './events';
 
 /**
  * Represents the core runtime environment for an agent.
@@ -49,7 +50,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
-  getConnection(): Promise<any>;
+  getConnection(): Promise<unknown>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
@@ -70,9 +71,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Keep these methods for backward compatibility
   registerDatabaseAdapter(adapter: IDatabaseAdapter): void;
 
-  setSetting(key: string, value: string | boolean | null | any, secret?: boolean): void;
+  setSetting(key: string, value: string | boolean | null, secret?: boolean): void;
 
-  getSetting(key: string): string | boolean | null | any;
+  getSetting(key: string): string | boolean | null;
 
   getConversationLength(): number;
 
@@ -125,7 +126,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     type?: ChannelType | string;
     worldId: UUID;
     userId?: UUID;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): Promise<void>;
 
   ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;
@@ -143,7 +144,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
     provider?: string
   ): Promise<R>;
 
@@ -151,20 +152,23 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   registerModel(
     modelType: ModelTypeName | string,
-    handler: (params: any) => Promise<any>,
+    handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>,
     provider: string,
     priority?: number
   ): void;
 
   getModel(
     modelType: ModelTypeName | string
-  ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined;
+  ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>) | undefined;
 
-  registerEvent(event: string, handler: (params: any) => Promise<void>): void;
+  registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
+  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
 
-  getEvent(event: string): ((params: any) => Promise<void>)[] | undefined;
+  getEvent<T extends keyof EventPayloadMap>(event: T): EventHandler<T>[] | undefined;
+  getEvent(event: string): ((params: EventPayload) => Promise<void>)[] | undefined;
 
-  emitEvent(event: string | string[], params: any): Promise<void>;
+  emitEvent<T extends keyof EventPayloadMap>(event: T | T[], params: EventPayloadMap[T]): Promise<void>;
+  emitEvent(event: string | string[], params: EventPayload): Promise<void>;
 
   // In-memory task definition methods
   registerTaskWorker(taskHandler: TaskWorker): void;

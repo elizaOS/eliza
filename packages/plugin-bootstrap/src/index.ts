@@ -174,7 +174,9 @@ export async function processAttachments(
         if (!isRemote) {
           // Only convert local/internal media to base64
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+          if (!res.ok) {
+            throw new Error(`Failed to fetch image: ${res.statusText}`);
+          }
 
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -265,7 +267,9 @@ export async function processAttachments(
         }
       } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch document: ${res.statusText}`);
+        }
 
         const contentType = res.headers.get('content-type') || '';
         const isPlainText = contentType.startsWith('text/plain');
@@ -335,7 +339,9 @@ export function shouldRespond(
   }
 
   function normalizeEnvList(value: unknown): string[] {
-    if (!value || typeof value !== 'string') return [];
+    if (!value || typeof value !== 'string') {
+      return [];
+    }
     const cleaned = value.trim().replace(/^[\[]|[\]]$/g, '');
     return cleaned
       .split(',')
@@ -422,8 +428,12 @@ const reactionReceivedHandler = async ({
 }) => {
   try {
     await runtime.createMemory(message, 'messages');
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error: unknown) {
+    // PostgreSQL duplicate key violation error code
+    const isDuplicateKeyError = error instanceof Error &&
+      'code' in error &&
+      (error as NodeJS.ErrnoException).code === '23505';
+    if (isDuplicateKeyError) {
       runtime.logger.warn(
         { src: 'plugin:bootstrap', agentId: runtime.agentId },
         'Duplicate reaction memory, skipping'
@@ -475,14 +485,14 @@ const postGeneratedHandler = async ({
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
     messageServerId: userId as UUID,
-    worldId: worldId,
+    worldId,
   });
 
   const message = {
     id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
-    roomId: roomId,
+    roomId,
     content: {},
     metadata: {
       entityName: runtime.character.name,
@@ -502,9 +512,15 @@ const postGeneratedHandler = async ({
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
-    state.values.twitterUserName =
-      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
+  interface TwitterMetadata {
+    twitter?: {
+      userName?: string;
+    };
+    userName?: string;
+  }
+  const metadata = entity?.metadata as TwitterMetadata | undefined;
+  if (metadata?.twitter?.userName || metadata?.userName) {
+    state.values.twitterUserName = metadata.twitter?.userName || metadata.userName;
   }
 
   const prompt = composePromptFromState({
@@ -746,14 +762,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-            ownership: {
-              ownerId: entityId,
-            },
-            roles: {
-              [entityId]: Role.OWNER,
-            },
-            settings: {}, // Initialize empty settings for onboarding
-          }
+          ownership: {
+            ownerId: entityId,
+          },
+          roles: {
+            [entityId]: Role.OWNER,
+          },
+          settings: {}, // Initialize empty settings for onboarding
+        }
         : undefined;
 
     runtime.logger.info(
@@ -897,9 +913,12 @@ const controlMessageHandler = async ({
 
     if (websocketServiceName) {
       const websocketService = runtime.getService(websocketServiceName);
+      interface WebSocketServiceWithSendMessage {
+        sendMessage: (message: { type: string; payload: unknown }) => Promise<void>;
+      }
       if (websocketService && 'sendMessage' in websocketService) {
         // Send the control message through the WebSocket service
-        await (websocketService as any).sendMessage({
+        await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
           type: 'controlMessage',
           payload: {
             action: message.payload.action,
@@ -1036,7 +1055,7 @@ const events: PluginEvents = {
           },
           'User left world'
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         payload.runtime.logger.error(
           {
             src: 'plugin:bootstrap',
@@ -1054,7 +1073,18 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (roomId: UUID, worldId: UUID, actionName: string) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              actionName: string,
+              status: string
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionStart(
               payload.roomId,
@@ -1118,7 +1148,18 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (roomId: UUID, worldId: UUID, actionName: string) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              actionName: string,
+              status: string
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionUpdate(
               payload.roomId,
@@ -1306,7 +1347,7 @@ export const bootstrapPlugin: Plugin = {
     actions.updateSettingsAction,
     actions.generateImageAction,
   ],
-  events: events,
+  events,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
     providers.evaluatorsProvider,

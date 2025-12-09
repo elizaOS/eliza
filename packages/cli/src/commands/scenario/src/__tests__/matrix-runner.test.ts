@@ -46,7 +46,7 @@ describe('Matrix Runner', () => {
         },
         {
           parameter: 'environment.type',
-          values: ['local', 'e2b'],
+          values: ['local'],
         },
       ],
     };

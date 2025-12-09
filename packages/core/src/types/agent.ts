@@ -74,7 +74,7 @@ export interface Character {
 
   /** Optional configuration */
   settings?: {
-    [key: string]: string | boolean | number | Record<string, any>;
+    [key: string]: string | boolean | number | Record<string, unknown>;
   };
 
   /** Optional secrets */

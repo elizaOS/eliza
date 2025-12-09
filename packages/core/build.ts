@@ -99,21 +99,16 @@ async function buildAll() {
   console.log('🚀 Starting dual build process for @elizaos/core');
   const totalStart = Date.now();
 
-  try {
-    // Build everything in parallel for maximum speed
-    // TypeScript declarations can be generated while JS is being built
-    const [nodeResult, browserResult, _] = await Promise.all([
-      buildNode(),
-      buildBrowser(),
-      generateTypeScriptDeclarations(), // Run in parallel, not sequentially
-    ]);
+  // Build everything in parallel for maximum speed
+  // TypeScript declarations can be generated while JS is being built
+  const [nodeResult, browserResult, _] = await Promise.all([
+    buildNode(),
+    buildBrowser(),
+    generateTypeScriptDeclarations(), // Run in parallel, not sequentially
+  ]);
 
-    const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
-    console.log(`\n🎉 All builds complete in ${totalDuration}s`);
-  } catch (error) {
-    console.error('\n❌ Build failed:', error);
-    process.exit(1);
-  }
+  const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
+  console.log(`\n🎉 All builds complete in ${totalDuration}s`);
 }
 
 /**
@@ -126,40 +121,35 @@ async function generateTypeScriptDeclarations() {
   console.log('📝 Generating TypeScript declarations...');
   const startTime = Date.now();
 
-  try {
-    // Generate TypeScript declarations using tsc
-    console.log('   Compiling TypeScript declarations...');
-    await $`tsc --project tsconfig.declarations.json`;
+  // Generate TypeScript declarations using tsc
+  console.log('   Compiling TypeScript declarations...');
+  await $`tsc --project tsconfig.declarations.json`;
 
-    // Ensure directories exist for conditional exports
-    await fs.mkdir('dist/node', { recursive: true });
-    await fs.mkdir('dist/browser', { recursive: true });
+  // Ensure directories exist for conditional exports
+  await fs.mkdir('dist/node', { recursive: true });
+  await fs.mkdir('dist/browser', { recursive: true });
 
-    // Create re-export files for conditional exports structure
-    // dist/node/index.d.ts - points to the Node.js entry point
-    await fs.writeFile(
-      'dist/node/index.d.ts',
-      `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node';\n`
-    );
+  // Create re-export files for conditional exports structure
+  // dist/node/index.d.ts - points to the Node.js entry point
+  await fs.writeFile(
+    'dist/node/index.d.ts',
+    `// Type definitions for @elizaos/core (Node.js)\nexport * from '../index.node';\n`
+  );
 
-    // dist/browser/index.d.ts - points to the browser entry point
-    await fs.writeFile(
-      'dist/browser/index.d.ts',
-      `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser';\n`
-    );
+  // dist/browser/index.d.ts - points to the browser entry point
+  await fs.writeFile(
+    'dist/browser/index.d.ts',
+    `// Type definitions for @elizaos/core (Browser)\nexport * from '../index.browser';\n`
+  );
 
-    // Create main index.js for runtime fallback (when conditional exports don't match)
-    await fs.writeFile(
-      'dist/index.js',
-      `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`
-    );
+  // Create main index.js for runtime fallback (when conditional exports don't match)
+  await fs.writeFile(
+    'dist/index.js',
+    `// Main entry point fallback for @elizaos/core\nexport * from './node/index.node.js';\n`
+  );
 
-    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`✅ TypeScript declarations generated in ${duration}s`);
-  } catch (error) {
-    console.error('❌ Failed to generate TypeScript declarations:', error);
-    throw error;
-  }
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
 // Execute the build

@@ -193,7 +193,7 @@ describe('Port Checking Logic Tests', () => {
 
     // Verify it's set correctly
     expect(process.env.SERVER_PORT).toBe('3000');
-    expect(parseInt(process.env.SERVER_PORT)).toBe(3000);
+    expect(parseInt(process.env.SERVER_PORT, 10)).toBe(3000);
 
     // Clean up
     delete process.env.SERVER_PORT;

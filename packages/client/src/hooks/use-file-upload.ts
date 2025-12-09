@@ -166,12 +166,23 @@ export function useFileUpload({ agentId, channelId, chatType }: UseFileUploadPro
       const failed: Array<{ file: UploadingFile; error: string }> = [];
       const blobUrls: string[] = [];
 
+      interface UploadSuccessResult {
+        success: true;
+        media: Media;
+      }
+
+      interface UploadFailureResult {
+        success: false;
+        file: UploadingFile;
+        error: string;
+      }
+
       settledUploads.forEach((result, index) => {
         if (result.status === 'fulfilled') {
           if (result.value.success && 'media' in result.value) {
-            uploaded.push(result.value.media as Media);
+            uploaded.push((result.value as UploadSuccessResult).media);
           } else if ('file' in result.value) {
-            failed.push(result.value as { file: UploadingFile; error: string });
+            failed.push(result.value as UploadFailureResult);
           }
         } else {
           // Handle rejected promise
