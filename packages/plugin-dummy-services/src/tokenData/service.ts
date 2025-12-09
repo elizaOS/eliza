@@ -50,11 +50,17 @@ export class DummyTokenDataService extends Service {
   }
 
   async start(): Promise<void> {
-    logger.info(`[${this.serviceName}] Service started.`);
+    logger.info(
+      { src: 'plugin:dummy-services:token-data', serviceName: this.serviceName },
+      `[${this.serviceName}] Service started.`
+    );
   }
 
   async stop(): Promise<void> {
-    logger.info(`[${this.serviceName}] Service stopped.`);
+    logger.info(
+      { src: 'plugin:dummy-services:token-data', serviceName: this.serviceName },
+      `[${this.serviceName}] Service stopped.`
+    );
   }
 
   async getTokenData(tokenAddress: string): Promise<TokenData> {

@@ -16,18 +16,27 @@ export class TestDatabaseManager {
    */
   async createIsolatedDatabase(testId: string): Promise<IDatabaseAdapter> {
     try {
-      logger.debug(`Creating isolated test database for ${testId}`);
+      logger.debug(
+        { src: 'test-utils:test-database', testId },
+        `Creating isolated test database for ${testId}`
+      );
 
       // Use dynamic import to avoid breaking if PostgreSQL not available
       let adapter: IDatabaseAdapter;
 
       try {
         // Try to use PostgreSQL for testing
-        logger.debug(`Attempting to load PostgreSQL adapter for ${testId}`);
+        logger.debug(
+          { src: 'test-utils:test-database', testId },
+          `Attempting to load PostgreSQL adapter for ${testId}`
+        );
 
         // Try to use real database for proper testing, but fallback to mock if unavailable
         if (process.env.FORCE_MOCK_DB === 'true') {
-          logger.warn('FORCE_MOCK_DB is set - using mock database');
+          logger.warn(
+            { src: 'test-utils:test-database' },
+            'FORCE_MOCK_DB is set - using mock database'
+          );
           adapter = this.createMockDatabase(testId);
         } else {
           // Check if SQL plugin is available in the build
@@ -58,9 +67,16 @@ export class TestDatabaseManager {
               '11111111-2222-3333-4444-555555555555' as UUID
             );
 
-            logger.debug(`Successfully created PostgreSQL adapter for ${testId}`);
+            logger.debug(
+              { src: 'test-utils:test-database', testId },
+              `Successfully created PostgreSQL adapter for ${testId}`
+            );
           } catch (importError) {
             logger.warn(
+              {
+                src: 'test-utils:test-database',
+                error: importError instanceof Error ? importError.message : String(importError),
+              },
               `SQL plugin not available: ${importError instanceof Error ? importError.message : String(importError)} - falling back to mock database`
             );
             adapter = this.createMockDatabase(testId);
@@ -68,6 +84,10 @@ export class TestDatabaseManager {
         }
       } catch (postgresError) {
         logger.warn(
+          {
+            src: 'test-utils:test-database',
+            error: postgresError instanceof Error ? postgresError.message : String(postgresError),
+          },
           `Failed to create PostgreSQL database: ${postgresError instanceof Error ? postgresError.message : String(postgresError)} - falling back to mock database`
         );
 
@@ -81,10 +101,18 @@ export class TestDatabaseManager {
       // Store for cleanup
       this.testDatabases.set(testId, adapter);
 
-      logger.debug(`Successfully created isolated database for ${testId}`);
+      logger.debug(
+        { src: 'test-utils:test-database', testId },
+        `Successfully created isolated database for ${testId}`
+      );
       return adapter;
     } catch (error) {
       logger.error(
+        {
+          src: 'test-utils:test-database',
+          testId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Failed to create test database for ${testId}: ${error instanceof Error ? error.message : String(error)}`
       );
       throw new Error(
@@ -116,11 +144,17 @@ export class TestDatabaseManager {
       db: null, // Mock database instance
 
       async initialize() {
-        logger.debug(`Initialized mock database for ${testId}`);
+        logger.debug(
+          { src: 'test-utils:test-database', testId },
+          `Initialized mock database for ${testId}`
+        );
       },
 
       async init() {
-        logger.debug(`Initialized mock database for ${testId}`);
+        logger.debug(
+          { src: 'test-utils:test-database', testId },
+          `Initialized mock database for ${testId}`
+        );
       },
 
       async runMigrations() {
@@ -286,7 +320,10 @@ export class TestDatabaseManager {
         // Simple text matching instead of vector search
         if (params.query) {
           memories = memories.filter((m) =>
-            typeof m.content === 'object' && m.content !== null && 'text' in m.content && typeof m.content.text === 'string'
+            typeof m.content === 'object' &&
+            m.content !== null &&
+            'text' in m.content &&
+            typeof m.content.text === 'string'
               ? m.content.text.toLowerCase().includes(params.query.toLowerCase())
               : false
           );
@@ -822,10 +859,18 @@ export class TestDatabaseManager {
       if (adapter) {
         await adapter.close();
         this.testDatabases.delete(testId);
-        logger.debug(`Cleaned up database for ${testId}`);
+        logger.debug(
+          { src: 'test-utils:test-database', testId },
+          `Cleaned up database for ${testId}`
+        );
       }
     } catch (error) {
       logger.warn(
+        {
+          src: 'test-utils:test-database',
+          testId,
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Error cleaning up database ${testId}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
@@ -835,7 +880,7 @@ export class TestDatabaseManager {
    * Cleanup all test databases
    */
   async cleanup(): Promise<void> {
-    logger.debug('Cleaning up all test databases');
+    logger.debug({ src: 'test-utils:test-database' }, 'Cleaning up all test databases');
 
     const cleanupPromises = Array.from(this.testDatabases.keys()).map((testId) =>
       this.cleanupDatabase(testId)
@@ -847,7 +892,7 @@ export class TestDatabaseManager {
     this.tempPaths.clear();
     this.testDatabases.clear();
 
-    logger.debug('Successfully cleaned up all test databases');
+    logger.debug({ src: 'test-utils:test-database' }, 'Successfully cleaned up all test databases');
   }
 
   /**
@@ -857,7 +902,7 @@ export class TestDatabaseManager {
     activeDatabases: number;
     tempPaths: string[];
     memoryUsage: string;
-  } {
+    } {
     return {
       activeDatabases: this.testDatabases.size,
       tempPaths: Array.from(this.tempPaths),

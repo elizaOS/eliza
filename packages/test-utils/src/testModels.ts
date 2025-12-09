@@ -169,6 +169,10 @@ export class TestModelProvider {
       return intelligentResponse;
     } catch (error) {
       logger.warn(
+        {
+          src: 'test-utils:test-models',
+          error: error instanceof Error ? error.message : String(error),
+        },
         `Error in test model provider: ${error instanceof Error ? error.message : String(error)}`
       );
       return this.defaultResponse;

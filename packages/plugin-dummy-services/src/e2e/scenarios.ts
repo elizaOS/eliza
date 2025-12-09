@@ -8,7 +8,7 @@ export const dummyServicesScenariosSuite: TestSuite = {
     {
       name: 'Dummy test placeholder',
       async fn(_runtime: IAgentRuntime) {
-        logger.info('Dummy services test placeholder');
+        logger.info({ src: 'plugin:dummy-services:e2e' }, 'Dummy services test placeholder');
         // Test cases don't return values, they just throw on failure
       },
     },
