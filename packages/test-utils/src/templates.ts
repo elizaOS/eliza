@@ -385,7 +385,10 @@ export class TestSuite {
     const startTime = Date.now();
     const results: TemplateTestResult[] = [];
 
-    logger.info(`Running test suite: ${this.name}`);
+    logger.info(
+      { src: 'test-utils:templates', suiteName: this.name },
+      `Running test suite: ${this.name}`
+    );
 
     for (const test of this.tests) {
       try {
@@ -393,9 +396,20 @@ export class TestSuite {
         results.push(result);
 
         if (result.passed) {
-          logger.info(`✓ ${result.name} (${result.duration}ms)`);
+          logger.info(
+            { src: 'test-utils:templates', testName: result.name, duration: result.duration },
+            `✓ ${result.name} (${result.duration}ms)`
+          );
         } else {
-          logger.error(`✗ ${result.name} (${result.duration}ms): ${result.error?.message}`);
+          logger.error(
+            {
+              src: 'test-utils:templates',
+              testName: result.name,
+              duration: result.duration,
+              error: result.error?.message,
+            },
+            `✗ ${result.name} (${result.duration}ms): ${result.error?.message}`
+          );
         }
       } catch (error) {
         const errorResult: TemplateTestResult = {
@@ -405,7 +419,14 @@ export class TestSuite {
           error: error instanceof Error ? error : new Error(String(error)),
         };
         results.push(errorResult);
-        logger.error(`✗ ${errorResult.name}: ${errorResult.error?.message}`);
+        logger.error(
+          {
+            src: 'test-utils:templates',
+            testName: errorResult.name,
+            error: errorResult.error?.message,
+          },
+          `✗ ${errorResult.name}: ${errorResult.error?.message}`
+        );
       }
     }
 
@@ -414,6 +435,13 @@ export class TestSuite {
     const duration = Date.now() - startTime;
 
     logger.info(
+      {
+        src: 'test-utils:templates',
+        suiteName: this.name,
+        passed,
+        total: results.length,
+        duration,
+      },
       `Test suite ${this.name} completed: ${passed}/${results.length} passed (${duration}ms)`
     );
 

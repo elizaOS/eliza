@@ -64,18 +64,27 @@ export class DummyTranscriptionService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyTranscriptionService initialized');
+    logger.info(
+      { src: 'plugin:dummy-services:transcription' },
+      'DummyTranscriptionService initialized'
+    );
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyTranscriptionService stopped');
+    logger.info(
+      { src: 'plugin:dummy-services:transcription' },
+      'DummyTranscriptionService stopped'
+    );
   }
 
   async transcribeAudio(
     audioBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    logger.debug(`Transcribing audio (${audioBuffer.length} bytes)`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', bytes: audioBuffer.length, options },
+      `Transcribing audio (${audioBuffer.length} bytes)`
+    );
 
     // Generate dummy transcription with segments
     const segments: TranscriptionSegment[] = [
@@ -118,7 +127,10 @@ export class DummyTranscriptionService extends Service {
       words: options?.timestamps ? words : undefined,
     };
 
-    logger.debug(`Transcription complete: ${result.text.substring(0, 50)}...`);
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', preview: result.text.substring(0, 50) },
+      `Transcription complete: ${result.text.substring(0, 50)}...`
+    );
 
     return result;
   }
@@ -127,7 +139,10 @@ export class DummyTranscriptionService extends Service {
     videoBuffer: Buffer,
     options?: TranscriptionOptions
   ): Promise<TranscriptionResult> {
-    logger.debug(`Transcribing video (${videoBuffer.length} bytes)`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', bytes: videoBuffer.length, options },
+      `Transcribing video (${videoBuffer.length} bytes)`
+    );
 
     // Reuse audio transcription logic for video
     return this.transcribeAudio(videoBuffer, options);
@@ -137,11 +152,17 @@ export class DummyTranscriptionService extends Service {
     audioBuffer: Buffer,
     options?: SpeechToTextOptions
   ): Promise<string | TranscriptionResult> {
-    logger.debug('Converting speech to text', JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', options },
+      'Converting speech to text'
+    );
 
     const result = await this.transcribeAudio(audioBuffer, options);
 
-    logger.debug(`Speech to text complete: ${result.text.substring(0, 50)}...`);
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', preview: result.text.substring(0, 50) },
+      `Speech to text complete: ${result.text.substring(0, 50)}...`
+    );
 
     // Return based on format option
     if (options?.format === 'text' || !options?.format) {
@@ -153,21 +174,27 @@ export class DummyTranscriptionService extends Service {
 
   async textToSpeech(text: string, options?: TextToSpeechOptions): Promise<Buffer> {
     logger.debug(
-      `Converting text to speech: "${text.substring(0, 50)}..."`,
-      JSON.stringify(options)
+      { src: 'plugin:dummy-services:transcription', textPreview: text.substring(0, 50), options },
+      `Converting text to speech: "${text.substring(0, 50)}..."`
     );
 
     // Return dummy audio buffer
     const format = options?.format || 'mp3';
     const dummyAudio = Buffer.from(`dummy-audio-${format}-${text.length}-chars`);
 
-    logger.debug(`Generated ${format} audio: ${dummyAudio.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', format, bytes: dummyAudio.length },
+      `Generated ${format} audio: ${dummyAudio.length} bytes`
+    );
 
     return dummyAudio;
   }
 
   async detectLanguage(audioBuffer: Buffer): Promise<string> {
-    logger.debug(`Detecting language from audio (${audioBuffer.length} bytes)`);
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', bytes: audioBuffer.length },
+      `Detecting language from audio (${audioBuffer.length} bytes)`
+    );
 
     // Return dummy language code
     return 'en';
@@ -178,7 +205,10 @@ export class DummyTranscriptionService extends Service {
     targetLanguage: string,
     sourceLanguage?: string
   ): Promise<TranscriptionResult> {
-    logger.debug(`Translating audio to ${targetLanguage}`, JSON.stringify({ sourceLanguage }));
+    logger.debug(
+      { src: 'plugin:dummy-services:transcription', targetLanguage, sourceLanguage },
+      `Translating audio to ${targetLanguage}`
+    );
 
     return {
       text: `This is dummy translated text in ${targetLanguage}.`,

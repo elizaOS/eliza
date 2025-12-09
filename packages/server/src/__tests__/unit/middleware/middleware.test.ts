@@ -56,7 +56,7 @@ describe('Middleware Functions', () => {
 
   describe('agentExistsMiddleware', () => {
     it('should call next when agent exists', () => {
-      const mockRuntime = { id: 'test-runtime' } as unknown as IAgentRuntime;
+      const mockRuntime = { id: 'test-runtime' } as Partial<IAgentRuntime> as IAgentRuntime;
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
 
       // Create mock ElizaOS with getAgent method
@@ -68,7 +68,7 @@ describe('Middleware Functions', () => {
 
       req.params = { agentId };
 
-      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as Partial<ElizaOS> as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(next).toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe('Middleware Functions', () => {
 
       req.params = { agentId: 'invalid-id' };
 
-      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as Partial<ElizaOS> as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
@@ -101,7 +101,7 @@ describe('Middleware Functions', () => {
 
       req.params = { agentId: '123e4567-e89b-12d3-a456-426614174000' };
 
-      const middleware = agentExistsMiddleware(mockElizaOS as unknown as ElizaOS);
+      const middleware = agentExistsMiddleware(mockElizaOS as Partial<ElizaOS> as ElizaOS);
       middleware(req as express.Request, res as express.Response, next);
 
       expect(res.status).toHaveBeenCalledWith(404);
@@ -208,7 +208,7 @@ describe('Middleware Functions', () => {
 
     it('should detect suspicious User-Agent patterns', () => {
       (req.get as any).mockImplementation((header: string) => {
-        if (header === 'User-Agent') return 'Mozilla/5.0 <script>alert(1)</script>';
+        if (header === 'User-Agent') {return 'Mozilla/5.0 <script>alert(1)</script>';}
         return null;
       });
 
@@ -271,8 +271,8 @@ describe('Middleware Functions', () => {
     it('should allow valid content types for POST requests', () => {
       req.method = 'POST';
       (req.get as any).mockImplementation((header: string) => {
-        if (header === 'Content-Type') return 'application/json';
-        if (header === 'Content-Length') return '100';
+        if (header === 'Content-Type') {return 'application/json';}
+        if (header === 'Content-Length') {return '100';}
         return null;
       });
 
@@ -294,7 +294,7 @@ describe('Middleware Functions', () => {
     it('should skip validation when Content-Length is 0', () => {
       req.method = 'POST';
       (req.get as any).mockImplementation((header: string) => {
-        if (header === 'Content-Length') return '0';
+        if (header === 'Content-Length') {return '0';}
         return null;
       });
 
@@ -307,8 +307,8 @@ describe('Middleware Functions', () => {
     it('should reject invalid content type for POST requests', () => {
       req.method = 'POST';
       (req.get as any).mockImplementation((header: string) => {
-        if (header === 'Content-Type') return 'text/plain';
-        if (header === 'Content-Length') return '100';
+        if (header === 'Content-Type') {return 'text/plain';}
+        if (header === 'Content-Length') {return '100';}
         return null;
       });
 

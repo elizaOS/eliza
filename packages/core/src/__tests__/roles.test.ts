@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, type MockFunction } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
 import { getUserServerRole, findWorldsForOwner } from '../roles';
 import { Role, type IAgentRuntime, type UUID, type World } from '../types';
@@ -7,6 +7,8 @@ import * as logger_module from '../logger';
 
 describe('roles utilities', () => {
   let mockRuntime: IAgentRuntime;
+  let getWorldMock: MockFunction<(id: UUID) => Promise<World | null>>;
+  let getAllWorldsMock: MockFunction<() => Promise<World[]>>;
 
   beforeEach(() => {
     mock.restore();
@@ -29,17 +31,31 @@ describe('roles utilities', () => {
           ).mockImplementation(() => {});
         } else {
           logger_module.logger[method as keyof typeof logger_module.logger] = mock(
-            (bindings: Record<string, unknown>) => {}
-          ) as any;
+            () => {}
+          ) as typeof logger_module.logger[keyof typeof logger_module.logger];
         }
       });
     }
 
+    getWorldMock = mock<(id: UUID) => Promise<World | null>>();
+    getAllWorldsMock = mock<() => Promise<World[]>>();
+
     mockRuntime = {
       agentId: 'agent-123' as UUID,
-      getWorld: mock(),
-      getAllWorlds: mock(),
-    } as unknown as IAgentRuntime;
+      character: {
+        id: 'agent-123' as UUID,
+        name: 'TestAgent',
+        username: 'testagent',
+        bio: [],
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        style: { all: [], chat: [], post: [] },
+        adjectives: [],
+      },
+      getWorld: getWorldMock,
+      getAllWorlds: getAllWorldsMock,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
   });
 
   afterEach(() => {
@@ -60,7 +76,7 @@ describe('roles utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const role = await getUserServerRole(
         mockRuntime,
@@ -71,7 +87,7 @@ describe('roles utilities', () => {
     });
 
     it('should return Role.NONE when world is null', async () => {
-      (mockRuntime.getWorld as any).mockResolvedValue(null);
+      getWorldMock.mockResolvedValue(null);
 
       const role = await getUserServerRole(mockRuntime, 'user-123', 'server-123');
       expect(role).toBe(Role.NONE);
@@ -86,7 +102,7 @@ describe('roles utilities', () => {
         metadata: {},
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const role = await getUserServerRole(mockRuntime, 'user-123', 'server-123');
       expect(role).toBe(Role.NONE);
@@ -103,7 +119,7 @@ describe('roles utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const role = await getUserServerRole(mockRuntime, 'user-123', 'server-123');
       expect(role).toBe(Role.NONE);
@@ -122,7 +138,7 @@ describe('roles utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       // Even though the code has duplicate checks for entityId, it should return NONE
       // since 'user-123' is not in the roles
@@ -145,7 +161,7 @@ describe('roles utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const ownerRole = await getUserServerRole(
         mockRuntime,
@@ -208,7 +224,7 @@ describe('roles utilities', () => {
         },
       ];
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
+      getAllWorldsMock.mockResolvedValue(mockWorlds);
 
       const ownerWorlds = await findWorldsForOwner(mockRuntime, 'user-123');
 
@@ -233,7 +249,7 @@ describe('roles utilities', () => {
     it('should return null when entityId is null', async () => {
       const { logger } = await import('../logger');
 
-      const result = await findWorldsForOwner(mockRuntime, null as any);
+      const result = await findWorldsForOwner(mockRuntime, null as string); // Testing with null value
 
       expect(result).toBeNull();
       expect(logger.error).toHaveBeenCalledWith(
@@ -245,7 +261,7 @@ describe('roles utilities', () => {
     it('should return null when no worlds exist', async () => {
       const { logger } = await import('../logger');
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue([]);
+      getAllWorldsMock.mockResolvedValue([]);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
@@ -259,7 +275,7 @@ describe('roles utilities', () => {
     it('should return null when getAllWorlds returns null', async () => {
       const { logger } = await import('../logger');
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue(null);
+      getAllWorldsMock.mockResolvedValue([]);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
@@ -296,7 +312,7 @@ describe('roles utilities', () => {
         },
       ];
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
+      getAllWorldsMock.mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
@@ -320,7 +336,7 @@ describe('roles utilities', () => {
         } as World,
       ];
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
+      getAllWorldsMock.mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 
@@ -340,7 +356,7 @@ describe('roles utilities', () => {
         },
       ];
 
-      (mockRuntime.getAllWorlds as any).mockResolvedValue(mockWorlds);
+      getAllWorldsMock.mockResolvedValue(mockWorlds);
 
       const result = await findWorldsForOwner(mockRuntime, 'user-123');
 

@@ -100,7 +100,7 @@ export interface EntityPayload extends EventPayload {
     orginalId: string;
     username: string;
     displayName?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -190,7 +190,7 @@ export interface EmbeddingGenerationPayload extends EventPayload {
   retryCount?: number;
   maxRetries?: number;
   embedding?: number[];
-  error?: any;
+  error?: Error | string | unknown;
   runId?: UUID;
 }
 

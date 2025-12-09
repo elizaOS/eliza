@@ -181,7 +181,8 @@ describe('Hello World Action', () => {
     runtime = createMockRuntime();
     helloWorldAction = starterPlugin?.actions?.[0] as Action;
     // Clear all spies before each test
-    const mockLogger = logger as unknown as MockLogger;
+    // Logger mock for testing - logger has all required methods
+    const mockLogger = logger as MockLogger;
     mockLogger.info.calls = [];
     mockLogger.error.calls = [];
     mockLogger.debug.calls = [];

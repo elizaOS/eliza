@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 
-// Interface for working memory entries
 interface WorkingMemoryEntry {
   actionName: string;
   result: ActionResult;
   timestamp: number;
 }
+
 import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
@@ -61,6 +61,9 @@ import {
   type GenerateTextParams,
   type GenerateTextOptions,
   type GenerateTextResult,
+  type EventPayload,
+  type EventPayloadMap,
+  type EventHandler,
 } from './types';
 
 import { BM25 } from './search';
@@ -94,7 +97,7 @@ export class Semaphore {
 }
 
 type ServiceResolver = (service: Service) => void;
-type ServiceRejecter = (reason: any) => void;
+type ServiceRejecter = (reason: Error | string) => void;
 type ServicePromiseHandler = {
   resolve: ServiceResolver;
   reject: ServiceRejecter;
@@ -118,7 +121,7 @@ export class AgentRuntime implements IAgentRuntime {
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
-  private eventHandlers: Map<string, ((data: any) => void)[]> = new Map();
+  private eventHandlers: Map<string, ((data: unknown) => void)[]> = new Map();
 
   /**
    * Reference to the ElizaOS instance that created this runtime
@@ -142,7 +145,7 @@ export class AgentRuntime implements IAgentRuntime {
   >(); // status tracking
   public initPromise: Promise<void>;
   private initResolver: ((value?: void | PromiseLike<void>) => void) | undefined;
-  private initRejecter: ((reason?: any) => void) | undefined;
+  private initRejecter: ((reason?: Error | string) => void) | undefined;
   private currentRunId?: UUID; // Track the current run ID
   private currentRoomId?: UUID; // Track the current room for logging
   private currentActionContext?: {
@@ -276,29 +279,16 @@ export class AgentRuntime implements IAgentRuntime {
     this.logger.debug({ src: 'agent', agentId: this.agentId, plugin: plugin.name }, 'Plugin added');
 
     if (plugin.init) {
-      try {
-        await plugin.init(plugin.config || {}, this);
-        this.logger.debug(
-          { src: 'agent', agentId: this.agentId, plugin: plugin.name },
-          'Plugin initialized'
-        );
-      } catch (error) {
-        // Check if the error is related to missing API keys
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (
-          errorMessage.includes('API key') ||
-          errorMessage.includes('environment variables') ||
-          errorMessage.includes('Invalid plugin configuration')
-        ) {
-          console.warn(`Plugin ${plugin.name} requires configuration. ${errorMessage}`);
-          console.warn(
-            'Please check your environment variables and ensure all required API keys are set.'
-          );
-          console.warn('You can set these in your .env file.');
-        } else {
-          throw error;
+      const config: Record<string, string> = {};
+      if (plugin.config) {
+        for (const [key, value] of Object.entries(plugin.config)) {
+          if (value !== null && value !== undefined) {
+            config[key] = String(value);
+          }
         }
       }
+      await plugin.init(config, this as IAgentRuntime);
+      this.logger.debug({ src: 'agent', agentId: this.agentId, plugin: plugin.name }, 'Plugin initialized');
     }
     if (plugin.adapter) {
       this.logger.debug(
@@ -326,7 +316,7 @@ export class AgentRuntime implements IAgentRuntime {
       for (const [modelType, handler] of Object.entries(plugin.models)) {
         this.registerModel(
           modelType as ModelTypeName,
-          handler as (params: any) => Promise<any>,
+          handler as (params: unknown) => Promise<unknown>,
           plugin.name,
           plugin?.priority
         );
@@ -342,7 +332,7 @@ export class AgentRuntime implements IAgentRuntime {
     if (plugin.events) {
       for (const [eventName, eventHandlers] of Object.entries(plugin.events)) {
         for (const eventHandler of eventHandlers) {
-          this.registerEvent(eventName, eventHandler);
+          this.registerEvent(eventName, eventHandler as (params: unknown) => Promise<void>);
         }
       }
     }
@@ -414,183 +404,156 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   async initialize(options?: { skipMigrations?: boolean }): Promise<void> {
-    try {
-      const pluginRegistrationPromises: Promise<void>[] = [];
+    const pluginRegistrationPromises: Promise<void>[] = [];
 
-      // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
-      // The runtime now accepts a pre-resolved, ordered list of plugins.
-      const pluginsToLoad = this.characterPlugins;
+    // The resolution is now expected to happen in the CLI layer (e.g., startAgent)
+    // The runtime now accepts a pre-resolved, ordered list of plugins.
+    const pluginsToLoad = this.characterPlugins;
 
-      for (const plugin of pluginsToLoad) {
-        if (plugin) {
-          pluginRegistrationPromises.push(this.registerPlugin(plugin));
+    for (const plugin of pluginsToLoad) {
+      if (plugin) {
+        pluginRegistrationPromises.push(this.registerPlugin(plugin));
+      }
+    }
+    await Promise.all(pluginRegistrationPromises);
+
+    if (!this.adapter) {
+      this.logger.error({ src: 'agent', agentId: this.agentId }, 'Database adapter not initialized');
+      throw new Error(
+        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+      );
+    }
+
+    // Make adapter init idempotent - check if already initialized
+    if (!(await this.adapter.isReady())) {
+      await this.adapter.init();
+    }
+
+    // Initialize message service
+    this.messageService = new DefaultMessageService();
+
+    // Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
+    const skipMigrations = options?.skipMigrations ?? false;
+    if (skipMigrations) {
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Skipping plugin migrations');
+    } else {
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
+      await this.runPluginMigrations();
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Plugin migrations completed');
+    }
+
+    // Ensure character has the agent ID set before calling ensureAgentExists
+    // We create a new object with the ID to avoid mutating the original character
+    const existingAgent = await this.ensureAgentExists({
+      ...this.character,
+      id: this.agentId,
+    } as Partial<Agent>);
+    if (!existingAgent) {
+      const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
+      throw new Error(errorMsg);
+    }
+
+    // Merge DB-persisted settings back into runtime character
+    // This ensures settings from previous runs are available
+    if (existingAgent.settings) {
+      this.character.settings = {
+        ...existingAgent.settings,
+        ...this.character.settings, // Character file overrides DB
+      };
+
+      // Merge secrets from both character.secrets and settings.secrets
+      // getSetting() checks character.secrets first, so we need to merge there too
+      const dbSecrets =
+        existingAgent.settings.secrets && typeof existingAgent.settings.secrets === 'object'
+          ? existingAgent.settings.secrets
+          : {};
+      const settingsSecrets =
+        this.character.settings.secrets && typeof this.character.settings.secrets === 'object'
+          ? this.character.settings.secrets
+          : {};
+      const characterSecrets =
+        this.character.secrets && typeof this.character.secrets === 'object'
+          ? this.character.secrets
+          : {};
+
+      // Merge into both locations that getSetting() checks
+      const mergedSecrets = {
+        ...dbSecrets,
+        ...characterSecrets,
+        ...settingsSecrets, // settings.secrets has priority
+      };
+
+      if (Object.keys(mergedSecrets).length > 0) {
+        const filteredSecrets: Record<string, string | boolean | number> = {};
+        for (const [key, value] of Object.entries(mergedSecrets)) {
+          if (value !== null && value !== undefined) {
+            filteredSecrets[key] = value as string | boolean | number;
+          }
+        }
+        if (Object.keys(filteredSecrets).length > 0) {
+          this.character.secrets = filteredSecrets;
+          this.character.settings.secrets = filteredSecrets;
         }
       }
-      await Promise.all(pluginRegistrationPromises);
+    }
 
-      if (!this.adapter) {
-        this.logger.error(
-          { src: 'agent', agentId: this.agentId },
-          'Database adapter not initialized'
-        );
-        throw new Error(
-          'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
-        );
-      }
+    // No need to transform agent's own ID
+    let agentEntity = await this.getEntityById(this.agentId);
 
-      // Make adapter init idempotent - check if already initialized
-      if (!(await this.adapter.isReady())) {
-        await this.adapter.init();
-      }
-
-      // Initialize message service
-      this.messageService = new DefaultMessageService();
-
-      // Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
-      const skipMigrations = options?.skipMigrations ?? false;
-      if (skipMigrations) {
-        this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Skipping plugin migrations');
-      } else {
-        this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Running plugin migrations');
-        await this.runPluginMigrations();
-        this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Plugin migrations completed');
-      }
-
-      // Ensure character has the agent ID set before calling ensureAgentExists
-      // We create a new object with the ID to avoid mutating the original character
-      const existingAgent = await this.ensureAgentExists({
-        ...this.character,
+    if (!agentEntity) {
+      const created = await this.createEntity({
         id: this.agentId,
-      } as Partial<Agent>);
-      if (!existingAgent) {
-        const errorMsg = `Agent ${this.agentId} does not exist in database after ensureAgentExists call`;
+        names: [this.character.name],
+        metadata: {},
+        agentId: existingAgent.id!,
+      });
+      if (!created) {
+        const errorMsg = `Failed to create entity for agent ${this.agentId}`;
         throw new Error(errorMsg);
       }
 
-      // Merge DB-persisted settings back into runtime character
-      // This ensures settings from previous runs are available
-      if (existingAgent.settings) {
-        this.character.settings = {
-          ...existingAgent.settings,
-          ...this.character.settings, // Character file overrides DB
-        };
+      agentEntity = await this.getEntityById(this.agentId);
+      if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
 
-        // Merge secrets from both character.secrets and settings.secrets
-        // getSetting() checks character.secrets first, so we need to merge there too
-        const dbSecrets =
-          existingAgent.settings.secrets && typeof existingAgent.settings.secrets === 'object'
-            ? existingAgent.settings.secrets
-            : {};
-        const settingsSecrets =
-          this.character.settings.secrets && typeof this.character.settings.secrets === 'object'
-            ? this.character.settings.secrets
-            : {};
-        const characterSecrets =
-          this.character.secrets && typeof this.character.secrets === 'object'
-            ? this.character.secrets
-            : {};
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent entity created');
+    }
 
-        // Merge into both locations that getSetting() checks
-        const mergedSecrets = {
-          ...dbSecrets,
-          ...characterSecrets,
-          ...settingsSecrets, // settings.secrets has priority
-        };
-
-        if (Object.keys(mergedSecrets).length > 0) {
-          this.character.secrets = mergedSecrets;
-          this.character.settings.secrets = mergedSecrets;
-        }
+    // Room creation and participant setup
+    const room = await this.getRoom(this.agentId);
+    if (!room) {
+      await this.createRoom({
+        id: this.agentId,
+        name: this.character.name,
+        source: 'elizaos',
+        type: ChannelType.SELF,
+        channelId: this.agentId,
+        messageServerId: this.agentId,
+        worldId: this.agentId,
+      });
+    }
+    const participants = await this.adapter.getParticipantsForRoom(this.agentId);
+    if (!participants.includes(this.agentId)) {
+      const added = await this.addParticipant(this.agentId, this.agentId);
+      if (!added) {
+        throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
       }
+      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent linked to room');
+    }
 
-      // No need to transform agent's own ID
-      let agentEntity = await this.getEntityById(this.agentId);
-
-      if (!agentEntity) {
-        const created = await this.createEntity({
-          id: this.agentId,
-          names: [this.character.name],
-          metadata: {},
-          agentId: existingAgent.id!,
-        });
-        if (!created) {
-          const errorMsg = `Failed to create entity for agent ${this.agentId}`;
-          throw new Error(errorMsg);
-        }
-
-        agentEntity = await this.getEntityById(this.agentId);
-        if (!agentEntity) throw new Error(`Agent entity not found for ${this.agentId}`);
-
-        this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent entity created');
-      }
-
-      // Room creation and participant setup
-      const room = await this.getRoom(this.agentId);
-      if (!room) {
-        await this.createRoom({
-          id: this.agentId,
-          name: this.character.name,
-          source: 'elizaos',
-          type: ChannelType.SELF,
-          channelId: this.agentId,
-          messageServerId: this.agentId,
-          worldId: this.agentId,
-        });
-      }
-      const participants = await this.adapter.getParticipantsForRoom(this.agentId);
-      if (!participants.includes(this.agentId)) {
-        const added = await this.addParticipant(this.agentId, this.agentId);
-        if (!added) {
-          throw new Error(`Failed to add agent ${this.agentId} as participant to its own room`);
-        }
-        this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent linked to room');
-      }
-
-      const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-      if (!embeddingModel) {
-        this.logger.warn(
-          { src: 'agent', agentId: this.agentId },
-          'No TEXT_EMBEDDING model registered, skipping embedding setup'
-        );
-      } else {
-        await this.ensureEmbeddingDimension();
-      }
-
-      // Resolve init promise to allow services to start
-      if (this.initResolver) {
-        this.initResolver();
-        this.initResolver = undefined;
-      }
-    } catch (error: any) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        { src: 'agent', agentId: this.agentId, error: errorMsg },
-        'Runtime initialization failed'
+    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+    if (!embeddingModel) {
+      this.logger.warn(
+        { src: 'agent', agentId: this.agentId },
+        'No TEXT_EMBEDDING model registered, skipping embedding setup'
       );
+    } else {
+      await this.ensureEmbeddingDimension();
+    }
 
-      // Reject init promise to prevent services from hanging
-      if (this.initRejecter) {
-        this.initRejecter(error);
-        this.initRejecter = undefined;
-      }
-
-      // Also reject all pending service promises
-      for (const [serviceType, promise] of this.servicePromises) {
-        const handler = this.servicePromiseHandlers.get(serviceType);
-        if (handler) {
-          const serviceError = new Error(
-            `Service ${serviceType} failed to start due to runtime initialization failure: ${errorMsg}`
-          );
-          handler.reject(serviceError);
-          // Clean up the maps to prevent future hangs
-          this.servicePromiseHandlers.delete(serviceType);
-          this.servicePromises.delete(serviceType);
-          // Update service status
-          this.serviceRegistrationStatus.set(serviceType as ServiceTypeName, 'failed');
-        }
-      }
-
-      throw error;
+    // Resolve init promise to allow services to start
+    if (this.initResolver) {
+      this.initResolver();
+      this.initResolver = undefined;
     }
   }
 
@@ -613,7 +576,16 @@ export class AgentRuntime implements IAgentRuntime {
 
     const pluginsWithSchemas = this.plugins
       .filter((p) => p.schema)
-      .map((p) => ({ name: p.name, schema: p.schema }));
+      .map((p) => {
+        const schema = p.schema || {};
+        const normalizedSchema: Record<string, string | number | boolean | Record<string, unknown> | null> = {};
+        for (const [key, value] of Object.entries(schema)) {
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null || (typeof value === 'object' && value !== null && !Array.isArray(value))) {
+            normalizedSchema[key] = value as string | number | boolean | Record<string, unknown> | null;
+          }
+        }
+        return { name: p.name, schema: normalizedSchema };
+      });
 
     if (pluginsWithSchemas.length === 0) {
       this.logger.debug(
@@ -628,28 +600,16 @@ export class AgentRuntime implements IAgentRuntime {
       'Found plugins with schemas'
     );
 
-    try {
-      const isProduction = process.env.NODE_ENV === 'production';
-      const forceDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === 'true';
+    const isProduction = process.env.NODE_ENV === 'production';
+    const forceDestructive = process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === 'true';
 
-      await this.adapter.runPluginMigrations(pluginsWithSchemas, {
-        verbose: !isProduction,
-        force: forceDestructive,
-        dryRun: false,
-      });
+    await this.adapter.runPluginMigrations(pluginsWithSchemas, {
+      verbose: !isProduction,
+      force: forceDestructive,
+      dryRun: false,
+    });
 
-      this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Plugin migrations completed');
-    } catch (error) {
-      this.logger.error(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Plugin migrations failed'
-      );
-      throw error;
-    }
+    this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Plugin migrations completed');
   }
 
   async getConnection(): Promise<unknown> {
@@ -660,30 +620,39 @@ export class AgentRuntime implements IAgentRuntime {
     return this.adapter.getConnection();
   }
 
-  setSetting(key: string, value: string | boolean | null | any, secret = false) {
+  setSetting(key: string, value: string | boolean | null, secret = false) {
     if (secret) {
       if (!this.character.secrets) {
         this.character.secrets = {};
       }
-      this.character.secrets[key] = value;
+      if (value !== null && value !== undefined) {
+        this.character.secrets[key] = value as string | boolean | number;
+      }
     } else {
       if (!this.character.settings) {
         this.character.settings = {};
       }
-      this.character.settings[key] = value;
+      if (value !== null && value !== undefined) {
+        this.character.settings[key] = value as string | number | boolean | Record<string, unknown>;
+      }
     }
   }
 
-  getSetting(key: string): string | boolean | null | any {
-    const value =
-      this.character.secrets?.[key] ||
-      this.character.settings?.[key] ||
-      (typeof this.character.settings === 'object' &&
-        this.character.settings !== null &&
-        'secrets' in this.character.settings &&
-        (this.character.settings as Record<string, any>).secrets?.[key]) ||
-      this.settings[key];
-    const decryptedValue = decryptSecret(value, getSalt());
+  getSetting(key: string): string | boolean | null {
+    const settings = this.character.settings;
+    const secrets = this.character.secrets;
+    const nestedSecrets =
+      typeof settings === 'object' &&
+        settings !== null &&
+        'secrets' in settings &&
+        typeof settings.secrets === 'object' &&
+        settings.secrets !== null
+        ? (settings.secrets as Record<string, string | undefined>)
+        : undefined;
+
+    const value = secrets?.[key] || settings?.[key] || nestedSecrets?.[key] || this.settings[key];
+    const stringValue = typeof value === 'string' ? value : undefined;
+    const decryptedValue = stringValue ? decryptSecret(stringValue, getSalt()) : null;
     if (decryptedValue === 'true') return true;
     if (decryptedValue === 'false') return false;
     return decryptedValue || null;
@@ -954,334 +923,244 @@ export class AgentRuntime implements IAgentRuntime {
           actionIndex++;
           continue;
         }
-        try {
-          this.logger.debug(
-            { src: 'agent', agentId: this.agentId, action: action.name },
-            'Executing action'
-          );
+        this.logger.debug({ src: 'agent', agentId: this.agentId, action: action.name }, 'Executing action');
 
-          const actionId = uuidv4() as UUID;
-          this.currentActionContext = {
-            actionName: action.name,
-            actionId,
-            prompts: [],
+        const actionId = uuidv4() as UUID;
+        this.currentActionContext = {
+          actionName: action.name,
+          actionId,
+          prompts: [],
+        };
+
+        // Create action context with plan information
+        const actionContext: ActionContext = {
+          previousResults: actionResults,
+          getPreviousResult: (actionName: string) => {
+            return actionResults.find((r) => r.data?.actionName === actionName);
+          },
+        };
+
+        // Add plan information to options if multiple actions
+        const options: HandlerOptions = {
+          actionContext: actionContext,
+        };
+
+        if (actionPlan) {
+          options.actionPlan = {
+            totalSteps: actionPlan.totalSteps,
+            currentStep: actionPlan.currentStep,
+            steps: actionPlan.steps,
+            thought: actionPlan.thought,
           };
+        }
 
-          // Create action context with plan information
-          const actionContext: ActionContext = {
-            previousResults: actionResults,
-            getPreviousResult: (actionName: string) => {
-              return actionResults.find((r) => r.data?.actionName === actionName);
-            },
-          };
+        await this.emitEvent(EventType.ACTION_STARTED, {
+          messageId: actionId,
+          roomId: message.roomId,
+          world: message.worldId,
+          content: {
+            text: `Executing action: ${action.name}`,
+            actions: [action.name],
+            actionStatus: 'executing',
+            actionId: actionId,
+            runId: runId,
+            type: 'agent_action',
+            thought: thought,
+            source: message.content?.source,
+          },
+        });
 
-          // Add plan information to options if multiple actions
-          const options: HandlerOptions = {
-            actionContext: actionContext,
-          };
+        let storedCallbackData: Content[] = [];
 
-          if (actionPlan) {
-            options.actionPlan = {
-              totalSteps: actionPlan.totalSteps,
-              currentStep: actionPlan.currentStep,
-              steps: actionPlan.steps,
-              thought: actionPlan.thought,
+        const storageCallback = async (response: Content) => {
+          storedCallbackData.push(response);
+          return [];
+        };
+
+        // Execute action with context
+        const result = await action.handler(
+          this as IAgentRuntime,
+          message,
+          accumulatedState,
+          options,
+          storageCallback,
+          responses
+        );
+
+        // Handle backward compatibility for void, null, true, false returns
+        const isLegacyReturn =
+          result === undefined || result === null || typeof result === 'boolean';
+
+        // Only create ActionResult if we have a proper result
+        let actionResult: ActionResult | null = null;
+
+        if (!isLegacyReturn) {
+          // Ensure we have an ActionResult with required success field
+          if (
+            typeof result === 'object' &&
+            result !== null &&
+            ('values' in result || 'data' in result || 'text' in result)
+          ) {
+            // Ensure success field exists with default true
+            actionResult = {
+              ...result,
+              success: 'success' in result ? result.success : true, // Default to true if not specified
+            } as ActionResult;
+          } else {
+            actionResult = {
+              success: true, // Default success for legacy results
+              data: {
+                actionName: action.name,
+                legacyResult: result,
+              },
             };
           }
 
-          try {
-            await this.emitEvent(EventType.ACTION_STARTED, {
-              messageId: actionId,
-              roomId: message.roomId,
-              world: message.worldId,
-              content: {
-                text: `Executing action: ${action.name}`,
-                actions: [action.name],
-                actionStatus: 'executing',
-                actionId: actionId,
-                runId: runId,
-                type: 'agent_action',
-                thought: thought,
-                source: message.content?.source,
+          actionResults.push(actionResult);
+
+          // Merge returned values into state
+          if (actionResult.values) {
+            const existingActionResults = Array.isArray(accumulatedState.data?.actionResults) ? accumulatedState.data.actionResults : [];
+            accumulatedState = {
+              ...accumulatedState,
+              values: { ...accumulatedState.values, ...actionResult.values },
+              data: {
+                ...(accumulatedState.data || {}),
+                actionResults: [...existingActionResults, actionResult],
+                actionPlan,
               },
-            });
-          } catch (error) {
-            this.logger.error(
-              { src: 'agent', agentId: this.agentId, action: action.name, error: String(error) },
-              'Failed to emit action start event'
-            );
+            };
           }
 
-          let storedCallbackData: Content[] = [];
+          // Store in working memory (in state data) with cleanup
+          if (actionResult && accumulatedState.data) {
+            if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
 
-          const storageCallback = async (response: Content) => {
-            storedCallbackData.push(response);
-            return [];
-          };
+            // Add new entry first, then clean up if we exceed the limit
+            const responseAction = actionResult.data?.actionName || action.name;
+            const memoryKey = `action_${responseAction}_${uuidv4()}`;
+            const memoryEntry: WorkingMemoryEntry = {
+              actionName: action.name,
+              result: actionResult,
+              timestamp: Date.now(),
+            };
+            const workingMemory = accumulatedState.data.workingMemory as Record<string, WorkingMemoryEntry>;
+            workingMemory[memoryKey] = memoryEntry;
 
-          // Execute action with context
-          const result = await action.handler(
-            this,
-            message,
-            accumulatedState,
-            options,
-            storageCallback,
-            responses
-          );
-
-          // Handle backward compatibility for void, null, true, false returns
-          const isLegacyReturn =
-            result === undefined || result === null || typeof result === 'boolean';
-
-          // Only create ActionResult if we have a proper result
-          let actionResult: ActionResult | null = null;
-
-          if (!isLegacyReturn) {
-            // Ensure we have an ActionResult with required success field
-            if (
-              typeof result === 'object' &&
-              result !== null &&
-              ('values' in result || 'data' in result || 'text' in result)
-            ) {
-              // Ensure success field exists with default true
-              actionResult = {
-                ...result,
-                success: 'success' in result ? result.success : true, // Default to true if not specified
-              } as ActionResult;
-            } else {
-              actionResult = {
-                success: true, // Default success for legacy results
-                data: {
-                  actionName: action.name,
-                  legacyResult: result,
-                },
-              };
-            }
-
-            actionResults.push(actionResult);
-
-            // Merge returned values into state
-            if (actionResult.values) {
-              accumulatedState = {
-                ...accumulatedState,
-                values: { ...accumulatedState.values, ...actionResult.values },
-                data: {
-                  ...(accumulatedState.data || {}),
-                  actionResults: [...(accumulatedState.data?.actionResults || []), actionResult],
-                  actionPlan,
-                },
-              };
-            }
-
-            // Store in working memory (in state data) with cleanup
-            if (actionResult && accumulatedState.data) {
-              if (!accumulatedState.data.workingMemory) accumulatedState.data.workingMemory = {};
-
-              // Add new entry first, then clean up if we exceed the limit
-              const memoryKey = `action_${responseAction}_${uuidv4()}`;
-              const memoryEntry: WorkingMemoryEntry = {
-                actionName: action.name,
-                result: actionResult,
-                timestamp: Date.now(),
-              };
-              accumulatedState.data.workingMemory[memoryKey] = memoryEntry;
-
-              // Clean up old entries if we now exceed the limit
-              const entries = Object.entries(accumulatedState.data.workingMemory);
-              if (entries.length > this.maxWorkingMemoryEntries) {
-                // Sort by timestamp (newest first) and keep only the most recent entries
-                const sorted = entries.sort((a, b) => {
-                  const entryA = a[1] as WorkingMemoryEntry | null;
-                  const entryB = b[1] as WorkingMemoryEntry | null;
-                  const timestampA = entryA?.timestamp ?? 0;
-                  const timestampB = entryB?.timestamp ?? 0;
-                  return timestampB - timestampA;
-                });
-                // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
-                accumulatedState.data.workingMemory = Object.fromEntries(
-                  sorted.slice(0, this.maxWorkingMemoryEntries)
-                );
-              }
-            }
-
-            // Update plan with success immutably
-            if (actionPlan && actionPlan.steps[actionIndex]) {
-              actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-                status: 'completed',
-                result: actionResult,
+            // Clean up old entries if we now exceed the limit
+            const entries = Object.entries(workingMemory);
+            if (entries.length > this.maxWorkingMemoryEntries) {
+              // Sort by timestamp (newest first) and keep only the most recent entries
+              const sorted = entries.sort((a, b) => {
+                const entryA = a[1] as WorkingMemoryEntry | null;
+                const entryB = b[1] as WorkingMemoryEntry | null;
+                const timestampA = entryA?.timestamp ?? 0;
+                const timestampB = entryB?.timestamp ?? 0;
+                return timestampB - timestampA;
               });
+              // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
+              accumulatedState.data.workingMemory = Object.fromEntries(
+                sorted.slice(0, this.maxWorkingMemoryEntries)
+              );
             }
           }
 
-          try {
-            const isSuccess = actionResult?.success !== false;
-            const statusText = isSuccess ? 'completed' : 'failed';
-
-            await this.emitEvent(EventType.ACTION_COMPLETED, {
-              messageId: actionId,
-              roomId: message.roomId,
-              world: message.worldId,
-              content: {
-                text: `Action ${action.name} ${statusText}`,
-                actions: [action.name],
-                actionStatus: statusText,
-                actionId: actionId,
-                type: 'agent_action',
-                thought: thought,
-                actionResult: actionResult,
-                source: message.content?.source, // Include original message source
-              },
-            });
-          } catch (error) {
-            this.logger.error(
-              {
-                src: 'agent',
-                agentId: this.agentId,
-                action: action.name,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              'Failed to emit ACTION_COMPLETED event'
-            );
-          }
-
-          if (callback) {
-            for (const content of storedCallbackData) {
-              await callback(content);
-            }
-          }
-
-          // Store action result as memory
-          const actionMemory: Memory = {
-            id: actionId,
-            entityId: this.agentId,
-            roomId: message.roomId,
-            worldId: message.worldId,
-            content: {
-              text: actionResult?.text || `Executed action: ${action.name}`,
-              source: 'action',
-              type: 'action_result',
-              actionName: action.name,
-              actionStatus: actionResult?.success ? 'completed' : 'failed',
-              actionResult: isLegacyReturn ? { legacy: result } : actionResult,
-              runId,
-              ...(actionPlan && {
-                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-                planThought: actionPlan.thought,
-              }),
-            },
-            metadata: {
-              type: 'action_result',
-              actionName: action.name,
-              runId,
-              parentRunId,
-              actionId,
-              ...(actionPlan && {
-                totalSteps: actionPlan.totalSteps,
-                currentStep: actionPlan.currentStep,
-              }),
-            },
-          };
-          await this.createMemory(actionMemory, 'messages');
-
-          this.logger.debug(
-            { src: 'agent', agentId: this.agentId, action: action.name },
-            'Action completed'
-          );
-
-          // log to database with collected prompts
-          await this.adapter.log({
-            entityId: message.entityId,
-            roomId: message.roomId,
-            type: 'action',
-            body: {
-              action: action.name,
-              actionId,
-              message: message.content.text,
-              messageId: message.id,
-              state: accumulatedState,
-              responses,
-              result: isLegacyReturn ? { legacy: result } : actionResult,
-              isLegacyReturn,
-              prompts: this.currentActionContext?.prompts || [],
-              promptCount: this.currentActionContext?.prompts.length || 0,
-              runId,
-              parentRunId,
-              ...(actionPlan && {
-                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-                planThought: actionPlan.thought,
-              }),
-            },
-          });
-
-          // Clear action context
-          this.currentActionContext = undefined;
-        } catch (error: any) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          this.logger.error(
-            { src: 'agent', agentId: this.agentId, action: action.name, error: errorMessage },
-            'Action execution failed'
-          );
-
-          // Update plan with error using immutable pattern
+          // Update plan with success immutably
           if (actionPlan && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
-              status: 'failed',
-              error: errorMessage,
+              status: 'completed',
+              result: actionResult,
             });
           }
+        }
 
-          // Clear action context on error
-          this.currentActionContext = undefined;
+        const isSuccess = actionResult?.success !== false;
+        const statusText = isSuccess ? 'completed' : 'failed';
 
-          // Create error result
-          const errorResult: ActionResult = {
-            success: false, // Required field
-            data: {
-              actionName: action.name,
-              error: errorMessage,
-              errorObject: error,
-            },
-          };
-          actionResults.push(errorResult);
+        await this.emitEvent(EventType.ACTION_COMPLETED, {
+          messageId: actionId,
+          roomId: message.roomId,
+          world: message.worldId,
+          content: {
+            text: `Action ${action.name} ${statusText}`,
+            actions: [action.name],
+            actionStatus: statusText,
+            actionId: actionId,
+            type: 'agent_action',
+            thought: thought,
+            actionResult: actionResult,
+            source: message.content?.source, // Include original message source
+          },
+        });
 
-          const actionMemory: Memory = {
-            id: uuidv4() as UUID,
-            content: {
-              thought: errorMessage,
-              source: 'auto',
-              type: 'action_result',
-              actionName: action.name,
-              actionStatus: 'failed',
-              error: errorMessage,
-              runId,
-              ...(actionPlan && {
-                planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-                planThought: actionPlan.thought,
-              }),
-            },
-            entityId: this.agentId,
-            roomId: message.roomId,
-            worldId: message.worldId,
-            metadata: {
-              type: 'action_result',
-              actionName: action.name,
-              runId,
-              parentRunId,
-              error: true,
-              ...(actionPlan && {
-                totalSteps: actionPlan.totalSteps,
-                currentStep: actionPlan.currentStep,
-              }),
-            },
-          };
-          await this.createMemory(actionMemory, 'messages');
-
-          // Decide whether to continue or abort
-          // For now, only abort on critical errors
-          if (error?.critical || error?.code === 'CRITICAL_ERROR') {
-            throw error;
+        if (callback) {
+          for (const content of storedCallbackData) {
+            await callback(content);
           }
         }
+
+        // Store action result as memory
+        const actionMemory: Memory = {
+          id: actionId,
+          entityId: this.agentId,
+          roomId: message.roomId,
+          worldId: message.worldId,
+          content: {
+            text: actionResult?.text || `Executed action: ${action.name}`,
+            source: 'action',
+            type: 'action_result',
+            actionName: action.name,
+            actionStatus: actionResult?.success ? 'completed' : 'failed',
+            actionResult: isLegacyReturn ? { legacy: result } : actionResult,
+            runId,
+            ...(actionPlan && {
+              planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+              planThought: actionPlan.thought,
+            }),
+          },
+          metadata: {
+            type: 'action_result',
+            actionName: action.name,
+            runId,
+            parentRunId,
+            actionId,
+            ...(actionPlan && {
+              totalSteps: actionPlan.totalSteps,
+              currentStep: actionPlan.currentStep,
+            }),
+          },
+        };
+        await this.createMemory(actionMemory, 'messages');
+
+        this.logger.debug({ src: 'agent', agentId: this.agentId, action: action.name }, 'Action completed');
+
+        // log to database with collected prompts
+        await this.adapter.log({
+          entityId: message.entityId,
+          roomId: message.roomId,
+          type: 'action',
+          body: {
+            action: action.name,
+            actionId,
+            message: message.content.text,
+            messageId: message.id,
+            state: accumulatedState,
+            responses,
+            result: isLegacyReturn ? { legacy: result } : actionResult,
+            isLegacyReturn,
+            prompts: this.currentActionContext?.prompts || [],
+            promptCount: this.currentActionContext?.prompts.length || 0,
+            runId,
+            parentRunId,
+            ...(actionPlan && {
+              planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
+              planThought: actionPlan.thought,
+            }),
+          },
+        });
+
+        // Clear action context
+        this.currentActionContext = undefined;
 
         actionIndex++;
       }
@@ -1309,96 +1188,55 @@ export class AgentRuntime implements IAgentRuntime {
     callback?: HandlerCallback,
     responses?: Memory[]
   ) {
-    try {
-      const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
-        try {
-          if (!evaluator.handler) {
-            return null;
-          }
-          if (!didRespond && !evaluator.alwaysRun) {
-            return null;
-          }
-          const result = await evaluator.validate(this, message, state);
-          if (result) {
-            return evaluator;
-          }
-          return null;
-        } catch (error) {
-          this.logger.error(
-            {
-              src: 'agent',
-              agentId: this.agentId,
-              evaluator: evaluator.name,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'Evaluator validation failed'
-          );
-          return null;
-        }
-      });
-      const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
-      if (evaluators.length === 0) {
-        return [];
+    const evaluatorPromises = this.evaluators.map(async (evaluator: Evaluator) => {
+      if (!evaluator.handler) {
+        return null;
       }
-      state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
-      await Promise.all(
-        evaluators.map(async (evaluator) => {
-          try {
-            if (evaluator.handler) {
-              await evaluator.handler(this, message, state, {}, callback, responses);
-              this.adapter.log({
-                entityId: message.entityId,
-                roomId: message.roomId,
-                type: 'evaluator',
-                body: {
-                  evaluator: evaluator.name,
-                  messageId: message.id,
-                  message: message.content.text,
-                  state,
-                  runId: this.getCurrentRunId(),
-                },
-              });
-            }
-          } catch (error) {
-            this.logger.error(
-              {
-                src: 'agent',
-                agentId: this.agentId,
-                evaluator: evaluator.name,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              'Evaluator execution failed'
-            );
-            // Continue with other evaluators even if one fails
-          }
-        })
-      );
-      return evaluators;
-    } catch (error) {
-      this.logger.error(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          messageId: message.id,
-          channelId: message.roomId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Evaluate method failed'
-      );
+      if (!didRespond && !evaluator.alwaysRun) {
+        return null;
+      }
+      const result = await evaluator.validate(this as IAgentRuntime, message, state);
+      if (result) {
+        return evaluator;
+      }
+      return null;
+    });
+    const evaluators = (await Promise.all(evaluatorPromises)).filter(Boolean) as Evaluator[];
+    if (evaluators.length === 0) {
       return [];
     }
+    state = await this.composeState(message, ['RECENT_MESSAGES', 'EVALUATORS']);
+    await Promise.all(
+      evaluators.map(async (evaluator) => {
+        if (evaluator.handler) {
+          await evaluator.handler(this as IAgentRuntime, message, state, {}, callback, responses);
+          this.adapter.log({
+            entityId: message.entityId,
+            roomId: message.roomId,
+            type: 'evaluator',
+            body: {
+              evaluator: evaluator.name,
+              messageId: message.id,
+              message: message.content.text,
+              state,
+              runId: this.getCurrentRunId(),
+            },
+          });
+        }
+      })
+    );
+    return evaluators;
   }
 
   // highly SQL optimized queries
   async ensureConnections(
-    entities: any[],
-    rooms: any[],
+    entities: Entity[],
+    rooms: Room[],
     source: string,
-    world: any
+    world: World
   ): Promise<void> {
     // guards
     if (!entities) {
-      console.trace();
       this.logger.error(
         { src: 'agent', agentId: this.agentId },
         'ensureConnections called without entities'
@@ -1406,7 +1244,6 @@ export class AgentRuntime implements IAgentRuntime {
       return;
     }
     if (!rooms || rooms.length === 0) {
-      console.trace();
       this.logger.error(
         { src: 'agent', agentId: this.agentId },
         'ensureConnections called without rooms'
@@ -1420,18 +1257,18 @@ export class AgentRuntime implements IAgentRuntime {
     const firstRoom = rooms[0];
 
     // Helper function for chunking arrays
-    const chunkArray = (arr: any[], size: number) =>
-      arr.reduce((chunks: any[][], item: any, i: number) => {
+    const chunkArray = <T>(arr: T[], size: number): T[][] =>
+      arr.reduce((chunks: T[][], item: T, i: number) => {
         if (i % size === 0) chunks.push([]);
         chunks[chunks.length - 1].push(item);
         return chunks;
       }, []);
 
     // Step 1: Create all rooms FIRST (before adding any participants)
-    const roomIds = rooms.map((r: any) => r.id);
+    const roomIds = rooms.map((r: { id: UUID }) => r.id);
     const roomExistsCheck = await this.getRoomsByIds(roomIds);
-    const roomsIdExists = roomExistsCheck?.map((r: any) => r.id);
-    const roomsToCreate = roomIds.filter((id: any) => !roomsIdExists?.includes(id));
+    const roomsIdExists = roomExistsCheck?.map((r: { id: UUID }) => r.id);
+    const roomsToCreate = roomIds.filter((id: UUID) => !roomsIdExists?.includes(id));
 
     const rf = {
       worldId: world.id,
@@ -1445,17 +1282,17 @@ export class AgentRuntime implements IAgentRuntime {
         { src: 'agent', agentId: this.agentId, count: roomsToCreate.length },
         'Creating rooms'
       );
-      const roomObjsToCreate = rooms
-        .filter((r: any) => roomsToCreate.includes(r.id))
-        .map((r: any) => ({ ...r, ...rf }));
+      const roomObjsToCreate: Room[] = rooms
+        .filter((r) => roomsToCreate.includes(r.id))
+        .map((r) => ({ ...r, ...rf, type: r.type || ChannelType.GROUP }));
       await this.createRooms(roomObjsToCreate);
     }
 
     // Step 2: Create all entities
-    const entityIds = entities.map((e: any) => e.id);
+    const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
     const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-    const entitiesToUpdate = entityExistsCheck?.map((e: any) => e.id);
-    const entitiesToCreate = entities.filter((e: any) => !entitiesToUpdate?.includes(e.id));
+    const entitiesToUpdate = entityExistsCheck?.map((e) => e.id).filter((id): id is UUID => id !== undefined) || [];
+    const entitiesToCreate = entities.filter((e) => e.id !== undefined && !entitiesToUpdate.includes(e.id));
 
     const r = {
       roomId: firstRoom.id,
@@ -1478,7 +1315,7 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         agentId: this.agentId,
       };
-      const entitiesToCreateWFields = entitiesToCreate.map((e: any) => ({ ...e, ...ef }));
+      const entitiesToCreateWFields: Entity[] = entitiesToCreate.map((e) => ({ ...e, ...ef, metadata: e.metadata || {} }));
       // pglite doesn't like over 10k records
       const batches = chunkArray(entitiesToCreateWFields, 5000);
       for (const batch of batches) {
@@ -1492,9 +1329,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Add all entities to the first room
     const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
-    const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(Boolean);
+    const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter((id): id is UUID => id !== undefined);
     const missingIdsInRoom = entityIds.filter(
-      (id: any) => !entityIdsInFirstRoomFiltered.includes(id)
+      (id: UUID) => !entityIdsInFirstRoomFiltered.includes(id)
     );
 
     if (missingIdsInRoom.length) {
@@ -1545,10 +1382,10 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     messageServerId?: UUID;
     userId?: UUID;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }) {
     if (!worldId && messageServerId) {
-      worldId = createUniqueUuid(this, messageServerId);
+      worldId = createUniqueUuid(this as IAgentRuntime, messageServerId);
     }
     const names = [name, userName].filter(Boolean) as string[];
     const entityMetadata = {
@@ -1558,106 +1395,65 @@ export class AgentRuntime implements IAgentRuntime {
         userName: userName,
       },
     };
-    try {
-      // First check if the entity exists
-      const entity = await this.getEntityById(entityId);
+    // First check if the entity exists
+    const entity = await this.getEntityById(entityId);
 
-      if (!entity) {
-        try {
-          const success = await this.createEntity({
-            id: entityId,
-            names,
-            metadata: entityMetadata,
-            agentId: this.agentId,
-          });
-          if (success) {
-            this.logger.debug(
-              { src: 'agent', agentId: this.agentId, entityId, userName: name || userName },
-              'Entity created'
-            );
-          } else {
-            throw new Error(`Failed to create entity ${entityId}`);
-          }
-        } catch (error: any) {
-          if (error.message?.includes('duplicate key') || error.code === '23505') {
-            this.logger.debug(
-              { src: 'agent', agentId: this.agentId, entityId },
-              'Entity exists in database (multi-agent setup)'
-            );
-          } else {
-            throw error;
-          }
-        }
-      } else {
-        await this.adapter.updateEntity({
-          id: entityId,
-          names: [...new Set([...(entity.names || []), ...names])].filter(Boolean) as string[],
-          metadata: {
-            ...entity.metadata,
-            [source!]: {
-              ...(entity.metadata?.[source!] as Record<string, any>),
-              id: userId,
-              name: name,
-              userName: userName,
-            },
-          },
-          agentId: this.agentId,
-        });
-      }
-      await this.ensureWorldExists({
-        id: worldId,
-        name:
-          worldName || messageServerId
-            ? `World for server ${messageServerId}`
-            : `World for room ${roomId}`,
+    if (!entity) {
+      const success = await this.createEntity({
+        id: entityId,
+        names,
+        metadata: entityMetadata,
         agentId: this.agentId,
-        messageServerId: messageServerId,
-        metadata,
       });
-      await this.ensureRoomExists({
-        id: roomId,
-        name: name || 'default',
-        source: source || 'default',
-        type: type || ChannelType.DM,
-        channelId,
-        messageServerId,
-        worldId,
-      });
-      try {
-        await this.ensureParticipantInRoom(entityId, roomId);
-      } catch (error: any) {
-        if (error.message?.includes('not found')) {
-          const added = await this.addParticipant(entityId, roomId);
-          if (!added) {
-            throw new Error(`Failed to add participant ${entityId} to room ${roomId}`);
-          }
-          this.logger.debug(
-            { src: 'agent', agentId: this.agentId, entityId, channelId: roomId },
-            'Participant added'
-          );
-        } else {
-          throw error;
-        }
+      if (success) {
+        this.logger.debug(
+          { src: 'agent', agentId: this.agentId, entityId, userName: name || userName },
+          'Entity created'
+        );
+      } else {
+        throw new Error(`Failed to create entity ${entityId}`);
       }
-      await this.ensureParticipantInRoom(this.agentId, roomId);
-
-      this.logger.debug(
-        { src: 'agent', agentId: this.agentId, entityId, channelId: roomId },
-        'Entity connected'
-      );
-    } catch (error) {
-      this.logger.error(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          entityId,
-          channelId: roomId,
-          error: error instanceof Error ? error.message : String(error),
+    } else {
+      await this.adapter.updateEntity({
+        id: entityId,
+        names: [...new Set([...(entity.names || []), ...names])].filter(Boolean) as string[],
+        metadata: {
+          ...entity.metadata,
+          [source!]: {
+            ...(entity.metadata?.[source!] && typeof entity.metadata[source!] === 'object'
+              ? (entity.metadata[source!] as Record<string, unknown>)
+              : {}),
+            id: userId,
+            name: name,
+            userName: userName,
+          },
         },
-        'Connection setup failed'
-      );
-      throw error;
+        agentId: this.agentId,
+      });
     }
+    await this.ensureWorldExists({
+      id: worldId,
+      name:
+        worldName || messageServerId
+          ? `World for server ${messageServerId}`
+          : `World for room ${roomId}`,
+      agentId: this.agentId,
+      messageServerId: messageServerId,
+      metadata,
+    });
+    await this.ensureRoomExists({
+      id: roomId,
+      name: name || 'default',
+      source: source || 'default',
+      type: type || ChannelType.DM,
+      channelId,
+      messageServerId,
+      worldId,
+    });
+    await this.ensureParticipantInRoom(entityId, roomId);
+    await this.ensureParticipantInRoom(this.agentId, roomId);
+
+    this.logger.debug({ src: 'agent', agentId: this.agentId, entityId, channelId: roomId }, 'Entity connected');
   }
 
   async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
@@ -1805,50 +1601,45 @@ export class AgentRuntime implements IAgentRuntime {
     const providerData = await Promise.all(
       providersToGet.map(async (provider) => {
         const start = Date.now();
-        try {
-          const result = await provider.get(this, message, cachedState);
-          const duration = Date.now() - start;
+        const result = await provider.get(this as IAgentRuntime, message, cachedState);
+        const duration = Date.now() - start;
 
-          // only need to inform if it's taking a long time
-          if (duration > 100) {
-            this.logger.debug(
-              { src: 'agent', agentId: this.agentId, provider: provider.name, duration },
-              'Slow provider'
-            );
-          }
-          return {
-            ...result,
-            providerName: provider.name,
-          };
-        } catch (error: any) {
-          console.error('provider error', provider.name, error);
-          return { values: {}, text: '', data: {}, providerName: provider.name };
+        // only need to inform if it's taking a long time
+        if (duration > 100) {
+          this.logger.debug(
+            { src: 'agent', agentId: this.agentId, provider: provider.name, duration },
+            'Slow provider'
+          );
         }
+        return {
+          ...result,
+          providerName: provider.name,
+        };
       })
     );
-    const currentProviderResults = { ...(cachedState.data?.providers || {}) };
+    const currentProviderResults: Record<string, { text?: string; values?: Record<string, unknown>; providerName: string }> = { ...(cachedState.data?.providers as Record<string, { text?: string; values?: Record<string, unknown>; providerName: string }> || {}) };
     for (const freshResult of providerData) {
       currentProviderResults[freshResult.providerName] = freshResult;
     }
     const orderedTexts: string[] = [];
     for (const provider of providersToGet) {
       const result = currentProviderResults[provider.name];
-      if (result && result.text && result.text.trim() !== '') {
+      if (result && result.text && typeof result.text === 'string' && result.text.trim() !== '') {
         orderedTexts.push(result.text);
       }
     }
     const providersText = orderedTexts.join('\n');
-    const aggregatedStateValues = { ...(cachedState.values || {}) };
+    const aggregatedStateValues: Record<string, unknown> = { ...(cachedState.values || {}) };
     for (const provider of providersToGet) {
       const providerResult = currentProviderResults[provider.name];
-      if (providerResult && providerResult.values && typeof providerResult.values === 'object') {
+      if (providerResult && providerResult.values && typeof providerResult.values === 'object' && providerResult.values !== null) {
         Object.assign(aggregatedStateValues, providerResult.values);
       }
     }
     for (const providerName in currentProviderResults) {
       if (!providersToGet.some((p) => p.name === providerName)) {
         const providerResult = currentProviderResults[providerName];
-        if (providerResult && providerResult.values && typeof providerResult.values === 'object') {
+        if (providerResult && providerResult.values && typeof providerResult.values === 'object' && providerResult.values !== null) {
           Object.assign(aggregatedStateValues, providerResult.values);
         }
       }
@@ -1997,147 +1788,74 @@ export class AgentRuntime implements IAgentRuntime {
     // Update service status to registering
     this.serviceRegistrationStatus.set(serviceType, 'registering');
 
-    try {
-      // ALL services wait for initialization to complete with a timeout to prevent hanging
-      // This ensures services start after all plugins are registered and runtime is ready
-      this.logger.debug(
-        { src: 'agent', agentId: this.agentId, serviceType },
-        'Service waiting for init'
+    // ALL services wait for initialization to complete with a timeout to prevent hanging
+    // This ensures services start after all plugins are registered and runtime is ready
+    this.logger.debug(
+      { src: 'agent', agentId: this.agentId, serviceType },
+      'Service waiting for init'
+    );
+
+    // Add timeout protection to prevent indefinite hangs
+    const initTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new Error(
+            `Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`
+          )
+        );
+      }, 30000); // 30 second timeout
+    });
+
+    await Promise.race([this.initPromise, initTimeout]);
+
+    // Check if service has a start method
+    if (typeof serviceDef.start !== 'function') {
+      throw new Error(
+        `Service ${serviceType} does not have a static start method. All services must implement static async start(runtime: IAgentRuntime): Promise<Service>.`
       );
-
-      // Add timeout protection to prevent indefinite hangs
-      const initTimeout = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              `Service ${serviceType} registration timed out waiting for runtime initialization (30s timeout)`
-            )
-          );
-        }, 30000); // 30 second timeout
-      });
-
-      await Promise.race([this.initPromise, initTimeout]);
-
-      // Check if service has a start method
-      if (typeof serviceDef.start !== 'function') {
-        throw new Error(
-          `Service ${serviceType} does not have a static start method. All services must implement static async start(runtime: IAgentRuntime): Promise<Service>.`
-        );
-      }
-      const serviceInstance = await serviceDef.start(this);
-
-      if (!serviceInstance) {
-        throw new Error(
-          `Service ${serviceType}  start() method returned null or undefined. It must return a Service instance.`
-        );
-      }
-
-      // Initialize arrays if they don't exist
-      if (!this.services.has(serviceType)) {
-        this.services.set(serviceType, []);
-      }
-      if (!this.serviceTypes.has(serviceType)) {
-        this.serviceTypes.set(serviceType, []);
-      }
-
-      // Add the service to the arrays
-      this.services.get(serviceType)!.push(serviceInstance);
-      this.serviceTypes.get(serviceType)!.push(serviceDef);
-
-      // inform everyone that's waiting for this service, that it's now available
-      // removes the need for polling and timers
-      const handler = this.servicePromiseHandlers.get(serviceType);
-      if (handler) {
-        handler.resolve(serviceInstance);
-        // Clean up the promise handler after resolving
-        this.servicePromiseHandlers.delete(serviceType);
-      } else {
-        this.logger.debug(
-          { src: 'agent', agentId: this.agentId, serviceType },
-          'Service has no promise handler'
-        );
-      }
-
-      if (typeof (serviceDef as any).registerSendHandlers === 'function') {
-        (serviceDef as any).registerSendHandlers(this, serviceInstance);
-      }
-      // Update service status to registered
-      this.serviceRegistrationStatus.set(serviceType, 'registered');
-
-      this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType }, 'Service registered');
-    } catch (error: any) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const errorStack = error instanceof Error ? error.stack : undefined;
-
-      this.logger.error(
-        { src: 'agent', agentId: this.agentId, serviceType, error: errorMessage },
-        'Service registration failed'
-      );
-
-      if (errorStack) {
-        this.logger.debug(
-          { src: 'agent', agentId: this.agentId, serviceType, stack: errorStack },
-          'Service error stack'
-        );
-      }
-
-      // Provide additional context about the failure
-      if (error?.message?.includes('timed out waiting for runtime initialization')) {
-        this.logger.error(
-          `Service ${serviceType} failed due to runtime initialization timeout. Check if runtime.initialize() is being called and completing successfully.`
-        );
-      } else if (error?.message?.includes('Not implemented')) {
-        this.logger.error(
-          `Service ${serviceType} failed because it does not implement the static start() method. ` +
-            `All services must override the base Service.start() method. ` +
-            `Add: static async start(runtime: IAgentRuntime): Promise<${serviceName}> { return new ${serviceName}(runtime); }`
-        );
-        if (errorStack) {
-          this.logger.debug(`Stack trace: ${errorStack}`);
-        }
-      } else if (
-        error?.message?.includes('Service') &&
-        error?.message?.includes('failed to start')
-      ) {
-        this.logger.error(
-          `Service ${serviceType} (${serviceName}) failed to start. Check service implementation and dependencies.`
-        );
-      } else if (error?.message?.includes('does not have a static start method')) {
-        // Already logged above, but ensure it's clear
-        this.logger.error(
-          { src: 'agent', agentId: this.agentId, serviceType, serviceName, error: error?.message },
-          'Service missing required static start() method implementation'
-        );
-      } else {
-        // Generic error - log stack trace for debugging
-        if (errorStack) {
-          this.logger.debug(
-            { src: 'agent', agentId: this.agentId, serviceType, serviceName, stack: errorStack },
-            'Service error stack'
-          );
-        }
-      }
-
-      // Update service status to failed
-      this.serviceRegistrationStatus.set(serviceType, 'failed');
-
-      // Reject the service promise if it exists
-      const handler = this.servicePromiseHandlers.get(serviceType);
-      if (handler) {
-        handler.reject(error);
-        // Clean up the promise handles
-        this.servicePromiseHandlers.delete(serviceType);
-        this.servicePromises.delete(serviceType);
-      }
-
-      throw error;
     }
+    const serviceInstance = await serviceDef.start(this as IAgentRuntime);
+
+    if (!serviceInstance) {
+      throw new Error(
+        `Service ${serviceType}  start() method returned null or undefined. It must return a Service instance.`
+      );
+    }
+
+    // Initialize arrays if they don't exist
+    if (!this.services.has(serviceType)) {
+      this.services.set(serviceType, []);
+    }
+    if (!this.serviceTypes.has(serviceType)) {
+      this.serviceTypes.set(serviceType, []);
+    }
+
+    // Add the service to the arrays
+    this.services.get(serviceType)!.push(serviceInstance);
+    this.serviceTypes.get(serviceType)!.push(serviceDef);
+
+    // inform everyone that's waiting for this service, that it's now available
+    // removes the need for polling and timers
+    const handler = this.servicePromiseHandlers.get(serviceType);
+    if (handler) {
+      handler.resolve(serviceInstance);
+      // Clean up the promise handler after resolving
+      this.servicePromiseHandlers.delete(serviceType);
+    } else {
+      this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType }, 'Service has no promise handler');
+    }
+
+    if (serviceDef.registerSendHandlers) {
+      (serviceDef.constructor as typeof Service).registerSendHandlers?.(this as IAgentRuntime, serviceInstance);
+    }
+    // Update service status to registered
+    this.serviceRegistrationStatus.set(serviceType, 'registered');
+
+    this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType }, 'Service registered');
   }
 
   /// ensures servicePromises & servicePromiseHandlers for a serviceType
   private _createServiceResolver(serviceType: ServiceTypeName) {
-    // consider this in the future iterations
-    // const { promise, resolve, reject } = Promise.withResolvers<T>();
     let resolver: ServiceResolver | undefined;
     let rejecter: ServiceRejecter | undefined;
     this.servicePromises.set(
@@ -2169,11 +1887,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerModel(
-    modelType: ModelTypeName,
-    handler: (params: any) => Promise<any>,
+    modelType: ModelTypeName | string,
+    handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>,
     provider: string,
     priority?: number
-  ) {
+  ): void {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     if (!this.models.has(modelKey)) {
       this.models.set(modelKey, []);
@@ -2195,28 +1913,12 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getModel(
-    modelType: ModelTypeName,
-    provider?: string
-  ): ((runtime: IAgentRuntime, params: any) => Promise<any>) | undefined {
+    modelType: ModelTypeName | string
+  ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>) | undefined {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const models = this.models.get(modelKey);
     if (!models?.length) {
       return undefined;
-    }
-    if (provider) {
-      const modelWithProvider = models.find((m) => m.provider === provider);
-      if (modelWithProvider) {
-        this.logger.debug(
-          { src: 'agent', agentId: this.agentId, model: modelKey, provider },
-          'Using model'
-        );
-        return modelWithProvider.handler;
-      } else {
-        this.logger.warn(
-          { src: 'agent', agentId: this.agentId, model: modelKey, provider },
-          'Model provider not found'
-        );
-      }
     }
 
     // Return highest priority handler (first in array after sorting)
@@ -2328,29 +2030,32 @@ export class AgentRuntime implements IAgentRuntime {
 
   async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'> | any,
+    params: Omit<ModelParamsMap[T], 'runtime'>,
     provider?: string
   ): Promise<R> {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
+    const paramsObj = params as Record<string, unknown> | null | undefined;
     const promptContent =
-      params?.prompt ||
-      params?.input ||
-      (Array.isArray(params?.messages) ? JSON.stringify(params.messages) : null);
-    const model = this.getModel(modelKey, provider);
-    if (!model) {
+      (paramsObj && 'prompt' in paramsObj && typeof paramsObj.prompt === 'string' ? paramsObj.prompt : null) ||
+      (paramsObj && 'input' in paramsObj && typeof paramsObj.input === 'string' ? paramsObj.input : null) ||
+      (paramsObj && 'messages' in paramsObj && Array.isArray(paramsObj.messages) ? JSON.stringify(paramsObj.messages) : null);
+    const model = this.getModel(modelKey);
+    const modelWithProvider = provider && this.models.get(modelKey)?.find((m) => m.provider === provider);
+    const handler = modelWithProvider ? modelWithProvider.handler : model;
+    if (!handler) {
       const errorMsg = `No handler found for delegate type: ${modelKey}`;
       throw new Error(errorMsg);
     }
 
     // Log input parameters (keep debug log if useful)
     // Skip verbose logging for binary data models (TRANSCRIPTION, IMAGE, AUDIO, VIDEO)
-    const binaryModels = [
+    const binaryModels: string[] = [
       ModelType.TRANSCRIPTION,
       ModelType.IMAGE,
       ModelType.AUDIO,
       ModelType.VIDEO,
     ];
-    if (!binaryModels.includes(modelKey as any)) {
+    if (!binaryModels.includes(modelKey)) {
       this.logger.trace(
         { src: 'agent', agentId: this.agentId, model: modelKey, params },
         'Model input'
@@ -2408,7 +2113,9 @@ export class AgentRuntime implements IAgentRuntime {
       // to allow users to intentionally set an empty identifier if needed.
       if (isPlainObject(modelParams)) {
         if (modelParams.user === undefined && this.character?.name) {
-          (modelParams as Record<string, unknown>).user = this.character.name;
+          if (typeof modelParams === 'object' && modelParams !== null && !Array.isArray(modelParams)) {
+            (modelParams as Record<string, unknown>).user = this.character.name;
+          }
         }
       }
     }
@@ -2416,71 +2123,67 @@ export class AgentRuntime implements IAgentRuntime {
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()
         : Date.now();
-    try {
-      const response = await model(this, modelParams);
-      const elapsedTime =
-        (typeof performance !== 'undefined' && typeof performance.now === 'function'
-          ? performance.now()
-          : Date.now()) - startTime;
+    const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
+    const elapsedTime =
+      (typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now()) - startTime;
 
-      // Log timing / response (keep debug log if useful)
-      this.logger.trace(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          model: modelKey,
-          duration: Number(elapsedTime.toFixed(2)),
-        },
-        'Model output'
-      );
+    // Log timing / response (keep debug log if useful)
+    this.logger.trace(
+      {
+        src: 'agent',
+        agentId: this.agentId,
+        model: modelKey,
+        duration: Number(elapsedTime.toFixed(2)),
+      },
+      'Model output'
+    );
 
-      // Log all prompts except TEXT_EMBEDDING to track agent behavior
-      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-        // If we're in an action context, collect the prompt
-        if (this.currentActionContext) {
-          this.currentActionContext.prompts.push({
-            modelType: modelKey,
-            prompt: promptContent,
-            timestamp: Date.now(),
-          });
-        }
-      }
-
-      // Keep the existing model logging for backward compatibility
-      this.adapter.log({
-        entityId: this.agentId,
-        roomId: this.currentRoomId ?? this.agentId,
-        body: {
-          modelType,
-          modelKey,
-          params: {
-            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-            prompt: promptContent,
-          },
+    // Log all prompts except TEXT_EMBEDDING to track agent behavior
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      // If we're in an action context, collect the prompt
+      if (this.currentActionContext) {
+        this.currentActionContext.prompts.push({
+          modelType: modelKey,
           prompt: promptContent,
-          systemPrompt: this.character?.system || null,
-          runId: this.getCurrentRunId(),
           timestamp: Date.now(),
-          executionTime: elapsedTime,
-          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-          actionContext: this.currentActionContext
-            ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
-            : undefined,
-          response:
-            Array.isArray(response) && response.every((x) => typeof x === 'number')
-              ? '[array]'
-              : response,
-        },
-        type: `useModel:${modelKey}`,
-      });
-
-      return response as R;
-    } catch (error: any) {
-      throw error;
+        });
+      }
     }
+
+    // Keep the existing model logging for backward compatibility
+    this.adapter.log({
+      entityId: this.agentId,
+      roomId: this.currentRoomId ?? this.agentId,
+      body: {
+        modelType,
+        modelKey,
+        params: {
+          ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+          prompt: promptContent,
+        },
+        prompt: promptContent,
+        systemPrompt: this.character?.system || null,
+        runId: this.getCurrentRunId(),
+        timestamp: Date.now(),
+        executionTime: elapsedTime,
+        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+        actionContext: this.currentActionContext
+          ? {
+            actionName: this.currentActionContext.actionName,
+            actionId: this.currentActionContext.actionId,
+          }
+          : undefined,
+        response:
+          Array.isArray(response) && response.every((x) => typeof x === 'number')
+            ? '[array]'
+            : response,
+      },
+      type: `useModel:${modelKey}`,
+    });
+
+    return response as R;
   }
 
   /**
@@ -2551,43 +2254,36 @@ export class AgentRuntime implements IAgentRuntime {
     };
   }
 
-  registerEvent(event: string, handler: (params: any) => Promise<void>) {
+  registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
+  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
+  registerEvent(event: string, handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
-    this.events[event]!.push(handler);
+    this.events[event]!.push(handler as (params: unknown) => Promise<void>);
   }
 
-  getEvent(event: string): ((params: any) => Promise<void>)[] | undefined {
-    return this.events[event];
+  getEvent(event: string): ((params: unknown) => Promise<void>)[] | undefined {
+    return this.events[event] as ((params: unknown) => Promise<void>)[] | undefined;
   }
 
-  // probably should be <T> typed for params
-  async emitEvent(event: string | string[], params: any) {
+  async emitEvent(event: string | string[], params: unknown) {
     const events = Array.isArray(event) ? event : [event];
     for (const eventName of events) {
       const eventHandlers = this.events[eventName];
       if (!eventHandlers) {
         continue;
       }
-      try {
-        let paramsWithRuntime = { runtime: this };
-        if (typeof params === 'object' && params) {
-          paramsWithRuntime = { ...params, ...paramsWithRuntime };
-        }
-        await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
-      } catch (error) {
-        this.logger.error(
-          {
-            src: 'agent',
-            agentId: this.agentId,
-            eventName,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          'Event handler failed'
-        );
-        // throw error; // Re-throw if necessary
+      let paramsWithRuntime: EventPayload = { runtime: this as IAgentRuntime, source: 'runtime' };
+      if (typeof params === 'object' && params && params !== null) {
+        const paramsObj = params as Record<string, unknown>;
+        paramsWithRuntime = {
+          ...paramsObj,
+          runtime: this as IAgentRuntime,
+          source: (paramsObj.source as string) || 'runtime',
+        } as EventPayload;
       }
+      await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime as unknown as EventPayload)));
     }
   }
 
@@ -2595,33 +2291,18 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.adapter) {
       throw new Error('Database adapter not initialized before ensureEmbeddingDimension');
     }
-    try {
-      const model = this.getModel(ModelType.TEXT_EMBEDDING);
-      if (!model) {
-        throw new Error('No TEXT_EMBEDDING model registered');
-      }
-
-      const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-      if (!embedding || !embedding.length) {
-        throw new Error('Invalid embedding received');
-      }
-
-      await this.adapter.ensureEmbeddingDimension(embedding.length);
-      this.logger.debug(
-        { src: 'agent', agentId: this.agentId, dimension: embedding.length },
-        'Embedding dimension set'
-      );
-    } catch (error) {
-      this.logger.error(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Embedding dimension setup failed'
-      );
-      throw error;
+    const model = this.getModel(ModelType.TEXT_EMBEDDING);
+    if (!model) {
+      throw new Error('No TEXT_EMBEDDING model registered');
     }
+
+    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' });
+    if (!embedding || !embedding.length) {
+      throw new Error('Invalid embedding received');
+    }
+
+    await this.adapter.ensureEmbeddingDimension(embedding.length);
+    this.logger.debug({ src: 'agent', agentId: this.agentId, dimension: embedding.length }, 'Embedding dimension set');
   }
 
   registerTaskWorker(taskHandler: TaskWorker): void {
@@ -2638,7 +2319,7 @@ export class AgentRuntime implements IAgentRuntime {
     return this.taskWorkers.get(name);
   }
 
-  get db(): any {
+  get db(): unknown {
     return this.adapter.db;
   }
   async init(): Promise<void> {
@@ -2683,13 +2364,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-        typeof agent.settings?.secrets === 'object'
+          typeof agent.settings?.secrets === 'object'
           ? {
-              ...(typeof existingAgent.settings?.secrets === 'object'
-                ? existingAgent.settings.secrets
-                : {}),
-              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-            }
+            ...(typeof existingAgent.settings?.secrets === 'object'
+              ? existingAgent.settings.secrets
+              : {}),
+            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+          }
           : undefined;
 
       if (mergedSecrets) {
@@ -2790,7 +2471,7 @@ export class AgentRuntime implements IAgentRuntime {
       memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
         text: memoryText,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(
         {
           src: 'agent',
@@ -2861,7 +2542,7 @@ export class AgentRuntime implements IAgentRuntime {
           count: 10000, // Get a large number to fetch all
         });
         allMemories.push(...memories);
-      } catch (error) {
+      } catch (error: unknown) {
         // Continue with other tables if one fails
         this.logger.debug(
           {
@@ -3082,7 +2763,7 @@ export class AgentRuntime implements IAgentRuntime {
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
-    metadata?: { [key: string]: any };
+    metadata?: { [key: string]: unknown };
   }): Promise<boolean> {
     return await this.adapter.createRelationship(params);
   }
@@ -3125,13 +2806,13 @@ export class AgentRuntime implements IAgentRuntime {
   async deleteTask(id: UUID): Promise<void> {
     await this.adapter.deleteTask(id);
   }
-  on(event: string, callback: (data: any) => void): void {
+  on(event: string, callback: (data: unknown) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
     this.eventHandlers.get(event)?.push(callback);
   }
-  off(event: string, callback: (data: any) => void): void {
+  off(event: string, callback: (data: unknown) => void): void {
     if (!this.eventHandlers.has(event)) {
       return;
     }
@@ -3141,7 +2822,7 @@ export class AgentRuntime implements IAgentRuntime {
       handlers.splice(index, 1);
     }
   }
-  emit(event: string, data: any): void {
+  emit(event: string, data: unknown): void {
     if (!this.eventHandlers.has(event)) {
       return;
     }
@@ -3154,16 +2835,16 @@ export class AgentRuntime implements IAgentRuntime {
     action: 'enable_input' | 'disable_input';
     target?: string;
   }): Promise<void> {
+    const { roomId, action, target } = params;
+    const controlMessage: ControlMessage = {
+      type: 'control',
+      payload: {
+        action,
+        target,
+      },
+      roomId,
+    };
     try {
-      const { roomId, action, target } = params;
-      const controlMessage: ControlMessage = {
-        type: 'control',
-        payload: {
-          action,
-          target,
-        },
-        roomId,
-      };
       await this.emitEvent('CONTROL_MESSAGE', {
         runtime: this,
         message: controlMessage,
@@ -3174,7 +2855,7 @@ export class AgentRuntime implements IAgentRuntime {
         { src: 'agent', agentId: this.agentId, action, channelId: roomId },
         'Control message sent'
       );
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
         {
           src: 'agent',
@@ -3210,7 +2891,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
     try {
       await handler(this, target, content);
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(
         {
           src: 'agent',
@@ -3231,8 +2912,8 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getMemoriesByWorldId(params);
   }
   async runMigrations(migrationsPaths?: string[]): Promise<void> {
-    if (this.adapter && 'runMigrations' in this.adapter) {
-      await (this.adapter as any).runMigrations(migrationsPaths);
+    if (this.adapter?.runMigrations) {
+      await this.adapter.runMigrations(migrationsPaths);
     } else {
       this.logger.warn(
         { src: 'agent', agentId: this.agentId },

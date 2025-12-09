@@ -1,6 +1,10 @@
 {
   "lockfileVersion": 1,
+<<<<<<< HEAD
   "configVersion": 1,
+=======
+  "configVersion": 0,
+>>>>>>> 8ecd2264827462090ae58b734eafea3bf2174940
   "workspaces": {
     "": {
       "name": "eliza",

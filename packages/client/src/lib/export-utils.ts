@@ -67,7 +67,7 @@ export function generateExportFilename(agentName: string): string {
 /**
  * Creates and triggers a download of a JSON file
  */
-export function downloadJsonFile(data: any, filename: string): void {
+export function downloadJsonFile(data: unknown, filename: string): void {
   const blob = new Blob([JSON.stringify(data, null, 2)], {
     type: 'application/json',
   });

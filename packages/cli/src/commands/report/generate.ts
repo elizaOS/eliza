@@ -12,7 +12,7 @@ import { promises as fs, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { glob } from 'glob';
 import { AnalysisEngine } from './src/analysis-engine';
-import { ScenarioRunResult, ScenarioRunResultSchema, TrajectoryStep } from '../scenario/src/schema';
+import { ScenarioRunResult, ScenarioRunResultSchema, TrajectoryStep, EnhancedEvaluationResult } from '../scenario/src/schema';
 import { MatrixConfig } from '../scenario/src/matrix-schema';
 import { MatrixRunResult } from '../scenario/src/matrix-orchestrator';
 import { ReportData, ReportDataSchema } from './src/report-schema';
@@ -31,22 +31,38 @@ function transformMatrixRunResultToScenarioRunResult(
 ): ScenarioRunResult {
   // Extract trajectory from scenarioResult.executionResults if available
   let trajectory: TrajectoryStep[] = [];
-  let evaluations: any[] = [];
+  let evaluations: EnhancedEvaluationResult[] = [];
   let finalResponse = '';
 
   // Handle successful runs with scenarioResult
-  const scenarioResult = matrixResult.scenarioResult as any;
+  interface ScenarioExecutionResult {
+    trajectory?: Array<{ type: string; timestamp: string; content: string | unknown }>;
+    stdout?: string;
+    [key: string]: unknown;
+  }
+
+  interface ScenarioResultWithExecution {
+    executionResults?: ScenarioExecutionResult[];
+    [key: string]: unknown;
+  }
+
+  const scenarioResult = matrixResult.scenarioResult as ScenarioResultWithExecution | undefined;
   if (scenarioResult && scenarioResult.executionResults) {
     const firstExecutionResult = scenarioResult.executionResults[0];
     if (firstExecutionResult) {
       // Extract trajectory
       if (firstExecutionResult.trajectory) {
         trajectory = firstExecutionResult.trajectory.map(
-          (step: any): TrajectoryStep => ({
-            type: step.type,
-            timestamp: step.timestamp,
-            content: step.content || '', // Provide default empty string if content is missing
-          })
+          (step: { type: string; timestamp: string; content: string | unknown }): TrajectoryStep => {
+            const stepType = step.type === 'action' || step.type === 'thought' || step.type === 'observation' 
+              ? step.type 
+              : 'observation'; // Default to observation if type is invalid
+            return {
+              type: stepType,
+              timestamp: step.timestamp,
+              content: typeof step.content === 'string' ? step.content : String(step.content || ''), // Provide default empty string if content is missing
+            };
+          }
         );
       }
 
@@ -56,18 +72,40 @@ function transformMatrixRunResultToScenarioRunResult(
   }
 
   // Extract evaluations from scenarioResult
-  if (scenarioResult && scenarioResult.evaluations) {
+  interface EvaluationResult {
+    evaluator_type?: string;
+    success?: boolean;
+    summary?: string;
+    details?: unknown;
+    [key: string]: unknown;
+  }
+
+  interface ScenarioResultWithEvaluations {
+    evaluations?: EvaluationResult[];
+    [key: string]: unknown;
+  }
+
+  const scenarioResultWithEvaluations = scenarioResult as ScenarioResultWithEvaluations | undefined;
+  if (scenarioResultWithEvaluations && scenarioResultWithEvaluations.evaluations) {
     // Keep enhanced evaluation results in their original format - ScenarioRunResult expects EnhancedEvaluationResult[]
-    evaluations = scenarioResult.evaluations.filter((evaluation: any) => {
+    const filteredEvaluations = scenarioResultWithEvaluations.evaluations.filter((evaluation: EvaluationResult) => {
       // Only include evaluations that have the expected enhanced format
       return (
         evaluation &&
         typeof evaluation.evaluator_type === 'string' &&
         typeof evaluation.success === 'boolean' &&
         typeof evaluation.summary === 'string' &&
-        evaluation.details !== undefined
+        evaluation.details !== undefined &&
+        typeof evaluation.details === 'object' &&
+        evaluation.details !== null
       );
     });
+    evaluations = filteredEvaluations.map((evaluation) => ({
+      evaluator_type: evaluation.evaluator_type as string,
+      success: evaluation.success as boolean,
+      summary: evaluation.summary as string,
+      details: evaluation.details as Record<string, unknown>,
+    }));
   }
 
   // Calculate LLM calls from trajectory data
@@ -432,10 +470,11 @@ async function validateInputDirectory(inputDir: string): Promise<void> {
       throw new Error(`Input path is not a directory: ${inputDir}`);
     }
   } catch (error) {
-    if ((error as any).code === 'ENOENT') {
+    const errorWithCode = error as Error & { code?: string };
+    if (errorWithCode.code === 'ENOENT') {
       throw new Error(`Input directory not found: ${inputDir}`);
     }
-    throw new Error(`Cannot access input directory: ${inputDir}. ${(error as Error).message}`);
+    throw new Error(`Cannot access input directory: ${inputDir}. ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -603,9 +642,9 @@ function inferMatrixConfigFromRuns(
  * Recursively collect all parameter paths and their values
  */
 function collectParameterPaths(
-  obj: any,
+  obj: unknown,
   currentPath: string,
-  variations: Map<string, Set<any>>,
+  variations: Map<string, Set<string | number | boolean | null>>,
   maxDepth = 3,
   currentDepth = 0
 ): void {
@@ -613,7 +652,8 @@ function collectParameterPaths(
     return;
   }
 
-  Object.entries(obj).forEach(([key, value]) => {
+  const objRecord = obj as Record<string, unknown>;
+  Object.entries(objRecord).forEach(([key, value]) => {
     const paramPath = currentPath ? `${currentPath}.${key}` : key;
 
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -622,9 +662,10 @@ function collectParameterPaths(
     } else {
       // Leaf value - track this parameter
       if (!variations.has(paramPath)) {
-        variations.set(paramPath, new Set());
+        variations.set(paramPath, new Set<string | number | boolean | null>());
       }
-      variations.get(paramPath)!.add(value);
+      const valueToAdd = value as string | number | boolean | null;
+      variations.get(paramPath)!.add(valueToAdd);
     }
   });
 }

@@ -75,7 +75,7 @@ describe('Schema Backwards Compatibility', () => {
         name: 'Complex Evaluation Test',
         description: 'Test various evaluation types',
         environment: {
-          type: 'e2b' as const,
+          type: 'local' as const,
         },
         setup: {
           mocks: [
@@ -127,7 +127,7 @@ describe('Schema Backwards Compatibility', () => {
       expect(() => ScenarioSchema.parse(complexScenario)).not.toThrow();
 
       const parsed = ScenarioSchema.parse(complexScenario);
-      expect(parsed.environment.type).toBe('e2b');
+      expect(parsed.environment.type).toBe('local');
       expect(parsed.setup?.mocks).toHaveLength(1);
       expect(parsed.run[0].evaluations).toHaveLength(5);
       expect(parsed.judgment.strategy).toBe('any_pass');

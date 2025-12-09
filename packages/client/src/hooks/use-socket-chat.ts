@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { SocketIOManager } from '@/lib/socketio-manager';
+import type { Media } from '@elizaos/core';
 import type {
   MessageBroadcastData,
   MessageCompleteData,
@@ -51,9 +52,9 @@ export function useSocketChat({
       text: string,
       messageServerId: UUID,
       source: string,
-      attachments?: any[],
+      attachments?: Media[],
       tempMessageId?: string,
-      metadata?: Record<string, any>,
+      metadata?: Record<string, unknown>,
       overrideChannelId?: UUID
     ) => {
       const channelIdToUse = overrideChannelId || channelId;
@@ -132,7 +133,7 @@ export function useSocketChat({
 
       if (!isCurrentUser && isTargetAgent) onInputDisabledChange(false);
 
-      const clientMessageId = (data as any).clientMessageId;
+      const clientMessageId = 'clientMessageId' in data ? (data as MessageBroadcastData & { clientMessageId?: string }).clientMessageId : undefined;
       if (clientMessageId && isCurrentUser) {
         // Update optimistic message with server response
         onUpdateMessage(clientMessageId, {

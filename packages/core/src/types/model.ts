@@ -347,10 +347,10 @@ export interface VideoProcessingParams {
  */
 export type JSONSchema = {
   type: string;
-  properties?: Record<string, any>;
+  properties?: Record<string, JSONSchema | { type: string }>;
   required?: string[];
   items?: JSONSchema;
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 /**
@@ -394,7 +394,7 @@ export interface ModelParamsMap {
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
   // Allow string index for custom model types
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -411,13 +411,13 @@ export interface ModelResultMap {
   [ModelType.IMAGE]: { url: string }[];
   [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
   [ModelType.TRANSCRIPTION]: string;
-  [ModelType.TEXT_TO_SPEECH]: any | Buffer;
-  [ModelType.AUDIO]: any; // Specific return type depends on processing type
-  [ModelType.VIDEO]: any; // Specific return type depends on processing type
-  [ModelType.OBJECT_SMALL]: any;
-  [ModelType.OBJECT_LARGE]: any;
+  [ModelType.TEXT_TO_SPEECH]: Buffer | ArrayBuffer | Uint8Array;
+  [ModelType.AUDIO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
+  [ModelType.VIDEO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
+  [ModelType.OBJECT_SMALL]: Record<string, unknown>;
+  [ModelType.OBJECT_LARGE]: Record<string, unknown>;
   // Allow string index for custom model types
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -428,9 +428,9 @@ export interface ModelResultMap {
  * handlers are registered for the same model type. The `registrationOrder` (not in type, but used in runtime)
  * serves as a tie-breaker. See `AgentRuntime.registerModel` and `AgentRuntime.getModel`.
  */
-export interface ModelHandler {
+export interface ModelHandler<TParams = Record<string, unknown>, TResult = unknown> {
   /** The function that executes the model, taking runtime and parameters, and returning a Promise. */
-  handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
+  handler: (runtime: IAgentRuntime, params: TParams) => Promise<TResult>;
   /** The name of the provider (e.g., plugin name) that registered this model handler. */
   provider: string;
   /**

@@ -245,7 +245,7 @@ describe('ElizaOS', () => {
       expect(result).toHaveLength(1);
       expect(typeof result[0]).toBe('object');
 
-      const runtime = result[0] as any;
+      const runtime = result[0] as IAgentRuntime;
       expect(runtime.agentId).toBeDefined();
 
       // Should NOT be in registry
@@ -271,7 +271,7 @@ describe('ElizaOS', () => {
 
       expect(result).toHaveLength(1);
       expect(typeof result[0]).toBe('object');
-      expect((result[0] as any).agentId).toBeDefined();
+      expect((result[0] as IAgentRuntime).agentId).toBeDefined();
     });
 
     it('should auto-start when autoStart is true', async () => {
@@ -283,13 +283,13 @@ describe('ElizaOS', () => {
         }
       );
 
-      const runtime = result[0] as any;
+      const runtime = result[0] as IAgentRuntime;
       // Runtime should have messageService after initialize
       expect(runtime.messageService).toBeDefined();
     });
 
     it('should use provided databaseAdapter', async () => {
-      const customAdapter = { ...mockAdapter, _custom: true } as any;
+      const customAdapter = { ...mockAdapter, _custom: true } as IDatabaseAdapter;
 
       const result = await elizaOS.addAgents(
         [
@@ -304,7 +304,7 @@ describe('ElizaOS', () => {
         }
       );
 
-      const runtime = result[0] as any;
+      const runtime = result[0] as IAgentRuntime;
       expect(runtime.adapter).toBe(customAdapter);
     });
 
@@ -338,7 +338,7 @@ describe('ElizaOS', () => {
           autoStart: true,
           returnRuntimes: true,
         }
-      )) as any[];
+      )) as IAgentRuntime[];
 
       // Mock messageService
       const handleMessageMock = mock().mockResolvedValue({ success: true });

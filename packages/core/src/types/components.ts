@@ -153,10 +153,10 @@ export interface ActionResult {
   text?: string;
 
   /** Values to merge into the state */
-  values?: Record<string, any>;
+  values?: Record<string, unknown>;
 
   /** Data payload containing action-specific results */
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 
   /** Whether the action succeeded - defaults to true */
   success: boolean;

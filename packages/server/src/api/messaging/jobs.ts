@@ -2,7 +2,7 @@
  * Jobs API Router
  -
  * Provides one-off messaging capabilities for agents with comprehensive security controls:
- * 
+ *
  * Security Features:
  * - API key authentication required for all job operations
  * - Request size validation (content max 50KB, metadata max 10KB)
@@ -12,7 +12,7 @@
  * - Rate limiting applied at API router level
  * - Input validation for all UUIDs and content
  * - Global error boundary for unhandled rejections
- * 
+ *
  * All state (jobs, metrics, timeouts) is scoped per-router instance to prevent
  * memory leaks and cross-instance contamination.
  */
@@ -416,18 +416,20 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           let actionMessageReceived = false;
           let firstAgentMessageReceived = false;
 
+          interface JobMessage {
+            id?: UUID;
+            channel_id?: UUID;
+            author_id?: UUID;
+            content?: string;
+            created_at?: number;
+            metadata?: Record<string, unknown>;
+          }
+
           const responseHandler = async (data: unknown) => {
             // Type guard for message structure
-            if (!data || typeof data !== 'object') return;
+            if (!data || typeof data !== 'object') {return;}
 
-            const message = data as {
-              id?: UUID;
-              channel_id?: UUID;
-              author_id?: UUID;
-              content?: string;
-              created_at?: number;
-              metadata?: Record<string, unknown>;
-            };
+            const message = data as JobMessage;
 
             // Validate required fields
             if (

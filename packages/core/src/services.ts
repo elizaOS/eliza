@@ -43,15 +43,19 @@ export class ServiceBuilder<TService extends Service = Service> {
   /**
    * Build the service class with all configured properties
    */
-  build(): new (runtime?: IAgentRuntime) => TService {
+  build(): {
+    new (runtime?: IAgentRuntime): TService;
+    serviceType: string;
+    start(runtime: IAgentRuntime): Promise<TService>;
+  } {
     const serviceType = this.serviceType;
     const description = this.description;
     const startFn = this.startFn;
     const stopFn = this.stopFn;
 
     // Create a dynamic class with the configured properties
-    return class extends (Service as any) {
-      static serviceType = serviceType;
+    class ServiceClass extends Service {
+      static serviceType = serviceType as ServiceTypeName;
       capabilityDescription = description;
 
       static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -66,7 +70,15 @@ export class ServiceBuilder<TService extends Service = Service> {
           await stopFn();
         }
       }
-    } as any;
+    }
+
+    // TypeScript needs help here because we're creating a dynamic class
+    // The class already matches the interface, so this cast is safe
+    return ServiceClass as unknown as {
+      new (runtime?: IAgentRuntime): TService;
+      serviceType: ServiceTypeName;
+      start(runtime: IAgentRuntime): Promise<TService>;
+    };
   }
 }
 
@@ -96,10 +108,16 @@ export interface ServiceDefinition<T extends Service = Service> {
  */
 export function defineService<T extends Service = Service>(
   definition: ServiceDefinition<T>
-): new (runtime?: IAgentRuntime) => T {
-  return createService<T>(definition.serviceType)
+): {
+  new (runtime?: IAgentRuntime): T;
+  serviceType: ServiceTypeName;
+  start(runtime: IAgentRuntime): Promise<T>;
+} {
+  const builtService = createService<T>(definition.serviceType)
     .withDescription(definition.description)
     .withStart(definition.start)
     .withStop(definition.stop || (() => Promise.resolve()))
     .build();
+  // TypeScript needs help here - ensure serviceType is ServiceTypeName
+  return builtService as typeof builtService & { serviceType: ServiceTypeName };
 }

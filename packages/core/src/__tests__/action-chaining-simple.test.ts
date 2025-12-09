@@ -41,7 +41,7 @@ describe('Action Chaining Fixes', () => {
   });
 
   describe('Runtime immutable helpers', () => {
-    let runtime: any;
+    let runtime: typeof AgentRuntime.prototype;
 
     beforeEach(() => {
       // Access private methods through prototype
@@ -123,9 +123,14 @@ describe('Action Chaining Fixes', () => {
       expect(entries.length).toBe(60);
 
       // Sort by timestamp (newest first) with proper type safety
+      interface WorkingMemoryEntry {
+        timestamp?: number;
+        [key: string]: unknown;
+      }
+
       const sorted = entries.sort((a, b) => {
-        const entryA = a[1] as { timestamp?: number } | null;
-        const entryB = b[1] as { timestamp?: number } | null;
+        const entryA = a[1] as WorkingMemoryEntry | null;
+        const entryB = b[1] as WorkingMemoryEntry | null;
         const timestampA = entryA?.timestamp ?? 0;
         const timestampB = entryB?.timestamp ?? 0;
         return timestampB - timestampA;

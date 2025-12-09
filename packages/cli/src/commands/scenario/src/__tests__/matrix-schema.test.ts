@@ -391,7 +391,7 @@ describe('Matrix Schema Validation', () => {
           },
           {
             parameter: 'environment.type',
-            values: ['local', 'e2b'],
+            values: ['local'],
           },
         ],
       };
