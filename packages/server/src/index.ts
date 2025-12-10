@@ -38,7 +38,7 @@ import sqlPlugin, {
   assignAgentToServer,
   uninstallRLS,
 } from '@elizaos/plugin-sql';
-import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+import { stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
 import internalMessageBus from './services/message-bus';
@@ -115,7 +115,7 @@ export class AgentServer {
       const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
 
       return {
-        character: encryptedCharacter(agent.character),
+        character: agent.character,
         plugins: allPlugins,
         init: agent.init,
       };
