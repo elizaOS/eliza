@@ -203,10 +203,10 @@ export class SocketIORouter {
       const { type, payload } = data;
 
       switch (type) {
-        case SOCKET_MESSAGE_TYPE.ROOM_JOINING:
+        case String(SOCKET_MESSAGE_TYPE.ROOM_JOINING):
           this.handleChannelJoining(socket, payload);
           break;
-        case SOCKET_MESSAGE_TYPE.SEND_MESSAGE:
+        case String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE):
           this.handleMessageSubmission(socket, payload);
           break;
         default:
