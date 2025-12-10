@@ -420,7 +420,10 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.adapter) {
       this.logger.error({ src: 'agent', agentId: this.agentId }, 'Database adapter not initialized');
       throw new Error(
-        'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
+        'Database adapter not initialized. A database plugin is required for agent initialization. ' +
+        'Use @elizaos/plugin-elizacloud (recommended - provides AI + managed database) or ' +
+        '@elizaos/plugin-sql (requires database setup). ' +
+        'Please ensure one is included in your character configuration.'
       );
     }
 

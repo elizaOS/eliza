@@ -25,6 +25,7 @@ import { Command } from 'commander';
 import { configureEmojis } from '@/src/utils/emoji-handler';
 import { stopServer } from '@/src/commands/dev/utils/server-manager';
 import { scenario } from '@/src/commands/scenario';
+import { cloudAccountService } from '@/src/services';
 
 /**
  * Shutdown state management to prevent race conditions
@@ -171,6 +172,15 @@ async function main() {
   // if no args are passed, display the banner (it will handle its own update check)
   if (process.argv.length === 2) {
     await displayBanner(false); // Let banner handle update check and show enhanced notification
+
+    // Check if this is the first run and offer cloud onboarding
+    const isFirstRun = await cloudAccountService.isFirstRun();
+    const hasCloudAccount = await cloudAccountService.hasValidCloudAccount();
+
+    if (isFirstRun && !hasCloudAccount) {
+      await cloudAccountService.showOnboardingPrompt();
+      await cloudAccountService.markFirstRunComplete();
+    }
   }
 
   await program.parseAsync();

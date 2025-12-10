@@ -80,6 +80,12 @@ async function copyTemplates() {
   await copyDir(pluginQuickStarterSrc, pluginQuickStarterDest);
   console.log('✅ Copied plugin-quick-starter template');
 
+  // Copy service-starter template (MCP + A2A)
+  const serviceStarterSrc = path.join(rootDir, 'packages/service-starter');
+  const serviceStarterDest = path.join(templatesDir, 'service-starter');
+  await copyDir(serviceStarterSrc, serviceStarterDest);
+  console.log('✅ Copied service-starter template');
+
   console.log('✅ All templates copied successfully!');
 }
 

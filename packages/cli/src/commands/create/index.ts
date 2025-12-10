@@ -5,22 +5,25 @@ import colors from 'yoctocolors';
 import { logger } from '@elizaos/core';
 
 import { validateCreateOptions, validateProjectName } from './utils';
-import { selectDatabase, selectAIModel, selectEmbeddingModel, hasEmbeddingSupport } from './utils';
-import { createProject, createPlugin, createAgent, createTEEProject } from './actions';
+import { selectDatabase, selectAIModel, selectEmbeddingModel, hasEmbeddingSupport, providesDatabase } from './utils';
+import { createProject, createPlugin, createAgent, createTEEProject, createService } from './actions';
 import type { CreateOptions } from './types';
+import { cloudAccountService } from '@/src/services';
 
 /**
  * Formats the project type for display in messages
  */
 function formatProjectType(type: string): string {
-  return type === 'tee' ? 'TEE Project' : type.charAt(0).toUpperCase() + type.slice(1);
+  if (type === 'tee') return 'TEE Project';
+  if (type === 'service') return 'MCP + A2A Service';
+  return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
 export const create = new Command('create')
-  .description('Create a new ElizaOS project, plugin, agent, or TEE project')
-  .argument('[name]', 'name of the project/plugin/agent to create')
+  .description('Create a new ElizaOS project, plugin, agent, service, or TEE project')
+  .argument('[name]', 'name of the project/plugin/agent/service to create')
   .option('-y, --yes', 'skip prompts and use defaults')
-  .option('-t, --type <type>', 'type of project to create (project, plugin, agent, tee)', 'project')
+  .option('-t, --type <type>', 'type of project to create (project, plugin, agent, service, tee)', 'project')
   .action(async (name?: string, opts?: Record<string, unknown>) => {
     let projectType: string | undefined; // Declare outside try block for catch access
 
@@ -45,6 +48,16 @@ export const create = new Command('create')
 
       if (!isNonInteractive) {
         await displayBanner();
+
+        // Check if user has cloud account, offer onboarding if not
+        const hasCloudAccount = await cloudAccountService.hasValidCloudAccount();
+        if (!hasCloudAccount) {
+          const isFirstRun = await cloudAccountService.isFirstRun();
+          if (isFirstRun) {
+            await cloudAccountService.showOnboardingPrompt();
+            await cloudAccountService.markFirstRunComplete();
+          }
+        }
       }
 
       projectType = options.type;
@@ -57,24 +70,29 @@ export const create = new Command('create')
             message: 'What would you like to create?',
             options: [
               {
-                label: 'Project - Full ElizaOS application',
+                label: 'Project',
                 value: 'project',
-                hint: 'Complete project with runtime, agents, and all features',
+                hint: 'Full ElizaOS application',
               },
               {
-                label: 'Plugin - Custom ElizaOS plugin',
+                label: 'Plugin',
                 value: 'plugin',
-                hint: 'Extend ElizaOS functionality with custom plugins',
+                hint: 'Custom functionality',
               },
               {
-                label: 'Agent - Character definition file',
+                label: 'Agent',
                 value: 'agent',
-                hint: 'Create a new agent character file',
+                hint: 'Character definition',
               },
               {
-                label: 'TEE Project - Trusted Execution Environment project',
+                label: 'Service',
+                value: 'service',
+                hint: 'MCP/A2A service',
+              },
+              {
+                label: 'TEE Project',
                 value: 'tee',
-                hint: 'Secure computing environment for privacy-focused applications',
+                hint: 'Secure environment',
               },
             ],
             initialValue: 'project',
@@ -85,7 +103,7 @@ export const create = new Command('create')
             process.exit(0);
           }
 
-          projectType = selectedType as 'project' | 'plugin' | 'agent' | 'tee';
+          projectType = selectedType as 'project' | 'plugin' | 'agent' | 'service' | 'tee';
         }
 
         // Show intro message after type is determined
@@ -144,17 +162,17 @@ export const create = new Command('create')
 
           if (!isNonInteractive) {
             const selectedPluginType = await clack.select({
-              message: 'What type of plugin would you like to create?',
+              message: 'Plugin type:',
               options: [
                 {
-                  label: 'Quick Plugin (Backend Only)',
+                  label: 'Quick',
                   value: 'quick',
-                  hint: 'Simple backend-only plugin without frontend',
+                  hint: 'Backend only',
                 },
                 {
-                  label: 'Full Plugin (with Frontend)',
+                  label: 'Full',
                   value: 'full',
-                  hint: 'Complete plugin with React frontend and API routes',
+                  hint: 'With React frontend',
                 },
               ],
               initialValue: 'quick',
@@ -176,15 +194,27 @@ export const create = new Command('create')
           await createAgent(projectName!, process.cwd(), isNonInteractive);
           break;
 
+        case 'service':
+          await createService(projectName!, process.cwd(), isNonInteractive);
+          break;
+
         case 'tee': {
-          // TEE projects need database and AI model selection
+          // TEE projects need AI model and possibly database selection
           let database = 'pglite';
           let aiModel = 'local';
           let embeddingModel: string | undefined;
 
           if (!isNonInteractive) {
-            database = await selectDatabase();
+            // Select AI model first
             aiModel = await selectAIModel();
+
+            // If AI model provides database (e.g., elizacloud), use 'cloud' database
+            // Otherwise, prompt for database selection
+            if (providesDatabase(aiModel)) {
+              database = 'cloud';
+            } else {
+              database = await selectDatabase();
+            }
 
             // Check if selected AI model needs embedding model fallback
             if (!hasEmbeddingSupport(aiModel)) {
@@ -205,14 +235,22 @@ export const create = new Command('create')
 
         case 'project':
         default: {
-          // Regular projects need database and AI model selection
+          // Regular projects need AI model and possibly database selection
           let database = 'pglite';
           let aiModel = 'local';
           let embeddingModel: string | undefined;
 
           if (!isNonInteractive) {
-            database = await selectDatabase();
+            // Select AI model first
             aiModel = await selectAIModel();
+
+            // If AI model provides database (e.g., elizacloud), use 'cloud' database
+            // Otherwise, prompt for database selection
+            if (providesDatabase(aiModel)) {
+              database = 'cloud';
+            } else {
+              database = await selectDatabase();
+            }
 
             // Check if selected AI model needs embedding model fallback
             if (!hasEmbeddingSupport(aiModel)) {

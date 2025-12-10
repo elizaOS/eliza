@@ -1,6 +1,9 @@
 /**
  * Deploy Action with Docker and AWS ECS
  * Deploys ElizaOS projects using Docker containers to AWS ECS
+ * 
+ * For MCP+A2A services, handles post-deployment ERC-8004 registration
+ * to register the service with correct cloud URLs.
  */
 
 import { logger } from '@elizaos/core';
@@ -22,6 +25,44 @@ import {
 } from '../utils/docker-build';
 import { CloudApiClient, getApiCredentials } from '../utils/api-client';
 import { detectDirectoryType } from '@/src/utils/directory-detection';
+
+// ============================================================================
+// ERC-8004 Registration Types and Config (for MCP+A2A services)
+// ============================================================================
+
+interface JejuManifest {
+  name?: string;
+  displayName?: string;
+  description?: string;
+  version?: string;
+  agent?: {
+    enabled?: boolean;
+    tags?: string[];
+    x402Support?: boolean;
+    metadata?: {
+      category?: string;
+    };
+  };
+}
+
+interface ERC8004NetworkConfig {
+  chainId: number;
+  rpcUrl: string;
+  identityRegistry: string;
+}
+
+const ERC8004_NETWORKS: Record<string, ERC8004NetworkConfig> = {
+  testnet: {
+    chainId: 84532,
+    rpcUrl: process.env.TESTNET_RPC_URL || 'https://sepolia.base.org',
+    identityRegistry: process.env.IDENTITY_REGISTRY_ADDRESS || '0x0F7E3D1b3edcf09f134EA8F1ECa2C6A0e00b3E96',
+  },
+  mainnet: {
+    chainId: 8453,
+    rpcUrl: process.env.MAINNET_RPC_URL || 'https://mainnet.base.org',
+    identityRegistry: process.env.IDENTITY_REGISTRY_ADDRESS || '',
+  },
+};
 
 /**
  * Deploy project using Docker and AWS ECS
@@ -381,12 +422,55 @@ export async function deployWithECS(options: DeployOptions): Promise<DeploymentR
       logger.info({ src: 'cli', command: 'deploy-ecs', url: deploymentUrl }, 'Deployment URL');
     }
 
+    // Step 14: Post-deployment ERC-8004 registration for MCP+A2A services
+    let agentId: string | undefined;
+    const manifest = loadJejuManifest(cwd);
+    if (manifest?.agent?.enabled && deploymentUrl) {
+      logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Checking ERC-8004 registration...');
+      
+      const privateKey = process.env.PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
+      const network = (process.env.JEJU_NETWORK || 'testnet') as 'testnet' | 'mainnet';
+      
+      if (privateKey && ERC8004_NETWORKS[network]?.identityRegistry) {
+        const registrationResult = await registerServiceToERC8004({
+          network,
+          privateKey,
+          serviceName: manifest.displayName || manifest.name || containerName,
+          serviceDescription: manifest.description || packageJson.description,
+          deploymentUrl,
+          tags: manifest.agent.tags,
+          x402Support: manifest.agent.x402Support,
+          category: manifest.agent.metadata?.category,
+        });
+        
+        if (registrationResult) {
+          agentId = registrationResult.agentId;
+          logger.info(
+            { 
+              src: 'cli', 
+              command: 'deploy-ecs', 
+              agentId: registrationResult.agentId,
+              a2aEndpoint: `${deploymentUrl}/a2a`,
+              mcpEndpoint: `${deploymentUrl}/mcp`,
+            },
+            'Service registered to ERC-8004'
+          );
+        }
+      } else if (!privateKey) {
+        logger.warn(
+          { src: 'cli', command: 'deploy-ecs' },
+          'Skipping ERC-8004 registration: PRIVATE_KEY not set. Run "bun run src/register.ts" in your service directory to register manually.'
+        );
+      }
+    }
+
     return {
       success: true,
       containerId: container.id,
       serviceArn: container.ecs_service_arn,
       taskDefinitionArn: container.ecs_task_definition_arn,
       url: deploymentUrl,
+      agentId,
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -612,4 +696,154 @@ function getInstanceDefaults(architecture: 'arm64' | 'x86_64'): {
       memory: 1792, // 1.75 GiB (87.5% of 2048 MB)
     };
   }
+}
+
+// ============================================================================
+// ERC-8004 Registration (for MCP+A2A services)
+// ============================================================================
+
+/**
+ * Load jeju-manifest.json if present
+ */
+function loadJejuManifest(cwd: string): JejuManifest | null {
+  const manifestPath = path.join(cwd, 'jeju-manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as JejuManifest;
+  }
+  return null;
+}
+
+/**
+ * ERC-8004 Identity Registry ABI (minimal for registration)
+ */
+const IDENTITY_REGISTRY_ABI = [
+  'function register(string calldata tokenURI_) external returns (uint256 agentId)',
+  'function setEndpoints(uint256 agentId, string calldata a2aEndpoint, string calldata mcpEndpoint) external',
+  'function setX402Support(uint256 agentId, bool supported) external',
+  'function setServiceType(uint256 agentId, string calldata serviceType) external',
+  'function setCategory(uint256 agentId, string calldata category) external',
+  'function updateTags(uint256 agentId, string[] calldata tags_) external',
+  'function setMetadata(uint256 agentId, string calldata key, bytes calldata value) external',
+  'function totalAgents() external view returns (uint256)',
+  'event Registered(uint256 indexed agentId, address indexed owner, uint8 tier, uint256 stakedAmount, string tokenURI)',
+];
+
+interface RegisterServiceConfig {
+  network: 'testnet' | 'mainnet';
+  privateKey: string;
+  serviceName: string;
+  serviceDescription?: string;
+  deploymentUrl: string;
+  tags?: string[];
+  x402Support?: boolean;
+  category?: string;
+}
+
+interface RegistrationResult {
+  agentId: string;
+  txHash: string;
+  chainId: number;
+}
+
+/**
+ * Register service to ERC-8004 with deployment URLs
+ */
+async function registerServiceToERC8004(
+  config: RegisterServiceConfig
+): Promise<RegistrationResult | null> {
+  const networkConfig = ERC8004_NETWORKS[config.network];
+  if (!networkConfig?.identityRegistry) {
+    logger.warn(
+      { src: 'cli', command: 'deploy-ecs', network: config.network },
+      'No ERC-8004 registry configured for network'
+    );
+    return null;
+  }
+
+  // Dynamic import of ethers to avoid bundling issues
+  const { ethers, Wallet } = await import('ethers');
+
+  const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
+  const signer = new Wallet(config.privateKey, provider);
+  const ownerAddress = await signer.getAddress();
+
+  logger.info(
+    { 
+      src: 'cli', 
+      command: 'deploy-ecs', 
+      owner: ownerAddress,
+      registry: networkConfig.identityRegistry,
+    },
+    'Registering to ERC-8004'
+  );
+
+  const identityRegistry = new ethers.Contract(
+    networkConfig.identityRegistry,
+    IDENTITY_REGISTRY_ABI,
+    signer
+  );
+
+  // Register the agent
+  const tx = await identityRegistry.register('');
+  const receipt = await tx.wait();
+
+  // Extract agentId from logs
+  const registeredEventTopic = ethers.id('Registered(uint256,address,uint8,uint256,string)');
+  const registeredEvent = receipt.logs.find(
+    (log: { topics: string[] }) => log.topics[0] === registeredEventTopic
+  );
+
+  let agentId: string;
+  if (registeredEvent) {
+    agentId = ethers.toBigInt(registeredEvent.topics[1]).toString();
+  } else {
+    const total = await identityRegistry.totalAgents();
+    agentId = total.toString();
+  }
+
+  // Set endpoints with deployment URL
+  const a2aEndpoint = `${config.deploymentUrl}/a2a`;
+  const mcpEndpoint = `${config.deploymentUrl}/mcp`;
+  
+  logger.info({ src: 'cli', command: 'deploy-ecs' }, 'Setting service endpoints...');
+  const endpointTx = await identityRegistry.setEndpoints(agentId, a2aEndpoint, mcpEndpoint);
+  await endpointTx.wait();
+
+  // Set service type
+  const typeTx = await identityRegistry.setServiceType(agentId, 'service');
+  await typeTx.wait();
+
+  // Set x402 support if enabled
+  if (config.x402Support) {
+    const x402Tx = await identityRegistry.setX402Support(agentId, true);
+    await x402Tx.wait();
+  }
+
+  // Set category if provided
+  if (config.category) {
+    const categoryTx = await identityRegistry.setCategory(agentId, config.category);
+    await categoryTx.wait();
+  }
+
+  // Set tags if provided
+  if (config.tags && config.tags.length > 0) {
+    const tagTx = await identityRegistry.updateTags(agentId, config.tags);
+    await tagTx.wait();
+  }
+
+  // Set active (public)
+  const activeTx = await identityRegistry.setMetadata(
+    agentId,
+    'active',
+    ethers.toUtf8Bytes('true')
+  );
+  await activeTx.wait();
+
+  const formattedAgentId = `${networkConfig.chainId}:${agentId}`;
+
+  return {
+    agentId: formattedAgentId,
+    txHash: receipt.hash,
+    chainId: networkConfig.chainId,
+  };
 }
