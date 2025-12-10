@@ -4,7 +4,6 @@ import {
   logger,
   getSalt,
   encryptObjectValues,
-  encryptStringValue,
 } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -131,7 +130,7 @@ export function createAgentCrudRouter(
         character.secrets = encryptObjectValues(
           character.secrets as Record<string, any>,
           salt
-        );
+        ) as { [key: string]: string | number | boolean };
       }
 
       const ensureAgentExists = async (character: Character) => {
@@ -195,35 +194,19 @@ export function createAgentCrudRouter(
       const currentAgent = await db.getAgent(agentId);
       const activeRuntime = elizaOS.getAgent(agentId);
 
-      // Encrypt settings.secrets if present
+      // Encrypt secrets before saving to database
       const salt = getSalt();
-      if (updates.settings?.secrets) {
-        const encryptedSecrets: Record<string, string | null> = {};
-        Object.entries(updates.settings.secrets).forEach(([key, value]) => {
-          if (value === null) {
-            encryptedSecrets[key] = null;
-          } else if (typeof value === 'string') {
-            encryptedSecrets[key] = encryptStringValue(value, salt);
-          } else {
-            encryptedSecrets[key] = value as string;
-          }
-        });
-        updates.settings.secrets = encryptedSecrets;
+      if (updates.settings?.secrets && typeof updates.settings.secrets === 'object') {
+        updates.settings.secrets = encryptObjectValues(
+          updates.settings.secrets as Record<string, any>,
+          salt
+        );
       }
-
-      // Also encrypt updates.secrets (root level) if present
       if (updates.secrets && typeof updates.secrets === 'object') {
-        const encryptedRootSecrets: Record<string, string | null> = {};
-        Object.entries(updates.secrets).forEach(([key, value]) => {
-          if (value === null) {
-            encryptedRootSecrets[key] = null;
-          } else if (typeof value === 'string') {
-            encryptedRootSecrets[key] = encryptStringValue(value, salt);
-          } else {
-            encryptedRootSecrets[key] = value as string;
-          }
-        });
-        updates.secrets = encryptedRootSecrets;
+        updates.secrets = encryptObjectValues(
+          updates.secrets as Record<string, any>,
+          salt
+        ) as { [key: string]: string | number | boolean };
       }
 
       if (Object.keys(updates).length > 0) {
