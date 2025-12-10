@@ -15,7 +15,12 @@ export class JournalStorage {
       return null;
     }
 
-    const row = result.rows[0] as any;
+    interface JournalRow {
+      version: string;
+      dialect: string;
+      entries: JournalEntry[];
+    }
+    const row = result.rows[0] as JournalRow;
     return {
       version: row.version,
       dialect: row.dialect,

@@ -58,18 +58,18 @@ export class DummyBrowserService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyBrowserService initialized');
+    logger.info({ src: 'plugin:dummy-services:browser' }, 'DummyBrowserService initialized');
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyBrowserService stopped');
+    logger.info({ src: 'plugin:dummy-services:browser' }, 'DummyBrowserService stopped');
   }
 
   async navigate(url: string, options?: BrowserNavigationOptions): Promise<void> {
-    logger.debug(`Navigating to ${url}`);
+    logger.debug({ src: 'plugin:dummy-services:browser', url }, `Navigating to ${url}`);
 
     if (options) {
-      logger.debug('Navigation options:', JSON.stringify(options));
+      logger.debug({ src: 'plugin:dummy-services:browser', options }, 'Navigation options');
     }
 
     // Update navigation history
@@ -82,18 +82,21 @@ export class DummyBrowserService extends Service {
   }
 
   async screenshot(options?: ScreenshotOptions): Promise<Buffer> {
-    logger.debug('Taking screenshot', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:browser', options }, 'Taking screenshot');
 
     // Return dummy image buffer
     const dummyImage = Buffer.from('dummy-screenshot-data');
 
-    logger.debug(`Screenshot taken: ${dummyImage.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', bytes: dummyImage.length },
+      `Screenshot taken: ${dummyImage.length} bytes`
+    );
 
     return dummyImage;
   }
 
   async extractContent(selectors?: ElementSelector[]): Promise<ExtractedContent[]> {
-    logger.debug('Extracting content', JSON.stringify(selectors));
+    logger.debug({ src: 'plugin:dummy-services:browser', selectors }, 'Extracting content');
 
     // Return dummy content
     const dummyContent: ExtractedContent[] = [
@@ -119,49 +122,78 @@ export class DummyBrowserService extends Service {
   }
 
   async waitForSelector(selector: ElementSelector, timeout?: number): Promise<boolean> {
-    logger.debug(`Waiting for selector: ${selector.selector}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector, timeout },
+      `Waiting for selector: ${selector.selector}`
+    );
 
     // Simulate wait delay
     const waitTime = Math.min(timeout || 1000, 100);
     await new Promise((resolve) => setTimeout(resolve, waitTime));
 
     // Always return true for dummy implementation
-    logger.debug(`Selector found: ${selector.selector}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector },
+      `Selector found: ${selector.selector}`
+    );
     return true;
   }
 
   async click(selector: ElementSelector, options?: ClickOptions): Promise<void> {
-    logger.debug(`Clicking on: ${selector.selector}`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector, options },
+      `Clicking on: ${selector.selector}`
+    );
 
     // Simulate click delay
     const delay = options?.delay || 50;
     await new Promise((resolve) => setTimeout(resolve, delay));
 
-    logger.debug(`Clicked on: ${selector.selector}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector },
+      `Clicked on: ${selector.selector}`
+    );
   }
 
   async type(selector: ElementSelector, text: string, options?: TypeOptions): Promise<void> {
-    logger.debug(`Typing into: ${selector.selector}`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector, options },
+      `Typing into: ${selector.selector}`
+    );
 
     // Simulate typing delay
     const delay = options?.delay || 50;
     await new Promise((resolve) => setTimeout(resolve, text.length * delay));
 
-    logger.debug(`Typed "${text}" into: ${selector.selector}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', selector: selector.selector, text },
+      `Typed "${text}" into: ${selector.selector}`
+    );
   }
 
   async evaluateScript<T = any>(script: string): Promise<T> {
-    logger.debug('Evaluating script:', script.substring(0, 100) + '...');
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', scriptPreview: script.substring(0, 100) },
+      `Evaluating script: ${script.substring(0, 100)}...`
+    );
 
     // Return dummy result
-    return { success: true, data: 'dummy-script-result' } as any;
+    // Return type matches the expected browser service script execution result
+    interface ScriptExecutionResult {
+      success: boolean;
+      data: string;
+    }
+    return { success: true, data: 'dummy-script-result' } as ScriptExecutionResult;
   }
 
   async goBack(): Promise<void> {
     if (this.historyIndex > 0) {
       this.historyIndex--;
       this.currentUrl = this.history[this.historyIndex];
-      logger.debug(`Navigated back to: ${this.currentUrl}`);
+      logger.debug(
+        { src: 'plugin:dummy-services:browser', url: this.currentUrl },
+        `Navigated back to: ${this.currentUrl}`
+      );
     }
   }
 
@@ -169,37 +201,49 @@ export class DummyBrowserService extends Service {
     if (this.historyIndex < this.history.length - 1) {
       this.historyIndex++;
       this.currentUrl = this.history[this.historyIndex];
-      logger.debug(`Navigated forward to: ${this.currentUrl}`);
+      logger.debug(
+        { src: 'plugin:dummy-services:browser', url: this.currentUrl },
+        `Navigated forward to: ${this.currentUrl}`
+      );
     }
   }
 
   async refresh(): Promise<void> {
-    logger.debug(`Refreshing page: ${this.currentUrl}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', url: this.currentUrl },
+      `Refreshing page: ${this.currentUrl}`
+    );
     // Simulate refresh delay
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   async getUrl(): Promise<string> {
-    logger.debug(`Current URL: ${this.currentUrl}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', url: this.currentUrl },
+      `Current URL: ${this.currentUrl}`
+    );
     return this.currentUrl;
   }
 
   async getTitle(): Promise<string> {
-    logger.debug('Getting page title');
+    logger.debug({ src: 'plugin:dummy-services:browser' }, 'Getting page title');
     return `Dummy Title - ${this.currentUrl}`;
   }
 
   async setCookies(cookies: any[]): Promise<void> {
-    logger.debug(`Setting ${cookies.length} cookies`);
+    logger.debug(
+      { src: 'plugin:dummy-services:browser', count: cookies.length },
+      `Setting ${cookies.length} cookies`
+    );
   }
 
   async getCookies(): Promise<any[]> {
-    logger.debug('Getting cookies');
+    logger.debug({ src: 'plugin:dummy-services:browser' }, 'Getting cookies');
     return [];
   }
 
   async clearCookies(): Promise<void> {
-    logger.debug('Clearing cookies');
+    logger.debug({ src: 'plugin:dummy-services:browser' }, 'Clearing cookies');
   }
 
   getDexName(): string {

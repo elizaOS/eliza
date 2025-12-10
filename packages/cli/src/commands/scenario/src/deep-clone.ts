@@ -42,7 +42,8 @@ export function deepClone<T>(obj: T): T {
   }
 
   // Check for circular references
-  if (cloneCache.has(obj as any)) {
+  // WeakMap requires object keys, so we cast to object for the check
+  if (cloneCache.has(obj as object)) {
     throw new Error('Circular reference detected in object to clone');
   }
 
@@ -56,7 +57,9 @@ export function deepClone<T>(obj: T): T {
   }
 
   if (obj instanceof Error) {
-    const cloned = new (obj.constructor as any)(obj.message);
+    // Error constructor requires specific handling
+    const ErrorConstructor = obj.constructor as new (message: string) => Error;
+    const cloned = new ErrorConstructor(obj.message);
     cloned.stack = obj.stack;
     cloned.name = obj.name;
     return cloned as T;
@@ -64,35 +67,35 @@ export function deepClone<T>(obj: T): T {
 
   // Handle arrays
   if (Array.isArray(obj)) {
-    cloneCache.set(obj as any, true);
+    cloneCache.set(obj as object, true);
 
     try {
       const cloned = obj.map((item) => deepClone(item)) as T;
-      cloneCache.delete(obj as any);
+      cloneCache.delete(obj as object);
       return cloned;
     } catch (error) {
-      cloneCache.delete(obj as any);
+      cloneCache.delete(obj as object);
       throw error;
     }
   }
 
   // Handle plain objects
   if (obj.constructor === Object || obj.constructor === undefined) {
-    cloneCache.set(obj as any, true);
+    cloneCache.set(obj as object, true);
 
     try {
-      const cloned = {} as T;
+      const cloned = {} as Record<string, unknown>;
 
       for (const key in obj) {
         if (obj.hasOwnProperty(key)) {
-          (cloned as any)[key] = deepClone((obj as any)[key]);
+          cloned[key] = deepClone((obj as Record<string, unknown>)[key]);
         }
       }
 
-      cloneCache.delete(obj as any);
-      return cloned;
+      cloneCache.delete(obj as object);
+      return cloned as T;
     } catch (error) {
-      cloneCache.delete(obj as any);
+      cloneCache.delete(obj as object);
       throw error;
     }
   }
@@ -101,15 +104,15 @@ export function deepClone<T>(obj: T): T {
   // This may not preserve all properties but is safer than reference copying
   try {
     const cloned = Object.create(Object.getPrototypeOf(obj));
-    cloneCache.set(obj as any, true);
+    cloneCache.set(obj as object, true);
 
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
-        (cloned as any)[key] = deepClone((obj as any)[key]);
+        (cloned as Record<string, unknown>)[key] = deepClone((obj as Record<string, unknown>)[key]);
       }
     }
 
-    cloneCache.delete(obj as any);
+    cloneCache.delete(obj as object);
     return cloned as T;
   } catch {
     // If all else fails, return the original object
@@ -143,7 +146,7 @@ export function shallowClone<T>(obj: T): T {
   }
 
   // For objects, copy enumerable properties
-  return { ...(obj as any) } as T;
+  return { ...(obj as Record<string, unknown>) } as T;
 }
 
 /**
@@ -153,31 +156,34 @@ export function shallowClone<T>(obj: T): T {
  * @param obj - The object to check
  * @returns True if circular references are detected
  */
-export function hasCircularReference(obj: any): boolean {
-  const visited = new WeakSet();
+export function hasCircularReference(obj: unknown): boolean {
+  const visited = new WeakSet<object>();
 
-  function checkCircular(current: any): boolean {
+  function checkCircular(current: unknown): boolean {
     if (current === null || typeof current !== 'object') {
       return false;
     }
 
-    if (visited.has(current)) {
-      return true;
-    }
-
-    visited.add(current);
-
-    if (Array.isArray(current)) {
-      for (const item of current) {
-        if (checkCircular(item)) {
-          return true;
-        }
+    if (typeof current === 'object' && current !== null) {
+      if (visited.has(current as object)) {
+        return true;
       }
-    } else {
-      for (const key in current) {
-        if (current.hasOwnProperty(key)) {
-          if (checkCircular(current[key])) {
+
+      visited.add(current as object);
+
+      if (Array.isArray(current)) {
+        for (const item of current) {
+          if (checkCircular(item)) {
             return true;
+          }
+        }
+      } else {
+        const currentObj = current as Record<string, unknown>;
+        for (const key in currentObj) {
+          if (currentObj.hasOwnProperty(key)) {
+            if (checkCircular(currentObj[key])) {
+              return true;
+            }
           }
         }
       }
@@ -198,7 +204,7 @@ export function hasCircularReference(obj: any): boolean {
  * @returns A deep clone limited to the specified depth
  */
 export function deepCloneWithLimit<T>(obj: T, maxDepth: number = 50): T {
-  function cloneWithDepth(current: any, depth: number): any {
+  function cloneWithDepth(current: unknown, depth: number): unknown {
     if (depth >= maxDepth) {
       // At max depth, return shallow copy for objects/arrays
       if (typeof current === 'object' && current !== null) {
@@ -226,17 +232,18 @@ export function deepCloneWithLimit<T>(obj: T, maxDepth: number = 50): T {
       return current.map((item) => cloneWithDepth(item, depth + 1));
     }
 
-    const cloned: any = {};
-    for (const key in current) {
-      if (current.hasOwnProperty(key)) {
-        cloned[key] = cloneWithDepth(current[key], depth + 1);
+    const cloned: Record<string, unknown> = {};
+    const currentObj = current as Record<string, unknown>;
+    for (const key in currentObj) {
+      if (currentObj.hasOwnProperty(key)) {
+        cloned[key] = cloneWithDepth(currentObj[key], depth + 1);
       }
     }
 
     return cloned;
   }
 
-  return cloneWithDepth(obj, 0);
+  return cloneWithDepth(obj, 0) as T;
 }
 
 /**
@@ -277,7 +284,7 @@ export interface CloneOptions {
   /** Whether to preserve special object types like Date, RegExp (default: true) */
   preserveTypes?: boolean;
   /** Custom cloning function for specific object types */
-  customCloners?: Map<any, (obj: any) => any>;
+  customCloners?: Map<new (...args: unknown[]) => unknown, (obj: unknown) => unknown>;
 }
 
 /**
@@ -297,7 +304,7 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
 
   const visited = handleCircular ? new WeakMap() : null;
 
-  function cloneAdvanced(current: any, depth: number): any {
+  function cloneAdvanced(current: unknown, depth: number): unknown {
     // Check depth limit
     if (depth >= maxDepth) {
       return current;
@@ -339,8 +346,8 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
 
     // Handle arrays
     if (Array.isArray(current)) {
-      const cloned: any[] = [];
-      if (visited) visited.set(current, cloned);
+      const cloned: unknown[] = [];
+      if (visited) visited.set(current as object, cloned as object);
 
       for (let i = 0; i < current.length; i++) {
         cloned[i] = cloneAdvanced(current[i], depth + 1);
@@ -350,17 +357,20 @@ export function advancedDeepClone<T>(obj: T, options: CloneOptions = {}): T {
     }
 
     // Handle objects
-    const cloned: any = {};
-    if (visited) visited.set(current, cloned);
+    const cloned: Record<string, unknown> = {};
+    if (visited && typeof current === 'object' && current !== null) {
+      visited.set(current as object, cloned as object);
+    }
 
-    for (const key in current) {
-      if (current.hasOwnProperty(key)) {
-        cloned[key] = cloneAdvanced(current[key], depth + 1);
+    const currentObj = current as Record<string, unknown>;
+    for (const key in currentObj) {
+      if (currentObj.hasOwnProperty(key)) {
+        cloned[key] = cloneAdvanced(currentObj[key], depth + 1);
       }
     }
 
     return cloned;
   }
 
-  return cloneAdvanced(obj, 0);
+  return cloneAdvanced(obj, 0) as T;
 }

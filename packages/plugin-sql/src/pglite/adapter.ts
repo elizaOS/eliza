@@ -1,5 +1,5 @@
 import { type UUID, logger, type Agent, type Entity, type Memory } from '@elizaos/core';
-import { drizzle } from 'drizzle-orm/pglite';
+import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PGliteClientManager } from './manager';
@@ -34,7 +34,8 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   constructor(agentId: UUID, manager: PGliteClientManager) {
     super(agentId);
     this.manager = manager;
-    this.db = drizzle(this.manager.getConnection() as any);
+    // drizzle-orm/pglite expects PGlite instance directly
+    this.db = drizzle(this.manager.getConnection());
   }
 
   /**
@@ -46,7 +47,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     _entityId: UUID | null,
-    callback: (tx: any) => Promise<T>
+    callback: (tx: PgliteDatabase) => Promise<T>
   ): Promise<T> {
     // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
     // The entityId parameter is ignored since PGLite doesn't support RLS
@@ -101,7 +102,9 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
       logger.warn({ src: 'plugin:sql' }, 'Database is shutting down');
-      return null as unknown as T;
+      // Note: Returning null here is not type-safe for all T, but matches the documented behavior
+      // Consider throwing an error instead for better type safety
+      return null as T;
     }
     return operation();
   }

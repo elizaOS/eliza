@@ -85,11 +85,11 @@ export class DummyEmailService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyEmailService initialized');
+    logger.info({ src: 'plugin:dummy-services:email' }, 'DummyEmailService initialized');
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyEmailService stopped');
+    logger.info({ src: 'plugin:dummy-services:email' }, 'DummyEmailService stopped');
   }
 
   async sendEmail(
@@ -104,12 +104,15 @@ export class DummyEmailService extends Service {
       sendOptions?: EmailSendOptions;
     }
   ): Promise<string> {
-    logger.debug('Sending email', JSON.stringify({ to, subject }));
-    logger.debug('Email options:', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:email', to, subject }, 'Sending email');
+    logger.debug({ src: 'plugin:dummy-services:email', options }, 'Email options');
 
     const messageId = `dummy-${Date.now()}@example.com`;
 
-    logger.info(`Email sent successfully. Message ID: ${messageId}`);
+    logger.info(
+      { src: 'plugin:dummy-services:email', messageId },
+      `Email sent successfully. Message ID: ${messageId}`
+    );
 
     // Create and store the sent email
     const sentEmail: EmailMessage = {
@@ -131,7 +134,7 @@ export class DummyEmailService extends Service {
   }
 
   async searchEmails(options?: EmailSearchOptions): Promise<EmailMessage[]> {
-    logger.debug('Searching emails', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:email', options }, 'Searching emails');
 
     // Return filtered dummy emails based on search options
     let results = this.emails;
@@ -150,20 +153,23 @@ export class DummyEmailService extends Service {
       }
     }
 
-    logger.debug(`Found ${results.length} emails`);
+    logger.debug(
+      { src: 'plugin:dummy-services:email', count: results.length },
+      `Found ${results.length} emails`
+    );
 
     return results;
   }
 
   async getEmail(messageId: string): Promise<EmailMessage | null> {
-    logger.debug(`Getting email: ${messageId}`);
+    logger.debug({ src: 'plugin:dummy-services:email', messageId }, `Getting email: ${messageId}`);
 
     const email = this.emails.find((e) => e.id === messageId);
     return email || null;
   }
 
   async deleteEmail(messageId: string): Promise<boolean> {
-    logger.debug(`Deleting email: ${messageId}`);
+    logger.debug({ src: 'plugin:dummy-services:email', messageId }, `Deleting email: ${messageId}`);
 
     const index = this.emails.findIndex((e) => e.id === messageId);
     if (index !== -1) {
@@ -174,30 +180,42 @@ export class DummyEmailService extends Service {
   }
 
   async markAsRead(messageId: string): Promise<boolean> {
-    logger.debug(`Marking email as read: ${messageId}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:email', messageId },
+      `Marking email as read: ${messageId}`
+    );
     // Dummy implementation always returns true
     return true;
   }
 
   async markAsUnread(messageId: string): Promise<boolean> {
-    logger.debug(`Marking email as unread: ${messageId}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:email', messageId },
+      `Marking email as unread: ${messageId}`
+    );
     // Dummy implementation always returns true
     return true;
   }
 
   async moveToFolder(messageId: string, folderPath: string): Promise<boolean> {
-    logger.debug(`Moving email ${messageId} to folder: ${folderPath}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:email', messageId, folderPath },
+      `Moving email ${messageId} to folder: ${folderPath}`
+    );
     // Dummy implementation always returns true
     return true;
   }
 
   async getFolders(): Promise<EmailFolder[]> {
-    logger.debug('Getting email folders');
+    logger.debug({ src: 'plugin:dummy-services:email' }, 'Getting email folders');
     return this.folders;
   }
 
   async createFolder(name: string, parentPath?: string): Promise<EmailFolder> {
-    logger.debug(`Creating folder: ${name}`, JSON.stringify({ parentPath }));
+    logger.debug(
+      { src: 'plugin:dummy-services:email', name, parentPath },
+      `Creating folder: ${name}`
+    );
 
     const path = parentPath ? `${parentPath}/${name}` : name;
     const folder: EmailFolder = {
@@ -212,7 +230,10 @@ export class DummyEmailService extends Service {
   }
 
   async deleteFolder(folderPath: string): Promise<boolean> {
-    logger.debug(`Deleting folder: ${folderPath}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:email', folderPath },
+      `Deleting folder: ${folderPath}`
+    );
 
     const index = this.folders.findIndex((f) => f.path === folderPath);
     if (index !== -1) {
@@ -231,11 +252,17 @@ export class DummyEmailService extends Service {
       replyAll?: boolean;
     }
   ): Promise<string> {
-    logger.debug(`Replying to email: ${messageId}`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:email', messageId, options },
+      `Replying to email: ${messageId}`
+    );
 
     const replyMessageId = `dummy-reply-${Date.now()}@example.com`;
 
-    logger.info(`Reply sent successfully. Message ID: ${replyMessageId}`);
+    logger.info(
+      { src: 'plugin:dummy-services:email', replyMessageId },
+      `Reply sent successfully. Message ID: ${replyMessageId}`
+    );
 
     return replyMessageId;
   }
@@ -249,11 +276,17 @@ export class DummyEmailService extends Service {
       attachments?: EmailAttachment[];
     }
   ): Promise<string> {
-    logger.debug(`Forwarding email: ${messageId}`, JSON.stringify({ to, options }));
+    logger.debug(
+      { src: 'plugin:dummy-services:email', messageId, to, options },
+      `Forwarding email: ${messageId}`
+    );
 
     const forwardMessageId = `dummy-forward-${Date.now()}@example.com`;
 
-    logger.info(`Email forwarded successfully. Message ID: ${forwardMessageId}`);
+    logger.info(
+      { src: 'plugin:dummy-services:email', forwardMessageId },
+      `Email forwarded successfully. Message ID: ${forwardMessageId}`
+    );
 
     return forwardMessageId;
   }

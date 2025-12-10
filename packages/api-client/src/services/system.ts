@@ -1,5 +1,9 @@
 import { BaseApiClient } from '../lib/base-client';
-import { LocalEnvironmentUpdateParams } from '../types/system';
+import {
+  LocalEnvironmentUpdateParams,
+  LocalEnvironmentContentParams,
+  GlobalLogsResponse,
+} from '../types/system';
 
 export class SystemService extends BaseApiClient {
   /**
@@ -25,10 +29,7 @@ export class SystemService extends BaseApiClient {
    *   3. Record<string,string>                      (shorthand)
    */
   async updateLocalEnvironment(
-    params:
-      | LocalEnvironmentUpdateParams
-      | { content: Record<string, string> }
-      | Record<string, string>
+    params: LocalEnvironmentUpdateParams | LocalEnvironmentContentParams | Record<string, string>
   ): Promise<{ success: boolean; message: string }> {
     if (!params || typeof params !== 'object') {
       throw new Error('updateLocalEnvironment requires a configuration object');
@@ -37,13 +38,16 @@ export class SystemService extends BaseApiClient {
     let body: { content: Record<string, string> };
 
     if ('variables' in params) {
-      body = { content: (params as LocalEnvironmentUpdateParams).variables };
+      const localParams = params as LocalEnvironmentUpdateParams;
+      body = { content: localParams.variables };
     } else if ('content' in params) {
-      // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-      body = { content: (params as { content: Record<string, string> }).content };
+      const contentParams = params as LocalEnvironmentContentParams;
+      body = { content: contentParams.content };
     } else {
       // Treat params itself as record of env vars
-      body = { content: params as unknown as Record<string, string> };
+      // At this point, params must be Record<string, string> based on the union type
+      const recordParams = params as Record<string, string>;
+      body = { content: recordParams };
     }
 
     return this.post<{ success: boolean; message: string }>('/api/system/env/local', body);
@@ -74,19 +78,7 @@ export class SystemService extends BaseApiClient {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const data = (await response.json()) as {
-      logs?: Array<{
-        level: number;
-        time: number;
-        msg: string;
-        [key: string]: string | number | boolean | null | undefined;
-      }>;
-      count?: number;
-      total?: number;
-      requestedLevel?: string;
-      level?: string;
-      levels?: string[];
-    };
+    const data = (await response.json()) as GlobalLogsResponse;
 
     // The logs endpoint returns data directly, not wrapped in { success, data }
     // Map the response to expected format
@@ -99,7 +91,10 @@ export class SystemService extends BaseApiClient {
     };
   }
 
-  private buildUrl(path: string, options?: { params?: Record<string, any> }): string {
+  private buildUrl(
+    path: string,
+    options?: { params?: Record<string, string | number | boolean | null | undefined> }
+  ): string {
     const url = new URL(`${this.baseUrl}${path}`);
     if (options?.params) {
       Object.entries(options.params).forEach(([key, value]) => {
@@ -121,7 +116,7 @@ export class SystemService extends BaseApiClient {
     return this.delete<{ status: string; message: string }>('/api/server/logs');
   }
 
-  async deleteLog(logId: string): Promise<void> {
+  async deleteLog(_logId: string): Promise<void> {
     // Note: Individual log deletion is not supported by the server
     // The server only supports bulk deletion via deleteGlobalLogs()
     throw new Error(

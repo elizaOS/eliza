@@ -51,7 +51,7 @@ export const generateImageAction = {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    _options: any,
+    _options?: HandlerOptions,
     callback: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -120,7 +120,7 @@ export const generateImageAction = {
             return extension;
           }
           // Extension not in allowed list, fall through to default
-        } catch (e) {
+        } catch (_e) {
           // URL parsing failed (malformed URL), fall back to png
         }
         return 'png'; // Default fallback for invalid/unknown extensions

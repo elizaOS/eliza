@@ -1,7 +1,7 @@
 import { EnvironmentProvider, ExecutionResult } from './providers';
 import { Scenario } from './schema';
 import { AgentServer } from '@elizaos/server';
-import { UUID, AgentRuntime } from '@elizaos/core';
+import { UUID, IAgentRuntime } from '@elizaos/core';
 import { askAgentViaApi } from './runtime-factory';
 import { TrajectoryReconstructor } from './TrajectoryReconstructor';
 import { ConversationManager } from './ConversationManager';
@@ -10,27 +10,28 @@ import path from 'path';
 import os from 'os';
 import { bunExec } from '../../../utils/bun-exec';
 
+interface ConversationMetadata {
+  turnCount: number;
+  terminatedEarly?: boolean;
+  terminationReason?: string;
+  finalEvaluations?: unknown;
+}
+
 export class LocalEnvironmentProvider implements EnvironmentProvider {
   private tempDir: string | null = null;
   private server: AgentServer | null = null;
   private agentId: UUID | null = null;
-  private runtime: AgentRuntime | null = null; // FIXED: needed for ConversationManager
+  private runtime: IAgentRuntime | null = null; // FIXED: needed for ConversationManager
   private serverPort: number | null = null;
   private trajectoryReconstructor: TrajectoryReconstructor | null = null;
   private conversationManager: ConversationManager | null = null;
 
-  constructor(server?: AgentServer, agentId?: UUID, _runtime?: AgentRuntime, serverPort?: number) {
+  constructor(server?: AgentServer, agentId?: UUID, _runtime?: IAgentRuntime, serverPort?: number) {
     this.server = server ?? null;
     this.agentId = agentId ?? null;
     this.runtime = _runtime ?? null; // FIXED: needed for ConversationManager
     this.serverPort = serverPort ?? null;
     this.trajectoryReconstructor = _runtime ? new TrajectoryReconstructor(_runtime) : null;
-
-    console.log(`🔧 [DEBUG] LocalEnvironmentProvider CONSTRUCTOR:`);
-    console.log(`🔧 [DEBUG]   - Server: ${server ? 'present' : 'null'}`);
-    console.log(`🔧 [DEBUG]   - Agent ID: ${agentId}`);
-    console.log(`🔧 [DEBUG]   - Runtime: ${_runtime ? 'present' : 'null'}`);
-    console.log(`🔧 [DEBUG]   - Server Port: ${serverPort}`);
   }
 
   async setup(scenario: Scenario): Promise<void> {
@@ -137,7 +138,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         };
 
         // Add conversation metadata to result for conversation evaluators
-        (executionResult as any).conversationMetadata = {
+        (executionResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }).conversationMetadata = {
           turnCount: conversationResult.turns.length,
           terminatedEarly: conversationResult.terminatedEarly,
           terminationReason: conversationResult.terminationReason,
@@ -168,11 +169,6 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             ? await this.trajectoryReconstructor.getLatestTrajectory(roomId)
             : [];
 
-        // Debug trajectory reconstruction
-        console.log(`🔍 [Trajectory Debug] Room ID: ${roomId}, Steps found: ${trajectory.length}`);
-        if (trajectory.length > 0) {
-          console.log(`📊 [Trajectory Debug] First step:`, JSON.stringify(trajectory[0], null, 2));
-        }
 
         const endedAtMs = Date.now();
         const durationMs = endedAtMs - startedAtMs;
@@ -235,7 +231,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
             endedAtMs,
             durationMs,
           });
-        } catch (error: any) {
+        } catch (error: unknown) {
           // Capture file system state even on error
           const files = await this.captureFileSystem();
 

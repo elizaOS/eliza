@@ -10,7 +10,8 @@ export default defineConfig(({ mode, command }) => {
   const isBuild = command === 'build';
 
   return {
-    plugins: [tailwindcss() as unknown as PluginOption, react() as unknown as PluginOption],
+    // Type assertion needed because plugin types may not exactly match PluginOption but are compatible
+    plugins: [tailwindcss() as PluginOption, react() as PluginOption],
     server: {
       port: 5173,
       strictPort: true,

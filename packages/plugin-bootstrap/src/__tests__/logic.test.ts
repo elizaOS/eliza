@@ -161,7 +161,7 @@ describe('Reaction Events', () => {
     if (reactionHandler) {
       // Call the handler with our mock payload
       await reactionHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         message: mockReaction as Memory,
         source: 'test',
       } as MessagePayload);
@@ -184,7 +184,7 @@ describe('Reaction Events', () => {
       let error: Error | undefined;
       try {
         await reactionHandler({
-          runtime: mockRuntime as unknown as IAgentRuntime,
+          runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
           message: mockReaction as Memory,
           source: 'test',
         } as MessagePayload);
@@ -240,7 +240,7 @@ describe('World and Entity Events', () => {
     if (entityJoinedHandler) {
       // Call the handler with our mock payload
       await entityJoinedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         entityId: 'test-entity-id' as UUID,
         worldId: 'test-world-id' as UUID,
         roomId: 'test-room-id' as UUID,
@@ -267,7 +267,7 @@ describe('World and Entity Events', () => {
     if (entityLeftHandler) {
       // Call the handler with our mock payload
       await entityLeftHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         entityId: 'test-entity-id' as UUID,
         worldId: 'test-world-id' as UUID,
         source: 'test',
@@ -299,7 +299,7 @@ describe('World and Entity Events', () => {
       let error: Error | undefined;
       try {
         await entityLeftHandler({
-          runtime: mockRuntime as unknown as IAgentRuntime,
+          runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
           entityId: 'test-entity-id' as UUID,
           worldId: 'test-world-id' as UUID,
           source: 'test',
@@ -336,7 +336,7 @@ describe('Event Lifecycle Events', () => {
     if (actionStartedHandler) {
       // Call the handler with our mock payload
       await actionStartedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         actionId: 'test-action-id' as UUID,
         actionName: 'test-action',
         startTime: Date.now(),
@@ -359,7 +359,7 @@ describe('Event Lifecycle Events', () => {
     if (actionCompletedHandler) {
       // Call the handler with our mock payload
       await actionCompletedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         actionId: 'test-action-id' as UUID,
         actionName: 'test-action',
         completed: true,
@@ -382,7 +382,7 @@ describe('Event Lifecycle Events', () => {
     if (actionCompletedHandler) {
       // Call the handler with our mock payload including an error
       await actionCompletedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         actionId: 'test-action-id' as UUID,
         actionName: 'test-action',
         completed: false,
@@ -406,7 +406,7 @@ describe('Event Lifecycle Events', () => {
     if (evaluatorStartedHandler) {
       // Call the handler with our mock payload
       await evaluatorStartedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         evaluatorId: 'test-evaluator-id' as UUID,
         evaluatorName: 'test-evaluator',
         startTime: Date.now(),
@@ -426,7 +426,7 @@ describe('Event Lifecycle Events', () => {
     if (evaluatorCompletedHandler) {
       // Call the handler with our mock payload
       await evaluatorCompletedHandler({
-        runtime: mockRuntime as unknown as IAgentRuntime,
+        runtime: mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         evaluatorId: 'test-evaluator-id' as UUID,
         evaluatorName: 'test-evaluator',
         completed: true,
@@ -462,7 +462,7 @@ describe('shouldRespond with mentionContext', () => {
 
     const room = { type: ChannelType.DM };
     const result = shouldRespond(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       mockMessage as Memory,
       room
     );
@@ -484,7 +484,7 @@ describe('shouldRespond with mentionContext', () => {
     };
 
     const result = shouldRespond(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       mockMessage as Memory,
       room,
       mentionContext
@@ -507,7 +507,7 @@ describe('shouldRespond with mentionContext', () => {
     };
 
     const result = shouldRespond(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       mockMessage as Memory,
       room,
       mentionContext
@@ -530,7 +530,7 @@ describe('shouldRespond with mentionContext', () => {
     };
 
     const result = shouldRespond(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       mockMessage as Memory,
       room,
       mentionContext
@@ -553,7 +553,7 @@ describe('shouldRespond with mentionContext', () => {
     };
 
     const result = shouldRespond(
-      mockRuntime as unknown as IAgentRuntime,
+      mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
       messageWithClientChat as Memory,
       room
     );
@@ -588,7 +588,7 @@ describe('shouldRespond with mentionContext', () => {
       };
 
       const result = shouldRespond(
-        mockRuntime as unknown as IAgentRuntime,
+        mockRuntime as Partial<IAgentRuntime> as IAgentRuntime,
         messageWithPlatform as Memory,
         room,
         mentionContext

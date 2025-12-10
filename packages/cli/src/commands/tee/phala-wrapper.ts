@@ -19,7 +19,8 @@ export const phalaCliCommand = new Command('phala')
   .action(async (...commandArgs) => {
     // Use rawArgs to preserve exact user-supplied flags; fallback to variadic args if unavailable.
     const cmd = commandArgs[commandArgs.length - 1] as Command;
-    const raw = (cmd as any)?.parent?.rawArgs ?? (cmd as any)?.rawArgs ?? process.argv;
+    const cmdWithRawArgs = cmd as Command & { parent?: { rawArgs?: string[] }; rawArgs?: string[] };
+    const raw = cmdWithRawArgs?.parent?.rawArgs ?? cmdWithRawArgs?.rawArgs ?? process.argv;
     // Find 'phala' as a complete argument, not as a substring
     const idx = raw.findIndex((arg: string) => arg === 'phala');
     const args =

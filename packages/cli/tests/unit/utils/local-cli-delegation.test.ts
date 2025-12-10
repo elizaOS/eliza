@@ -59,7 +59,7 @@ function createMockSubprocess(
       // Cannot modify readonly properties - they're already set correctly
       return true;
     }),
-  } as unknown as Subprocess;
+  } as Partial<Subprocess> as Subprocess;
 
   return mockProcess;
 }

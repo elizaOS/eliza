@@ -55,15 +55,15 @@ export class DummyVideoService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyVideoService initialized');
+    logger.info({ src: 'plugin:dummy-services:video' }, 'DummyVideoService initialized');
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyVideoService stopped');
+    logger.info({ src: 'plugin:dummy-services:video' }, 'DummyVideoService stopped');
   }
 
   async getVideoInfo(url: string): Promise<VideoInfo> {
-    logger.debug(`Getting video info for: ${url}`);
+    logger.debug({ src: 'plugin:dummy-services:video', url }, `Getting video info for: ${url}`);
 
     return {
       title: 'Dummy Video Title',
@@ -80,43 +80,61 @@ export class DummyVideoService extends Service {
   }
 
   async downloadVideo(url: string, options?: VideoDownloadOptions): Promise<Buffer> {
-    logger.debug(`Downloading video from: ${url}`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:video', url, options },
+      `Downloading video from: ${url}`
+    );
 
     // Return dummy video buffer
     const dummyVideo = Buffer.from(`dummy-video-${options?.format || 'mp4'}`);
 
-    logger.debug(`Downloaded video: ${dummyVideo.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:video', bytes: dummyVideo.length },
+      `Downloaded video: ${dummyVideo.length} bytes`
+    );
 
     return dummyVideo;
   }
 
   async extractAudio(videoBuffer: Buffer): Promise<Buffer> {
-    logger.debug(`Extracting audio from video (${videoBuffer.length} bytes)`);
+    logger.debug(
+      { src: 'plugin:dummy-services:video', bytes: videoBuffer.length },
+      `Extracting audio from video (${videoBuffer.length} bytes)`
+    );
 
     // Return dummy audio buffer
     return Buffer.from('dummy-audio-from-video');
   }
 
   async extractFrames(videoBuffer: Buffer, timestamps: number[]): Promise<Buffer[]> {
-    logger.debug(`Extracting ${timestamps.length} frames from video`);
+    logger.debug(
+      { src: 'plugin:dummy-services:video', frameCount: timestamps.length },
+      `Extracting ${timestamps.length} frames from video`
+    );
 
     // Return dummy frame buffers
     return timestamps.map((ts, index) => Buffer.from(`dummy-frame-${index}-at-${ts}s`));
   }
 
   async processVideo(videoBuffer: Buffer, options: VideoProcessingOptions): Promise<Buffer> {
-    logger.debug('Processing video', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:video', options }, 'Processing video');
 
     // Return dummy processed video buffer
     const processedVideo = Buffer.from(`dummy-processed-video-${options.outputFormat || 'mp4'}`);
 
-    logger.debug(`Processed video: ${processedVideo.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:video', bytes: processedVideo.length },
+      `Processed video: ${processedVideo.length} bytes`
+    );
 
     return processedVideo;
   }
 
   async getAvailableFormats(url: string): Promise<VideoFormat[]> {
-    logger.debug(`Getting available formats for: ${url}`);
+    logger.debug(
+      { src: 'plugin:dummy-services:video', url },
+      `Getting available formats for: ${url}`
+    );
 
     return [
       {

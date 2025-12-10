@@ -38,7 +38,8 @@ describe('SQL Plugin', () => {
 
     // Clear global singletons to prevent contamination between tests
     const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
-    const globalSymbols = global as unknown as Record<symbol, any>;
+    // Type assertion needed because global doesn't include symbol keys in its type definition
+    const globalSymbols = global as typeof global & Record<symbol, Record<string, unknown>>;
     if (globalSymbols[GLOBAL_SINGLETONS]) {
       globalSymbols[GLOBAL_SINGLETONS] = {};
     }

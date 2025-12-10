@@ -39,6 +39,13 @@ describe('entities', () => {
       character: {
         id: 'agent-id-123' as UUID,
         name: 'TestAgent',
+        username: 'testagent',
+        bio: [],
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        style: { all: [], chat: [], post: [] },
+        adjectives: [],
       },
       getRoom: mock(),
       getWorld: mock(),
@@ -47,7 +54,7 @@ describe('entities', () => {
       getEntityById: mock(),
       useModel: mock(),
       getMemories: mock(),
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     // Create mock memory
     mockMemory = {
@@ -348,7 +355,7 @@ describe('entities', () => {
             entityId: 'entity-user' as UUID,
             agentId: 'agent-id-123' as UUID,
             roomId: 'room-789' as UUID,
-            worldId: null as any,
+            worldId: undefined,
             sourceEntityId: 'entity-456' as UUID,
             type: 'PROFILE',
             createdAt: Date.now(),
@@ -403,7 +410,7 @@ describe('entities', () => {
             entityId: 'entity-handle' as UUID,
             agentId: 'agent-id-123' as UUID,
             roomId: 'room-789' as UUID,
-            worldId: null as any,
+            worldId: undefined,
             sourceEntityId: 'entity-456' as UUID,
             type: 'PROFILE',
             createdAt: Date.now(),
@@ -708,17 +715,17 @@ describe('entities', () => {
   });
 
   it('createUniqueUuid combines user and agent ids', () => {
-    const runtime = { agentId: 'agent' } as any;
+    const runtime = { agentId: 'agent' as UUID } as Partial<IAgentRuntime> as IAgentRuntime;
     const id = createUniqueUuid(runtime, 'user');
     const expected = index.stringToUuid('user:agent');
     expect(id).toBe(expected);
   });
 
   it('formatEntities outputs joined string', () => {
-    const entities = [
-      { id: '1', names: ['A'], metadata: {} },
-      { id: '2', names: ['B'], metadata: { extra: true } },
-    ] as any;
+    const entities: Entity[] = [
+      { id: '1' as UUID, names: ['A'], metadata: {}, agentId: 'agent-1' as UUID },
+      { id: '2' as UUID, names: ['B'], metadata: { extra: true }, agentId: 'agent-1' as UUID },
+    ];
     const text = formatEntities({ entities });
     expect(text).toContain('"A"');
     expect(text).toContain('ID: 1');

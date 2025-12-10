@@ -236,9 +236,11 @@ describe('Environment Variable Configuration', () => {
     });
 
     it('should treat undefined as disabled', () => {
-      const env = {};
-      const dataIsolationEnabled =
-        (env as { ENABLE_DATA_ISOLATION?: string }).ENABLE_DATA_ISOLATION === 'true';
+      interface EnvWithDataIsolation {
+        ENABLE_DATA_ISOLATION?: string;
+      }
+      const env: EnvWithDataIsolation = {};
+      const dataIsolationEnabled = env.ENABLE_DATA_ISOLATION === 'true';
       expect(dataIsolationEnabled).toBe(false);
     });
   });

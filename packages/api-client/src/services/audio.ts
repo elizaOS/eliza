@@ -9,7 +9,7 @@ import {
   TranscriptionResponse,
 } from '../types/audio';
 
-declare const window: any;
+declare const window: (Window & typeof globalThis) | undefined;
 
 export class AudioService extends BaseApiClient {
   /**
@@ -19,8 +19,8 @@ export class AudioService extends BaseApiClient {
     method: string,
     path: string,
     options?: {
-      body?: any;
-      params?: Record<string, any>;
+      body?: unknown;
+      params?: Record<string, string | number | boolean | null | undefined>;
       headers?: Record<string, string>;
     }
   ): Promise<ArrayBuffer> {
@@ -129,7 +129,7 @@ export class AudioService extends BaseApiClient {
             bytes[i] = binaryString.charCodeAt(i);
           }
           return new Blob([bytes], { type: 'audio/wav' });
-        } catch (error) {
+        } catch (_error) {
           // If base64 decoding fails, treat as file path or other string
           return audio;
         }
@@ -144,21 +144,21 @@ export class AudioService extends BaseApiClient {
       return new Blob([new Uint8Array(audio)], { type: 'audio/wav' });
     }
 
-    // Cast to any for runtime type checking since TypeScript can't narrow the union type properly
-    const audioAsAny = audio as any;
-
-    if (audioAsAny instanceof ArrayBuffer) {
-      return new Blob([audioAsAny], { type: 'audio/wav' });
+    // Handle ArrayBuffer
+    if (audio instanceof ArrayBuffer) {
+      return new Blob([audio], { type: 'audio/wav' });
     }
 
+    // Handle typed arrays like Uint8Array, Int8Array, etc.
     if (
-      audioAsAny &&
-      typeof audioAsAny === 'object' &&
-      'buffer' in audioAsAny &&
-      audioAsAny.buffer instanceof ArrayBuffer
+      audio &&
+      typeof audio === 'object' &&
+      'buffer' in audio &&
+      audio.buffer instanceof ArrayBuffer &&
+      'BYTES_PER_ELEMENT' in audio.constructor
     ) {
       // Handle typed arrays like Uint8Array
-      return new Blob([audioAsAny.buffer], { type: 'audio/wav' });
+      return new Blob([audio.buffer], { type: 'audio/wav' });
     }
 
     throw new Error(
@@ -184,9 +184,10 @@ export class AudioService extends BaseApiClient {
   /**
    * Safe check for Buffer type (works in both Node.js and browser environments)
    */
-  private isBuffer(obj: any): obj is Buffer {
+  private isBuffer(obj: unknown): obj is Buffer {
     return (
-      obj != null &&
+      obj !== null &&
+      obj !== undefined &&
       typeof obj === 'object' &&
       typeof obj.constructor === 'function' &&
       obj.constructor.name === 'Buffer' &&
@@ -211,9 +212,15 @@ export class AudioService extends BaseApiClient {
       formData.append('file', processedAudio);
     }
 
-    if (params.format) formData.append('format', params.format);
-    if (params.language) formData.append('language', params.language);
-    if (params.metadata) formData.append('metadata', JSON.stringify(params.metadata));
+    if (params.format) {
+      formData.append('format', params.format);
+    }
+    if (params.language) {
+      formData.append('language', params.language);
+    }
+    if (params.metadata) {
+      formData.append('metadata', JSON.stringify(params.metadata));
+    }
 
     return this.request<SpeechResponse>('POST', `/api/audio/${agentId}/speech/conversation`, {
       body: formData,
@@ -245,7 +252,7 @@ export class AudioService extends BaseApiClient {
 
     return {
       audio: base64Audio,
-      format: format,
+      format,
     };
   }
 
@@ -276,8 +283,12 @@ export class AudioService extends BaseApiClient {
       formData.append('file', processedAudio);
     }
 
-    if (params.format) formData.append('format', params.format);
-    if (params.language) formData.append('language', params.language);
+    if (params.format) {
+      formData.append('format', params.format);
+    }
+    if (params.language) {
+      formData.append('language', params.language);
+    }
 
     return this.request<TranscriptionResponse>('POST', `/api/audio/${agentId}/transcriptions`, {
       body: formData,
@@ -302,7 +313,9 @@ export class AudioService extends BaseApiClient {
       formData.append('file', processedAudio);
     }
 
-    if (metadata) formData.append('metadata', JSON.stringify(metadata));
+    if (metadata) {
+      formData.append('metadata', JSON.stringify(metadata));
+    }
 
     return this.request<SpeechResponse>('POST', `/api/audio/${agentId}/speech`, {
       body: formData,

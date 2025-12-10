@@ -248,6 +248,7 @@ export async function copyTemplate(
       },
       'Error updating package.json'
     );
+    throw error;
   }
 
   logger.debug({ src: 'cli', util: 'copy-template', templateType }, 'Template copied successfully');
