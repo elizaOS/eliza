@@ -39,7 +39,7 @@ import {
   type ModelResultMap,
   type ModelTypeName,
   type Plugin,
-  type PluginEvents,
+  type RuntimeEventStorage,
   type Route,
   type UUID,
   type Service,
@@ -112,7 +112,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  events: PluginEvents = {};
+  events: RuntimeEventStorage = {};
   stateCache = new Map<string, State>();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
@@ -758,7 +758,7 @@ export class AgentRuntime implements IAgentRuntime {
       }>;
       thought: string;
       startTime: number;
-    } | null = null;
+    } | undefined = undefined;
 
     const thought =
       responses[0]?.content?.thought ||
@@ -2480,7 +2480,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
         'Embedding generation failed'
       );
-      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' });
     }
     return memory;
   }

@@ -109,12 +109,11 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         await serverInstance.addAgentToMessageServer(serverId, agentId as UUID);
 
         // Notify the agent's message bus service to start listening for this message server
-        const messageForBus = {
-          type: 'agent_added_to_server',
-          serverId,
+        internalMessageBus.emit('server_agent_update', {
+          type: 'agent_added_to_server' as const,
+          messageServerId: serverId,
           agentId,
-        };
-        internalMessageBus.emit('server_agent_update', messageForBus);
+        });
 
         res.status(201).json({
           success: true,
@@ -167,12 +166,11 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
         await serverInstance.removeAgentFromMessageServer(serverId, agentId);
 
         // Notify the agent's message bus service to stop listening for this message server
-        const messageForBus = {
-          type: 'agent_removed_from_server',
-          serverId,
+        internalMessageBus.emit('server_agent_update', {
+          type: 'agent_removed_from_server' as const,
+          messageServerId: serverId,
           agentId,
-        };
-        internalMessageBus.emit('server_agent_update', messageForBus);
+        });
 
         res.status(200).json({
           success: true,

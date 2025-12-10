@@ -79,6 +79,8 @@ type MockAgent = {
     secrets?: Record<string, string>;
     [key: string]: any;
   };
+  createdAt: number;
+  updatedAt: number;
   [key: string]: any;
 };
 
@@ -117,6 +119,8 @@ describe('useAgentUpdate hook', () => {
           INITIAL_API_KEY: 'initial-key-value',
         },
       },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const templateAgent: MockAgent = {
@@ -143,6 +147,8 @@ describe('useAgentUpdate hook', () => {
         newSetting: 'new-template-value',
       },
       extraField: 'extra-field-value',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     // Use renderHook to properly test the React hook
@@ -204,6 +210,8 @@ describe('useAgentUpdate hook', () => {
           },
         },
       },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const templateAgent: MockAgent = {
@@ -225,6 +233,8 @@ describe('useAgentUpdate hook', () => {
         },
       },
       customField: 'custom value',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     // Use renderHook to properly test the React hook

@@ -7,6 +7,7 @@ import clientLogger from './logger';
 
 // Define types for the events
 export type MessageBroadcastData = {
+  id?: string;
   senderId: string;
   senderName: string;
   text: string;
@@ -15,6 +16,7 @@ export type MessageBroadcastData = {
   createdAt: number;
   source: string;
   name: string; // Required for ContentWithUser compatibility
+  serverId?: string;
   attachments?: Media[];
   thought?: string; // Agent's thought process
   actions?: string[]; // Actions taken by the agent
@@ -86,16 +88,16 @@ class EventAdapter {
     this.events.logStream = Evt.create<LogStreamData>();
   }
 
-  on(eventName: string, listener: (...args: unknown[]) => void) {
+  on<T = unknown>(eventName: string, listener: (data: T) => void) {
     if (!this.events[eventName]) {
       this.events[eventName] = Evt.create();
     }
 
-    this.events[eventName].attach(listener);
+    this.events[eventName].attach(listener as (data: unknown) => void);
     return this;
   }
 
-  off(eventName: string, listener: (...args: unknown[]) => void) {
+  off<T = unknown>(eventName: string, listener: (data: T) => void) {
     if (this.events[eventName]) {
       const handlers = this.events[eventName].getHandlers();
       for (const handler of handlers) {
