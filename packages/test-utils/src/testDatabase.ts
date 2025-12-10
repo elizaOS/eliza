@@ -1,4 +1,4 @@
-import type { IDatabaseAdapter, UUID } from '@elizaos/core';
+import type { IDatabaseAdapter, UUID, Memory } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -552,7 +552,7 @@ export class TestDatabaseManager {
         return null;
       },
 
-      async countMemories(roomId: any, tableName = 'messages') {
+      async countMemories(roomId: UUID, unique?: boolean, tableName = 'messages') {
         const tableData = storage.memories.get(tableName);
         if (!tableData) {
           return 0;
@@ -562,7 +562,11 @@ export class TestDatabaseManager {
           return tableData.size;
         }
 
-        return Array.from(tableData.values()).filter((m: any) => m.roomId === roomId).length;
+        let memories = Array.from(tableData.values()).filter((m: any) => m.roomId === roomId);
+        if (unique) {
+          memories = memories.filter((m: any) => m.unique === true);
+        }
+        return memories.length;
       },
 
       async getMemoriesByEntityIds(entityIds: any, tableName = 'messages') {
@@ -843,6 +847,11 @@ export class TestDatabaseManager {
           storage.participants.set(participantId, { entityId, roomId });
         }
         return true;
+      },
+
+      async isRoomParticipant(roomId: UUID, entityId: UUID) {
+        const participantId = `${entityId}-${roomId}`;
+        return storage.participants.has(participantId);
       },
     };
 

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { logger } from '@elizaos/core';
 import type { DrizzleDB, RuntimeMigrationOptions, SchemaSnapshot } from './types';
+import { getRow } from '../types';
 import { MigrationTracker } from './storage/migration-tracker';
 import { JournalStorage } from './storage/journal-storage';
 import { SnapshotStorage } from './storage/snapshot-storage';
@@ -485,7 +486,7 @@ export class RuntimeMigrator {
           interface LockResultRow {
             acquired: boolean;
           }
-          lockAcquired = (lockResult.rows[0] as LockResultRow)?.acquired === true;
+          lockAcquired = getRow<LockResultRow>(lockResult)?.acquired === true;
 
           if (!lockAcquired) {
             logger.info(

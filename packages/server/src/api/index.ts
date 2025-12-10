@@ -1,5 +1,5 @@
 import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
-import { logger, validateUuid } from '@elizaos/core';
+import { logger, validateUuid, addLogListener } from '@elizaos/core';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
@@ -71,51 +71,10 @@ export function setupSocketIO(
 
 // Setup log streaming integration with the logger
 function setupLogStreaming(io: SocketIOServer, router: SocketIORouter) {
-  // Access the logger's destination to hook into log events
-  // Note: This accesses internal implementation details via Symbol
-  type LoggerWithDestination = typeof logger & {
-    [Symbol.for('pino-destination')]?: {
-      write: (data: string | unknown) => void;
-    };
-  };
-  const loggerInstance = logger as LoggerWithDestination;
-  const destination = loggerInstance[Symbol.for('pino-destination')];
-
-  if (destination && typeof destination.write === 'function') {
-    // Store original write method
-    const originalWrite = destination.write.bind(destination);
-
-    // Override write method to broadcast logs via WebSocket
-    destination.write = function (data: string | unknown) {
-      // Call original write first
-      originalWrite(data);
-
-      // Parse and broadcast log entry
-      try {
-        let logEntry;
-        if (typeof data === 'string') {
-          try {
-            logEntry = JSON.parse(data);
-          } catch (_parseError) {
-            // If JSON parsing fails, treat as plain text log
-            logEntry = { message: data, level: 'info' };
-          }
-        } else {
-          logEntry = data;
-        }
-
-        // Add timestamp if not present
-        if (!logEntry.time) {
-          logEntry.time = Date.now();
-        }
-
-        // Broadcast to WebSocket clients
-        router.broadcastLog(io, logEntry);
-      } catch (_error) {
-        // Ignore JSON parse errors for non-log data
-      }
-    };
-  }
+  // Subscribe to log events and broadcast them via WebSocket
+  addLogListener((entry) => {
+    router.broadcastLog(io, entry);
+  });
 }
 
 // Extracted function to handle plugin routes

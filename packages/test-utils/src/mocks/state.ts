@@ -173,13 +173,15 @@ export function createMockStateWithProvider(
   providerData: any,
   overrides: MockStateOverrides = {}
 ): State {
+  const providersOverride = (overrides.data?.providers ?? {}) as Record<string, unknown>;
+  const dataOverride = (overrides.data ?? {}) as Record<string, unknown>;
   return createMockState({
     data: {
       providers: {
         [providerName]: providerData,
-        ...overrides.data?.providers,
+        ...providersOverride,
       },
-      ...overrides.data,
+      ...dataOverride,
     },
     text: `[${providerName}]\n${JSON.stringify(providerData, null, 2)}\n[/${providerName}]`,
     ...overrides,
@@ -228,6 +230,8 @@ export function createMockConversationState(
   overrides: MockStateOverrides = {}
 ): State {
   const recentContext = conversationHistory.slice(-3).join(' | ');
+  const providersOverride = (overrides.data?.providers ?? {}) as Record<string, unknown>;
+  const dataOverride = (overrides.data ?? {}) as Record<string, unknown>;
 
   return createMockState({
     values: {
@@ -244,9 +248,9 @@ export function createMockConversationState(
           count: conversationHistory.length,
           lastSpeaker: conversationHistory.length % 2 === 0 ? 'agent' : 'user',
         },
-        ...overrides.data?.providers,
+        ...providersOverride,
       },
-      ...overrides.data,
+      ...dataOverride,
     },
     text: `[CONVERSATION CONTEXT]
 User: ${currentUser}

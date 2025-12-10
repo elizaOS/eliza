@@ -129,12 +129,12 @@ export const plugin: Plugin = {
 
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
     // Only support PGLITE_DATA_DIR going forward
-    const dataDir = runtime.getSetting('PGLITE_DATA_DIR') || undefined;
+    const dataDir = runtime.getSetting('PGLITE_DATA_DIR');
 
     const dbAdapter = createDatabaseAdapter(
       {
-        dataDir,
-        postgresUrl,
+        dataDir: typeof dataDir === 'string' ? dataDir : undefined,
+        postgresUrl: typeof postgresUrl === 'string' ? postgresUrl : undefined,
       },
       runtime.agentId
     );

@@ -168,7 +168,8 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
   const actionName = action.body?.action || '';
   const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType);
   const usageType = isActionLog ? 'Action' : getModelUsageType(modelType);
-  const tokenUsage = formatTokenUsage(action.body?.response?.usage || action.body?.usage);
+  const responseObj = typeof action.body?.response === 'object' ? action.body.response : undefined;
+  const tokenUsage = formatTokenUsage(responseObj?.usage || action.body?.usage);
   const actionPrompts = action.body?.prompts;
 
   const renderParams = () => {
@@ -208,7 +209,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => copyToClipboard(promptData.prompt)}
+                      onClick={() => copyToClipboard(promptData.prompt || '')}
                       className="h-5 px-1 text-xs"
                       title="Copy prompt"
                     >

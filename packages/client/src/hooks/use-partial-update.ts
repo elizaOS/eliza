@@ -88,7 +88,7 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
       const result = {
         ...prevValue,
         [fieldToUpdate]: updateNestedObject(
-          prevValue[fieldToUpdate as keyof T],
+          prevValue[fieldToUpdate as keyof T] as Record<string, unknown>,
           remainingPath,
           newValue
         ),
@@ -144,7 +144,7 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
 
       // Handle nested array field
       const updatePath = path;
-      const currentValue = getNestedValue(prevValue, updatePath);
+      const currentValue = getNestedValue(prevValue as Record<string, unknown>, updatePath);
       const currentArray = Array.isArray(currentValue) ? [...currentValue] : [];
 
       return setNestedValue(prevValue, updatePath, [...currentArray, item]);
@@ -179,7 +179,7 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
 
       // Handle nested array field
       const updatePath = path;
-      const currentValue = getNestedValue(prevValue, updatePath);
+      const currentValue = getNestedValue(prevValue as Record<string, unknown>, updatePath);
 
       if (!Array.isArray(currentValue) || index < 0 || index >= currentValue.length) {
         return prevValue;
@@ -195,13 +195,13 @@ export function usePartialUpdate<T extends object>(initialValue: T) {
    */
   const getNestedValue = (obj: Record<string, unknown>, path: string): unknown => {
     const parts = path.split('.');
-    let current = obj;
+    let current: unknown = obj;
 
     for (const part of parts) {
       if (current === null || current === undefined) {
         return undefined;
       }
-      current = current[part];
+      current = (current as Record<string, unknown>)[part];
     }
 
     return current;
