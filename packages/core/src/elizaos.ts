@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
 import { setDefaultSecretsFromEnv } from './secrets';
+import { getSalt, encryptObjectValues } from './settings';
 import { resolvePlugins } from './plugin';
 import type {
   Character,
@@ -158,11 +159,28 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     const createdRuntimes: IAgentRuntime[] = [];
 
     const promises = agents.map(async (agent) => {
+      const character: Character = JSON.parse(JSON.stringify(agent.character));
+
       // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
       // In test mode, skip env merge to avoid database bloat from system variables
-      const character = agent.character;
       await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
+
+      // Encrypt all secrets after merging env vars
+      const salt = getSalt();
+      if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
+        character.settings.secrets = encryptObjectValues(
+          character.settings.secrets as Record<string, string>,
+          salt
+        );
+      }
+      // Also encrypt character.secrets (root level) if it exists
+      if (character.secrets && typeof character.secrets === 'object') {
+        character.secrets = encryptObjectValues(
+          character.secrets as Record<string, string>,
+          salt
+        ) as { [key: string]: string | boolean | number };
+      }
 
       let resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
