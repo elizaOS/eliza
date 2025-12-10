@@ -6,14 +6,12 @@
  * and uses the standard PostgreSQL adapter from plugin-sql.
  */
 
-import type { UUID } from "@elizaos/core";
+import type { UUID, IDatabaseAdapter } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import pluginSql from "@elizaos/plugin-sql/node";
 import type { CloudDatabaseConfig, DatabaseProvisionResponse } from "./types";
 
 const DEFAULT_CLOUD_URL = "https://www.elizacloud.ai";
-
-// Use unknown type to avoid version mismatch issues between @elizaos/core versions
-type DatabaseAdapter = unknown;
 
 /**
  * Creates a cloud database adapter that connects to ElizaOS Cloud's managed database.
@@ -23,7 +21,7 @@ type DatabaseAdapter = unknown;
  */
 export async function createCloudDatabaseAdapter(
   config: CloudDatabaseConfig,
-): Promise<DatabaseAdapter | null> {
+): Promise<IDatabaseAdapter | null> {
   const baseUrl = config.baseUrl || DEFAULT_CLOUD_URL;
 
   logger.info(
@@ -55,45 +53,17 @@ export async function createCloudDatabaseAdapter(
     "Cloud database provisioned successfully",
   );
 
-  // Use the standard PostgreSQL adapter with the cloud-provisioned connection URL
-  // Dynamic import to avoid circular dependencies and bundling issues
-  try {
-    // Try to import plugin-sql - it's an optional dependency
-    const pluginSql = await import("@elizaos/plugin-sql");
-    
-    if (!pluginSql.createDatabaseAdapter) {
-      logger.error(
-        { src: "plugin:elizacloud" },
-        "@elizaos/plugin-sql does not export createDatabaseAdapter",
-      );
-      return null;
-    }
-    
-    const adapter = pluginSql.createDatabaseAdapter(
-      {
-        postgresUrl: response.connectionUrl,
-      },
-      config.agentId as UUID,
-    );
-    
-    logger.info(
-      { src: "plugin:elizacloud", agentId: config.agentId },
-      "Cloud database adapter created using PostgreSQL connection",
-    );
-    
-    return adapter;
-  } catch (importError) {
-    // plugin-sql is optional - provide helpful message
-    logger.error(
-      { src: "plugin:elizacloud" },
-      "Cloud database requires @elizaos/plugin-sql. Install it with: bun add @elizaos/plugin-sql",
-    );
-    logger.debug(
-      { src: "plugin:elizacloud", error: importError },
-      "Import error details",
-    );
-    return null;
-  }
+  const adapter = pluginSql.createDatabaseAdapter(
+    { postgresUrl: response.connectionUrl },
+    config.agentId as UUID,
+  );
+
+  logger.info(
+    { src: "plugin:elizacloud", agentId: config.agentId },
+    "Cloud database adapter created using PostgreSQL connection",
+  );
+
+  return adapter;
 }
 
 /**
@@ -146,13 +116,13 @@ async function provisionCloudDatabase(
  */
 export class CloudDatabaseAdapter {
   private config: CloudDatabaseConfig;
-  private adapter: DatabaseAdapter | null = null;
+  private adapter: IDatabaseAdapter | null = null;
 
   constructor(config: CloudDatabaseConfig) {
     this.config = config;
   }
 
-  async initialize(): Promise<DatabaseAdapter | null> {
+  async initialize(): Promise<IDatabaseAdapter | null> {
     if (this.adapter) {
       return this.adapter;
     }
@@ -161,7 +131,7 @@ export class CloudDatabaseAdapter {
     return this.adapter;
   }
 
-  getAdapter(): DatabaseAdapter | null {
+  getAdapter(): IDatabaseAdapter | null {
     return this.adapter;
   }
 }

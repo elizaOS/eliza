@@ -3,7 +3,14 @@
  * Dual build script for @elizaos/plugin-services (Node + Browser)
  */
 
-const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
+const externalDeps = [
+  "@elizaos/core",
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-sql/node",
+  "@ai-sdk/openai",
+  "ai",
+  "js-tiktoken",
+];
 
 async function build() {
   const totalStart = Date.now();

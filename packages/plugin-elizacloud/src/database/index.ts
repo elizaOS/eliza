@@ -9,5 +9,29 @@
  */
 
 export { CloudDatabaseAdapter, createCloudDatabaseAdapter } from "./adapter";
-export { createDirectDatabaseAdapter } from "./direct-adapter";
-export type { CloudDatabaseConfig } from "./types";
+export { createDirectDatabaseAdapter, createDatabaseAdapter } from "./direct-adapter";
+export type { CloudDatabaseConfig, CloudDatabaseStatus } from "./types";
+
+// Re-export schema tables for direct database access
+export {
+  agentTable,
+  roomTable,
+  participantTable,
+  memoryTable,
+  embeddingTable,
+  entityTable,
+  relationshipTable,
+  componentTable,
+  taskTable,
+  logTable,
+  cacheTable,
+  worldTable,
+  serverTable,
+  serverAgentsTable, // Alias for serverTable (backwards compat)
+  messageTable,
+  messageServerTable,
+  messageServerAgentsTable,
+  channelTable,
+  channelParticipantsTable,
+  pluginSql,
+} from "./schema";

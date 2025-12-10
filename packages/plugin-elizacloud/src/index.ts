@@ -26,7 +26,33 @@ export type {
 } from "./types";
 
 // Re-export database module
-export { CloudDatabaseAdapter, createCloudDatabaseAdapter, createDirectDatabaseAdapter } from "./database";
+export {
+  CloudDatabaseAdapter,
+  createCloudDatabaseAdapter,
+  createDirectDatabaseAdapter,
+  createDatabaseAdapter,
+  // Schema tables
+  agentTable,
+  roomTable,
+  participantTable,
+  memoryTable,
+  embeddingTable,
+  entityTable,
+  relationshipTable,
+  componentTable,
+  taskTable,
+  logTable,
+  cacheTable,
+  worldTable,
+  serverTable,
+  serverAgentsTable, // Alias for serverTable (backwards compat)
+  messageTable,
+  messageServerTable,
+  messageServerAgentsTable,
+  channelTable,
+  channelParticipantsTable,
+  pluginSql,
+} from "./database";
 export type { CloudDatabaseConfig, CloudDatabaseStatus } from "./database/types";
 
 // Re-export storage module
