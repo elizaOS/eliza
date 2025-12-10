@@ -159,10 +159,11 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     const createdRuntimes: IAgentRuntime[] = [];
 
     const promises = agents.map(async (agent) => {
+      const character: Character = JSON.parse(JSON.stringify(agent.character));
+
       // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
       // In test mode, skip env merge to avoid database bloat from system variables
-      const character = agent.character;
       await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
 
       // Encrypt all secrets after merging env vars
@@ -178,7 +179,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
         character.secrets = encryptObjectValues(
           character.secrets as Record<string, string>,
           salt
-        );
+        ) as { [key: string]: string | boolean | number };
       }
 
       let resolvedPlugins = agent.plugins
