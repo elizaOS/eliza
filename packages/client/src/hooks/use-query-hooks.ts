@@ -410,7 +410,7 @@ export function useChannelMessages(
         // If it's not a number or string, but exists (e.g. could be a Date object from some contexts)
         // Attempt to convert. This is less likely if types are strict from server.
         try {
-          const dateObjTimestamp = new Date(sm.createdAt as any).getTime();
+          const dateObjTimestamp = new Date(sm.createdAt as string | number | Date).getTime();
           if (!isNaN(dateObjTimestamp)) {
             timestamp = dateObjTimestamp;
           }
@@ -436,7 +436,7 @@ export function useChannelMessages(
         senderId: sm.authorId,
         isAgent: isAgent,
         createdAt: timestamp,
-        attachments: sm.metadata?.attachments as any[],
+        attachments: (sm.metadata?.attachments as Array<{ url: string; [key: string]: unknown }>) || [],
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
@@ -641,9 +641,12 @@ export function useDeleteLog() {
 
       // Update cache if we have the data
       if (previousLogs) {
-        queryClient.setQueryData(['agentActions', agentId], (oldData: any) =>
-          oldData.filter((log: any) => log.id !== logId)
-        );
+        queryClient.setQueryData(['agentActions', agentId], (oldData: unknown) => {
+          if (Array.isArray(oldData)) {
+            return oldData.filter((log: { id?: string }) => log.id !== logId);
+          }
+          return oldData;
+        });
       }
 
       return { previousLogs, agentId, logId };
@@ -693,7 +696,7 @@ export function useAgentMemories(
   return useQuery({
     queryKey,
     queryFn: async () => {
-      const params: any = {
+      const params: Record<string, unknown> = {
         tableName,
         includeEmbedding,
       };
@@ -708,7 +711,7 @@ export function useAgentMemories(
         result,
         dataLength: result.memories?.length,
         firstMemory: result.memories?.[0],
-        hasEmbeddings: (result.memories || []).some((m: any) => m.embedding?.length > 0),
+        hasEmbeddings: (result.memories || []).some((m: { embedding?: number[] }) => m.embedding?.length > 0),
       });
       // Map the API memories to client format
       const memories = result.memories || [];

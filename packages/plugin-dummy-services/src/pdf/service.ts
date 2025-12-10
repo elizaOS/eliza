@@ -46,15 +46,18 @@ export class DummyPdfService extends Service {
   }
 
   async initialize(): Promise<void> {
-    logger.info('DummyPdfService initialized');
+    logger.info({ src: 'plugin:dummy-services:pdf' }, 'DummyPdfService initialized');
   }
 
   async stop(): Promise<void> {
-    logger.info('DummyPdfService stopped');
+    logger.info({ src: 'plugin:dummy-services:pdf' }, 'DummyPdfService stopped');
   }
 
   async extractText(pdfBuffer: Buffer): Promise<PdfExtractionResult> {
-    logger.debug(`Extracting text from PDF (${pdfBuffer.length} bytes)`);
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', bytes: pdfBuffer.length },
+      `Extracting text from PDF (${pdfBuffer.length} bytes)`
+    );
 
     return {
       text: 'This is dummy extracted text from the PDF document.',
@@ -71,12 +74,15 @@ export class DummyPdfService extends Service {
     content: string | { html: string },
     options?: PdfGenerationOptions
   ): Promise<Buffer> {
-    logger.debug('Generating PDF', JSON.stringify(options));
+    logger.debug({ src: 'plugin:dummy-services:pdf', options }, 'Generating PDF');
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from('dummy-pdf-content');
 
-    logger.debug(`Generated PDF: ${dummyPdf.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', bytes: dummyPdf.length },
+      `Generated PDF: ${dummyPdf.length} bytes`
+    );
 
     return dummyPdf;
   }
@@ -86,18 +92,27 @@ export class DummyPdfService extends Service {
     inputFormat: 'html' | 'markdown' | 'docx',
     options?: PdfConversionOptions
   ): Promise<Buffer> {
-    logger.debug(`Converting ${inputFormat} to PDF`, JSON.stringify(options));
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', inputFormat, options },
+      `Converting ${inputFormat} to PDF`
+    );
 
     // Return dummy PDF buffer
     const dummyPdf = Buffer.from(`dummy-pdf-from-${inputFormat}`);
 
-    logger.debug(`Converted to PDF: ${dummyPdf.length} bytes`);
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', bytes: dummyPdf.length },
+      `Converted to PDF: ${dummyPdf.length} bytes`
+    );
 
     return dummyPdf;
   }
 
   async mergePdfs(pdfBuffers: Buffer[]): Promise<Buffer> {
-    logger.debug(`Merging ${pdfBuffers.length} PDFs`);
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', count: pdfBuffers.length },
+      `Merging ${pdfBuffers.length} PDFs`
+    );
 
     // Return dummy merged PDF buffer
     const totalSize = pdfBuffers.reduce((sum, buf) => sum + buf.length, 0);
@@ -107,7 +122,10 @@ export class DummyPdfService extends Service {
   }
 
   async splitPdf(pdfBuffer: Buffer, ranges: Array<[number, number]>): Promise<Buffer[]> {
-    logger.debug(`Splitting PDF into ${ranges.length} parts`);
+    logger.debug(
+      { src: 'plugin:dummy-services:pdf', parts: ranges.length },
+      `Splitting PDF into ${ranges.length} parts`
+    );
 
     // Return dummy split PDF buffers
     return ranges.map((range, index) =>

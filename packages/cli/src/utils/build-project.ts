@@ -44,46 +44,38 @@ export async function buildProject(cwd: string = process.cwd(), isPlugin = false
 
   const projectType = isPlugin ? 'plugin' : 'project';
 
-  try {
-    // Read package.json (we already validated it exists)
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    if (packageJson.scripts?.build) {
-      // Package has a build script, use bun to run it
-      const result = await runBunWithSpinner(['run', 'build'], cwd, {
-        spinnerText: `Building ${projectType}...`,
-        successText: colors.green(
-          `✓ ${projectType.charAt(0).toUpperCase() + projectType.slice(1)} built successfully`
-        ),
-        errorText: `Failed to build ${projectType}`,
-      });
+  // Read package.json (we already validated it exists)
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  if (packageJson.scripts?.build) {
+    // Package has a build script, use bun to run it
+    const result = await runBunWithSpinner(['run', 'build'], cwd, {
+      spinnerText: `Building ${projectType}...`,
+      successText: colors.green(
+        `✓ ${projectType.charAt(0).toUpperCase() + projectType.slice(1)} built successfully`
+      ),
+      errorText: `Failed to build ${projectType}`,
+    });
 
-      if (!result.success) {
-        throw result.error || new Error(`Failed to build using bun`);
-      }
-      return;
+    if (!result.success) {
+      throw result.error || new Error(`Failed to build using bun`);
     }
-
-    // If we get here, no build script was found
-    // For TypeScript projects, try tsc with bunx
-    const tsconfigPath = path.join(cwd, 'tsconfig.json');
-    if (fs.existsSync(tsconfigPath)) {
-      try {
-        const result = await bunExec('bunx', ['tsc', '--build'], {
-          cwd,
-        });
-        if (result.success) {
-          return;
-        } else {
-          throw new Error(`bunx tsc build failed: ${result.stderr || result.stdout}`);
-        }
-      } catch (tscError) {
-        throw new Error(`bunx tsc build failed: ${tscError}`);
-      }
-    }
-
-    // If all else fails, throw an error
-    throw new Error('Could not determine how to build the project');
-  } catch (error) {
-    throw error;
+    return;
   }
+
+  // If we get here, no build script was found
+  // For TypeScript projects, try tsc with bunx
+  const tsconfigPath = path.join(cwd, 'tsconfig.json');
+  if (fs.existsSync(tsconfigPath)) {
+    const result = await bunExec('bunx', ['tsc', '--build'], {
+      cwd,
+    });
+    if (result.success) {
+      return;
+    } else {
+      throw new Error(`bunx tsc build failed: ${result.stderr || result.stdout}`);
+    }
+  }
+
+  // If all else fails, throw an error
+  throw new Error('Could not determine how to build the project');
 }

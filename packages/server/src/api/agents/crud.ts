@@ -158,7 +158,7 @@ export function createAgentCrudRouter(
         success: true,
         data: {
           id: newAgent.id,
-          character: character,
+          character,
         },
       });
       logger.success(
@@ -240,15 +240,19 @@ export function createAgentCrudRouter(
           throw new Error('plugins must be an array');
         }
 
+        interface PluginWithName {
+          name: string;
+          [key: string]: unknown;
+        }
         const currentPlugins = (currentAgent.plugins || [])
-          .filter((p) => p != null)
-          .map((p) => (typeof p === 'string' ? p : (p as any).name))
+          .filter((p) => p !== null && p !== undefined)
+          .map((p) => (typeof p === 'string' ? p : (p as PluginWithName).name))
           .filter((name) => typeof name === 'string')
           .sort();
 
         const updatedPlugins = (updatedAgent.plugins || [])
-          .filter((p) => p != null)
-          .map((p) => (typeof p === 'string' ? p : (p as any).name))
+          .filter((p) => p !== null && p !== undefined)
+          .map((p) => (typeof p === 'string' ? p : (p as PluginWithName).name))
           .filter((name) => typeof name === 'string')
           .sort();
 
@@ -266,7 +270,7 @@ export function createAgentCrudRouter(
           try {
             await serverInstance?.unregisterAgent(agentId);
 
-            const { enabled, status, createdAt, updatedAt, ...characterData } = updatedAgent;
+            const { enabled: _enabled, status: _status, createdAt: _createdAt, updatedAt: _updatedAt, ...characterData } = updatedAgent;
             const runtimes = await serverInstance?.startAgents([
               { character: characterData as Character },
             ]);

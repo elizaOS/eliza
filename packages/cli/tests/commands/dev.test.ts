@@ -559,9 +559,17 @@ describe('ElizaOS Dev Commands', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () =>
       expect(false).toBe(true); // Should not reach here
     } catch (error: unknown) {
       // Expect command to fail with non-zero exit code
-      const execError = error as { status?: number };
-      expect(execError.status).toBeDefined();
-      expect(execError.status).not.toBe(0);
+      interface ErrorWithStatus {
+        status: number;
+      }
+
+      if (error && typeof error === 'object' && 'status' in error) {
+        const execError = error as ErrorWithStatus;
+        expect(execError.status).toBeDefined();
+        expect(execError.status).not.toBe(0);
+      } else {
+        throw error;
+      }
     }
   });
 

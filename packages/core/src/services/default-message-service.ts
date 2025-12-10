@@ -23,6 +23,7 @@ import {
   imageDescriptionTemplate,
   messageHandlerTemplate,
   shouldRespondTemplate,
+  type RunEventPayload,
   multiStepDecisionTemplate,
   multiStepSummaryTemplate,
   parseKeyValueXml,
@@ -33,6 +34,14 @@ import {
 } from '../index';
 
 /**
+ * Image description response from the model
+ */
+interface ImageDescriptionResponse {
+  description: string;
+  title?: string;
+}
+
+/**
  * Multi-step workflow execution result
  */
 interface MultiStepActionResult {
@@ -40,7 +49,7 @@ interface MultiStepActionResult {
   success: boolean;
   text?: string;
   error?: string | Error;
-  values?: Record<string, any>;
+  values?: Record<string, unknown>;
 }
 
 /**
@@ -49,7 +58,7 @@ interface MultiStepActionResult {
 interface MultiStepState extends State {
   data: {
     actionResults: MultiStepActionResult[];
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 
@@ -64,7 +73,7 @@ type StrategyMode = 'simple' | 'actions' | 'none';
 interface StrategyResult {
   responseContent: Content | null;
   responseMessages: Memory[];
-  state: any;
+  state: State;
   mode: StrategyMode;
 }
 
@@ -100,10 +109,10 @@ export class DefaultMessageService implements IMessageService {
       maxRetries: options?.maxRetries ?? 3,
       timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
       useMultiStep:
-        options?.useMultiStep ?? parseBooleanFromText(runtime.getSetting('USE_MULTI_STEP')),
+        options?.useMultiStep ?? parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || '')),
       maxMultiStepIterations:
         options?.maxMultiStepIterations ??
-        parseInt(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6'),
+        parseInt(String(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6')),
     };
 
     // Set up timeout monitoring
@@ -138,26 +147,26 @@ export class DefaultMessageService implements IMessageService {
       agentResponses.set(message.roomId, responseId);
 
       // Start run tracking with roomId for proper log association
-      const runId = runtime.startRun(message.roomId);
+      const runId: UUID = runtime.startRun(message.roomId)!;
       const startTime = Date.now();
 
       // Emit run started event
       await runtime.emitEvent(EventType.RUN_STARTED, {
         runtime,
+        source: 'messageHandler',
         runId,
         messageId: message.id,
         roomId: message.roomId,
         entityId: message.entityId,
         startTime,
         status: 'started',
-        source: 'messageHandler',
-        metadata: message.content,
-      });
+      } as RunEventPayload);
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(async () => {
           await runtime.emitEvent(EventType.RUN_TIMEOUT, {
             runtime,
+            source: 'messageHandler',
             runId,
             messageId: message.id,
             roomId: message.roomId,
@@ -167,8 +176,7 @@ export class DefaultMessageService implements IMessageService {
             endTime: Date.now(),
             duration: Date.now() - startTime,
             error: 'Run exceeded timeout',
-            source: 'messageHandler',
-          });
+          } as RunEventPayload);
           reject(new Error('Run exceeded timeout'));
         }, opts.timeoutDuration);
       });
@@ -189,13 +197,8 @@ export class DefaultMessageService implements IMessageService {
       clearTimeout(timeoutId);
 
       return result;
-    } catch (error: any) {
+    } finally {
       clearTimeout(timeoutId);
-      runtime.logger.error(
-        { src: 'service:message', agentId: runtime.agentId, error },
-        'Error in handleMessage'
-      );
-      throw error;
     }
   }
 
@@ -226,7 +229,7 @@ export class DefaultMessageService implements IMessageService {
           didRespond: false,
           responseContent: null,
           responseMessages: [],
-          state: {} as any,
+          state: { values: {}, data: {}, text: '' } as State,
           mode: 'none',
         };
       }
@@ -265,7 +268,7 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if LLM is off by default
       const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
-      const defLllmOff = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_DEFLLMOFF'));
+      const defLllmOff = parseBooleanFromText(String(runtime.getSetting('BOOTSTRAP_DEFLLMOFF') || ''));
 
       if (defLllmOff && agentUserState === null) {
         runtime.logger.debug({ src: 'service:message' }, 'LLM is off by default');
@@ -274,7 +277,7 @@ export class DefaultMessageService implements IMessageService {
           didRespond: false,
           responseContent: null,
           responseMessages: [],
-          state: {} as any,
+          state: { values: {}, data: {}, text: '' } as State,
           mode: 'none',
         };
       }
@@ -293,7 +296,7 @@ export class DefaultMessageService implements IMessageService {
           didRespond: false,
           responseContent: null,
           responseMessages: [],
-          state: {} as any,
+          state: { values: {}, data: {}, text: '' } as State,
           mode: 'none',
         };
       }
@@ -373,9 +376,10 @@ export class DefaultMessageService implements IMessageService {
 
         // If an action is provided, the agent intends to respond in some way
         const nonResponseActions = ['IGNORE', 'NONE'];
+        const actionValue = responseObject?.action;
         shouldRespondToMessage =
-          responseObject?.action &&
-          !nonResponseActions.includes(responseObject.action.toUpperCase());
+          typeof actionValue === 'string' &&
+          !nonResponseActions.includes(actionValue.toUpperCase());
       }
 
       let responseContent: Content | null = null;
@@ -445,7 +449,7 @@ export class DefaultMessageService implements IMessageService {
 
         // Check if we still have the latest response ID
         const currentResponseId = agentResponses.get(message.roomId);
-        const keepResp = parseBooleanFromText(runtime.getSetting('BOOTSTRAP_KEEP_RESP'));
+        const keepResp = parseBooleanFromText(String(runtime.getSetting('BOOTSTRAP_KEEP_RESP') || ''));
 
         if (currentResponseId !== responseId && !keepResp) {
           runtime.logger.info(
@@ -532,8 +536,8 @@ export class DefaultMessageService implements IMessageService {
 
       // Collect metadata for logging
       let entityName = 'noname';
-      if (message.metadata && 'entityName' in message.metadata) {
-        entityName = (message.metadata as any).entityName;
+      if (message.metadata && 'entityName' in message.metadata && typeof message.metadata.entityName === 'string') {
+        entityName = message.metadata.entityName;
       }
 
       const isDM = message.content?.channelType === ChannelType.DM;
@@ -556,9 +560,22 @@ export class DefaultMessageService implements IMessageService {
       }
 
       const date = new Date();
-      const availableActions = state.data?.providers?.ACTIONS?.data?.actionsData?.map(
-        (a: any) => a.name
-      ) || [-1];
+      const providersData = state.data?.providers;
+      interface ActionsProviderData {
+        ACTIONS?: {
+          data?: {
+            actionsData?: Array<{ name: string }>;
+          };
+        };
+      }
+      const actionsProvider =
+        typeof providersData === 'object' && providersData !== null && 'ACTIONS' in providersData
+          ? (providersData as ActionsProviderData).ACTIONS
+          : undefined;
+      const actionsData = actionsProvider?.data?.actionsData;
+      const availableActions = Array.isArray(actionsData)
+        ? actionsData.map((a: { name: string }) => a.name)
+        : [-1];
 
       const logData = {
         at: date.toString(),
@@ -582,6 +599,7 @@ export class DefaultMessageService implements IMessageService {
       // Emit run ended event
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
+        source: 'messageHandler',
         runId,
         messageId: message.id,
         roomId: message.roomId,
@@ -590,11 +608,7 @@ export class DefaultMessageService implements IMessageService {
         status: 'completed',
         endTime: Date.now(),
         duration: Date.now() - startTime,
-        source: 'messageHandler',
-        entityName,
-        responseContent,
-        metadata: logData,
-      });
+      } as RunEventPayload);
 
       return {
         didRespond: shouldRespondToMessage,
@@ -603,7 +617,8 @@ export class DefaultMessageService implements IMessageService {
         state,
         mode,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       runtime.logger.error(
         { src: 'service:message', agentId: runtime.agentId, error },
         'Error processing message'
@@ -611,17 +626,17 @@ export class DefaultMessageService implements IMessageService {
       // Emit run ended event with error
       await runtime.emitEvent(EventType.RUN_ENDED, {
         runtime,
+        source: 'messageHandler',
         runId,
         messageId: message.id,
         roomId: message.roomId,
         entityId: message.entityId,
         startTime,
-        status: 'error',
+        status: 'completed',
         endTime: Date.now(),
         duration: Date.now() - startTime,
-        error: error.message,
-        source: 'messageHandler',
-      });
+        error: errorMessage,
+      } as RunEventPayload);
       throw error;
     }
   }
@@ -663,11 +678,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-        runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
     );
     const customSources = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-        runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
     );
 
     const respondChannels = new Set(
@@ -723,141 +738,118 @@ export class DefaultMessageService implements IMessageService {
     const processedAttachments: Media[] = [];
 
     for (const attachment of attachments) {
-      try {
-        const processedAttachment: Media = { ...attachment };
+      const processedAttachment: Media = { ...attachment };
 
-        const isRemote = /^(http|https):\/\//.test(attachment.url);
-        const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
+      const isRemote = /^(http|https):\/\//.test(attachment.url);
+      const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
 
-        // Only process images that don't already have descriptions
-        if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
-          runtime.logger.debug(
-            { src: 'service:message', imageUrl: attachment.url },
-            'Generating image description'
-          );
+      // Only process images that don't already have descriptions
+      if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
+        runtime.logger.debug(
+          { src: 'service:message', imageUrl: attachment.url },
+          'Generating image description'
+        );
 
-          let imageUrl = url;
+        let imageUrl = url;
 
-          if (!isRemote) {
-            // Convert local/internal media to base64
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+        if (!isRemote) {
+          // Convert local/internal media to base64
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
 
-            const arrayBuffer = await res.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const contentType = res.headers.get('content-type') || 'application/octet-stream';
-            imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
-          }
+          const arrayBuffer = await res.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          const contentType = res.headers.get('content-type') || 'application/octet-stream';
+          imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+        }
 
-          try {
-            const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-              prompt: imageDescriptionTemplate,
-              imageUrl,
-            });
+        const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+          prompt: imageDescriptionTemplate,
+          imageUrl,
+        });
 
-            if (typeof response === 'string') {
-              const parsedXml = parseKeyValueXml(response);
+        if (typeof response === 'string') {
+          const parsedXml = parseKeyValueXml(response);
 
-              if (parsedXml && (parsedXml.description || parsedXml.text)) {
-                processedAttachment.description = parsedXml.description || '';
-                processedAttachment.title = parsedXml.title || 'Image';
-                processedAttachment.text = parsedXml.text || parsedXml.description || '';
+          if (parsedXml && (parsedXml.description || parsedXml.text)) {
+            processedAttachment.description = (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
+            processedAttachment.title = (typeof parsedXml.title === 'string' ? parsedXml.title : 'Image') || 'Image';
+            processedAttachment.text = (typeof parsedXml.text === 'string' ? parsedXml.text : '') || (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
 
-                runtime.logger.debug(
-                  {
-                    src: 'service:message',
-                    descriptionPreview: processedAttachment.description?.substring(0, 100),
-                  },
-                  'Generated image description'
-                );
-              } else {
-                // Fallback: Try simple regex parsing
-                const responseStr = response as string;
-                const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
-                const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
-                const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
+            runtime.logger.debug(
+              { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+              'Generated image description'
+            );
+          } else {
+            // Fallback: Try simple regex parsing
+            const responseStr = response as string;
+            const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
+            const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+            const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
 
-                if (titleMatch || descMatch || textMatch) {
-                  processedAttachment.title = titleMatch?.[1] || 'Image';
-                  processedAttachment.description = descMatch?.[1] || '';
-                  processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
-
-                  runtime.logger.debug(
-                    {
-                      src: 'service:message',
-                      descriptionPreview: processedAttachment.description?.substring(0, 100),
-                    },
-                    'Used fallback XML parsing for description'
-                  );
-                } else {
-                  runtime.logger.warn(
-                    { src: 'service:message' },
-                    'Failed to parse XML response for image description'
-                  );
-                }
-              }
-            } else if (response && typeof response === 'object' && 'description' in response) {
-              // Handle object responses for backwards compatibility
-              processedAttachment.description = response.description;
-              processedAttachment.title = response.title || 'Image';
-              processedAttachment.text = response.description;
+            if (titleMatch || descMatch || textMatch) {
+              processedAttachment.title = titleMatch?.[1] || 'Image';
+              processedAttachment.description = descMatch?.[1] || '';
+              processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
 
               runtime.logger.debug(
-                {
-                  src: 'service:message',
-                  descriptionPreview: processedAttachment.description?.substring(0, 100),
-                },
-                'Generated image description'
+                { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+                'Used fallback XML parsing for description'
               );
             } else {
               runtime.logger.warn(
                 { src: 'service:message' },
-                'Unexpected response format for image description'
+                'Failed to parse XML response for image description'
               );
             }
-          } catch (error) {
-            runtime.logger.error(
-              { src: 'service:message', error },
-              'Error generating image description'
-            );
           }
-        } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        } else if (response && typeof response === 'object' && 'description' in response) {
+          // Handle object responses for backwards compatibility
+          const objResponse = response as ImageDescriptionResponse;
+          processedAttachment.description = objResponse.description;
+          processedAttachment.title = objResponse.title || 'Image';
+          processedAttachment.text = objResponse.description;
 
-          const contentType = res.headers.get('content-type') || '';
-          const isPlainText = contentType.startsWith('text/plain');
-
-          if (isPlainText) {
-            runtime.logger.debug(
-              { src: 'service:message', documentUrl: attachment.url },
-              'Processing plain text document'
-            );
-
-            const textContent = await res.text();
-            processedAttachment.text = textContent;
-            processedAttachment.title = processedAttachment.title || 'Text File';
-
-            runtime.logger.debug(
-              { src: 'service:message', textPreview: processedAttachment.text?.substring(0, 100) },
-              'Extracted text content'
-            );
-          } else {
-            runtime.logger.warn(
-              { src: 'service:message', contentType },
-              'Skipping non-plain-text document'
-            );
-          }
+          runtime.logger.debug(
+            { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+            'Generated image description'
+          );
+        } else {
+          runtime.logger.warn(
+            { src: 'service:message' },
+            'Unexpected response format for image description'
+          );
         }
+      } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
 
-        processedAttachments.push(processedAttachment);
-      } catch (error) {
-        runtime.logger.error(
-          { src: 'service:message', error, attachmentUrl: attachment.url },
-          'Failed to process attachment'
-        );
-        processedAttachments.push(attachment);
+        const contentType = res.headers.get('content-type') || '';
+        const isPlainText = contentType.startsWith('text/plain');
+
+        if (isPlainText) {
+          runtime.logger.debug(
+            { src: 'service:message', documentUrl: attachment.url },
+            'Processing plain text document'
+          );
+
+          const textContent = await res.text();
+          processedAttachment.text = textContent;
+          processedAttachment.title = processedAttachment.title || 'Text File';
+
+          runtime.logger.debug(
+            { src: 'service:message', textPreview: processedAttachment.text?.substring(0, 100) },
+            'Extracted text content'
+          );
+        } else {
+          runtime.logger.warn(
+            { src: 'service:message', contentType },
+            'Skipping non-plain-text document'
+          );
+        }
       }
+
+      processedAttachments.push(processedAttachment);
     }
 
     return processedAttachments;
@@ -897,13 +889,23 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed XML content');
 
       if (parsedXml) {
+        const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
+        const actions = Array.isArray(parsedXml.actions)
+          ? parsedXml.actions.filter((a): a is string => typeof a === 'string')
+          : (typeof parsedXml.actions === 'string' ? [parsedXml.actions] : ['IGNORE']);
+        const providers = Array.isArray(parsedXml.providers)
+          ? parsedXml.providers.filter((p): p is string => typeof p === 'string')
+          : [];
+        const text = typeof parsedXml.text === 'string' ? parsedXml.text : '';
+        const simple = typeof parsedXml.simple === 'boolean' ? parsedXml.simple : false;
+
         responseContent = {
           ...parsedXml,
-          thought: parsedXml.thought || '',
-          actions: parsedXml.actions || ['IGNORE'],
-          providers: parsedXml.providers || [],
-          text: parsedXml.text || '',
-          simple: parsedXml.simple || false,
+          thought,
+          actions,
+          providers,
+          text,
+          simple,
         };
       } else {
         responseContent = null;
@@ -1018,7 +1020,10 @@ export class DefaultMessageService implements IMessageService {
         break;
       }
 
-      const { thought, providers = [], action, isFinish } = parsedStep;
+      const thought = typeof parsedStep.thought === 'string' ? parsedStep.thought : undefined;
+      const providers = Array.isArray(parsedStep.providers) ? parsedStep.providers : [];
+      const action = typeof parsedStep.action === 'string' ? parsedStep.action : undefined;
+      const isFinish = parsedStep.isFinish;
 
       // Check for completion condition
       if (isFinish === 'true' || isFinish === true) {
@@ -1029,14 +1034,15 @@ export class DefaultMessageService implements IMessageService {
         if (callback) {
           await callback({
             text: '',
-            thought: thought ?? '',
+            thought: typeof thought === 'string' ? thought : '',
           });
         }
         break;
       }
 
       // Validate that we have something to do
-      if ((!providers || providers.length === 0) && !action) {
+      const providersArray = Array.isArray(providers) ? providers : [];
+      if ((!providersArray || providersArray.length === 0) && !action) {
         runtime.logger.warn(
           { src: 'service:message', iteration: iterationCount },
           'No providers or action specified, forcing completion'
@@ -1044,98 +1050,84 @@ export class DefaultMessageService implements IMessageService {
         break;
       }
 
-      try {
-        for (const providerName of providers) {
-          const provider = runtime.providers.find((p: any) => p.name === providerName);
-          if (!provider) {
-            runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
-            traceActionResult.push({
-              data: { actionName: providerName },
-              success: false,
-              error: `Provider not found: ${providerName}`,
-            });
-            continue;
-          }
-
-          const providerResult = await provider.get(runtime, message, state);
-          if (!providerResult) {
-            runtime.logger.warn(
-              { src: 'service:message', providerName },
-              'Provider returned no result'
-            );
-            traceActionResult.push({
-              data: { actionName: providerName },
-              success: false,
-              error: `Provider returned no result`,
-            });
-            continue;
-          }
-
-          const success = !!providerResult.text;
-
+      for (const providerName of providersArray) {
+        if (typeof providerName !== 'string') continue;
+        const provider = runtime.providers.find((p) => p.name === providerName);
+        if (!provider) {
+          runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
           traceActionResult.push({
             data: { actionName: providerName },
-            success,
-            text: success ? providerResult.text : undefined,
-            error: success ? undefined : 'Provider returned no result',
+            success: false,
+            error: `Provider not found: ${providerName}`,
           });
-
-          if (callback) {
-            await callback({
-              text: `🔎 Provider executed: ${providerName}`,
-              actions: [providerName],
-              thought: thought ?? '',
-            });
-          }
+          continue;
         }
 
-        if (action) {
-          const actionContent = {
-            text: `🔎 Executing action: ${action}`,
-            actions: [action],
-            thought: thought ?? '',
-          };
-
-          await runtime.processActions(
-            message,
-            [
-              {
-                id: v4() as UUID,
-                entityId: runtime.agentId,
-                roomId: message.roomId,
-                createdAt: Date.now(),
-                content: actionContent,
-              },
-            ],
-            state,
-            async () => {
-              return [];
-            }
-          );
-
-          // Get cached action results from runtime
-          const cachedState = runtime.stateCache?.get(`${message.id}_action_results`);
-          const actionResults = cachedState?.values?.actionResults || [];
-          const result = actionResults.length > 0 ? actionResults[0] : null;
-          const success = result?.success ?? false;
-
+        const providerResult = await provider.get(runtime, message, state);
+        if (!providerResult) {
+          runtime.logger.warn({ src: 'service:message', providerName }, 'Provider returned no result');
           traceActionResult.push({
-            data: { actionName: action },
-            success,
-            text: result?.text,
-            values: result?.values,
-            error: success ? undefined : result?.text,
+            data: { actionName: providerName },
+            success: false,
+            error: `Provider returned no result`,
+          });
+          continue;
+        }
+
+        const success = !!providerResult.text;
+
+        traceActionResult.push({
+          data: { actionName: providerName },
+          success,
+          text: success ? providerResult.text : undefined,
+          error: success ? undefined : 'Provider returned no result',
+        });
+
+        if (callback) {
+          await callback({
+            text: `🔎 Provider executed: ${providerName}`,
+            actions: [providerName],
+            thought: typeof thought === 'string' ? thought : '',
           });
         }
-      } catch (err) {
-        runtime.logger.error(
-          { src: 'service:message', agentId: runtime.agentId, error: err },
-          'Error executing multi-step action'
+      }
+
+      if (action) {
+        const actionContent = {
+          text: `🔎 Executing action: ${action}`,
+          actions: [action],
+          thought: thought || '',
+        };
+
+        await runtime.processActions(
+          message,
+          [
+            {
+              id: v4() as UUID,
+              entityId: runtime.agentId,
+              roomId: message.roomId,
+              createdAt: Date.now(),
+              content: actionContent,
+            },
+          ],
+          state,
+          async () => {
+            return [];
+          }
         );
+
+        // Get cached action results from runtime
+        const cachedState = runtime.stateCache?.get(`${message.id}_action_results`);
+        const actionResults = Array.isArray(cachedState?.values?.actionResults) ? cachedState.values.actionResults : [];
+        const result = actionResults.length > 0 && typeof actionResults[0] === 'object' && actionResults[0] !== null ? actionResults[0] : null;
+        const success = result && 'success' in result && typeof result.success === 'boolean' ? result.success : false;
+
         traceActionResult.push({
-          data: { actionName: action || 'unknown' },
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
+          data: { actionName: typeof action === 'string' ? action : 'unknown' },
+          success,
+          text: result && 'text' in result && typeof result.text === 'string' ? result.text : undefined,
+          values: result && 'values' in result && typeof result.values === 'object' && result.values !== null ? result.values : undefined,
+          error: success ? undefined : (result && 'text' in result && typeof result.text === 'string' ? result.text : undefined),
         });
       }
     }
@@ -1160,26 +1152,27 @@ export class DefaultMessageService implements IMessageService {
     const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
-    if (summary?.text) {
+    const summaryText = summary?.text;
+    if (typeof summaryText === 'string' && summaryText) {
       responseContent = {
         actions: ['MULTI_STEP_SUMMARY'],
-        text: summary.text,
-        thought: summary.thought || 'Final user-facing message after task completion.',
+        text: summaryText,
+        thought: (typeof summary.thought === 'string' ? summary.thought : 'Final user-facing message after task completion.') || 'Final user-facing message after task completion.',
         simple: true,
       };
     }
 
     const responseMessages: Memory[] = responseContent
       ? [
-          {
-            id: asUUID(v4()),
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: responseContent,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          },
-        ]
+        {
+          id: asUUID(v4()),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
       : [];
 
     return {
@@ -1202,16 +1195,16 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<void> {
     await runtime.emitEvent(EventType.RUN_ENDED, {
       runtime,
+      source: 'messageHandler',
       runId,
       messageId: message.id,
       roomId: message.roomId,
       entityId: message.entityId,
       startTime,
-      status,
+      status: status as 'completed' | 'timeout',
       endTime: Date.now(),
       duration: Date.now() - startTime,
-      source: 'messageHandler',
-    });
+    } as RunEventPayload);
   }
 
   /**

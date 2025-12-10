@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from '../types/runtime';
 import type { Memory } from '../types/memory';
-import type { Content, UUID } from '../types/primitives';
+import type { Content, UUID, Media } from '../types/primitives';
 import type { State } from '../types/state';
 import type { HandlerCallback } from '../types/components';
 import type { Room } from '../types/environment';
@@ -164,7 +164,7 @@ export interface IMessageService {
    * @param attachments - Array of media attachments to process
    * @returns Promise resolving to processed attachments with descriptions
    */
-  processAttachments?(runtime: IAgentRuntime, attachments: any[]): Promise<any[]>;
+  processAttachments?(runtime: IAgentRuntime, attachments: Media[]): Promise<Media[]>;
 
   /**
    * Deletes a message from the agent's memory.

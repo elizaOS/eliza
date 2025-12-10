@@ -70,32 +70,21 @@ export async function loadConfig(): Promise<AgentConfig> {
  * @param config - The agent configuration to save.
  *
  * @remark
- * If the target directory does not exist, it is created. Errors during saving are logged but not thrown.
+ * If the target directory does not exist, it is created. Errors during saving are logged and rethrown.
  */
 export async function saveConfig(config: AgentConfig): Promise<void> {
-  try {
-    const configPath = await getConfigFilePath();
-    const elizaDir = path.dirname(configPath);
+  const configPath = await getConfigFilePath();
+  const elizaDir = path.dirname(configPath);
 
-    // Create .eliza directory if it doesn't exist
-    if (!(await fileExists(elizaDir))) {
-      await fs.mkdir(elizaDir, { recursive: true });
-    }
-
-    // Update lastUpdated timestamp
-    config.lastUpdated = new Date().toISOString();
-
-    // Write config to file
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
-    logger.info({ src: 'cli', util: 'config-manager', configPath }, 'Configuration saved');
-  } catch (error) {
-    logger.error(
-      {
-        src: 'cli',
-        util: 'config-manager',
-        error: error instanceof Error ? error.message : String(error),
-      },
-      'Error saving configuration'
-    );
+  // Create .eliza directory if it doesn't exist
+  if (!(await fileExists(elizaDir))) {
+    await fs.mkdir(elizaDir, { recursive: true });
   }
+
+  // Update lastUpdated timestamp
+  config.lastUpdated = new Date().toISOString();
+
+  // Write config to file
+  await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+  logger.info({ src: 'cli', util: 'config-manager', configPath }, 'Configuration saved');
 }

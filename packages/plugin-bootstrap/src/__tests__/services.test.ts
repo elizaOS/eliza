@@ -14,7 +14,7 @@ interface PluginService extends Service {
 
 // Helper to access plugin services with proper typing
 const getPluginServices = (): PluginService[] =>
-  (bootstrapPlugin.services || []) as unknown as PluginService[];
+  (bootstrapPlugin.services || []) as PluginService[];
 
 describe('TaskService', () => {
   let mockRuntime: MockRuntime;
@@ -309,7 +309,9 @@ describe('Service Registry', () => {
   it('should initialize file service if available', async () => {
     const services = getPluginServices();
     const fileServiceDefinition = services.find((s) => {
-      if (typeof s === 'function') return (s as any).serviceType === 'file';
+      if (typeof s === 'function') {
+        return (s as any).serviceType === 'file';
+      }
       return (s as PluginService).type === 'file';
     });
 
@@ -334,7 +336,9 @@ describe('Service Registry', () => {
   it('should initialize PDF service if available', async () => {
     const services = getPluginServices();
     const pdfServiceDefinition = services.find((s) => {
-      if (typeof s === 'function') return (s as any).serviceType === ServiceType.PDF;
+      if (typeof s === 'function') {
+        return (s as any).serviceType === ServiceType.PDF;
+      }
       return (s as PluginService).type === ServiceType.PDF;
     });
 
@@ -353,7 +357,9 @@ describe('Service Registry', () => {
   it('should initialize image service if available', async () => {
     const services = getPluginServices();
     const imageServiceDefinition = services.find((s) => {
-      if (typeof s === 'function') return (s as any).serviceType === 'image'; // Assuming 'image' is the type
+      if (typeof s === 'function') {
+        return (s as any).serviceType === 'image';
+      } // Assuming 'image' is the type
       return (s as PluginService).type === 'image';
     });
 
@@ -372,7 +378,9 @@ describe('Service Registry', () => {
   it('should initialize browser service if available', async () => {
     const services = getPluginServices();
     const browserServiceDefinition = services.find((s) => {
-      if (typeof s === 'function') return (s as any).serviceType === ServiceType.BROWSER;
+      if (typeof s === 'function') {
+        return (s as any).serviceType === ServiceType.BROWSER;
+      }
       return (s as PluginService).type === ServiceType.BROWSER;
     });
 
@@ -391,7 +399,9 @@ describe('Service Registry', () => {
   it('should handle service initialization errors gracefully', async () => {
     const services = getPluginServices();
     const fileServiceDefinition = services.find((s) => {
-      if (typeof s === 'function') return (s as any).serviceType === 'file';
+      if (typeof s === 'function') {
+        return (s as any).serviceType === 'file';
+      }
       return (s as PluginService).type === 'file';
     });
 

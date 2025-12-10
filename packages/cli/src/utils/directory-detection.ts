@@ -26,7 +26,7 @@ interface PackageJson {
   packageType?: string;
   agentConfig?: {
     pluginType?: string;
-    [key: string]: any;
+    [key: string]: string | number | boolean | undefined;
   };
 }
 

@@ -184,9 +184,7 @@ export class MessagingService extends BaseApiClient {
    * Clear channel history
    */
   async clearChannelHistory(channelId: UUID): Promise<{ deleted: number }> {
-    return this.delete<{ deleted: number }>(
-      `/api/messaging/channels/${channelId}/messages`
-    );
+    return this.delete<{ deleted: number }>(`/api/messaging/channels/${channelId}/messages`);
   }
 
   /**
@@ -210,10 +208,9 @@ export class MessagingService extends BaseApiClient {
     channelId: UUID,
     params?: PaginationParams & { before?: Date | string; after?: Date | string }
   ): Promise<{ messages: Message[] }> {
-    return this.get<{ messages: Message[] }>(
-      `/api/messaging/channels/${channelId}/messages`,
-      { params }
-    );
+    return this.get<{ messages: Message[] }>(`/api/messaging/channels/${channelId}/messages`, {
+      params,
+    });
   }
 
   /**
@@ -281,7 +278,10 @@ export class MessagingService extends BaseApiClient {
   /**
    * Sync message server channels
    */
-  async syncMessageServerChannels(messageServerId: UUID, params: MessageServerSyncParams): Promise<{ synced: number }> {
+  async syncMessageServerChannels(
+    messageServerId: UUID,
+    params: MessageServerSyncParams
+  ): Promise<{ synced: number }> {
     return this.post<{ synced: number }>(
       `/api/messaging/message-servers/${messageServerId}/sync-channels`,
       params
@@ -312,10 +312,9 @@ export class MessagingService extends BaseApiClient {
    * Generate channel title
    */
   async generateChannelTitle(channelId: UUID, agentId: UUID): Promise<{ title: string }> {
-    return this.post<{ title: string }>(
-      `/api/messaging/channels/${channelId}/generate-title`,
-      { agentId }
-    );
+    return this.post<{ title: string }>(`/api/messaging/channels/${channelId}/generate-title`, {
+      agentId,
+    });
   }
 
   /**

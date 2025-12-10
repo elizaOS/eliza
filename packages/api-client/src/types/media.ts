@@ -1,4 +1,4 @@
-import { UUID } from '@elizaos/core';
+// UUID type not currently used in this file
 
 export interface MediaUploadParams {
   file: File | Blob;

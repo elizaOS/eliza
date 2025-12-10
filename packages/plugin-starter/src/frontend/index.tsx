@@ -77,7 +77,10 @@ function TimeDisplay({ apiBase }: { apiBase: string }) {
  * Main Example route component
  */
 function ExampleRoute() {
-  const config = (window as any).ELIZA_CONFIG as ElizaConfig | undefined;
+  interface WindowWithElizaConfig extends Window {
+    ELIZA_CONFIG?: ElizaConfig;
+  }
+  const config = (window as WindowWithElizaConfig).ELIZA_CONFIG;
   const agentId = config?.agentId;
   const apiBase = config?.apiBase || 'http://localhost:3000';
 

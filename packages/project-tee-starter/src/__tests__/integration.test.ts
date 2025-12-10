@@ -100,7 +100,7 @@ describe('Integration: Runtime Initialization', () => {
       getProviderResults: () => Promise.resolve([]),
       evaluateProviders: () => Promise.resolve([]),
       evaluate: () => Promise.resolve([]),
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     // Ensure we're testing safely - to avoid parallel test race conditions
     const originalInit = plugin.init;

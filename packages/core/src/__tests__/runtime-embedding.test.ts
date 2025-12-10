@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { AgentRuntime } from '../runtime.ts';
-import { EventType, type Memory, type UUID } from '../types';
+import { EventType, type Memory, type UUID, type IDatabaseAdapter } from '../types';
 import { stringToUuid } from '../utils.ts';
 
 describe('AgentRuntime - queueEmbeddingGeneration', () => {
   let runtime: AgentRuntime;
-  let mockAdapter: any;
-  let emittedEvents: Array<{ event: string; payload: any }> = [];
+  let mockAdapter: IDatabaseAdapter;
+  let emittedEvents: Array<{ event: string; payload: unknown }> = [];
 
   beforeEach(() => {
     emittedEvents = [];
@@ -52,7 +52,7 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
 
     // Track emitted events
     const originalEmitEvent = runtime.emitEvent.bind(runtime);
-    runtime.emitEvent = mock(async (event: string | string[], payload: any) => {
+    runtime.emitEvent = mock(async (event: string | string[], payload: unknown) => {
       const events = Array.isArray(event) ? event : [event];
       for (const e of events) {
         emittedEvents.push({ event: e, payload });
@@ -294,10 +294,10 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
   describe('Error Handling', () => {
     it('should handle null or undefined memory gracefully', async () => {
       // Test with undefined
-      await runtime.queueEmbeddingGeneration(undefined as any, 'normal');
+      await runtime.queueEmbeddingGeneration(undefined as Memory | undefined, 'normal');
 
       // Test with null
-      await runtime.queueEmbeddingGeneration(null as any, 'normal');
+      await runtime.queueEmbeddingGeneration(null as Memory | null, 'normal');
 
       // No events should be emitted
       const events = emittedEvents.filter(
@@ -312,7 +312,7 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
         entityId: 'test-entity' as UUID,
         agentId: 'test-agent' as UUID,
         roomId: 'test-room' as UUID,
-        content: null as any,
+        content: null as Memory['content'] | null,
         createdAt: Date.now(),
       };
 

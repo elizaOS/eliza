@@ -5,16 +5,17 @@ import tailwindcss from '@tailwindcss/vite';
 import inject from '@rollup/plugin-inject';
 
 export default defineConfig({
+  // Type assertions needed because plugin types may not exactly match PluginOption but are compatible
   plugins: [
-    tailwindcss() as unknown as PluginOption,
-    react() as unknown as PluginOption,
+    tailwindcss() as PluginOption,
+    react() as PluginOption,
     // Minimal shims for tests without pulling full node polyfills
     inject({
       modules: {
         Buffer: ['buffer', 'Buffer'],
         process: ['process', 'default'],
       },
-    }) as unknown as PluginOption,
+    }) as PluginOption,
   ],
   resolve: {
     alias: {

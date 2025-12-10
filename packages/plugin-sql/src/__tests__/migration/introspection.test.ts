@@ -320,9 +320,12 @@ describe('Database Introspection Tests', () => {
       expect(projectsFKs).toHaveLength(2);
 
       // Verify composite unique constraint
+      interface UniqueConstraint {
+        columns: string[];
+      }
       const uniqueConstraints = Object.values(usersTable.uniqueConstraints);
       expect(uniqueConstraints).toHaveLength(1);
-      const firstConstraint = uniqueConstraints[0] as { columns: string[] };
+      const firstConstraint = uniqueConstraints[0] as UniqueConstraint;
       expect(firstConstraint.columns).toContain('org_id');
       expect(firstConstraint.columns).toContain('username');
     });

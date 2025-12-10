@@ -13,6 +13,14 @@
 export type BufferLike = Buffer | Uint8Array;
 
 /**
+ * Interface for objects that look like ArrayBuffer views (TypedArrays)
+ */
+interface ArrayBufferViewLike {
+  buffer?: unknown;
+  byteLength?: unknown;
+}
+
+/**
  * Check if we're in a Node.js environment with Buffer support
  */
 function hasNativeBuffer(): boolean {
@@ -138,7 +146,7 @@ export function toString(
  * @param obj - The object to check
  * @returns True if the object is buffer-like
  */
-export function isBuffer(obj: any): obj is BufferLike {
+export function isBuffer(obj: unknown): obj is BufferLike {
   if (!obj) {
     return false;
   }
@@ -148,14 +156,17 @@ export function isBuffer(obj: any): obj is BufferLike {
   }
 
   // Check for Uint8Array or similar typed arrays
-  return (
-    obj instanceof Uint8Array ||
-    obj instanceof ArrayBuffer ||
-    (typeof obj === 'object' &&
-      obj.buffer instanceof ArrayBuffer &&
-      typeof obj.byteLength === 'number' &&
-      !Array.isArray(obj))
-  );
+  if (obj instanceof Uint8Array || obj instanceof ArrayBuffer) {
+    return true;
+  }
+  if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+    const typedObj = obj as ArrayBufferViewLike;
+    return (
+      typedObj.buffer instanceof ArrayBuffer &&
+      typeof typedObj.byteLength === 'number'
+    );
+  }
+  return false;
 }
 
 /**
@@ -270,9 +281,14 @@ export function randomBytes(size: number): BufferLike {
   // Prefer Web Crypto API across environments (Node >=18 exposes global crypto)
   const bytes = new Uint8Array(size);
 
-  const cryptoGlobal: any =
+  interface GlobalWithCrypto {
+    crypto?: Crypto;
+    webcrypto?: Crypto;
+  }
+
+  const cryptoGlobal =
     typeof globalThis !== 'undefined'
-      ? (globalThis as any).crypto || (globalThis as any).webcrypto
+      ? (globalThis as GlobalWithCrypto).crypto || (globalThis as GlobalWithCrypto).webcrypto
       : undefined;
 
   if (cryptoGlobal && typeof cryptoGlobal.getRandomValues === 'function') {

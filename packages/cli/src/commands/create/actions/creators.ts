@@ -198,8 +198,9 @@ export async function createAgent(
   try {
     await fs.access(agentFilePath);
     throw new Error(`Agent file ${agentFilePath} already exists`);
-  } catch (error: any) {
-    if (error.code !== 'ENOENT') {
+  } catch (error: unknown) {
+    const errorWithCode = error as Error & { code?: string };
+    if (errorWithCode.code !== 'ENOENT') {
       throw error;
     }
     // File doesn't exist, which is what we want

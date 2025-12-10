@@ -3,7 +3,7 @@
  * Replaces fragile database adapter fallback logic with explicit test database management
  */
 
-import type { IDatabaseAdapter, UUID } from '@elizaos/core';
+import type { IDatabaseAdapter } from '@elizaos/core';
 
 export interface DatabaseTestCapabilities {
   isReady: boolean;
@@ -83,8 +83,8 @@ export class DatabaseTestRegistry {
     testId: string,
     config: TestDatabaseConfig
   ): Promise<TestDatabaseInstance> {
-    let adapter: IDatabaseAdapter = await this.createMockAdapter(testId);
-    let adapterType: string = 'mock';
+    const adapter: IDatabaseAdapter = await this.createMockAdapter(testId);
+    const adapterType = 'mock';
 
     // Validate adapter is working
     const capabilities = await this.getAdapterCapabilities(adapter);
@@ -112,7 +112,10 @@ export class DatabaseTestRegistry {
   private async createMockAdapter(testId: string): Promise<IDatabaseAdapter> {
     // Import mock adapter - should only be used when explicitly allowed
     const mockModule = await import('./mocks/database');
-    return (mockModule as any).createMockDatabaseAdapter(testId);
+    interface MockDatabaseModule {
+      createMockDatabaseAdapter: (testId: string) => Promise<IDatabaseAdapter> | IDatabaseAdapter;
+    }
+    return (mockModule as MockDatabaseModule).createMockDatabaseAdapter(testId);
   }
 
   private async getAdapterCapabilities(

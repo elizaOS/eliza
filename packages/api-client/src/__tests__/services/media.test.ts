@@ -3,26 +3,33 @@ import { MediaService } from '../../services/media';
 import { ApiClientConfig } from '../../types/base';
 import { UUID } from '@elizaos/core';
 
+// Helper type to access protected methods in tests
+type MockableMediaService = MediaService & {
+  request: ReturnType<typeof mock>;
+};
+
 // Test UUIDs in proper format
 const TEST_AGENT_ID = '550e8400-e29b-41d4-a716-446655440001' as UUID;
 const TEST_CHANNEL_ID = '550e8400-e29b-41d4-a716-446655440002' as UUID;
 
 describe('MediaService', () => {
-  let mediaService: MediaService;
+  let mediaService: MockableMediaService;
   const mockConfig: ApiClientConfig = {
     baseUrl: 'http://localhost:3000',
     apiKey: 'test-key',
   };
 
   beforeEach(() => {
-    mediaService = new MediaService(mockConfig);
+    mediaService = new MediaService(mockConfig) as MockableMediaService;
     // Mock the HTTP methods
-    (mediaService as any).request = mock(() => Promise.resolve({}));
+    mediaService.request = mock(() => Promise.resolve({}));
   });
 
   afterEach(() => {
-    const requestMock = (mediaService as any).request;
-    if (requestMock?.mockClear) requestMock.mockClear();
+    const requestMock = mediaService.request;
+    if (requestMock?.mockClear) {
+      requestMock.mockClear();
+    }
   });
 
   describe('constructor', () => {
@@ -31,7 +38,8 @@ describe('MediaService', () => {
     });
 
     it('should throw error when initialized with invalid configuration', () => {
-      expect(() => new MediaService(null as any)).toThrow();
+      // Testing error handling with null config
+      expect(() => new MediaService(null as ApiClientConfig)).toThrow();
     });
   });
 
@@ -54,11 +62,11 @@ describe('MediaService', () => {
         uploadedAt: new Date('2024-01-01T00:00:00Z'),
         metadata: { description: 'Test image' },
       };
-      (mediaService as any).request.mockResolvedValue(mockResponse);
+      mediaService.request.mockResolvedValue(mockResponse);
 
       const result = await mediaService.uploadAgentMedia(TEST_AGENT_ID, params);
 
-      expect((mediaService as any).request).toHaveBeenCalledWith(
+      expect(mediaService.request).toHaveBeenCalledWith(
         'POST',
         `/api/media/agents/${TEST_AGENT_ID}/upload-media`,
         expect.objectContaining({
@@ -78,11 +86,11 @@ describe('MediaService', () => {
         size: 512,
         uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
-      (mediaService as any).request.mockResolvedValue(mockResponse);
+      mediaService.request.mockResolvedValue(mockResponse);
 
       await mediaService.uploadAgentMedia(TEST_AGENT_ID, paramsMinimal);
 
-      expect((mediaService as any).request).toHaveBeenCalled();
+      expect(mediaService.request).toHaveBeenCalled();
     });
   });
 
@@ -98,11 +106,11 @@ describe('MediaService', () => {
         contentType: 'image/png',
         uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
-      (mediaService as any).request.mockResolvedValue(mockResponse);
+      mediaService.request.mockResolvedValue(mockResponse);
 
       const result = await mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile);
 
-      expect((mediaService as any).request).toHaveBeenCalledWith(
+      expect(mediaService.request).toHaveBeenCalledWith(
         'POST',
         `/api/messaging/channels/${TEST_CHANNEL_ID}/upload-media`,
         expect.objectContaining({
@@ -121,11 +129,11 @@ describe('MediaService', () => {
         contentType: 'image/png',
         uploadedAt: new Date('2024-01-01T00:00:00Z'),
       };
-      (mediaService as any).request.mockResolvedValue(mockResponse);
+      mediaService.request.mockResolvedValue(mockResponse);
 
       await mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile);
 
-      expect((mediaService as any).request).toHaveBeenCalled();
+      expect(mediaService.request).toHaveBeenCalled();
     });
   });
 
@@ -133,7 +141,7 @@ describe('MediaService', () => {
     const mockFile = new Blob(['test'], { type: 'image/png' });
 
     it('should handle network errors', async () => {
-      (mediaService as any).request.mockRejectedValue(new Error('Network error'));
+      mediaService.request.mockRejectedValue(new Error('Network error'));
 
       await expect(
         mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' })
@@ -141,7 +149,7 @@ describe('MediaService', () => {
     });
 
     it('should handle file upload errors', async () => {
-      (mediaService as any).request.mockRejectedValue(new Error('Upload failed'));
+      mediaService.request.mockRejectedValue(new Error('Upload failed'));
 
       await expect(mediaService.uploadChannelMedia(TEST_CHANNEL_ID, mockFile)).rejects.toThrow(
         'Upload failed'
@@ -149,7 +157,7 @@ describe('MediaService', () => {
     });
 
     it('should handle API errors', async () => {
-      (mediaService as any).request.mockRejectedValue(new Error('API error'));
+      mediaService.request.mockRejectedValue(new Error('API error'));
 
       await expect(
         mediaService.uploadAgentMedia(TEST_AGENT_ID, { file: mockFile, filename: 'test.png' })

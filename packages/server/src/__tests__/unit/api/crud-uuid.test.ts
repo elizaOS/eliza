@@ -21,7 +21,7 @@ describe('Agent Operations - UUID Independence', () => {
       return Array.from(agentStore.values());
     },
     createAgent: async (agent: Partial<Agent>) => {
-      if (!agent.id) return false;
+      if (!agent.id) {return false;}
       const fullAgent: Agent = {
         id: agent.id,
         name: agent.name || 'Unknown',
@@ -35,7 +35,7 @@ describe('Agent Operations - UUID Independence', () => {
     },
     updateAgent: async (agentId: UUID, updates: Partial<Agent>) => {
       const existing = agentStore.get(agentId);
-      if (!existing) return false;
+      if (!existing) {return false;}
       agentStore.set(agentId, { ...existing, ...updates, updatedAt: Date.now() });
       return true;
     },

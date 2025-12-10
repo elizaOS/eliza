@@ -487,7 +487,7 @@ describe('Role Provider', () => {
     (mockRuntime.getWorld as any).mockImplementation(async (id) => {
       // Return world data for any world ID since we can't control createUniqueUuid
       return {
-        id: id,
+        id,
         messageServerId: serverId,
         name: 'Role Test World Simple',
         metadata: {
@@ -563,7 +563,7 @@ describe('Role Provider', () => {
     (mockRuntime.getWorld as any).mockImplementation(async (id) => {
       // Return world data for any world ID since we can't control createUniqueUuid
       return {
-        id: id,
+        id,
         messageServerId: mockServerId,
         name: 'Test World No Roles',
         metadata: {

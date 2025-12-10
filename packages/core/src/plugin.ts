@@ -84,7 +84,7 @@ export async function tryInstallPlugin(pluginName: string): Promise<boolean> {
 
     logger.error({ src: 'core:plugin', pluginName, exitCode: exit }, 'Plugin installation failed');
     return false;
-  } catch (e) {
+  } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     logger.error(
       { src: 'core:plugin', pluginName, error: message },
@@ -184,73 +184,64 @@ export function validatePlugin(plugin: unknown): { isValid: boolean; errors: str
  * Load and prepare a plugin for use
  */
 export async function loadAndPreparePlugin(pluginName: string): Promise<Plugin | null> {
+  // Try to load the plugin module
+  let pluginModule: unknown;
+
   try {
-    // Try to load the plugin module
-    let pluginModule: unknown;
-
-    try {
-      // Attempt to dynamically import the plugin
-      pluginModule = await import(pluginName);
-    } catch (error) {
-      logger.warn({ src: 'core:plugin', pluginName, error }, 'Failed to load plugin');
-      // Attempt auto-install if allowed and not already attempted
-      const attempted = await tryInstallPlugin(pluginName);
-      if (!attempted) {
-        return null;
-      }
-      // Retry import once after successful installation attempt
-      try {
-        pluginModule = await import(pluginName);
-      } catch (secondError) {
-        logger.error(
-          { src: 'core:plugin', pluginName, error: secondError },
-          'Import failed after auto-install'
-        );
-        return null;
-      }
-    }
-
-    if (!pluginModule) {
-      logger.error({ src: 'core:plugin', pluginName }, 'Failed to load plugin module');
+    // Attempt to dynamically import the plugin
+    pluginModule = await import(pluginName);
+  } catch (error: unknown) {
+    logger.warn({ src: 'core:plugin', pluginName, error }, 'Failed to load plugin');
+    // Attempt auto-install if allowed and not already attempted
+    const attempted = await tryInstallPlugin(pluginName);
+    if (!attempted) {
       return null;
     }
-
-    // Try to find the plugin export in various locations
-    const expectedFunctionName = `${pluginName
-      .replace(/^@elizaos\/plugin-/, '')
-      .replace(/^@elizaos\//, '')
-      .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`;
-
-    const moduleObj = pluginModule as Record<string, unknown>;
-    const exportsToCheck = [
-      moduleObj[expectedFunctionName],
-      moduleObj.default,
-      ...Object.values(moduleObj),
-    ];
-
-    for (const potentialPlugin of exportsToCheck) {
-      if (isValidPluginShape(potentialPlugin)) {
-        return potentialPlugin as Plugin;
-      }
-      // Try factory functions that return a Plugin
-      if (typeof potentialPlugin === 'function' && potentialPlugin.length === 0) {
-        try {
-          const produced = potentialPlugin();
-          if (isValidPluginShape(produced)) {
-            return produced as Plugin;
-          }
-        } catch (err) {
-          logger.debug({ src: 'core:plugin', pluginName, error: err }, 'Factory export threw');
-        }
-      }
+    // Retry import once after successful installation attempt
+    try {
+      pluginModule = await import(pluginName);
+    } catch (secondError: unknown) {
+      logger.error(
+        { src: 'core:plugin', pluginName, error: secondError },
+        'Import failed after auto-install'
+      );
+      return null;
     }
+  }
 
-    logger.warn({ src: 'core:plugin', pluginName }, 'No valid plugin export found');
-    return null;
-  } catch (error) {
-    logger.error({ src: 'core:plugin', pluginName, error }, 'Error loading plugin');
+  if (!pluginModule) {
+    logger.error({ src: 'core:plugin', pluginName }, 'Failed to load plugin module');
     return null;
   }
+
+  // Try to find the plugin export in various locations
+  const expectedFunctionName = `${pluginName
+    .replace(/^@elizaos\/plugin-/, '')
+    .replace(/^@elizaos\//, '')
+    .replace(/-./g, (match) => match[1].toUpperCase())}Plugin`;
+
+  const moduleObj = pluginModule as Record<string, unknown>;
+  const exportsToCheck = [
+    moduleObj[expectedFunctionName],
+    moduleObj.default,
+    ...Object.values(moduleObj),
+  ];
+
+  for (const potentialPlugin of exportsToCheck) {
+    if (isValidPluginShape(potentialPlugin)) {
+      return potentialPlugin as Plugin;
+    }
+    // Try factory functions that return a Plugin
+    if (typeof potentialPlugin === 'function' && potentialPlugin.length === 0) {
+      const produced = potentialPlugin();
+      if (isValidPluginShape(produced)) {
+        return produced as Plugin;
+      }
+    }
+  }
+
+  logger.warn({ src: 'core:plugin', pluginName }, 'No valid plugin export found');
+  return null;
 }
 
 // ============================================================================

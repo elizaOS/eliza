@@ -20,8 +20,12 @@ import {
  * Formats a setting value for display, respecting privacy flags
  */
 const formatSettingValue = (setting: Setting, isOnboarding: boolean): string => {
-  if (setting.value === null) return 'Not set';
-  if (setting.secret && !isOnboarding) return '****************';
+  if (setting.value === null) {
+    return 'Not set';
+  }
+  if (setting.secret && !isOnboarding) {
+    return '****************';
+  }
   return String(setting.value);
 };
 
@@ -38,7 +42,9 @@ function generateStatusMessage(
     // Format settings for display
     const formattedSettings = Object.entries(worldSettings)
       .map(([key, setting]) => {
-        if (typeof setting !== 'object' || !setting.name) return null;
+        if (typeof setting !== 'object' || !setting.name) {
+          return null;
+        }
 
         const description = setting.description || '';
         const usageDescription = setting.usageDescription || '';
@@ -299,24 +305,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-              data: {
-                settings: [],
-              },
-              values: {
-                settings:
+            data: {
+              settings: [],
+            },
+            values: {
+              settings:
                   "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-              },
-              text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-            }
+            },
+            text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
+          }
           : {
-              data: {
-                settings: [],
-              },
-              values: {
-                settings: 'Error: No configuration access',
-              },
-              text: 'Error: No configuration access',
-            };
+            data: {
+              settings: [],
+            },
+            values: {
+              settings: 'Error: No configuration access',
+            },
+            text: 'Error: No configuration access',
+          };
       }
 
       if (!worldSettings) {
@@ -326,24 +332,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-              data: {
-                settings: [],
-              },
-              values: {
-                settings:
+            data: {
+              settings: [],
+            },
+            values: {
+              settings:
                   "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-              },
-              text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-            }
+            },
+            text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
+          }
           : {
-              data: {
-                settings: [],
-              },
-              values: {
-                settings: 'Configuration has not been completed yet.',
-              },
-              text: 'Configuration has not been completed yet.',
-            };
+            data: {
+              settings: [],
+            },
+            values: {
+              settings: 'Configuration has not been completed yet.',
+            },
+            text: 'Configuration has not been completed yet.',
+          };
       }
 
       // Generate the status message based on the settings

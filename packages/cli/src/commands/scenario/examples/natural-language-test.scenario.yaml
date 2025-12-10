@@ -1,7 +1,7 @@
 name: 'Natural Language Agent Interaction Test'
 description: 'Test agent interaction using natural language input'
 environment:
-  type: e2b
+  type: local
 run:
   - input: 'Hello! Can you tell me what you can help me with?'
     evaluations:
