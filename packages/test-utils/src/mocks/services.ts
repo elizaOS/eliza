@@ -67,7 +67,7 @@ export function createMockService(
   };
 
   // Mock service implements Service interface with all required methods
-  return baseService as Service;
+  return baseService as unknown as Service;
 }
 
 /**

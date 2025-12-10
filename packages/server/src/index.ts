@@ -73,14 +73,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /**
  * Type for database adapter with messaging methods
  * These methods are provided by BaseDrizzleAdapter implementations
+ * Signatures match BaseDrizzleAdapter in @elizaos/plugin-sql
  */
 type DatabaseAdapterWithMessaging = DatabaseAdapter & {
-  createMessageServer(data: Omit<MessageServer, 'id' | 'createdAt' | 'updatedAt'>): Promise<MessageServer>;
+  createMessageServer(data: {
+    id?: UUID;
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<MessageServer>;
   getMessageServers(): Promise<MessageServer[]>;
   getMessageServerById(serverId: UUID): Promise<MessageServer | null>;
   getMessageServerByRlsServerId(rlsServerId: UUID): Promise<MessageServer | null>;
   createChannel(
-    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'> & { id?: UUID },
+    data: {
+      id?: UUID;
+      messageServerId: UUID;
+      name: string;
+      type: string;
+      sourceType?: string;
+      sourceId?: string;
+      topic?: string;
+      metadata?: Record<string, unknown>;
+    },
     participantIds?: UUID[]
   ): Promise<MessageChannel>;
   addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void>;
@@ -96,12 +112,22 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   deleteChannel(channelId: UUID): Promise<void>;
   getMessagesForChannel(channelId: UUID, limit?: number, beforeTimestamp?: Date): Promise<CentralRootMessage[]>;
   findOrCreateDmChannel(user1Id: UUID, user2Id: UUID, messageServerId: UUID): Promise<MessageChannel>;
-  createMessage(data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>): Promise<CentralRootMessage>;
+  createMessage(data: {
+    messageId?: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: Record<string, unknown>;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+    inReplyToRootMessageId?: UUID;
+  }): Promise<CentralRootMessage>;
   updateMessage(
     messageId: UUID,
     patch: {
       content?: string;
-      rawMessage?: unknown;
+      rawMessage?: Record<string, unknown>;
       sourceType?: string;
       sourceId?: string;
       metadata?: Record<string, unknown>;
@@ -112,7 +138,7 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void>;
   getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]>;
   getDatabase?(): unknown;
-  db?: unknown;
+  db: { execute: (query: unknown) => Promise<unknown> };
 };
 
 /**
@@ -303,7 +329,7 @@ export class AgentServer {
           postgresUrl: config?.postgresUrl,
         },
         tempServerAgentId
-      ) as DatabaseAdapter;
+      ) as DatabaseAdapterWithMessaging;
       await this.database.init();
       logger.success({ src: 'db' }, 'Database initialized for server operations');
 
@@ -1669,7 +1695,7 @@ export class AgentServer {
     messageId: UUID,
     patch: {
       content?: string;
-      rawMessage?: unknown;
+      rawMessage?: Record<string, unknown>;
       sourceType?: string;
       sourceId?: string;
       metadata?: Record<string, unknown>;

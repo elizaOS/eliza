@@ -1,5 +1,6 @@
 import { logger, type IDatabaseAdapter } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
+import { getDb } from './types';
 
 /**
  * TEMPORARY MIGRATION: develop → feat/entity-rls migration
@@ -15,7 +16,7 @@ import { sql } from 'drizzle-orm';
  * @param adapter - Database adapter
  */
 export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Detect database type - skip PostgreSQL-specific migrations for SQLite
   try {
@@ -146,8 +147,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
                 `SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`
               )
             );
-            const nullCount = nullCountResult.rows?.[0]?.count;
-            if (nullCount && parseInt(nullCount) > 0) {
+            const nullCount = nullCountResult.rows?.[0]?.count as string | undefined;
+            if (nullCount && parseInt(nullCount, 10) > 0) {
               logger.warn(
                 `[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`
               );

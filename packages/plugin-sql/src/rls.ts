@@ -2,6 +2,7 @@ import { logger, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
 import { sql, eq } from 'drizzle-orm';
 import { serverTable } from './schema/server';
 import { agentTable } from './schema/agent';
+import { getDb } from './types';
 
 /**
  * PostgreSQL Row-Level Security (RLS) for Multi-Server and Entity Isolation
@@ -78,7 +79,7 @@ import { agentTable } from './schema/agent';
  * ```
  */
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Create servers table if it doesn't exist
   await db.execute(sql`
@@ -230,7 +231,7 @@ export async function getOrCreateRlsServer(
   adapter: IDatabaseAdapter,
   serverId: string
 ): Promise<string> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Use Drizzle's insert with onConflictDoNothing
   await db
@@ -255,7 +256,7 @@ export async function setServerContext(adapter: IDatabaseAdapter, serverId: stri
   }
 
   // Validate server exists
-  const db = adapter.db;
+  const db = getDb(adapter);
   const servers = await db.select().from(serverTable).where(eq(serverTable.id, serverId));
 
   if (servers.length === 0) {
@@ -281,7 +282,7 @@ export async function assignAgentToServer(
     return;
   }
 
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Check if agent exists using Drizzle
   const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
@@ -314,7 +315,7 @@ export async function assignAgentToServer(
  * Apply RLS to all tables by calling PostgreSQL function
  */
 export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
@@ -332,7 +333,7 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
  * - Use only in development or when migrating to single-server mode
  */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     // Check if RLS is actually enabled by checking if the servers table exists
@@ -498,7 +499,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
  * ```
  */
 export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   logger.info('[Entity RLS] Installing entity RLS functions and policies...');
 
@@ -762,7 +763,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
  * Call this after installEntityRLS() to activate the policies
  */
 export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
@@ -777,7 +778,7 @@ export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Prom
  * Drops entity RLS functions and policies but keeps server RLS intact
  */
 export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   logger.info('[Entity RLS] Removing entity RLS policies and functions...');
 

@@ -108,11 +108,22 @@ export function useConvertCharacter() {
         thread.map((msg: { user?: string; content?: Content } | string) => {
           if (isV1MessageExampleFormat(msg)) {
             return {
-              name: msg.user,
-              content: msg.content,
+              name: msg.user ?? 'user',
+              content: msg.content ?? { text: '' },
             };
           }
-          return msg;
+          // If msg is a string, wrap it in a MessageExample format
+          if (typeof msg === 'string') {
+            return {
+              name: 'user',
+              content: { text: msg },
+            };
+          }
+          // For any other format, convert to MessageExample
+          return {
+            name: (msg as { user?: string }).user ?? 'user',
+            content: (msg as { content?: Content }).content ?? { text: '' },
+          };
         })
       ) ?? [];
 

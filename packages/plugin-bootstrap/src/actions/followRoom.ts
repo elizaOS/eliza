@@ -95,7 +95,6 @@ export const followRoomAction: Action = {
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        runtime,
         prompt: shouldFollowPrompt,
         stopSequences: [],
       });
@@ -166,6 +165,15 @@ export const followRoomAction: Action = {
 
     const shouldFollow = await _shouldFollow(state);
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+    if (!room) {
+      return {
+        text: 'Could not find room to follow',
+        values: { success: false, error: 'ROOM_NOT_FOUND' },
+        data: { actionName: 'FOLLOW_ROOM', error: 'Room not found' },
+        success: false,
+      };
+    }
 
     if (shouldFollow) {
       try {

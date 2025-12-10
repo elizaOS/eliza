@@ -1,21 +1,13 @@
-import { UUID } from '@elizaos/core';
+import { UUID, Agent } from '@elizaos/core';
 import { PaginationParams } from './base';
 
-export interface Agent {
-  id: UUID;
-  name: string;
-  bio?: string | string[];
-  status: 'active' | 'inactive' | 'stopped';
-  enabled?: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  metadata?: Record<string, unknown>;
-}
+// Re-export Agent from core
+export type { Agent } from '@elizaos/core';
 
 export interface AgentCreateParams {
   characterPath?: string;
   characterJson?: Record<string, unknown>;
-  agent?: Record<string, unknown>;
+  agent?: Agent;
 }
 
 export interface AgentUpdateParams {

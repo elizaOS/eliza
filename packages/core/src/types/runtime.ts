@@ -15,7 +15,7 @@ import type {
   GenerateTextOptions,
   GenerateTextResult,
 } from './model';
-import type { Plugin, PluginEvents, Route } from './plugin';
+import type { Plugin, RuntimeEventStorage, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
@@ -38,7 +38,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   evaluators: Evaluator[];
   plugins: Plugin[];
   services: Map<ServiceTypeName, Service[]>;
-  events: PluginEvents;
+  events: RuntimeEventStorage;
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;

@@ -50,12 +50,41 @@ export interface LoggerBindings extends Record<string, unknown> {
 }
 
 /**
- * Log entry structure for in-memory storage
+ * Log entry structure for in-memory storage and streaming
  */
-interface LogEntry {
+export interface LogEntry {
   time: number;
   level?: number;
   msg: string;
+  agentName?: string;
+  agentId?: string;
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Log listener callback type for real-time log streaming
+ */
+export type LogListener = (entry: LogEntry) => void;
+
+// Global log listeners for streaming
+const logListeners: Set<LogListener> = new Set();
+
+/**
+ * Add a listener for real-time log entries (used for WebSocket streaming)
+ * @param listener - Callback function to receive log entries
+ * @returns Function to remove the listener
+ */
+export function addLogListener(listener: LogListener): () => void {
+  logListeners.add(listener);
+  return () => logListeners.delete(listener);
+}
+
+/**
+ * Remove a log listener
+ * @param listener - The listener to remove
+ */
+export function removeLogListener(listener: LogListener): void {
+  logListeners.delete(listener);
 }
 
 /**
@@ -278,6 +307,14 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       logs.push(entry);
       if (logs.length > maxLogs) {
         logs.shift();
+      }
+      // Notify all listeners for real-time streaming
+      for (const listener of logListeners) {
+        try {
+          listener(entry);
+        } catch {
+          // Ignore errors in listeners to prevent breaking the logging flow
+        }
       }
     },
     clear(): void {

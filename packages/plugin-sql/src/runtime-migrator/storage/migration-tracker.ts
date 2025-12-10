@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB } from '../types';
+import { getRow } from '../../types';
 
 export class MigrationTracker {
   constructor(private db: DrizzleDB) {}
@@ -62,7 +63,7 @@ export class MigrationTracker {
       hash: string;
       created_at: string;
     }
-    return (result.rows[0] as MigrationRow) || null;
+    return getRow<MigrationRow>(result) || null;
   }
 
   async recordMigration(pluginName: string, hash: string, createdAt: number): Promise<void> {

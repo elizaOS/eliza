@@ -346,10 +346,16 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * Note: This uses regex and is suitable for simple, predictable XML structures.
  * For complex XML, a proper parsing library is recommended.
  *
+ * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.
- * @returns An object with key-value pairs extracted from the XML, or null if parsing fails.
+ * @returns The parsed object cast to type T, or null if parsing fails.
+ *
+ * @example
+ * interface MyResponse { thought: string; message: string; }
+ * const result = parseKeyValueXml<MyResponse>(xmlText);
+ * // result is MyResponse | null
  */
-export function parseKeyValueXml(text: string): Record<string, unknown> | null {
+export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T | null {
   if (!text) return null;
 
   // First, try to find a specific <response> block (the one we actually want)
@@ -568,7 +574,7 @@ export function parseKeyValueXml(text: string): Record<string, unknown> | null {
     return null;
   }
 
-  return result;
+  return result as T;
 }
 
 /**

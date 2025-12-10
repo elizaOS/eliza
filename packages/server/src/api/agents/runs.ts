@@ -3,6 +3,7 @@ import type {
   UUID,
   Log,
   IDatabaseAdapter,
+  IAgentRuntime,
   RunStatus,
   ActionLogBody,
   ModelLogBody,

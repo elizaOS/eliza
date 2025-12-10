@@ -7,20 +7,31 @@ import type { IAgentRuntime } from './runtime';
 import type { Service } from './service';
 import type { TestSuite } from './testing';
 
+/**
+ * Minimal request interface
+ * Plugins can use this type for route handlers
+ */
 export interface RouteRequest {
-  [key: string]: unknown;
   body?: unknown;
   params?: Record<string, string>;
-  query?: Record<string, string | string[]>;
-  headers?: Record<string, string>;
+  query?: Record<string, unknown>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  path?: string;
+  url?: string;
 }
 
+/**
+ * Minimal response interface
+ * Plugins can use this type for route handlers
+ */
 export interface RouteResponse {
-  [key: string]: unknown;
-  status?: (code: number) => RouteResponse;
-  json?: (data: unknown) => void;
-  send?: (data: unknown) => void;
-  end?: () => void;
+  status: (code: number) => RouteResponse;
+  json: (data: unknown) => RouteResponse;
+  send: (data: unknown) => RouteResponse;
+  end: () => RouteResponse;
+  setHeader?: (name: string, value: string | string[]) => RouteResponse;
+  headersSent?: boolean;
 }
 
 export type Route = {
@@ -39,8 +50,11 @@ export type Route = {
 
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
-} & {
-  [key: string]: ((params: EventPayload) => Promise<void>)[];
+};
+
+/** Internal type for runtime event storage - allows dynamic access for event registration */
+export type RuntimeEventStorage = PluginEvents & {
+  [key: string]: ((params: unknown) => Promise<void>)[] | undefined;
 };
 
 export interface Plugin {

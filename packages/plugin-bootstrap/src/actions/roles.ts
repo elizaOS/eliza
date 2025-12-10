@@ -17,6 +17,19 @@ import {
   parseKeyValueXml,
 } from '@elizaos/core';
 
+/** Shape of individual assignment in XML response */
+interface RoleAssignmentXml {
+  entityId?: string;
+  newRole?: string;
+}
+
+/** Shape of the role extraction XML response */
+interface RoleExtractionResult {
+  assignments?: {
+    assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+  };
+}
+
 /**
  * Determines if the user with the current role can modify the role to the new role.
  * @param currentRole The current role of the user making the change
@@ -202,7 +215,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       prompt: extractionPrompt,
     });
 
-    const parsedXml = parseKeyValueXml(response);
+    const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
 
     // Handle the parsed XML structure
     let assignments: RoleAssignment[] = [];
@@ -212,10 +225,12 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         ? parsedXml.assignments.assignment
         : [parsedXml.assignments.assignment];
 
-      assignments = assignmentArray.map((a: Record<string, unknown>) => ({
-        entityId: a.entityId,
-        newRole: a.newRole as Role,
-      }));
+      assignments = assignmentArray
+        .filter((a): a is RoleAssignmentXml & { entityId: string } => !!a.entityId)
+        .map((a) => ({
+          entityId: a.entityId,
+          newRole: a.newRole as Role,
+        }));
     }
 
     if (!assignments.length) {
