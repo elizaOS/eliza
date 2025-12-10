@@ -3001,8 +3001,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
               ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
-                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
-                      params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
+                    sql`${taskTable.tags} @> ARRAY[${sql.join(
+                      params.tags.map((t) => sql`${t}`),
+                      sql`, `
                     )}]::text[]`,
                   ]
                 : [])

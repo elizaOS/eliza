@@ -78,7 +78,7 @@ export class PostgresConnectionManager {
       if (entityId) {
         try {
           // Try to set entity context - will fail gracefully if Entity RLS not installed
-          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
+          await tx.execute(sql`SET LOCAL app.entity_id = ${entityId}`);
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
           // Distinguish between "Entity RLS not installed" vs "critical error"
