@@ -118,10 +118,18 @@ export function createAgentCrudRouter(
         throw new Error('Failed to create character configuration');
       }
 
+      // Encrypt all secrets before saving to database
+      const salt = getSalt();
       if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
-        const salt = getSalt();
         character.settings.secrets = encryptObjectValues(
           character.settings.secrets as Record<string, any>,
+          salt
+        );
+      }
+      // Also encrypt character.secrets (root level) if it exists
+      if (character.secrets && typeof character.secrets === 'object') {
+        character.secrets = encryptObjectValues(
+          character.secrets as Record<string, any>,
           salt
         );
       }
@@ -187,8 +195,9 @@ export function createAgentCrudRouter(
       const currentAgent = await db.getAgent(agentId);
       const activeRuntime = elizaOS.getAgent(agentId);
 
+      // Encrypt settings.secrets if present
+      const salt = getSalt();
       if (updates.settings?.secrets) {
-        const salt = getSalt();
         const encryptedSecrets: Record<string, string | null> = {};
         Object.entries(updates.settings.secrets).forEach(([key, value]) => {
           if (value === null) {
@@ -200,6 +209,21 @@ export function createAgentCrudRouter(
           }
         });
         updates.settings.secrets = encryptedSecrets;
+      }
+
+      // Also encrypt updates.secrets (root level) if present
+      if (updates.secrets && typeof updates.secrets === 'object') {
+        const encryptedRootSecrets: Record<string, string | null> = {};
+        Object.entries(updates.secrets).forEach(([key, value]) => {
+          if (value === null) {
+            encryptedRootSecrets[key] = null;
+          } else if (typeof value === 'string') {
+            encryptedRootSecrets[key] = encryptStringValue(value, salt);
+          } else {
+            encryptedRootSecrets[key] = value as string;
+          }
+        });
+        updates.secrets = encryptedRootSecrets;
       }
 
       if (Object.keys(updates).length > 0) {
