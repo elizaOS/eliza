@@ -4,7 +4,6 @@ import {
   logger,
   getSalt,
   encryptObjectValues,
-  encryptStringValue,
 } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
@@ -118,12 +117,20 @@ export function createAgentCrudRouter(
         throw new Error('Failed to create character configuration');
       }
 
+      // Encrypt all secrets before saving to database
+      const salt = getSalt();
       if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
-        const salt = getSalt();
         character.settings.secrets = encryptObjectValues(
           character.settings.secrets as Record<string, any>,
           salt
         );
+      }
+      // Also encrypt character.secrets (root level) if it exists
+      if (character.secrets && typeof character.secrets === 'object') {
+        character.secrets = encryptObjectValues(
+          character.secrets as Record<string, any>,
+          salt
+        ) as { [key: string]: string | number | boolean };
       }
 
       const ensureAgentExists = async (character: Character) => {
@@ -187,19 +194,19 @@ export function createAgentCrudRouter(
       const currentAgent = await db.getAgent(agentId);
       const activeRuntime = elizaOS.getAgent(agentId);
 
-      if (updates.settings?.secrets) {
-        const salt = getSalt();
-        const encryptedSecrets: Record<string, string | null> = {};
-        Object.entries(updates.settings.secrets).forEach(([key, value]) => {
-          if (value === null) {
-            encryptedSecrets[key] = null;
-          } else if (typeof value === 'string') {
-            encryptedSecrets[key] = encryptStringValue(value, salt);
-          } else {
-            encryptedSecrets[key] = value as string;
-          }
-        });
-        updates.settings.secrets = encryptedSecrets;
+      // Encrypt secrets before saving to database
+      const salt = getSalt();
+      if (updates.settings?.secrets && typeof updates.settings.secrets === 'object') {
+        updates.settings.secrets = encryptObjectValues(
+          updates.settings.secrets as Record<string, any>,
+          salt
+        );
+      }
+      if (updates.secrets && typeof updates.secrets === 'object') {
+        updates.secrets = encryptObjectValues(
+          updates.secrets as Record<string, any>,
+          salt
+        ) as { [key: string]: string | number | boolean };
       }
 
       if (Object.keys(updates).length > 0) {
