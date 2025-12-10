@@ -56,7 +56,8 @@ describe('PgliteDatabaseAdapter', () => {
     it('should complete initialization', async () => {
       await adapter.init();
       expect(logger.debug).toHaveBeenCalledWith(
-        'PGliteDatabaseAdapter initialized, skipping automatic migrations.'
+        { src: 'plugin:sql' },
+        'PGliteDatabaseAdapter initialized'
       );
     });
   });

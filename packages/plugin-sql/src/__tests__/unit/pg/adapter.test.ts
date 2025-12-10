@@ -60,7 +60,8 @@ describe('PgDatabaseAdapter', () => {
     it('should complete initialization', async () => {
       await adapter.init();
       expect(logger.debug).toHaveBeenCalledWith(
-        'PgDatabaseAdapter initialized, skipping automatic migrations.'
+        { src: 'plugin:sql' },
+        'PgDatabaseAdapter initialized'
       );
     });
   });
