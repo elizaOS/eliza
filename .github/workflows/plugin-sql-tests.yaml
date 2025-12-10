@@ -1,24 +1,17 @@
-name: Plugin SQL Integration Tests
+name: Plugin SQL Tests
 
-# Cancel previous runs for the same PR/branch
 concurrency:
   group: plugin-sql-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
   push:
-    branches:
-      - 'main'
-      - 'develop'
+    branches: ['main', 'develop']
   pull_request:
-    branches:
-      - 'main'
-      - 'develop'
+    branches: ['main', 'develop']
 
 jobs:
-  databaseIntegrationTests:
-    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+  pglite:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,15 +19,55 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '23'
-      - name: Install root dependencies
-        run: bun install
-      - name: Build all packages
-        run: bun run build
-      - name: Install dependencies and build plugin-sql
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: bun install && bun run build
+      - name: Tests
         working-directory: ./packages/plugin-sql
         run: |
-          bun install
-          bun run build
-      - name: Run plugin-sql integration tests
+          bun run test:unit
+          bun run test:integration
+          bun run test:migration
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eliza_test
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - name: Create non-admin user (RLS bypass prevention)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -p 5433 -U postgres -d eliza_test -c "
+            CREATE USER eliza_test WITH PASSWORD 'eliza_test_password';
+            GRANT ALL ON DATABASE eliza_test TO eliza_test;
+            GRANT ALL ON SCHEMA public TO eliza_test;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO eliza_test;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO eliza_test;"
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
         working-directory: ./packages/plugin-sql
-        run: bun run test:integration
+        run: bun install && bun run build
+      - name: Tests
+        working-directory: ./packages/plugin-sql
+        env:
+          POSTGRES_URL: postgresql://eliza_test:eliza_test_password@localhost:5433/eliza_test
+        run: |
+          bun run test:integration
+          bun run test:migration

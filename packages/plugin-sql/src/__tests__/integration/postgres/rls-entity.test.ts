@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { Client } from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { v4 as uuidv4 } from 'uuid';
+import type { IDatabaseAdapter } from '@elizaos/core';
+import { DatabaseMigrationService } from '../../../migration-service';
+import { plugin as sqlPlugin } from '../../../index';
+import {
+  installRLSFunctions,
+  applyRLSToNewTables,
+  applyEntityRLSToAllTables,
+} from '../../../rls';
 
 /**
  * PostgreSQL RLS Entity Integration Tests
@@ -33,6 +42,24 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Admin client (for setup)
     adminClient = new Client({ connectionString: POSTGRES_URL });
     await adminClient.connect();
+
+    // Initialize schema with migrations
+    const db = drizzle(adminClient);
+    const migrationService = new DatabaseMigrationService();
+    await migrationService.initializeWithDatabase(db);
+    migrationService.discoverAndRegisterPluginSchemas([sqlPlugin]);
+    await migrationService.runAllPluginMigrations();
+    console.log('[RLS Test] Schema initialized via migrations');
+
+    // Set application_name to serverId for RLS context (must be done before applying RLS)
+    await adminClient.query(`SET application_name = '${serverId}'`);
+
+    // Install RLS functions and apply to all tables
+    const mockAdapter = { db } as IDatabaseAdapter;
+    await installRLSFunctions(mockAdapter);
+    await applyRLSToNewTables(mockAdapter);
+    await applyEntityRLSToAllTables(mockAdapter);
+    console.log('[RLS Test] RLS functions installed and applied');
 
     // Create test user
     try {
@@ -87,15 +114,15 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     try {
       const result = await adminClient.query(
         `
-        INSERT INTO entities (id, agent_id, names, metadata, server_id, created_at)
+        INSERT INTO entities (id, agent_id, names, metadata, created_at)
         VALUES
-          ($1, $4, ARRAY['Alice'], '{}'::jsonb, $5, NOW()),
-          ($2, $4, ARRAY['Bob'], '{}'::jsonb, $5, NOW()),
-          ($3, $4, ARRAY['Charlie'], '{}'::jsonb, $5, NOW())
+          ($1, $4, ARRAY['Alice'], '{}'::jsonb, NOW()),
+          ($2, $4, ARRAY['Bob'], '{}'::jsonb, NOW()),
+          ($3, $4, ARRAY['Charlie'], '{}'::jsonb, NOW())
         ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names
         RETURNING id
       `,
-        [aliceId, bobId, charlieId, agentId, serverId]
+        [aliceId, bobId, charlieId, agentId]
       );
       console.log('Entities created:', result.rows.length);
     } catch (err) {
@@ -106,7 +133,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Create rooms
     await adminClient.query(
       `
-      INSERT INTO rooms (id, "agentId", source, type, server_id, created_at)
+      INSERT INTO rooms (id, agent_id, source, type, message_server_id, created_at)
       VALUES
         ($1, $3, 'test', 'DM', $4, NOW()),
         ($2, $3, 'test', 'GROUP', $4, NOW())
@@ -121,51 +148,51 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     try {
       const participantResult = await adminClient.query(
         `
-        INSERT INTO participants (id, "entityId", "roomId", server_id, created_at)
+        INSERT INTO participants (id, entity_id, room_id, agent_id, created_at)
         VALUES
-          (gen_random_uuid(), $1, $2, $3, NOW()),
-          (gen_random_uuid(), $4, $2, $3, NOW()),
-          (gen_random_uuid(), $4, $5, $3, NOW()),
-          (gen_random_uuid(), $6, $5, $3, NOW())
+          (gen_random_uuid(), $1, $2, $4, NOW()),
+          (gen_random_uuid(), $3, $2, $4, NOW()),
+          (gen_random_uuid(), $3, $5, $4, NOW()),
+          (gen_random_uuid(), $6, $5, $4, NOW())
         ON CONFLICT DO NOTHING
-        RETURNING id, "entityId"
+        RETURNING id, entity_id
       `,
-        [aliceId, room1Id, serverId, bobId, room2Id, charlieId]
+        [aliceId, room1Id, bobId, agentId, room2Id, charlieId]
       );
       console.log(
         'Participants created:',
         participantResult.rows.length,
-        participantResult.rows.map((r) => ({ e: r.entityId }))
+        participantResult.rows.map((r) => ({ e: r.entity_id }))
       );
     } catch (err) {
       console.error(
         'Failed to create participants:',
         err instanceof Error ? err.message : String(err)
       );
-      console.log('UUIDs:', { aliceId, bobId, charlieId, room1Id, room2Id, serverId });
+      console.log('UUIDs:', { aliceId, bobId, charlieId, room1Id, room2Id, agentId });
       throw err;
     }
 
     // Create memories
     await adminClient.query(
       `
-      INSERT INTO memories (id, "agentId", "roomId", content, type, server_id, "createdAt")
+      INSERT INTO memories (id, agent_id, room_id, content, type, created_at)
       VALUES
-        (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', $4, NOW()),
-        (gen_random_uuid(), $1, $3, '{"text": "Message in room2"}', 'message', $4, NOW())
+        (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', NOW()),
+        (gen_random_uuid(), $1, $3, '{"text": "Message in room2"}', 'message', NOW())
     `,
-      [agentId, room1Id, room2Id, serverId]
+      [agentId, room1Id, room2Id]
     );
   });
 
   afterAll(async () => {
     // Cleanup
     try {
-      await adminClient.query(`DELETE FROM memories WHERE "roomId" IN ($1, $2)`, [
+      await adminClient.query(`DELETE FROM memories WHERE room_id IN ($1, $2)`, [
         room1Id,
         room2Id,
       ]);
-      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2)`, [
+      await adminClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [
         room1Id,
         room2Id,
       ]);
@@ -206,12 +233,12 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
 
       const result = await userClient.query(`
-        SELECT id, "roomId", content FROM memories
+        SELECT id, room_id, content FROM memories
       `);
 
       // Alice is in room1, so should see 1 memory
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].roomId).toBe(room1Id);
+      expect(result.rows[0].room_id).toBe(room1Id);
       expect(result.rows[0].content.text).toContain('room1');
     } finally {
       await userClient.query('ROLLBACK');
@@ -225,13 +252,13 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
 
       const result = await userClient.query(`
-        SELECT id, "roomId", content FROM memories ORDER BY "roomId"
+        SELECT id, room_id, content FROM memories ORDER BY room_id
       `);
 
       // Bob is in both rooms, so should see 2 memories
       expect(result.rows).toHaveLength(2);
-      expect(result.rows.map((r) => r.roomId)).toContain(room1Id);
-      expect(result.rows.map((r) => r.roomId)).toContain(room2Id);
+      expect(result.rows.map((r) => r.room_id)).toContain(room1Id);
+      expect(result.rows.map((r) => r.room_id)).toContain(room2Id);
     } finally {
       await userClient.query('ROLLBACK');
     }
@@ -244,12 +271,12 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await userClient.query(`SET LOCAL app.entity_id = '${charlieId}'`);
 
       const result = await userClient.query(`
-        SELECT id, "roomId", content FROM memories
+        SELECT id, room_id, content FROM memories
       `);
 
       // Charlie is only in room2
       expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].roomId).toBe(room2Id);
+      expect(result.rows[0].room_id).toBe(room2Id);
       expect(result.rows[0].content.text).toContain('room2');
     } finally {
       await userClient.query('ROLLBACK');

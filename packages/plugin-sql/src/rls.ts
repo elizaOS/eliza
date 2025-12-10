@@ -546,26 +546,26 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check which columns exist (using camelCase as per schema definition)
+      -- Check which columns exist
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'entityId'
+          AND information_schema.columns.column_name = 'entity_id'
       ) INTO has_entity_id;
 
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'authorId'
+          AND information_schema.columns.column_name = 'author_id'
       ) INTO has_author_id;
 
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'roomId'
+          AND information_schema.columns.column_name = 'room_id'
       ) INTO has_room_id;
 
       -- Skip if no entity-related columns
@@ -575,20 +575,20 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       END IF;
 
       -- Determine which column to use for entity filtering
-      -- Priority: roomId (shared access via participants) > entityId/authorId (direct access)
+      -- Priority: room_id (shared access via participants) > entity_id/author_id (direct access)
       --
-      -- SPECIAL CASE: participants table must use direct entityId to avoid infinite recursion
+      -- SPECIAL CASE: participants table must use direct entity_id to avoid infinite recursion
       IF table_name = 'participants' AND has_entity_id THEN
-        entity_column_name := 'entityId';
+        entity_column_name := 'entity_id';
         room_column_name := NULL;
       ELSIF has_room_id THEN
-        room_column_name := 'roomId';
+        room_column_name := 'room_id';
         entity_column_name := NULL;
       ELSIF has_entity_id THEN
-        entity_column_name := 'entityId';
+        entity_column_name := 'entity_id';
         room_column_name := NULL;
       ELSIF has_author_id THEN
-        entity_column_name := 'authorId';
+        entity_column_name := 'author_id';
         room_column_name := NULL;
       ELSE
         entity_column_name := NULL;
@@ -602,11 +602,11 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       -- Drop existing entity policies if present
       EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- CASE 1: Table has roomId or channelId (shared access via participants)
+      -- CASE 1: Table has room_id (shared access via participants)
       IF room_column_name IS NOT NULL THEN
         -- Determine the corresponding column name in participants table
-        -- If the table has roomId, look for roomId in participants.roomId
-        -- participants table uses: entityId (for participant), roomId (for room)
+        -- If the table has room_id, look for room_id in participants.room_id
+        -- participants table uses: entity_id (for participant), room_id (for room)
         -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
 
         -- Build policy with or without NULL check based on require_entity parameter
@@ -618,21 +618,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.roomId, entity REQUIRED)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
           -- PERMISSIVE MODE: NULL entity_id allows system/admin access
           EXECUTE format('
@@ -641,21 +641,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.roomId, NULL allowed)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.room_id, NULL allowed)', schema_name, table_name, room_column_name;
         END IF;
 
       -- CASE 2: Table has direct entity_id or author_id column
@@ -798,7 +798,7 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       try {
         // Drop entity_isolation_policy if it exists
         await db.execute(
-          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON ${schemaName}.${tableName}`)
+          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON "${schemaName}"."${tableName}"`)
         );
         logger.debug(
           `[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`
