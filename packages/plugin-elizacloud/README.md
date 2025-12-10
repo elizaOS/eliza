@@ -1,6 +1,20 @@
-# ElizaOS Cloud Services Plugin
+# @elizaos/plugin-elizacloud
 
-This plugin provides integration with ElizaOS Cloud's multi-model AI platform, including text generation, image creation, video generation, and more.
+ElizaOS Cloud plugin - Complete AI, storage, and database solution. Provides multi-model inference (GPT-4, Claude, Gemini), embeddings, image generation, transcription, TTS, managed PostgreSQL database, and cloud file storage. **A single plugin that replaces all other AI and database plugins.**
+
+This package is part of the [ElizaOS monorepo](https://github.com/elizaOS/eliza) and is automatically published with each release.
+
+## Installation
+
+```bash
+bun add @elizaos/plugin-elizacloud
+```
+
+Or add it to your character configuration:
+
+```json
+"plugins": ["@elizaos/plugin-elizacloud"]
+```
 
 ## Getting Started
 
@@ -8,13 +22,25 @@ This plugin provides integration with ElizaOS Cloud's multi-model AI platform, i
 
 Visit [https://www.elizacloud.ai/dashboard/api-keys](https://www.elizacloud.ai/dashboard/api-keys) to create your API key. Your key will be in the format: `eliza_xxxxx`
 
-### 2. Add the Plugin
+### 2. Configure Your Environment
 
-Add the plugin to your character configuration:
+Set your API key in `.env`:
 
-```json
-"plugins": ["@elizaos-plugins/plugin-elizacloud"]
+```bash
+ELIZAOS_CLOUD_API_KEY=eliza_your_key_here
+
+# Optional: Enable managed database
+ELIZAOS_CLOUD_DATABASE=true
 ```
+
+### 3. That's It!
+
+When `ELIZAOS_CLOUD_API_KEY` is set, the ElizaOS runtime automatically uses this plugin for:
+- All AI model inference (text, images, audio, embeddings)
+- Database storage (when `ELIZAOS_CLOUD_DATABASE=true`)
+- File storage
+
+No need to configure OpenAI, Anthropic, or other providers separately.
 
 ## Configuration
 
@@ -123,6 +149,17 @@ When `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` is set to `true`, the plugin enables
 ## Features
 
 ElizaOS Cloud provides comprehensive AI capabilities through a unified API:
+
+### Complete AI + Database + Storage
+
+| Feature | Description |
+|---------|-------------|
+| **Multi-Model AI** | GPT-4o, Claude 3.5, Gemini 2.0 - all through one API |
+| **Managed Database** | PostgreSQL provisioned automatically per agent |
+| **Cloud Storage** | File upload/download with credit-based pricing |
+| **Embeddings** | text-embedding-3-small for RAG and memory |
+| **Image Generation** | DALL-E and Gemini image models |
+| **Audio** | Transcription and text-to-speech |
 
 ### Supported Model Types
 
