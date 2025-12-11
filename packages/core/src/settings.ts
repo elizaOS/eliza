@@ -107,11 +107,15 @@ export function encryptStringValue(value: string, salt: string): string {
   // Check if value is already encrypted (has the format "iv:encrypted")
   const parts = value.split(':');
   if (parts.length === 2) {
-    // Try to parse the first part as hex to see if it's already encrypted
-    const possibleIv = BufferUtils.fromHex(parts[0]);
-    if (possibleIv.length === 16) {
-      // Value is likely already encrypted, return as is
-      return value;
+    try {
+      // Try to parse the first part as hex to see if it's already encrypted
+      const possibleIv = BufferUtils.fromHex(parts[0]);
+      if (possibleIv.length === 16) {
+        // Value is likely already encrypted, return as is
+        return value;
+      }
+    } catch {
+      // Not a valid hex string, proceed with encryption
     }
   }
 
