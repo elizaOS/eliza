@@ -199,7 +199,7 @@ export function createTask(title: string, fn: () => Promise<void | string>) {
  * Run multiple tasks with clack.tasks()
  */
 export async function runTasks(
-  tasks: Array<{ title: string; task: () => Promise<void | string> }>
+  tasks: Array<{ title: string; task: () => Promise<void> | Promise<string> }>
 ): Promise<void> {
   await clack.tasks(tasks);
 }

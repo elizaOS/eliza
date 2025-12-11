@@ -15,7 +15,7 @@ const MatrixAxisSchema = z.object({
    * A list of values to be substituted for the specified parameter.
    * Values can be of any type (string, number, boolean, object, array, null).
    */
-  values: z.array(z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(z.unknown()), z.array(z.unknown())])).min(1, 'Values array must contain at least 1 element'),
+  values: z.array(z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(z.string(), z.unknown()), z.array(z.unknown())])).min(1, 'Values array must contain at least 1 element'),
 });
 
 /**

@@ -455,13 +455,13 @@ export function applyParameterOverrides(baseScenario: Record<string, unknown>, o
           if (segment >= current.length || segment < 0) {
             throw new Error(`Array index out of bounds: ${segment} in path: ${override.path}`);
           }
-          current = current[segment];
+          current = current[segment] as Record<string, unknown>;
         } else {
           // Object property
           if (!current || typeof current !== 'object' || !(segment in current)) {
             throw new Error(`Invalid parameter path: ${override.path}`);
           }
-          current = current[segment];
+          current = (current as Record<string, unknown>)[segment] as Record<string, unknown>;
         }
       }
     } catch (error) {
