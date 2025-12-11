@@ -23,7 +23,8 @@ import { MatrixCombination } from './matrix-types';
 import { MatrixConfig } from './matrix-schema';
 import { IAgentRuntime, UUID, logger } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
-import { Scenario } from './schema';
+import { Scenario, EnhancedEvaluationResult } from './schema';
+import { ExecutionResult } from './providers';
 
 /**
  * Results from executing a single matrix run.
@@ -399,7 +400,6 @@ export async function executeMatrixRuns(
       try {
         await waitForCombinationCompletion(combination.id, activeRuns);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
         // Continue with next combination even if this one failed
         if (!continueOnFailure) {
           throw error;
@@ -516,7 +516,7 @@ async function executeIndividualRun(
       const metrics = {
         memoryUsage: resourcesAfter.memoryUsage - resourcesBefore.memoryUsage,
         diskUsage: await calculateRunDiskUsage(context.tempDir),
-        tokenCount: (scenarioResult as MatrixRunResult & { tokenCount?: number }).tokenCount || 0,
+        tokenCount: scenarioResult.tokenCount || 0,
         cpuUsage: resourcesAfter.cpuUsage,
       };
 
@@ -583,6 +583,25 @@ async function executeIndividualRun(
 }
 
 /**
+ * Result of executing a scenario with evaluations.
+ */
+interface ScenarioExecutionResult {
+  success: boolean;
+  evaluations: Array<
+    | EnhancedEvaluationResult
+    | {
+        evaluator_type: string;
+        success: boolean;
+        summary: string;
+        details: { step: number; error: string };
+      }
+  >;
+  executionResults: ExecutionResult[];
+  tokenCount: number;
+  duration: number;
+}
+
+/**
  * Executes a scenario with timeout and progress updates using the real scenario runner.
  */
 async function executeScenarioWithTimeout(
@@ -593,7 +612,7 @@ async function executeScenarioWithTimeout(
   sharedServer?: { server: AgentServer; port: number }, // Optional shared server for matrix testing
   runId?: string, // Optional run ID for unique agent naming
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
-): Promise<ExecutionResult> {
+): Promise<ScenarioExecutionResult> {
   return new Promise(async (resolve, reject) => {
     const scenarioStartTime = Date.now();
     const timeoutHandle = setTimeout(() => {
@@ -782,14 +801,6 @@ async function executeScenarioWithTimeout(
 /**
  * Estimates token count from execution results using actual trajectory data.
  */
-interface ExecutionResult {
-  stdout?: string;
-  stderr?: string;
-  trajectory?: Array<{
-    content: string | Record<string, unknown>;
-  }>;
-}
-
 function estimateTokenCount(executionResults: ExecutionResult[]): number {
   let tokenCount = 0;
 
