@@ -10,6 +10,8 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
+  type RouteRequest,
+  type RouteResponse,
   Service,
   type State,
   logger,
@@ -237,7 +239,7 @@ const plugin: Plugin = {
       name: 'helloworld',
       path: '/helloworld',
       type: 'GET',
-      handler: async (_req: any, res: any) => {
+      handler: async (_req: RouteRequest, res: RouteResponse) => {
         // send a response
         res.json({
           message: 'Hello World!',

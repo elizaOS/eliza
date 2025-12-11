@@ -218,6 +218,8 @@ export interface EventPayloadMap {
   [EventType.MESSAGE_RECEIVED]: MessagePayload;
   [EventType.MESSAGE_SENT]: MessagePayload;
   [EventType.MESSAGE_DELETED]: MessagePayload;
+  [EventType.VOICE_MESSAGE_RECEIVED]: MessagePayload;
+  [EventType.VOICE_MESSAGE_SENT]: MessagePayload;
   [EventType.CHANNEL_CLEARED]: ChannelClearedPayload;
   [EventType.REACTION_RECEIVED]: MessagePayload;
   [EventType.POST_GENERATED]: InvokePayload;

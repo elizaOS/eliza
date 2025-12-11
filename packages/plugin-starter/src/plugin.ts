@@ -9,6 +9,8 @@ import type {
   Plugin,
   Provider,
   ProviderResult,
+  RouteRequest,
+  RouteResponse,
   State,
 } from '@elizaos/core';
 import { ModelType, Service, logger } from '@elizaos/core';
@@ -218,7 +220,7 @@ export const starterPlugin: Plugin = {
       name: 'hello-world-route',
       path: '/helloworld',
       type: 'GET',
-      handler: async (_req: any, res: any) => {
+      handler: async (_req: RouteRequest, res: RouteResponse) => {
         // send a response
         res.json({
           message: 'Hello World!',
@@ -229,7 +231,7 @@ export const starterPlugin: Plugin = {
       name: 'current-time-route',
       path: '/api/time',
       type: 'GET',
-      handler: async (_req: any, res: any) => {
+      handler: async (_req: RouteRequest, res: RouteResponse) => {
         // Return current time in various formats
         const now = new Date();
         res.json({
