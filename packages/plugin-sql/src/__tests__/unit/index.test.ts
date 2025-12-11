@@ -27,6 +27,12 @@ describe('SQL Plugin', () => {
       getService: mock(() => {}),
       databaseAdapter: undefined,
       hasElizaOS: mock(() => false),
+      logger: {
+        info: mock(() => {}),
+        debug: mock(() => {}),
+        warn: mock(() => {}),
+        error: mock(() => {}),
+      },
     } as any;
   });
 
@@ -111,8 +117,9 @@ describe('SQL Plugin', () => {
     });
 
     it('should use PGLITE_DATA_DIR when provided', async () => {
+      const customDir = path.join(tempDir, 'custom-pglite');
       mockRuntime.getSetting = mock((key) => {
-        if (key === 'PGLITE_DATA_DIR') return '/custom/pglite';
+        if (key === 'PGLITE_DATA_DIR') return customDir;
         return null;
       });
 
