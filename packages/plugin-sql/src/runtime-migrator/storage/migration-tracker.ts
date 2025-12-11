@@ -52,10 +52,10 @@ export class MigrationTracker {
     created_at: string;
   } | null> {
     const result = await this.db.execute(
-      sql`SELECT id, hash, created_at 
-          FROM migrations._migrations 
-          WHERE plugin_name = ${pluginName} 
-          ORDER BY created_at DESC 
+      sql`SELECT id, hash, created_at
+          FROM migrations._migrations
+          WHERE plugin_name = ${pluginName}
+          ORDER BY created_at DESC
           LIMIT 1`
     );
     interface MigrationRow {

@@ -194,7 +194,7 @@ export class TestServerFixture {
 
     // Restore environment (this will delete the test DB directory)
     if (this.envSnapshot) {
-      teardownTestEnvironment(this.envSnapshot);
+      await teardownTestEnvironment(this.envSnapshot);
       this.envSnapshot = undefined;
     }
 
