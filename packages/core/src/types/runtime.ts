@@ -73,7 +73,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   setSetting(key: string, value: string | boolean | null, secret?: boolean): void;
 
-  getSetting(key: string): string | boolean | null;
+  getSetting(key: string): string | boolean | number | null;
 
   getConversationLength(): number;
 
