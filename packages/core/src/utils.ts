@@ -358,14 +358,18 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
 export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T | null {
   if (!text) return null;
 
-  // First, try to find a specific <response> block (the one we actually want)
-  // Use a more permissive regex to handle cases where there might be multiple XML blocks
-  let xmlBlockMatch = text.match(/<response>([\s\S]*?)<\/response>/);
-  let xmlContent: string;
+  // First, try to find a specific <response> block using linear search (avoids regex ReDoS)
+  let xmlContent: string | null = null;
+  const responseStart = text.indexOf('<response>');
+  if (responseStart !== -1) {
+    const contentStart = responseStart + '<response>'.length;
+    const responseEnd = text.indexOf('</response>', contentStart);
+    if (responseEnd !== -1) {
+      xmlContent = text.slice(contentStart, responseEnd);
+    }
+  }
 
-  if (xmlBlockMatch) {
-    xmlContent = xmlBlockMatch[1];
-  } else {
+  if (!xmlContent) {
     // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
     // This avoids potentially expensive backtracking on crafted inputs
     const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
