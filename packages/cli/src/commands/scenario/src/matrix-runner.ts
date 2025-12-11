@@ -6,6 +6,7 @@
  */
 
 import { MatrixConfig } from './matrix-schema';
+import { Scenario } from './schema';
 import {
   MatrixCombination,
   MatrixConfigRuntime,
