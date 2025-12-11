@@ -591,12 +591,17 @@ export function parseJSONObjectFromText(text: string): Record<string, unknown> |
   const jsonBlockMatch = text.match(jsonBlockPattern);
 
   let jsonData: Record<string, unknown> | null = null;
-  if (jsonBlockMatch) {
-    // Parse the JSON from inside the code block
-    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-  } else {
-    // Try to parse the text directly if it's not in a code block
-    jsonData = JSON.parse(normalizeJsonString(text.trim()));
+  try {
+    if (jsonBlockMatch) {
+      // Parse the JSON from inside the code block
+      jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
+    } else {
+      // Try to parse the text directly if it's not in a code block
+      jsonData = JSON.parse(normalizeJsonString(text.trim()));
+    }
+  } catch {
+    // Return null on parse error
+    return null;
   }
 
   // Ensure we have a non-null object that's not an array

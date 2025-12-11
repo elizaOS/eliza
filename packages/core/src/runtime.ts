@@ -638,7 +638,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  getSetting(key: string): string | boolean | null {
+  getSetting(key: string): string | boolean | number | null {
     const settings = this.character.settings;
     const secrets = this.character.secrets;
     const nestedSecrets =
@@ -651,11 +651,29 @@ export class AgentRuntime implements IAgentRuntime {
         : undefined;
 
     const value = secrets?.[key] || settings?.[key] || nestedSecrets?.[key] || this.settings[key];
-    const stringValue = typeof value === 'string' ? value : undefined;
-    const decryptedValue = stringValue ? decryptSecret(stringValue, getSalt()) : null;
-    if (decryptedValue === 'true') return true;
-    if (decryptedValue === 'false') return false;
-    return decryptedValue || null;
+
+    // Handle each type appropriately
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      // Only decrypt string values
+      const decrypted = decryptSecret(value, getSalt());
+      if (decrypted === 'true') return true;
+      if (decrypted === 'false') return false;
+      return decrypted;
+    }
+
+    return null;
   }
 
   getConversationLength() {

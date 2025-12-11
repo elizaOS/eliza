@@ -210,8 +210,17 @@ export function validateCharacter(data: unknown): CharacterValidationResult {
  * @returns Validation result with success flag and either data or error
  */
 export function parseAndValidateCharacter(jsonString: string): CharacterValidationResult {
-  const parsed = JSON.parse(jsonString);
-  return validateCharacter(parsed);
+  try {
+    const parsed = JSON.parse(jsonString);
+    return validateCharacter(parsed);
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        message: `Invalid JSON: ${error instanceof Error ? error.message : 'Unknown JSON parsing error'}`,
+      },
+    };
+  }
 }
 
 /**
