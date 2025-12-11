@@ -670,8 +670,19 @@ export class ElizaOS extends EventTarget implements IElizaOS {
   ): Promise<Array<{ agentId: UUID; result: SendMessageResult; error?: Error }>> {
     const results = await Promise.all(
       messages.map(async ({ agentId, message, options }) => {
-        const result = await this.sendMessage(agentId, message, options);
-        return { agentId, result };
+        try {
+          const result = await this.sendMessage(agentId, message, options);
+          return { agentId, result };
+        } catch (error) {
+          return {
+            agentId,
+            result: {
+              messageId: (message.id || '') as UUID,
+              userMessage: message as Memory,
+            },
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+        }
       })
     );
 
