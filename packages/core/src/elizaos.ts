@@ -570,8 +570,14 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Fire and forget with callback
 
       const callback = async (content: Content) => {
-        if (options.onResponse) {
-          await options.onResponse(content);
+        try {
+          if (options.onResponse) {
+            await options.onResponse(content);
+          }
+        } catch (error) {
+          if (options.onError) {
+            await options.onError(error instanceof Error ? error : new Error(String(error)));
+          }
         }
         return [];
       };
@@ -579,9 +585,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Wrap message handling with Entity RLS context
       handleMessageWithEntityContext(() =>
         runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
-      ).then(() => {
-        if (options.onComplete) options.onComplete();
-      });
+      )
+        .then(() => {
+          if (options.onComplete) options.onComplete();
+        })
+        .catch((error: Error) => {
+          if (options.onError) options.onError(error);
+        });
 
       // Emit event for tracking
       this.dispatchEvent(
