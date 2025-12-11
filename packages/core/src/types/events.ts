@@ -101,7 +101,7 @@ export interface EntityPayload extends EventPayload {
   worldId?: UUID;
   roomId?: UUID;
   metadata?: {
-    orginalId: string;
+    originalId: string;
     username: string;
     displayName?: string;
     [key: string]: unknown;
