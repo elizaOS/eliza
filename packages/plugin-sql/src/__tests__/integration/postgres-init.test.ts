@@ -20,6 +20,12 @@ describe('PostgreSQL Initialization Tests', () => {
       registerService: mock(),
       getService: mock(),
       hasElizaOS: mock(() => false),
+      logger: {
+        info: mock(() => {}),
+        debug: mock(() => {}),
+        warn: mock(() => {}),
+        error: mock(() => {}),
+      },
     } as any;
   });
 
