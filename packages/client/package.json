@@ -127,7 +127,6 @@
     "@rollup/plugin-inject": "^5.0.5",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/cypress": "^10.0.3",
-    "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/react-hooks": "^8.0.1",
     "@types/cypress": "^1.1.6",

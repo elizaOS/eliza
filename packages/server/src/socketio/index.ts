@@ -344,7 +344,7 @@ export class SocketIORouter {
           worldId: finalMessageServerId, // Use messageServerId as worldId identifier
           roomId: channelId as UUID,
           metadata: {
-            orginalId: entityId as string,
+            originalId: entityId as string,
             username: username || entityId as string,
             displayName,
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
@@ -413,7 +413,7 @@ export class SocketIORouter {
             worldId: messageServerId, // Use messageServerId as worldId identifier
             roomId: validChannelId,
             metadata: {
-              orginalId: senderId as string,
+              originalId: senderId as string,
               username: senderName || senderId as string,
               displayName: senderName,
               type: ChannelType.DM,
