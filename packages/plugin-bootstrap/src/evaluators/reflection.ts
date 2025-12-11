@@ -276,6 +276,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     // Store new facts - filter for valid new facts with claim text
     const newFacts = factsArray.filter(
       (fact): fact is FactXml & { claim: string } =>
+        fact != null &&
         fact.already_known === 'false' &&
         fact.in_bio === 'false' &&
         typeof fact.claim === 'string' &&
