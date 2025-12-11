@@ -916,11 +916,11 @@ export class DefaultMessageService implements IMessageService {
           src: 'service:message',
           parsedXml: parsedXml ? {
             hasThought: !!parsedXml.thought,
-            thoughtPreview: parsedXml.thought?.substring(0, 100),
+            thoughtPreview: typeof parsedXml.thought === 'string' ? parsedXml.thought.substring(0, 100) : null,
             hasActions: !!parsedXml.actions,
             actions: parsedXml.actions,
             hasText: !!parsedXml.text,
-            textPreview: parsedXml.text?.substring(0, 100),
+            textPreview: typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
           } : null,
         },
         'Parsed XML content'
