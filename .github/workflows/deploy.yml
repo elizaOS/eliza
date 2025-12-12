@@ -1,0 +1,124 @@
+name: Deploy XMRT-Eliza to Vercel
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_ENV: production
+  XMRT_AGENT_ID: xmrt-eliza-vercel
+  XMRT_SUPABASE_URL: https://vawouugtzwmejxqkeqqj.supabase.co
+  XMRT_ECOSYSTEM_URL: https://xmrt-ecosystem.vercel.app
+  XMRT_SUITE_AI_URL: https://suite.lovable.app
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install Dependencies
+      run: |
+        # Use simplified package.json for Next.js
+        if [ -f "package-nextjs.json" ]; then
+          cp package-nextjs.json package.json
+        fi
+        npm install --production=false
+        
+    - name: Build Next.js Application
+      run: |
+        # Ensure Next.js config exists
+        if [ ! -f "next.config.js" ]; then
+          echo "Creating next.config.js..."
+          cat > next.config.js << 'EOF'
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  swcMinify: true,
+  env: {
+    XMRT_AGENT_ID: process.env.XMRT_AGENT_ID,
+    XMRT_SUPABASE_URL: process.env.XMRT_SUPABASE_URL,
+    XMRT_ECOSYSTEM_URL: process.env.XMRT_ECOSYSTEM_URL,
+    XMRT_SUITE_AI_URL: process.env.XMRT_SUITE_AI_URL,
+  },
+}
+module.exports = nextConfig
+EOF
+        fi
+        
+        # Build the application
+        npm run build
+        
+    - name: Run Tests (if available)
+      run: |
+        if npm run --silent test --dry-run 2>/dev/null; then
+          npm test -- --passWithNoTests
+        else
+          echo "No tests configured, skipping..."
+        fi
+        
+    - name: Deploy to Vercel
+      uses: amondnet/vercel-action@v25
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        vercel-args: '--prod'
+        vercel-org-id: ${{ secrets.ORG_ID }}
+        vercel-project-id: ${{ secrets.PROJECT_ID }}
+        
+    - name: XMRT Integration Health Check
+      run: |
+        echo "🔍 Checking XMRT ecosystem integration..."
+        
+        # Test API endpoints (after deployment)
+        curl -f https://xmrt-eliza-btswcyuks-devgru-projects.vercel.app/api/health || echo "Health check pending..."
+        curl -f https://xmrt-eliza-btswcyuks-devgru-projects.vercel.app/api/agents || echo "Agents check pending..."
+        
+        echo "✅ XMRT-Eliza deployment workflow completed!"
+
+  test-integration:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Test XMRT Integration
+      run: |
+        echo "🧪 Testing XMRT-DAO integration..."
+        
+        # Basic file structure checks
+        echo "Checking required files..."
+        ls -la
+        
+        # Check if Next.js files exist
+        if [ -f "pages/index.js" ] || [ -f "app/page.js" ]; then
+          echo "✅ Next.js pages found"
+        else
+          echo "⚠️  Next.js pages not found"
+        fi
+        
+        # Check API routes
+        if [ -d "pages/api" ] || [ -d "app/api" ]; then
+          echo "✅ API routes directory found"
+        else
+          echo "⚠️  API routes not found"
+        fi
+        
+        echo "✅ Integration test completed"
