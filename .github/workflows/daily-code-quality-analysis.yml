@@ -1,3 +1,23 @@
+# TEMPORARILY DISABLED - Workflow causing deployment issues
+# Original workflow preserved below for reference
+# 
+# To re-enable: remove the 'if: false' condition below
+
+name: DISABLED - daily-code-quality-analysis.yml
+
+on:
+  workflow_dispatch: # Manual trigger only
+
+jobs:
+  disabled:
+    if: false  # Workflow is disabled
+    runs-on: ubuntu-latest
+    steps:
+      - name: Workflow Disabled
+        run: echo "This workflow has been temporarily disabled for deployment fixes"
+
+# ORIGINAL WORKFLOW CONTENT (PRESERVED FOR REFERENCE):
+# ================================================================
 name: Daily Code Quality Analysis
 
 on:
@@ -815,3 +835,4 @@ jobs:
         run: |
           echo "::notice title=Analysis Complete::Code quality analysis completed successfully. Check the workflow summary for results."
           echo "Analysis completed using existing knip.config.ts configuration"
+
