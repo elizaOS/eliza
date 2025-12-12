@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  xmrt-eliza:
+    build: .
+    container_name: xmrt-eliza
+    restart: unless-stopped
+    
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      
+      # XMRT Ecosystem Configuration
+      - XMRT_SUPABASE_URL=${XMRT_SUPABASE_URL}
+      - XMRT_SUPABASE_KEY=${XMRT_SUPABASE_KEY}
+      - XMRT_ECOSYSTEM_API_URL=${XMRT_ECOSYSTEM_API_URL}
+      - XMRT_SUITE_AI_URL=${XMRT_SUITE_AI_URL}
+      
+      # Agent Configuration
+      - XMRT_AGENT_ID=${XMRT_AGENT_ID:-primary-eliza}
+      - XMRT_COUNCIL_MODE=${XMRT_COUNCIL_MODE:-true}
+      - XMRT_ENABLE_REALTIME=${XMRT_ENABLE_REALTIME:-true}
+      
+      # AI Configuration
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+    
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    
+    ports:
+      - "3000:3000"
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    networks:
+      - xmrt-network
+
+  # Optional: Redis for caching and session management
+  redis:
+    image: redis:7-alpine
+    container_name: xmrt-redis
+    restart: unless-stopped
+    
+    volumes:
+      - redis_data:/data
+    
+    networks:
+      - xmrt-network
+
+  # Optional: Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: xmrt-prometheus
+    restart: unless-stopped
+    
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    
+    ports:
+      - "9090:9090"
+    
+    networks:
+      - xmrt-network
+
+volumes:
+  redis_data:
+  prometheus_data:
+
+networks:
+  xmrt-network:
+    driver: bridge
