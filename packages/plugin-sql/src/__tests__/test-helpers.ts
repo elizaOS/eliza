@@ -126,14 +126,17 @@ export async function createIsolatedTestDatabase(
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use public schema, migrations run once, data truncated between tests
-    // This is cleaner than schema isolation because:
-    // 1. RuntimeMigrator generates SQL with explicit "public" schema
-    // 2. Migration tracking uses global "migrations" schema
-    // 3. Truncating data is faster than recreating tables
-    console.log(`[TEST] Using PostgreSQL with shared public schema`);
+    // PostgreSQL - use superuser for clean slate
+    // Transform the URL to use postgres:postgres credentials for full permissions
+    const originalUrl = process.env.POSTGRES_URL;
+    const url = new URL(originalUrl);
+    url.username = 'postgres';
+    url.password = 'postgres';
+    const superuserUrl = url.toString();
 
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    console.log(`[TEST] Using PostgreSQL with clean slate for: ${testId}`);
+
+    const connectionManager = new PostgresConnectionManager(superuserUrl);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
@@ -146,7 +149,19 @@ export async function createIsolatedTestDatabase(
 
     const db = connectionManager.getDatabase();
 
-    // Run migrations (will be skipped if already done - that's expected and correct)
+    // Drop custom schemas and all tables for clean slate
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+    await db.execute(sql.raw(`
+      DO $$ DECLARE
+        r RECORD;
+      BEGIN
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+          EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+      END $$;
+    `));
+
+    // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
@@ -160,19 +175,19 @@ export async function createIsolatedTestDatabase(
 
     const cleanup = async () => {
       try {
-        // Truncate data tables in correct order (respecting foreign key constraints)
-        // Use CASCADE to handle remaining FK dependencies
-        // Don't touch migrations.* tables - they track schema state
+        // Clean up everything for next test
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
         await db.execute(sql.raw(`
-          TRUNCATE TABLE
-            embeddings, memories, participants, channel_participants, channels,
-            messages, rooms, worlds, entities, relationships, components,
-            cache, logs, tasks, message_server_agents, message_servers, agents
-          CASCADE
+          DO $$ DECLARE
+            r RECORD;
+          BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+              EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+          END $$;
         `));
       } catch (error) {
-        // Some tables might not exist yet, that's OK
-        console.warn(`[TEST] Truncate warning (OK if tables don't exist):`, error);
+        console.warn(`[TEST] Cleanup warning:`, error);
       }
       await adapter.close();
     };
@@ -238,15 +253,26 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use public schema (RuntimeMigrator is designed for public schema)
-    // Clean up any existing migration tables before starting
-    console.log(`[MIGRATION TEST] Using PostgreSQL public schema for: ${testId}`);
+    // PostgreSQL - use superuser for migration tests (needs DROP SCHEMA permissions)
+    // Transform the URL to use postgres:postgres credentials
+    const originalUrl = process.env.POSTGRES_URL;
+    const url = new URL(originalUrl);
+    url.username = 'postgres';
+    url.password = 'postgres';
+    const superuserUrl = url.toString();
 
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    console.log(`[MIGRATION TEST] Using PostgreSQL superuser for: ${testId}`);
+
+    const connectionManager = new PostgresConnectionManager(superuserUrl);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     const db = connectionManager.getDatabase();
+
+    // Drop custom schemas first (like polymarket, migrations)
+    // These are created by plugin tests and need to be cleaned
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
 
     // Drop ALL tables in public schema for clean slate
     // This ensures each test starts fresh without leftover state from previous tests
@@ -263,12 +289,15 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
 
     const cleanup = async () => {
       try {
-        // Clean up migration tables after test
+        // Clean up custom schemas
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+        // Clean up migration tables in public schema
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
       } catch (error) {
-        console.error(`[MIGRATION TEST] Failed to cleanup migration tables:`, error);
+        console.error(`[MIGRATION TEST] Failed to cleanup:`, error);
       }
       await adapter.close();
     };

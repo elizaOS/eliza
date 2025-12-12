@@ -266,7 +266,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     `);
 
     console.log(`\n📊 Final migration count: ${finalMigrationCount.rows[0]?.count}`);
-    expect(finalMigrationCount.rows[0]?.count).toBe(2);
+    expect(Number(finalMigrationCount.rows[0]?.count)).toBe(2);
 
     // Final summary
     console.log('\n' + '='.repeat(80));
