@@ -229,7 +229,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       );
 
       // Should only have 1 migration record
-      expect(coreMigrations.rows[0]?.count).toBe(1);
+      expect(Number(coreMigrations.rows[0]?.count)).toBe(1);
 
       // Try to migrate plugin schema again
       const pluginResult = await migrator.migrate('polymarket', testPolymarketSchema, {
@@ -237,12 +237,12 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       });
 
       const pluginMigrations = await db.execute(
-        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations
                  WHERE plugin_name = 'polymarket'`)
       );
 
       // Should only have 1 migration record
-      expect(pluginMigrations.rows[0]?.count).toBe(1);
+      expect(Number(pluginMigrations.rows[0]?.count)).toBe(1);
     });
   });
 

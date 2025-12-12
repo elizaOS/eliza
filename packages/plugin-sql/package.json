@@ -84,6 +84,7 @@
     "test:integration": "bash scripts/run-integration-tests.sh",
     "test:integration:postgres": "bash scripts/run-integration-tests.sh --postgres",
     "test:migration": "bun test src/__tests__/migration/",
+    "test:migration:postgres": "bun test src/__tests__/migration/ --serial",
     "test:e2e:upgrade": "bash src/__tests__/migration/e2e/run-upgrade-test.sh",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
