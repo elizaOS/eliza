@@ -65,7 +65,8 @@ jobs:
           POSTGRES_URL: postgresql://eliza_test:test123@localhost:5433/eliza_test
         run: |
           bun run test:integration
-          bun run test:migration
+          # Run migration tests sequentially - they share the public schema
+          bun test src/__tests__/migration/ --serial
 
   # TODO: Remove this job once migration system is stable
   # This tests upgrading from older Eliza versions (1.6.x) to current
