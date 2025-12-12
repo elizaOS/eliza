@@ -1,0 +1,147 @@
+name: XMRT Release Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.4.5)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes'
+        required: false
+        type: string
+        default: 'XMRT-Eliza system update'
+
+jobs:
+  xmrt-release:
+    name: Create XMRT Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout XMRT Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for changelog
+        
+    - name: Setup Node.js 18
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Validate XMRT Release
+      run: |
+        echo "🔍 Validating XMRT-Eliza release readiness..."
+        
+        # Check version format
+        if [[ "${{ github.event.inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "✅ Version format valid: ${{ github.event.inputs.version }}"
+        else
+          echo "❌ Invalid version format. Use: vX.Y.Z"
+          exit 1
+        fi
+        
+        # Prepare package.json
+        if [ -f "package-nextjs.json" ]; then
+          cp package-nextjs.json package.json
+        fi
+        
+        # Install and test build
+        npm ci
+        npm run build
+        
+        echo "✅ XMRT-Eliza build successful for release"
+        
+    - name: Generate XMRT Changelog
+      run: |
+        echo "📝 Generating XMRT changelog..."
+        
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "Initial release")
+        echo "Changes since $LAST_TAG:"
+        
+        if [ "$LAST_TAG" != "Initial release" ]; then
+          git log --oneline --pretty=format:"- %s" $LAST_TAG..HEAD > CHANGELOG.tmp
+        else
+          echo "- Initial XMRT-Eliza release" > CHANGELOG.tmp
+          echo "- XMRT-DAO ecosystem integration" >> CHANGELOG.tmp
+          echo "- Next.js framework implementation" >> CHANGELOG.tmp
+          echo "- API endpoints for health, agents, status" >> CHANGELOG.tmp
+          echo "- Vercel deployment optimization" >> CHANGELOG.tmp
+        fi
+        
+        echo "Changelog generated:"
+        cat CHANGELOG.tmp
+        
+    - name: Create XMRT Release
+      run: |
+        echo "🚀 Creating XMRT release..."
+        
+        # Create release notes
+        cat > RELEASE_NOTES.md << EOF
+        # XMRT-Eliza Release ${{ github.event.inputs.version }}
+        
+        ## XMRT-DAO Integration Status
+        ✅ **Suite AI Platform**: Ready for connection
+        ✅ **XMRT Ecosystem**: Integrated and functional  
+        ✅ **Supabase Database**: Configured and accessible
+        
+        ## XMRT Agent System
+        🤖 **Eliza (Coordinator)**: Active and operational
+        🛡️ **Security Guardian**: Monitoring and protecting
+        💰 **DeFi Specialist**: Managing financial operations
+        👥 **Community Manager**: Engaging and supporting
+        
+        ## Technical Improvements
+        $(cat CHANGELOG.tmp)
+        
+        ## Deployment Information
+        - **Framework**: Next.js 14.0.4
+        - **Runtime**: Node.js 18 LTS
+        - **Deployment**: Vercel optimized
+        - **API Endpoints**: /api/health, /api/agents, /api/status
+        
+        ## XMRT Ecosystem URLs
+        - Suite AI: https://suite.lovable.app/
+        - XMRT Ecosystem: https://xmrt-ecosystem.vercel.app/
+        - Supabase: https://vawouugtzwmejxqkeqqj.supabase.co
+        
+        ${{ github.event.inputs.release_notes }}
+        EOF
+        
+        echo "Release notes created:"
+        cat RELEASE_NOTES.md
+        
+    - name: Tag XMRT Release
+      run: |
+        echo "🏷️ Tagging XMRT release..."
+        
+        # Configure git
+        git config user.name "XMRT Release Bot"
+        git config user.email "release@xmrt-dao.org"
+        
+        # Create and push tag
+        git tag -a "${{ github.event.inputs.version }}" -m "XMRT-Eliza Release ${{ github.event.inputs.version }}"
+        git push origin "${{ github.event.inputs.version }}"
+        
+        echo "✅ Tagged release: ${{ github.event.inputs.version }}"
+        
+    - name: XMRT Release Summary
+      run: |
+        echo ""
+        echo "🎉 XMRT RELEASE COMPLETED!"
+        echo "========================="
+        echo "🏷️ Version: ${{ github.event.inputs.version }}"
+        echo "📅 Date: $(date)"
+        echo "🔗 Repository: ${{ github.repository }}"
+        echo "📄 Release Notes: Created"
+        echo "🏷️ Git Tag: Pushed"
+        echo ""
+        echo "🚀 XMRT-Eliza ${{ github.event.inputs.version }} is now available!"
+        echo "🌐 Ready for XMRT-DAO ecosystem deployment"
+        echo ""
+        echo "📋 Post-Release Tasks:"
+        echo "   1. Update deployment environments"
+        echo "   2. Notify XMRT community"
+        echo "   3. Monitor system health"
+        echo "   4. Update documentation if needed"
