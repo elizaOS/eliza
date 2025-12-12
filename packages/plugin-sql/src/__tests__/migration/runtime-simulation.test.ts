@@ -4,7 +4,7 @@ import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDatabase } from '../../types';
 import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
 import * as coreSchema from '../../schema';
-import { testPolymarketSchema } from '../plugin-schema/test-plugin-schema';
+import { testPolymarketSchema } from '../fixtures/test-plugin-schema';
 
 describe('Runtime Simulation - Full Migration Flow', () => {
   let db: DrizzleDatabase;

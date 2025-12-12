@@ -66,3 +66,22 @@ jobs:
         run: |
           bun run test:integration
           bun run test:migration
+
+  # TODO: Remove this job once migration system is stable
+  # This tests upgrading from older Eliza versions (1.6.x) to current
+  e2e-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: bun install && bun run build
+      - name: E2E Upgrade Test
+        working-directory: ./packages/plugin-sql
+        run: bun run test:e2e:upgrade
