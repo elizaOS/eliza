@@ -54,7 +54,7 @@ start_postgres() {
         if docker exec plugin-sql-test-postgres pg_isready -U postgres > /dev/null 2>&1; then
             echo "✅ PostgreSQL is ready"
             POSTGRES_STARTED=true
-            export POSTGRES_URL="postgresql://eliza_test:eliza_test_password@localhost:5432/eliza_test"
+            export POSTGRES_URL="postgresql://eliza_test:test123@localhost:5432/eliza_test"
             return 0
         fi
         echo -n "."

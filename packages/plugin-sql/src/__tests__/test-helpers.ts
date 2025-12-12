@@ -126,9 +126,12 @@ export async function createIsolatedTestDatabase(
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use unique schema per test
-    const schemaName = `test_${testId}_${Date.now()}`;
-    console.log(`[TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+    // PostgreSQL - use public schema, migrations run once, data truncated between tests
+    // This is cleaner than schema isolation because:
+    // 1. RuntimeMigrator generates SQL with explicit "public" schema
+    // 2. Migration tracking uses global "migrations" schema
+    // 3. Truncating data is faster than recreating tables
+    console.log(`[TEST] Using PostgreSQL with shared public schema`);
 
     const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
@@ -143,12 +146,7 @@ export async function createIsolatedTestDatabase(
 
     const db = connectionManager.getDatabase();
 
-    // Create isolated schema
-    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
-    // Include public in search path so we can access the vector extension
-    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
-
-    // Run migrations in isolated schema
+    // Run migrations (will be skipped if already done - that's expected and correct)
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
@@ -162,9 +160,19 @@ export async function createIsolatedTestDatabase(
 
     const cleanup = async () => {
       try {
-        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+        // Truncate data tables in correct order (respecting foreign key constraints)
+        // Use CASCADE to handle remaining FK dependencies
+        // Don't touch migrations.* tables - they track schema state
+        await db.execute(sql.raw(`
+          TRUNCATE TABLE
+            embeddings, memories, participants, channel_participants, channels,
+            messages, rooms, worlds, entities, relationships, components,
+            cache, logs, tasks, message_server_agents, message_servers, agents
+          CASCADE
+        `));
       } catch (error) {
-        console.error(`[TEST] Failed to drop schema ${schemaName}:`, error);
+        // Some tables might not exist yet, that's OK
+        console.warn(`[TEST] Truncate warning (OK if tables don't exist):`, error);
       }
       await adapter.close();
     };
