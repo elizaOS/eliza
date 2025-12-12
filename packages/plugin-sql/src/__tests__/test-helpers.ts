@@ -238,9 +238,9 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use unique schema per test
-    const schemaName = `test_migration_${testId}_${Date.now()}`;
-    console.log(`[MIGRATION TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+    // PostgreSQL - use public schema (RuntimeMigrator is designed for public schema)
+    // Clean up any existing migration tables before starting
+    console.log(`[MIGRATION TEST] Using PostgreSQL public schema for: ${testId}`);
 
     const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
@@ -248,18 +248,27 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
 
     const db = connectionManager.getDatabase();
 
-    // Create isolated schema
-    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
-    // Include public in search path so we can access the vector extension
-    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
+    // Drop ALL tables in public schema for clean slate
+    // This ensures each test starts fresh without leftover state from previous tests
+    // WARNING: This is destructive - only use for testing!
+    await db.execute(sql.raw(`
+      DO $$ DECLARE
+        r RECORD;
+      BEGIN
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+          EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+      END $$;
+    `));
 
     const cleanup = async () => {
       try {
-        // Reset search path before dropping schema
-        await db.execute(sql.raw(`SET search_path TO public`));
-        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+        // Clean up migration tables after test
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
       } catch (error) {
-        console.error(`[MIGRATION TEST] Failed to drop schema ${schemaName}:`, error);
+        console.error(`[MIGRATION TEST] Failed to cleanup migration tables:`, error);
       }
       await adapter.close();
     };
