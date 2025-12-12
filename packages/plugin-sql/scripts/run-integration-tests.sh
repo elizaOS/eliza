@@ -138,6 +138,28 @@ run_batch() {
     sleep 1
 }
 
+# Run tests sequentially (one file at a time) - needed for RLS tests
+# where rls-entity.test.ts must complete before others run
+run_sequential() {
+    local batch_name=$1
+    shift
+    local tests=("$@")
+
+    echo ""
+    echo "📦 Running: $batch_name (sequential)"
+
+    for test_file in "${tests[@]}"; do
+        echo "   → $(basename "$test_file")"
+        if ! bun test "$test_file" --timeout=120000; then
+            echo "❌ $batch_name failed at $test_file"
+            return 1
+        fi
+    done
+
+    echo "✅ $batch_name passed"
+    sleep 1
+}
+
 echo "🧪 Running plugin-sql integration tests"
 if [ "$USE_POSTGRES" = true ]; then
     echo "   Mode: PGLite + PostgreSQL"
@@ -166,7 +188,9 @@ if [ "$USE_POSTGRES" = true ]; then
 
     if start_postgres; then
         run_batch "PostgreSQL Adapter Tests" "${BATCH_POSTGRES[@]}" || OVERALL_SUCCESS=false
-        run_batch "RLS Tests" "${BATCH_RLS[@]}" || OVERALL_SUCCESS=false
+        # RLS tests must run sequentially - rls-entity.test.ts creates schema and installs RLS
+        # that other RLS tests depend on
+        run_sequential "RLS Tests" "${BATCH_RLS[@]}" || OVERALL_SUCCESS=false
     else
         OVERALL_SUCCESS=false
     fi
