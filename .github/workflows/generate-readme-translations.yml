@@ -1,4 +1,19 @@
-name: Generate Readme Translations
+# EMERGENCY DISABLED - STOP EMAIL NOTIFICATIONS
+# This workflow has been emergency disabled to stop failure email spam
+# Disabled on: $(date)
+# Reason: Preventing continuous failure notifications
+
+name: "EMERGENCY_DISABLED - Generate Readme"
+
+# COMPLETELY DISABLE ALL TRIGGERS
+on: []
+
+# NO JOBS WILL RUN
+jobs: {}
+
+# ORIGINAL WORKFLOW PRESERVED BELOW FOR REFERENCE:
+# ================================================================
+# # ORIGINAL name: Generate Readme Translations
 on:
   push:
     branches:
@@ -11,28 +26,28 @@ jobs:
       matrix:
         language:
           [
-            { code: 'CN', name: 'Chinese' },
-            { code: 'DE', name: 'German' },
-            { code: 'ES', name: 'Spanish' },
-            { code: 'FR', name: 'French' },
-            { code: 'HE', name: 'Hebrew' },
-            { code: 'IT', name: 'Italian' },
-            { code: 'JA', name: 'Japanese' },
-            { code: 'KOR', name: 'Korean' },
-            { code: 'PTBR', name: 'Portuguese (Brazil)' },
-            { code: 'RU', name: 'Russian' },
-            { code: 'TH', name: 'Thai' },
-            { code: 'TR', name: 'Turkish' },
-            { code: 'VI', name: 'Vietnamese' },
-            { code: 'AR', name: 'Arabic' },
-            { code: 'RS', name: 'Srpski' },
-            { code: 'TG', name: 'Tagalog' },
-            { code: 'PL', name: 'Polski' },
-            { code: 'HU', name: 'Hungarian' },
-            { code: 'FA', name: 'Persian' },
-            { code: 'RO', name: 'Romanian' },
-            { code: 'GR', name: 'Greek' },
-            { code: 'NL', name: 'Dutch' },
+            { code: 'CN', # ORIGINAL name: 'Chinese' },
+            { code: 'DE', # ORIGINAL name: 'German' },
+            { code: 'ES', # ORIGINAL name: 'Spanish' },
+            { code: 'FR', # ORIGINAL name: 'French' },
+            { code: 'HE', # ORIGINAL name: 'Hebrew' },
+            { code: 'IT', # ORIGINAL name: 'Italian' },
+            { code: 'JA', # ORIGINAL name: 'Japanese' },
+            { code: 'KOR', # ORIGINAL name: 'Korean' },
+            { code: 'PTBR', # ORIGINAL name: 'Portuguese (Brazil)' },
+            { code: 'RU', # ORIGINAL name: 'Russian' },
+            { code: 'TH', # ORIGINAL name: 'Thai' },
+            { code: 'TR', # ORIGINAL name: 'Turkish' },
+            { code: 'VI', # ORIGINAL name: 'Vietnamese' },
+            { code: 'AR', # ORIGINAL name: 'Arabic' },
+            { code: 'RS', # ORIGINAL name: 'Srpski' },
+            { code: 'TG', # ORIGINAL name: 'Tagalog' },
+            { code: 'PL', # ORIGINAL name: 'Polski' },
+            { code: 'HU', # ORIGINAL name: 'Hungarian' },
+            { code: 'FA', # ORIGINAL name: 'Persian' },
+            { code: 'RO', # ORIGINAL name: 'Romanian' },
+            { code: 'GR', # ORIGINAL name: 'Greek' },
+            { code: 'NL', # ORIGINAL name: 'Dutch' },
           ]
     permissions:
       contents: write
@@ -42,7 +57,7 @@ jobs:
           ref: main
           token: ${{ secrets.GH_TOKEN }}
 
-      - name: Translate to ${{ matrix.language.name }}
+      - # ORIGINAL name: Translate to ${{ matrix.language.name }}
         uses: 0xjord4n/aixion@v1.2.1
         id: aixion
         with:
@@ -75,10 +90,11 @@ jobs:
           ref: main
           token: ${{ secrets.GH_TOKEN }}
 
-      - name: Commit all translations
+      - # ORIGINAL name: Commit all translations
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'chore: update all README translations'
           branch: main
           file_pattern: 'README_*.md'
           commit_author: 'GitHub Action <actions@github.com>'
+
