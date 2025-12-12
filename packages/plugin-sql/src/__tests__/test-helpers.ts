@@ -33,9 +33,15 @@ export async function createTestDatabase(
   cleanup: () => Promise<void>;
 }> {
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL testing
-    console.log('[TEST] Using PostgreSQL for test database');
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    // PostgreSQL testing - use superuser for full permissions
+    // Transform URL to use postgres:postgres credentials
+    const originalUrl = process.env.POSTGRES_URL;
+    const superuserUrl = new URL(originalUrl);
+    superuserUrl.username = 'postgres';
+    superuserUrl.password = 'postgres';
+
+    console.log('[TEST] Using PostgreSQL (superuser) for test database');
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
@@ -126,31 +132,29 @@ export async function createIsolatedTestDatabase(
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use superuser for clean slate
-    // Transform the URL to use postgres:postgres credentials for full permissions
+    // PostgreSQL - use superuser for full control over schema
+    // Transform URL to use postgres:postgres credentials (superuser)
+    // This ensures tests have full permissions to create/drop tables
     const originalUrl = process.env.POSTGRES_URL;
-    const url = new URL(originalUrl);
-    url.username = 'postgres';
-    url.password = 'postgres';
-    const superuserUrl = url.toString();
+    const superuserUrl = new URL(originalUrl);
+    superuserUrl.username = 'postgres';
+    superuserUrl.password = 'postgres';
 
-    console.log(`[TEST] Using PostgreSQL with clean slate for: ${testId}`);
+    console.log(`[TEST] Using PostgreSQL with superuser for: ${testId}`);
 
-    const connectionManager = new PostgresConnectionManager(superuserUrl);
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
-    const runtime = new AgentRuntime({
-      character: { ...mockCharacter, id: undefined },
-      agentId: testAgentId,
-      plugins: [sqlPlugin, ...testPlugins],
-    });
-    runtime.registerDatabaseAdapter(adapter);
-
     const db = connectionManager.getDatabase();
 
-    // Drop custom schemas and all tables for clean slate
+    // Clean up custom schemas and migration tables for fresh start
     await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
+
+    // Drop ALL tables in public schema for clean slate
     await db.execute(sql.raw(`
       DO $$ DECLARE
         r RECORD;
@@ -160,6 +164,13 @@ export async function createIsolatedTestDatabase(
         END LOOP;
       END $$;
     `));
+
+    const runtime = new AgentRuntime({
+      character: { ...mockCharacter, id: undefined },
+      agentId: testAgentId,
+      plugins: [sqlPlugin, ...testPlugins],
+    });
+    runtime.registerDatabaseAdapter(adapter);
 
     // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
@@ -174,21 +185,9 @@ export async function createIsolatedTestDatabase(
     } as any);
 
     const cleanup = async () => {
-      try {
-        // Clean up everything for next test
-        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
-        await db.execute(sql.raw(`
-          DO $$ DECLARE
-            r RECORD;
-          BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-              EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-          END $$;
-        `));
-      } catch (error) {
-        console.warn(`[TEST] Cleanup warning:`, error);
-      }
+      // Just close the connection - don't drop tables
+      // Tables are dropped at the START of each test, not at the end
+      // This ensures tests can run in any order
       await adapter.close();
     };
 
@@ -287,6 +286,12 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
       END $$;
     `));
 
+    // Ensure grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
+    // These must be set at the start of each test to ensure eliza_test can create tables
+    await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
+    await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
+    await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
+
     const cleanup = async () => {
       try {
         // Clean up custom schemas
@@ -296,6 +301,12 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
         await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
+
+        // Restore grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
+        // This is needed because migration tests run as superuser and may affect schema ownership
+        await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
+        await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
+        await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
       } catch (error) {
         console.error(`[MIGRATION TEST] Failed to cleanup:`, error);
       }

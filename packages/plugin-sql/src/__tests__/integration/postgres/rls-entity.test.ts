@@ -53,6 +53,31 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     });
     await setupClient.connect();
 
+    // Clean up from previous tests - drop all tables and schemas for fresh start
+    // Use a superuser connection for cleanup if possible
+    const cleanupUrl = new URL(POSTGRES_URL);
+    cleanupUrl.username = 'postgres';
+    cleanupUrl.password = 'postgres';
+    const cleanupClient = new Client({ connectionString: cleanupUrl.toString() });
+    try {
+      await cleanupClient.connect();
+      await cleanupClient.query(`DROP SCHEMA IF EXISTS migrations CASCADE`);
+      await cleanupClient.query(`
+        DO $$ DECLARE
+          r RECORD;
+        BEGIN
+          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+          END LOOP;
+        END $$;
+      `);
+      console.log('[RLS Test] Cleanup complete using superuser');
+      await cleanupClient.end();
+    } catch (err) {
+      console.log('[RLS Test] Superuser cleanup failed, continuing with eliza_test');
+      try { await cleanupClient.end(); } catch { /* ignore */ }
+    }
+
     // Initialize schema with migrations
     const db = drizzle(setupClient);
     const migrationService = new DatabaseMigrationService();

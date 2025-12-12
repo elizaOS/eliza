@@ -11,9 +11,17 @@ CREATE USER eliza_test WITH PASSWORD 'test123';
 -- GRANT CREATE allows creating schemas (needed for migrations schema)
 GRANT ALL ON DATABASE eliza_test TO eliza_test;
 GRANT CREATE ON DATABASE eliza_test TO eliza_test;
-GRANT ALL ON SCHEMA public TO eliza_test;
 
--- Allow creating tables
+-- PostgreSQL 15+ changed default permissions on public schema
+-- These grants are required for non-superusers to create objects in public schema
+GRANT ALL ON SCHEMA public TO eliza_test;
+GRANT USAGE ON SCHEMA public TO eliza_test;
+GRANT CREATE ON SCHEMA public TO eliza_test;
+
+-- Set default search_path for the user (required for table creation)
+ALTER USER eliza_test SET search_path TO public;
+
+-- Allow creating tables/sequences (applies to objects created by postgres user)
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO eliza_test;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO eliza_test;
 
