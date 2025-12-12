@@ -1,0 +1,19 @@
+{
+  "framework": "nextjs",
+  "buildCommand": "npm install && npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install --production=false",
+  "outputDirectory": ".next",
+  "env": {
+    "NODE_ENV": "production",
+    "XMRT_AGENT_ID": "@xmrt_agent_id",
+    "XMRT_SUPABASE_URL": "@xmrt_supabase_url",
+    "XMRT_ECOSYSTEM_URL": "@xmrt_ecosystem_url",
+    "XMRT_SUITE_AI_URL": "@xmrt_suite_ai_url"
+  },
+  "functions": {
+    "pages/api/**/*.js": {
+      "maxDuration": 30
+    }
+  }
+}
