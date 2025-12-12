@@ -49,16 +49,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '23'
-      - name: Create non-admin user (RLS bypass prevention)
+      - name: Setup PostgreSQL (same as local)
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -p 5433 -U postgres -d eliza_test -c "
-            CREATE USER eliza_test WITH PASSWORD 'eliza_test_password';
-            GRANT ALL ON DATABASE eliza_test TO eliza_test;
-            GRANT ALL ON SCHEMA public TO eliza_test;
-            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO eliza_test;
-            ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO eliza_test;"
+          psql -h localhost -p 5433 -U postgres -d eliza_test -f packages/plugin-sql/scripts/init-test-db.sql
       - run: bun install
       - run: bun run build
       - name: Build plugin-sql
@@ -67,7 +62,7 @@ jobs:
       - name: Tests
         working-directory: ./packages/plugin-sql
         env:
-          POSTGRES_URL: postgresql://eliza_test:eliza_test_password@localhost:5433/eliza_test
+          POSTGRES_URL: postgresql://eliza_test:test123@localhost:5433/eliza_test
         run: |
           bun run test:integration
           bun run test:migration
