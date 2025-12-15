@@ -2144,7 +2144,10 @@ export class AgentRuntime implements IAgentRuntime {
         : Date.now();
 
     // Check if streaming mode is requested
-    const isStreaming = isPlainObject(modelParams) && (modelParams as any).stream === true;
+    const isStreaming =
+      isPlainObject(modelParams) &&
+      'stream' in modelParams &&
+      modelParams.stream === true;
 
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
 
