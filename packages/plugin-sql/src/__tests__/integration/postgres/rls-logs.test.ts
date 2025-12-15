@@ -14,15 +14,21 @@ import { v4 as uuidv4 } from 'uuid';
  * - Logs from shared rooms are visible to all participants
  * - Logs from non-participant rooms are blocked
  * - withEntityContext() is required for log insertion
+ *
+ * NOTE: This test expects rls-entity.test.ts to have run first (same BATCH_RLS),
+ * which creates the schema and installs RLS functions.
+ *
+ * Uses eliza_test user for ALL connections (not superuser) - the application_name
+ * provides server context for RLS.
  */
 
 describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STRICT)', () => {
-  let adminClient: Client;
+  let setupClient: Client; // Setup client with server context
   let aliceClient: Client;
   let bobClient: Client;
 
   const POSTGRES_URL =
-    process.env.POSTGRES_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
+    process.env.POSTGRES_URL || 'postgresql://eliza_test:test123@localhost:5432/eliza_test';
   const serverId = uuidv4();
   const aliceId = uuidv4();
   const bobId = uuidv4();
@@ -32,120 +38,117 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   const bobPrivateRoomId = uuidv4(); // Bob only
 
   beforeAll(async () => {
-    // Admin client (for setup)
-    adminClient = new Client({ connectionString: POSTGRES_URL });
-    await adminClient.connect();
-
-    // Create test user if needed
-    try {
-      await adminClient.query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT FROM pg_user WHERE usename = 'eliza_test') THEN
-            CREATE USER eliza_test WITH PASSWORD 'test123';
-          END IF;
-        END
-        $$;
-      `);
-      await adminClient.query(`GRANT ALL ON SCHEMA public TO eliza_test`);
-      await adminClient.query(`GRANT ALL ON ALL TABLES IN SCHEMA public TO eliza_test`);
-      await adminClient.query(`GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO eliza_test`);
-    } catch (err) {
-      console.warn('[RLS Logs Test] User creation skipped:', err);
-    }
+    // Setup client with server context (for creating test data)
+    setupClient = new Client({
+      connectionString: POSTGRES_URL,
+      application_name: serverId,
+    });
+    await setupClient.connect();
 
     // Alice client with Entity RLS context
-    const aliceUrl = POSTGRES_URL.replace('postgres:postgres', 'eliza_test:test123');
     aliceClient = new Client({
-      connectionString: aliceUrl,
+      connectionString: POSTGRES_URL,
       application_name: serverId,
     });
     await aliceClient.connect();
 
     // Bob client with Entity RLS context
-    const bobUrl = POSTGRES_URL.replace('postgres:postgres', 'eliza_test:test123');
     bobClient = new Client({
-      connectionString: bobUrl,
+      connectionString: POSTGRES_URL,
       application_name: serverId,
     });
     await bobClient.connect();
 
-    // Setup test data
-    await adminClient.query(
+    // Setup test data (with server context via application_name)
+    // servers table has no RLS, so any connection can insert
+    await setupClient.query(
       `INSERT INTO servers (id, created_at, updated_at)
        VALUES ($1, NOW(), NOW())
        ON CONFLICT (id) DO NOTHING`,
       [serverId]
     );
 
-    await adminClient.query(
+    await setupClient.query(
       `INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
        VALUES ($1, 'Log Test Agent', $2, $3, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
       [agentId, `log_test_agent_${serverId.substring(0, 8)}`, serverId]
     );
 
-    await adminClient.query(
-      `INSERT INTO entities (id, agent_id, names, metadata, server_id, created_at)
+    await setupClient.query(
+      `INSERT INTO entities (id, agent_id, names, metadata, created_at)
        VALUES
-         ($1, $3, ARRAY['Alice'], '{}'::jsonb, $4, NOW()),
-         ($2, $3, ARRAY['Bob'], '{}'::jsonb, $4, NOW())
+         ($1, $3, ARRAY['Alice'], '{}'::jsonb, NOW()),
+         ($2, $3, ARRAY['Bob'], '{}'::jsonb, NOW())
        ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names`,
-      [aliceId, bobId, agentId, serverId]
+      [aliceId, bobId, agentId]
     );
 
-    await adminClient.query(
-      `INSERT INTO rooms (id, "agentId", source, type, server_id, created_at)
+    await setupClient.query(
+      `INSERT INTO rooms (id, agent_id, source, type, created_at)
        VALUES
-         ($1, $4, 'test', 'DM', $5, NOW()),
-         ($2, $4, 'test', 'DM', $5, NOW()),
-         ($3, $4, 'test', 'DM', $5, NOW())
+         ($1, $4, 'test', 'DM', NOW()),
+         ($2, $4, 'test', 'DM', NOW()),
+         ($3, $4, 'test', 'DM', NOW())
        ON CONFLICT (id) DO NOTHING`,
-      [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId, agentId, serverId]
+      [sharedRoomId, alicePrivateRoomId, bobPrivateRoomId, agentId]
     );
 
-    // Create participants
+    // Create participants (using snake_case column names)
     // Shared room: Alice only (agents are not participants)
-    await adminClient.query(
-      `INSERT INTO participants ("entityId", "roomId", "agentId", server_id, created_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [aliceId, sharedRoomId, agentId, serverId]
+    await setupClient.query(
+      `INSERT INTO participants (entity_id, room_id, agent_id, created_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [aliceId, sharedRoomId, agentId]
     );
 
     // Alice private room: Alice only
-    await adminClient.query(
-      `INSERT INTO participants ("entityId", "roomId", "agentId", server_id, created_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [aliceId, alicePrivateRoomId, agentId, serverId]
+    await setupClient.query(
+      `INSERT INTO participants (entity_id, room_id, agent_id, created_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [aliceId, alicePrivateRoomId, agentId]
     );
 
     // Bob private room: Bob only
-    await adminClient.query(
-      `INSERT INTO participants ("entityId", "roomId", "agentId", server_id, created_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
-      [bobId, bobPrivateRoomId, agentId, serverId]
+    await setupClient.query(
+      `INSERT INTO participants (entity_id, room_id, agent_id, created_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT DO NOTHING`,
+      [bobId, bobPrivateRoomId, agentId]
     );
 
-    // Create test logs (as admin, bypassing RLS)
+    // Create test logs (using snake_case column names)
+    // Need to use entity context for STRICT RLS tables
+    await setupClient.query('BEGIN');
+    await setupClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
+
     // Log 1: Alice in shared room
-    await adminClient.query(
-      `INSERT INTO logs (id, "entityId", "roomId", type, body, server_id, created_at)
-       VALUES ($1, $2, $3, 'useModel:TEXT_EMBEDDING', '{"model":"ada-002","tokens":100}'::jsonb, $4, NOW())`,
-      [uuidv4(), aliceId, sharedRoomId, serverId]
+    await setupClient.query(
+      `INSERT INTO logs (id, entity_id, room_id, type, body, created_at)
+       VALUES ($1, $2, $3, 'useModel:TEXT_EMBEDDING', '{"model":"ada-002","tokens":100}'::jsonb, NOW())`,
+      [uuidv4(), aliceId, sharedRoomId]
     );
 
     // Log 2: Alice in private room
-    await adminClient.query(
-      `INSERT INTO logs (id, "entityId", "roomId", type, body, server_id, created_at)
-       VALUES ($1, $2, $3, 'useModel:TEXT_LARGE', '{"model":"gpt-4","tokens":500}'::jsonb, $4, NOW())`,
-      [uuidv4(), aliceId, alicePrivateRoomId, serverId]
+    await setupClient.query(
+      `INSERT INTO logs (id, entity_id, room_id, type, body, created_at)
+       VALUES ($1, $2, $3, 'useModel:TEXT_LARGE', '{"model":"gpt-4","tokens":500}'::jsonb, NOW())`,
+      [uuidv4(), aliceId, alicePrivateRoomId]
     );
 
-    await adminClient.query(
-      `INSERT INTO logs (id, "entityId", "roomId", type, body, server_id, created_at)
-       VALUES ($1, $2, $3, 'useModel:TEXT_EMBEDDING', '{"model":"ada-002","tokens":50}'::jsonb, $4, NOW())`,
-      [uuidv4(), bobId, bobPrivateRoomId, serverId]
+    await setupClient.query('COMMIT');
+
+    // Bob's log (with Bob's entity context)
+    await setupClient.query('BEGIN');
+    await setupClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
+    await setupClient.query(
+      `INSERT INTO logs (id, entity_id, room_id, type, body, created_at)
+       VALUES ($1, $2, $3, 'useModel:TEXT_EMBEDDING', '{"model":"ada-002","tokens":50}'::jsonb, NOW())`,
+      [uuidv4(), bobId, bobPrivateRoomId]
     );
+    await setupClient.query('COMMIT');
 
     console.log('[RLS Logs Test] Test data created:', {
       aliceId: aliceId.substring(0, 8),
@@ -157,34 +160,48 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   });
 
   afterAll(async () => {
-    // Cleanup test data
+    // Cleanup test data (need entity context for STRICT tables)
     try {
-      await adminClient.query(`DELETE FROM logs WHERE server_id = $1`, [serverId]);
-      await adminClient.query(`DELETE FROM participants WHERE "roomId" IN ($1, $2, $3)`, [
+      // Delete logs with entity context
+      await setupClient.query('BEGIN');
+      await setupClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
+      await setupClient.query(`DELETE FROM logs WHERE room_id IN ($1, $2)`, [
+        sharedRoomId,
+        alicePrivateRoomId,
+      ]);
+      await setupClient.query('COMMIT');
+
+      await setupClient.query('BEGIN');
+      await setupClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
+      await setupClient.query(`DELETE FROM logs WHERE room_id = $1`, [bobPrivateRoomId]);
+      await setupClient.query('COMMIT');
+
+      // Delete other data (non-STRICT tables)
+      await setupClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2, $3)`, [
         sharedRoomId,
         alicePrivateRoomId,
         bobPrivateRoomId,
       ]);
-      await adminClient.query(`DELETE FROM rooms WHERE id IN ($1, $2, $3)`, [
+      await setupClient.query(`DELETE FROM rooms WHERE id IN ($1, $2, $3)`, [
         sharedRoomId,
         alicePrivateRoomId,
         bobPrivateRoomId,
       ]);
-      await adminClient.query(`DELETE FROM entities WHERE id IN ($1, $2)`, [aliceId, bobId]);
-      await adminClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
-      await adminClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
+      await setupClient.query(`DELETE FROM entities WHERE id IN ($1, $2)`, [aliceId, bobId]);
+      await setupClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
+      await setupClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
     } catch (err) {
       console.warn('[RLS Logs Test] Cleanup failed:', err);
     }
 
     // Close connections
+    await setupClient?.end();
     await aliceClient?.end();
     await bobClient?.end();
-    await adminClient?.end();
   });
 
   it('should verify RLS is enabled on logs table', async () => {
-    const result = await adminClient.query(`
+    const result = await setupClient.query(`
       SELECT tablename, rowsecurity
       FROM pg_tables
       WHERE schemaname = 'public' AND tablename = 'logs'
@@ -195,7 +212,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   });
 
   it('should verify STRICT entity_isolation_policy exists on logs', async () => {
-    const result = await adminClient.query(`
+    const result = await setupClient.query(`
       SELECT policyname, permissive, cmd
       FROM pg_policies
       WHERE schemaname = 'public'
@@ -214,9 +231,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
     const aliceResult = await aliceClient.query(
       `
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
-      WHERE "entityId" = $1
+      WHERE entity_id = $1
       ORDER BY created_at DESC
     `,
       [aliceId]
@@ -224,16 +241,16 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await aliceClient.query('COMMIT');
 
     expect(aliceResult.rows).toHaveLength(2);
-    expect(aliceResult.rows.every((row) => row.entityId === aliceId)).toBe(true);
+    expect(aliceResult.rows.every((row) => row.entity_id === aliceId)).toBe(true);
 
     // Bob should see his 1 log (private room only)
     await bobClient.query('BEGIN');
     await bobClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
     const bobResult = await bobClient.query(
       `
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
-      WHERE "entityId" = $1
+      WHERE entity_id = $1
       ORDER BY created_at DESC
     `,
       [bobId]
@@ -241,7 +258,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await bobClient.query('COMMIT');
 
     expect(bobResult.rows).toHaveLength(1);
-    expect(bobResult.rows[0].entityId).toBe(bobId);
+    expect(bobResult.rows[0].entity_id).toBe(bobId);
   });
 
   it('should allow Alice to see logs from shared room (Agent + Alice)', async () => {
@@ -249,9 +266,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
     const result = await aliceClient.query(
       `
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
-      WHERE "roomId" = $1
+      WHERE room_id = $1
     `,
       [sharedRoomId]
     );
@@ -259,8 +276,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
 
     // Alice should see the log from shared room
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].roomId).toBe(sharedRoomId);
-    expect(result.rows[0].entityId).toBe(aliceId);
+    expect(result.rows[0].room_id).toBe(sharedRoomId);
+    expect(result.rows[0].entity_id).toBe(aliceId);
   });
 
   it('should block Bob from seeing Alice private room logs', async () => {
@@ -268,9 +285,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await bobClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
     const result = await bobClient.query(
       `
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
-      WHERE "roomId" = $1
+      WHERE room_id = $1
     `,
       [alicePrivateRoomId]
     );
@@ -285,9 +302,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     await aliceClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
     const result = await aliceClient.query(
       `
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
-      WHERE "roomId" = $1
+      WHERE room_id = $1
     `,
       [bobPrivateRoomId]
     );
@@ -300,7 +317,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   it('should block queries when entity_id is NOT set (STRICT mode)', async () => {
     // Without SET LOCAL app.entity_id, should see 0 results
     const result = await aliceClient.query(`
-      SELECT id, "entityId", "roomId", type
+      SELECT id, entity_id, room_id, type
       FROM logs
       ORDER BY created_at DESC
     `);
@@ -310,7 +327,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   });
 
   it('should verify logs table is in STRICT mode (memories, logs, components, tasks)', async () => {
-    const result = await adminClient.query(`
+    const result = await setupClient.query(`
       SELECT
         c.relname as table_name,
         p.polname as policy_name,
@@ -324,10 +341,10 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     expect(result.rows).toHaveLength(1);
     const policyQual = result.rows[0].policy_qual;
 
-    // STRICT mode should have: (current_entity_id() IS NOT NULL) AND (roomId IN ...)
-    // PERMISSIVE mode would have: (current_entity_id() IS NULL) OR (roomId IN ...)
+    // STRICT mode should have: (current_entity_id() IS NOT NULL) AND (room_id IN ...)
+    // PERMISSIVE mode would have: (current_entity_id() IS NULL) OR (room_id IN ...)
     expect(policyQual).toContain('current_entity_id()');
     expect(policyQual).toContain('IS NOT NULL'); // STRICT check
-    expect(policyQual).toContain('roomId'); // Or "roomId" depending on quote style
+    expect(policyQual).toContain('room_id'); // snake_case column name
   });
 });

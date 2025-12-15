@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { plugin } from '../../index';
+import { plugin } from '../../../index';
 import type { IAgentRuntime } from '@elizaos/core';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
