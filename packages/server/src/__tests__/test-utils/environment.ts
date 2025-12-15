@@ -8,6 +8,44 @@ import fs from 'node:fs';
 import os from 'node:os';
 
 /**
+ * Clean up global singletons from @elizaos/plugin-sql
+ * This is critical for test isolation - PGLite creates a singleton manager
+ * that persists across tests and points to a specific data directory.
+ * Without cleanup, subsequent tests reuse the stale singleton pointing
+ * to a deleted directory, causing "ENOENT" errors.
+ */
+async function cleanupPluginSqlSingletons(): Promise<void> {
+  const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+  const globalSymbols = globalThis as unknown as Record<symbol, any>;
+  const singletons = globalSymbols[GLOBAL_SINGLETONS];
+
+  if (!singletons) return;
+
+  // Cleanup PGLite client manager
+  if (singletons.pgLiteClientManager) {
+    try {
+      const client = singletons.pgLiteClientManager.getConnection?.();
+      if (client?.close) {
+        await client.close();
+      }
+    } catch {
+      // Ignore errors during cleanup
+    }
+    delete singletons.pgLiteClientManager;
+  }
+
+  // Cleanup PostgreSQL connection manager
+  if (singletons.postgresConnectionManager) {
+    try {
+      await singletons.postgresConnectionManager.close?.();
+    } catch {
+      // Ignore errors during cleanup
+    }
+    delete singletons.postgresConnectionManager;
+  }
+}
+
+/**
  * Environment snapshot for restoration
  */
 export interface EnvironmentSnapshot {
@@ -96,7 +134,9 @@ export function setupTestEnvironment(options?: { isolateDatabase?: boolean }): E
  * Teardown test environment (for afterEach)
  * Cleans up database if it was created by setupTestEnvironment
  */
-export function teardownTestEnvironment(snapshot: EnvironmentSnapshot): void {
+export async function teardownTestEnvironment(snapshot: EnvironmentSnapshot): Promise<void> {
+  await cleanupPluginSqlSingletons();
+
   // Clean up test database if it exists
   if (snapshot.testDbPath && fs.existsSync(snapshot.testDbPath)) {
     try {

@@ -33,9 +33,15 @@ export async function createTestDatabase(
   cleanup: () => Promise<void>;
 }> {
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL testing
-    console.log('[TEST] Using PostgreSQL for test database');
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    // PostgreSQL testing - use superuser for full permissions
+    // Transform URL to use postgres:postgres credentials
+    const originalUrl = process.env.POSTGRES_URL;
+    const superuserUrl = new URL(originalUrl);
+    superuserUrl.username = 'postgres';
+    superuserUrl.password = 'postgres';
+
+    console.log('[TEST] Using PostgreSQL (superuser) for test database');
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
@@ -126,13 +132,38 @@ export async function createIsolatedTestDatabase(
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use unique schema per test
-    const schemaName = `test_${testId}_${Date.now()}`;
-    console.log(`[TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+    // PostgreSQL - use superuser for full control over schema
+    // Transform URL to use postgres:postgres credentials (superuser)
+    // This ensures tests have full permissions to create/drop tables
+    const originalUrl = process.env.POSTGRES_URL;
+    const superuserUrl = new URL(originalUrl);
+    superuserUrl.username = 'postgres';
+    superuserUrl.password = 'postgres';
 
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    console.log(`[TEST] Using PostgreSQL with superuser for: ${testId}`);
+
+    const connectionManager = new PostgresConnectionManager(superuserUrl.toString());
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
+
+    const db = connectionManager.getDatabase();
+
+    // Clean up custom schemas and migration tables for fresh start
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
+    await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
+
+    // Drop ALL tables in public schema for clean slate
+    await db.execute(sql.raw(`
+      DO $$ DECLARE
+        r RECORD;
+      BEGIN
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+          EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+      END $$;
+    `));
 
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
@@ -141,14 +172,7 @@ export async function createIsolatedTestDatabase(
     });
     runtime.registerDatabaseAdapter(adapter);
 
-    const db = connectionManager.getDatabase();
-
-    // Create isolated schema
-    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
-    // Include public in search path so we can access the vector extension
-    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
-
-    // Run migrations in isolated schema
+    // Run migrations on clean database
     const migrationService = new DatabaseMigrationService();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([sqlPlugin, ...testPlugins]);
@@ -161,11 +185,9 @@ export async function createIsolatedTestDatabase(
     } as any);
 
     const cleanup = async () => {
-      try {
-        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
-      } catch (error) {
-        console.error(`[TEST] Failed to drop schema ${schemaName}:`, error);
-      }
+      // Just close the connection - don't drop tables
+      // Tables are dropped at the START of each test, not at the end
+      // This ensures tests can run in any order
       await adapter.close();
     };
 
@@ -230,28 +252,63 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
   const testId = testName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
   if (process.env.POSTGRES_URL) {
-    // PostgreSQL - use unique schema per test
-    const schemaName = `test_migration_${testId}_${Date.now()}`;
-    console.log(`[MIGRATION TEST] Creating isolated PostgreSQL schema: ${schemaName}`);
+    // PostgreSQL - use superuser for migration tests (needs DROP SCHEMA permissions)
+    // Transform the URL to use postgres:postgres credentials
+    const originalUrl = process.env.POSTGRES_URL;
+    const url = new URL(originalUrl);
+    url.username = 'postgres';
+    url.password = 'postgres';
+    const superuserUrl = url.toString();
 
-    const connectionManager = new PostgresConnectionManager(process.env.POSTGRES_URL);
+    console.log(`[MIGRATION TEST] Using PostgreSQL superuser for: ${testId}`);
+
+    const connectionManager = new PostgresConnectionManager(superuserUrl);
     const adapter = new PgDatabaseAdapter(testAgentId, connectionManager);
     await adapter.init();
 
     const db = connectionManager.getDatabase();
 
-    // Create isolated schema
-    await db.execute(sql.raw(`CREATE SCHEMA ${schemaName}`));
-    // Include public in search path so we can access the vector extension
-    await db.execute(sql.raw(`SET search_path TO ${schemaName}, public`));
+    // Drop custom schemas first (like polymarket, migrations)
+    // These are created by plugin tests and need to be cleaned
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
+    await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+
+    // Drop ALL tables in public schema for clean slate
+    // This ensures each test starts fresh without leftover state from previous tests
+    // WARNING: This is destructive - only use for testing!
+    await db.execute(sql.raw(`
+      DO $$ DECLARE
+        r RECORD;
+      BEGIN
+        FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+          EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
+        END LOOP;
+      END $$;
+    `));
+
+    // Ensure grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
+    // These must be set at the start of each test to ensure eliza_test can create tables
+    await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
+    await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
+    await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
 
     const cleanup = async () => {
       try {
-        // Reset search path before dropping schema
-        await db.execute(sql.raw(`SET search_path TO public`));
-        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`));
+        // Clean up custom schemas
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS polymarket CASCADE`));
+        await db.execute(sql.raw(`DROP SCHEMA IF EXISTS migrations CASCADE`));
+        // Clean up migration tables in public schema
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _snapshots CASCADE`));
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _journal CASCADE`));
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
+
+        // Restore grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
+        // This is needed because migration tests run as superuser and may affect schema ownership
+        await db.execute(sql.raw(`GRANT ALL ON SCHEMA public TO eliza_test`));
+        await db.execute(sql.raw(`GRANT USAGE ON SCHEMA public TO eliza_test`));
+        await db.execute(sql.raw(`GRANT CREATE ON SCHEMA public TO eliza_test`));
       } catch (error) {
-        console.error(`[MIGRATION TEST] Failed to drop schema ${schemaName}:`, error);
+        console.error(`[MIGRATION TEST] Failed to cleanup:`, error);
       }
       await adapter.close();
     };

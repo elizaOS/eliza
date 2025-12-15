@@ -152,101 +152,46 @@ export class RuntimeMigrator {
   /**
    * Detect if a connection string represents a real PostgreSQL database
    * (not PGLite, in-memory, or other non-PostgreSQL databases)
-   *
-   * This method handles various connection string formats including:
-   * - Standard postgres:// and postgresql:// URLs
-   * - Cloud provider URLs (AWS, Azure, GCP, Supabase, Neon, etc.)
-   * - Connection strings with query parameters
-   * - Non-standard schemes (pgbouncer://, etc.)
-   * - IP addresses with ports
-   *
-   * @param connectionUrl - Database connection string to check
-   * @returns true if this is a real PostgreSQL database connection
    */
   private isRealPostgresDatabase(connectionUrl: string): boolean {
-    // Empty or undefined URL means not PostgreSQL
-    if (!connectionUrl || connectionUrl.trim() === '') {
-      return false;
-    }
+    if (!connectionUrl?.trim()) return false;
 
-    // Trim and then convert to lowercase for consistent pattern matching
-    const trimmedUrl = connectionUrl.trim();
-    const url = trimmedUrl.toLowerCase();
-    const originalUrl = trimmedUrl; // Preserve case for pattern matching
+    const url = connectionUrl.trim().toLowerCase();
 
-    // First, explicitly reject other database schemes
-    // These are non-PostgreSQL databases that should be rejected immediately
-    const nonPostgresSchemes = [
-      'mysql://',
-      'mysqli://',
-      'mariadb://',
-      'mongodb://',
-      'mongodb+srv://',
+    // Exclude non-PostgreSQL databases (check schemes first)
+    const nonPgSchemes = ['mysql://', 'mysqli://', 'mariadb://', 'mongodb://', 'mongodb+srv://'];
+    if (nonPgSchemes.some((s) => url.startsWith(s))) return false;
+
+    // Always reject :memory: databases (even with postgres:// scheme, it's not valid)
+    if (url.includes(':memory:')) return false;
+
+    // PostgreSQL URL schemes - check BEFORE other exclude patterns
+    // (a postgres:// URL may have "sqlite" in the database name, that's OK)
+    const pgSchemes = [
+      'postgres://',
+      'postgresql://',
+      'postgis://',
+      'pgbouncer://',
+      'pgpool://',
+      'cockroach://',
+      'cockroachdb://',
+      'redshift://',
+      'timescaledb://',
+      'yugabyte://',
     ];
+    if (pgSchemes.some((s) => url.startsWith(s))) return true;
 
-    for (const scheme of nonPostgresSchemes) {
-      if (url.startsWith(scheme)) {
-        return false;
-      }
-    }
+    // Exclude PGLite, SQLite databases (only for non-postgres:// URLs)
+    const excludePatterns = ['pglite', 'sqlite'];
+    const urlBase = url.split('?')[0];
+    if (excludePatterns.some((p) => url.includes(p))) return false;
+    if (/\.(db|sqlite|sqlite3)$/.test(urlBase)) return false;
 
-    // Second, check for definitive non-PostgreSQL patterns
-    // These patterns indicate PGLite, in-memory, or SQLite databases
-    const excludePatterns = [
-      ':memory:', // In-memory database
-      'pglite://', // PGLite with scheme
-      '/pglite', // PGLite path
-      'sqlite://', // SQLite with scheme
-      'sqlite3://', // SQLite3 with scheme
-      '.sqlite', // SQLite file extension
-      '.sqlite3', // SQLite3 file extension
-      'file::memory:', // SQLite in-memory with file scheme
-      'file:', // File-based database (when not followed by // for URL schemes)
-    ];
+    // Local PostgreSQL (localhost, 127.0.0.1, Docker service names)
+    if (url.includes('localhost') || url.includes('127.0.0.1')) return true;
 
-    // Check for file extensions at the end of the URL (before query params)
-    const urlWithoutQuery = url.split('?')[0];
-    if (
-      urlWithoutQuery.endsWith('.db') ||
-      urlWithoutQuery.endsWith('.sqlite') ||
-      urlWithoutQuery.endsWith('.sqlite3')
-    ) {
-      return false;
-    }
-
-    for (const pattern of excludePatterns) {
-      if (url.includes(pattern)) {
-        // Special case: file:// can be part of a valid postgres URL in some contexts
-        if (pattern === 'file:' && url.includes('postgres')) {
-          continue;
-        }
-        return false;
-      }
-    }
-
-    // Check for PostgreSQL URL schemes (including variations and proxies)
-    const postgresSchemes = [
-      'postgres://', // Standard PostgreSQL URL scheme
-      'postgresql://', // Alternative PostgreSQL URL scheme
-      'postgis://', // PostGIS (PostgreSQL with GIS extension)
-      'pgbouncer://', // PgBouncer connection pooler
-      'pgpool://', // PgPool connection pooler
-      'cockroach://', // CockroachDB (PostgreSQL compatible)
-      'cockroachdb://', // CockroachDB alternative scheme
-      'redshift://', // AWS Redshift (PostgreSQL compatible)
-      'timescaledb://', // TimescaleDB (PostgreSQL with time-series)
-      'yugabyte://', // YugabyteDB (PostgreSQL compatible)
-    ];
-
-    for (const scheme of postgresSchemes) {
-      if (url.startsWith(scheme)) {
-        return true;
-      }
-    }
-
-    // Check for PostgreSQL connection string parameters
-    // These indicate libpq-style connection strings
-    const connectionParams = [
+    // PostgreSQL connection params (libpq style)
+    const connParams = [
       'host=',
       'dbname=',
       'sslmode=',
@@ -259,169 +204,70 @@ export class RuntimeMigrator {
       'sslcert=',
       'sslkey=',
       'sslrootcert=',
+      'fallback_application_name=',
+      'keepalives=',
+      'target_session_attrs=',
     ];
+    if (connParams.some((p) => url.includes(p))) return true;
 
-    for (const param of connectionParams) {
-      if (url.includes(param)) {
-        return true;
-      }
-    }
+    // user@host format with postgres keyword or port
+    if (url.includes('@') && (url.includes('postgres') || /:\d{4,5}/.test(url))) return true;
 
-    // Check for user@host format (common in PostgreSQL connection strings)
-    if (url.includes('@') && (url.includes('postgres') || /:\d{4,5}/.test(url))) {
-      return true;
-    }
+    // Common PostgreSQL ports
+    if (/:(5432|5433|5434|6432|8432|9999|25060|26257)\b/.test(url)) return true;
 
-    // Check for common PostgreSQL ports
-    const postgresPorts = [
-      ':5432', // Default PostgreSQL port
-      ':5433', // Common alternative PostgreSQL port
-      ':5434', // Another common alternative
-      ':25060', // DigitalOcean Managed Databases default port
-      ':26257', // CockroachDB default port
-      ':6432', // PgBouncer default port
-      ':9999', // PgPool default port
-      ':8432', // Supabase Pooler port
-    ];
-
-    for (const port of postgresPorts) {
-      if (url.includes(port)) {
-        return true;
-      }
-    }
-
-    // Check for cloud provider hostnames and patterns
-    const cloudProviderPatterns = [
+    // Cloud providers
+    const cloudPatterns = [
       // AWS
-      'amazonaws.com',
-      'rds.amazonaws.com',
-      '.rds.',
-      'redshift.amazonaws.com',
+      'amazonaws.com', '.rds.',
       // Azure
-      'azure.com',
-      'database.azure.com',
-      'postgres.database.azure.com',
+      'azure.com', 'database.azure.com',
       // Google Cloud
-      'googleusercontent',
-      'cloudsql',
-      'cloud.google.com',
+      'googleusercontent', 'cloudsql',
       // Supabase
       'supabase',
-      '.supabase.co',
-      '.supabase.com',
-      'pooler.supabase',
       // Neon
-      'neon.tech',
-      '.neon.tech',
-      'neon.build',
+      'neon.tech', 'neon.build',
       // Railway
-      'railway.app',
-      '.railway.app',
-      'railway.internal',
+      'railway.app', 'railway.internal',
       // Render
-      'render.com',
-      '.render.com',
-      'onrender.com',
+      'render.com', 'onrender.com',
       // Heroku
-      'heroku.com',
-      'herokuapp.com',
-      '.heroku.com',
+      'heroku',
       // TimescaleDB
-      'timescale',
-      'timescaledb',
-      '.tsdb.cloud',
+      'timescale', '.tsdb.cloud',
       // CockroachDB
-      'cockroachlabs',
-      'cockroachdb.cloud',
-      '.crdb.io',
+      'cockroachlabs', 'cockroachdb.cloud', '.crdb.io',
       // DigitalOcean
-      'digitalocean.com',
-      'db.ondigitalocean',
-      'do-user-',
-      '.db.ondigitalocean.com',
+      'digitalocean', 'db.ondigitalocean', 'do-user-',
       // Aiven
       'aiven',
-      'aivencloud',
-      '.aiven.io',
-      '.aivencloud.com',
       // Crunchy Data
       'crunchydata',
-      '.crunchydata.com',
       // ElephantSQL
       'elephantsql',
-      '.elephantsql.com',
       // YugabyteDB
       'yugabyte',
-      '.yugabyte.cloud',
       // Scaleway
-      'scaleway',
-      '.rdb.fr-par.scw.cloud',
+      'scaleway', '.rdb.fr-par.scw.cloud',
       // Vercel Postgres
       'vercel-storage',
-      '.postgres.vercel-storage.com',
-      // PlanetScale (supports PostgreSQL wire protocol)
+      // PlanetScale
       'psdb.cloud',
-      '.psdb.cloud',
       // Xata
       'xata.sh',
-      '.xata.sh',
       // Fly.io
-      'fly.dev',
-      '.fly.dev',
-      'fly.io',
+      'fly.dev', 'fly.io',
     ];
+    if (cloudPatterns.some((p) => url.includes(p))) return true;
 
-    for (const pattern of cloudProviderPatterns) {
-      if (url.includes(pattern)) {
-        return true;
-      }
-    }
+    // IP:port patterns (IPv4 and IPv6)
+    if (/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}/.test(url)) return true;
+    if (/\[[0-9a-f:]+\](:\d{1,5})?/i.test(connectionUrl)) return true;
 
-    // Check for IP address with port (common for self-hosted or cloud databases)
-    // Match IPv4: xxx.xxx.xxx.xxx:port
-    const ipv4PortPattern = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}\b/;
-    if (ipv4PortPattern.test(originalUrl)) {
-      return true;
-    }
+    // host:port/database format (Docker Compose, etc.)
+    if (/^[a-z0-9_.-]+:\d{1,5}\/[a-z0-9_-]+/i.test(connectionUrl)) return true;
 
-    // Check for IPv6 addresses (common in cloud environments)
-    // Match [xxxx:xxxx:...:xxxx]:port or similar formats
-    const ipv6Pattern = /\[[0-9a-f:]+\](:\d{1,5})?/i;
-    if (ipv6Pattern.test(originalUrl)) {
-      return true;
-    }
-
-    // Check for host:port/database format (without explicit scheme)
-    // This pattern matches: "hostname:5432/mydb" or "subdomain.example.com:5432/testdb"
-    const hostPortDbPattern = /^[a-z0-9.-]+:\d{1,5}\/[a-z0-9_-]+/i;
-    if (hostPortDbPattern.test(originalUrl)) {
-      return true;
-    }
-
-    // Check for connection strings with query parameters that indicate PostgreSQL
-    if (url.includes('?') || url.includes('&')) {
-      const postgresQueryParams = [
-        'sslmode=',
-        'sslcert=',
-        'sslkey=',
-        'sslrootcert=',
-        'connect_timeout=',
-        'application_name=',
-        'options=',
-        'fallback_application_name=',
-        'keepalives=',
-        'target_session_attrs=',
-      ];
-
-      for (const param of postgresQueryParams) {
-        if (url.includes(param)) {
-          return true;
-        }
-      }
-    }
-
-    // If none of the patterns matched, assume it's not a real PostgreSQL database
-    // This is a conservative approach to avoid using advisory locks on unknown databases
     logger.debug(
       { src: 'plugin:sql', urlPreview: url.substring(0, 50) },
       'Connection string did not match any PostgreSQL patterns'
@@ -577,10 +423,42 @@ export class RuntimeMigrator {
           // Introspect the current database state
           const introspectedSnapshot = await this.introspector.introspectSchema(schemaName);
 
+          // IMPORTANT: Filter the introspected snapshot to only include tables that are
+          // defined in the current schema. This prevents tables from other plugins
+          // (e.g., gamification tables in 'public' schema) from being marked as "orphans"
+          // and scheduled for deletion.
+          const expectedTableNames = new Set<string>();
+          for (const tableKey of Object.keys(currentSnapshot.tables)) {
+            const tableData = currentSnapshot.tables[tableKey] as any;
+            const tableName = tableData.name || tableKey.split('.').pop();
+            expectedTableNames.add(tableName);
+          }
+
+          // Filter introspected tables to only those in the current schema
+          const filteredTables: any = {};
+          for (const tableKey of Object.keys(introspectedSnapshot.tables)) {
+            const tableData = introspectedSnapshot.tables[tableKey] as any;
+            const tableName = tableData.name || tableKey.split('.').pop();
+            if (expectedTableNames.has(tableName)) {
+              filteredTables[tableKey] = tableData;
+            } else {
+              logger.debug(
+                { src: 'plugin:sql', pluginName, tableName },
+                'Ignoring table from introspection (not in current schema)'
+              );
+            }
+          }
+
+          // Use filtered snapshot
+          const filteredSnapshot = {
+            ...introspectedSnapshot,
+            tables: filteredTables,
+          };
+
           // Only use the introspected snapshot if it has tables
-          if (Object.keys(introspectedSnapshot.tables).length > 0) {
+          if (Object.keys(filteredSnapshot.tables).length > 0) {
             // Save this as the initial snapshot (idx: 0)
-            await this.snapshotStorage.saveSnapshot(pluginName, 0, introspectedSnapshot);
+            await this.snapshotStorage.saveSnapshot(pluginName, 0, filteredSnapshot);
 
             // Update journal to record this initial state
             await this.journalStorage.updateJournal(
@@ -591,8 +469,8 @@ export class RuntimeMigrator {
             );
 
             // Record this as a migration
-            const introspectedHash = hashSnapshot(introspectedSnapshot);
-            await this.migrationTracker.recordMigration(pluginName, introspectedHash, Date.now());
+            const filteredHash = hashSnapshot(filteredSnapshot);
+            await this.migrationTracker.recordMigration(pluginName, filteredHash, Date.now());
 
             logger.info(
               { src: 'plugin:sql', pluginName },
@@ -600,7 +478,7 @@ export class RuntimeMigrator {
             );
 
             // Set this as the previous snapshot for comparison
-            previousSnapshot = introspectedSnapshot;
+            previousSnapshot = filteredSnapshot;
           }
         }
       }

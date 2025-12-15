@@ -26,13 +26,13 @@ export const relationshipTable = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
-    sourceEntityId: uuid('sourceEntityId')
+    sourceEntityId: uuid('source_entity_id')
       .notNull()
       .references(() => entityTable.id, { onDelete: 'cascade' }),
-    targetEntityId: uuid('targetEntityId')
+    targetEntityId: uuid('target_entity_id')
       .notNull()
       .references(() => entityTable.id, { onDelete: 'cascade' }),
-    agentId: uuid('agentId')
+    agentId: uuid('agent_id')
       .notNull()
       .references(() => agentTable.id, { onDelete: 'cascade' }),
     tags: text('tags').array(),
