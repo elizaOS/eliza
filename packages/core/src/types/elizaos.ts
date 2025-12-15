@@ -52,10 +52,10 @@ export interface AgentUpdate {
 }
 
 /**
- * Options for sending a message to an agent.
+ * Options for handling a message to an agent.
  * Extends MessageProcessingOptions with orchestration callbacks for async mode.
  */
-export interface SendMessageOptions extends MessageProcessingOptions {
+export interface HandleMessageOptions extends MessageProcessingOptions {
   /**
    * Called when the agent generates a response (ASYNC MODE)
    * If provided, method returns immediately (fire & forget)
@@ -77,9 +77,9 @@ export interface SendMessageOptions extends MessageProcessingOptions {
 }
 
 /**
- * Result of sending a message to an agent
+ * Result of handling a message to an agent
  */
-export interface SendMessageResult {
+export interface HandleMessageResult {
   /** ID of the user message */
   messageId: UUID;
 
@@ -127,7 +127,7 @@ export interface IElizaOS {
    *
    * @example
    * // SYNC mode - wait for response
-   * const result = await elizaOS.sendMessage(agentId, {
+   * const result = await elizaOS.handleMessage(agentId, {
    *   entityId: userId,
    *   roomId: channelId,
    *   content: { text: "Hello!" }
@@ -136,7 +136,7 @@ export interface IElizaOS {
    *
    * @example
    * // ASYNC mode - fire and forget
-   * await elizaOS.sendMessage(agentId, message, {
+   * await elizaOS.handleMessage(agentId, message, {
    *   onResponse: async (content) => {
    *     console.log("Agent replied:", content.text);
    *   },
@@ -145,7 +145,7 @@ export interface IElizaOS {
    *   }
    * });
    */
-  sendMessage(
+  handleMessage(
     agentId: UUID,
     message: Partial<Memory> & {
       entityId: UUID;
@@ -153,8 +153,8 @@ export interface IElizaOS {
       content: Content;
       worldId?: UUID;
     },
-    options?: SendMessageOptions
-  ): Promise<SendMessageResult>;
+    options?: HandleMessageOptions
+  ): Promise<HandleMessageResult>;
 
   /**
    * Get an agent runtime by ID.

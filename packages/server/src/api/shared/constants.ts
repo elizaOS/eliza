@@ -44,3 +44,21 @@ export const ALLOWED_MEDIA_MIME_TYPES = [
   'application/pdf',
   'text/plain',
 ] as const;
+
+/**
+ * Valid response modes for messaging API endpoints
+ * - "sync": Wait for complete agent response
+ * - "stream": SSE streaming response
+ * - "websocket": Return immediately, agent response via WebSocket (default)
+ */
+export const RESPONSE_MODES = ['sync', 'stream', 'websocket'] as const;
+
+/**
+ * Type for response mode parameter
+ */
+export type ResponseMode = (typeof RESPONSE_MODES)[number];
+
+/**
+ * Default response mode for backward compatibility
+ */
+export const DEFAULT_RESPONSE_MODE: ResponseMode = 'websocket';

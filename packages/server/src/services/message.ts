@@ -647,8 +647,8 @@ export class MessageBusService extends Service {
           : undefined,
       };
 
-      // Use elizaOS.sendMessage() with async callback
-      await elizaOS.sendMessage(
+      // Use elizaOS.handleMessage() with async callback
+      await elizaOS.handleMessage(
         this.runtime.agentId,
         {
           id: uniqueMemoryId,
@@ -673,19 +673,23 @@ export class MessageBusService extends Service {
           },
         },
         {
-          onStreamChunk: async (chunk: string, messageId: UUID) => {
-            // Emit stream chunk to internal bus for Socket.IO broadcast
-            const room = await this.runtime.getRoom(agentRoomId);
-            const channelId = room?.channelId;
-            if (channelId) {
-              internalMessageBus.emit('stream_chunk', {
-                channelId,
-                messageId,
-                chunk,
-                agentId: this.runtime.agentId,
-              });
-            }
-          },
+          onStreamChunk: (() => {
+            let chunkIndex = 0;
+            return async (chunk: string, messageId: UUID) => {
+              // Emit stream chunk to internal bus for Socket.IO broadcast
+              const room = await this.runtime.getRoom(agentRoomId);
+              const channelId = room?.channelId;
+              if (channelId) {
+                internalMessageBus.emit('message_stream_chunk', {
+                  channelId,
+                  messageId,
+                  chunk,
+                  index: chunkIndex++,
+                  agentId: this.runtime.agentId,
+                });
+              }
+            };
+          })(),
           onResponse: async (responseContent: Content) => {
             logger.info(
               { src: 'service:message-bus', agentId: this.runtime.agentId },
@@ -721,7 +725,7 @@ export class MessageBusService extends Service {
                 agentName: this.runtime.character.name,
                 error: error.message,
               },
-              'Error processing message via sendMessage'
+              'Error processing message via handleMessage'
             );
           },
         }

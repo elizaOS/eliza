@@ -3,6 +3,7 @@ import {
   logger,
   customLevels,
   SOCKET_MESSAGE_TYPE,
+  MESSAGE_STREAM_EVENT,
   validateUuid,
   ChannelType,
   type UUID,
@@ -86,19 +87,28 @@ export class SocketIORouter {
     });
 
     // Listen for stream chunks from the internal message bus and broadcast to clients
-    internalMessageBus.on('stream_chunk', (data: unknown) => {
-      const { channelId, messageId, chunk, agentId } = data as {
-        channelId: UUID;
-        messageId: UUID;
-        chunk: string;
-        agentId: UUID;
-      };
-      // Broadcast to all clients in the channel
-      io.to(channelId).emit('streamChunk', {
+    internalMessageBus.on('message_stream_chunk', (data) => {
+      const { channelId, messageId, chunk, agentId, index } = data;
+      // Broadcast to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamChunk, {
         messageId,
         chunk,
+        index,
         agentId,
         channelId,
+      });
+    });
+
+    // Listen for stream errors from the internal message bus and broadcast to clients
+    internalMessageBus.on('message_stream_error', (data) => {
+      const { channelId, messageId, agentId, error, partialText } = data;
+      // Broadcast error to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamError, {
+        messageId,
+        channelId,
+        agentId,
+        error,
+        partialText,
       });
     });
   }
