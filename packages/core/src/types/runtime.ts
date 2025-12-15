@@ -179,9 +179,9 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ): Promise<string>;
 
   // Overload 3: Generic fallback for other model types
-  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+  useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'>,
+    params: ModelParamsMap[T],
     provider?: string
   ): Promise<R>;
 

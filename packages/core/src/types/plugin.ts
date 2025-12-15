@@ -1,8 +1,8 @@
 import type { Character } from './agent';
 import type { Action, Evaluator, Provider } from './components';
 import type { IDatabaseAdapter } from './database';
-import type { EventHandler, EventPayloadMap, EventPayload } from './events';
-import type { ModelHandler, ModelParamsMap, ModelResultMap, ModelTypeName } from './model';
+import type { EventHandler, EventPayloadMap } from './events';
+import type { ModelParamsMap, PluginModelResult } from './model';
 import type { IAgentRuntime } from './runtime';
 import type { Service } from './service';
 import type { TestSuite } from './testing';
@@ -82,9 +82,10 @@ export interface Plugin {
   evaluators?: Evaluator[];
   adapter?: IDatabaseAdapter;
   models?: {
-    [K in ModelTypeName]?: ModelHandler<ModelParamsMap[K], ModelResultMap[K]>['handler'];
-  } & {
-    [key: string]: ModelHandler<Record<string, unknown>, unknown>['handler'];
+    [K in keyof ModelParamsMap]?: (
+      runtime: IAgentRuntime,
+      params: ModelParamsMap[K]
+    ) => Promise<PluginModelResult<K>>;
   };
   events?: PluginEvents;
   routes?: Route[];
