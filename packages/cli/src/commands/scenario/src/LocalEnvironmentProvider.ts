@@ -141,7 +141,7 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         (executionResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }).conversationMetadata = {
           turnCount: conversationResult.turns.length,
           terminatedEarly: conversationResult.terminatedEarly,
-          terminationReason: conversationResult.terminationReason,
+          terminationReason: conversationResult.terminationReason ?? undefined,
           finalEvaluations: conversationResult.finalEvaluations,
         };
 
@@ -243,17 +243,18 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           let stderr = '';
           let stdout = '';
 
-          if (error.exitCode !== undefined) {
-            exitCode = error.exitCode;
+          const errorObj = error as { exitCode?: number; stderr?: string; stdout?: string; message?: string };
+          if (errorObj.exitCode !== undefined) {
+            exitCode = errorObj.exitCode;
           }
-          if (error.stderr) {
-            stderr = error.stderr;
+          if (errorObj.stderr) {
+            stderr = errorObj.stderr;
           }
-          if (error.stdout) {
-            stdout = error.stdout;
+          if (errorObj.stdout) {
+            stdout = errorObj.stdout;
           }
-          if (!stderr && error.message) {
-            stderr = error.message;
+          if (!stderr && errorObj.message) {
+            stderr = errorObj.message;
           }
 
           results.push({

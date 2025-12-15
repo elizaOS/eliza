@@ -299,8 +299,8 @@ describe('Logger - Cross-Environment Tests', () => {
       // Clear cache to detect browser environment
       getEnvironment().clearCache();
 
-      // Force browser type for testing
-      const parentLogger = createLogger({ parent: 'main', __forceType: 'browser' });
+      // Force browser type for testing with explicit level to avoid .env LOG_LEVEL interference
+      const parentLogger = createLogger({ parent: 'main', __forceType: 'browser', level: 'info' });
       const childLogger = parentLogger.child({ child: 'sub' });
 
       childLogger.info('Child message');

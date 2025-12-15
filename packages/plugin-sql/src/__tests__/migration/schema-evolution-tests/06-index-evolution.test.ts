@@ -252,7 +252,7 @@ describe('Schema Evolution Test: Index Evolution', () => {
 
     // Verify data is intact
     const dataCount = await db.execute(sql`SELECT COUNT(*) as count FROM test_index_changes`);
-    expect((dataCount.rows[0] as any).count).toBe(3);
+    expect(Number((dataCount.rows[0] as any).count)).toBe(3);
     console.log('\n✅ All data preserved during index changes');
   });
 

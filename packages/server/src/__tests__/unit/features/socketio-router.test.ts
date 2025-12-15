@@ -445,6 +445,8 @@ describe('SocketIORouter', () => {
 
       // Broadcast log that matches filters
       router.broadcastLog(mockIO as any, {
+        time: Date.now(),
+        msg: 'Test log message',
         agentName: 'TestAgent',
         level: 30, // info level (customLevels.info = 30)
         message: 'Test log message',
@@ -475,6 +477,8 @@ describe('SocketIORouter', () => {
 
       // Broadcast log that doesn't match filters
       router.broadcastLog(mockIO as any, {
+        time: Date.now(),
+        msg: 'Test log message',
         agentName: 'OtherAgent',
         level: 20, // info level (below error)
         message: 'Test log message',
@@ -542,6 +546,67 @@ describe('SocketIORouter', () => {
 
       // Should not throw
       expect(messageHandler).toBeDefined();
+    });
+  });
+
+  describe('generic message handler', () => {
+    it('should handle ROOM_JOINING with numeric type from client', async () => {
+      router.setupListeners(mockIO as any);
+      const connectionHandler = mockIO.on.mock.calls[0][1];
+      connectionHandler(mockSocket);
+
+      const messageHandler = mockSocket.on.mock.calls.find((call) => call[0] === 'message')?.[1];
+
+      // Client sends numeric type (1 = ROOM_JOINING)
+      const payload = {
+        channelId: '123e4567-e89b-12d3-a456-426614174000',
+        entityId: '123e4567-e89b-12d3-a456-426614174001',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
+      };
+
+      await messageHandler({
+        type: SOCKET_MESSAGE_TYPE.ROOM_JOINING, // numeric 1
+        payload,
+      });
+
+      expect(mockSocket.join).toHaveBeenCalledWith(payload.channelId);
+    });
+
+    it('should handle SEND_MESSAGE with numeric type from client', async () => {
+      router.setupListeners(mockIO as any);
+      const connectionHandler = mockIO.on.mock.calls[0][1];
+      connectionHandler(mockSocket);
+
+      const messageHandler = mockSocket.on.mock.calls.find((call) => call[0] === 'message')?.[1];
+
+      const payload = {
+        channelId: '123e4567-e89b-12d3-a456-426614174000',
+        senderId: '987e6543-e89b-12d3-a456-426614174000',
+        senderName: 'Test User',
+        message: 'Hello world',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
+      };
+
+      (mockServerInstance.getChannelDetails as jest.Mock).mockReturnValue(
+        Promise.resolve({ id: payload.channelId })
+      );
+      (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
+        Promise.resolve({
+          id: 'msg-123',
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      // Client sends numeric type (2 = SEND_MESSAGE)
+      await messageHandler({
+        type: SOCKET_MESSAGE_TYPE.SEND_MESSAGE, // numeric 2
+        payload,
+      });
+
+      // Wait for async operations
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(mockServerInstance.createMessage).toHaveBeenCalled();
     });
   });
 });

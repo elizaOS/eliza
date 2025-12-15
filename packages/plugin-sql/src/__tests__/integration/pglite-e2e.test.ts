@@ -6,7 +6,7 @@ import * as schema from '../../schema';
 import { PGlite } from '@electric-sql/pglite';
 import { PGliteClientManager } from '../../pglite/manager';
 import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-
+import type { DrizzleDatabase } from '../../types';
 // Use PGLite for testing instead of real PostgreSQL
 describe('PostgreSQL E2E Tests', () => {
   const createTestAdapter = async () => {
@@ -19,7 +19,7 @@ describe('PostgreSQL E2E Tests', () => {
     // Run migrations for each adapter
     const migrationService = new DatabaseMigrationService();
     const db = adapter.getDatabase();
-    await migrationService.initializeWithDatabase(db);
+    await migrationService.initializeWithDatabase(db as DrizzleDatabase);
     migrationService.discoverAndRegisterPluginSchemas([
       { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema },
     ]);
@@ -130,6 +130,7 @@ describe('PostgreSQL E2E Tests', () => {
           id: uuidv4() as UUID,
           agentId,
           names: ['Entity One'],
+          metadata: { custom: 'data' },
         },
         {
           id: uuidv4() as UUID,
@@ -167,6 +168,7 @@ describe('PostgreSQL E2E Tests', () => {
         id: uuidv4() as UUID,
         agentId,
         names: ['Original'],
+        metadata: { custom: 'data' },
       };
 
       await adapter.createEntities([entity]);
@@ -222,6 +224,7 @@ describe('PostgreSQL E2E Tests', () => {
           id: entityId,
           agentId,
           names: ['Test Entity'],
+          metadata: { custom: 'data' },
         },
       ]);
     });
@@ -374,11 +377,13 @@ describe('PostgreSQL E2E Tests', () => {
           id: entityId,
           agentId,
           names: ['Component Test Entity'],
+          metadata: { custom: 'data' },
         },
         {
           id: sourceEntityId,
           agentId,
           names: ['Source Test Entity'],
+          metadata: { custom: 'data' },
         },
       ]);
     });
@@ -423,7 +428,7 @@ describe('PostgreSQL E2E Tests', () => {
         sourceEntityId,
         type: 'update-test',
         data: { original: true },
-        createdAt: new Date(),
+        createdAt: Date.now(),
       };
       await adapter.createComponent(component);
       await adapter.updateComponent({
@@ -483,6 +488,7 @@ describe('PostgreSQL E2E Tests', () => {
             id: uuidv4() as UUID,
             agentId,
             names: [`Concurrent Entity ${i}`],
+            metadata: { custom: 'data' },
           };
           return adapter.createEntities([entity]);
         });
@@ -508,6 +514,7 @@ describe('PostgreSQL E2E Tests', () => {
           id: uuidv4() as UUID,
           agentId,
           names: [`Batch Entity ${i}`],
+          metadata: { custom: 'data' },
         }));
 
       const created = await adapter.createEntities(entities);

@@ -94,7 +94,7 @@ export class AudioService extends BaseApiClient {
   /**
    * Convert audio input to appropriate FormData value
    */
-  private processAudioInput(audio: Blob | Buffer | string): Blob | string {
+  private processAudioInput(audio: Blob | Buffer | ArrayBuffer | ArrayBufferView | string): Blob | string {
     if (audio instanceof Blob) {
       return audio;
     }
@@ -185,13 +185,14 @@ export class AudioService extends BaseApiClient {
    * Safe check for Buffer type (works in both Node.js and browser environments)
    */
   private isBuffer(obj: unknown): obj is Buffer {
+    if (obj === null || obj === undefined || typeof obj !== 'object') {
+      return false;
+    }
+    const o = obj as Record<string, unknown>;
     return (
-      obj !== null &&
-      obj !== undefined &&
-      typeof obj === 'object' &&
-      typeof obj.constructor === 'function' &&
-      obj.constructor.name === 'Buffer' &&
-      typeof obj.readUInt8 === 'function'
+      typeof o.constructor === 'function' &&
+      o.constructor.name === 'Buffer' &&
+      typeof o.readUInt8 === 'function'
     );
   }
 
