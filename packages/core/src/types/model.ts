@@ -480,8 +480,8 @@ export interface ModelParamsMap {
   [ModelType.VIDEO]: VideoProcessingParams;
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
-  // Allow string index for custom model types
-  [key: string]: unknown;
+  [ModelType.TEXT_COMPLETION]: GenerateTextParams;
+  // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 
 /**
@@ -506,13 +506,31 @@ export interface ModelResultMap {
   [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
   [ModelType.TRANSCRIPTION]: string;
   [ModelType.TEXT_TO_SPEECH]: Buffer | ArrayBuffer | Uint8Array;
-  [ModelType.AUDIO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
-  [ModelType.VIDEO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
+  [ModelType.AUDIO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>;
+  [ModelType.VIDEO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>;
   [ModelType.OBJECT_SMALL]: Record<string, unknown>;
   [ModelType.OBJECT_LARGE]: Record<string, unknown>;
-  // Allow string index for custom model types
-  [key: string]: unknown;
+  [ModelType.TEXT_COMPLETION]: string;
+  // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
+
+/**
+ * Models that support streaming - their handlers can return either string or TextStreamResult
+ */
+export type StreamableModelType =
+  | typeof ModelType.TEXT_SMALL
+  | typeof ModelType.TEXT_LARGE
+  | typeof ModelType.TEXT_REASONING_SMALL
+  | typeof ModelType.TEXT_REASONING_LARGE
+  | typeof ModelType.TEXT_COMPLETION;
+
+/**
+ * Result type for plugin model handlers - includes TextStreamResult for streamable models
+ */
+export type PluginModelResult<K extends keyof ModelResultMap> =
+  K extends StreamableModelType
+    ? ModelResultMap[K] | TextStreamResult
+    : ModelResultMap[K];
 
 /**
  * Type guard to check if a model type supports streaming.

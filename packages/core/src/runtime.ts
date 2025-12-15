@@ -2047,9 +2047,9 @@ export class AgentRuntime implements IAgentRuntime {
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;
   }
 
-  async useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+  async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'>,
+    params: ModelParamsMap[T],
     provider?: string
   ): Promise<R> {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
