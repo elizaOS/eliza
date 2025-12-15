@@ -50,12 +50,41 @@ export interface LoggerBindings extends Record<string, unknown> {
 }
 
 /**
- * Log entry structure for in-memory storage
+ * Log entry structure for in-memory storage and streaming
  */
-interface LogEntry {
+export interface LogEntry {
   time: number;
   level?: number;
   msg: string;
+  agentName?: string;
+  agentId?: string;
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Log listener callback type for real-time log streaming
+ */
+export type LogListener = (entry: LogEntry) => void;
+
+// Global log listeners for streaming
+const logListeners: Set<LogListener> = new Set();
+
+/**
+ * Add a listener for real-time log entries (used for WebSocket streaming)
+ * @param listener - Callback function to receive log entries
+ * @returns Function to remove the listener
+ */
+export function addLogListener(listener: LogListener): () => void {
+  logListeners.add(listener);
+  return () => logListeners.delete(listener);
+}
+
+/**
+ * Remove a log listener
+ * @param listener - The listener to remove
+ */
+export function removeLogListener(listener: LogListener): void {
+  logListeners.delete(listener);
 }
 
 /**
@@ -117,14 +146,18 @@ function shouldLog(messageLevel: string, currentLevel: string): boolean {
  * Safe JSON stringify that handles circular references
  */
 function safeStringify(obj: unknown): string {
-  const seen = new WeakSet();
-  return JSON.stringify(obj, (_, value) => {
-    if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) return '[Circular]';
-      seen.add(value);
-    }
-    return value;
-  });
+  try {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (_, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch {
+    return String(obj);
+  }
 }
 
 /**
@@ -279,6 +312,14 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       if (logs.length > maxLogs) {
         logs.shift();
       }
+      // Notify all listeners for real-time streaming
+      for (const listener of logListeners) {
+        try {
+          listener(entry);
+        } catch {
+          // Ignore errors in listeners to prevent breaking the logging flow
+        }
+      }
     },
     clear(): void {
       logs.length = 0;
@@ -414,19 +455,23 @@ const adzeStore = setup({
 
 // Mirror Adze output to in-memory storage
 adzeStore.addListener('*', (log: { data?: { message?: string | unknown[]; level?: number } }) => {
-  const d = log.data;
-  const msg = Array.isArray(d?.message)
-    ? d.message.map((m: unknown) => (typeof m === 'string' ? m : safeStringify(m))).join(' ')
-    : typeof d?.message === 'string'
-      ? d.message
-      : '';
+  try {
+    const d = log.data;
+    const msg = Array.isArray(d?.message)
+      ? d.message.map((m: unknown) => (typeof m === 'string' ? m : safeStringify(m))).join(' ')
+      : typeof d?.message === 'string'
+        ? d.message
+        : '';
 
-  const entry: LogEntry = {
-    time: Date.now(),
-    level: typeof d?.level === 'number' ? d.level : undefined,
-    msg,
-  };
-  globalInMemoryDestination.write(entry);
+    const entry: LogEntry = {
+      time: Date.now(),
+      level: typeof d?.level === 'number' ? d.level : undefined,
+      msg,
+    };
+    globalInMemoryDestination.write(entry);
+  } catch {
+    // Silent fail - don't break logging
+  }
 });
 
 // ============================================================================
@@ -595,9 +640,13 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
      * Safely redact sensitive data from an object (browser version)
      */
     const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
-      const copy = { ...obj };
-      redact(copy);
-      return copy;
+      try {
+        const copy = { ...obj };
+        redact(copy);
+        return copy;
+      } catch {
+        return obj;
+      }
     };
 
     const adaptArgs = (
@@ -709,9 +758,14 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     }
 
     // Adze sealed logger has dynamic method names, use type assertion for method access
-    const sealedRecord = sealed as unknown as Record<string, (...args: unknown[]) => void>;
-    if (adzeMethod in sealedRecord && typeof sealedRecord[adzeMethod] === 'function') {
-      sealedRecord[adzeMethod](...adzeArgs);
+    try {
+      const sealedRecord = sealed as unknown as Record<string, (...args: unknown[]) => void>;
+      if (adzeMethod in sealedRecord && typeof sealedRecord[adzeMethod] === 'function') {
+        sealedRecord[adzeMethod](...adzeArgs);
+      }
+    } catch {
+      // Fallback to console if Adze fails
+      console.log(`[${method.toUpperCase()}]`, ...args);
     }
   };
 
@@ -720,12 +774,17 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Creates a shallow copy to avoid mutating the original
    */
   const safeRedact = (obj: Record<string, unknown>): Record<string, unknown> => {
-    // Create a shallow copy to avoid mutating original
-    const copy = { ...obj };
-    // fast-redact returns the redacted string when serialize:false
-    // but mutates the object in place, so we use the copy
-    redact(copy);
-    return copy;
+    try {
+      // Create a shallow copy to avoid mutating original
+      const copy = { ...obj };
+      // fast-redact returns the redacted string when serialize:false
+      // but mutates the object in place, so we use the copy
+      redact(copy);
+      return copy;
+    } catch {
+      // If redaction fails, return original (don't break logging)
+      return obj;
+    }
   };
 
   /**

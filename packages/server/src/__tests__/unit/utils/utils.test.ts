@@ -18,8 +18,8 @@ describe('Utility Functions', () => {
     envSnapshot = setupTestEnvironment();
   });
 
-  afterEach(() => {
-    teardownTestEnvironment(envSnapshot);
+  afterEach(async () => {
+    await teardownTestEnvironment(envSnapshot);
   });
 
   describe('expandTildePath', () => {

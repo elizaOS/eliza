@@ -2,7 +2,7 @@ import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema } from './schema';
 import { z } from 'zod';
-import type { ObjectGenerationParams } from '@elizaos/core';
+import type { ObjectGenerationParams, JSONSchema } from '@elizaos/core';
 import {
   ConversationLengthEvaluator,
   ConversationFlowEvaluator,
@@ -266,7 +266,7 @@ class LLMJudgeEvaluator implements Evaluator {
     // Try OBJECT_SMALL first, then TEXT_LARGE/TEXT_SMALL
     const candidateModels = [ModelType.OBJECT_SMALL, ModelType.TEXT_LARGE, ModelType.TEXT_SMALL];
     const temperature = params.temperature || 0.1;
-    const jsonSchema = (params.json_schema as Record<string, unknown> | undefined) || this.getDefaultJudgmentSchema();
+    const jsonSchema: JSONSchema = (params.json_schema as JSONSchema | undefined) || this.getDefaultJudgmentSchema();
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
@@ -337,7 +337,7 @@ Do not use any other field names. Use only the exact field names specified above
       ]);
 
       // The object model should return a proper object, but let's validate it
-      const parsedResponse = this.validateResponse(response, jsonSchema);
+      const parsedResponse = this.validateResponse(response, jsonSchema) as Record<string, unknown>;
 
       // Compare with expected result
       const success = this.compareWithExpected(parsedResponse, expected);
@@ -360,7 +360,7 @@ Do not use any other field names. Use only the exact field names specified above
     }
   }
 
-  private getDefaultJudgmentSchema() {
+  private getDefaultJudgmentSchema(): JSONSchema {
     return {
       type: 'object',
       properties: {
@@ -372,7 +372,7 @@ Do not use any other field names. Use only the exact field names specified above
     };
   }
 
-  private validateResponse(response: unknown, schema: z.ZodSchema): unknown {
+  private validateResponse(response: unknown, schema: JSONSchema): unknown {
     // The object model should return a proper object, but let's validate it
     if (typeof response === 'string') {
       // Fallback: parse as JSON if it's a string
@@ -384,7 +384,7 @@ Do not use any other field names. Use only the exact field names specified above
     return this.validateWithZod(response, schema);
   }
 
-  private validateWithZod(response: unknown, schema: z.ZodSchema): unknown {
+  private validateWithZod(response: unknown, schema: JSONSchema): unknown {
     try {
       const zodSchema = this.convertToZodSchema(schema);
       return zodSchema.parse(response);
@@ -393,7 +393,7 @@ Do not use any other field names. Use only the exact field names specified above
     }
   }
 
-  private convertToZodSchema(schema: Record<string, unknown>): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  private convertToZodSchema(schema: JSONSchema): z.ZodObject<Record<string, z.ZodTypeAny>> {
     // Convert JSON schema to Zod schema
     const properties: Record<string, z.ZodTypeAny> = {};
 
@@ -426,6 +426,7 @@ Do not use any other field names. Use only the exact field names specified above
 
   private compareWithExpected(parsedResponse: Record<string, unknown>, expected: string): boolean {
     const judgment = (parsedResponse.judgment as string | undefined)?.toLowerCase() || '';
+    const confidence = parsedResponse.confidence as number | undefined;
     const expectedLower = expected.toLowerCase();
 
     // Handle yes/no expectations
@@ -436,19 +437,19 @@ Do not use any other field names. Use only the exact field names specified above
     // Handle confidence thresholds (e.g., "0.8+")
     if (expectedLower.includes('+')) {
       const threshold = parseFloat(expectedLower.replace('+', ''));
-      return parsedResponse.confidence >= threshold;
+      return confidence !== undefined && confidence >= threshold;
     }
 
     // Handle confidence upper bounds (e.g., "0.3-")
     if (expectedLower.endsWith('-')) {
       const threshold = parseFloat(expectedLower.replace('-', ''));
-      return parsedResponse.confidence <= threshold;
+      return confidence !== undefined && confidence <= threshold;
     }
 
     // Handle confidence ranges (e.g., "0.8-1.0")
     if (expectedLower.includes('-')) {
       const [min, max] = expectedLower.split('-').map(Number);
-      return parsedResponse.confidence >= min && parsedResponse.confidence <= max;
+      return confidence !== undefined && confidence >= min && confidence <= max;
     }
 
     // Default: check if judgment contains expected

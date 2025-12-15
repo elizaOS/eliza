@@ -72,9 +72,9 @@ export const replyAction = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
+    state?: State,
     _options?: HandlerOptions,
-    callback: HandlerCallback,
+    callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
     // Access previous action results from context if available
@@ -114,14 +114,18 @@ export const replyAction = {
 
       // Parse XML response
       const parsedXml = parseKeyValueXml(response);
+      const thought = typeof parsedXml?.thought === 'string' ? parsedXml.thought : '';
+      const text = typeof parsedXml?.message === 'string' ? parsedXml.message : '';
 
       const responseContent = {
-        thought: parsedXml?.thought || '',
-        text: parsedXml?.message || '',
-        actions: ['REPLY'],
+        thought,
+        text,
+        actions: ['REPLY'] as string[],
       };
 
-      await callback(responseContent);
+      if (callback) {
+        await callback(responseContent);
+      }
 
       return {
         text: `Generated reply: ${responseContent.text}`,
@@ -130,12 +134,12 @@ export const replyAction = {
           responded: true,
           lastReply: responseContent.text,
           lastReplyTime: Date.now(),
-          thoughtProcess: parsedXml?.thought,
+          thoughtProcess: thought,
         },
         data: {
           actionName: 'REPLY',
           response: responseContent,
-          thought: parsedXml?.thought,
+          thought,
           messageGenerated: true,
         },
         success: true,

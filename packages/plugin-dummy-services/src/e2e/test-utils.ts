@@ -106,8 +106,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return Promise.resolve([]);
     };
 
     // Emit the event to trigger the agent's message processing logic.
@@ -115,6 +116,7 @@ export function sendMessageAndWaitForResponse(
       runtime,
       message,
       callback,
+      source: 'e2e-test',
     });
   });
 }

@@ -61,8 +61,8 @@ export class PostgresConnectionManager {
    *
    * Server RLS context (if enabled) is already set via Pool's application_name.
    *
-   * If Entity RLS is not installed (ENABLE_DATA_ISOLATION=false), this method
-   * gracefully degrades to executing the callback without setting entity context.
+   * If ENABLE_DATA_ISOLATION is not true, this method skips setting entity context
+   * entirely to avoid PostgreSQL errors that would abort the transaction.
    *
    * @param entityId - The entity UUID to set as context (or null for server operations)
    * @param callback - The database operations to execute with the entity context
@@ -73,38 +73,29 @@ export class PostgresConnectionManager {
     entityId: UUID | null,
     callback: (tx: NodePgDatabase) => Promise<T>
   ): Promise<T> {
+    // Check if data isolation is enabled - if not, skip SET LOCAL entirely
+    // This avoids PostgreSQL transaction abort errors when app.entity_id is not configured
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
     return await this.db.transaction(async (tx) => {
-      // Set entity context for this transaction (if Entity RLS is enabled)
-      if (entityId) {
+      // Only set entity context if ENABLE_DATA_ISOLATION is true AND entityId is provided
+      if (dataIsolationEnabled && entityId) {
         try {
-          // Try to set entity context - will fail gracefully if Entity RLS not installed
-          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
+          await tx.execute(sql`SET LOCAL app.entity_id = ${entityId}`);
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
-          // Distinguish between "Entity RLS not installed" vs "critical error"
+          // This is an unexpected error since we already checked ENABLE_DATA_ISOLATION
           const errorMessage = error instanceof Error ? error.message : String(error);
-
-          // Check if this is just Entity RLS not being installed (expected when ENABLE_DATA_ISOLATION=false)
-          if (
-            errorMessage.includes('unrecognized configuration parameter') ||
-            errorMessage.includes('app.entity_id')
-          ) {
-            // This is expected when Entity RLS is not enabled - continue without entity context
-            logger.debug(
-              '[Entity Context] Entity RLS not enabled, executing without entity context'
-            );
-          } else {
-            // This is an unexpected error - log it with higher severity
-            logger.error(
-              { error, entityId },
-              '[Entity Context] Critical error setting entity context - this may indicate a configuration issue'
-            );
-            // Don't throw - allow degraded operation, but the error is now visible
-            logger.warn(
-              '[Entity Context] Continuing without entity context due to error - data isolation may be compromised'
-            );
-          }
+          logger.error(
+            { error, entityId },
+            `[Entity Context] Failed to set entity context: ${errorMessage}`
+          );
+          // Re-throw because if ENABLE_DATA_ISOLATION is true, this should work
+          throw error;
         }
+      } else if (!dataIsolationEnabled) {
+        // Data isolation not enabled - just execute without entity context
+        // This is the expected path for most deployments
       } else {
         logger.debug('[Entity Context] No entity context set (server operation)');
       }

@@ -1,24 +1,17 @@
-name: Plugin SQL Integration Tests
+name: Plugin SQL Tests
 
-# Cancel previous runs for the same PR/branch
 concurrency:
   group: plugin-sql-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 on:
   push:
-    branches:
-      - 'main'
-      - 'develop'
+    branches: ['main', 'develop']
   pull_request:
-    branches:
-      - 'main'
-      - 'develop'
+    branches: ['main', 'develop']
 
 jobs:
-  databaseIntegrationTests:
-    # Skip duplicate runs: run on push to main/develop, or on pull_request events only
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && contains(fromJson('["main", "develop"]'), github.ref_name))
+  pglite:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,15 +19,69 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '23'
-      - name: Install root dependencies
-        run: bun install
-      - name: Build all packages
-        run: bun run build
-      - name: Install dependencies and build plugin-sql
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: bun install && bun run build
+      - name: Tests
         working-directory: ./packages/plugin-sql
         run: |
-          bun install
-          bun run build
-      - name: Run plugin-sql integration tests
+          bun run test:unit
+          bun run test:integration
+          bun run test:migration
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eliza_test
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - name: Setup PostgreSQL (same as local)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -p 5433 -U postgres -d eliza_test -f packages/plugin-sql/scripts/init-test-db.sql
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
         working-directory: ./packages/plugin-sql
-        run: bun run test:integration
+        run: bun install && bun run build
+      - name: Tests
+        working-directory: ./packages/plugin-sql
+        env:
+          POSTGRES_URL: postgresql://eliza_test:test123@localhost:5433/eliza_test
+        run: |
+          bun run test:integration:postgres
+          bun run test:migration:postgres
+
+  # TODO: Remove this job once migration system is stable
+  # This tests upgrading from older Eliza versions (1.6.x) to current
+  e2e-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '23'
+      - run: bun install
+      - run: bun run build
+      - name: Build plugin-sql
+        working-directory: ./packages/plugin-sql
+        run: bun install && bun run build
+      - name: E2E Upgrade Test
+        working-directory: ./packages/plugin-sql
+        run: bun run test:e2e:upgrade

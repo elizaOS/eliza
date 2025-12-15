@@ -1,3 +1,4 @@
+import type { IDatabaseAdapter } from '@elizaos/core';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { PgliteDatabase } from 'drizzle-orm/pglite';
 
@@ -14,4 +15,20 @@ export interface IDatabaseClientManager<T> {
   initialize(): Promise<void>;
   getConnection(): T;
   close(): Promise<void>;
+}
+
+/**
+ * Extract typed Drizzle database from adapter.
+ * Use this instead of casting `adapter.db` everywhere.
+ */
+export function getDb(adapter: IDatabaseAdapter): DrizzleDatabase {
+  return adapter.db as DrizzleDatabase;
+}
+
+/**
+ * Type-safe row extraction from query results.
+ * Avoids verbose `as unknown as T` casts.
+ */
+export function getRow<T>(result: { rows: unknown[] }, index = 0): T | undefined {
+  return result.rows[index] as T | undefined;
 }

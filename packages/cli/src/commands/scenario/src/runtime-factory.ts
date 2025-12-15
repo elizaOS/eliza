@@ -107,9 +107,8 @@ export async function createScenarioServer(
         process.env.SERVER_PORT = port.toString();
 
         // Register the server process for cleanup
-        const serverPid = server.server?.pid || process.pid;
         const runId = `agent-server-${port}`;
-        processManager.registerProcess(runId, serverPid, 'agent-server', port);
+        processManager.registerProcess(runId, process.pid, 'agent-server', port);
       }
       break; // Success, exit retry loop
     } catch (error) {
@@ -225,8 +224,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     processManager.unregisterProcess(runId);
   } catch {
     // Force terminate the process if graceful shutdown failed
-    const serverPid = server.server?.pid || process.pid;
-    if (processManager.isProcessRunning(serverPid)) {
+    if (processManager.isProcessRunning(process.pid)) {
       const runId = `agent-server-${port}`;
       processManager.terminateProcess(runId);
     }
@@ -244,7 +242,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
  * @returns Promise with agent response and channel/room ID
  */
 export async function askAgentViaApi(
-  server: AgentServer,
+  _server: AgentServer,
   agentId: UUID,
   input: string,
   timeoutMs: number = 60000,

@@ -12,7 +12,7 @@ import { transformMessageAttachments, validateServerIdForRls } from '../../utils
 import express from 'express';
 import internalMessageBus from '../../services/message-bus';
 import type { AgentServer } from '../../index';
-import type { MessageServiceStructure as MessageService } from '../../types/server';
+import type { MessageServiceStructure as MessageService, AttachmentInput } from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 
@@ -310,7 +310,7 @@ export function createChannelsRouter(
           interface ParsedRawMessage {
             thought?: string;
             actions?: string[];
-            attachments?: unknown;
+            attachments?: AttachmentInput;
             [key: string]: unknown;
           }
           let rawMessage: ParsedRawMessage = {};
@@ -1053,14 +1053,14 @@ Respond with just the title, nothing else.
    */
   router.post(
     '/central-channels/:channelId/messages',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] POST /central-channels/:channelId/messages is deprecated. Use POST /channels/:channelId/messages instead.'
       );
 
       // Parameter mapping handled by middleware, just forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1070,14 +1070,14 @@ Respond with just the title, nothing else.
    */
   router.get(
     '/central-channels/:channelId/messages',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] GET /central-channels/:channelId/messages is deprecated. Use GET /channels/:channelId/messages instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1087,7 +1087,7 @@ Respond with just the title, nothing else.
    */
   router.get(
     '/central-servers/:serverId/channels',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] GET /central-servers/:serverId/channels is deprecated. Use GET /message-servers/:messageServerId/channels instead.'
       );
@@ -1095,7 +1095,7 @@ Respond with just the title, nothing else.
       // Forward to new endpoint with parameter rename
       req.url = req.url.replace('/central-servers/', '/message-servers/');
       req.params.messageServerId = req.params.serverId;
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1105,14 +1105,14 @@ Respond with just the title, nothing else.
    */
   router.post(
     '/central-channels',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] POST /central-channels is deprecated. Use POST /channels instead.'
       );
 
       // Parameter mapping handled by middleware, just forward to new endpoint
       req.url = '/channels';
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1122,14 +1122,14 @@ Respond with just the title, nothing else.
    */
   router.get(
     '/central-channels/:channelId/details',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] GET /central-channels/:channelId/details is deprecated. Use GET /channels/:channelId/details instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1139,14 +1139,14 @@ Respond with just the title, nothing else.
    */
   router.get(
     '/central-channels/:channelId/participants',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] GET /central-channels/:channelId/participants is deprecated. Use GET /channels/:channelId/participants instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1156,14 +1156,14 @@ Respond with just the title, nothing else.
    */
   router.post(
     '/central-channels/:channelId/agents',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] POST /central-channels/:channelId/agents is deprecated. Use POST /channels/:channelId/agents instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1173,14 +1173,14 @@ Respond with just the title, nothing else.
    */
   router.delete(
     '/central-channels/:channelId/agents/:agentId',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] DELETE /central-channels/:channelId/agents/:agentId is deprecated. Use DELETE /channels/:channelId/agents/:agentId instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1190,14 +1190,14 @@ Respond with just the title, nothing else.
    */
   router.get(
     '/central-channels/:channelId/agents',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] GET /central-channels/:channelId/agents is deprecated. Use GET /channels/:channelId/agents instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1207,14 +1207,14 @@ Respond with just the title, nothing else.
    */
   router.delete(
     '/central-channels/:channelId/messages/:messageId',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] DELETE /central-channels/:channelId/messages/:messageId is deprecated. Use DELETE /channels/:channelId/messages/:messageId instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1224,14 +1224,14 @@ Respond with just the title, nothing else.
    */
   router.delete(
     '/central-channels/:channelId/messages',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] DELETE /central-channels/:channelId/messages is deprecated. Use DELETE /channels/:channelId/messages instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1241,14 +1241,14 @@ Respond with just the title, nothing else.
    */
   router.patch(
     '/central-channels/:channelId',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] PATCH /central-channels/:channelId is deprecated. Use PATCH /channels/:channelId instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1258,14 +1258,14 @@ Respond with just the title, nothing else.
    */
   router.delete(
     '/central-channels/:channelId',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] DELETE /central-channels/:channelId is deprecated. Use DELETE /channels/:channelId instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 
@@ -1275,14 +1275,14 @@ Respond with just the title, nothing else.
    */
   router.post(
     '/central-channels/:channelId/generate-title',
-    async (req: express.Request, res: express.Response) => {
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       logger.warn(
         '[DEPRECATED] POST /central-channels/:channelId/generate-title is deprecated. Use POST /channels/:channelId/generate-title instead.'
       );
 
       // Forward to new endpoint
       req.url = req.url.replace('/central-channels/', '/channels/');
-      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res);
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
     }
   );
 

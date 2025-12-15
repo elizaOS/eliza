@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
 import { setDefaultSecretsFromEnv } from './secrets';
+import { getSalt, encryptObjectValues } from './settings';
 import { resolvePlugins } from './plugin';
 import type {
   Character,
@@ -158,11 +159,28 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     const createdRuntimes: IAgentRuntime[] = [];
 
     const promises = agents.map(async (agent) => {
+      const character: Character = JSON.parse(JSON.stringify(agent.character));
+
       // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
       // In test mode, skip env merge to avoid database bloat from system variables
-      const character = agent.character;
       await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
+
+      // Encrypt all secrets after merging env vars
+      const salt = getSalt();
+      if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
+        character.settings.secrets = encryptObjectValues(
+          character.settings.secrets as Record<string, string>,
+          salt
+        );
+      }
+      // Also encrypt character.secrets (root level) if it exists
+      if (character.secrets && typeof character.secrets === 'object') {
+        character.secrets = encryptObjectValues(
+          character.secrets as Record<string, string>,
+          salt
+        ) as { [key: string]: string | boolean | number };
+      }
 
       let resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
@@ -552,8 +570,14 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Fire and forget with callback
 
       const callback = async (content: Content) => {
-        if (options.onResponse) {
-          await options.onResponse(content);
+        try {
+          if (options.onResponse) {
+            await options.onResponse(content);
+          }
+        } catch (error) {
+          if (options.onError) {
+            await options.onError(error instanceof Error ? error : new Error(String(error)));
+          }
         }
         return [];
       };
@@ -561,9 +585,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // Wrap message handling with Entity RLS context
       handleMessageWithEntityContext(() =>
         runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
-      ).then(() => {
-        if (options.onComplete) options.onComplete();
-      });
+      )
+        .then(() => {
+          if (options.onComplete) options.onComplete();
+        })
+        .catch((error: Error) => {
+          if (options.onError) options.onError(error);
+        });
 
       // Emit event for tracking
       this.dispatchEvent(
@@ -642,8 +670,19 @@ export class ElizaOS extends EventTarget implements IElizaOS {
   ): Promise<Array<{ agentId: UUID; result: SendMessageResult; error?: Error }>> {
     const results = await Promise.all(
       messages.map(async ({ agentId, message, options }) => {
-        const result = await this.sendMessage(agentId, message, options);
-        return { agentId, result };
+        try {
+          const result = await this.sendMessage(agentId, message, options);
+          return { agentId, result };
+        } catch (error) {
+          return {
+            agentId,
+            result: {
+              messageId: (message.id || '') as UUID,
+              userMessage: message as Memory,
+            },
+            error: error instanceof Error ? error : new Error(String(error)),
+          };
+        }
       })
     );
 

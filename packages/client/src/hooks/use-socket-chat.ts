@@ -137,7 +137,7 @@ export function useSocketChat({
       if (clientMessageId && isCurrentUser) {
         // Update optimistic message with server response
         onUpdateMessage(clientMessageId, {
-          id: data.id || randomUUID(),
+          id: (data.id as UUID) || randomUUID(),
           isLoading: false,
           createdAt:
             typeof data.createdAt === 'number' ? data.createdAt : Date.parse(data.createdAt),
@@ -148,7 +148,7 @@ export function useSocketChat({
       } else {
         // Add new message from other participants
         const newUiMsg: UiMessage = {
-          id: data.id || randomUUID(),
+          id: (data.id as UUID) || randomUUID(),
           text: data.text,
           name: data.senderName,
           senderId: data.senderId as UUID,

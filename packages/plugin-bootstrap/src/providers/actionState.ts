@@ -83,41 +83,32 @@ export const actionStateProvider: Provider = {
     let resultsText = '';
     if (actionResults.length > 0) {
       const formattedResults = actionResults
-        .map(
-          (
-            result: {
-              data?: { actionName?: string };
-              success: boolean;
-              text?: string;
-              error?: string;
-              values?: Record<string, unknown>;
-            },
-            index: number
-          ) => {
-            const actionName = result.data?.actionName || 'Unknown Action';
-            const success = result.success; // Now required field
-            const status = success ? 'Success' : 'Failed';
+        .map((result, index) => {
+          const actionName =
+            (result.data as { actionName?: string } | undefined)?.actionName || 'Unknown Action';
+          const success = result.success;
+          const status = success ? 'Success' : 'Failed';
 
-            let resultText = `**${index + 1}. ${actionName}** - ${status}`;
+          let resultText = `**${index + 1}. ${actionName}** - ${status}`;
 
-            if (result.text) {
-              resultText += `\n   Output: ${result.text}`;
-            }
-
-            if (result.error) {
-              resultText += `\n   Error: ${result.error}`;
-            }
-
-            if (result.values && Object.keys(result.values).length > 0) {
-              const values = Object.entries(result.values)
-                .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-                .join('\n');
-              resultText += `\n   Values:\n${values}`;
-            }
-
-            return resultText;
+          if (result.text) {
+            resultText += `\n   Output: ${result.text}`;
           }
-        )
+
+          if (result.error) {
+            const errorMsg = result.error instanceof Error ? result.error.message : result.error;
+            resultText += `\n   Error: ${errorMsg}`;
+          }
+
+          if (result.values && Object.keys(result.values).length > 0) {
+            const values = Object.entries(result.values)
+              .map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
+              .join('\n');
+            resultText += `\n   Values:\n${values}`;
+          }
+
+          return resultText;
+        })
         .join('\n\n');
 
       resultsText = addHeader('# Previous Action Results', formattedResults);

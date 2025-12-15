@@ -169,9 +169,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return super.getMemoryById(memoryId);
   }
 
-  searchMemories(params: { roomId: UUID; limit?: number; start?: number; end?: number }): Promise<Memory[]> {
-    return super.searchMemories(params);
-  }
 
   updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
     return super.updateMemory(memory);

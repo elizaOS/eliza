@@ -39,7 +39,7 @@ import {
   type ModelResultMap,
   type ModelTypeName,
   type Plugin,
-  type PluginEvents,
+  type RuntimeEventStorage,
   type Route,
   type UUID,
   type Service,
@@ -112,7 +112,7 @@ export class AgentRuntime implements IAgentRuntime {
   readonly evaluators: Evaluator[] = [];
   readonly providers: Provider[] = [];
   readonly plugins: Plugin[] = [];
-  events: PluginEvents = {};
+  events: RuntimeEventStorage = {};
   stateCache = new Map<string, State>();
   readonly fetch = fetch;
   services = new Map<ServiceTypeName, Service[]>();
@@ -638,7 +638,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
   }
 
-  getSetting(key: string): string | boolean | null {
+  getSetting(key: string): string | boolean | number | null {
     const settings = this.character.settings;
     const secrets = this.character.secrets;
     const nestedSecrets =
@@ -651,11 +651,29 @@ export class AgentRuntime implements IAgentRuntime {
         : undefined;
 
     const value = secrets?.[key] || settings?.[key] || nestedSecrets?.[key] || this.settings[key];
-    const stringValue = typeof value === 'string' ? value : undefined;
-    const decryptedValue = stringValue ? decryptSecret(stringValue, getSalt()) : null;
-    if (decryptedValue === 'true') return true;
-    if (decryptedValue === 'false') return false;
-    return decryptedValue || null;
+
+    // Handle each type appropriately
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    if (typeof value === 'number') {
+      return value;
+    }
+
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      // Only decrypt string values
+      const decrypted = decryptSecret(value, getSalt());
+      if (decrypted === 'true') return true;
+      if (decrypted === 'false') return false;
+      return decrypted;
+    }
+
+    return null;
   }
 
   getConversationLength() {
@@ -758,7 +776,7 @@ export class AgentRuntime implements IAgentRuntime {
       }>;
       thought: string;
       startTime: number;
-    } | null = null;
+    } | undefined = undefined;
 
     const thought =
       responses[0]?.content?.thought ||
@@ -2480,7 +2498,7 @@ export class AgentRuntime implements IAgentRuntime {
         },
         'Embedding generation failed'
       );
-      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
+      memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, { text: '' });
     }
     return memory;
   }
