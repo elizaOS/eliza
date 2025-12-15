@@ -290,7 +290,7 @@ export function useSocketChat({
       (d: ChannelDeletedData) => (d.channelId || d.roomId) === channelId,
       handleChannelDeleted
     );
-    const streamSub = socketIOManager.evtStreamChunk.attach(
+    const streamSub = socketIOManager.evtMessageStreamChunk.attach(
       (d: StreamChunkData) => d.channelId === channelId,
       handleStreamChunk
     );

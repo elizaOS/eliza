@@ -74,11 +74,23 @@ export type LogStreamData = {
 };
 
 // Define type for stream chunk events (real-time LLM streaming)
+// Uses camelCase for client-facing WebSocket events (JS convention)
 export type StreamChunkData = {
   messageId: string;
   chunk: string;
+  index: number;
   agentId: string;
   channelId: string;
+};
+
+// Define type for stream error events
+// Uses camelCase for client-facing WebSocket events (JS convention)
+export type StreamErrorData = {
+  messageId: string;
+  channelId: string;
+  agentId: string;
+  error: string;
+  partialText?: string;
 };
 
 // A simple class that provides EventEmitter-like interface using Evt internally
@@ -94,7 +106,8 @@ class EventAdapter {
     this.events.channelCleared = Evt.create<ChannelClearedData>();
     this.events.channelDeleted = Evt.create<ChannelDeletedData>();
     this.events.logStream = Evt.create<LogStreamData>();
-    this.events.streamChunk = Evt.create<StreamChunkData>();
+    this.events.messageStreamChunk = Evt.create<StreamChunkData>();
+    this.events.messageStreamError = Evt.create<StreamErrorData>();
   }
 
   on<T = unknown>(eventName: string, listener: (data: T) => void) {
@@ -190,8 +203,12 @@ export class SocketIOManager extends EventAdapter {
     return this._getEvt('logStream') as Evt<LogStreamData>;
   }
 
-  public get evtStreamChunk() {
-    return this._getEvt('streamChunk') as Evt<StreamChunkData>;
+  public get evtMessageStreamChunk() {
+    return this._getEvt('messageStreamChunk') as Evt<StreamChunkData>;
+  }
+
+  public get evtMessageStreamError() {
+    return this._getEvt('messageStreamError') as Evt<StreamErrorData>;
   }
 
   private constructor() {
@@ -356,10 +373,18 @@ export class SocketIOManager extends EventAdapter {
     });
 
     // Listen for stream chunks (real-time LLM streaming)
-    this.socket.on('streamChunk', (data: StreamChunkData) => {
+    this.socket.on('messageStreamChunk', (data: StreamChunkData) => {
       // Check if this is for one of our active channels
       if (data.channelId && this.activeChannelIds.has(data.channelId)) {
-        this.emit('streamChunk', data);
+        this.emit('messageStreamChunk', data);
+      }
+    });
+
+    // Listen for stream errors
+    this.socket.on('messageStreamError', (data: StreamErrorData) => {
+      // Check if this is for one of our active channels
+      if (data.channelId && this.activeChannelIds.has(data.channelId)) {
+        this.emit('messageStreamError', data);
       }
     });
 

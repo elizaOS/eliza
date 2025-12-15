@@ -34,6 +34,61 @@ export enum SOCKET_MESSAGE_TYPE {
 }
 
 /**
+ * WebSocket/SSE event names for message streaming.
+ * Used for real-time streaming of agent responses to clients.
+ *
+ * Event flow:
+ * 1. First `messageStreamChunk` indicates stream start
+ * 2. Multiple `messageStreamChunk` events with text chunks
+ * 3. `messageBroadcast` event with complete message (indicates stream end)
+ * 4. `messageStreamError` if an error occurs during streaming
+ */
+export const MESSAGE_STREAM_EVENT = {
+  /** Text chunk during streaming. First chunk indicates stream start. */
+  messageStreamChunk: 'messageStreamChunk',
+  /** Error occurred during streaming */
+  messageStreamError: 'messageStreamError',
+  /** Complete message broadcast (existing event, indicates stream end) */
+  messageBroadcast: 'messageBroadcast',
+} as const;
+
+export type MessageStreamEventType = (typeof MESSAGE_STREAM_EVENT)[keyof typeof MESSAGE_STREAM_EVENT];
+
+/**
+ * Payload for messageStreamChunk event
+ * Uses camelCase for client-facing WebSocket events (JS convention)
+ */
+export interface MessageStreamChunkPayload {
+  /** ID of the message being streamed */
+  messageId: UUID;
+  /** The text chunk */
+  chunk: string;
+  /** Chunk index (0-based) */
+  index: number;
+  /** Channel ID where the message is being sent */
+  channelId: string;
+  /** Agent ID that is responding */
+  agentId: UUID;
+}
+
+/**
+ * Payload for messageStreamError event
+ * Uses camelCase for client-facing WebSocket events (JS convention)
+ */
+export interface MessageStreamErrorPayload {
+  /** ID of the message that failed */
+  messageId: UUID;
+  /** Channel ID */
+  channelId: string;
+  /** Agent ID */
+  agentId: UUID;
+  /** Error message */
+  error: string;
+  /** Partial text generated before the error (if any) */
+  partialText?: string;
+}
+
+/**
  * Interface for control messages sent from the backend to the frontend
  * to manage UI state and interaction capabilities
  */
