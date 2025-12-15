@@ -2,40 +2,49 @@
  * Test suite for Channels API response mode parameter
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import express from 'express';
 import { createChannelsRouter } from '../../../api/messaging/channels';
 import type { UUID, ElizaOS } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
 
-// Mock internalMessageBus
-jest.mock('../../../services/message-bus', () => ({
-  default: {
-    emit: jest.fn(),
-  },
-}));
+/**
+ * Type for handleMessage mock function
+ */
+type HandleMessageFn = (
+  agentId: UUID,
+  message: unknown,
+  options?: {
+    onStreamChunk?: (chunk: string, messageId: UUID) => Promise<void>;
+    onResponse?: (content: unknown) => Promise<void>;
+    onError?: (error: Error) => Promise<void>;
+  }
+) => Promise<{ processing?: { responseContent?: { text: string } } }>;
 
-// Mock ElizaOS
-const mockElizaOS = {
-  getAgent: jest.fn(),
-  handleMessage: jest.fn().mockResolvedValue({
+// Create mock functions using Bun's mock()
+const mockGetAgent = mock(() => null);
+const mockHandleMessage = mock<HandleMessageFn>(() =>
+  Promise.resolve({
     processing: {
       responseContent: { text: 'Agent response' },
     },
-  }),
-} as unknown as ElizaOS;
+  })
+);
 
-// Mock AgentServer
-const mockServerInstance = {
-  messageServerId: '00000000-0000-0000-0000-000000000001' as UUID,
-  socketIO: null,
-  getChannelDetails: jest.fn().mockResolvedValue({
+const mockGetChannelDetails = mock(() =>
+  Promise.resolve({
     id: '123e4567-e89b-12d3-a456-426614174000',
     name: 'Test Channel',
     type: 'dm',
-  }),
-  getServers: jest.fn().mockResolvedValue([{ id: '00000000-0000-0000-0000-000000000001' }]),
-  createMessage: jest.fn().mockResolvedValue({
+  })
+);
+
+const mockGetServers = mock(() =>
+  Promise.resolve([{ id: '00000000-0000-0000-0000-000000000001' }])
+);
+
+const mockCreateMessage = mock(() =>
+  Promise.resolve({
     id: 'msg-123',
     channelId: '123e4567-e89b-12d3-a456-426614174000',
     content: 'Test message',
@@ -43,16 +52,39 @@ const mockServerInstance = {
     createdAt: new Date(),
     sourceType: 'eliza_gui',
     metadata: {},
-  }),
-  getChannelParticipants: jest.fn().mockResolvedValue([
+  })
+);
+
+const mockGetChannelParticipants = mock(() =>
+  Promise.resolve([
     '456e7890-e89b-12d3-a456-426614174000', // user
     '789e1234-e89b-12d3-a456-426614174000', // agent
-  ]),
-  createChannel: jest.fn().mockResolvedValue({
+  ])
+);
+
+const mockCreateChannel = mock(() =>
+  Promise.resolve({
     id: '123e4567-e89b-12d3-a456-426614174000',
     name: 'Test Channel',
     type: 'dm',
-  }),
+  })
+);
+
+// Mock ElizaOS
+const mockElizaOS = {
+  getAgent: mockGetAgent,
+  handleMessage: mockHandleMessage,
+} as unknown as ElizaOS;
+
+// Mock AgentServer
+const mockServerInstance = {
+  messageServerId: '00000000-0000-0000-0000-000000000001' as UUID,
+  socketIO: null,
+  getChannelDetails: mockGetChannelDetails,
+  getServers: mockGetServers,
+  createMessage: mockCreateMessage,
+  getChannelParticipants: mockGetChannelParticipants,
+  createChannel: mockCreateChannel,
 } as unknown as AgentServer;
 
 // Helper to simulate Express request/response
@@ -184,24 +216,20 @@ describe('Channels API - Response Mode Parameter', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
-
     // Reset mock implementations
-    (mockElizaOS.handleMessage as jest.Mock).mockResolvedValue({
-      processing: {
-        responseContent: { text: 'Agent response' },
-      },
-    });
+    mockHandleMessage.mockImplementation(() =>
+      Promise.resolve({
+        processing: {
+          responseContent: { text: 'Agent response' },
+        },
+      })
+    );
 
     // Create Express app and router
     app = express();
     app.use(express.json());
     const router = createChannelsRouter(mockElizaOS, mockServerInstance);
     app.use('/api/messaging', router);
-  });
-
-  afterEach(() => {
-    jest.clearAllMocks();
   });
 
   describe('POST /channels/:channelId/messages', () => {
@@ -265,12 +293,16 @@ describe('Channels API - Response Mode Parameter', () => {
 
     it('should accept stream mode and set SSE headers', async () => {
       // Mock handleMessage to call the onResponse callback
-      (mockElizaOS.handleMessage as jest.Mock).mockImplementation(
-        async (_agentId, _message, options) => {
+      mockHandleMessage.mockImplementation(
+        async (
+          _agentId: unknown,
+          _message: unknown,
+          options?: { onResponse?: (content: unknown) => Promise<void> }
+        ) => {
           if (options?.onResponse) {
             await options.onResponse({ text: 'Streamed response' });
           }
-          return {};
+          return { processing: { responseContent: { text: 'Streamed response' } } };
         }
       );
 
@@ -291,22 +323,26 @@ describe('Channels API - Response Mode Parameter', () => {
       const modes = ['sync', 'stream', 'websocket'] as const;
 
       for (const mode of modes) {
-        jest.clearAllMocks();
-
         // Reset mock for stream mode
         if (mode === 'stream') {
-          (mockElizaOS.handleMessage as jest.Mock).mockImplementation(
-            async (_agentId, _message, options) => {
+          mockHandleMessage.mockImplementation(
+            async (
+              _agentId: unknown,
+              _message: unknown,
+              options?: { onResponse?: (content: unknown) => Promise<void> }
+            ) => {
               if (options?.onResponse) {
                 await options.onResponse({ text: 'Response' });
               }
-              return {};
+              return { processing: { responseContent: { text: 'Response' } } };
             }
           );
         } else {
-          (mockElizaOS.handleMessage as jest.Mock).mockResolvedValue({
-            processing: { responseContent: { text: 'Response' } },
-          });
+          mockHandleMessage.mockImplementation(() =>
+            Promise.resolve({
+              processing: { responseContent: { text: 'Response' } },
+            })
+          );
         }
 
         const res = await simulateRequest(
