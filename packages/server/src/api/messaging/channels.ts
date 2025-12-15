@@ -14,14 +14,9 @@ import internalMessageBus from '../../services/message-bus';
 import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService, AttachmentInput } from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
-import {
-  MAX_FILE_SIZE,
-  ALLOWED_MEDIA_MIME_TYPES,
-  RESPONSE_MODES,
-  DEFAULT_RESPONSE_MODE,
-  type ResponseMode,
-} from '../shared/constants';
+import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 import { handleResponseMode } from '../shared/response-handlers';
+import { validateResponseMode } from '../shared/validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -110,10 +105,18 @@ export function createChannelsRouter(
         raw_message,
         metadata, // Should include user_display_name
         source_type, // Should be something like 'eliza_gui'
-        mode = DEFAULT_RESPONSE_MODE,
+        mode,
       } = req.body;
 
-      const responseMode = mode as ResponseMode;
+      // Validate mode parameter with proper type checking
+      const modeValidation = validateResponseMode(mode);
+      if (!modeValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          error: modeValidation.error,
+        });
+      }
+      const responseMode = modeValidation.mode;
 
       if (
         !channelIdParam ||
@@ -124,14 +127,6 @@ export function createChannelsRouter(
         return res.status(400).json({
           success: false,
           error: 'Missing required fields: channelId, message_server_id, author_id, content',
-        });
-      }
-
-      // Validate mode parameter
-      if (!RESPONSE_MODES.includes(responseMode)) {
-        return res.status(400).json({
-          success: false,
-          error: `Invalid mode "${mode}". Must be one of: ${RESPONSE_MODES.join(', ')}`,
         });
       }
 
