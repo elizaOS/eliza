@@ -484,7 +484,7 @@ describe('Agent-Server Interaction Integration Tests', () => {
       } finally {
         // Clean up the isolated server
         await isolatedFixture.cleanup();
-        teardownTestEnvironment(testEnv);
+        await teardownTestEnvironment(testEnv);
       }
     });
   });

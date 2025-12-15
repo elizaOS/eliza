@@ -5,11 +5,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+/**
+ * Helper to clean up global singletons between tests.
+ * This is necessary because createDatabaseAdapter uses global singletons
+ * to share database connections, but tests use different temp directories.
+ * IMPORTANT: Must close connections BEFORE deleting temp directories.
+ */
+async function cleanupGlobalSingletons() {
+  const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+  const globalSymbols = globalThis as unknown as Record<symbol, any>;
+  const singletons = globalSymbols[GLOBAL_SINGLETONS];
+
+  if (singletons?.pgLiteClientManager) {
+    try {
+      // Get the actual PGlite client and close it properly
+      const client = singletons.pgLiteClientManager.getConnection?.();
+      if (client?.close) {
+        await client.close();
+      }
+    } catch {
+      // Ignore errors during cleanup
+    }
+    delete singletons.pgLiteClientManager;
+  }
+
+  if (singletons?.postgresConnectionManager) {
+    try {
+      await singletons.postgresConnectionManager.close?.();
+    } catch {
+      // Ignore errors during cleanup
+    }
+    delete singletons.postgresConnectionManager;
+  }
+}
+
 describe('SQL Plugin', () => {
   let mockRuntime: IAgentRuntime;
   let tempDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Clean up any existing singletons from previous tests
+    await cleanupGlobalSingletons();
+
     // Create a temporary directory for tests
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eliza-plugin-sql-test-'));
 
@@ -36,18 +73,13 @@ describe('SQL Plugin', () => {
     } as any;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Clean up singletons BEFORE deleting the directory
+    await cleanupGlobalSingletons();
+
     // Clean up temporary directory
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-
-    // Clear global singletons to prevent contamination between tests
-    const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
-    // Type assertion needed because global doesn't include symbol keys in its type definition
-    const globalSymbols = global as typeof global & Record<symbol, Record<string, unknown>>;
-    if (globalSymbols[GLOBAL_SINGLETONS]) {
-      globalSymbols[GLOBAL_SINGLETONS] = {};
     }
 
     // Reset environment variables

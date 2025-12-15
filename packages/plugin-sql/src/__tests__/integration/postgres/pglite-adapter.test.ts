@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
-import { PGliteClientManager } from '../../pglite/manager';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-import { DatabaseMigrationService } from '../../migration-service';
-import * as schema from '../../schema';
+import { PGliteClientManager } from '../../../pglite/manager';
+import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
+import { DatabaseMigrationService } from '../../../migration-service';
+import * as schema from '../../../schema';
 import type { UUID } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
 

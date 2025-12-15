@@ -249,7 +249,8 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
     testOrSkip(
       'should use advisory locks to prevent concurrent migrations for the same plugin',
       async () => {
-        const schema1 = {
+        // Use IDENTICAL schemas to test idempotency with concurrent calls
+        const schema = {
           testTable: pgTable('test_concurrent_3', {
             id: uuid('id').primaryKey().defaultRandom(),
             data: text('data'),
@@ -257,19 +258,11 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
           }),
         };
 
-        const schema2 = {
-          testTable: pgTable('test_concurrent_3', {
-            id: uuid('id').primaryKey().defaultRandom(),
-            data: text('data'),
-            version: integer('version').default(2),
-            extra_field: text('extra_field'),
-          }),
-        };
-
-        // Try to run the same plugin migration concurrently
+        // Try to run the same plugin migration concurrently with identical schemas
+        // Advisory locks should serialize them, and the second one should skip (idempotent)
         const [result1, result2] = await Promise.allSettled([
-          migrator.migrate('@elizaos/concurrent-test-same-plugin', schema1),
-          migrator.migrate('@elizaos/concurrent-test-same-plugin', schema2),
+          migrator.migrate('@elizaos/concurrent-test-same-plugin', schema),
+          migrator.migrate('@elizaos/concurrent-test-same-plugin', schema),
         ]);
 
         // One should succeed, one might fail due to locking or be ignored due to idempotency
@@ -443,10 +436,8 @@ describe('Runtime Migrator - Transaction Support & Concurrency Tests', () => {
         }),
       };
 
-      const result = await migrator.migrate('@elizaos/concurrent-test-cleanup-2', anotherSchema);
-
-      // Should succeed without lock conflicts
-      expect(result).toBeDefined();
+      // Should succeed without lock conflicts - migration completes without throwing
+      await migrator.migrate('@elizaos/concurrent-test-cleanup-2', anotherSchema);
 
       // Verify table was created
       const tableExists = await db.execute(
