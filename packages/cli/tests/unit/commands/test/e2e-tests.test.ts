@@ -52,7 +52,7 @@ mock.module('../../../../src/utils', () => ({
 }));
 
 mock.module('../../../../src/characters/eliza', () => ({
-  getElizaCharacter: mock().mockImplementation(() => ({
+  getDefaultCharacter: mock().mockImplementation(() => ({
     name: 'Eliza',
     bio: 'Test character',
   })),
