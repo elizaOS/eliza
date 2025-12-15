@@ -222,7 +222,7 @@ export class DatabaseFixture {
 
       // Restore environment
       if (this.envSnapshot) {
-        teardownTestEnvironment(this.envSnapshot);
+        await teardownTestEnvironment(this.envSnapshot);
       }
     } finally {
       this.cleanupPerformed = true;

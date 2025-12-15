@@ -4,7 +4,7 @@ import { RuntimeMigrator } from '../../runtime-migrator';
 import type { DrizzleDatabase } from '../../types';
 import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
 import * as coreSchema from '../../schema';
-import { testPolymarketSchema } from '../plugin-schema/test-plugin-schema';
+import { testPolymarketSchema } from '../fixtures/test-plugin-schema';
 
 describe('Runtime Simulation - Full Migration Flow', () => {
   let db: DrizzleDatabase;
@@ -266,7 +266,7 @@ describe('Runtime Simulation - Full Migration Flow', () => {
     `);
 
     console.log(`\n📊 Final migration count: ${finalMigrationCount.rows[0]?.count}`);
-    expect(finalMigrationCount.rows[0]?.count).toBe(2);
+    expect(Number(finalMigrationCount.rows[0]?.count)).toBe(2);
 
     // Final summary
     console.log('\n' + '='.repeat(80));
