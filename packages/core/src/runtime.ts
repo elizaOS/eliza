@@ -10,7 +10,8 @@ import { createUniqueUuid } from './entities';
 import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { isPlainObject } from './utils/type-guards';
-import { decryptSecret, getSalt, safeReplacer } from './index';
+import { decryptSecret, getSalt } from './index';
+import { getStreamingContext } from './streaming-context';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
 import type { IMessageService } from './services/message-service';
@@ -750,7 +751,8 @@ export class AgentRuntime implements IAgentRuntime {
     message: Memory,
     responses: Memory[],
     state?: State,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    processOptions?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
   ): Promise<void> {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
@@ -971,6 +973,11 @@ export class AgentRuntime implements IAgentRuntime {
             steps: actionPlan.steps,
             thought: actionPlan.thought,
           };
+        }
+
+        // Pass streaming callback to action handlers
+        if (processOptions?.onStreamChunk) {
+          options.onStreamChunk = processOptions.onStreamChunk;
         }
 
         await this.emitEvent(EventType.ACTION_STARTED, {
@@ -2143,25 +2150,42 @@ export class AgentRuntime implements IAgentRuntime {
         ? performance.now()
         : Date.now();
 
-    // Check if streaming mode is requested
-    const isStreaming =
-      isPlainObject(modelParams) &&
-      'stream' in modelParams &&
-      modelParams.stream === true;
+    // Get streaming config
+    const paramsChunk = isPlainObject(modelParams) ? (modelParams as any).onStreamChunk : undefined;
+    const ctxChunk = getStreamingContext()?.onStreamChunk;
+    const msgId = getStreamingContext()?.messageId;
+    const explicitStream = isPlainObject(modelParams) ? (modelParams as any).stream : undefined;
+
+    // stream: false = force no stream, otherwise stream if any callback exists
+    const shouldStream = explicitStream === false ? false : !!(paramsChunk || ctxChunk || explicitStream);
+
+    if (isPlainObject(modelParams)) {
+      (modelParams as any).stream = shouldStream;
+      delete (modelParams as any).onStreamChunk;
+    }
 
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
 
-    // For streaming responses, create a logging wrapper that fires on completion
-    if (isStreaming && response && typeof response === 'object' && 'textStream' in response) {
-      return this.createLoggingStream(
-        response as TextStreamResult,
-        modelType,
-        modelKey,
-        params,
-        promptContent,
-        startTime,
-        provider
-      ) as R;
+    // Stream: broadcast to callbacks if streaming
+    if (shouldStream && (paramsChunk || ctxChunk) && response && typeof response === 'object' && 'textStream' in response) {
+      let fullText = '';
+      for await (const chunk of (response as TextStreamResult).textStream) {
+        fullText += chunk;
+        try { if (paramsChunk) await paramsChunk(chunk, msgId); } catch {}
+        try { if (ctxChunk) await ctxChunk(chunk, msgId); } catch {}
+      }
+
+      // Log the completed stream
+      const elapsedTime =
+        (typeof performance !== 'undefined' && typeof performance.now === 'function'
+          ? performance.now()
+          : Date.now()) - startTime;
+      this.logger.trace(
+        { src: 'agent', agentId: this.agentId, model: modelKey, duration: Number(elapsedTime.toFixed(2)), streaming: true },
+        'Model output (stream with callback complete)'
+      );
+
+      return fullText as R;
     }
 
     const elapsedTime =
@@ -2224,139 +2248,6 @@ export class AgentRuntime implements IAgentRuntime {
     });
 
     return response as R;
-  }
-
-  /**
-   * Creates a logging wrapper around a streaming result.
-   * Logs metrics on completion and handles stream errors.
-   *
-   * @example
-   * ```typescript
-   * const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-   *   prompt: 'Hello',
-   *   stream: true,
-   * });
-   *
-   * for await (const chunk of result.textStream) {
-   *   console.log(chunk);
-   * }
-   *
-   * const fullText = await result.text;
-   * ```
-   */
-  private createLoggingStream(
-    streamResult: TextStreamResult,
-    modelType: ModelTypeName,
-    modelKey: string,
-    params: any,
-    promptContent: string | null,
-    startTime: number,
-    provider?: string
-  ): TextStreamResult {
-    // Create a wrapped text promise that logs on completion and handles errors
-    const wrappedText = streamResult.text.then((text) => {
-      const elapsedTime =
-        (typeof performance !== 'undefined' && typeof performance.now === 'function'
-          ? performance.now()
-          : Date.now()) - startTime;
-
-      this.logger.trace(
-        { src: 'agent', agentId: this.agentId, model: modelKey, duration: Number(elapsedTime.toFixed(2)), streaming: true },
-        'Model output (stream complete)'
-      );
-
-      // Log prompt for action context
-      if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-        if (this.currentActionContext) {
-          this.currentActionContext.prompts.push({
-            modelType: modelKey,
-            prompt: promptContent,
-            timestamp: Date.now(),
-          });
-        }
-      }
-
-      // Log for backward compatibility
-      this.adapter.log({
-        entityId: this.agentId,
-        roomId: this.currentRoomId ?? this.agentId,
-        body: {
-          modelType,
-          modelKey,
-          params: {
-            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-            prompt: promptContent,
-          },
-          prompt: promptContent,
-          systemPrompt: this.character?.system || null,
-          runId: this.getCurrentRunId(),
-          timestamp: Date.now(),
-          executionTime: elapsedTime,
-          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-          actionContext: this.currentActionContext
-            ? {
-                actionName: this.currentActionContext.actionName,
-                actionId: this.currentActionContext.actionId,
-              }
-            : undefined,
-          response: '[streaming response]',
-          streaming: true,
-        },
-        type: `useModel:${modelKey}`,
-      });
-
-      return text;
-    }).catch((error) => {
-      const elapsedTime =
-        (typeof performance !== 'undefined' && typeof performance.now === 'function'
-          ? performance.now()
-          : Date.now()) - startTime;
-
-      this.logger.error(
-        {
-          src: 'agent',
-          agentId: this.agentId,
-          model: modelKey,
-          duration: Number(elapsedTime.toFixed(2)),
-          streaming: true,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Streaming error'
-      );
-
-      // Log error for action context
-      this.adapter.log({
-        entityId: this.agentId,
-        roomId: this.currentRoomId ?? this.agentId,
-        body: {
-          modelType,
-          modelKey,
-          params: {
-            ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-            prompt: promptContent,
-          },
-          prompt: promptContent,
-          systemPrompt: this.character?.system || null,
-          runId: this.getCurrentRunId(),
-          timestamp: Date.now(),
-          executionTime: elapsedTime,
-          provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-          error: error instanceof Error ? error.message : String(error),
-          streaming: true,
-        },
-        type: `useModel:${modelKey}:error`,
-      });
-
-      throw error;
-    });
-
-    // Return a new stream result with the wrapped text promise
-    return {
-      textStream: streamResult.textStream,
-      text: wrappedText,
-      usage: streamResult.usage,
-      finishReason: streamResult.finishReason,
-    };
   }
 
   /**

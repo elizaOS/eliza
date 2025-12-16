@@ -224,20 +224,25 @@ export type GenerateTextParams = {
    * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
   responseFormat?: { type: 'json_object' | 'text' } | string;
   /**
-   * Optional. Enable streaming mode for text generation.
-   * When true, the model returns a TextStreamResult instead of a string.
-   *
-   * Streaming allows processing tokens as they are generated, enabling:
-   * - Real-time UI updates (typing effect)
-   * - Lower perceived latency
-   * - Early response handling
-   *
-   * Note: Not all providers support streaming. If unsupported, the model
-   * will fall back to non-streaming mode and return the complete response.
-   *
-   * @default false
+   * Enable or disable streaming mode.
+   * - `true`: Force streaming (requires onStreamChunk or context)
+   * - `false`: Force non-streaming even if callback exists
+   * - `undefined`: Auto (streams if onStreamChunk or context exists)
    */
   stream?: boolean;
+  /**
+   * Optional. Callback function for receiving streaming chunks.
+   * When provided, streaming is automatically enabled and chunks are sent to this callback.
+   *
+   * @example
+   * ```typescript
+   * const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+   *   prompt: "Hello",
+   *   onStreamChunk: (chunk) => process.stdout.write(chunk)
+   * });
+   * ```
+   */
+  onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
 };
 
 /**

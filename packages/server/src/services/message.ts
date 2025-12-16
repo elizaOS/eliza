@@ -675,11 +675,11 @@ export class MessageBusService extends Service {
         {
           onStreamChunk: (() => {
             let chunkIndex = 0;
-            return async (chunk: string, messageId: UUID) => {
+            return async (chunk: string, messageId?: UUID) => {
               // Emit stream chunk to internal bus for Socket.IO broadcast
               const room = await this.runtime.getRoom(agentRoomId);
               const channelId = room?.channelId;
-              if (channelId) {
+              if (channelId && messageId) {
                 internalMessageBus.emit('message_stream_chunk', {
                   channelId,
                   messageId,
