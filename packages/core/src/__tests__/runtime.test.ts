@@ -45,6 +45,7 @@ let adapterReady = false;
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
+  isRoomParticipant: mock().mockResolvedValue(true),
   db: {},
   init: mock().mockImplementation(async () => {
     adapterReady = true;
@@ -290,6 +291,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
+          metadata: {},
         },
       ]);
       (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
@@ -297,6 +299,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
+          metadata: {},
         },
       ]);
       (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
@@ -327,6 +330,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
+          metadata: {},
         },
       ]);
       (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
@@ -334,6 +338,7 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           id: agentId,
           agentId: agentId,
           names: [mockCharacter.name],
+          metadata: {},
         },
       ]);
       (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
@@ -478,8 +483,8 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       expect(state.values).toHaveProperty('p2_val', 2);
       // Check combined values includes provider outputs
       expect(state.values).toHaveProperty('providers'); // Check if the combined text is stored
-      expect(state.data.providers.P1.values).toEqual({ p1_val: 1 }); // Check provider data cache
-      expect(state.data.providers.P2.values).toEqual({ p2_val: 2 });
+      expect(state.data?.providers?.P1?.values).toEqual({ p1_val: 1 }); // Check provider data cache
+      expect(state.data?.providers?.P2?.values).toEqual({ p2_val: 2 });
     });
 
     it('should filter providers', async () => {
@@ -1230,30 +1235,6 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
     });
 
     describe('useModel with streaming', () => {
-      it('should pass stream parameter to model handler', async () => {
-        const mockStreamResult: TextStreamResult = {
-          textStream: (async function* () {
-            yield 'Hello';
-            yield ' World';
-          })(),
-          text: Promise.resolve('Hello World'),
-          usage: Promise.resolve(undefined),
-          finishReason: Promise.resolve('stop'),
-        };
-
-        const mockHandler = mock().mockResolvedValue(mockStreamResult);
-        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
-
-        await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: 'Test prompt',
-          stream: true,
-        });
-
-        expect(mockHandler).toHaveBeenCalledTimes(1);
-        const callArgs = mockHandler.mock.calls[0];
-        expect(callArgs[1].stream).toBe(true);
-      });
-
       it('should return string when stream is false', async () => {
         const mockHandler = mock().mockResolvedValue('Non-streaming response');
         runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
@@ -1267,12 +1248,33 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         expect(result).toBe('Non-streaming response');
       });
 
-      it('should return TextStreamResult when stream is true', async () => {
+      it('should return string without streaming context', async () => {
+        const mockHandler = mock().mockResolvedValue('Direct response');
+        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
+
+        const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test prompt',
+        });
+
+        expect(typeof result).toBe('string');
+        expect(result).toBe('Direct response');
+      });
+
+      it('should auto-stream when streaming context is active', async () => {
+        // Configure the streaming context manager for Node.js environment
+        const { setStreamingContextManager } = await import('../streaming-context');
+        const { createNodeStreamingContextManager } = await import('../streaming-context.node');
+        setStreamingContextManager(createNodeStreamingContextManager());
+
+        const { runWithStreamingContext } = await import('../streaming-context');
+
+        const chunks: string[] = [];
         const mockStreamResult: TextStreamResult = {
           textStream: (async function* () {
-            yield 'Test';
+            yield 'Hello';
+            yield ' World';
           })(),
-          text: Promise.resolve('Test'),
+          text: Promise.resolve('Hello World'),
           usage: Promise.resolve(undefined),
           finishReason: Promise.resolve('stop'),
         };
@@ -1280,13 +1282,97 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         const mockHandler = mock().mockResolvedValue(mockStreamResult);
         runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
 
-        const result = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: 'Test prompt',
-          stream: true,
+        const streamingContext = {
+          onStreamChunk: async (chunk: string) => {
+            chunks.push(chunk);
+          },
+        };
+
+        const result = await runWithStreamingContext(streamingContext, async () => {
+          return runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: 'Test prompt',
+          });
         });
 
-        expect(result).toHaveProperty('textStream');
-        expect(result).toHaveProperty('text');
+        // Should return string (not TextStreamResult)
+        expect(typeof result).toBe('string');
+        // Handler should have been called with stream: true
+        const callArgs = mockHandler.mock.calls[0];
+        expect(callArgs[1].stream).toBe(true);
+      });
+
+      it('should isolate streaming contexts in parallel calls (AsyncLocalStorage)', async () => {
+        // Configure the streaming context manager for Node.js environment
+        const { setStreamingContextManager } = await import('../streaming-context');
+        const { createNodeStreamingContextManager } = await import('../streaming-context.node');
+        setStreamingContextManager(createNodeStreamingContextManager());
+
+        const { runWithStreamingContext } = await import('../streaming-context');
+
+        // Track chunks received by each context
+        const context1Chunks: string[] = [];
+        const context2Chunks: string[] = [];
+        const context3Chunks: string[] = [];
+
+        // Create mock handlers that return different streams for each call
+        // Note: The runtime uses XmlTextStreamExtractor which extracts content from <text> tags
+        let callCount = 0;
+        const mockHandler = mock().mockImplementation(() => {
+          callCount++;
+          const id = callCount;
+          // Stream XML with <text> tags so XmlTextStreamExtractor can extract the content
+          return Promise.resolve({
+            textStream: (async function* () {
+              yield `<response><text>ctx${id}-`;
+              await new Promise(resolve => setTimeout(resolve, 10)); // Simulate async delay
+              yield `part1 ctx${id}-part2</text></response>`;
+            })(),
+            text: Promise.resolve(`<response><text>ctx${id}-part1 ctx${id}-part2</text></response>`),
+            usage: Promise.resolve(undefined),
+            finishReason: Promise.resolve('stop'),
+          });
+        });
+
+        runtime.registerModel(ModelType.TEXT_LARGE, mockHandler, 'test-provider');
+
+        // Run 3 streaming contexts in parallel
+        const [result1, result2, result3] = await Promise.all([
+          runWithStreamingContext(
+            { onStreamChunk: async (chunk: string) => { context1Chunks.push(chunk); } },
+            async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 1' })
+          ),
+          runWithStreamingContext(
+            { onStreamChunk: async (chunk: string) => { context2Chunks.push(chunk); } },
+            async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 2' })
+          ),
+          runWithStreamingContext(
+            { onStreamChunk: async (chunk: string) => { context3Chunks.push(chunk); } },
+            async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 3' })
+          ),
+        ]);
+
+        // Each context should have received only its own chunks (extracted from <text> tags)
+        const context1Text = context1Chunks.join('');
+        const context2Text = context2Chunks.join('');
+        const context3Text = context3Chunks.join('');
+
+        // Verify each context got its own unique content
+        expect(context1Text).toContain('ctx1-');
+        expect(context1Text).not.toContain('ctx2-');
+        expect(context1Text).not.toContain('ctx3-');
+
+        expect(context2Text).toContain('ctx2-');
+        expect(context2Text).not.toContain('ctx1-');
+        expect(context2Text).not.toContain('ctx3-');
+
+        expect(context3Text).toContain('ctx3-');
+        expect(context3Text).not.toContain('ctx1-');
+        expect(context3Text).not.toContain('ctx2-');
+
+        // All results should be strings (full XML)
+        expect(typeof result1).toBe('string');
+        expect(typeof result2).toBe('string');
+        expect(typeof result3).toBe('string');
       });
     });
   });

@@ -75,7 +75,7 @@ async function handleStreamMode(
 
   try {
     await elizaOS.handleMessage(agentId, messageMemory, {
-      onStreamChunk: async (chunk: string, messageId: UUID) => {
+      onStreamChunk: async (chunk: string, messageId?: UUID) => {
         writeSSEEvent(res, SSE_EVENTS.CHUNK, {
           messageId,
           chunk,

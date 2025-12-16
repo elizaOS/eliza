@@ -15,7 +15,6 @@ import type {
   GenerateTextOptions,
   GenerateTextResult,
   GenerateTextParams,
-  TextStreamResult,
   TextGenerationModelType,
 } from './model';
 import type { Plugin, RuntimeEventStorage, Route } from './plugin';
@@ -84,7 +83,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     message: Memory,
     responses: Memory[],
     state?: State,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    options?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
   ): Promise<void>;
 
   getActionResults(messageId: UUID): ActionResult[];
@@ -149,36 +149,23 @@ export interface IAgentRuntime extends IDatabaseAdapter {
    * Use a model for inference with proper type inference based on parameters.
    *
    * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
-   * - `{ prompt }`: Returns `Promise<string>` (backwards compatible)
-   * - `{ prompt, stream: true }`: Returns `Promise<TextStreamResult>` (streaming)
+   * - Always returns `string`
+   * - If streaming context is active, chunks are sent to callback automatically
    *
    * @example
    * ```typescript
-   * // Simple text (returns string)
+   * // Simple usage - streaming happens automatically if context is active
    * const text = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello" });
-   *
-   * // Streaming (returns TextStreamResult)
-   * const stream = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello", stream: true });
-   * for await (const chunk of stream.textStream) {
-   *   console.log(chunk);
-   * }
    * ```
    */
-  // Overload 1: Streaming text generation → TextStreamResult
+  // Overload 1: Text generation → string (auto-streams via context)
   useModel(
     modelType: TextGenerationModelType,
-    params: GenerateTextParams & { stream: true },
-    provider?: string
-  ): Promise<TextStreamResult>;
-
-  // Overload 2: Simple text generation → string
-  useModel(
-    modelType: TextGenerationModelType,
-    params: GenerateTextParams & { stream?: false },
+    params: GenerateTextParams,
     provider?: string
   ): Promise<string>;
 
-  // Overload 3: Generic fallback for other model types
+  // Overload 2: Generic fallback for other model types
   useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
     params: ModelParamsMap[T],

@@ -108,6 +108,7 @@ export const replyAction = {
     });
 
     try {
+      // Streaming is automatic via streaming context (set by MessageService)
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
       });

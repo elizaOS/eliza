@@ -47,6 +47,9 @@ export * from './search';
 // Export ElizaOS
 export * from './elizaos';
 
+// Export streaming context utilities
+export * from './streaming-context';
+
 // Environment detection utilities
 interface GlobalWithWindow {
   window?: Window;

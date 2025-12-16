@@ -5,7 +5,6 @@ import type { Content, UUID, Media, MentionContext } from '../types/primitives';
 import type { State } from '../types/state';
 import type { HandlerCallback } from '../types/components';
 import type { Room } from '../types/environment';
-import type { TextStreamResult } from '../types/model';
 import {
   type IMessageService,
   type MessageProcessingOptions,
@@ -17,7 +16,6 @@ import {
   EventType,
   ModelType,
   ContentType,
-  Role,
   asUUID,
   createUniqueUuid,
   composePromptFromState,
@@ -34,6 +32,7 @@ import {
   logger,
   XmlTextStreamExtractor,
 } from '../index';
+import { runWithStreamingContext } from '../streaming-context';
 
 /**
  * Image description response from the model
@@ -52,7 +51,7 @@ type ResolvedMessageOptions = {
   timeoutDuration: number;
   useMultiStep: boolean;
   maxMultiStepIterations: number;
-  onStreamChunk?: (chunk: string, messageId: UUID) => Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
 };
 
 /**
@@ -196,14 +195,33 @@ export class DefaultMessageService implements IMessageService {
         }, opts.timeoutDuration);
       });
 
-      const processingPromise = this.processMessage(
-        runtime,
-        message,
-        callback,
-        responseId,
-        runId,
-        startTime,
-        opts
+      // Wrap processing with streaming context for automatic streaming in useModel calls
+      // Use XmlTextStreamExtractor to filter out XML tags and only stream <text> content
+      let streamingContext: { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID } | undefined;
+      if (opts.onStreamChunk) {
+        const extractor = new XmlTextStreamExtractor();
+        streamingContext = {
+          onStreamChunk: async (chunk: string, msgId?: UUID) => {
+            if (extractor.done) return;
+            const textToStream = extractor.push(chunk);
+            if (textToStream) {
+              await opts.onStreamChunk!(textToStream, msgId);
+            }
+          },
+          messageId: message.id,
+        };
+      }
+
+      const processingPromise = runWithStreamingContext(streamingContext, () =>
+        this.processMessage(
+          runtime,
+          message,
+          callback,
+          responseId,
+          runId,
+          startTime,
+          opts
+        )
       );
 
       const result = await Promise.race([processingPromise, timeoutPromise]);
@@ -899,11 +917,9 @@ export class DefaultMessageService implements IMessageService {
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      // Use streaming for real-time updates
-      const streamResult = await runtime.useModel(ModelType.TEXT_LARGE, { prompt, stream: true });
-
-      // Consume the stream, calling onStreamChunk if provided
-      const response = await this.consumeStream(streamResult, opts.onStreamChunk, responseMessageId);
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
 
       runtime.logger.info(
         { src: 'service:message', responseLength: response.length, responsePreview: response.substring(0, 500) },
@@ -1199,15 +1215,12 @@ export class DefaultMessageService implements IMessageService {
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
     });
 
-    // Generate response message ID early for streaming callbacks
+    // Generate response message ID for the response
     const responseMessageId = asUUID(v4());
 
-    // Use streaming for the final summary (user-facing)
-    const streamResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: summaryPrompt,
-      stream: true,
     });
-    const finalOutput = await this.consumeStream(streamResult, opts.onStreamChunk, responseMessageId);
     const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
@@ -1241,41 +1254,6 @@ export class DefaultMessageService implements IMessageService {
       state: accumulatedState,
       mode: responseContent ? 'simple' : 'none',
     };
-  }
-
-  /**
-   * Helper to consume a text stream and optionally call onStreamChunk for each chunk.
-   * Only streams content inside <text>...</text> tags to avoid exposing raw XML.
-   * Returns the complete text after the stream ends.
-   */
-  private async consumeStream(
-    streamResult: TextStreamResult,
-    onStreamChunk: ((chunk: string, messageId: UUID) => Promise<void>) | undefined,
-    messageId: UUID
-  ): Promise<string> {
-    if (onStreamChunk) {
-      let fullText = '';
-      const extractor = new XmlTextStreamExtractor();
-
-      for await (const chunk of streamResult.textStream) {
-        fullText += chunk;
-        if (!extractor.done) {
-          const textToStream = extractor.push(chunk);
-          if (textToStream) {
-            try {
-              await onStreamChunk(textToStream, messageId);
-            } catch (err) {
-              logger.warn(
-                { src: 'service:message', error: err instanceof Error ? err.message : String(err) },
-                'onStreamChunk callback failed, continuing stream'
-              );
-            }
-          }
-        }
-      }
-      return fullText;
-    }
-    return streamResult.text;
   }
 
   /**
