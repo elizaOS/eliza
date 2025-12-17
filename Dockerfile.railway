@@ -24,8 +24,8 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json turbo.json tsconfig.json lerna.json renovate.json .npmrc ./
+# Copy package files and build utilities
+COPY package.json turbo.json tsconfig.json lerna.json renovate.json .npmrc build-utils.ts ./
 COPY scripts ./scripts
 COPY packages ./packages
 
