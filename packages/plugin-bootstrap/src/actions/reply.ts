@@ -29,7 +29,7 @@ const replyTemplate = `# Task: Generate dialog for the character {{agentName}}.
 
 # Instructions: Write the next message for {{agentName}}.
 "thought" should be a short description of what the agent is thinking about and planning.
-"message" should be the next message for {{agentName}} which they will send to the conversation.
+"text" should be the next message for {{agentName}} which they will send to the conversation.
 
 IMPORTANT CODE BLOCK FORMATTING RULES:
 - If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with \`\`\` fenced code blocks (specify the language if known, e.g., \`\`\`python).
@@ -37,13 +37,13 @@ IMPORTANT CODE BLOCK FORMATTING RULES:
 - If including inline code (short single words or function names), use single backticks (\`) as appropriate.
 - This ensures the user sees clearly formatted and copyable code when relevant.
 
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:
 <response>
     <thought>Your thought here</thought>
-    <message>Your message here</message>
+    <text>Your message here</text>
 </response>
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
@@ -116,7 +116,7 @@ export const replyAction = {
       // Parse XML response
       const parsedXml = parseKeyValueXml(response);
       const thought = typeof parsedXml?.thought === 'string' ? parsedXml.thought : '';
-      const text = typeof parsedXml?.message === 'string' ? parsedXml.message : '';
+      const text = typeof parsedXml?.text === 'string' ? parsedXml.text : '';
 
       const responseContent = {
         thought,
