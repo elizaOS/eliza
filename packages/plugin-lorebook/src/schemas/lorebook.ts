@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgSchema,
   uuid,
   text,
   timestamp,
@@ -11,10 +12,17 @@ import {
 import { VECTOR_DIMS } from '@elizaos/core';
 
 /**
+ * Define a dedicated PostgreSQL schema for lorebook tables.
+ * This isolates the plugin's tables from the core @elizaos/plugin-sql schema,
+ * preventing accidental deletion during core migrations.
+ */
+export const lorebookSchema = pgSchema('lorebook');
+
+/**
  * Character Lore Table
  * Stores character-specific knowledge entries for RAG-based retrieval
  */
-export const lorebookTable = pgTable('lorebook', {
+export const lorebookTable = lorebookSchema.table('entries', {
   id: uuid('id').primaryKey(),
   agentId: uuid('agent_id').notNull(),
   loreKey: text('lore_key').notNull(),
@@ -29,8 +37,8 @@ export const lorebookTable = pgTable('lorebook', {
  * Character Lore Embeddings Table
  * Stores vector embeddings for semantic search with dynamic dimension support
  */
-export const lorebookEmbeddingsTable = pgTable(
-  'lorebook_embeddings',
+export const lorebookEmbeddingsTable = lorebookSchema.table(
+  'embeddings',
   {
     id: uuid('id').primaryKey(),
     loreId: uuid('lore_id')
@@ -55,6 +63,7 @@ export const lorebookEmbeddingsTable = pgTable(
 );
 
 export const characterLoreSchema = {
+  lorebookSchema: lorebookSchema,
   characterLore: lorebookTable,
   characterLoreEmbeddings: lorebookEmbeddingsTable,
 };
