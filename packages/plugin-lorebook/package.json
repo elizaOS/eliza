@@ -1,0 +1,46 @@
+{
+  "name": "@elizaos/plugin-lorebook",
+  "version": "1.0.0",
+  "description": "Character-specific lore management with RAG-based retrieval for ElizaOS",
+  "type": "module",
+  "main": "dist/node/index.js",
+  "module": "dist/node/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/node/index.js",
+      "require": "./dist/cjs/index.cjs",
+      "browser": "./dist/browser/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build.ts",
+    "dev": "bun build.ts --watch",
+    "test": "bun test",
+    "type-check": "bunx tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "lore",
+    "rag",
+    "knowledge",
+    "semantic-search",
+    "embeddings"
+  ],
+  "author": "ElizaOS Team",
+  "license": "MIT"
+}

@@ -3,6 +3,23 @@ import type { Content, UUID } from './primitives';
 import type { State } from './state';
 
 /**
+ * Lore entry for character-specific knowledge that can be retrieved via RAG
+ */
+export interface LoreEntry {
+  /** Unique key identifier for the lore entry (e.g., "axiom_love_vs_relationship") */
+  loreKey: string;
+
+  /** Text used for vector embedding and semantic search */
+  vectorText: string;
+
+  /** The actual lore content/knowledge */
+  content: string;
+
+  /** Optional metadata for additional context */
+  metadata?: Record<string, unknown>;
+}
+
+/**
  * Example message for demonstration
  */
 export interface MessageExample {
@@ -53,6 +70,28 @@ export interface Character {
 
   /** Character biography */
   bio: string | string[];
+
+  /**
+   * RAG-based lore entries for contextual knowledge retrieval.
+   *
+   * **Purpose**: Dynamic context injection based on keywords or semantic search.
+   *
+   * **Use Cases**:
+   * 1. **Active Steering**: Inject behavioral mode switches
+   *    Example: keyword "combat" → "Use terse military language"
+   * 2. **World Info**: Characters, locations, events in universe
+   * 3. **Specialized Knowledge**: Domain-specific responses
+   *
+   * **Structure**: See LoreEntry interface
+   * - `loreKey`: Unique identifier
+   * - `vectorText`: Keywords for semantic search
+   * - `content`: Text to inject (can be instructions or info)
+   *
+   * **Injected**: System prompt, when keyword/semantic match found
+   *
+   * Requires: plugin-lorebook + embedding model
+   */
+  lore?: LoreEntry[];
 
   /** Example messages */
   messageExamples?: MessageExample[][];

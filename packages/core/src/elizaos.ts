@@ -17,6 +17,7 @@ import type {
   SendMessageResult,
   IDatabaseAdapter,
 } from './types';
+import { EventType } from './types';
 import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
 
 /**
@@ -605,8 +606,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       // ========== SYNC MODE ==========
       // Wait for response
 
+      const callback = async (content: Content) => {
+        return [];
+      };
+
+      // Call messageService directly and wait for result
       const processing = await handleMessageWithEntityContext<MessageProcessingResult>(() =>
-        runtime.messageService!.handleMessage(runtime, userMessage, undefined, processingOptions)
+        runtime.messageService!.handleMessage(runtime, userMessage, callback, processingOptions)
       );
 
       if (options?.onComplete) await options.onComplete();
