@@ -1,5 +1,156 @@
 import { describe, expect, it } from 'bun:test';
-import { ResponseStreamExtractor, ActionStreamFilter } from '../../utils/streaming';
+import {
+  PassthroughExtractor,
+  XmlTagExtractor,
+  ResponseStreamExtractor,
+  ActionStreamFilter,
+  type IStreamExtractor,
+} from '../../utils/streaming';
+
+// ============================================================================
+// IStreamExtractor interface conformance
+// ============================================================================
+
+describe('IStreamExtractor interface', () => {
+  it('PassthroughExtractor implements IStreamExtractor', () => {
+    const extractor: IStreamExtractor = new PassthroughExtractor();
+    expect(extractor.done).toBe(false);
+    expect(typeof extractor.push).toBe('function');
+  });
+
+  it('XmlTagExtractor implements IStreamExtractor', () => {
+    const extractor: IStreamExtractor = new XmlTagExtractor('text');
+    expect(extractor.done).toBe(false);
+    expect(typeof extractor.push).toBe('function');
+  });
+
+  it('ResponseStreamExtractor implements IStreamExtractor', () => {
+    const extractor: IStreamExtractor = new ResponseStreamExtractor();
+    expect(extractor.done).toBe(false);
+    expect(typeof extractor.push).toBe('function');
+  });
+
+  it('ActionStreamFilter implements IStreamExtractor', () => {
+    const extractor: IStreamExtractor = new ActionStreamFilter();
+    expect(extractor.done).toBe(false);
+    expect(typeof extractor.push).toBe('function');
+  });
+});
+
+// ============================================================================
+// PassthroughExtractor
+// ============================================================================
+
+describe('PassthroughExtractor', () => {
+  it('should pass through all content immediately', () => {
+    const extractor = new PassthroughExtractor();
+    expect(extractor.push('Hello')).toBe('Hello');
+    expect(extractor.push(' world!')).toBe(' world!');
+  });
+
+  it('should never be done', () => {
+    const extractor = new PassthroughExtractor();
+    extractor.push('content');
+    expect(extractor.done).toBe(false);
+  });
+
+  it('should handle empty strings', () => {
+    const extractor = new PassthroughExtractor();
+    expect(extractor.push('')).toBe('');
+  });
+});
+
+// ============================================================================
+// XmlTagExtractor
+// ============================================================================
+
+describe('XmlTagExtractor', () => {
+  describe('basic functionality', () => {
+    it('should extract content from specified tag', () => {
+      const extractor = new XmlTagExtractor('text');
+      const result = extractor.push('<response><text>Hello world!</text></response>');
+      expect(result).toBe('Hello world!');
+      expect(extractor.done).toBe(true);
+    });
+
+    it('should work with custom tag names', () => {
+      const extractor = new XmlTagExtractor('message');
+      const result = extractor.push('<response><message>Custom tag</message></response>');
+      expect(result).toBe('Custom tag');
+    });
+
+    it('should ignore content outside target tag', () => {
+      const extractor = new XmlTagExtractor('text');
+      const result = extractor.push('<response><other>ignored</other><text>extracted</text></response>');
+      expect(result).toBe('extracted');
+    });
+  });
+
+  describe('streaming chunks', () => {
+    it('should handle tag split across chunks', () => {
+      const extractor = new XmlTagExtractor('text');
+      const chunks: string[] = [];
+
+      chunks.push(extractor.push('<response><te'));
+      chunks.push(extractor.push('xt>Content</text></response>'));
+
+      expect(chunks.join('')).toBe('Content');
+      expect(extractor.done).toBe(true);
+    });
+
+    it('should stream content progressively', () => {
+      const extractor = new XmlTagExtractor('text');
+      const chunks: string[] = [];
+
+      chunks.push(extractor.push('<text>'));
+      chunks.push(extractor.push('Hello beautiful '));
+      chunks.push(extractor.push('world! How are '));
+      chunks.push(extractor.push('you today?'));
+      chunks.push(extractor.push('</text>'));
+
+      expect(chunks.join('')).toBe('Hello beautiful world! How are you today?');
+    });
+
+    it('should handle closing tag split across chunks', () => {
+      const extractor = new XmlTagExtractor('text');
+      const chunks: string[] = [];
+
+      chunks.push(extractor.push('<text>Content</te'));
+      chunks.push(extractor.push('xt>'));
+
+      expect(chunks.join('')).toBe('Content');
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should return empty when tag not found', () => {
+      const extractor = new XmlTagExtractor('text');
+      const result = extractor.push('<response><other>content</other></response>');
+      expect(result).toBe('');
+      expect(extractor.done).toBe(false);
+    });
+
+    it('should handle empty tag content', () => {
+      const extractor = new XmlTagExtractor('text');
+      const result = extractor.push('<text></text>');
+      expect(result).toBe('');
+      expect(extractor.done).toBe(true);
+    });
+
+    it('should not extract after done', () => {
+      const extractor = new XmlTagExtractor('text');
+      extractor.push('<text>First</text>');
+      expect(extractor.done).toBe(true);
+
+      const result = extractor.push('<text>Second</text>');
+      expect(result).toBe('');
+    });
+  });
+});
+
+// ============================================================================
+// ResponseStreamExtractor
+// ============================================================================
 
 describe('ResponseStreamExtractor', () => {
   describe('basic functionality', () => {
@@ -66,13 +217,14 @@ describe('ResponseStreamExtractor', () => {
       expect(result).toBe('');
     });
 
-    it('should stream <message> tag regardless of strategy', () => {
+    it('should NOT stream <text> when action is delegated (SEARCH)', () => {
       const extractor = new ResponseStreamExtractor();
       const result = extractor.push(
-        '<response><actions>SEARCH</actions><message>Action handler message</message></response>'
+        '<response><actions>SEARCH</actions><text>Action handler message</text></response>'
       );
 
-      expect(result).toBe('Action handler message');
+      // Delegated actions use ActionStreamFilter separately, not ResponseStreamExtractor
+      expect(result).toBe('');
     });
 
     it('should handle case-insensitive action names', () => {
@@ -219,7 +371,7 @@ describe('ActionStreamFilter', () => {
 
     it('should detect XML from first character <', () => {
       const filter = new ActionStreamFilter();
-      const result = filter.push('<response><message>Hello</message></response>');
+      const result = filter.push('<response><text>Hello</text></response>');
 
       expect(result).toBe('Hello');
     });
@@ -273,15 +425,15 @@ describe('ActionStreamFilter', () => {
   });
 
   describe('XML handling', () => {
-    it('should extract <message> tag content from XML', () => {
+    it('should extract <text> tag content from XML', () => {
       const filter = new ActionStreamFilter();
-      const result = filter.push('<response><message>Action result</message></response>');
+      const result = filter.push('<response><text>Action result</text></response>');
 
       expect(result).toBe('Action result');
       expect(filter.done).toBe(true);
     });
 
-    it('should ignore XML without <message> tag', () => {
+    it('should ignore XML without <text> tag', () => {
       const filter = new ActionStreamFilter();
       const result = filter.push('<response><data>Some data</data></response>');
 
@@ -289,26 +441,26 @@ describe('ActionStreamFilter', () => {
       expect(filter.done).toBe(false);
     });
 
-    it('should handle <message> tag split across chunks', () => {
+    it('should handle <text> tag split across chunks', () => {
       const filter = new ActionStreamFilter();
       const chunks: string[] = [];
 
-      chunks.push(filter.push('<response><mes'));
-      chunks.push(filter.push('sage>Content</message></response>'));
+      chunks.push(filter.push('<response><te'));
+      chunks.push(filter.push('xt>Content</text></response>'));
 
       const fullText = chunks.join('');
       expect(fullText).toBe('Content');
       expect(filter.done).toBe(true);
     });
 
-    it('should stream message content incrementally', () => {
+    it('should stream text content incrementally', () => {
       const filter = new ActionStreamFilter();
       const chunks: string[] = [];
 
-      chunks.push(filter.push('<response><message>Part 1 '));
+      chunks.push(filter.push('<response><text>Part 1 '));
       chunks.push(filter.push('Part 2 '));
       chunks.push(filter.push('Part 3'));
-      chunks.push(filter.push('</message></response>'));
+      chunks.push(filter.push('</text></response>'));
 
       const fullText = chunks.join('');
       expect(fullText).toBe('Part 1 Part 2 Part 3');
@@ -364,7 +516,7 @@ describe('ActionStreamFilter', () => {
 
       // Reset and use for XML
       filter.reset();
-      filter.push('<r><message>Msg</message></r>');
+      filter.push('<r><text>Msg</text></r>');
       expect(filter.done).toBe(true);
 
       // Reset and use for text
@@ -389,13 +541,13 @@ describe('ActionStreamFilter', () => {
       expect(result).toBe(''); // Not decided yet, waiting for actual content
     });
 
-    it('should handle large XML without message tag efficiently', () => {
+    it('should handle large XML without text tag efficiently', () => {
       const filter = new ActionStreamFilter();
 
       const largeXml = `<response><data>${'a'.repeat(100 * 1024)}</data></response>`;
       const result = filter.push(largeXml);
 
-      expect(result).toBe(''); // No message tag, nothing streamed
+      expect(result).toBe(''); // No text tag, nothing streamed
     });
   });
 });
