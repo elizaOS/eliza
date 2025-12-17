@@ -11,11 +11,16 @@
 import type { UUID } from './types';
 
 /**
- * Streaming context containing the callback for streaming chunks.
+ * Streaming context containing callbacks for streaming lifecycle.
  */
 export interface StreamingContext {
+  /** Called for each chunk of streamed content */
   onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+  /** Called when a useModel streaming call completes (allows reset between calls) */
+  onStreamEnd?: () => void;
   messageId?: UUID;
+  /** Optional abort signal to cancel streaming */
+  abortSignal?: AbortSignal;
 }
 
 /**

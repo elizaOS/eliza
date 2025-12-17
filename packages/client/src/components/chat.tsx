@@ -183,12 +183,17 @@ export interface ChatLocationState {
 // Message content component - exported for use in ChatMessageListComponent
 export const MemoizedMessageContent = React.memo(MessageContent, (prevProps, nextProps) => {
   // Only re-render if the message content, animation state, or other key props change
+  // For action messages, we also need to check rawMessage.actionStatus
+  const prevActionStatus = (prevProps.message.rawMessage as { actionStatus?: string })?.actionStatus;
+  const nextActionStatus = (nextProps.message.rawMessage as { actionStatus?: string })?.actionStatus;
+
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.text === nextProps.message.text &&
     prevProps.message.isLoading === nextProps.message.isLoading &&
     prevProps.shouldAnimate === nextProps.shouldAnimate &&
-    prevProps.isUser === nextProps.isUser
+    prevProps.isUser === nextProps.isUser &&
+    prevActionStatus === nextActionStatus
   );
 });
 

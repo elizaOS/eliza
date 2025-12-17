@@ -22,6 +22,8 @@ export * from './schemas/character';
 // Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
+// Export streaming utilities
+export * from './utils/streaming';
 // Export Node-specific utilities
 export * from './utils/node';
 

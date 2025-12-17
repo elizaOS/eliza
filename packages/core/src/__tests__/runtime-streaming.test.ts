@@ -291,4 +291,72 @@ describe('useModel Streaming', () => {
       expect(chunks).toEqual([]);
     });
   });
+
+  describe('abort signal', () => {
+    it('should stop streaming when abort signal is triggered', async () => {
+      const chunks: string[] = [];
+      const mockChunks = ['A', 'B', 'C', 'D', 'E'];
+      const abortController = new AbortController();
+
+      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
+        if ((params as any).stream) {
+          return createMockTextStreamResult(mockChunks);
+        }
+        return mockChunks.join('');
+      }, 'test-provider');
+
+      const context: StreamingContext = {
+        onStreamChunk: async (chunk) => {
+          chunks.push(chunk);
+          // Abort after receiving 2 chunks
+          if (chunks.length === 2) {
+            abortController.abort();
+          }
+        },
+        abortSignal: abortController.signal,
+      };
+
+      const result = await runWithStreamingContext(context, () =>
+        runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test',
+        })
+      );
+
+      // Should have stopped after 2 chunks due to abort
+      expect(chunks.length).toBe(2);
+      expect(chunks).toEqual(['A', 'B']);
+      // Result should be partial (only chunks received before abort)
+      expect(result).toBe('AB');
+    });
+
+    it('should not affect streaming when abort signal is not triggered', async () => {
+      const chunks: string[] = [];
+      const mockChunks = ['X', 'Y', 'Z'];
+      const abortController = new AbortController();
+
+      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
+        if ((params as any).stream) {
+          return createMockTextStreamResult(mockChunks);
+        }
+        return mockChunks.join('');
+      }, 'test-provider');
+
+      const context: StreamingContext = {
+        onStreamChunk: async (chunk) => {
+          chunks.push(chunk);
+        },
+        abortSignal: abortController.signal,
+      };
+
+      const result = await runWithStreamingContext(context, () =>
+        runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: 'Test',
+        })
+      );
+
+      // Should receive all chunks since abort was never triggered
+      expect(chunks).toEqual(['X', 'Y', 'Z']);
+      expect(result).toBe('XYZ');
+    });
+  });
 });

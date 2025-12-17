@@ -30,8 +30,8 @@ import {
   truncateToCompleteSentence,
   getLocalServerUrl,
   logger,
-  XmlTextStreamExtractor,
 } from '../index';
+import { ResponseStreamExtractor } from '../utils/streaming';
 import { runWithStreamingContext } from '../streaming-context';
 
 /**
@@ -131,7 +131,8 @@ export class DefaultMessageService implements IMessageService {
 
     // Set up timeout monitoring
     let timeoutId: NodeJS.Timeout | undefined = undefined;
-    const responseId = v4();
+    // Single ID used for tracking, streaming, and the final message
+    const responseId = asUUID(v4());
 
     try {
       runtime.logger.info(
@@ -196,10 +197,10 @@ export class DefaultMessageService implements IMessageService {
       });
 
       // Wrap processing with streaming context for automatic streaming in useModel calls
-      // Use XmlTextStreamExtractor to filter out XML tags and only stream <text> content
+      // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
       let streamingContext: { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID } | undefined;
       if (opts.onStreamChunk) {
-        const extractor = new XmlTextStreamExtractor();
+        const extractor = new ResponseStreamExtractor();
         streamingContext = {
           onStreamChunk: async (chunk: string, msgId?: UUID) => {
             if (extractor.done) return;
@@ -208,7 +209,7 @@ export class DefaultMessageService implements IMessageService {
               await opts.onStreamChunk!(textToStream, msgId);
             }
           },
-          messageId: message.id,
+          messageId: responseId,
         };
       }
 
@@ -242,7 +243,7 @@ export class DefaultMessageService implements IMessageService {
     runtime: IAgentRuntime,
     message: Memory,
     callback: HandlerCallback | undefined,
-    responseId: string,
+    responseId: UUID,
     runId: UUID,
     startTime: number,
     opts: ResolvedMessageOptions
@@ -421,8 +422,8 @@ export class DefaultMessageService implements IMessageService {
 
       if (shouldRespondToMessage) {
         const result = opts.useMultiStep
-          ? await this.runMultiStepCore(runtime, message, state, callback, opts)
-          : await this.runSingleShotCore(runtime, message, state, opts);
+          ? await this.runMultiStepCore(runtime, message, state, callback, opts, responseId)
+          : await this.runSingleShotCore(runtime, message, state, opts, responseId);
 
         responseContent = result.responseContent;
         responseMessages = result.responseMessages;
@@ -466,6 +467,7 @@ export class DefaultMessageService implements IMessageService {
               await callback(responseContent);
             }
           } else if (mode === 'actions') {
+            // Pass onStreamChunk to processActions so each action can manage its own streaming context
             await runtime.processActions(message, responseMessages, state, async (content) => {
               runtime.logger.debug({ src: 'service:message', content }, 'Action callback');
               responseContent!.actionCallbacks = content;
@@ -473,7 +475,7 @@ export class DefaultMessageService implements IMessageService {
                 return callback(content);
               }
               return [];
-            });
+            }, { onStreamChunk: opts.onStreamChunk });
           }
         }
       } else {
@@ -895,7 +897,8 @@ export class DefaultMessageService implements IMessageService {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    opts: ResolvedMessageOptions
+    opts: ResolvedMessageOptions,
+    responseId: UUID
   ): Promise<StrategyResult> {
     state = await runtime.composeState(message, ['ACTIONS']);
 
@@ -909,9 +912,6 @@ export class DefaultMessageService implements IMessageService {
     });
 
     let responseContent: Content | null = null;
-
-    // Generate response message ID early for streaming callbacks
-    const responseMessageId = asUUID(v4());
 
     // Retry if missing required fields
     let retries = 0;
@@ -1013,11 +1013,11 @@ export class DefaultMessageService implements IMessageService {
 
     responseContent.simple = isSimple;
     // Include message ID for streaming coordination (so broadcast uses same ID)
-    responseContent.responseMessageId = responseMessageId;
+    responseContent.responseId = responseId;
 
     const responseMessages: Memory[] = [
       {
-        id: responseMessageId,
+        id: responseId,
         entityId: runtime.agentId,
         agentId: runtime.agentId,
         content: responseContent,
@@ -1042,7 +1042,8 @@ export class DefaultMessageService implements IMessageService {
     message: Memory,
     state: State,
     callback: HandlerCallback | undefined,
-    opts: ResolvedMessageOptions
+    opts: ResolvedMessageOptions,
+    responseId: UUID
   ): Promise<StrategyResult> {
     const traceActionResult: MultiStepActionResult[] = [];
     let accumulatedState: MultiStepState = state as MultiStepState;
@@ -1215,9 +1216,6 @@ export class DefaultMessageService implements IMessageService {
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
     });
 
-    // Generate response message ID for the response
-    const responseMessageId = asUUID(v4());
-
     const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt: summaryPrompt,
     });
@@ -1231,14 +1229,14 @@ export class DefaultMessageService implements IMessageService {
         text: summaryText,
         thought: (typeof summary.thought === 'string' ? summary.thought : 'Final user-facing message after task completion.') || 'Final user-facing message after task completion.',
         simple: true,
-        messageId: responseMessageId,
+        responseId,
       };
     }
 
     const responseMessages: Memory[] = responseContent
       ? [
           {
-            id: responseMessageId,
+            id: responseId,
             entityId: runtime.agentId,
             agentId: runtime.agentId,
             content: responseContent,
