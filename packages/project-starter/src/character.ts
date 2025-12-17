@@ -1,5 +1,5 @@
 import { type Character, type LoreEntry } from '@elizaos/core';
-import loreEntries from './lorebook_to_insert.json';
+// import loreEntries from './lorebook_to_insert.json';
 
 /**
  * Dr. Orion - Clinical Realist & Relationship Economist
@@ -278,5 +278,5 @@ export const character: Character = {
     ],
   },
 
-  lore: loreEntries as LoreEntry[],
+  // lore: loreEntries as LoreEntry[],
 };
