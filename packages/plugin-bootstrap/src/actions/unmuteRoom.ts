@@ -69,7 +69,6 @@ export const unmuteRoomAction: Action = {
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        runtime,
         prompt: shouldUnmutePrompt,
         stopSequences: [],
       });

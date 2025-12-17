@@ -5,7 +5,7 @@
  * and memories WITHOUT modifying the core runtime.
  */
 
-import { IAgentRuntime, UUID } from '@elizaos/core';
+import { IAgentRuntime, UUID, Memory } from '@elizaos/core';
 
 /**
  * Agent trajectory step (matching GitHub ticket #5785 specification)
@@ -191,17 +191,17 @@ export class TrajectoryReconstructor {
       // Extract action information (same structure as TrajectoryContainsActionEvaluator)
       const actionName = content.actionName || 'unknown';
       const actionParams = content.actionParams || {};
-      const actionResult = content.actionResult || {};
+      const actionResult = content.actionResult as Record<string, unknown> | string | undefined;
       const thought = content.thought || content.planThought || '';
 
       // Get observation content from various possible locations
       let observationContent = '';
-      if (actionResult?.text) {
-        observationContent = actionResult.text;
-      } else if (actionResult?.stdout) {
-        observationContent = actionResult.stdout;
-      } else if (actionResult?.output) {
-        observationContent = actionResult.output;
+      if (actionResult && typeof actionResult === 'object' && 'text' in actionResult) {
+        observationContent = String(actionResult.text);
+      } else if (actionResult && typeof actionResult === 'object' && 'stdout' in actionResult) {
+        observationContent = String(actionResult.stdout);
+      } else if (actionResult && typeof actionResult === 'object' && 'output' in actionResult) {
+        observationContent = String(actionResult.output);
       } else if (typeof actionResult === 'string') {
         observationContent = actionResult;
       } else if (actionResult && typeof actionResult === 'object') {

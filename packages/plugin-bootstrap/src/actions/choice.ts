@@ -118,14 +118,6 @@ export const choiceAction: Action = {
         tags: ['AWAITING_CHOICE'],
       });
 
-      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-
-      const userRole = await getUserServerRole(runtime, message.entityId, room.messageServerId);
-
-      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
-        return false;
-      }
-
       // Only validate if there are pending tasks with options
       return (
         pendingTasks &&

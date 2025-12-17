@@ -11,9 +11,14 @@ import {
   type UUID,
   ElizaOS,
 } from '@elizaos/core';
-import type { MessageMetadata } from '@elizaos/api-client';
 import type { AgentServer } from '../index.js';
-import internalMessageBus from './message-bus'; // Import the bus
+import type {
+  ServerAgentUpdatePayload,
+  MessageDeletedPayload,
+  ChannelClearedPayload,
+  MessageServiceStructure,
+} from '../types/server';
+import internalMessageBus from './message-bus';
 
 /**
  * Global ElizaOS instance for MessageBusService
@@ -69,35 +74,8 @@ function getGlobalAgentServer(): AgentServer {
   return globalAgentServer;
 }
 
-// This interface defines the structure of messages coming from the server
-interface ServerAgentUpdatePayload {
-  agentId: UUID;
-  type: 'agent_added_to_server' | 'agent_removed_from_server';
-  messageServerId: UUID;
-}
-
-interface MessageDeletedPayload {
-  messageId: UUID;
-}
-
-interface ChannelClearedPayload {
-  channelId: UUID;
-}
-
-export interface MessageServiceMessage {
-  id: UUID; // root_message.id
-  channel_id: UUID;
-  message_server_id: UUID;
-  author_id: UUID; // UUID of a central user identity
-  author_display_name?: string; // Display name from central user identity
-  content: string;
-  raw_message?: unknown;
-  source_id?: string; // original platform message ID
-  source_type?: string;
-  in_reply_to_message_id?: UUID;
-  created_at: number;
-  metadata?: MessageMetadata;
-}
+// Re-export for backward compatibility
+export type MessageServiceMessage = MessageServiceStructure;
 
 export class MessageBusService extends Service {
   static serviceType = 'message-bus-service';
@@ -497,8 +475,9 @@ export class MessageBusService extends Service {
           ...(message.metadata?.channelMetadata || {}),
         },
       });
-    } catch (error: unknown) {
-      if (error.message && error.message.includes('rooms_pkey')) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('rooms_pkey')) {
         logger.debug(
           { src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId },
           'Room already exists'
@@ -549,8 +528,10 @@ export class MessageBusService extends Service {
     interface MessageDataCandidate {
       id?: unknown;
       channel_id?: unknown;
+      message_server_id?: unknown;
       author_id?: unknown;
       content?: unknown;
+      created_at?: unknown;
       [key: string]: unknown;
     }
     const messageData = data as MessageDataCandidate;
@@ -559,8 +540,10 @@ export class MessageBusService extends Service {
     if (
       !messageData.id ||
       !messageData.channel_id ||
+      !messageData.message_server_id ||
       !messageData.author_id ||
-      !messageData.content
+      !messageData.content ||
+      messageData.created_at === undefined
     ) {
       logger.error(
         {
@@ -569,15 +552,30 @@ export class MessageBusService extends Service {
           agentName: this.runtime.character.name,
           hasId: !!messageData.id,
           hasChannelId: !!messageData.channel_id,
+          hasMessageServerId: !!messageData.message_server_id,
           hasAuthorId: !!messageData.author_id,
           hasContent: !!messageData.content,
+          hasCreatedAt: messageData.created_at !== undefined,
         },
         'Message missing required fields'
       );
       return;
     }
 
-    const message = messageData as MessageServiceMessage;
+    const message: MessageServiceMessage = {
+      id: messageData.id as UUID,
+      channel_id: messageData.channel_id as UUID,
+      message_server_id: messageData.message_server_id as UUID,
+      author_id: messageData.author_id as UUID,
+      content: messageData.content as string,
+      created_at: messageData.created_at as number,
+      author_display_name: messageData.author_display_name as string | undefined,
+      raw_message: messageData.raw_message as Record<string, unknown> | undefined,
+      source_id: messageData.source_id as string | undefined,
+      source_type: messageData.source_type as string | undefined,
+      in_reply_to_message_id: messageData.in_reply_to_message_id as UUID | undefined,
+      metadata: messageData.metadata as MessageServiceMessage['metadata'],
+    };
     logger.info(
       { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: message.id },
       'Received message from central bus'

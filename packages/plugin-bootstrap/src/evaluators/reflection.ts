@@ -12,6 +12,32 @@ import {
 } from '@elizaos/core';
 import { v4 } from 'uuid';
 
+/** Shape of a single fact in the XML response */
+interface FactXml {
+  claim?: string;
+  type?: string;
+  in_bio?: string;
+  already_known?: string;
+}
+
+/** Shape of a single relationship in the XML response */
+interface RelationshipXml {
+  sourceEntityId?: string;
+  targetEntityId?: string;
+  tags?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Shape of the reflection XML response */
+interface ReflectionXmlResult {
+  facts?: {
+    fact?: FactXml | FactXml[];
+  };
+  relationships?: {
+    relationship?: RelationshipXml | RelationshipXml[];
+  };
+}
+
 // Schema definitions for the reflection output
 const relationshipSchema = z.object({
   sourceEntityId: z.string(),
@@ -128,7 +154,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
  * @returns {UUID} - The resolved UUID of the entity.
  * @throws {Error} - If the entity ID cannot be resolved to a valid UUID.
  */
-function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
+function resolveEntity(entityId: string, entities: Entity[]): UUID {
   // First try exact UUID match
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId)) {
     return entityId as UUID;
@@ -210,7 +236,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     }
 
     // Parse XML response
-    const reflection = parseKeyValueXml(response);
+    const reflection = parseKeyValueXml<ReflectionXmlResult>(response);
 
     if (!reflection) {
       runtime.logger.warn(
@@ -239,7 +265,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Handle facts - parseKeyValueXml returns nested structures differently
     // Facts might be a single object or an array depending on the count
-    let factsArray: Array<Record<string, unknown>> = [];
+    let factsArray: FactXml[] = [];
     if (reflection.facts.fact) {
       // Normalize to array
       factsArray = Array.isArray(reflection.facts.fact)
@@ -247,21 +273,18 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
         : [reflection.facts.fact];
     }
 
-    // Store new facts
-    const newFacts =
-      factsArray.filter(
-        (fact: Record<string, unknown>) =>
-          fact &&
-          typeof fact === 'object' &&
-          fact.already_known === 'false' &&
-          fact.in_bio === 'false' &&
-          fact.claim &&
-          typeof fact.claim === 'string' &&
-          fact.claim.trim() !== ''
-      ) || [];
+    // Store new facts - filter for valid new facts with claim text
+    const newFacts = factsArray.filter(
+      (fact): fact is FactXml & { claim: string } =>
+        fact != null &&
+        fact.already_known === 'false' &&
+        fact.in_bio === 'false' &&
+        typeof fact.claim === 'string' &&
+        fact.claim.trim() !== ''
+    );
 
     await Promise.all(
-      newFacts.map(async (fact: Record<string, unknown>) => {
+      newFacts.map(async (fact) => {
         const factMemory = {
           id: asUUID(v4()),
           entityId: agentId,
@@ -281,7 +304,7 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
     );
 
     // Handle relationships - similar structure normalization
-    let relationshipsArray: Array<Record<string, unknown>> = [];
+    let relationshipsArray: RelationshipXml[] = [];
     if (reflection.relationships.relationship) {
       relationshipsArray = Array.isArray(reflection.relationships.relationship)
         ? reflection.relationships.relationship
@@ -290,6 +313,11 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 
     // Update or create relationships
     for (const relationship of relationshipsArray) {
+      if (!relationship.sourceEntityId || !relationship.targetEntityId) {
+        console.warn('Skipping relationship with missing entity IDs:', relationship);
+        continue;
+      }
+
       let sourceId: UUID;
       let targetId: UUID;
 

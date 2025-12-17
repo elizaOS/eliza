@@ -178,12 +178,7 @@ export class DummyBrowserService extends Service {
     );
 
     // Return dummy result
-    // Return type matches the expected browser service script execution result
-    interface ScriptExecutionResult {
-      success: boolean;
-      data: string;
-    }
-    return { success: true, data: 'dummy-script-result' } as ScriptExecutionResult;
+    return { success: true, data: 'dummy-script-result' } as T;
   }
 
   async goBack(): Promise<void> {

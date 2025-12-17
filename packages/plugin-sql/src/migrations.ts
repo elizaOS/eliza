@@ -1,8 +1,9 @@
 import { logger, type IDatabaseAdapter } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
+import { getDb } from './types';
 
 /**
- * TEMPORARY MIGRATION: develop → feat/entity-rls migration
+ * TEMPORARY MIGRATION: pre-1.6.5 → 1.6.5+ schema migration
  *
  * This migration runs automatically on startup and is idempotent.
  * It handles the migration from Owner RLS to Server RLS + Entity RLS, including:
@@ -15,7 +16,7 @@ import { sql } from 'drizzle-orm';
  * @param adapter - Database adapter
  */
 export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Detect database type - skip PostgreSQL-specific migrations for SQLite
   try {
@@ -26,10 +27,82 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
     return;
   }
 
-  logger.info('[Migration] Starting develop → feat/entity-rls migration...');
+  // Check if schema migration has already been completed
+  // We use the presence of snake_case columns as a marker
+  let schemaAlreadyMigrated = false;
+  try {
+    const migrationCheck = await db.execute(sql`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'rooms'
+        AND column_name = 'agent_id'
+    `);
+
+    if (migrationCheck.rows && migrationCheck.rows.length > 0) {
+      // Migration already completed - rooms.agent_id exists (snake_case)
+      schemaAlreadyMigrated = true;
+      logger.debug('[Migration] ⊘ Schema already migrated (snake_case columns exist)');
+    }
+  } catch {
+    // Table might not exist yet, continue with migration
+    logger.debug('[Migration] → rooms table not found, will be created by RuntimeMigrator');
+    return; // Let RuntimeMigrator create fresh tables
+  }
+
+  // If schema is already migrated, check if we need to clean up RLS
+  // Only disable RLS if ENABLE_DATA_ISOLATION is NOT true (user disabled isolation)
+  // If ENABLE_DATA_ISOLATION=true, keep RLS as-is - migration-service.ts will ensure proper config
+  if (schemaAlreadyMigrated) {
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+
+    if (dataIsolationEnabled) {
+      // RLS should stay enabled - no need to disable/re-enable cycle
+      // Note: migration-service.ts will ensure RLS is properly configured after this
+      // via applyRLSToNewTables() and applyEntityRLSToAllTables() which are idempotent
+      logger.debug('[Migration] ⊘ Schema already migrated, RLS enabled - nothing to do');
+      return;
+    }
+
+    // User disabled data isolation - clean up RLS if it was previously enabled
+    logger.debug('[Migration] → Schema migrated but RLS disabled, cleaning up...');
+
+    try {
+      const tablesWithRls = await db.execute(sql`
+        SELECT c.relname as tablename
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+          AND c.relrowsecurity = true
+        ORDER BY c.relname
+      `);
+
+      if (tablesWithRls.rows && tablesWithRls.rows.length > 0) {
+        for (const row of tablesWithRls.rows) {
+          const tableName = row.tablename as string;
+          try {
+            await db.execute(sql.raw(`ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY`));
+          } catch {
+            // Ignore errors
+          }
+        }
+        logger.debug(
+          `[Migration] ✓ RLS cleanup completed (${tablesWithRls.rows.length} tables)`
+        );
+      } else {
+        logger.debug('[Migration] ⊘ No tables with RLS to clean up');
+      }
+    } catch {
+      logger.debug('[Migration] ⊘ Could not perform RLS cleanup');
+    }
+
+    return;
+  }
+
+  logger.info('[Migration] Starting pre-1.6.5 → 1.6.5+ schema migration...');
 
   try {
-    // ALWAYS clear RuntimeMigrator snapshot cache to force fresh introspection
+    // Clear RuntimeMigrator snapshot cache to force fresh introspection
     // This ensures the snapshot matches the current database state after our migrations
     logger.debug('[Migration] → Clearing RuntimeMigrator snapshot cache...');
     try {
@@ -42,68 +115,81 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       logger.debug('[Migration] ⊘ No snapshot cache to clear (migrations schema not yet created)');
     }
 
-    // Disable RLS on all tables temporarily
+    // Disable RLS only on tables that have it enabled
     // RLS will be re-implemented properly later
-    logger.debug('[Migration] → Disabling Row Level Security on all tables...');
+    logger.debug('[Migration] → Checking for Row Level Security to disable...');
     try {
-      const tablesResult = await db.execute(sql`
-        SELECT tablename
-        FROM pg_tables
-        WHERE schemaname = 'public'
-        ORDER BY tablename
+      const tablesWithRls = await db.execute(sql`
+        SELECT c.relname as tablename
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relkind = 'r'
+          AND c.relrowsecurity = true
+        ORDER BY c.relname
       `);
 
-      for (const row of tablesResult.rows || []) {
-        const tableName = row.tablename as string;
-        try {
-          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY`));
-          logger.debug(`[Migration] ✓ Disabled RLS on ${tableName}`);
-        } catch (error) {
-          // Table might not have RLS enabled, that's fine
-          logger.debug(`[Migration] ⊘ Could not disable RLS on ${tableName}`);
+      if (tablesWithRls.rows && tablesWithRls.rows.length > 0) {
+        for (const row of tablesWithRls.rows) {
+          const tableName = row.tablename as string;
+          try {
+            await db.execute(sql.raw(`ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY`));
+            logger.debug(`[Migration] ✓ Disabled RLS on ${tableName}`);
+          } catch (error) {
+            logger.debug(`[Migration] ⊘ Could not disable RLS on ${tableName}`);
+          }
         }
+      } else {
+        logger.debug('[Migration] ⊘ No tables with RLS enabled');
       }
     } catch (error) {
-      logger.debug('[Migration] ⊘ Could not disable RLS (may not have permissions)');
+      logger.debug('[Migration] ⊘ Could not check RLS (may not have permissions)');
     }
 
-    // Special handling for tables where server_id needs to become message_server_id
-    // In develop: server_id (text or uuid) → referenced message server ID
-    // In feat/entity-rls: message_server_id (uuid) → message_servers.id
+    // Special handling for tables where serverId/server_id needs to become message_server_id
+    // v1.6.4 had: rooms.serverId (TEXT camelCase), worlds.serverId (TEXT camelCase), channels.server_id (UUID)
+    // Current: message_server_id (UUID) in all tables
     //
-    // STRATEGY: Rename server_id to message_server_id preserving data
-    logger.debug('[Migration] → Handling server_id → message_server_id migrations...');
+    // STRATEGY: Rename serverId/server_id to message_server_id preserving data
+    logger.debug('[Migration] → Handling serverId/server_id → message_server_id migrations...');
 
     const tablesToMigrate = ['channels', 'worlds', 'rooms'];
 
     for (const tableName of tablesToMigrate) {
       try {
+        // Check for both camelCase (serverId) and snake_case (server_id) columns
         const columnsResult = await db.execute(sql`
           SELECT column_name, data_type, is_nullable
           FROM information_schema.columns
           WHERE table_schema = 'public'
             AND table_name = ${tableName}
-            AND column_name IN ('server_id', 'message_server_id')
+            AND column_name IN ('server_id', 'serverId', 'message_server_id')
           ORDER BY column_name
         `);
 
         const columns = columnsResult.rows || [];
-        const serverId = columns.find((c: any) => c.column_name === 'server_id');
+        const serverIdSnake = columns.find((c: any) => c.column_name === 'server_id');
+        const serverIdCamel = columns.find((c: any) => c.column_name === 'serverId');
         const messageServerId = columns.find((c: any) => c.column_name === 'message_server_id');
 
+        // Use whichever old column exists (prefer snake_case for channels)
+        const serverId = serverIdSnake || serverIdCamel;
+        const oldColumnName = serverIdSnake ? 'server_id' : 'serverId';
+
         if (serverId && !messageServerId) {
-          // Only server_id exists → rename it to message_server_id
-          logger.debug(`[Migration] → Renaming ${tableName}.server_id to message_server_id...`);
+          // Old column exists → rename it to message_server_id
+          logger.debug(`[Migration] → Renaming ${tableName}.${oldColumnName} to message_server_id...`);
           await db.execute(
-            sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "server_id" TO "message_server_id"`)
+            sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "${oldColumnName}" TO "message_server_id"`)
           );
-          logger.debug(`[Migration] ✓ Renamed ${tableName}.server_id → message_server_id`);
+          logger.debug(`[Migration] ✓ Renamed ${tableName}.${oldColumnName} → message_server_id`);
 
           // If the column was text, try to convert to UUID (if data is UUID-compatible)
           if (serverId.data_type === 'text') {
+            // CRITICAL: Drop DEFAULT constraint before type conversion
+            // This prevents "default for column cannot be cast automatically" errors
+            // Wrap in separate try-catch to ensure we continue even if no default exists
             try {
-              // CRITICAL: Drop DEFAULT constraint before type conversion
-              // This prevents "default for column cannot be cast automatically" errors
               logger.debug(
                 `[Migration] → Dropping DEFAULT constraint on ${tableName}.message_server_id...`
               );
@@ -111,29 +197,33 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
                 sql.raw(`ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" DROP DEFAULT`)
               );
               logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
+            } catch {
+              logger.debug(`[Migration] ⊘ No DEFAULT constraint to drop on ${tableName}.message_server_id`);
+            }
 
+            try {
               logger.debug(
                 `[Migration] → Converting ${tableName}.message_server_id from text to uuid...`
               );
+              // Use robust conversion: valid UUIDs are cast directly, others get md5 hash
+              // This handles: empty strings, non-UUID text, uppercase UUIDs, NULL values
               await db.execute(
-                sql.raw(
-                  `ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING "message_server_id"::uuid`
-                )
+                sql.raw(`
+                  ALTER TABLE "${tableName}"
+                  ALTER COLUMN "message_server_id" TYPE uuid
+                  USING CASE
+                    WHEN "message_server_id" IS NULL THEN NULL
+                    WHEN "message_server_id" = '' THEN NULL
+                    WHEN "message_server_id" ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                    THEN "message_server_id"::uuid
+                    ELSE md5("message_server_id")::uuid
+                  END
+                `)
               );
               logger.debug(`[Migration] ✓ Converted ${tableName}.message_server_id to uuid`);
             } catch (convertError) {
               logger.warn(
-                `[Migration] ⚠️ Could not convert ${tableName}.message_server_id to uuid - data may not be valid UUIDs`
-              );
-              // If conversion fails, set to NULL for rows with invalid UUIDs
-              // This allows the migration to continue
-              logger.debug(
-                `[Migration] → Setting invalid UUIDs to NULL in ${tableName}.message_server_id...`
-              );
-              await db.execute(
-                sql.raw(
-                  `ALTER TABLE "${tableName}" ALTER COLUMN "message_server_id" TYPE uuid USING CASE WHEN "message_server_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN "message_server_id"::uuid ELSE NULL END`
-                )
+                `[Migration] ⚠️ Could not convert ${tableName}.message_server_id to uuid: ${convertError}`
               );
             }
           }
@@ -146,8 +236,8 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
                 `SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`
               )
             );
-            const nullCount = nullCountResult.rows?.[0]?.count;
-            if (nullCount && parseInt(nullCount) > 0) {
+            const nullCount = nullCountResult.rows?.[0]?.count as string | undefined;
+            if (nullCount && parseInt(nullCount, 10) > 0) {
               logger.warn(
                 `[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`
               );
@@ -167,11 +257,11 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
             logger.debug(`[Migration] ✓ Set ${tableName}.message_server_id NOT NULL`);
           }
         } else if (serverId && messageServerId) {
-          // Both exist → just drop server_id (will be re-added by RuntimeMigrator for RLS)
-          logger.debug(`[Migration] → ${tableName} has both columns, dropping server_id...`);
-          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "server_id" CASCADE`));
+          // Both exist → just drop the old column
+          logger.debug(`[Migration] → ${tableName} has both columns, dropping ${oldColumnName}...`);
+          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "${oldColumnName}" CASCADE`));
           logger.debug(
-            `[Migration] ✓ Dropped ${tableName}.server_id (will be re-added by RuntimeMigrator for RLS)`
+            `[Migration] ✓ Dropped ${tableName}.${oldColumnName}`
           );
         } else if (!serverId && messageServerId) {
           // Only message_server_id exists - check if it needs type conversion from TEXT to UUID
@@ -258,6 +348,85 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       }
     } catch (error) {
       logger.debug('[Migration] ⊘ Could not drop server_id columns (may not have permissions)');
+    }
+
+    // Special handling for agents table: rename owner_id → server_id
+    // v1.6.4 had owner_id, v1.6.5 changed it to server_id
+    logger.debug('[Migration] → Checking agents.owner_id → server_id rename...');
+    try {
+      const agentsColumnsResult = await db.execute(sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'agents'
+          AND column_name IN ('owner_id', 'server_id')
+        ORDER BY column_name
+      `);
+
+      const agentsColumns = agentsColumnsResult.rows || [];
+      const hasOwnerId = agentsColumns.some((c: any) => c.column_name === 'owner_id');
+      const hasServerId = agentsColumns.some((c: any) => c.column_name === 'server_id');
+
+      if (hasOwnerId && !hasServerId) {
+        // Rename owner_id → server_id
+        logger.debug('[Migration] → Renaming agents.owner_id to server_id...');
+        await db.execute(
+          sql.raw(`ALTER TABLE "agents" RENAME COLUMN "owner_id" TO "server_id"`)
+        );
+        logger.debug('[Migration] ✓ Renamed agents.owner_id → server_id');
+      } else if (hasOwnerId && hasServerId) {
+        // Both exist - drop owner_id (data should be in server_id)
+        logger.debug('[Migration] → Both owner_id and server_id exist, dropping owner_id...');
+        await db.execute(sql.raw(`ALTER TABLE "agents" DROP COLUMN "owner_id" CASCADE`));
+        logger.debug('[Migration] ✓ Dropped agents.owner_id');
+      } else {
+        logger.debug('[Migration] ⊘ agents table already has server_id (or no owner_id), skipping');
+      }
+    } catch (error) {
+      logger.debug('[Migration] ⊘ Could not check/migrate agents.owner_id');
+    }
+
+    // Migrate data from obsolete 'owners' table to 'servers' (if owners exists)
+    // v1.6.4 used owners table, v1.6.5+ uses servers table
+    logger.debug('[Migration] → Checking for owners → servers data migration...');
+    try {
+      const ownersTableResult = await db.execute(sql`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = 'owners'
+      `);
+
+      if (ownersTableResult.rows && ownersTableResult.rows.length > 0) {
+        // First, ensure servers table exists
+        logger.debug('[Migration] → Ensuring servers table exists...');
+        await db.execute(sql.raw(`
+          CREATE TABLE IF NOT EXISTS "servers" (
+            "id" uuid PRIMARY KEY,
+            "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+            "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+          )
+        `));
+
+        // Migrate data from owners to servers (if any)
+        logger.debug('[Migration] → Migrating owners data to servers...');
+        await db.execute(sql.raw(`
+          INSERT INTO "servers" ("id", "created_at", "updated_at")
+          SELECT "id", COALESCE("created_at", now()), COALESCE("updated_at", now())
+          FROM "owners"
+          ON CONFLICT ("id") DO NOTHING
+        `));
+        logger.debug('[Migration] ✓ Migrated owners data to servers');
+
+        // Now safe to drop owners table
+        logger.debug('[Migration] → Dropping obsolete owners table...');
+        await db.execute(sql.raw(`DROP TABLE IF EXISTS "owners" CASCADE`));
+        logger.debug('[Migration] ✓ Dropped obsolete owners table');
+      } else {
+        logger.debug('[Migration] ⊘ owners table not found, skipping');
+      }
+    } catch (error) {
+      logger.warn(`[Migration] ⚠️ Could not migrate owners → servers: ${error}`);
     }
 
     // Special handling for server_agents → message_server_agents rename
@@ -410,7 +579,135 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       logger.debug('[Migration] ⊘ Could not drop indexes (may not have permissions)');
     }
 
-    logger.info('[Migration] ✓ Migration complete - develop to feat/entity-rls migration finished');
+    // =========================================================================
+    // SMOOTH MIGRATION: camelCase → snake_case column renames
+    // This ensures a non-destructive transition from v1.6.4 to v1.6.5+
+    // All data is preserved through RENAME COLUMN operations
+    // This section can be removed once all deployments have been migrated
+    // =========================================================================
+    logger.debug('[Migration] → Starting camelCase → snake_case column renames...');
+
+    const columnRenames = [
+      // rooms table
+      { table: 'rooms', from: 'agentId', to: 'agent_id' },
+      { table: 'rooms', from: 'worldId', to: 'world_id' },
+      { table: 'rooms', from: 'channelId', to: 'channel_id' },
+      { table: 'rooms', from: 'createdAt', to: 'created_at' },
+
+      // worlds table
+      { table: 'worlds', from: 'agentId', to: 'agent_id' },
+      { table: 'worlds', from: 'createdAt', to: 'created_at' },
+
+      // memories table
+      { table: 'memories', from: 'createdAt', to: 'created_at' },
+      { table: 'memories', from: 'entityId', to: 'entity_id' },
+      { table: 'memories', from: 'agentId', to: 'agent_id' },
+      { table: 'memories', from: 'roomId', to: 'room_id' },
+      { table: 'memories', from: 'worldId', to: 'world_id' },
+
+      // components table
+      { table: 'components', from: 'entityId', to: 'entity_id' },
+      { table: 'components', from: 'agentId', to: 'agent_id' },
+      { table: 'components', from: 'roomId', to: 'room_id' },
+      { table: 'components', from: 'worldId', to: 'world_id' },
+      { table: 'components', from: 'sourceEntityId', to: 'source_entity_id' },
+      { table: 'components', from: 'createdAt', to: 'created_at' },
+
+      // participants table
+      { table: 'participants', from: 'entityId', to: 'entity_id' },
+      { table: 'participants', from: 'roomId', to: 'room_id' },
+      { table: 'participants', from: 'agentId', to: 'agent_id' },
+      { table: 'participants', from: 'roomState', to: 'room_state' },
+      { table: 'participants', from: 'createdAt', to: 'created_at' },
+
+      // relationships table
+      { table: 'relationships', from: 'sourceEntityId', to: 'source_entity_id' },
+      { table: 'relationships', from: 'targetEntityId', to: 'target_entity_id' },
+      { table: 'relationships', from: 'agentId', to: 'agent_id' },
+      { table: 'relationships', from: 'createdAt', to: 'created_at' },
+
+      // logs table
+      { table: 'logs', from: 'entityId', to: 'entity_id' },
+      { table: 'logs', from: 'roomId', to: 'room_id' },
+      { table: 'logs', from: 'createdAt', to: 'created_at' },
+
+      // tasks table
+      { table: 'tasks', from: 'roomId', to: 'room_id' },
+      { table: 'tasks', from: 'worldId', to: 'world_id' },
+      { table: 'tasks', from: 'entityId', to: 'entity_id' },
+      { table: 'tasks', from: 'createdAt', to: 'created_at' },
+      { table: 'tasks', from: 'updatedAt', to: 'updated_at' },
+
+      // agents table
+      { table: 'agents', from: 'createdAt', to: 'created_at' },
+      { table: 'agents', from: 'updatedAt', to: 'updated_at' },
+
+      // entities table
+      { table: 'entities', from: 'agentId', to: 'agent_id' },
+      { table: 'entities', from: 'createdAt', to: 'created_at' },
+
+      // embeddings table
+      { table: 'embeddings', from: 'memoryId', to: 'memory_id' },
+      { table: 'embeddings', from: 'createdAt', to: 'created_at' },
+
+      // cache table
+      { table: 'cache', from: 'agentId', to: 'agent_id' },
+      { table: 'cache', from: 'createdAt', to: 'created_at' },
+      { table: 'cache', from: 'expiresAt', to: 'expires_at' },
+    ];
+
+    for (const rename of columnRenames) {
+      try {
+        // Check if table exists first
+        const tableExistsResult = await db.execute(sql`
+          SELECT 1 FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = ${rename.table}
+        `);
+
+        if (!tableExistsResult.rows || tableExistsResult.rows.length === 0) {
+          // Table doesn't exist yet, skip
+          continue;
+        }
+
+        // Check which columns exist
+        const columnsResult = await db.execute(sql`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = ${rename.table}
+            AND column_name IN (${rename.from}, ${rename.to})
+          ORDER BY column_name
+        `);
+
+        const columns = columnsResult.rows || [];
+        const hasOldColumn = columns.some((c: any) => c.column_name === rename.from);
+        const hasNewColumn = columns.some((c: any) => c.column_name === rename.to);
+
+        if (hasOldColumn && !hasNewColumn) {
+          // Old column exists, new doesn't → RENAME (preserves data!)
+          logger.debug(`[Migration] → Renaming ${rename.table}.${rename.from} to ${rename.to}...`);
+          await db.execute(
+            sql.raw(`ALTER TABLE "${rename.table}" RENAME COLUMN "${rename.from}" TO "${rename.to}"`)
+          );
+          logger.debug(`[Migration] ✓ Renamed ${rename.table}.${rename.from} → ${rename.to}`);
+        } else if (hasOldColumn && hasNewColumn) {
+          // Both exist → drop old (data should be in new already)
+          logger.debug(`[Migration] → Both columns exist, dropping ${rename.table}.${rename.from}...`);
+          await db.execute(
+            sql.raw(`ALTER TABLE "${rename.table}" DROP COLUMN "${rename.from}" CASCADE`)
+          );
+          logger.debug(`[Migration] ✓ Dropped ${rename.table}.${rename.from}`);
+        }
+        // If only new column exists or neither exists, nothing to do
+      } catch (error) {
+        // Log but continue - table might not exist yet or column might already be renamed
+        logger.debug(`[Migration] ⊘ Could not process ${rename.table}.${rename.from}: ${error}`);
+      }
+    }
+
+    logger.debug('[Migration] ✓ Completed camelCase → snake_case column renames');
+
+    logger.info('[Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished');
   } catch (error) {
     // Re-throw errors to prevent RuntimeMigrator from running on broken state
     logger.error('[Migration] Migration failed:', String(error));
