@@ -3,9 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "./Dockerfile.railway"
 
 [deploy]
-startCommand = "cd packages/project-starter && LOG_LEVEL=${LOG_LEVEL:-debug} elizaos start"
-healthcheckPath = "/health"
-healthcheckTimeout = 300
+startCommand = "elizaos start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
