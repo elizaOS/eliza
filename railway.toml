@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "./Dockerfile.railway"
 
 [deploy]
-startCommand = "elizaos start"
+startCommand = "cd /app/packages/project-starter && LOG_LEVEL=${LOG_LEVEL:-debug} node ../cli/dist/index.js start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 

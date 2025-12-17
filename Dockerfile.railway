@@ -72,11 +72,8 @@ ENV LOG_LEVEL=$LOG_LEVEL
 # Expose port
 EXPOSE 3000
 
-# Change to project-starter directory and run elizaos
+# Change to project-starter directory and run using local CLI build
 WORKDIR /app/packages/project-starter
 
-# Install elizaos CLI globally to ensure it's available
-RUN npm install -g @elizaos/cli
-
-# Start command
-CMD ["sh", "-c", "LOG_LEVEL=${LOG_LEVEL:-debug} elizaos start"]
+# Start command using locally built CLI (not the npm global version)
+CMD ["sh", "-c", "LOG_LEVEL=${LOG_LEVEL:-debug} node ../cli/dist/index.js start"]
