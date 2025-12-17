@@ -22,7 +22,6 @@ export * from './schemas/character';
 // Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
-// Note: Excluding server-health and paths as they're Node-specific
 
 // Export core modules (all browser-compatible after refactoring)
 export * from './actions';

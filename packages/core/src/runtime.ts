@@ -11,7 +11,8 @@ import { getNumberEnv } from './utils/environment';
 import { BufferUtils } from './utils/buffer';
 import { isPlainObject } from './utils/type-guards';
 import { decryptSecret, getSalt } from './index';
-import { getStreamingContext } from './streaming-context';
+import { ActionStreamFilter } from './utils/streaming';
+import { getStreamingContext, runWithStreamingContext } from './streaming-context';
 import { createLogger } from './logger';
 import { DefaultMessageService } from './services/default-message-service';
 import type { IMessageService } from './services/message-service';
@@ -947,6 +948,9 @@ export class AgentRuntime implements IAgentRuntime {
         this.logger.debug({ src: 'agent', agentId: this.agentId, action: action.name }, 'Executing action');
 
         const actionId = uuidv4() as UUID;
+        // Separate ID for streamed response message (independent from action badge)
+        const responseMessageId = uuidv4() as UUID;
+
         this.currentActionContext = {
           actionName: action.name,
           actionId,
@@ -999,18 +1003,50 @@ export class AgentRuntime implements IAgentRuntime {
         let storedCallbackData: Content[] = [];
 
         const storageCallback = async (response: Content) => {
+          // Use responseMessageId for the text response (separate from action badge)
+          response.responseId = responseMessageId;
           storedCallbackData.push(response);
           return [];
         };
 
-        // Execute action with context
-        const result = await action.handler(
-          this as IAgentRuntime,
-          message,
-          accumulatedState,
-          options,
-          storageCallback,
-          responses
+        // Create streaming context using responseMessageId (separate from actionId)
+        // This ensures streamed text goes to its own message, independent from action badge
+        //
+        // Actions may have multiple useModel calls (e.g., JSON extraction + text generation).
+        // onStreamEnd is called after each useModel stream completes, allowing us to reset
+        // the filter so content type detection from one call doesn't affect the next.
+        let actionStreamingContext: { messageId: UUID; onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; onStreamEnd: () => void } | undefined;
+        if (processOptions?.onStreamChunk) {
+          let currentFilter: ActionStreamFilter | null = null;
+
+          actionStreamingContext = {
+            messageId: responseMessageId,
+            onStreamChunk: async (chunk: string, msgId?: UUID) => {
+              if (!currentFilter) {
+                currentFilter = new ActionStreamFilter();
+              }
+              const textToStream = currentFilter.push(chunk);
+              if (textToStream) {
+                await processOptions.onStreamChunk!(textToStream, msgId);
+              }
+            },
+            onStreamEnd: () => {
+              // Reset filter for next useModel call
+              currentFilter = null;
+            },
+          };
+        }
+
+        // Execute action with its own streaming context
+        const result = await runWithStreamingContext(actionStreamingContext, () =>
+          action.handler(
+            this as IAgentRuntime,
+            message,
+            accumulatedState,
+            options,
+            storageCallback,
+            responses
+          )
         );
 
         // Handle backward compatibility for void, null, true, false returns
@@ -1108,7 +1144,8 @@ export class AgentRuntime implements IAgentRuntime {
           roomId: message.roomId,
           world: message.worldId,
           content: {
-            text: `Action ${action.name} ${statusText}`,
+            // Use action's actual text, not status message (prevents overwriting streamed content)
+            text: actionResult?.text || '',
             actions: [action.name],
             actionStatus: statusText,
             actionId: actionId,
@@ -2151,9 +2188,11 @@ export class AgentRuntime implements IAgentRuntime {
         : Date.now();
 
     // Get streaming config
+    const streamingCtx = getStreamingContext();
     const paramsChunk = isPlainObject(modelParams) ? (modelParams as any).onStreamChunk : undefined;
-    const ctxChunk = getStreamingContext()?.onStreamChunk;
-    const msgId = getStreamingContext()?.messageId;
+    const ctxChunk = streamingCtx?.onStreamChunk;
+    const msgId = streamingCtx?.messageId;
+    const abortSignal = streamingCtx?.abortSignal;
     const explicitStream = isPlainObject(modelParams) ? (modelParams as any).stream : undefined;
 
     // stream: false = force no stream, otherwise stream if any callback exists
@@ -2170,10 +2209,15 @@ export class AgentRuntime implements IAgentRuntime {
     if (shouldStream && (paramsChunk || ctxChunk) && response && typeof response === 'object' && 'textStream' in response) {
       let fullText = '';
       for await (const chunk of (response as TextStreamResult).textStream) {
+        if (abortSignal?.aborted) break;
         fullText += chunk;
         try { if (paramsChunk) await paramsChunk(chunk, msgId); } catch {}
         try { if (ctxChunk) await ctxChunk(chunk, msgId); } catch {}
       }
+
+      // Signal stream end to allow context to reset state between useModel calls
+      const ctxEnd = getStreamingContext()?.onStreamEnd;
+      if (ctxEnd) ctxEnd();
 
       // Log the completed stream
       const elapsedTime =

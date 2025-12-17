@@ -75,7 +75,7 @@ export function createMessagingCoreRouter(serverInstance: AgentServer): express.
 
     try {
       const newRootMessageData = {
-        messageId: messageId ? validateUuid(messageId) : undefined,
+        messageId: messageId ? (validateUuid(messageId) || undefined) : undefined,
         channelId: validateUuid(channel_id)!,
         authorId: validateUuid(author_id)!,
         content: content as string,
