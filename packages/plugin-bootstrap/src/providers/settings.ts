@@ -4,7 +4,9 @@
 import {
   ChannelType,
   findWorldsForOwner,
+  getSalt,
   logger,
+  unsaltWorldSettings,
   World,
   type IAgentRuntime,
   type Memory,
@@ -230,8 +232,10 @@ export const settingsProvider: Provider = {
         serverId = world.messageServerId;
 
         // Get world settings directly from the world object we already have
+        // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
         if (world.metadata?.settings) {
-          worldSettings = world.metadata.settings as WorldSettings;
+          const salt = getSalt();
+          worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
@@ -253,8 +257,10 @@ export const settingsProvider: Provider = {
           serverId = world.messageServerId;
 
           // Get world settings directly from the world object we already have
+          // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
           if (world.metadata?.settings) {
-            worldSettings = world.metadata.settings as WorldSettings;
+            const salt = getSalt();
+            worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
           } else if (!serverId) {
             logger.debug(
               {

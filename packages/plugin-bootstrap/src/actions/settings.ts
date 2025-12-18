@@ -7,6 +7,7 @@ import {
   composePromptFromState,
   type Content,
   findWorldsForOwner,
+  getSalt,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -16,6 +17,7 @@ import {
   type Setting,
   type State,
   type UUID,
+  unsaltWorldSettings,
   type WorldSettings,
   type ActionResult,
 } from '@elizaos/core';
@@ -219,9 +221,10 @@ ${messageCompletionFooter}`;
  */
 /**
  * Retrieves the settings for a specific world from the database.
+ * Settings are stored encrypted; this function decrypts secret values before returning.
  * @param {IAgentRuntime} runtime - The Agent Runtime instance.
  * @param {UUID} worldId - The UUID of the world.
- * @returns {Promise<WorldSettings | null>} The settings of the world, or null if not found.
+ * @returns {Promise<WorldSettings | null>} The settings of the world (decrypted), or null if not found.
  */
 export async function getWorldSettings(
   runtime: IAgentRuntime,
@@ -234,7 +237,9 @@ export async function getWorldSettings(
       return null;
     }
 
-    return world.metadata.settings as WorldSettings;
+    // Decrypt secret values before returning (settings are stored encrypted)
+    const salt = getSalt();
+    return unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
   } catch (error) {
     logger.error(
       {
@@ -1040,7 +1045,9 @@ export const updateSettingsAction: Action = {
       );
 
       // Get settings state directly from the world object we already have
-      const worldSettings = serverOwnership.metadata?.settings as WorldSettings | undefined;
+      // Must decrypt secret values (settings are stored encrypted)
+      const rawSettings = serverOwnership.metadata?.settings as WorldSettings | undefined;
+      const worldSettings = rawSettings ? unsaltWorldSettings(rawSettings, getSalt()) : undefined;
 
       if (!worldSettings) {
         logger.error(
