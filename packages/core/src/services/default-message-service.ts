@@ -1163,7 +1163,19 @@ export class DefaultMessageService implements IMessageService {
           }
 
           try {
+            const startTime = performance.now();
             const providerResult = await provider.get(runtime, message, state);
+            const elapsed = performance.now() - startTime;
+
+            // Warn about slow providers (threshold: 500ms)
+            const SLOW_PROVIDER_THRESHOLD_MS = 500;
+            if (elapsed > SLOW_PROVIDER_THRESHOLD_MS) {
+              runtime.logger.warn(
+                { src: 'service:message', providerName, elapsedMs: Math.round(elapsed) },
+                `Slow provider detected (${Math.round(elapsed)}ms) - consider caching or optimizing`
+              );
+            }
+
             if (!providerResult) {
               runtime.logger.warn(
                 { src: 'service:message', providerName },
@@ -1212,8 +1224,8 @@ export class DefaultMessageService implements IMessageService {
           }
         } else {
           runtime.logger.error(
-            { src: 'service:message', error: result.reason },
-            'Unexpected provider failure'
+            { src: 'service:message', error: result.reason || 'Unknown provider failure' },
+            'Unexpected provider promise rejection'
           );
         }
       }
