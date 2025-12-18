@@ -1654,9 +1654,12 @@ export class AgentServer {
   }
 
   async createMessage(
-    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
+    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'> & { messageId?: UUID }
   ): Promise<CentralRootMessage> {
-    const createdMessage = await this.database.createMessage(data);
+    const createdMessage = await this.database.createMessage({
+      ...data,
+      messageId: data.messageId, // Pass through to DB so it uses this ID instead of generating new one
+    });
 
     // Get the channel details to find the server ID
     const channel = await this.getChannelDetails(createdMessage.channelId);

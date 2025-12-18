@@ -14,6 +14,8 @@ import type {
   ModelTypeName,
   GenerateTextOptions,
   GenerateTextResult,
+  GenerateTextParams,
+  TextGenerationModelType,
 } from './model';
 import type { Plugin, RuntimeEventStorage, Route } from './plugin';
 import type { Content, UUID } from './primitives';
@@ -81,7 +83,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     message: Memory,
     responses: Memory[],
     state?: State,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    options?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
   ): Promise<void>;
 
   getActionResults(messageId: UUID): ActionResult[];
@@ -142,9 +145,30 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
-  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+  /**
+   * Use a model for inference with proper type inference based on parameters.
+   *
+   * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
+   * - Always returns `string`
+   * - If streaming context is active, chunks are sent to callback automatically
+   *
+   * @example
+   * ```typescript
+   * // Simple usage - streaming happens automatically if context is active
+   * const text = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello" });
+   * ```
+   */
+  // Overload 1: Text generation → string (auto-streams via context)
+  useModel(
+    modelType: TextGenerationModelType,
+    params: GenerateTextParams,
+    provider?: string
+  ): Promise<string>;
+
+  // Overload 2: Generic fallback for other model types
+  useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'>,
+    params: ModelParamsMap[T],
     provider?: string
   ): Promise<R>;
 

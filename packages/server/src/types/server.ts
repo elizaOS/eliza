@@ -1,4 +1,12 @@
-import type { UUID, ChannelType, Character, IAgentRuntime, Plugin } from '@elizaos/core';
+import type {
+  UUID,
+  ChannelType,
+  Character,
+  IAgentRuntime,
+  Plugin,
+  MessageStreamChunkPayload,
+  MessageStreamErrorPayload,
+} from '@elizaos/core';
 import type { MessageServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 import type express from 'express';
 
@@ -141,6 +149,8 @@ export interface MessageBusEventMap {
   server_agent_update: ServerAgentUpdatePayload;
   message_deleted: MessageDeletedPayload;
   channel_cleared: ChannelClearedPayload;
+  message_stream_chunk: MessageStreamChunkPayload;
+  message_stream_error: MessageStreamErrorPayload;
 }
 
 // Re-export session types

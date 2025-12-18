@@ -15,6 +15,8 @@ import type { AgentServer } from '../../index';
 import type { MessageServiceStructure as MessageService, AttachmentInput } from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
+import { handleResponseMode } from '../shared/response-handlers';
+import { validateResponseMode } from '../shared/validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -87,6 +89,10 @@ export function createChannelsRouter(
   });
 
   // GUI posts NEW messages from a user here
+  // Supports multiple response modes via the 'mode' parameter:
+  // - "sync": Wait for complete agent response
+  // - "stream": SSE streaming response
+  // - "websocket": Return immediately, agent response via WebSocket (current default)
   router.post(
     '/channels/:channelId/messages',
     async (req: express.Request, res: express.Response) => {
@@ -99,7 +105,18 @@ export function createChannelsRouter(
         raw_message,
         metadata, // Should include user_display_name
         source_type, // Should be something like 'eliza_gui'
+        mode,
       } = req.body;
+
+      // Validate mode parameter with proper type checking
+      const modeValidation = validateResponseMode(mode);
+      if (!modeValidation.isValid) {
+        return res.status(400).json({
+          success: false,
+          error: modeValidation.error,
+        });
+      }
+      const responseMode = modeValidation.mode;
 
       if (
         !channelIdParam ||
@@ -253,27 +270,60 @@ export function createChannelsRouter(
           source_id: createdRootMessage.sourceId, // Will be undefined here, which is fine
         };
 
-        internalMessageBus.emit('new_message', messageForBus);
-        logger.debug(
-          { src: 'http', messageId: messageForBus.id },
-          'GUI Message published to internal bus'
-        );
+        // Build Memory object for elizaOS.handleMessage
+        const messageMemory = {
+          entityId: author_id as UUID,
+          roomId: channelIdParam,
+          content: { text: content },
+          metadata: {
+            ...metadata,
+            messageServerId: message_server_id,
+            channelId: channelIdParam,
+          },
+        };
 
-        // Emit to SocketIO for real-time display in all connected GUIs
-        if (serverInstance.socketIO) {
-          serverInstance.socketIO.to(channelIdParam).emit('messageBroadcast', {
-            senderId: author_id,
-            senderName: metadata?.user_display_name || 'User',
-            text: content,
-            roomId: channelIdParam, // GUI uses central channelId as roomId for socket
-            messageServerId: message_server_id, // Client layer uses messageServerId
-            createdAt: messageForBus.created_at,
-            source: messageForBus.source_type,
-            id: messageForBus.id,
+        // Get target agent from channel participants or metadata
+        const participants = await serverInstance.getChannelParticipants(channelIdParam);
+        const agentId = participants.find((p) => p !== author_id) || metadata?.targetAgentId;
+
+        if (!agentId) {
+          return res.status(400).json({
+            success: false,
+            error: 'No agent found in channel participants',
           });
         }
 
-        res.status(201).json({ success: true, data: messageForBus });
+        // Handle response using shared handler
+        await handleResponseMode({
+          res,
+          mode: responseMode,
+          elizaOS,
+          agentId: agentId as UUID,
+          messageMemory,
+          userMessage: messageForBus,
+          onWebSocketMode: () => {
+            // Emit to internal bus for agent processing
+            internalMessageBus.emit('new_message', messageForBus);
+            logger.debug(
+              { src: 'http', messageId: messageForBus.id, mode: responseMode },
+              'GUI Message published to internal bus'
+            );
+
+            // Emit to SocketIO for real-time display in all connected GUIs
+            if (serverInstance.socketIO) {
+              serverInstance.socketIO.to(channelIdParam).emit('messageBroadcast', {
+                senderId: author_id,
+                senderName: metadata?.user_display_name || 'User',
+                text: content,
+                roomId: channelIdParam,
+                messageServerId: message_server_id,
+                createdAt: messageForBus.created_at,
+                source: messageForBus.source_type,
+                id: messageForBus.id,
+              });
+            }
+          },
+        });
       } catch (error) {
         logger.error(
           {

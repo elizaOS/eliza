@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { AgentRuntime } from '../../runtime';
 import { parseCharacter, validateCharacterConfig, mergeCharacterDefaults } from '../../character';
-import type { Character, IDatabaseAdapter, UUID } from '../../types';
+import type { Character, UUID } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
+import { createMockAdapter } from '../test-helpers';
+import type { IDatabaseAdapter } from '../../types';
 
 describe('Character-Runtime Integration Tests', () => {
   let mockAdapter: IDatabaseAdapter;
@@ -26,79 +28,7 @@ describe('Character-Runtime Integration Tests', () => {
       },
     };
 
-    mockAdapter = {
-      db: {},
-      init: mock(async () => {}),
-      initialize: mock(async () => {}),
-      close: mock(async () => {}),
-      isReady: mock(async () => true),
-      getConnection: mock(async () => ({})),
-      getAgent: mock(async () => null),
-      getAgents: mock(async () => []),
-      createAgent: mock(async () => true),
-      updateAgent: mock(async () => true),
-      deleteAgent: mock(async () => true),
-      ensureEmbeddingDimension: mock(async () => {}),
-      log: mock(async () => {}),
-      runPluginMigrations: mock(async () => {}),
-      getEntitiesByIds: mock(async () => []),
-      getRoomsByIds: mock(async () => []),
-      getParticipantsForRoom: mock(async () => []),
-      createEntities: mock(async () => true),
-      addParticipantsRoom: mock(async () => true),
-      createRooms: mock(async () => []),
-      getEntitiesForRoom: mock(async () => []),
-      updateEntity: mock(async () => {}),
-      getComponent: mock(async () => null),
-      getComponents: mock(async () => []),
-      createComponent: mock(async () => true),
-      updateComponent: mock(async () => {}),
-      deleteComponent: mock(async () => {}),
-      getMemories: mock(async () => []),
-      getMemoryById: mock(async () => null),
-      getMemoriesByIds: mock(async () => []),
-      getMemoriesByRoomIds: mock(async () => []),
-      getCachedEmbeddings: mock(async () => []),
-      getLogs: mock(async () => []),
-      deleteLog: mock(async () => {}),
-      searchMemories: mock(async () => []),
-      createMemory: mock(async () => 'memory-id' as UUID),
-      updateMemory: mock(async () => true),
-      deleteMemory: mock(async () => {}),
-      deleteManyMemories: mock(async () => {}),
-      deleteAllMemories: mock(async () => {}),
-      countMemories: mock(async () => 0),
-      createWorld: mock(async () => 'world-id' as UUID),
-      getWorld: mock(async () => null),
-      getAllWorlds: mock(async () => []),
-      updateWorld: mock(async () => {}),
-      removeWorld: mock(async () => {}),
-      getRoomsByWorld: mock(async () => []),
-      updateRoom: mock(async () => {}),
-      deleteRoom: mock(async () => {}),
-      deleteRoomsByWorldId: mock(async () => {}),
-      getRoomsForParticipant: mock(async () => []),
-      getRoomsForParticipants: mock(async () => []),
-      removeParticipant: mock(async () => true),
-      getParticipantsForEntity: mock(async () => []),
-      isRoomParticipant: mock(async () => false),
-      getParticipantUserState: mock(async () => null),
-      setParticipantUserState: mock(async () => {}),
-      createRelationship: mock(async () => true),
-      getRelationship: mock(async () => null),
-      getRelationships: mock(async () => []),
-      updateRelationship: mock(async () => {}),
-      getCache: mock(async () => undefined),
-      setCache: mock(async () => true),
-      deleteCache: mock(async () => true),
-      createTask: mock(async () => 'task-id' as UUID),
-      getTasks: mock(async () => []),
-      getTask: mock(async () => null),
-      getTasksByName: mock(async () => []),
-      updateTask: mock(async () => {}),
-      deleteTask: mock(async () => {}),
-      getMemoriesByWorldId: mock(async () => []),
-    } as IDatabaseAdapter;
+    mockAdapter = createMockAdapter();
   });
 
   afterEach(() => {

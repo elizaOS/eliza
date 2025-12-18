@@ -187,7 +187,7 @@ describe('ElizaOS', () => {
       if (runtime?.hasElizaOS()) {
         // TypeScript should know elizaOS is defined here
         expect(runtime.elizaOS).toBeDefined();
-        expect(runtime.elizaOS.sendMessage).toBeDefined();
+        expect(runtime.elizaOS.handleMessage).toBeDefined();
         expect(runtime.elizaOS.getAgent).toBeDefined();
       } else {
         throw new Error('hasElizaOS() should return true');
@@ -324,7 +324,7 @@ describe('ElizaOS', () => {
     });
   });
 
-  describe('sendMessage with runtime', () => {
+  describe('handleMessage with runtime', () => {
     const testCharacter: Character = {
       name: 'TestAgent',
       bio: 'A test agent',
@@ -346,7 +346,7 @@ describe('ElizaOS', () => {
       runtime.messageService = { handleMessage: handleMessageMock };
       runtime.ensureConnection = mock().mockResolvedValue(undefined);
 
-      const result = await elizaOS.sendMessage(runtime, {
+      const result = await elizaOS.handleMessage(runtime, {
         entityId: uuidv4() as UUID,
         roomId: uuidv4() as UUID,
         content: { text: 'Hello' },
@@ -360,7 +360,7 @@ describe('ElizaOS', () => {
       const unknownId = uuidv4() as UUID;
 
       await expect(
-        elizaOS.sendMessage(unknownId, {
+        elizaOS.handleMessage(unknownId, {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
           content: { text: 'Hello' },

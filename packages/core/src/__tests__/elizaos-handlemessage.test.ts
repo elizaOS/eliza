@@ -6,7 +6,7 @@ import type {
   MessageProcessingOptions,
 } from '../services/message-service';
 
-describe('ElizaOS.sendMessage', () => {
+describe('ElizaOS.handleMessage', () => {
   let elizaOS: ElizaOS;
   let agentId: UUID;
   let handleMessageMock: ReturnType<typeof mock>;
@@ -16,7 +16,7 @@ describe('ElizaOS.sendMessage', () => {
     id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
     name: 'TestAgent',
     username: 'testagent',
-    bio: 'Test agent for unit testing ElizaOS.sendMessage() functionality',
+    bio: 'Test agent for unit testing ElizaOS.handleMessage() functionality',
     settings: {
       secrets: {},
       voice: { model: 'en_US-male-medium' },
@@ -87,7 +87,7 @@ describe('ElizaOS.sendMessage', () => {
 
   describe('SYNC Mode', () => {
     it('should send message and wait for response', async () => {
-      const result = await elizaOS.sendMessage(agentId, {
+      const result = await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -116,7 +116,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should auto-fill missing fields', async () => {
-      const result = await elizaOS.sendMessage(agentId, {
+      const result = await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -137,7 +137,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should call ensureConnection with correct params', async () => {
-      await elizaOS.sendMessage(agentId, {
+      await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -155,7 +155,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should use worldId if provided', async () => {
-      await elizaOS.sendMessage(agentId, {
+      await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         worldId: '123e4567-e89b-12d3-a456-426614174003' as UUID,
@@ -170,7 +170,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should fallback to roomId if worldId not provided', async () => {
-      await elizaOS.sendMessage(agentId, {
+      await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -188,7 +188,7 @@ describe('ElizaOS.sendMessage', () => {
       const customAgentId = '123e4567-e89b-12d3-a456-426614174101' as UUID;
       const customCreatedAt = Date.now() - 1000;
 
-      const result = await elizaOS.sendMessage(agentId, {
+      const result = await elizaOS.handleMessage(agentId, {
         id: customId,
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
@@ -206,7 +206,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should pass processing options to messageService', async () => {
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -236,7 +236,7 @@ describe('ElizaOS.sendMessage', () => {
     it('should call onComplete callback when provided', async () => {
       const onCompleteMock = mock(async () => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -259,7 +259,7 @@ describe('ElizaOS.sendMessage', () => {
     it('should return immediately with messageId when onResponse provided', async () => {
       const onResponseMock = mock(async (content: Content) => {});
 
-      const result = await elizaOS.sendMessage(
+      const result = await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -287,7 +287,7 @@ describe('ElizaOS.sendMessage', () => {
     it('should call onResponse callback with agent response', async () => {
       const onResponseMock = mock(async (content: Content) => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -317,7 +317,7 @@ describe('ElizaOS.sendMessage', () => {
       });
       const onErrorMock = mock(async (error: Error) => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -357,7 +357,7 @@ describe('ElizaOS.sendMessage', () => {
       const onResponseMock = mock(async (content: Content) => {});
       const onErrorMock = mock(async (error: Error) => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -385,7 +385,7 @@ describe('ElizaOS.sendMessage', () => {
     it('should call onComplete callback when provided', async () => {
       const onCompleteMock = mock(async () => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -411,7 +411,7 @@ describe('ElizaOS.sendMessage', () => {
     it('should pass callback to handleMessage in async mode', async () => {
       const onResponseMock = mock(async (content: Content) => {});
 
-      await elizaOS.sendMessage(
+      await elizaOS.handleMessage(
         agentId,
         {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
@@ -439,7 +439,7 @@ describe('ElizaOS.sendMessage', () => {
 
   describe('Edge Cases', () => {
     it('should handle missing source in content', async () => {
-      await elizaOS.sendMessage(agentId, {
+      await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -453,7 +453,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should handle metadata in message', async () => {
-      const result = await elizaOS.sendMessage(agentId, {
+      const result = await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {
@@ -474,7 +474,7 @@ describe('ElizaOS.sendMessage', () => {
       const fakeAgentId = '999e4567-e89b-12d3-a456-426614174999' as UUID;
 
       await expect(
-        elizaOS.sendMessage(fakeAgentId, {
+        elizaOS.handleMessage(fakeAgentId, {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
           roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
           content: {
@@ -492,7 +492,7 @@ describe('ElizaOS.sendMessage', () => {
       }
 
       await expect(
-        elizaOS.sendMessage(agentId, {
+        elizaOS.handleMessage(agentId, {
           entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
           roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
           content: {
@@ -504,7 +504,7 @@ describe('ElizaOS.sendMessage', () => {
     });
 
     it('should preserve content structure with attachments', async () => {
-      const result = await elizaOS.sendMessage(agentId, {
+      const result = await elizaOS.handleMessage(agentId, {
         entityId: '123e4567-e89b-12d3-a456-426614174005' as UUID,
         roomId: '123e4567-e89b-12d3-a456-426614174002' as UUID,
         content: {

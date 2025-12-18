@@ -3,6 +3,7 @@ import {
   logger,
   customLevels,
   SOCKET_MESSAGE_TYPE,
+  MESSAGE_STREAM_EVENT,
   validateUuid,
   ChannelType,
   type UUID,
@@ -11,6 +12,7 @@ import {
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils';
+import internalMessageBus from '../services/message-bus';
 
 /**
  * Socket.io socket.data structure for authenticated sockets
@@ -82,6 +84,32 @@ export class SocketIORouter {
     logger.debug({ src: 'ws', messageTypes }, 'Registered message types');
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
+    });
+
+    // Listen for stream chunks from the internal message bus and broadcast to clients
+    internalMessageBus.on('message_stream_chunk', (data) => {
+      const { channelId, messageId, chunk, agentId, index } = data;
+      // Broadcast to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamChunk, {
+        messageId,
+        chunk,
+        index,
+        agentId,
+        channelId,
+      });
+    });
+
+    // Listen for stream errors from the internal message bus and broadcast to clients
+    internalMessageBus.on('message_stream_error', (data) => {
+      const { channelId, messageId, agentId, error, partialText } = data;
+      // Broadcast error to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamError, {
+        messageId,
+        channelId,
+        agentId,
+        error,
+        partialText,
+      });
     });
   }
 

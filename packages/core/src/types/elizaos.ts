@@ -1,12 +1,61 @@
 import type { UUID, Content } from './primitives';
 import type { Memory } from './memory';
 import type { IAgentRuntime } from './runtime';
-import type { MessageProcessingResult } from '../services/message-service';
+import type { Character } from './agent';
+import type { State } from './state';
+import type { MessageProcessingOptions, MessageProcessingResult } from '../services/message-service';
 
 /**
- * Options for sending a message to an agent
+ * Batch operation for sending messages
  */
-export interface SendMessageOptions {
+export interface BatchOperation {
+  agentId: UUID;
+  operation: 'message' | 'action' | 'evaluate';
+  payload: any;
+}
+
+/**
+ * Result of a batch operation
+ */
+export interface BatchResult {
+  agentId: UUID;
+  success: boolean;
+  result?: any;
+  error?: Error;
+}
+
+/**
+ * Read-only runtime accessor
+ */
+export interface ReadonlyRuntime {
+  getAgent(id: UUID): IAgentRuntime | undefined;
+  getAgents(): IAgentRuntime[];
+  getState(agentId: UUID): State | undefined;
+}
+
+/**
+ * Health status for an agent
+ */
+export interface HealthStatus {
+  alive: boolean;
+  responsive: boolean;
+  memoryUsage?: number;
+  uptime?: number;
+}
+
+/**
+ * Update operation for an agent
+ */
+export interface AgentUpdate {
+  id: UUID;
+  character: Partial<Character>;
+}
+
+/**
+ * Options for handling a message to an agent.
+ * Extends MessageProcessingOptions with orchestration callbacks for async mode.
+ */
+export interface HandleMessageOptions extends MessageProcessingOptions {
   /**
    * Called when the agent generates a response (ASYNC MODE)
    * If provided, method returns immediately (fire & forget)
@@ -25,32 +74,12 @@ export interface SendMessageOptions {
    * Called when processing is complete
    */
   onComplete?: () => Promise<void>;
-
-  /**
-   * Maximum number of retries for failed messages
-   */
-  maxRetries?: number;
-
-  /**
-   * Timeout duration in milliseconds
-   */
-  timeoutDuration?: number;
-
-  /**
-   * Enable multi-step message processing
-   */
-  useMultiStep?: boolean;
-
-  /**
-   * Maximum multi-step iterations
-   */
-  maxMultiStepIterations?: number;
 }
 
 /**
- * Result of sending a message to an agent
+ * Result of handling a message to an agent
  */
-export interface SendMessageResult {
+export interface HandleMessageResult {
   /** ID of the user message */
   messageId: UUID;
 
@@ -98,7 +127,7 @@ export interface IElizaOS {
    *
    * @example
    * // SYNC mode - wait for response
-   * const result = await elizaOS.sendMessage(agentId, {
+   * const result = await elizaOS.handleMessage(agentId, {
    *   entityId: userId,
    *   roomId: channelId,
    *   content: { text: "Hello!" }
@@ -107,7 +136,7 @@ export interface IElizaOS {
    *
    * @example
    * // ASYNC mode - fire and forget
-   * await elizaOS.sendMessage(agentId, message, {
+   * await elizaOS.handleMessage(agentId, message, {
    *   onResponse: async (content) => {
    *     console.log("Agent replied:", content.text);
    *   },
@@ -116,7 +145,7 @@ export interface IElizaOS {
    *   }
    * });
    */
-  sendMessage(
+  handleMessage(
     agentId: UUID,
     message: Partial<Memory> & {
       entityId: UUID;
@@ -124,8 +153,8 @@ export interface IElizaOS {
       content: Content;
       worldId?: UUID;
     },
-    options?: SendMessageOptions
-  ): Promise<SendMessageResult>;
+    options?: HandleMessageOptions
+  ): Promise<HandleMessageResult>;
 
   /**
    * Get an agent runtime by ID.
