@@ -255,7 +255,7 @@ export const settingsProvider: Provider = {
           // Get world settings directly from the world object we already have
           if (world.metadata?.settings) {
             worldSettings = world.metadata.settings as WorldSettings;
-          } else if (!serverId) {
+          } else {
             logger.debug(
               {
                 src: 'plugin:bootstrap:provider:settings',
