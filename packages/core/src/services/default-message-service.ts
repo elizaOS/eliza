@@ -1237,7 +1237,7 @@ export class DefaultMessageService implements IMessageService {
           });
         }
 
-        return;
+        return { responseContent: null, responseMessages: [], state, mode: 'none' };
       }
 
       // Providers completed in time
