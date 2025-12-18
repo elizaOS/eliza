@@ -4,7 +4,6 @@
 import {
   ChannelType,
   findWorldsForOwner,
-  getWorldSettings,
   logger,
   World,
   type IAgentRuntime,
@@ -113,13 +112,12 @@ function generateStatusMessage(
     }
 
     // Non-onboarding context - list all public settings with values and descriptions
-    return `## Current Configuration\n\n${
-      requiredUnconfigured > 0
-        ? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
-        : 'All required settings are configured.\n\n'
-    }${formattedSettings
-      .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
-      .join('\n\n')}`;
+    return `## Current Configuration\n\n${requiredUnconfigured > 0
+      ? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
+      : 'All required settings are configured.\n\n'
+      }${formattedSettings
+        .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
+        .join('\n\n')}`;
   } catch (error) {
     logger.error(
       {
@@ -231,22 +229,9 @@ export const settingsProvider: Provider = {
 
         serverId = world.messageServerId;
 
-        // Fetch world settings based on the server ID
-        if (serverId) {
-          try {
-            worldSettings = await getWorldSettings(runtime, serverId);
-          } catch (error) {
-            logger.error(
-              {
-                src: 'plugin:bootstrap:provider:settings',
-                agentId: runtime.agentId,
-                serverId,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              'Error fetching world settings'
-            );
-            throw new Error(`Failed to retrieve settings for server ${serverId}`);
-          }
+        // Get world settings directly from the world object we already have
+        if (world.metadata?.settings) {
+          worldSettings = world.metadata.settings as WorldSettings;
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
@@ -267,17 +252,17 @@ export const settingsProvider: Provider = {
 
           serverId = world.messageServerId;
 
-          // Once we have the serverId, get the settings
-          if (serverId) {
-            worldSettings = await getWorldSettings(runtime, serverId);
-          } else {
-            logger.error(
+          // Get world settings directly from the world object we already have
+          if (world.metadata?.settings) {
+            worldSettings = world.metadata.settings as WorldSettings;
+          } else if (!serverId) {
+            logger.debug(
               {
                 src: 'plugin:bootstrap:provider:settings',
                 agentId: runtime.agentId,
                 worldId: room.worldId,
               },
-              'No server ID found for world'
+              'No server ID or settings found for world'
             );
           }
         } catch (error) {
@@ -310,7 +295,7 @@ export const settingsProvider: Provider = {
             },
             values: {
               settings:
-                  "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
+                "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
             },
             text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
           }
@@ -337,7 +322,7 @@ export const settingsProvider: Provider = {
             },
             values: {
               settings:
-                  "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
+                "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
             },
             text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
           }
