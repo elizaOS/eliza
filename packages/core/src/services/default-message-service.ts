@@ -1153,28 +1153,26 @@ export class DefaultMessageService implements IMessageService {
         break;
       }
 
+      // Total timeout for all providers running in parallel (configurable via PROVIDERS_TOTAL_TIMEOUT_MS env var)
+      // Since providers run in parallel, this is the max wall-clock time allowed
+      const PROVIDERS_TOTAL_TIMEOUT_MS = parseInt(String(runtime.getSetting('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000'));
+
+      // Track which providers have completed (for timeout diagnostics)
+      const completedProviders = new Set<string>();
+
       const providerPromises = providersArray
         .filter((name): name is string => typeof name === 'string')
         .map(async (providerName) => {
           const provider = runtime.providers.find((p) => p.name === providerName);
           if (!provider) {
             runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
+            completedProviders.add(providerName);
             return { providerName, success: false, error: `Provider not found: ${providerName}` };
           }
 
           try {
-            const startTime = performance.now();
             const providerResult = await provider.get(runtime, message, state);
-            const elapsed = performance.now() - startTime;
-
-            // Warn about slow providers (threshold: 500ms)
-            const SLOW_PROVIDER_THRESHOLD_MS = 500;
-            if (elapsed > SLOW_PROVIDER_THRESHOLD_MS) {
-              runtime.logger.warn(
-                { src: 'service:message', providerName, elapsedMs: Math.round(elapsed) },
-                `Slow provider detected (${Math.round(elapsed)}ms) - consider caching or optimizing`
-              );
-            }
+            completedProviders.add(providerName);
 
             if (!providerResult) {
               runtime.logger.warn(
@@ -1192,6 +1190,7 @@ export class DefaultMessageService implements IMessageService {
               error: success ? undefined : 'Provider returned no result',
             };
           } catch (err) {
+            completedProviders.add(providerName);
             const errorMsg = err instanceof Error ? err.message : String(err);
             runtime.logger.error(
               { src: 'service:message', providerName, error: errorMsg },
@@ -1201,8 +1200,48 @@ export class DefaultMessageService implements IMessageService {
           }
         });
 
-      // Wait for all providers to complete (allSettled ensures all complete even if some fail)
-      const providerResults = await Promise.allSettled(providerPromises);
+      // Create timeout promise for provider execution (with cleanup)
+      let timeoutId: ReturnType<typeof setTimeout>;
+      const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        timeoutId = setTimeout(() => resolve('timeout'), PROVIDERS_TOTAL_TIMEOUT_MS);
+      });
+
+      // Race between all providers completing and timeout
+      const allProvidersPromise = Promise.allSettled(providerPromises);
+      const raceResult = await Promise.race([allProvidersPromise, timeoutPromise]);
+
+      // Clear timeout if providers completed first
+      clearTimeout(timeoutId!);
+
+      // Check if providers took too long - abort pipeline and notify user
+      if (raceResult === 'timeout') {
+        // Identify which providers were still pending when timeout hit
+        const allProviderNames = providersArray.filter((name): name is string => typeof name === 'string');
+        const pendingProviders = allProviderNames.filter((name) => !completedProviders.has(name));
+
+        runtime.logger.error(
+          {
+            src: 'service:message',
+            timeoutMs: PROVIDERS_TOTAL_TIMEOUT_MS,
+            pendingProviders,
+            completedProviders: Array.from(completedProviders),
+          },
+          `Providers took too long (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms) - slow providers: ${pendingProviders.join(', ')}`
+        );
+
+        if (callback) {
+          await callback({
+            text: 'Providers took too long to respond. Please optimize your providers or use caching.',
+            actions: [],
+            thought: 'Provider timeout - pipeline aborted',
+          });
+        }
+
+        return;
+      }
+
+      // Providers completed in time
+      const providerResults = raceResult;
 
       // Process results and notify via callback
       for (const result of providerResults) {
