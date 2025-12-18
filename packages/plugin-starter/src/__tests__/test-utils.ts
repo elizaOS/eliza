@@ -120,6 +120,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
   const mockRuntime: IAgentRuntime = {
     // Properties
     agentId,
+    initPromise: Promise.resolve(),
     character,
     providers: [],
     actions: [],
