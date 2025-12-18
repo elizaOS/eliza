@@ -1153,48 +1153,68 @@ export class DefaultMessageService implements IMessageService {
         break;
       }
 
-      for (const providerName of providersArray) {
-        if (typeof providerName !== 'string') continue;
-        const provider = runtime.providers.find((p) => p.name === providerName);
-        if (!provider) {
-          runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
-          traceActionResult.push({
-            data: { actionName: providerName },
-            success: false,
-            error: `Provider not found: ${providerName}`,
-          });
-          continue;
-        }
+      const providerPromises = providersArray
+        .filter((name): name is string => typeof name === 'string')
+        .map(async (providerName) => {
+          const provider = runtime.providers.find((p) => p.name === providerName);
+          if (!provider) {
+            runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
+            return { providerName, success: false, error: `Provider not found: ${providerName}` };
+          }
 
-        const providerResult = await provider.get(runtime, message, state);
-        if (!providerResult) {
-          runtime.logger.warn(
-            { src: 'service:message', providerName },
-            'Provider returned no result'
-          );
-          traceActionResult.push({
-            data: { actionName: providerName },
-            success: false,
-            error: `Provider returned no result`,
-          });
-          continue;
-        }
+          try {
+            const providerResult = await provider.get(runtime, message, state);
+            if (!providerResult) {
+              runtime.logger.warn(
+                { src: 'service:message', providerName },
+                'Provider returned no result'
+              );
+              return { providerName, success: false, error: 'Provider returned no result' };
+            }
 
-        const success = !!providerResult.text;
-
-        traceActionResult.push({
-          data: { actionName: providerName },
-          success,
-          text: success ? providerResult.text : undefined,
-          error: success ? undefined : 'Provider returned no result',
+            const success = !!providerResult.text;
+            return {
+              providerName,
+              success,
+              text: success ? providerResult.text : undefined,
+              error: success ? undefined : 'Provider returned no result',
+            };
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            runtime.logger.error(
+              { src: 'service:message', providerName, error: errorMsg },
+              'Provider execution failed'
+            );
+            return { providerName, success: false, error: errorMsg };
+          }
         });
 
-        if (callback) {
-          await callback({
-            text: `🔎 Provider executed: ${providerName}`,
-            actions: [providerName],
-            thought: typeof thought === 'string' ? thought : '',
+      // Wait for all providers to complete (allSettled ensures all complete even if some fail)
+      const providerResults = await Promise.allSettled(providerPromises);
+
+      // Process results and notify via callback
+      for (const result of providerResults) {
+        if (result.status === 'fulfilled') {
+          const { providerName, success, text, error } = result.value;
+          traceActionResult.push({
+            data: { actionName: providerName },
+            success,
+            text,
+            error,
           });
+
+          if (callback) {
+            await callback({
+              text: `🔎 Provider executed: ${providerName}`,
+              actions: [providerName],
+              thought: typeof thought === 'string' ? thought : '',
+            });
+          }
+        } else {
+          runtime.logger.error(
+            { src: 'service:message', error: result.reason },
+            'Unexpected provider failure'
+          );
         }
       }
 
