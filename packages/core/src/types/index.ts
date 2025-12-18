@@ -17,3 +17,4 @@ export * from './messaging';
 export * from './testing';
 export * from './settings';
 export * from './elizaos';
+export * from './streaming';

@@ -1,40 +1,16 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 import { AgentRuntime } from '../runtime.ts';
-import { EventType, type Memory, type UUID, type IDatabaseAdapter } from '../types';
+import { EventType, type Memory, type UUID } from '../types';
+import { type EmbeddingGenerationPayload } from '../types/events.ts';
 import { stringToUuid } from '../utils.ts';
+import { createMockAdapter } from './test-helpers';
 
 describe('AgentRuntime - queueEmbeddingGeneration', () => {
   let runtime: AgentRuntime;
-  let mockAdapter: IDatabaseAdapter;
   let emittedEvents: Array<{ event: string; payload: unknown }> = [];
 
   beforeEach(() => {
     emittedEvents = [];
-
-    // Create a mock database adapter
-    mockAdapter = {
-      init: mock().mockResolvedValue(undefined),
-      createAgent: mock().mockResolvedValue(true),
-      getAgent: mock().mockResolvedValue({
-        id: stringToUuid('test-agent'),
-        name: 'Test Agent',
-      }),
-      getAgents: mock().mockResolvedValue([]),
-      updateAgent: mock().mockResolvedValue(true),
-      createEntity: mock().mockResolvedValue(true),
-      getEntitiesByIds: mock().mockResolvedValue([]),
-      createEntities: mock().mockResolvedValue(true),
-      getParticipantsForRoom: mock().mockResolvedValue([]),
-      addParticipantsRoom: mock().mockResolvedValue(true),
-      createRoom: mock().mockResolvedValue(true),
-      createRooms: mock().mockResolvedValue([]),
-      getRoomsByIds: mock().mockResolvedValue([]),
-      createWorld: mock().mockResolvedValue(true),
-      getWorld: mock().mockResolvedValue(null),
-      ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
-      log: mock().mockResolvedValue(undefined),
-      runMigrations: mock().mockResolvedValue(undefined),
-    };
 
     // Create runtime with test configuration
     runtime = new AgentRuntime({
@@ -46,7 +22,7 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
         system: 'Test system prompt',
         bio: 'Test bio',
       },
-      adapter: mockAdapter,
+      adapter: createMockAdapter(),
       conversationLength: 10,
     });
 
@@ -165,9 +141,9 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
       );
       expect(events).toHaveLength(3);
 
-      expect(events[0].payload.priority).toBe('high');
-      expect(events[1].payload.priority).toBe('normal');
-      expect(events[2].payload.priority).toBe('low');
+      expect((events[0].payload as EmbeddingGenerationPayload).priority).toBe('high');
+      expect((events[1].payload as EmbeddingGenerationPayload).priority).toBe('normal');
+      expect((events[2].payload as EmbeddingGenerationPayload).priority).toBe('low');
     });
 
     it('should use normal priority by default', async () => {
@@ -183,7 +159,7 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
       await runtime.queueEmbeddingGeneration(memory);
 
       const event = emittedEvents.find((e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED);
-      expect(event?.payload.priority).toBe('normal');
+      expect((event?.payload as EmbeddingGenerationPayload).priority).toBe('normal');
     });
 
     it('should be non-blocking', async () => {
@@ -287,17 +263,17 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
       // Event should be emitted for async
       const event = emittedEvents.find((e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED);
       expect(event).toBeDefined();
-      expect(event?.payload.memory.id).toBe('async-memory');
+      expect((event?.payload as EmbeddingGenerationPayload).memory.id).toBe(asyncMemory.id);
     });
   });
 
   describe('Error Handling', () => {
     it('should handle null or undefined memory gracefully', async () => {
       // Test with undefined
-      await runtime.queueEmbeddingGeneration(undefined as Memory | undefined, 'normal');
+      await runtime.queueEmbeddingGeneration(undefined, 'normal');
 
       // Test with null
-      await runtime.queueEmbeddingGeneration(null as Memory | null, 'normal');
+      await runtime.queueEmbeddingGeneration(null, 'normal');
 
       // No events should be emitted
       const events = emittedEvents.filter(
@@ -307,14 +283,14 @@ describe('AgentRuntime - queueEmbeddingGeneration', () => {
     });
 
     it('should handle memory with null content gracefully', async () => {
-      const memory: Memory = {
+      const memory = {
         id: 'null-content' as UUID,
         entityId: 'test-entity' as UUID,
         agentId: 'test-agent' as UUID,
         roomId: 'test-room' as UUID,
-        content: null as Memory['content'] | null,
+        content: null,
         createdAt: Date.now(),
-      };
+      } as unknown as Memory;
 
       await runtime.queueEmbeddingGeneration(memory, 'normal');
 

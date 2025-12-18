@@ -8,12 +8,16 @@ import type {
   MessageDeletedData,
   ChannelClearedData,
   ChannelDeletedData,
+  StreamChunkData,
 } from '@/lib/socketio-manager';
 import { UUID, Agent, ChannelType } from '@elizaos/core';
 import type { UiMessage } from './use-query-hooks';
 import { randomUUID } from '@/lib/utils';
 import clientLogger from '@/lib/logger';
 import { useAuth } from '@/context/AuthContext';
+
+// Timeout for stream inactivity - if no chunk received for this duration, mark stream as complete
+const STREAM_TIMEOUT_MS = 30000;
 
 interface UseSocketChatProps {
   channelId: UUID | undefined;
@@ -44,8 +48,14 @@ export function useSocketChat({
 }: UseSocketChatProps) {
   const socketIOManager = SocketIOManager.getInstance();
   const { getApiKey } = useAuth();
-  const animatedMessageIdRef = useRef<string | null>(null);
   const joinedChannelRef = useRef<string | null>(null); // Ref to track joined channel
+  // Track streaming messages for this channel instance.
+  // Map is cleared on channel cleanup - safe because handleStreamChunk filters by channelId.
+  const streamingMessagesRef = useRef<Map<string, string>>(new Map()); // messageId → accumulated text
+  // Track stream timeouts to handle stalled streams
+  const streamTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Track seen message IDs to avoid stale closure issues with React state
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
 
   const sendMessage = useCallback(
     async (
@@ -146,9 +156,35 @@ export function useSocketChat({
           isAgent: false,
         });
       } else {
+        const streamingMessages = streamingMessagesRef.current;
+
+        // Check if this message was being streamed
+        if (data.id && streamingMessages.has(data.id)) {
+          clientLogger.info('[useSocketChat] Completing streamed message by ID:', data.id);
+          streamingMessages.delete(data.id);
+          // Clear timeout since stream completed normally
+          const streamTimeouts = streamTimeoutsRef.current;
+          const timeout = streamTimeouts.get(data.id);
+          if (timeout) {
+            clearTimeout(timeout);
+            streamTimeouts.delete(data.id);
+          }
+          onUpdateMessage(data.id, {
+            text: data.text,
+            thought: data.thought,
+            actions: data.actions,
+            attachments: data.attachments,
+            isStreaming: false,
+            prompt: data.prompt,
+            rawMessage: data.rawMessage,
+          });
+          return;
+        }
+
         // Add new message from other participants
+        const messageId = data.id || randomUUID();
         const newUiMsg: UiMessage = {
-          id: (data.id as UUID) || randomUUID(),
+          id: messageId as UUID,
           text: data.text,
           name: data.senderName,
           senderId: data.senderId as UUID,
@@ -166,16 +202,36 @@ export function useSocketChat({
           rawMessage: data.rawMessage,
         };
 
-        // Check if message already exists
-        const messageExists = messages.some((m) => m.id === data.id);
-        if (!messageExists) {
-          clientLogger.info('[useSocketChat] Adding new UiMessage:', JSON.stringify(newUiMsg));
-          onAddMessage(newUiMsg);
+        // Use ref to track seen message IDs (avoids stale closure with React state)
+        const seenIds = seenMessageIdsRef.current;
+        const alreadySeen = seenIds.has(messageId);
 
-          if (isTargetAgent && newUiMsg.id) {
-            animatedMessageIdRef.current = newUiMsg.id;
+        clientLogger.info('[useSocketChat] Processing message:', messageId, 'alreadySeen:', alreadySeen, 'source:', data.source);
+
+        if (data.source === 'agent_action' && data.id) {
+          // For action messages, we receive multiple broadcasts (executing -> completed)
+          if (alreadySeen) {
+            // Update existing action message with new status
+            clientLogger.info('[useSocketChat] Updating action message:', data.id, 'actionStatus:', (data.rawMessage as { actionStatus?: string })?.actionStatus);
+            onUpdateMessage(data.id, {
+              text: data.text,
+              thought: data.thought,
+              actions: data.actions,
+              attachments: data.attachments,
+              rawMessage: data.rawMessage,
+            });
           } else {
-            animatedMessageIdRef.current = null;
+            // First time seeing this action message
+            clientLogger.info('[useSocketChat] Adding new action message:', data.id);
+            seenIds.add(messageId);
+            onAddMessage(newUiMsg);
+          }
+        } else {
+          // Regular messages - only add if not seen
+          if (!alreadySeen) {
+            clientLogger.info('[useSocketChat] Adding new message:', messageId);
+            seenIds.add(messageId);
+            onAddMessage(newUiMsg);
           }
         }
       }
@@ -215,6 +271,56 @@ export function useSocketChat({
       }
     };
 
+    const handleStreamChunk = (data: StreamChunkData) => {
+      if (data.channelId !== channelId) return;
+
+      const { messageId, chunk, agentId } = data;
+      const streamingMessages = streamingMessagesRef.current;
+      const streamTimeouts = streamTimeoutsRef.current;
+
+      // Clear existing timeout for this message and set a new one
+      const existingTimeout = streamTimeouts.get(messageId);
+      if (existingTimeout) {
+        clearTimeout(existingTimeout);
+      }
+
+      // Set timeout to mark stream as complete if no more chunks arrive
+      const timeout = setTimeout(() => {
+        clientLogger.warn(`[useSocketChat] Stream timeout for message ${messageId}`);
+        streamingMessages.delete(messageId);
+        streamTimeouts.delete(messageId);
+        onUpdateMessage(messageId, { isStreaming: false });
+      }, STREAM_TIMEOUT_MS);
+      streamTimeouts.set(messageId, timeout);
+
+      // Check if we already have this message being streamed
+      const existingText = streamingMessages.get(messageId);
+
+      if (existingText === undefined) {
+        // First chunk - create placeholder message
+        const agent = allAgents.find((a) => a.id === agentId);
+        const newUiMsg: UiMessage = {
+          id: messageId as UUID,
+          text: chunk,
+          name: agent?.name || 'Agent',
+          senderId: agentId as UUID,
+          isAgent: true,
+          createdAt: Date.now(),
+          channelId: channelId as UUID,
+          source: 'streaming',
+          isLoading: false,
+          isStreaming: true,
+        };
+        streamingMessages.set(messageId, chunk);
+        onAddMessage(newUiMsg);
+      } else {
+        // Subsequent chunk - update existing message
+        const newText = existingText + chunk;
+        streamingMessages.set(messageId, newText);
+        onUpdateMessage(messageId, { text: newText });
+      }
+    };
+
     const msgSub = socketIOManager.evtMessageBroadcast.attach(
       (d: MessageBroadcastData) => (d.channelId || d.roomId) === channelId,
       handleMessageBroadcasting
@@ -239,6 +345,10 @@ export function useSocketChat({
       (d: ChannelDeletedData) => (d.channelId || d.roomId) === channelId,
       handleChannelDeleted
     );
+    const streamSub = socketIOManager.evtMessageStreamChunk.attach(
+      (d: StreamChunkData) => d.channelId === channelId,
+      handleStreamChunk
+    );
 
     return () => {
       if (channelId) {
@@ -253,8 +363,14 @@ export function useSocketChat({
             `[useSocketChat] useEffect cleanup: Reset joinedChannelRef for ${channelId}`
           );
         }
+        // Clear streaming state, timeouts, and seen IDs for this channel
+        streamingMessagesRef.current.clear();
+        // Clear all pending timeouts to prevent memory leaks
+        streamTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout));
+        streamTimeoutsRef.current.clear();
+        seenMessageIdsRef.current.clear();
       }
-      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub]);
+      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub, streamSub]);
     };
 
     function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {
@@ -264,6 +380,5 @@ export function useSocketChat({
 
   return {
     sendMessage,
-    animatedMessageId: animatedMessageIdRef.current,
   };
 }

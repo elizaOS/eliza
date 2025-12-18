@@ -344,6 +344,7 @@ export type UiMessage = Content & {
   isAgent: boolean;
   createdAt: number; // Timestamp ms
   isLoading?: boolean;
+  isStreaming?: boolean; // Whether the message is currently being streamed
   channelId: UUID; // Central Channel ID
   serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
   prompt?: string; // The LLM prompt used to generate this message (for agents)

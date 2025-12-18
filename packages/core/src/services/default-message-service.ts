@@ -16,7 +16,6 @@ import {
   EventType,
   ModelType,
   ContentType,
-  Role,
   asUUID,
   createUniqueUuid,
   composePromptFromState,
@@ -32,6 +31,8 @@ import {
   getLocalServerUrl,
   logger,
 } from '../index';
+import { ResponseStreamExtractor } from '../utils/streaming';
+import { runWithStreamingContext } from '../streaming-context';
 
 /**
  * Image description response from the model
@@ -40,6 +41,18 @@ interface ImageDescriptionResponse {
   description: string;
   title?: string;
 }
+
+/**
+ * Resolved message options with defaults applied.
+ * Required numeric options + optional streaming callback.
+ */
+type ResolvedMessageOptions = {
+  maxRetries: number;
+  timeoutDuration: number;
+  useMultiStep: boolean;
+  maxMultiStepIterations: number;
+  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+};
 
 /**
  * Multi-step workflow execution result
@@ -113,11 +126,13 @@ export class DefaultMessageService implements IMessageService {
       maxMultiStepIterations:
         options?.maxMultiStepIterations ??
         parseInt(String(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6')),
+      onStreamChunk: options?.onStreamChunk,
     };
 
     // Set up timeout monitoring
     let timeoutId: NodeJS.Timeout | undefined = undefined;
-    const responseId = v4();
+    // Single ID used for tracking, streaming, and the final message
+    const responseId = asUUID(v4());
 
     try {
       runtime.logger.info(
@@ -181,14 +196,33 @@ export class DefaultMessageService implements IMessageService {
         }, opts.timeoutDuration);
       });
 
-      const processingPromise = this.processMessage(
-        runtime,
-        message,
-        callback,
-        responseId,
-        runId,
-        startTime,
-        opts
+      // Wrap processing with streaming context for automatic streaming in useModel calls
+      // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
+      let streamingContext: { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID } | undefined;
+      if (opts.onStreamChunk) {
+        const extractor = new ResponseStreamExtractor();
+        streamingContext = {
+          onStreamChunk: async (chunk: string, msgId?: UUID) => {
+            if (extractor.done) return;
+            const textToStream = extractor.push(chunk);
+            if (textToStream) {
+              await opts.onStreamChunk!(textToStream, msgId);
+            }
+          },
+          messageId: responseId,
+        };
+      }
+
+      const processingPromise = runWithStreamingContext(streamingContext, () =>
+        this.processMessage(
+          runtime,
+          message,
+          callback,
+          responseId,
+          runId,
+          startTime,
+          opts
+        )
       );
 
       const result = await Promise.race([processingPromise, timeoutPromise]);
@@ -209,10 +243,10 @@ export class DefaultMessageService implements IMessageService {
     runtime: IAgentRuntime,
     message: Memory,
     callback: HandlerCallback | undefined,
-    responseId: string,
+    responseId: UUID,
     runId: UUID,
     startTime: number,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions
   ): Promise<MessageProcessingResult> {
     try {
       const agentResponses = latestResponseIds.get(runtime.agentId);
@@ -388,8 +422,8 @@ export class DefaultMessageService implements IMessageService {
 
       if (shouldRespondToMessage) {
         const result = opts.useMultiStep
-          ? await this.runMultiStepCore(runtime, message, state, callback, opts)
-          : await this.runSingleShotCore(runtime, message, state, opts);
+          ? await this.runMultiStepCore(runtime, message, state, callback, opts, responseId)
+          : await this.runSingleShotCore(runtime, message, state, opts, responseId);
 
         responseContent = result.responseContent;
         responseMessages = result.responseMessages;
@@ -433,6 +467,7 @@ export class DefaultMessageService implements IMessageService {
               await callback(responseContent);
             }
           } else if (mode === 'actions') {
+            // Pass onStreamChunk to processActions so each action can manage its own streaming context
             await runtime.processActions(message, responseMessages, state, async (content) => {
               runtime.logger.debug({ src: 'service:message', content }, 'Action callback');
               responseContent!.actionCallbacks = content;
@@ -440,7 +475,7 @@ export class DefaultMessageService implements IMessageService {
                 return callback(content);
               }
               return [];
-            });
+            }, { onStreamChunk: opts.onStreamChunk });
           }
         }
       } else {
@@ -862,7 +897,8 @@ export class DefaultMessageService implements IMessageService {
     runtime: IAgentRuntime,
     message: Memory,
     state: State,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions,
+    responseId: UUID
   ): Promise<StrategyResult> {
     state = await runtime.composeState(message, ['ACTIONS']);
 
@@ -881,12 +917,30 @@ export class DefaultMessageService implements IMessageService {
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt,
+      });
 
-      runtime.logger.debug({ src: 'service:message', response }, 'Raw LLM response');
+      runtime.logger.info(
+        { src: 'service:message', responseLength: response.length, responsePreview: response.substring(0, 500) },
+        'Raw LLM response received'
+      );
 
       const parsedXml = parseKeyValueXml(response);
-      runtime.logger.debug({ src: 'service:message', parsedXml }, 'Parsed XML content');
+      runtime.logger.info(
+        {
+          src: 'service:message',
+          parsedXml: parsedXml ? {
+            hasThought: !!parsedXml.thought,
+            thoughtPreview: typeof parsedXml.thought === 'string' ? parsedXml.thought.substring(0, 100) : null,
+            hasActions: !!parsedXml.actions,
+            actions: parsedXml.actions,
+            hasText: !!parsedXml.text,
+            textPreview: typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
+          } : null,
+        },
+        'Parsed XML content'
+      );
 
       if (parsedXml) {
         const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
@@ -909,12 +963,23 @@ export class DefaultMessageService implements IMessageService {
         };
       } else {
         responseContent = null;
+        runtime.logger.warn(
+          { src: 'service:message', responsePreview: response.substring(0, 300) },
+          'parseKeyValueXml returned null - XML parsing failed'
+        );
       }
 
       retries++;
       if (!responseContent?.thought || !responseContent?.actions) {
         runtime.logger.warn(
-          { src: 'service:message', retries, maxRetries: opts.maxRetries },
+          {
+            src: 'service:message',
+            retries,
+            maxRetries: opts.maxRetries,
+            hasThought: !!responseContent?.thought,
+            hasActions: !!responseContent?.actions,
+            actionsValue: responseContent?.actions,
+          },
           'Missing required fields (thought or actions), retrying'
         );
       }
@@ -947,10 +1012,12 @@ export class DefaultMessageService implements IMessageService {
       (!responseContent.providers || responseContent.providers.length === 0);
 
     responseContent.simple = isSimple;
+    // Include message ID for streaming coordination (so broadcast uses same ID)
+    responseContent.responseId = responseId;
 
     const responseMessages: Memory[] = [
       {
-        id: asUUID(v4()),
+        id: responseId,
         entityId: runtime.agentId,
         agentId: runtime.agentId,
         content: responseContent,
@@ -975,7 +1042,8 @@ export class DefaultMessageService implements IMessageService {
     message: Memory,
     state: State,
     callback: HandlerCallback | undefined,
-    opts: Required<MessageProcessingOptions>
+    opts: ResolvedMessageOptions,
+    responseId: UUID
   ): Promise<StrategyResult> {
     const traceActionResult: MultiStepActionResult[] = [];
     let accumulatedState: MultiStepState = state as MultiStepState;
@@ -1148,7 +1216,9 @@ export class DefaultMessageService implements IMessageService {
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
     });
 
-    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: summaryPrompt });
+    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt: summaryPrompt,
+    });
     const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
@@ -1159,20 +1229,21 @@ export class DefaultMessageService implements IMessageService {
         text: summaryText,
         thought: (typeof summary.thought === 'string' ? summary.thought : 'Final user-facing message after task completion.') || 'Final user-facing message after task completion.',
         simple: true,
+        responseId,
       };
     }
 
     const responseMessages: Memory[] = responseContent
       ? [
-        {
-          id: asUUID(v4()),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
+          {
+            id: responseId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          },
+        ]
       : [];
 
     return {

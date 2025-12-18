@@ -647,8 +647,8 @@ export class MessageBusService extends Service {
           : undefined,
       };
 
-      // Use elizaOS.sendMessage() with async callback
-      await elizaOS.sendMessage(
+      // Use elizaOS.handleMessage() with async callback
+      await elizaOS.handleMessage(
         this.runtime.agentId,
         {
           id: uniqueMemoryId,
@@ -673,6 +673,23 @@ export class MessageBusService extends Service {
           },
         },
         {
+          onStreamChunk: (() => {
+            let chunkIndex = 0;
+            return async (chunk: string, messageId?: UUID) => {
+              // Emit stream chunk to internal bus for Socket.IO broadcast
+              const room = await this.runtime.getRoom(agentRoomId);
+              const channelId = room?.channelId;
+              if (channelId && messageId) {
+                internalMessageBus.emit('message_stream_chunk', {
+                  channelId,
+                  messageId,
+                  chunk,
+                  index: chunkIndex++,
+                  agentId: this.runtime.agentId,
+                });
+              }
+            };
+          })(),
           onResponse: async (responseContent: Content) => {
             logger.info(
               { src: 'service:message-bus', agentId: this.runtime.agentId },
@@ -681,6 +698,7 @@ export class MessageBusService extends Service {
 
             await this.runtime.createMemory(
               {
+                id: responseContent.responseId as UUID | undefined,
                 entityId: this.runtime.agentId,
                 content: responseContent,
                 roomId: agentRoomId,
@@ -707,7 +725,7 @@ export class MessageBusService extends Service {
                 agentName: this.runtime.character.name,
                 error: error.message,
               },
-              'Error processing message via sendMessage'
+              'Error processing message via handleMessage'
             );
           },
         }
@@ -883,6 +901,7 @@ export class MessageBusService extends Service {
       }
 
       const payloadToServer = {
+        messageId: content.responseId as UUID | undefined,
         channel_id: channelId,
         message_server_id: messageServerId,
         author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
@@ -981,19 +1000,25 @@ export class MessageBusService extends Service {
         if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
       }
 
+      // For ACTION_START, send text and full ToolPart data
+      // The text response will stream to a SEPARATE message with different ID
       const payloadToServer = {
-        messageId, // passed straight through
+        messageId, // passed straight through - this is the actionId for the badge
         channel_id: channelId,
         message_server_id: messageServerId,
         author_id: this.runtime.agentId,
-        content: content.text,
+        content: content.text, // Action text (e.g., "Executing action: GET_TOKEN")
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_action',
         raw_message: {
+          // Full action metadata for ToolPart display
           text: content.text,
           thought: content.thought,
           actions: content.actions,
-          ...content,
+          actionId: content.actionId,
+          actionStatus: content.actionStatus || 'executing',
+          type: content.type,
+          ...content, // Include all other content fields
         },
         metadata: {
           agent_id: this.runtime.agentId,
@@ -1081,14 +1106,16 @@ export class MessageBusService extends Service {
         if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
       }
 
+      // Update badge with final result for debug (text goes in collapsible details)
+      // The streamed text is in a SEPARATE message with different ID
       const patchPayload = {
-        // fields server’s PATCH /action/:id supports
-        content: content.text,
         raw_message: {
-          text: content.text,
           thought: content.thought,
           actions: content.actions,
-          ...content,
+          actionStatus: content.actionStatus,
+          actionResult: content.actionResult,
+          type: content.type,
+          text: content.text, // Final result text shown in badge details for debug
         },
         source_type: 'agent_action',
         in_reply_to_message_id: centralInReplyToRootMessageId,
@@ -1100,6 +1127,7 @@ export class MessageBusService extends Service {
           isDm:
             originalMessage?.metadata?.isDm ||
             (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
+          actionStatus: content.actionStatus,
         },
       };
 

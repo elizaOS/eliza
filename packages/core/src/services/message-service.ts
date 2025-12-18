@@ -33,6 +33,16 @@ export interface MessageProcessingOptions {
    * @default 6
    */
   maxMultiStepIterations?: number;
+
+  /**
+   * Called for each chunk of streaming text as it's generated.
+   * Streaming is enabled by default for all TEXT_* model types.
+   * The first chunk indicates streaming has started (useful for typing indicators).
+   *
+   * @param chunk - The text chunk being streamed
+   * @param messageId - ID of the message being generated
+   */
+  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
 }
 
 /**

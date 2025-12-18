@@ -15,7 +15,6 @@ interface ChatMessageListComponentProps {
   currentClientEntityId: string;
   targetAgentData?: Agent;
   allAgents: Partial<Agent>[];
-  animatedMessageId: string | null;
   scrollRef: React.RefObject<HTMLDivElement | null>;
   contentRef?: React.RefObject<HTMLDivElement | null>; // Optional content ref for StickToBottom
   isAtBottom: boolean;
@@ -36,7 +35,6 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
   currentClientEntityId,
   targetAgentData,
   allAgents,
-  animatedMessageId,
   scrollRef,
   contentRef,
   isAtBottom,
@@ -83,12 +81,10 @@ export const ChatMessageListComponent: React.FC<ChatMessageListComponentProps> =
           <p>No messages yet. Start the conversation!</p>
         </div>
       )}
-      {filteredMessages.map((message: UiMessage, index: number) => {
+      {filteredMessages.map((message: UiMessage) => {
         const isUser = message.senderId === currentClientEntityId;
-        const shouldAnimate =
-          index === filteredMessages.length - 1 &&
-          message.isAgent &&
-          message.id === animatedMessageId;
+        // Only animate during real streaming (not fake typing animation)
+        const shouldAnimate = message.isStreaming === true;
 
         const senderAgent =
           !isUser && getAgentInMessage ? getAgentInMessage(message.senderId) : undefined;
