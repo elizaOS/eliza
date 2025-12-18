@@ -83,6 +83,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
   const baseRuntime: IAgentRuntime = {
     // Core Properties
     agentId: 'test-agent-id' as UUID,
+    initPromise: overrides.initPromise || Promise.resolve(),
     character: overrides.character || defaultCharacter,
     messageService: overrides.messageService ?? null,
     providers: overrides.providers || [],
