@@ -17,6 +17,142 @@ import type { IStreamExtractor } from '../types/streaming';
 export type { IStreamExtractor } from '../types/streaming';
 
 // ============================================================================
+// StreamError - Standardized error handling for streaming
+// ============================================================================
+
+/** Error codes for streaming operations */
+export type StreamErrorCode =
+  | 'CHUNK_TOO_LARGE'
+  | 'BUFFER_OVERFLOW'
+  | 'PARSE_ERROR'
+  | 'TIMEOUT'
+  | 'ABORTED';
+
+/**
+ * Standardized error class for streaming operations.
+ * Provides structured error codes for easier handling.
+ */
+export class StreamError extends Error {
+  readonly code: StreamErrorCode;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: StreamErrorCode, message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = 'StreamError';
+    this.code = code;
+    this.details = details;
+  }
+
+  /** Check if an error is a StreamError */
+  static isStreamError(error: unknown): error is StreamError {
+    return error instanceof StreamError;
+  }
+}
+
+// ============================================================================
+// Shared constants and utilities
+// ============================================================================
+
+/** Safe margin to keep when streaming to avoid splitting closing tags */
+const SAFE_MARGIN = 10;
+
+/** Maximum buffer size to prevent memory exhaustion (100KB) */
+const MAX_BUFFER = 100 * 1024;
+
+/** Maximum chunk size to prevent DoS (1MB) */
+const MAX_CHUNK_SIZE = 1024 * 1024;
+
+/** Pre-compiled regex for actions tag extraction */
+const ACTIONS_REGEX = /<actions>([\s\S]*?)<\/actions>/;
+
+/**
+ * Result of attempting to extract content from an XML tag.
+ */
+interface TagExtractionResult {
+  /** Content extracted (empty string if nothing yet) */
+  content: string;
+  /** Whether the closing tag was found */
+  closed: boolean;
+  /** Updated buffer after extraction */
+  buffer: string;
+  /** Whether we're now inside the tag */
+  insideTag: boolean;
+}
+
+/**
+ * Extracts content from an XML tag in a streaming-friendly way.
+ * Shared utility used by multiple extractors.
+ *
+ * @param buffer - Current accumulated buffer
+ * @param openTag - Opening tag (e.g., "<text>")
+ * @param closeTag - Closing tag (e.g., "</text>")
+ * @param insideTag - Whether we're currently inside the tag
+ * @param safeMargin - Margin to keep for potential split tags
+ * @returns Extraction result with content and updated state
+ */
+function extractTagContent(
+  buffer: string,
+  openTag: string,
+  closeTag: string,
+  insideTag: boolean,
+  safeMargin: number = SAFE_MARGIN
+): TagExtractionResult {
+  let currentBuffer = buffer;
+  let currentInsideTag = insideTag;
+
+  // Look for opening tag if not inside
+  if (!currentInsideTag) {
+    const idx = currentBuffer.indexOf(openTag);
+    if (idx !== -1) {
+      currentInsideTag = true;
+      currentBuffer = currentBuffer.slice(idx + openTag.length);
+    } else {
+      return { content: '', closed: false, buffer: currentBuffer, insideTag: false };
+    }
+  }
+
+  // Check for closing tag
+  const closeIdx = currentBuffer.indexOf(closeTag);
+  if (closeIdx !== -1) {
+    const content = currentBuffer.slice(0, closeIdx);
+    const newBuffer = currentBuffer.slice(closeIdx + closeTag.length);
+    return { content, closed: true, buffer: newBuffer, insideTag: false };
+  }
+
+  // Stream safe content (keep margin for potential closing tag split)
+  if (currentBuffer.length > safeMargin) {
+    const content = currentBuffer.slice(0, -safeMargin);
+    const newBuffer = currentBuffer.slice(-safeMargin);
+    return { content, closed: false, buffer: newBuffer, insideTag: true };
+  }
+
+  return { content: '', closed: false, buffer: currentBuffer, insideTag: true };
+}
+
+/**
+ * Validates and limits chunk size to prevent DoS attacks.
+ * @throws StreamError if chunk exceeds maximum size
+ */
+function validateChunkSize(chunk: string): void {
+  if (chunk.length > MAX_CHUNK_SIZE) {
+    throw new StreamError('CHUNK_TOO_LARGE', `Chunk size ${chunk.length} exceeds maximum allowed ${MAX_CHUNK_SIZE}`, {
+      chunkSize: chunk.length,
+      maxAllowed: MAX_CHUNK_SIZE,
+    });
+  }
+}
+
+/**
+ * Trims buffer to prevent unbounded growth.
+ */
+function trimBuffer(buffer: string, maxSize: number = MAX_BUFFER, keepSize: number = 1024): string {
+  if (buffer.length > maxSize) {
+    return buffer.slice(-keepSize);
+  }
+  return buffer;
+}
+
+// ============================================================================
 // PassthroughExtractor - Simplest implementation
 // ============================================================================
 
@@ -30,6 +166,7 @@ export class PassthroughExtractor implements IStreamExtractor {
   }
 
   push(chunk: string): string {
+    validateChunkSize(chunk);
     return chunk; // Pass through everything
   }
 
@@ -54,9 +191,6 @@ export class PassthroughExtractor implements IStreamExtractor {
  * ```
  */
 export class XmlTagExtractor implements IStreamExtractor {
-  private static readonly SAFE_MARGIN = 10;
-  private static readonly MAX_BUFFER = 100 * 1024;
-
   private readonly openTag: string;
   private readonly closeTag: string;
 
@@ -76,41 +210,30 @@ export class XmlTagExtractor implements IStreamExtractor {
   push(chunk: string): string {
     if (this.finished) return '';
 
+    validateChunkSize(chunk);
     this.buffer += chunk;
 
-    // Look for opening tag
+    // Trim buffer if too large and not inside tag
     if (!this.insideTag) {
-      const idx = this.buffer.indexOf(this.openTag);
-      if (idx !== -1) {
-        this.insideTag = true;
-        this.buffer = this.buffer.slice(idx + this.openTag.length);
-      } else {
-        // Prevent unbounded buffer growth
-        if (this.buffer.length > XmlTagExtractor.MAX_BUFFER) {
-          this.buffer = this.buffer.slice(-1024);
-        }
-        return '';
-      }
+      this.buffer = trimBuffer(this.buffer);
     }
 
-    // Check for closing tag
-    const closeIdx = this.buffer.indexOf(this.closeTag);
-    if (closeIdx !== -1) {
-      const content = this.buffer.slice(0, closeIdx);
-      this.buffer = this.buffer.slice(closeIdx + this.closeTag.length);
-      this.insideTag = false;
+    const result = extractTagContent(
+      this.buffer,
+      this.openTag,
+      this.closeTag,
+      this.insideTag,
+      SAFE_MARGIN
+    );
+
+    this.buffer = result.buffer;
+    this.insideTag = result.insideTag;
+
+    if (result.closed) {
       this.finished = true;
-      return content;
     }
 
-    // Stream safe content (keep margin for potential closing tag split)
-    if (this.buffer.length > XmlTagExtractor.SAFE_MARGIN) {
-      const toStream = this.buffer.slice(0, -XmlTagExtractor.SAFE_MARGIN);
-      this.buffer = this.buffer.slice(-XmlTagExtractor.SAFE_MARGIN);
-      return toStream;
-    }
-
-    return '';
+    return result.content;
   }
 
   reset(): void {
@@ -141,9 +264,7 @@ type ResponseStrategy = 'pending' | 'direct' | 'delegated';
  * For simpler use cases without action routing, use {@link XmlTagExtractor} instead.
  */
 export class ResponseStreamExtractor implements IStreamExtractor {
-  private static readonly MAX_BUFFER = 100 * 1024;
-  private static readonly SAFE_MARGIN = 10;
-  private static readonly STREAM_TAGS = ['text'];
+  private static readonly STREAM_TAGS = ['text'] as const;
 
   private buffer = '';
   private insideTag = false;
@@ -151,12 +272,10 @@ export class ResponseStreamExtractor implements IStreamExtractor {
   private finished = false;
   private responseStrategy: ResponseStrategy = 'pending';
 
-  /** Whether extraction is complete */
   get done(): boolean {
     return this.finished;
   }
 
-  /** Reset extractor state for reuse */
   reset(): void {
     this.buffer = '';
     this.insideTag = false;
@@ -165,12 +284,8 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     this.responseStrategy = 'pending';
   }
 
-  /**
-   * Push a chunk and extract streamable text.
-   * @param chunk - Raw chunk from LLM stream
-   * @returns Text to stream to client (empty string if nothing to stream)
-   */
   push(chunk: string): string {
+    validateChunkSize(chunk);
     this.buffer += chunk;
 
     // Detect strategy from <actions> tag (comes before <text>)
@@ -182,12 +297,13 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     if (!this.insideTag) {
       for (const tag of ResponseStreamExtractor.STREAM_TAGS) {
         const openTag = `<${tag}>`;
+        const closeTag = `</${tag}>`;
         const idx = this.buffer.indexOf(openTag);
+
         if (idx !== -1) {
           // Check if we should stream this tag
           if (!this.shouldStreamTag(tag)) {
             // Skip tag entirely - wait for closing tag and remove
-            const closeTag = `</${tag}>`;
             const closeIdx = this.buffer.indexOf(closeTag);
             if (closeIdx !== -1) {
               this.buffer = this.buffer.slice(closeIdx + closeTag.length);
@@ -204,16 +320,16 @@ export class ResponseStreamExtractor implements IStreamExtractor {
       }
     }
 
-    // Prevent unbounded buffer growth
-    if (!this.insideTag && this.buffer.length > ResponseStreamExtractor.MAX_BUFFER) {
-      this.buffer = this.buffer.slice(-1024);
+    // Trim buffer if too large and not inside tag
+    if (!this.insideTag) {
+      this.buffer = trimBuffer(this.buffer);
+      return '';
     }
 
-    if (!this.insideTag) return '';
-
-    // Check for closing tag
+    // Extract content from current tag using shared helper
     const closeTag = `</${this.currentTag}>`;
     const closeIdx = this.buffer.indexOf(closeTag);
+
     if (closeIdx !== -1) {
       const content = this.buffer.slice(0, closeIdx);
       this.buffer = this.buffer.slice(closeIdx + closeTag.length);
@@ -224,18 +340,18 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     }
 
     // Stream safe content (keep margin for potential closing tag split)
-    if (this.buffer.length > ResponseStreamExtractor.SAFE_MARGIN) {
-      const toStream = this.buffer.slice(0, -ResponseStreamExtractor.SAFE_MARGIN);
-      this.buffer = this.buffer.slice(-ResponseStreamExtractor.SAFE_MARGIN);
+    if (this.buffer.length > SAFE_MARGIN) {
+      const toStream = this.buffer.slice(0, -SAFE_MARGIN);
+      this.buffer = this.buffer.slice(-SAFE_MARGIN);
       return toStream;
     }
 
     return '';
   }
 
-  /** Detect response strategy from <actions> tag */
+  /** Detect response strategy from <actions> tag using pre-compiled regex */
   private detectResponseStrategy(): void {
-    const match = this.buffer.match(/<actions>([\s\S]*?)<\/actions>/);
+    const match = this.buffer.match(ACTIONS_REGEX);
     if (match) {
       const actions = this.parseActions(match[1]);
       this.responseStrategy = this.isDirectReply(actions) ? 'direct' : 'delegated';
@@ -257,14 +373,16 @@ export class ResponseStreamExtractor implements IStreamExtractor {
 
   /** Determine if a tag should be streamed based on strategy */
   private shouldStreamTag(tag: string): boolean {
-    if (tag === 'text') return this.responseStrategy === 'direct';
-    return false;
+    return tag === 'text' && this.responseStrategy === 'direct';
   }
 }
 
 // ============================================================================
-// Action Stream Filter - For action handler response filtering
+// ActionStreamFilter - For action handler response filtering
 // ============================================================================
+
+/** Detected content type from first character */
+type ContentType = 'json' | 'xml' | 'text';
 
 /**
  * Filters action handler output for streaming.
@@ -276,20 +394,16 @@ export class ResponseStreamExtractor implements IStreamExtractor {
  * - Plain text → Stream immediately
  */
 export class ActionStreamFilter implements IStreamExtractor {
-  private static readonly SAFE_MARGIN = 10;
-
   private buffer = '';
   private decided = false;
-  private contentType: 'json' | 'xml' | 'text' | null = null;
+  private contentType: ContentType | null = null;
   private insideTextTag = false;
   private finished = false;
 
-  /** Whether filtering is complete */
   get done(): boolean {
     return this.finished;
   }
 
-  /** Reset filter state for reuse */
   reset(): void {
     this.buffer = '';
     this.decided = false;
@@ -298,80 +412,77 @@ export class ActionStreamFilter implements IStreamExtractor {
     this.finished = false;
   }
 
-  /**
-   * Push a chunk and filter for streaming.
-   * @param chunk - Raw chunk from action's useModel stream
-   * @returns Text to stream to client (empty string if filtered out)
-   */
   push(chunk: string): string {
+    validateChunkSize(chunk);
     this.buffer += chunk;
 
     // Decide content type on first non-whitespace character
     if (!this.decided) {
-      const trimmed = this.buffer.trimStart();
-      if (trimmed.length > 0) {
-        const firstChar = trimmed[0];
-        if (firstChar === '{' || firstChar === '[') {
-          this.contentType = 'json';
-        } else if (firstChar === '<') {
-          this.contentType = 'xml';
-        } else {
-          this.contentType = 'text';
-        }
+      const contentType = this.detectContentType();
+      if (contentType) {
+        this.contentType = contentType;
         this.decided = true;
-      }
-    }
-
-    if (!this.decided) return '';
-
-    // JSON → Never stream (structured data)
-    if (this.contentType === 'json') {
-      return '';
-    }
-
-    // Plain text → Stream everything immediately
-    if (this.contentType === 'text') {
-      const toStream = this.buffer;
-      this.buffer = '';
-      return toStream;
-    }
-
-    // XML → Look for <text> tag and stream its content
-    return this.handleXml();
-  }
-
-  /** Handle XML content - extract and stream <text> tag content */
-  private handleXml(): string {
-    if (!this.insideTextTag) {
-      const openTag = '<text>';
-      const idx = this.buffer.indexOf(openTag);
-      if (idx !== -1) {
-        this.insideTextTag = true;
-        this.buffer = this.buffer.slice(idx + openTag.length);
       } else {
-        if (this.buffer.length > 1024) {
-          this.buffer = this.buffer.slice(-1024);
-        }
         return '';
       }
     }
 
-    const closeTag = '</text>';
-    const closeIdx = this.buffer.indexOf(closeTag);
-    if (closeIdx !== -1) {
-      const content = this.buffer.slice(0, closeIdx);
-      this.buffer = this.buffer.slice(closeIdx + closeTag.length);
-      this.insideTextTag = false;
+    // Route based on content type
+    switch (this.contentType) {
+      case 'json':
+        return ''; // Never stream JSON
+
+      case 'text':
+        return this.handlePlainText();
+
+      case 'xml':
+        return this.handleXml();
+
+      default:
+        return '';
+    }
+  }
+
+  /** Detect content type from first non-whitespace character */
+  private detectContentType(): ContentType | null {
+    const trimmed = this.buffer.trimStart();
+    if (trimmed.length === 0) return null;
+
+    const firstChar = trimmed[0];
+    if (firstChar === '{' || firstChar === '[') return 'json';
+    if (firstChar === '<') return 'xml';
+    return 'text';
+  }
+
+  /** Handle plain text - stream everything */
+  private handlePlainText(): string {
+    const toStream = this.buffer;
+    this.buffer = '';
+    return toStream;
+  }
+
+  /** Handle XML content - extract and stream <text> tag content */
+  private handleXml(): string {
+    const result = extractTagContent(
+      this.buffer,
+      '<text>',
+      '</text>',
+      this.insideTextTag,
+      SAFE_MARGIN
+    );
+
+    this.buffer = result.buffer;
+    this.insideTextTag = result.insideTag;
+
+    if (result.closed) {
       this.finished = true;
-      return content;
     }
 
-    if (this.buffer.length > ActionStreamFilter.SAFE_MARGIN) {
-      const toStream = this.buffer.slice(0, -ActionStreamFilter.SAFE_MARGIN);
-      this.buffer = this.buffer.slice(-ActionStreamFilter.SAFE_MARGIN);
-      return toStream;
+    // Trim buffer if not inside tag and not found yet
+    if (!this.insideTextTag && !result.closed) {
+      this.buffer = trimBuffer(this.buffer, 1024, 1024);
     }
 
-    return '';
+    return result.content;
   }
 }
