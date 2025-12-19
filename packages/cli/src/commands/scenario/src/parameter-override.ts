@@ -339,7 +339,11 @@ export function setValueAtPath(obj: Record<string, unknown>, path: string, value
  * // original scenario is unchanged
  * ```
  */
-export function applyParameterOverride(scenario: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
+export function applyParameterOverride(
+  scenario: Record<string, unknown>,
+  path: string,
+  value: unknown
+): Record<string, unknown> {
   // Create a deep clone to avoid mutating the original
   const clonedScenario = deepClone(scenario);
 
@@ -367,7 +371,10 @@ export function applyParameterOverride(scenario: Record<string, unknown>, path: 
  * const result = applyMatrixOverrides(baseScenario, overrides);
  * ```
  */
-export function applyMatrixOverrides(baseScenario: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
+export function applyMatrixOverrides(
+  baseScenario: Record<string, unknown>,
+  overrides: Record<string, unknown>
+): Record<string, unknown> {
   // Convert Record to ParameterOverride array
   const parameterOverrides: ParameterOverride[] = Object.entries(overrides).map(
     ([path, value]) => ({
@@ -416,7 +423,10 @@ export function applyMatrixOverrides(baseScenario: Record<string, unknown>, over
  * // baseScenario is unchanged
  * ```
  */
-export function applyParameterOverrides(baseScenario: Record<string, unknown>, overrides: ParameterOverride[]): Record<string, unknown> {
+export function applyParameterOverrides(
+  baseScenario: Record<string, unknown>,
+  overrides: ParameterOverride[]
+): Record<string, unknown> {
   if (!baseScenario || typeof baseScenario !== 'object') {
     throw new Error('Base scenario must be a valid object');
   }

@@ -66,29 +66,31 @@ describe('DefaultMessageService', () => {
         data: {},
         values: {},
       })),
-      useModel: mock(async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
-        if (modelType === ModelType.TEXT_SMALL) {
-          // Response for shouldRespond check (no streaming)
-          return '<response><action>REPLY</action><reason>User asked a question</reason></response>';
+      useModel: mock(
+        async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
+          if (modelType === ModelType.TEXT_SMALL) {
+            // Response for shouldRespond check (no streaming)
+            return '<response><action>REPLY</action><reason>User asked a question</reason></response>';
+          }
+          // Response for message handler - now with streaming support
+          // Must include <response> wrapper for parseKeyValueXml to work
+          const responseText =
+            '<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>';
+          if ((params as any)?.stream) {
+            // Return TextStreamResult for streaming - simulate chunked response
+            return {
+              textStream: (async function* () {
+                // Yield in chunks to simulate real streaming
+                yield '<response><thought>Processing message</thought>';
+                yield '<actions>REPLY</actions><providers></providers>';
+                yield '<text>Hello! How can I help you?</text></response>';
+              })(),
+              text: responseText,
+            };
+          }
+          return responseText;
         }
-        // Response for message handler - now with streaming support
-        // Must include <response> wrapper for parseKeyValueXml to work
-        const responseText =
-          '<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>';
-        if ((params as any)?.stream) {
-          // Return TextStreamResult for streaming - simulate chunked response
-          return {
-            textStream: (async function* () {
-              // Yield in chunks to simulate real streaming
-              yield '<response><thought>Processing message</thought>';
-              yield '<actions>REPLY</actions><providers></providers>';
-              yield '<text>Hello! How can I help you?</text></response>';
-            })(),
-            text: responseText,
-          };
-        }
-        return responseText;
-      }),
+      ),
       processActions: mock(async () => {}),
       evaluate: mock(async () => {}),
       emitEvent: mock(async () => {}),
@@ -421,7 +423,9 @@ describe('DefaultMessageService', () => {
 
       // Check that RUN_ENDED was called
       const emitEventCalls = (mockRuntime.emitEvent as ReturnType<typeof mock>).mock.calls;
-      const runEndedCall = emitEventCalls.find((call: unknown[]) => Array.isArray(call) && call[0] === EventType.RUN_ENDED);
+      const runEndedCall = emitEventCalls.find(
+        (call: unknown[]) => Array.isArray(call) && call[0] === EventType.RUN_ENDED
+      );
       expect(runEndedCall).toBeDefined();
     });
 
@@ -780,24 +784,26 @@ describe('DefaultMessageService', () => {
       };
 
       // Mock useModel to return XML where thought/text are objects (empty tags become {})
-      mockRuntime.useModel = mock(async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
-        if (modelType === ModelType.TEXT_SMALL) {
-          return '<response><action>REPLY</action><reason>User asked a question</reason></response>';
+      mockRuntime.useModel = mock(
+        async (modelType: (typeof ModelType)[keyof typeof ModelType], params: unknown) => {
+          if (modelType === ModelType.TEXT_SMALL) {
+            return '<response><action>REPLY</action><reason>User asked a question</reason></response>';
+          }
+          // Return XML with empty tags that parseKeyValueXml will parse as {} instead of strings
+          const responseText =
+            '<response><thought></thought><actions>REPLY</actions><text></text></response>';
+          if ((params as any)?.stream) {
+            return {
+              textStream: (async function* () {
+                yield responseText;
+              })(),
+              text: Promise.resolve(responseText),
+              usage: Promise.resolve({ promptTokens: 10, completionTokens: 5, totalTokens: 15 }),
+            };
+          }
+          return responseText;
         }
-        // Return XML with empty tags that parseKeyValueXml will parse as {} instead of strings
-        const responseText =
-          '<response><thought></thought><actions>REPLY</actions><text></text></response>';
-        if ((params as any)?.stream) {
-          return {
-            textStream: (async function* () {
-              yield responseText;
-            })(),
-            text: Promise.resolve(responseText),
-            usage: Promise.resolve({ promptTokens: 10, completionTokens: 5, totalTokens: 15 }),
-          };
-        }
-        return responseText;
-      }) as any;
+      ) as any;
 
       // Add required mocks for the message processing flow
       mockRuntime.emitEvent = mock(async () => {});
@@ -812,11 +818,7 @@ describe('DefaultMessageService', () => {
 
       // The test passes if no error is thrown during message processing
       // This validates that the type guards prevent .substring() from being called on non-strings
-      await messageService.handleMessage(
-        mockRuntime as IAgentRuntime,
-        message,
-        mockCallback
-      );
+      await messageService.handleMessage(mockRuntime as IAgentRuntime, message, mockCallback);
 
       // Verify the logging was called (which uses the type guards)
       expect(mockRuntime.logger?.info).toHaveBeenCalled();

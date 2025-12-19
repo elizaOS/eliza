@@ -286,7 +286,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         enabled: true,
       });
 
-      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
+      (
+        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+          IDatabaseAdapter['getEntitiesByIds']
+        >
+      ).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -294,7 +298,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           metadata: {},
         },
       ]);
-      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
+      (
+        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+          IDatabaseAdapter['getEntitiesByIds']
+        >
+      ).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -302,8 +310,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           metadata: {},
         },
       ]);
-      (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
-      (mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>
+      ).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<
+          IDatabaseAdapter['getParticipantsForRoom']
+        >
+      ).mockResolvedValue([]);
 
       await runtime.initialize(); // Initialize to process registrations
 
@@ -325,7 +339,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         updatedAt: Date.now(),
         enabled: true,
       });
-      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
+      (
+        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+          IDatabaseAdapter['getEntitiesByIds']
+        >
+      ).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -333,7 +351,11 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           metadata: {},
         },
       ]);
-      (mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>).mockResolvedValue([
+      (
+        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+          IDatabaseAdapter['getEntitiesByIds']
+        >
+      ).mockResolvedValue([
         {
           id: agentId,
           agentId: agentId,
@@ -341,8 +363,14 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           metadata: {},
         },
       ]);
-      (mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue([]);
-      (mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getRoomsByIds as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>
+      ).mockResolvedValue([]);
+      (
+        mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<
+          IDatabaseAdapter['getParticipantsForRoom']
+        >
+      ).mockResolvedValue([]);
       // mockDatabaseAdapter.getAgent is NOT called by initialize anymore after ensureAgentExists returns the agent
     });
 
@@ -422,7 +450,10 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = spyOn(runtimeWithMigrations, 'runPluginMigrations' as keyof AgentRuntime);
+      const runMigrationsSpy = spyOn(
+        runtimeWithMigrations,
+        'runPluginMigrations' as keyof AgentRuntime
+      );
 
       // Initialize with skipMigrations = true
       await runtimeWithMigrations.initialize({ skipMigrations: true });
@@ -1324,10 +1355,12 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
           return Promise.resolve({
             textStream: (async function* () {
               yield `<response><text>ctx${id}-`;
-              await new Promise(resolve => setTimeout(resolve, 10)); // Simulate async delay
+              await new Promise((resolve) => setTimeout(resolve, 10)); // Simulate async delay
               yield `part1 ctx${id}-part2</text></response>`;
             })(),
-            text: Promise.resolve(`<response><text>ctx${id}-part1 ctx${id}-part2</text></response>`),
+            text: Promise.resolve(
+              `<response><text>ctx${id}-part1 ctx${id}-part2</text></response>`
+            ),
             usage: Promise.resolve(undefined),
             finishReason: Promise.resolve('stop'),
           });
@@ -1338,15 +1371,27 @@ describe('AgentRuntime (Non-Instrumented Baseline)', () => {
         // Run 3 streaming contexts in parallel
         const [result1, result2, result3] = await Promise.all([
           runWithStreamingContext(
-            { onStreamChunk: async (chunk: string) => { context1Chunks.push(chunk); } },
+            {
+              onStreamChunk: async (chunk: string) => {
+                context1Chunks.push(chunk);
+              },
+            },
             async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 1' })
           ),
           runWithStreamingContext(
-            { onStreamChunk: async (chunk: string) => { context2Chunks.push(chunk); } },
+            {
+              onStreamChunk: async (chunk: string) => {
+                context2Chunks.push(chunk);
+              },
+            },
             async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 2' })
           ),
           runWithStreamingContext(
-            { onStreamChunk: async (chunk: string) => { context3Chunks.push(chunk); } },
+            {
+              onStreamChunk: async (chunk: string) => {
+                context3Chunks.push(chunk);
+              },
+            },
             async () => runtime.useModel(ModelType.TEXT_LARGE, { prompt: 'Test 3' })
           ),
         ]);

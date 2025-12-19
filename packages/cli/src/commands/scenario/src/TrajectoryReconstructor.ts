@@ -110,10 +110,7 @@ export class TrajectoryReconstructor {
             `🎯 FOUND ACTION_RESULT - FULL CONTENT:`,
             JSON.stringify(mem.content, null, 2)
           );
-        } else if (
-          contentObj.type === 'user' ||
-          contentObj.type === 'agent'
-        ) {
+        } else if (contentObj.type === 'user' || contentObj.type === 'agent') {
           console.log(
             `💬 MESSAGE CONTENT:`,
             JSON.stringify(
@@ -265,7 +262,9 @@ export class TrajectoryReconstructor {
 
       console.log(`\n🔄 Processing message memory ${memory.id}...`);
       console.log(`   type: ${content.type || 'undefined'}`);
-      console.log(`   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`);
+      console.log(
+        `   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`
+      );
       console.log(`   source: ${content.source || 'undefined'}`);
       console.log(`   thought: ${content.thought ? 'present' : 'absent'}`);
       console.log(`   Content Type: ${typeof content}`);
@@ -273,7 +272,9 @@ export class TrajectoryReconstructor {
       console.log(`   Full Content: ${JSON.stringify(content, null, 2)}`);
 
       // Determine if this is an agent message or user message
-      const isAgentMessage = content.type === 'agent' || (typeof content.thought !== 'undefined' && typeof content.actions !== 'undefined');
+      const isAgentMessage =
+        content.type === 'agent' ||
+        (typeof content.thought !== 'undefined' && typeof content.actions !== 'undefined');
 
       // Create thought step from agent messages
       if (isAgentMessage && content?.thought) {

@@ -3,7 +3,10 @@ import type { Memory } from './memory';
 import type { IAgentRuntime } from './runtime';
 import type { Character } from './agent';
 import type { State } from './state';
-import type { MessageProcessingOptions, MessageProcessingResult } from '../services/message-service';
+import type {
+  MessageProcessingOptions,
+  MessageProcessingResult,
+} from '../services/message-service';
 
 /**
  * Batch operation for sending messages

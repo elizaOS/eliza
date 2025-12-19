@@ -114,12 +114,13 @@ function generateStatusMessage(
     }
 
     // Non-onboarding context - list all public settings with values and descriptions
-    return `## Current Configuration\n\n${requiredUnconfigured > 0
-      ? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
-      : 'All required settings are configured.\n\n'
-      }${formattedSettings
-        .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
-        .join('\n\n')}`;
+    return `## Current Configuration\n\n${
+      requiredUnconfigured > 0
+        ? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
+        : 'All required settings are configured.\n\n'
+    }${formattedSettings
+      .map((s) => `### ${s?.name}\n**Value:** ${s?.value}\n**Description:** ${s?.description}`)
+      .join('\n\n')}`;
   } catch (error) {
     logger.error(
       {
@@ -296,24 +297,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings:
-                "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-            },
-            text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-          }
+              data: {
+                settings: [],
+              },
+              values: {
+                settings:
+                  "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
+              },
+              text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
+            }
           : {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings: 'Error: No configuration access',
-            },
-            text: 'Error: No configuration access',
-          };
+              data: {
+                settings: [],
+              },
+              values: {
+                settings: 'Error: No configuration access',
+              },
+              text: 'Error: No configuration access',
+            };
       }
 
       if (!worldSettings) {
@@ -323,24 +324,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings:
-                "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-            },
-            text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-          }
+              data: {
+                settings: [],
+              },
+              values: {
+                settings:
+                  "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
+              },
+              text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
+            }
           : {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings: 'Configuration has not been completed yet.',
-            },
-            text: 'Configuration has not been completed yet.',
-          };
+              data: {
+                settings: [],
+              },
+              values: {
+                settings: 'Configuration has not been completed yet.',
+              },
+              text: 'Configuration has not been completed yet.',
+            };
       }
 
       // Generate the status message based on the settings

@@ -86,9 +86,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
             // Ignore errors
           }
         }
-        logger.debug(
-          `[Migration] ✓ RLS cleanup completed (${tablesWithRls.rows.length} tables)`
-        );
+        logger.debug(`[Migration] ✓ RLS cleanup completed (${tablesWithRls.rows.length} tables)`);
       } else {
         logger.debug('[Migration] ⊘ No tables with RLS to clean up');
       }
@@ -178,9 +176,13 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
 
         if (serverId && !messageServerId) {
           // Old column exists → rename it to message_server_id
-          logger.debug(`[Migration] → Renaming ${tableName}.${oldColumnName} to message_server_id...`);
+          logger.debug(
+            `[Migration] → Renaming ${tableName}.${oldColumnName} to message_server_id...`
+          );
           await db.execute(
-            sql.raw(`ALTER TABLE "${tableName}" RENAME COLUMN "${oldColumnName}" TO "message_server_id"`)
+            sql.raw(
+              `ALTER TABLE "${tableName}" RENAME COLUMN "${oldColumnName}" TO "message_server_id"`
+            )
           );
           logger.debug(`[Migration] ✓ Renamed ${tableName}.${oldColumnName} → message_server_id`);
 
@@ -198,7 +200,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
               );
               logger.debug(`[Migration] ✓ Dropped DEFAULT constraint`);
             } catch {
-              logger.debug(`[Migration] ⊘ No DEFAULT constraint to drop on ${tableName}.message_server_id`);
+              logger.debug(
+                `[Migration] ⊘ No DEFAULT constraint to drop on ${tableName}.message_server_id`
+              );
             }
 
             try {
@@ -259,10 +263,10 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
         } else if (serverId && messageServerId) {
           // Both exist → just drop the old column
           logger.debug(`[Migration] → ${tableName} has both columns, dropping ${oldColumnName}...`);
-          await db.execute(sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "${oldColumnName}" CASCADE`));
-          logger.debug(
-            `[Migration] ✓ Dropped ${tableName}.${oldColumnName}`
+          await db.execute(
+            sql.raw(`ALTER TABLE "${tableName}" DROP COLUMN "${oldColumnName}" CASCADE`)
           );
+          logger.debug(`[Migration] ✓ Dropped ${tableName}.${oldColumnName}`);
         } else if (!serverId && messageServerId) {
           // Only message_server_id exists - check if it needs type conversion from TEXT to UUID
           // This handles idempotency when migration partially ran before rollback
@@ -370,9 +374,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       if (hasOwnerId && !hasServerId) {
         // Rename owner_id → server_id
         logger.debug('[Migration] → Renaming agents.owner_id to server_id...');
-        await db.execute(
-          sql.raw(`ALTER TABLE "agents" RENAME COLUMN "owner_id" TO "server_id"`)
-        );
+        await db.execute(sql.raw(`ALTER TABLE "agents" RENAME COLUMN "owner_id" TO "server_id"`));
         logger.debug('[Migration] ✓ Renamed agents.owner_id → server_id');
       } else if (hasOwnerId && hasServerId) {
         // Both exist - drop owner_id (data should be in server_id)
@@ -400,22 +402,26 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       if (ownersTableResult.rows && ownersTableResult.rows.length > 0) {
         // First, ensure servers table exists
         logger.debug('[Migration] → Ensuring servers table exists...');
-        await db.execute(sql.raw(`
+        await db.execute(
+          sql.raw(`
           CREATE TABLE IF NOT EXISTS "servers" (
             "id" uuid PRIMARY KEY,
             "created_at" timestamp with time zone DEFAULT now() NOT NULL,
             "updated_at" timestamp with time zone DEFAULT now() NOT NULL
           )
-        `));
+        `)
+        );
 
         // Migrate data from owners to servers (if any)
         logger.debug('[Migration] → Migrating owners data to servers...');
-        await db.execute(sql.raw(`
+        await db.execute(
+          sql.raw(`
           INSERT INTO "servers" ("id", "created_at", "updated_at")
           SELECT "id", COALESCE("created_at", now()), COALESCE("updated_at", now())
           FROM "owners"
           ON CONFLICT ("id") DO NOTHING
-        `));
+        `)
+        );
         logger.debug('[Migration] ✓ Migrated owners data to servers');
 
         // Now safe to drop owners table
@@ -687,12 +693,16 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
           // Old column exists, new doesn't → RENAME (preserves data!)
           logger.debug(`[Migration] → Renaming ${rename.table}.${rename.from} to ${rename.to}...`);
           await db.execute(
-            sql.raw(`ALTER TABLE "${rename.table}" RENAME COLUMN "${rename.from}" TO "${rename.to}"`)
+            sql.raw(
+              `ALTER TABLE "${rename.table}" RENAME COLUMN "${rename.from}" TO "${rename.to}"`
+            )
           );
           logger.debug(`[Migration] ✓ Renamed ${rename.table}.${rename.from} → ${rename.to}`);
         } else if (hasOldColumn && hasNewColumn) {
           // Both exist → drop old (data should be in new already)
-          logger.debug(`[Migration] → Both columns exist, dropping ${rename.table}.${rename.from}...`);
+          logger.debug(
+            `[Migration] → Both columns exist, dropping ${rename.table}.${rename.from}...`
+          );
           await db.execute(
             sql.raw(`ALTER TABLE "${rename.table}" DROP COLUMN "${rename.from}" CASCADE`)
           );

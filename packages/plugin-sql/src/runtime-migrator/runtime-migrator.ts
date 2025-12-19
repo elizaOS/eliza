@@ -219,27 +219,38 @@ export class RuntimeMigrator {
     // Cloud providers
     const cloudPatterns = [
       // AWS
-      'amazonaws.com', '.rds.',
+      'amazonaws.com',
+      '.rds.',
       // Azure
-      'azure.com', 'database.azure.com',
+      'azure.com',
+      'database.azure.com',
       // Google Cloud
-      'googleusercontent', 'cloudsql',
+      'googleusercontent',
+      'cloudsql',
       // Supabase
       'supabase',
       // Neon
-      'neon.tech', 'neon.build',
+      'neon.tech',
+      'neon.build',
       // Railway
-      'railway.app', 'railway.internal',
+      'railway.app',
+      'railway.internal',
       // Render
-      'render.com', 'onrender.com',
+      'render.com',
+      'onrender.com',
       // Heroku
       'heroku',
       // TimescaleDB
-      'timescale', '.tsdb.cloud',
+      'timescale',
+      '.tsdb.cloud',
       // CockroachDB
-      'cockroachlabs', 'cockroachdb.cloud', '.crdb.io',
+      'cockroachlabs',
+      'cockroachdb.cloud',
+      '.crdb.io',
       // DigitalOcean
-      'digitalocean', 'db.ondigitalocean', 'do-user-',
+      'digitalocean',
+      'db.ondigitalocean',
+      'do-user-',
       // Aiven
       'aiven',
       // Crunchy Data
@@ -249,7 +260,8 @@ export class RuntimeMigrator {
       // YugabyteDB
       'yugabyte',
       // Scaleway
-      'scaleway', '.rdb.fr-par.scw.cloud',
+      'scaleway',
+      '.rdb.fr-par.scw.cloud',
       // Vercel Postgres
       'vercel-storage',
       // PlanetScale
@@ -257,7 +269,8 @@ export class RuntimeMigrator {
       // Xata
       'xata.sh',
       // Fly.io
-      'fly.dev', 'fly.io',
+      'fly.dev',
+      'fly.io',
     ];
     if (cloudPatterns.some((p) => url.includes(p))) return true;
 

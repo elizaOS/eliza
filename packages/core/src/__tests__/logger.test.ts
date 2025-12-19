@@ -406,7 +406,9 @@ describe('Logger', () => {
       const customLogger = createLogger();
 
       // Force a log that might have null level
-      expect(() => customLogger.child({ level: null as string | undefined }).info('Test')).not.toThrow();
+      expect(() =>
+        customLogger.child({ level: null as string | undefined }).info('Test')
+      ).not.toThrow();
     });
 
     it('should handle object level data in prettifier', () => {

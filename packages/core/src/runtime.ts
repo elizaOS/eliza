@@ -291,7 +291,10 @@ export class AgentRuntime implements IAgentRuntime {
         }
       }
       await plugin.init(config, this as IAgentRuntime);
-      this.logger.debug({ src: 'agent', agentId: this.agentId, plugin: plugin.name }, 'Plugin initialized');
+      this.logger.debug(
+        { src: 'agent', agentId: this.agentId, plugin: plugin.name },
+        'Plugin initialized'
+      );
     }
     if (plugin.adapter) {
       this.logger.debug(
@@ -421,7 +424,10 @@ export class AgentRuntime implements IAgentRuntime {
     await Promise.all(pluginRegistrationPromises);
 
     if (!this.adapter) {
-      this.logger.error({ src: 'agent', agentId: this.agentId }, 'Database adapter not initialized');
+      this.logger.error(
+        { src: 'agent', agentId: this.agentId },
+        'Database adapter not initialized'
+      );
       throw new Error(
         'Database adapter not initialized. The SQL plugin (@elizaos/plugin-sql) is required for agent initialization. Please ensure it is included in your character configuration.'
       );
@@ -581,10 +587,24 @@ export class AgentRuntime implements IAgentRuntime {
       .filter((p) => p.schema)
       .map((p) => {
         const schema = p.schema || {};
-        const normalizedSchema: Record<string, string | number | boolean | Record<string, unknown> | null> = {};
+        const normalizedSchema: Record<
+          string,
+          string | number | boolean | Record<string, unknown> | null
+        > = {};
         for (const [key, value] of Object.entries(schema)) {
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || value === null || (typeof value === 'object' && value !== null && !Array.isArray(value))) {
-            normalizedSchema[key] = value as string | number | boolean | Record<string, unknown> | null;
+          if (
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean' ||
+            value === null ||
+            (typeof value === 'object' && value !== null && !Array.isArray(value))
+          ) {
+            normalizedSchema[key] = value as
+              | string
+              | number
+              | boolean
+              | Record<string, unknown>
+              | null;
           }
         }
         return { name: p.name, schema: normalizedSchema };
@@ -646,10 +666,10 @@ export class AgentRuntime implements IAgentRuntime {
     const secrets = this.character.secrets;
     const nestedSecrets =
       typeof settings === 'object' &&
-        settings !== null &&
-        'secrets' in settings &&
-        typeof settings.secrets === 'object' &&
-        settings.secrets !== null
+      settings !== null &&
+      'secrets' in settings &&
+      typeof settings.secrets === 'object' &&
+      settings.secrets !== null
         ? (settings.secrets as Record<string, string | undefined>)
         : undefined;
 
@@ -768,19 +788,21 @@ export class AgentRuntime implements IAgentRuntime {
     const runId = this.createRunId();
 
     // Create action plan if multiple actions
-    let actionPlan: {
-      runId: UUID;
-      totalSteps: number;
-      currentStep: number;
-      steps: Array<{
-        action: string;
-        status: 'pending' | 'completed' | 'failed';
-        result?: ActionResult;
-        error?: string;
-      }>;
-      thought: string;
-      startTime: number;
-    } | undefined = undefined;
+    let actionPlan:
+      | {
+          runId: UUID;
+          totalSteps: number;
+          currentStep: number;
+          steps: Array<{
+            action: string;
+            status: 'pending' | 'completed' | 'failed';
+            result?: ActionResult;
+            error?: string;
+          }>;
+          thought: string;
+          startTime: number;
+        }
+      | undefined = undefined;
 
     const thought =
       responses[0]?.content?.thought ||
@@ -945,7 +967,10 @@ export class AgentRuntime implements IAgentRuntime {
           actionIndex++;
           continue;
         }
-        this.logger.debug({ src: 'agent', agentId: this.agentId, action: action.name }, 'Executing action');
+        this.logger.debug(
+          { src: 'agent', agentId: this.agentId, action: action.name },
+          'Executing action'
+        );
 
         const actionId = uuidv4() as UUID;
         // Separate ID for streamed response message (independent from action badge)
@@ -1015,7 +1040,13 @@ export class AgentRuntime implements IAgentRuntime {
         // Actions may have multiple useModel calls (e.g., JSON extraction + text generation).
         // onStreamEnd is called after each useModel stream completes, allowing us to reset
         // the filter so content type detection from one call doesn't affect the next.
-        let actionStreamingContext: { messageId: UUID; onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; onStreamEnd: () => void } | undefined;
+        let actionStreamingContext:
+          | {
+              messageId: UUID;
+              onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+              onStreamEnd: () => void;
+            }
+          | undefined;
         if (processOptions?.onStreamChunk) {
           let currentFilter: ActionStreamFilter | null = null;
 
@@ -1082,7 +1113,9 @@ export class AgentRuntime implements IAgentRuntime {
 
           // Merge returned values into state
           if (actionResult.values) {
-            const existingActionResults = Array.isArray(accumulatedState.data?.actionResults) ? accumulatedState.data.actionResults : [];
+            const existingActionResults = Array.isArray(accumulatedState.data?.actionResults)
+              ? accumulatedState.data.actionResults
+              : [];
             accumulatedState = {
               ...accumulatedState,
               values: { ...accumulatedState.values, ...actionResult.values },
@@ -1106,7 +1139,10 @@ export class AgentRuntime implements IAgentRuntime {
               result: actionResult,
               timestamp: Date.now(),
             };
-            const workingMemory = accumulatedState.data.workingMemory as Record<string, WorkingMemoryEntry>;
+            const workingMemory = accumulatedState.data.workingMemory as Record<
+              string,
+              WorkingMemoryEntry
+            >;
             workingMemory[memoryKey] = memoryEntry;
 
             // Clean up old entries if we now exceed the limit
@@ -1195,7 +1231,10 @@ export class AgentRuntime implements IAgentRuntime {
         };
         await this.createMemory(actionMemory, 'messages');
 
-        this.logger.debug({ src: 'agent', agentId: this.agentId, action: action.name }, 'Action completed');
+        this.logger.debug(
+          { src: 'agent', agentId: this.agentId, action: action.name },
+          'Action completed'
+        );
 
         // log to database with collected prompts
         await this.adapter.log({
@@ -1354,8 +1393,11 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 2: Create all entities
     const entityIds = entities.map((e) => e.id).filter((id): id is UUID => id !== undefined);
     const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
-    const entitiesToUpdate = entityExistsCheck?.map((e) => e.id).filter((id): id is UUID => id !== undefined) || [];
-    const entitiesToCreate = entities.filter((e) => e.id !== undefined && !entitiesToUpdate.includes(e.id));
+    const entitiesToUpdate =
+      entityExistsCheck?.map((e) => e.id).filter((id): id is UUID => id !== undefined) || [];
+    const entitiesToCreate = entities.filter(
+      (e) => e.id !== undefined && !entitiesToUpdate.includes(e.id)
+    );
 
     const r = {
       roomId: firstRoom.id,
@@ -1378,7 +1420,11 @@ export class AgentRuntime implements IAgentRuntime {
         source,
         agentId: this.agentId,
       };
-      const entitiesToCreateWFields: Entity[] = entitiesToCreate.map((e) => ({ ...e, ...ef, metadata: e.metadata || {} }));
+      const entitiesToCreateWFields: Entity[] = entitiesToCreate.map((e) => ({
+        ...e,
+        ...ef,
+        metadata: e.metadata || {},
+      }));
       // pglite doesn't like over 10k records
       const batches = chunkArray(entitiesToCreateWFields, 5000);
       for (const batch of batches) {
@@ -1392,7 +1438,9 @@ export class AgentRuntime implements IAgentRuntime {
 
     // Add all entities to the first room
     const entityIdsInFirstRoom = await this.getParticipantsForRoom(firstRoom.id);
-    const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter((id): id is UUID => id !== undefined);
+    const entityIdsInFirstRoomFiltered = entityIdsInFirstRoom.filter(
+      (id): id is UUID => id !== undefined
+    );
     const missingIdsInRoom = entityIds.filter(
       (id: UUID) => !entityIdsInFirstRoomFiltered.includes(id)
     );
@@ -1516,7 +1564,10 @@ export class AgentRuntime implements IAgentRuntime {
     await this.ensureParticipantInRoom(entityId, roomId);
     await this.ensureParticipantInRoom(this.agentId, roomId);
 
-    this.logger.debug({ src: 'agent', agentId: this.agentId, entityId, channelId: roomId }, 'Entity connected');
+    this.logger.debug(
+      { src: 'agent', agentId: this.agentId, entityId, channelId: roomId },
+      'Entity connected'
+    );
   }
 
   async ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
@@ -1680,7 +1731,15 @@ export class AgentRuntime implements IAgentRuntime {
         };
       })
     );
-    const currentProviderResults: Record<string, { text?: string; values?: Record<string, unknown>; providerName: string }> = { ...(cachedState.data?.providers as Record<string, { text?: string; values?: Record<string, unknown>; providerName: string }> || {}) };
+    const currentProviderResults: Record<
+      string,
+      { text?: string; values?: Record<string, unknown>; providerName: string }
+    > = {
+      ...((cachedState.data?.providers as Record<
+        string,
+        { text?: string; values?: Record<string, unknown>; providerName: string }
+      >) || {}),
+    };
     for (const freshResult of providerData) {
       currentProviderResults[freshResult.providerName] = freshResult;
     }
@@ -1695,14 +1754,24 @@ export class AgentRuntime implements IAgentRuntime {
     const aggregatedStateValues: Record<string, unknown> = { ...(cachedState.values || {}) };
     for (const provider of providersToGet) {
       const providerResult = currentProviderResults[provider.name];
-      if (providerResult && providerResult.values && typeof providerResult.values === 'object' && providerResult.values !== null) {
+      if (
+        providerResult &&
+        providerResult.values &&
+        typeof providerResult.values === 'object' &&
+        providerResult.values !== null
+      ) {
         Object.assign(aggregatedStateValues, providerResult.values);
       }
     }
     for (const providerName in currentProviderResults) {
       if (!providersToGet.some((p) => p.name === providerName)) {
         const providerResult = currentProviderResults[providerName];
-        if (providerResult && providerResult.values && typeof providerResult.values === 'object' && providerResult.values !== null) {
+        if (
+          providerResult &&
+          providerResult.values &&
+          typeof providerResult.values === 'object' &&
+          providerResult.values !== null
+        ) {
           Object.assign(aggregatedStateValues, providerResult.values);
         }
       }
@@ -1905,11 +1974,17 @@ export class AgentRuntime implements IAgentRuntime {
       // Clean up the promise handler after resolving
       this.servicePromiseHandlers.delete(serviceType);
     } else {
-      this.logger.debug({ src: 'agent', agentId: this.agentId, serviceType }, 'Service has no promise handler');
+      this.logger.debug(
+        { src: 'agent', agentId: this.agentId, serviceType },
+        'Service has no promise handler'
+      );
     }
 
     if (serviceDef.registerSendHandlers) {
-      (serviceDef.constructor as typeof Service).registerSendHandlers?.(this as IAgentRuntime, serviceInstance);
+      (serviceDef.constructor as typeof Service).registerSendHandlers?.(
+        this as IAgentRuntime,
+        serviceInstance
+      );
     }
     // Update service status to registered
     this.serviceRegistrationStatus.set(serviceType, 'registered');
@@ -2099,11 +2174,18 @@ export class AgentRuntime implements IAgentRuntime {
     const modelKey = typeof modelType === 'string' ? modelType : ModelType[modelType];
     const paramsObj = params as Record<string, unknown> | null | undefined;
     const promptContent =
-      (paramsObj && 'prompt' in paramsObj && typeof paramsObj.prompt === 'string' ? paramsObj.prompt : null) ||
-      (paramsObj && 'input' in paramsObj && typeof paramsObj.input === 'string' ? paramsObj.input : null) ||
-      (paramsObj && 'messages' in paramsObj && Array.isArray(paramsObj.messages) ? JSON.stringify(paramsObj.messages) : null);
+      (paramsObj && 'prompt' in paramsObj && typeof paramsObj.prompt === 'string'
+        ? paramsObj.prompt
+        : null) ||
+      (paramsObj && 'input' in paramsObj && typeof paramsObj.input === 'string'
+        ? paramsObj.input
+        : null) ||
+      (paramsObj && 'messages' in paramsObj && Array.isArray(paramsObj.messages)
+        ? JSON.stringify(paramsObj.messages)
+        : null);
     const model = this.getModel(modelKey);
-    const modelWithProvider = provider && this.models.get(modelKey)?.find((m) => m.provider === provider);
+    const modelWithProvider =
+      provider && this.models.get(modelKey)?.find((m) => m.provider === provider);
     const handler = modelWithProvider ? modelWithProvider.handler : model;
     if (!handler) {
       const errorMsg = `No handler found for delegate type: ${modelKey}`;
@@ -2176,7 +2258,11 @@ export class AgentRuntime implements IAgentRuntime {
       // to allow users to intentionally set an empty identifier if needed.
       if (isPlainObject(modelParams)) {
         if (modelParams.user === undefined && this.character?.name) {
-          if (typeof modelParams === 'object' && modelParams !== null && !Array.isArray(modelParams)) {
+          if (
+            typeof modelParams === 'object' &&
+            modelParams !== null &&
+            !Array.isArray(modelParams)
+          ) {
             (modelParams as Record<string, unknown>).user = this.character.name;
           }
         }
@@ -2196,7 +2282,8 @@ export class AgentRuntime implements IAgentRuntime {
     const explicitStream = isPlainObject(modelParams) ? (modelParams as any).stream : undefined;
 
     // stream: false = force no stream, otherwise stream if any callback exists
-    const shouldStream = explicitStream === false ? false : !!(paramsChunk || ctxChunk || explicitStream);
+    const shouldStream =
+      explicitStream === false ? false : !!(paramsChunk || ctxChunk || explicitStream);
 
     if (isPlainObject(modelParams)) {
       (modelParams as any).stream = shouldStream;
@@ -2206,13 +2293,23 @@ export class AgentRuntime implements IAgentRuntime {
     const response = await handler(this as IAgentRuntime, modelParams as Record<string, unknown>);
 
     // Stream: broadcast to callbacks if streaming
-    if (shouldStream && (paramsChunk || ctxChunk) && response && typeof response === 'object' && 'textStream' in response) {
+    if (
+      shouldStream &&
+      (paramsChunk || ctxChunk) &&
+      response &&
+      typeof response === 'object' &&
+      'textStream' in response
+    ) {
       let fullText = '';
       for await (const chunk of (response as TextStreamResult).textStream) {
         if (abortSignal?.aborted) break;
         fullText += chunk;
-        try { if (paramsChunk) await paramsChunk(chunk, msgId); } catch {}
-        try { if (ctxChunk) await ctxChunk(chunk, msgId); } catch {}
+        try {
+          if (paramsChunk) await paramsChunk(chunk, msgId);
+        } catch {}
+        try {
+          if (ctxChunk) await ctxChunk(chunk, msgId);
+        } catch {}
       }
 
       // Signal stream end to allow context to reset state between useModel calls
@@ -2225,7 +2322,13 @@ export class AgentRuntime implements IAgentRuntime {
           ? performance.now()
           : Date.now()) - startTime;
       this.logger.trace(
-        { src: 'agent', agentId: this.agentId, model: modelKey, duration: Number(elapsedTime.toFixed(2)), streaming: true },
+        {
+          src: 'agent',
+          agentId: this.agentId,
+          model: modelKey,
+          duration: Number(elapsedTime.toFixed(2)),
+          streaming: true,
+        },
         'Model output (stream with callback complete)'
       );
 
@@ -2279,9 +2382,9 @@ export class AgentRuntime implements IAgentRuntime {
         provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
         actionContext: this.currentActionContext
           ? {
-            actionName: this.currentActionContext.actionName,
-            actionId: this.currentActionContext.actionId,
-          }
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
           : undefined,
         response:
           Array.isArray(response) && response.every((x) => typeof x === 'number')
@@ -2364,7 +2467,10 @@ export class AgentRuntime implements IAgentRuntime {
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
   registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
-  registerEvent(event: string, handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)): void {
+  registerEvent(
+    event: string,
+    handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)
+  ): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
@@ -2391,7 +2497,9 @@ export class AgentRuntime implements IAgentRuntime {
           source: (paramsObj.source as string) || 'runtime',
         } as EventPayload;
       }
-      await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime as unknown as EventPayload)));
+      await Promise.all(
+        eventHandlers.map((handler) => handler(paramsWithRuntime as unknown as EventPayload))
+      );
     }
   }
 
@@ -2410,7 +2518,10 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     await this.adapter.ensureEmbeddingDimension(embedding.length);
-    this.logger.debug({ src: 'agent', agentId: this.agentId, dimension: embedding.length }, 'Embedding dimension set');
+    this.logger.debug(
+      { src: 'agent', agentId: this.agentId, dimension: embedding.length },
+      'Embedding dimension set'
+    );
   }
 
   registerTaskWorker(taskHandler: TaskWorker): void {
@@ -2472,13 +2583,13 @@ export class AgentRuntime implements IAgentRuntime {
       // Deep merge secrets to preserve runtime-generated secrets
       const mergedSecrets =
         typeof existingAgent.settings?.secrets === 'object' ||
-          typeof agent.settings?.secrets === 'object'
+        typeof agent.settings?.secrets === 'object'
           ? {
-            ...(typeof existingAgent.settings?.secrets === 'object'
-              ? existingAgent.settings.secrets
-              : {}),
-            ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
-          }
+              ...(typeof existingAgent.settings?.secrets === 'object'
+                ? existingAgent.settings.secrets
+                : {}),
+              ...(typeof agent.settings?.secrets === 'object' ? agent.settings.secrets : {}),
+            }
           : undefined;
 
       if (mergedSecrets) {

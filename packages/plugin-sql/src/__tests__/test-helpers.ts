@@ -155,7 +155,8 @@ export async function createIsolatedTestDatabase(
     await db.execute(sql.raw(`DROP TABLE IF EXISTS _migrations CASCADE`));
 
     // Drop ALL tables in public schema for clean slate
-    await db.execute(sql.raw(`
+    await db.execute(
+      sql.raw(`
       DO $$ DECLARE
         r RECORD;
       BEGIN
@@ -163,7 +164,8 @@ export async function createIsolatedTestDatabase(
           EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;
       END $$;
-    `));
+    `)
+    );
 
     const runtime = new AgentRuntime({
       character: { ...mockCharacter, id: undefined },
@@ -276,7 +278,8 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
     // Drop ALL tables in public schema for clean slate
     // This ensures each test starts fresh without leftover state from previous tests
     // WARNING: This is destructive - only use for testing!
-    await db.execute(sql.raw(`
+    await db.execute(
+      sql.raw(`
       DO $$ DECLARE
         r RECORD;
       BEGIN
@@ -284,7 +287,8 @@ export async function createIsolatedTestDatabaseForMigration(testName: string): 
           EXECUTE 'DROP TABLE IF EXISTS public.' || quote_ident(r.tablename) || ' CASCADE';
         END LOOP;
       END $$;
-    `));
+    `)
+    );
 
     // Ensure grants for eliza_test user (PostgreSQL 15+ requires explicit grants on public schema)
     // These must be set at the start of each test to ensure eliza_test can create tables

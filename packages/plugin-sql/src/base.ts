@@ -280,12 +280,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           embeddings: typeof embeddingTable.$inferSelect;
         }
         const joinedResult = existingMemory[0] as JoinedMemoryResult;
-        Object.entries(DIMENSION_MAP).find(
-          ([_, colName]) => {
-            const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
-            return joinedResult.embeddings[embeddingCol] !== null;
-          }
-        );
+        Object.entries(DIMENSION_MAP).find(([_, colName]) => {
+          const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
+          return joinedResult.embeddings[embeddingCol] !== null;
+        });
         // We don't actually need to use usedDimension for now, but it's good to know it's there.
       }
 
@@ -460,7 +458,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns The merged settings object
    * @private
    */
-  private async mergeAgentSettings<T extends Record<string, unknown>>(tx: DrizzleDatabase, agentId: UUID, updatedSettings: T): Promise<T> {
+  private async mergeAgentSettings<T extends Record<string, unknown>>(
+    tx: DrizzleDatabase,
+    agentId: UUID,
+    updatedSettings: T
+  ): Promise<T> {
     // First get the current agent data
     const currentAgent = await tx
       .select({ settings: agentTable.settings })
@@ -471,7 +473,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const currentSettings =
       currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
 
-    const deepMerge = (target: Record<string, unknown> | unknown, source: Record<string, unknown>): Record<string, unknown> | undefined => {
+    const deepMerge = (
+      target: Record<string, unknown> | unknown,
+      source: Record<string, unknown>
+    ): Record<string, unknown> | undefined => {
       // If source is explicitly null, it means the intention is to set this entire branch to null (or delete if top-level handled by caller).
       // For recursive calls, if a sub-object in source is null, it effectively means "remove this sub-object from target".
       // However, our primary deletion signal is a *property value* being null within an object.
@@ -2773,7 +2778,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           relationship.created_at || relationship.createdAt
             ? (relationship.created_at || relationship.createdAt) instanceof Date
               ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-              : new Date(relationship.created_at as string || relationship.createdAt as string).toISOString()
+              : new Date(
+                  (relationship.created_at as string) || (relationship.createdAt as string)
+                ).toISOString()
             : new Date().toISOString(),
       }));
     });

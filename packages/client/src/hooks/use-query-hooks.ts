@@ -712,7 +712,9 @@ export function useAgentMemories(
         result,
         dataLength: result.memories?.length,
         firstMemory: result.memories?.[0],
-        hasEmbeddings: (result.memories || []).some((m: { embedding?: number[] }) => (m.embedding?.length ?? 0) > 0),
+        hasEmbeddings: (result.memories || []).some(
+          (m: { embedding?: number[] }) => (m.embedding?.length ?? 0) > 0
+        ),
       });
       // Map the API memories to client format
       const memories = result.memories || [];
@@ -795,7 +797,11 @@ export function useUpdateMemory() {
       memoryId: UUID;
       memoryData: Partial<Memory>;
     }) => {
-      const result = await getClient().memory.updateMemory(agentId, memoryId, memoryData as Record<string, unknown>);
+      const result = await getClient().memory.updateMemory(
+        agentId,
+        memoryId,
+        memoryData as Record<string, unknown>
+      );
       return { agentId, memoryId, result };
     },
 

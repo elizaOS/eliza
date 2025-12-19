@@ -235,7 +235,10 @@ export async function executeMatrixRuns(
     const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'];
     const scenarioPlugins = Array.isArray(baseScenario.plugins)
       ? baseScenario.plugins
-          .filter((p: string | { name: string; enabled?: boolean }) => typeof p === 'string' || p.enabled !== false)
+          .filter(
+            (p: string | { name: string; enabled?: boolean }) =>
+              typeof p === 'string' || p.enabled !== false
+          )
           .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name))
       : [];
     const finalPlugins = Array.from(
@@ -321,8 +324,7 @@ export async function executeMatrixRuns(
             if (activeRun) {
               try {
                 await activeRun.context.cleanup();
-              } catch (cleanupError) {
-              }
+              } catch (cleanupError) {}
               activeRuns.delete(runId);
 
               // Force garbage collection if available
@@ -332,7 +334,6 @@ export async function executeMatrixRuns(
             }
           })
           .catch(async (error) => {
-
             // Capture actual resource usage even for failed runs
             let resourceMetrics = {
               memoryUsage: 0,
@@ -354,7 +355,15 @@ export async function executeMatrixRuns(
               }
             } catch (metricsError) {
               // Metrics collection failed - use default values, don't fail the run
-              logger.debug({ src: 'cli', command: 'scenario:matrix', error: metricsError instanceof Error ? metricsError.message : String(metricsError) }, 'Failed to collect resource metrics for failed run');
+              logger.debug(
+                {
+                  src: 'cli',
+                  command: 'scenario:matrix',
+                  error:
+                    metricsError instanceof Error ? metricsError.message : String(metricsError),
+                },
+                'Failed to collect resource metrics for failed run'
+              );
             }
 
             // Handle run failure
@@ -380,7 +389,15 @@ export async function executeMatrixRuns(
                 await activeRun.context.cleanup();
               } catch (cleanupError) {
                 // Cleanup failed - log but don't fail the run
-                logger.debug({ src: 'cli', command: 'scenario:matrix', error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }, 'Failed to cleanup context for failed run');
+                logger.debug(
+                  {
+                    src: 'cli',
+                    command: 'scenario:matrix',
+                    error:
+                      cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+                  },
+                  'Failed to cleanup context for failed run'
+                );
               }
               activeRuns.delete(runId);
 
@@ -432,8 +449,7 @@ export async function executeMatrixRuns(
       try {
         const { shutdownScenarioServer } = await import('./runtime-factory');
         await shutdownScenarioServer(sharedServer.server, sharedServer.port);
-      } catch (error) {
-      }
+      } catch (error) {}
     }
 
     // Cleanup
@@ -448,8 +464,7 @@ export async function executeMatrixRuns(
     for (const activeRun of activeRuns.values()) {
       try {
         await activeRun.context.cleanup();
-      } catch (error) {
-      }
+      } catch (error) {}
     }
   }
 }
@@ -640,11 +655,8 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const {
-        createScenarioServerAndAgent,
-        createScenarioAgent,
-        shutdownScenarioServer,
-      } = await import('./runtime-factory');
+      const { createScenarioServerAndAgent, createScenarioAgent, shutdownScenarioServer } =
+        await import('./runtime-factory');
 
       // Override environment variables for isolation
       const originalEnv = process.env;
@@ -841,7 +853,6 @@ async function waitForAvailableSlot(
   maxParallel: number
 ): Promise<void> {
   while (activeRuns.size >= maxParallel) {
-
     // Wait for at least one run to complete
     const promises = Array.from(activeRuns.values()).map((run) => run.promise);
     if (promises.length === 0) {

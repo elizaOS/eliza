@@ -17,7 +17,7 @@ const pathJoin = (...parts: string[]) => {
     .join('/')
     .replace(/\/+/g, '/')
     .replace(/\/$/, '');
-}
+};
 
 /**
  * Interface for ElizaOS paths configuration

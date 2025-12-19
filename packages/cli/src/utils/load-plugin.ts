@@ -302,7 +302,9 @@ function getStrategiesForPlugin(repository: string): ImportStrategy[] {
  * @param repository - The plugin repository/package name to load.
  * @returns The loaded plugin module or null if loading fails after all attempts.
  */
-export async function loadPluginModule(repository: string): Promise<Record<string, unknown> | null> {
+export async function loadPluginModule(
+  repository: string
+): Promise<Record<string, unknown> | null> {
   const isElizaOS = isElizaOSPackageName(repository);
   const strategies = getStrategiesForPlugin(repository);
 

@@ -3,7 +3,12 @@ import * as yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
 import { logger as elizaLogger } from '@elizaos/core';
-import { ScenarioSchema, Scenario, Evaluation, EnhancedEvaluationResult } from '../scenario/src/schema';
+import {
+  ScenarioSchema,
+  Scenario,
+  Evaluation,
+  EnhancedEvaluationResult,
+} from '../scenario/src/schema';
 import { LocalEnvironmentProvider } from '../scenario/src/LocalEnvironmentProvider';
 import { EnvironmentProvider, ExecutionResult } from '../scenario/src/providers';
 import {
@@ -35,7 +40,10 @@ async function runEvaluationsWithFallback(
   try {
     // Attempt enhanced evaluations (default behavior)
     logger.debug('[Evaluation] Using enhanced evaluations with structured output');
-    const enhancedResults = await evaluationEngine.runEnhancedEvaluations(evaluations as Evaluation[], result);
+    const enhancedResults = await evaluationEngine.runEnhancedEvaluations(
+      evaluations as Evaluation[],
+      result
+    );
 
     // Validate that we got proper structured results
     if (Array.isArray(enhancedResults) && enhancedResults.length > 0) {
@@ -174,10 +182,15 @@ export const scenario = new Command()
             process.env.PGLITE_DATA_DIR = uniqueDir;
           }
           // Extract plugin names from scenario configuration, filtering by enabled status
-          const scenarioWithPlugins = scenario as Scenario & { plugins?: Array<string | { name: string; enabled?: boolean }> };
+          const scenarioWithPlugins = scenario as Scenario & {
+            plugins?: Array<string | { name: string; enabled?: boolean }>;
+          };
           const scenarioPlugins = Array.isArray(scenarioWithPlugins.plugins)
             ? scenarioWithPlugins.plugins
-                .filter((p: string | { name: string; enabled?: boolean }) => typeof p === 'string' || p.enabled !== false) // Only include enabled plugins (default to true if not specified)
+                .filter(
+                  (p: string | { name: string; enabled?: boolean }) =>
+                    typeof p === 'string' || p.enabled !== false
+                ) // Only include enabled plugins (default to true if not specified)
                 .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name)) // Extract name if it's an object
             : [];
           const finalPlugins = Array.from(new Set([...scenarioPlugins, ...defaultPlugins]));
@@ -249,7 +262,11 @@ export const scenario = new Command()
           });
 
           // Run evaluations for each step
-          const allEvaluationResults: Array<{ success: boolean; message: string; [key: string]: unknown }> = [];
+          const allEvaluationResults: Array<{
+            success: boolean;
+            message: string;
+            [key: string]: unknown;
+          }> = [];
 
           if (runtime) {
             // Full evaluation engine with runtime for complex evaluators
@@ -282,10 +299,18 @@ export const scenario = new Command()
               const result = results[i];
 
               if (step.evaluations && step.evaluations.length > 0) {
-                const stepEvaluationResults: Array<{ success: boolean; message: string; [key: string]: unknown }> = [];
+                const stepEvaluationResults: Array<{
+                  success: boolean;
+                  message: string;
+                  [key: string]: unknown;
+                }> = [];
 
                 for (const evaluation of step.evaluations) {
-                  let evaluationResult: { success: boolean; message: string; [key: string]: unknown };
+                  let evaluationResult: {
+                    success: boolean;
+                    message: string;
+                    [key: string]: unknown;
+                  };
 
                   // Handle basic evaluators that don't need runtime
                   if (evaluation.type === 'string_contains') {
@@ -362,31 +387,40 @@ export const scenario = new Command()
               };
 
               // Convert legacy evaluation results to enhanced format for data aggregator
-              const enhancedEvaluationResults: EnhancedEvaluationResult[] = allEvaluationResults.map((result): EnhancedEvaluationResult => {
-                // If the result has _enhanced field, use that (enhanced format)
-                if (result._enhanced) {
-                  return result._enhanced as EnhancedEvaluationResult;
-                }
-                // If the result already has the enhanced format structure, use it directly
-                if (result.evaluator_type && result.summary && result.details && typeof result.evaluator_type === 'string' && typeof result.summary === 'string' && typeof result.details === 'object' && result.details !== null) {
+              const enhancedEvaluationResults: EnhancedEvaluationResult[] =
+                allEvaluationResults.map((result): EnhancedEvaluationResult => {
+                  // If the result has _enhanced field, use that (enhanced format)
+                  if (result._enhanced) {
+                    return result._enhanced as EnhancedEvaluationResult;
+                  }
+                  // If the result already has the enhanced format structure, use it directly
+                  if (
+                    result.evaluator_type &&
+                    result.summary &&
+                    result.details &&
+                    typeof result.evaluator_type === 'string' &&
+                    typeof result.summary === 'string' &&
+                    typeof result.details === 'object' &&
+                    result.details !== null
+                  ) {
+                    return {
+                      evaluator_type: result.evaluator_type,
+                      success: result.success || false,
+                      summary: result.summary,
+                      details: result.details as Record<string, unknown>,
+                    };
+                  }
+                  // Otherwise, create a basic enhanced format from legacy
                   return {
-                    evaluator_type: result.evaluator_type,
+                    evaluator_type: 'legacy',
                     success: result.success || false,
-                    summary: result.summary,
-                    details: result.details as Record<string, unknown>,
+                    summary: result.message || 'Legacy evaluation result',
+                    details: {
+                      legacy_result: result,
+                      converted: true,
+                    },
                   };
-                }
-                // Otherwise, create a basic enhanced format from legacy
-                return {
-                  evaluator_type: 'legacy',
-                  success: result.success || false,
-                  summary: result.message || 'Legacy evaluation result',
-                  details: {
-                    legacy_result: result,
-                    converted: true,
-                  },
-                };
-              });
+                });
 
               const scenarioRunResult = await dataAggregator.buildResult(
                 roomId,
@@ -493,10 +527,8 @@ export const scenario = new Command()
             calculateExecutionStats,
             formatDuration,
           } = await import('./src/matrix-runner');
-          const {
-            validateMatrixParameterPaths,
-            combinationToOverrides,
-          } = await import('./src/parameter-override');
+          const { validateMatrixParameterPaths, combinationToOverrides } =
+            await import('./src/parameter-override');
 
           const logger = elizaLogger || console;
           logger.info(`🧪 Starting matrix analysis with config: ${configPath}`);
@@ -550,9 +582,12 @@ export const scenario = new Command()
 
             try {
               const loadedConfig = yaml.load(fileContents);
-              rawMatrixConfig = typeof loadedConfig === 'object' && loadedConfig !== null && !Array.isArray(loadedConfig)
-                ? loadedConfig as Record<string, unknown>
-                : {};
+              rawMatrixConfig =
+                typeof loadedConfig === 'object' &&
+                loadedConfig !== null &&
+                !Array.isArray(loadedConfig)
+                  ? (loadedConfig as Record<string, unknown>)
+                  : {};
             } catch (yamlError) {
               logger.error(`❌ Error: Failed to parse YAML configuration file:`);
               logger.error(yamlError instanceof Error ? yamlError.message : String(yamlError));
@@ -561,7 +596,11 @@ export const scenario = new Command()
             }
 
             // Step 2: Resolve base scenario path relative to matrix config directory
-            if (rawMatrixConfig.base_scenario && typeof rawMatrixConfig.base_scenario === 'string' && !path.isAbsolute(rawMatrixConfig.base_scenario)) {
+            if (
+              rawMatrixConfig.base_scenario &&
+              typeof rawMatrixConfig.base_scenario === 'string' &&
+              !path.isAbsolute(rawMatrixConfig.base_scenario)
+            ) {
               rawMatrixConfig.base_scenario = path.resolve(
                 configDir,
                 rawMatrixConfig.base_scenario
@@ -577,7 +616,10 @@ export const scenario = new Command()
               const errors = validationResult.error.format();
 
               // Display user-friendly error messages
-              const formatErrors = (obj: Record<string, unknown> & { _errors?: string[] }, errorPath: string = ''): void => {
+              const formatErrors = (
+                obj: Record<string, unknown> & { _errors?: string[] },
+                errorPath: string = ''
+              ): void => {
                 if (obj._errors && obj._errors.length > 0) {
                   obj._errors.forEach((error: string) => {
                     logger.error(`   ${errorPath}: ${error}`);
@@ -587,7 +629,10 @@ export const scenario = new Command()
                 Object.keys(obj).forEach((key) => {
                   if (key !== '_errors' && typeof obj[key] === 'object' && obj[key] !== null) {
                     const newPath = errorPath ? `${errorPath}.${key}` : key;
-                    formatErrors(obj[key] as Record<string, unknown> & { _errors?: string[] }, newPath);
+                    formatErrors(
+                      obj[key] as Record<string, unknown> & { _errors?: string[] },
+                      newPath
+                    );
                   }
                 });
               };
@@ -640,9 +685,12 @@ export const scenario = new Command()
             try {
               const baseScenarioContents = fs.readFileSync(baseScenarioPath, 'utf8');
               const loadedScenario = yaml.load(baseScenarioContents);
-              baseScenario = typeof loadedScenario === 'object' && loadedScenario !== null && !Array.isArray(loadedScenario)
-                ? loadedScenario as Scenario
-                : ({} as Scenario);
+              baseScenario =
+                typeof loadedScenario === 'object' &&
+                loadedScenario !== null &&
+                !Array.isArray(loadedScenario)
+                  ? (loadedScenario as Scenario)
+                  : ({} as Scenario);
 
               // Validate base scenario structure
               const baseValidationResult = ScenarioSchema.safeParse(baseScenario);

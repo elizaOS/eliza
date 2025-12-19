@@ -72,7 +72,8 @@ export function useDeleteAgent(targetAgentData: Agent) {
         clearTimeout(navigationTimer);
       }
 
-      const errorMessage = deleteError instanceof Error ? deleteError.message : 'Failed to delete agent';
+      const errorMessage =
+        deleteError instanceof Error ? deleteError.message : 'Failed to delete agent';
       interface ErrorWithStatus {
         statusCode?: number;
         response?: {
@@ -80,7 +81,8 @@ export function useDeleteAgent(targetAgentData: Agent) {
         };
       }
 
-      const errorObj = deleteError && typeof deleteError === 'object' ? (deleteError as ErrorWithStatus) : null;
+      const errorObj =
+        deleteError && typeof deleteError === 'object' ? (deleteError as ErrorWithStatus) : null;
       const statusCode = errorObj?.statusCode || errorObj?.response?.status;
 
       if (

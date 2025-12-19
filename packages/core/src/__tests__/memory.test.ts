@@ -331,7 +331,6 @@ describe('Memory Utilities', () => {
       expect(getMemoryText(memory, 'No text available')).toBe('No text available');
     });
 
-
     it('should handle undefined text in content', () => {
       const memory: Memory = {
         id: mockEntityId,
@@ -351,4 +350,3 @@ describe('Memory Utilities', () => {
     });
   });
 });
-

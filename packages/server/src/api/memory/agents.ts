@@ -53,9 +53,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
 
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
@@ -132,9 +132,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       const cleanMemories = includeEmbedding
         ? memories
         : memories.map((memory) => ({
-          ...memory,
-          embedding: undefined,
-        }));
+            ...memory,
+            embedding: undefined,
+          }));
       sendSuccess(res, { memories: cleanMemories });
     } catch (error) {
       logger.error(

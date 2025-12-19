@@ -314,13 +314,17 @@ export function getIsolatedTempDir(prefix: string = 'eliza-matrix'): string {
  * @param baseScenario - The scenario that will be executed
  * @returns Estimated disk space in bytes
  */
-export function estimateRunDiskSpace(baseScenario: { run?: Array<{ evaluations?: unknown[] }> }): number {
+export function estimateRunDiskSpace(baseScenario: {
+  run?: Array<{ evaluations?: unknown[] }>;
+}): number {
   // Basic estimation based on scenario complexity
   const baseSize = 50 * 1024 * 1024; // 50 MB base
   const runCount = baseScenario.run?.length || 1;
   const evaluationCount =
-    baseScenario.run?.reduce((sum: number, run: { evaluations?: unknown[] }) => sum + (run.evaluations?.length || 0), 0) ||
-    0;
+    baseScenario.run?.reduce(
+      (sum: number, run: { evaluations?: unknown[] }) => sum + (run.evaluations?.length || 0),
+      0
+    ) || 0;
 
   // Estimate additional space based on complexity
   const complexityMultiplier = 1 + runCount * 0.1 + evaluationCount * 0.05;

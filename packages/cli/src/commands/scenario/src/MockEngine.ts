@@ -258,7 +258,10 @@ export class MockEngine {
   /**
    * Match input parameters
    */
-  private matchesInput(input: Record<string, unknown>, expectedInput: Record<string, unknown>): boolean {
+  private matchesInput(
+    input: Record<string, unknown>,
+    expectedInput: Record<string, unknown>
+  ): boolean {
     for (const [key, value] of Object.entries(expectedInput)) {
       if (!_.isEqual(input[key], value)) {
         return false;

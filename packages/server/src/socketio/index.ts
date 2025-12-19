@@ -243,7 +243,11 @@ export class SocketIORouter {
       }
     } catch (error: unknown) {
       logger.error(
-        { src: 'ws', socketId: socket.id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'ws',
+          socketId: socket.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error processing message'
       );
     }
@@ -301,7 +305,10 @@ export class SocketIORouter {
 
       return isParticipant;
     } catch (error: unknown) {
-      logger.error('[SocketIO Security] Error verifying channel access:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[SocketIO Security] Error verifying channel access:',
+        error instanceof Error ? error.message : String(error)
+      );
       return false; // Fail closed - deny on error
     }
   }
@@ -373,7 +380,7 @@ export class SocketIORouter {
           roomId: channelId as UUID,
           metadata: {
             originalId: entityId as string,
-            username: username || entityId as string,
+            username: username || (entityId as string),
             displayName,
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
             isDm,
@@ -442,7 +449,7 @@ export class SocketIORouter {
             roomId: validChannelId,
             metadata: {
               originalId: senderId as string,
-              username: senderName || senderId as string,
+              username: senderName || (senderId as string),
               displayName: senderName,
               type: ChannelType.DM,
               isDm: true,
@@ -523,7 +530,8 @@ export class SocketIORouter {
             'Auto-created channel'
           );
         } catch (createError: unknown) {
-          const errorMessage = createError instanceof Error ? createError.message : String(createError);
+          const errorMessage =
+            createError instanceof Error ? createError.message : String(createError);
           logger.error(
             { src: 'ws', socketId: socket.id, channelId, error: errorMessage },
             'Failed to auto-create channel'
@@ -644,7 +652,9 @@ export class SocketIORouter {
   }
 
   public broadcastLog(io: SocketIOServer, logEntry: LogEntry) {
-    if (this.logStreamConnections.size === 0) {return;}
+    if (this.logStreamConnections.size === 0) {
+      return;
+    }
     const logData = { type: 'log_entry', payload: logEntry };
     this.logStreamConnections.forEach((filters, socketId) => {
       const socket = io.sockets.sockets.get(socketId);

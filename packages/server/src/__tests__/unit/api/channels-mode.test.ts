@@ -442,9 +442,7 @@ describe('Channels API - Response Mode Parameter', () => {
     });
 
     it('should handle rejected promises in stream mode', async () => {
-      mockHandleMessage.mockImplementation(() =>
-        Promise.reject(new Error('Network timeout'))
-      );
+      mockHandleMessage.mockImplementation(() => Promise.reject(new Error('Network timeout')));
 
       const res = await simulateRequest(
         app,

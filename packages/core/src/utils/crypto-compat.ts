@@ -38,11 +38,19 @@ function getCryptoModule(): {
     update: (data: string | Uint8Array) => ReturnType<typeof getCryptoModule>['createHash'];
     digest: () => Buffer;
   };
-  createCipheriv: (algorithm: string, key: Uint8Array, iv: Uint8Array) => {
+  createCipheriv: (
+    algorithm: string,
+    key: Uint8Array,
+    iv: Uint8Array
+  ) => {
     update: (data: Buffer, inputEncoding?: string, outputEncoding?: string) => Buffer | string;
     final: (encoding?: string) => Buffer | string;
   };
-  createDecipheriv: (algorithm: string, key: Uint8Array, iv: Uint8Array) => {
+  createDecipheriv: (
+    algorithm: string,
+    key: Uint8Array,
+    iv: Uint8Array
+  ) => {
     update: (data: Buffer, inputEncoding?: string, outputEncoding?: string) => Buffer | string;
     final: (encoding?: string) => Buffer | string;
   };
@@ -284,8 +292,14 @@ export function createCipheriv(
   const cipher = crypto.createCipheriv(algorithm, key, iv);
   return {
     update(data: string, inputEncoding: string, outputEncoding: string): string {
-      const result = cipher.update(Buffer.from(data, inputEncoding as BufferEncoding), undefined, outputEncoding as BufferEncoding);
-      return typeof result === 'string' ? result : result.toString(outputEncoding as BufferEncoding);
+      const result = cipher.update(
+        Buffer.from(data, inputEncoding as BufferEncoding),
+        undefined,
+        outputEncoding as BufferEncoding
+      );
+      return typeof result === 'string'
+        ? result
+        : result.toString(outputEncoding as BufferEncoding);
     },
     final(encoding: string): string {
       const result = cipher.final(encoding as BufferEncoding);
@@ -332,8 +346,14 @@ export function createDecipheriv(
   const decipher = crypto.createDecipheriv(algorithm, key, iv);
   return {
     update(data: string, inputEncoding: string, outputEncoding: string): string {
-      const result = decipher.update(Buffer.from(data, inputEncoding as BufferEncoding), undefined, outputEncoding as BufferEncoding);
-      return typeof result === 'string' ? result : result.toString(outputEncoding as BufferEncoding);
+      const result = decipher.update(
+        Buffer.from(data, inputEncoding as BufferEncoding),
+        undefined,
+        outputEncoding as BufferEncoding
+      );
+      return typeof result === 'string'
+        ? result
+        : result.toString(outputEncoding as BufferEncoding);
     },
     final(encoding: string): string {
       const result = decipher.final(encoding as BufferEncoding);
@@ -380,8 +400,16 @@ export async function encryptAsync(
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     const updateResult = cipher.update(dataBuffer);
     const finalResult = cipher.final();
-    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
-    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    const updateBuf = Buffer.isBuffer(updateResult)
+      ? updateResult
+      : typeof updateResult === 'string'
+        ? Buffer.from(updateResult, 'utf8')
+        : Buffer.from(updateResult as unknown as number[] | Uint8Array);
+    const finalBuf = Buffer.isBuffer(finalResult)
+      ? finalResult
+      : typeof finalResult === 'string'
+        ? Buffer.from(finalResult, 'utf8')
+        : Buffer.from(finalResult as unknown as number[] | Uint8Array);
     const encrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(encrypted);
   }
@@ -428,8 +456,16 @@ export async function decryptAsync(
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     const updateResult = decipher.update(dataBuffer);
     const finalResult = decipher.final();
-    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
-    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    const updateBuf = Buffer.isBuffer(updateResult)
+      ? updateResult
+      : typeof updateResult === 'string'
+        ? Buffer.from(updateResult, 'utf8')
+        : Buffer.from(updateResult as unknown as number[] | Uint8Array);
+    const finalBuf = Buffer.isBuffer(finalResult)
+      ? finalResult
+      : typeof finalResult === 'string'
+        ? Buffer.from(finalResult, 'utf8')
+        : Buffer.from(finalResult as unknown as number[] | Uint8Array);
     const decrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(decrypted);
   }

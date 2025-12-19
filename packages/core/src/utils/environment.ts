@@ -62,11 +62,7 @@ class BrowserEnvironmentStore {
 
     // Load from window.ENV if available (common pattern for browser apps)
     const windowWithEnv = globalThis as GlobalWithWindowEnv;
-    if (
-      typeof globalThis !== 'undefined' &&
-      windowWithEnv.window &&
-      windowWithEnv.window.ENV
-    ) {
+    if (typeof globalThis !== 'undefined' && windowWithEnv.window && windowWithEnv.window.ENV) {
       this.store = { ...windowWithEnv.window.ENV };
     }
 

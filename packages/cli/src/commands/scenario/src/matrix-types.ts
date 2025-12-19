@@ -15,7 +15,10 @@ export interface MatrixCombination {
   id: string;
 
   /** The set of parameter overrides to apply, mapping parameter paths to values */
-  parameters: Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>;
+  parameters: Record<
+    string,
+    string | number | boolean | null | Record<string, unknown> | unknown[]
+  >;
 
   /** Metadata about this combination's position in the matrix */
   metadata: {

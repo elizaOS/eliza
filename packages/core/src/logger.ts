@@ -450,7 +450,48 @@ const adzeStore = setup({
   format: raw ? 'json' : 'pretty',
   timestampFormatter: showTimestamps ? undefined : () => '',
   withEmoji: false,
-  levels: customLevelConfig as unknown as Record<string, { levelName: string; level: number; style: string; terminalStyle: Array<'bgRed' | 'white' | 'bold' | 'whiteBright' | 'bgYellow' | 'black' | 'cyan' | 'red' | 'underline' | 'green' | 'gray' | 'dim' | 'italic' | 'yellow' | 'blue' | 'magenta' | 'blackBright' | 'strikethrough'>; method: 'error' | 'debug' | 'log' | 'info' | 'warn' | 'clear' | 'dir' | 'dirxml' | 'group' | 'groupCollapsed' | 'groupEnd' | 'table'; emoji: string }>,
+  levels: customLevelConfig as unknown as Record<
+    string,
+    {
+      levelName: string;
+      level: number;
+      style: string;
+      terminalStyle: Array<
+        | 'bgRed'
+        | 'white'
+        | 'bold'
+        | 'whiteBright'
+        | 'bgYellow'
+        | 'black'
+        | 'cyan'
+        | 'red'
+        | 'underline'
+        | 'green'
+        | 'gray'
+        | 'dim'
+        | 'italic'
+        | 'yellow'
+        | 'blue'
+        | 'magenta'
+        | 'blackBright'
+        | 'strikethrough'
+      >;
+      method:
+        | 'error'
+        | 'debug'
+        | 'log'
+        | 'info'
+        | 'warn'
+        | 'clear'
+        | 'dir'
+        | 'dirxml'
+        | 'group'
+        | 'groupCollapsed'
+        | 'groupEnd'
+        | 'table';
+      emoji: string;
+    }
+  >,
 });
 
 // Mirror Adze output to in-memory storage
@@ -483,7 +524,9 @@ adzeStore.addListener('*', (log: { data?: { message?: string | unknown[]; level?
  */
 function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let chain: ReturnType<typeof adze.ns> | typeof adze = adze as ReturnType<typeof adze.ns> | typeof adze;
+  let chain: ReturnType<typeof adze.ns> | typeof adze = adze as
+    | ReturnType<typeof adze.ns>
+    | typeof adze;
 
   // Add namespaces if provided
   const namespaces: string[] = [];
@@ -519,20 +562,20 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     metaBase.serverId = serverId;
   }
 
-    // Add hostname (for JSON format or when explicitly needed)
-    if (raw && !metaBase.hostname) {
-      // Get hostname in a way that works in both Node and browser
-      let hostname = 'unknown';
-      if (typeof process !== 'undefined' && process.platform) {
-        // Node.js environment
-        const os = require('os');
-        hostname = os.hostname();
-      } else if (typeof window !== 'undefined' && window.location) {
-        // Browser environment
-        hostname = window.location.hostname || 'browser';
-      }
-      metaBase.hostname = hostname;
+  // Add hostname (for JSON format or when explicitly needed)
+  if (raw && !metaBase.hostname) {
+    // Get hostname in a way that works in both Node and browser
+    let hostname = 'unknown';
+    if (typeof process !== 'undefined' && process.platform) {
+      // Node.js environment
+      const os = require('os');
+      hostname = os.hostname();
+    } else if (typeof window !== 'undefined' && window.location) {
+      // Browser environment
+      hostname = window.location.hostname || 'browser';
     }
+    metaBase.hostname = hostname;
+  }
 
   // This ensures the sealed logger inherits the correct log level and styling
   const globalConfig = {
@@ -540,10 +583,22 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     format: raw ? 'json' : 'pretty',
     timestampFormatter: showTimestamps ? undefined : () => '',
     withEmoji: false,
-    levels: customLevelConfig as Record<string, { levelName: string; level: number; style: string; terminalStyle: string[]; method: keyof Console; emoji: string }>, // Use same reusable config
+    levels: customLevelConfig as Record<
+      string,
+      {
+        levelName: string;
+        level: number;
+        style: string;
+        terminalStyle: string[];
+        method: keyof Console;
+        emoji: string;
+      }
+    >, // Use same reusable config
   };
 
-  return chain.meta(metaBase).seal(globalConfig as unknown as Parameters<ReturnType<typeof chain.meta>['seal']>[0]);
+  return chain
+    .meta(metaBase)
+    .seal(globalConfig as unknown as Parameters<ReturnType<typeof chain.meta>['seal']>[0]);
 }
 
 /**

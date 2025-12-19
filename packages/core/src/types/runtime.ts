@@ -192,7 +192,10 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   getEvent<T extends keyof EventPayloadMap>(event: T): EventHandler<T>[] | undefined;
   getEvent(event: string): ((params: EventPayload) => Promise<void>)[] | undefined;
 
-  emitEvent<T extends keyof EventPayloadMap>(event: T | T[], params: EventPayloadMap[T]): Promise<void>;
+  emitEvent<T extends keyof EventPayloadMap>(
+    event: T | T[],
+    params: EventPayloadMap[T]
+  ): Promise<void>;
   emitEvent(event: string | string[], params: EventPayload): Promise<void>;
 
   // In-memory task definition methods

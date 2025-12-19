@@ -47,7 +47,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves when migrations are complete.
    */
   abstract runPluginMigrations(
-    plugins: Array<{ name: string; schema?: Record<string, string | number | boolean | null | Record<string, unknown>> }>,
+    plugins: Array<{
+      name: string;
+      schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
+    }>,
     options?: {
       verbose?: boolean;
       force?: boolean;

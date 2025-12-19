@@ -910,8 +910,12 @@ ANOTHER_KEY=another-value`;
         expect(character.settings!.ANOTHER_KEY).toBeUndefined();
 
         // Verify .env values are merged into settings.secrets
-        expect((character.settings!.secrets as Record<string, string>).SIMPLE_KEY).toBe('simple-value');
-        expect((character.settings!.secrets as Record<string, string>).ANOTHER_KEY).toBe('another-value');
+        expect((character.settings!.secrets as Record<string, string>).SIMPLE_KEY).toBe(
+          'simple-value'
+        );
+        expect((character.settings!.secrets as Record<string, string>).ANOTHER_KEY).toBe(
+          'another-value'
+        );
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });

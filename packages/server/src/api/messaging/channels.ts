@@ -12,7 +12,10 @@ import { transformMessageAttachments, validateServerIdForRls } from '../../utils
 import express from 'express';
 import internalMessageBus from '../../services/message-bus';
 import type { AgentServer } from '../../index';
-import type { MessageServiceStructure as MessageService, AttachmentInput } from '../../types/server';
+import type {
+  MessageServiceStructure as MessageService,
+  AttachmentInput,
+} from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
 import { handleResponseMode } from '../shared/response-handlers';
@@ -365,7 +368,8 @@ export function createChannelsRouter(
           }
           let rawMessage: ParsedRawMessage = {};
           try {
-            const parsed = typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
+            const parsed =
+              typeof msg.rawMessage === 'string' ? JSON.parse(msg.rawMessage) : msg.rawMessage;
             if (parsed && typeof parsed === 'object') {
               rawMessage = parsed as ParsedRawMessage;
             }
@@ -718,47 +722,44 @@ export function createChannelsRouter(
   );
 
   // GET /channels/:channelId/agents - List agents in channel
-  router.get(
-    '/channels/:channelId/agents',
-    async (req: express.Request, res: express.Response) => {
-      const channelId = validateUuid(req.params.channelId);
+  router.get('/channels/:channelId/agents', async (req: express.Request, res: express.Response) => {
+    const channelId = validateUuid(req.params.channelId);
 
-      if (!channelId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid channelId format',
-        });
-      }
-
-      try {
-        // Get all participants
-        const allParticipants = await serverInstance.getChannelParticipants(channelId);
-
-        // Filter for agents (this is a simplified approach - you might want to
-        // implement a more sophisticated way to distinguish agents from users)
-        // For now, we'll return all participants and let the client filter
-        // In a production system, you'd want to cross-reference with an agent registry
-
-        res.json({
-          success: true,
-          data: {
-            channelId,
-            participants: allParticipants, // All participants (agents and users)
-            // TODO: Add agent-specific filtering when agent registry is available
-          },
-        });
-      } catch (error) {
-        logger.error(
-          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
-          'Error fetching channel agents'
-        );
-        res.status(500).json({
-          success: false,
-          error: 'Failed to fetch channel agents',
-        });
-      }
+    if (!channelId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid channelId format',
+      });
     }
-  );
+
+    try {
+      // Get all participants
+      const allParticipants = await serverInstance.getChannelParticipants(channelId);
+
+      // Filter for agents (this is a simplified approach - you might want to
+      // implement a more sophisticated way to distinguish agents from users)
+      // For now, we'll return all participants and let the client filter
+      // In a production system, you'd want to cross-reference with an agent registry
+
+      res.json({
+        success: true,
+        data: {
+          channelId,
+          participants: allParticipants, // All participants (agents and users)
+          // TODO: Add agent-specific filtering when agent registry is available
+        },
+      });
+    } catch (error) {
+      logger.error(
+        { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+        'Error fetching channel agents'
+      );
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch channel agents',
+      });
+    }
+  });
 
   // Delete single message
   router.delete(
@@ -842,77 +843,71 @@ export function createChannelsRouter(
   );
 
   // Update channel
-  router.patch(
-    '/channels/:channelId',
-    async (req: express.Request, res: express.Response) => {
-      const channelId = validateUuid(req.params.channelId);
-      if (!channelId) {
-        return res.status(400).json({ success: false, error: 'Invalid channelId' });
-      }
-      const { name, participantCentralUserIds, metadata } = req.body;
-      try {
-        const updatedChannel = await serverInstance.updateChannel(channelId, {
-          name,
-          participantCentralUserIds,
-          metadata,
-        });
-        // Emit an event via SocketIO to inform clients about the channel update
-        if (serverInstance.socketIO) {
-          serverInstance.socketIO.to(channelId).emit('channelUpdated', {
-            channelId,
-            updates: updatedChannel,
-          });
-        }
-        res.json({ success: true, data: updatedChannel });
-      } catch (error) {
-        logger.error(
-          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
-          'Error updating channel'
-        );
-        res.status(500).json({ success: false, error: 'Failed to update channel' });
-      }
+  router.patch('/channels/:channelId', async (req: express.Request, res: express.Response) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
     }
-  );
+    const { name, participantCentralUserIds, metadata } = req.body;
+    try {
+      const updatedChannel = await serverInstance.updateChannel(channelId, {
+        name,
+        participantCentralUserIds,
+        metadata,
+      });
+      // Emit an event via SocketIO to inform clients about the channel update
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelUpdated', {
+          channelId,
+          updates: updatedChannel,
+        });
+      }
+      res.json({ success: true, data: updatedChannel });
+    } catch (error) {
+      logger.error(
+        { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+        'Error updating channel'
+      );
+      res.status(500).json({ success: false, error: 'Failed to update channel' });
+    }
+  });
 
   // Delete entire channel
-  router.delete(
-    '/channels/:channelId',
-    async (req: express.Request, res: express.Response) => {
-      const channelId = validateUuid(req.params.channelId);
-      if (!channelId) {
-        return res.status(400).json({ success: false, error: 'Invalid channelId' });
-      }
-      try {
-        // Get messages count before deletion for logging
-        const messages = await serverInstance.getMessagesForChannel(channelId);
-        const messageCount = messages.length;
-
-        // Delete the entire channel
-        await serverInstance.deleteChannel(channelId);
-
-        // Emit to internal bus for agent memory cleanup (same as clear messages)
-        const channelClearedPayload = {
-          channelId,
-        };
-        internalMessageBus.emit('channel_cleared', channelClearedPayload);
-        logger.info({ src: 'http', channelId, messageCount }, 'Channel deleted');
-
-        // Emit an event via SocketIO to inform clients about the channel deletion
-        if (serverInstance.socketIO) {
-          serverInstance.socketIO.to(channelId).emit('channelDeleted', {
-            channelId,
-          });
-        }
-        res.status(204).send();
-      } catch (error) {
-        logger.error(
-          { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
-          'Error deleting channel'
-        );
-        res.status(500).json({ success: false, error: 'Failed to delete channel' });
-      }
+  router.delete('/channels/:channelId', async (req: express.Request, res: express.Response) => {
+    const channelId = validateUuid(req.params.channelId);
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'Invalid channelId' });
     }
-  );
+    try {
+      // Get messages count before deletion for logging
+      const messages = await serverInstance.getMessagesForChannel(channelId);
+      const messageCount = messages.length;
+
+      // Delete the entire channel
+      await serverInstance.deleteChannel(channelId);
+
+      // Emit to internal bus for agent memory cleanup (same as clear messages)
+      const channelClearedPayload = {
+        channelId,
+      };
+      internalMessageBus.emit('channel_cleared', channelClearedPayload);
+      logger.info({ src: 'http', channelId, messageCount }, 'Channel deleted');
+
+      // Emit an event via SocketIO to inform clients about the channel deletion
+      if (serverInstance.socketIO) {
+        serverInstance.socketIO.to(channelId).emit('channelDeleted', {
+          channelId,
+        });
+      }
+      res.status(204).send();
+    } catch (error) {
+      logger.error(
+        { src: 'http', channelId, error: error instanceof Error ? error.message : String(error) },
+        'Error deleting channel'
+      );
+      res.status(500).json({ success: false, error: 'Failed to delete channel' });
+    }
+  });
 
   // Upload media to channel
   router.post(
@@ -1156,9 +1151,7 @@ Respond with just the title, nothing else.
   router.post(
     '/central-channels',
     async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-      logger.warn(
-        '[DEPRECATED] POST /central-channels is deprecated. Use POST /channels instead.'
-      );
+      logger.warn('[DEPRECATED] POST /central-channels is deprecated. Use POST /channels instead.');
 
       // Parameter mapping handled by middleware, just forward to new endpoint
       req.url = '/channels';

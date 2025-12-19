@@ -81,7 +81,9 @@ describe('XmlTagExtractor', () => {
 
     it('should ignore content outside target tag', () => {
       const extractor = new XmlTagExtractor('text');
-      const result = extractor.push('<response><other>ignored</other><text>extracted</text></response>');
+      const result = extractor.push(
+        '<response><other>ignored</other><text>extracted</text></response>'
+      );
       expect(result).toBe('extracted');
     });
   });
@@ -323,9 +325,7 @@ describe('ResponseStreamExtractor', () => {
     it('should handle newlines in text content', () => {
       const extractor = new ResponseStreamExtractor();
 
-      const result = extractor.push(
-        '<actions>REPLY</actions><text>Line 1\nLine 2\nLine 3</text>'
-      );
+      const result = extractor.push('<actions>REPLY</actions><text>Line 1\nLine 2\nLine 3</text>');
       expect(result).toBe('Line 1\nLine 2\nLine 3');
     });
 

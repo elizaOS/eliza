@@ -12,7 +12,11 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   private manager: PostgresConnectionManager;
 
-  constructor(agentId: UUID, manager: PostgresConnectionManager, _schema?: Record<string, unknown>) {
+  constructor(
+    agentId: UUID,
+    manager: PostgresConnectionManager,
+    _schema?: Record<string, unknown>
+  ) {
     super(agentId);
     this.manager = manager;
     this.db = manager.getDatabase();
@@ -168,7 +172,6 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   getMemoryById(memoryId: UUID): Promise<Memory | null> {
     return super.getMemoryById(memoryId);
   }
-
 
   updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
     return super.updateMemory(memory);

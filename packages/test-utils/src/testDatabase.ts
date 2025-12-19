@@ -911,7 +911,7 @@ export class TestDatabaseManager {
     activeDatabases: number;
     tempPaths: string[];
     memoryUsage: string;
-    } {
+  } {
     return {
       activeDatabases: this.testDatabases.size,
       tempPaths: Array.from(this.tempPaths),

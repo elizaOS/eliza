@@ -65,8 +65,12 @@ export async function convertToAudioBuffer(
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) {break;}
-        if (value) {chunks.push(value);}
+        if (done) {
+          break;
+        }
+        if (value) {
+          chunks.push(value);
+        }
       }
       resultBuffer = Buffer.concat(chunks);
     } finally {

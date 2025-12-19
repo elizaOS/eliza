@@ -150,7 +150,9 @@ export function createEnvironmentRouter(): express.Router {
       }
 
       const localEnvPath = getLocalEnvPath();
-      if (!localEnvPath) {throw new Error('Local .env file not found');}
+      if (!localEnvPath) {
+        throw new Error('Local .env file not found');
+      }
 
       const envString = serializeEnvObject(content);
       writeFileSync(localEnvPath, envString, 'utf-8');

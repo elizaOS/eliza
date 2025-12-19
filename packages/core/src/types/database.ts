@@ -90,7 +90,12 @@ export interface EmbeddingLogBody extends BaseLogBody {
 /**
  * Union type for all possible log body types
  */
-export type LogBody = BaseLogBody | ActionLogBody | EvaluatorLogBody | ModelLogBody | EmbeddingLogBody;
+export type LogBody =
+  | BaseLogBody
+  | ActionLogBody
+  | EvaluatorLogBody
+  | ModelLogBody
+  | EmbeddingLogBody;
 
 /**
  * Represents a log entry
@@ -162,7 +167,10 @@ export interface IDatabaseAdapter {
    * @param options Migration options (verbose, force, dryRun, etc.)
    */
   runPluginMigrations?(
-    plugins: Array<{ name: string; schema?: Record<string, string | number | boolean | null | Record<string, unknown>> }>,
+    plugins: Array<{
+      name: string;
+      schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
+    }>,
     options?: {
       verbose?: boolean;
       force?: boolean;

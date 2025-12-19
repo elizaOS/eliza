@@ -5,11 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { IDatabaseAdapter } from '@elizaos/core';
 import { DatabaseMigrationService } from '../../../migration-service';
 import { plugin as sqlPlugin } from '../../../index';
-import {
-  installRLSFunctions,
-  applyRLSToNewTables,
-  applyEntityRLSToAllTables,
-} from '../../../rls';
+import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from '../../../rls';
 
 /**
  * PostgreSQL RLS Entity Integration Tests
@@ -75,7 +71,11 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await cleanupClient.end();
     } catch (err) {
       console.log('[RLS Test] Superuser cleanup failed, continuing with eliza_test');
-      try { await cleanupClient.end(); } catch { /* ignore */ }
+      try {
+        await cleanupClient.end();
+      } catch {
+        /* ignore */
+      }
     }
 
     // Initialize schema with migrations
@@ -141,7 +141,10 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       );
       console.log('[RLS Test] Entities created:', result.rows.length);
     } catch (err) {
-      console.error('[RLS Test] Failed to create entities:', err instanceof Error ? err.message : String(err));
+      console.error(
+        '[RLS Test] Failed to create entities:',
+        err instanceof Error ? err.message : String(err)
+      );
       throw err;
     }
 
@@ -176,7 +179,10 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
         participantResult.rows.map((r) => ({ e: r.entity_id?.substring(0, 8) }))
       );
     } catch (err) {
-      console.error('[RLS Test] Failed to create participants:', err instanceof Error ? err.message : String(err));
+      console.error(
+        '[RLS Test] Failed to create participants:',
+        err instanceof Error ? err.message : String(err)
+      );
       console.log('UUIDs:', { aliceId, bobId, charlieId, room1Id, room2Id, agentId });
       throw err;
     }
@@ -220,9 +226,16 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       await setupClient.query('COMMIT');
 
       // Delete other data (non-STRICT tables)
-      await setupClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [room1Id, room2Id]);
+      await setupClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [
+        room1Id,
+        room2Id,
+      ]);
       await setupClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
-      await setupClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [aliceId, bobId, charlieId]);
+      await setupClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [
+        aliceId,
+        bobId,
+        charlieId,
+      ]);
       await setupClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
       await setupClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
     } catch (err) {

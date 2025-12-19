@@ -337,9 +337,9 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
       // Parse tags from comma-separated string
       const tags = relationship.tags
         ? relationship.tags
-          .split(',')
-          .map((tag: string) => tag.trim())
-          .filter(Boolean)
+            .split(',')
+            .map((tag: string) => tag.trim())
+            .filter(Boolean)
         : [];
 
       if (existingRelationship) {

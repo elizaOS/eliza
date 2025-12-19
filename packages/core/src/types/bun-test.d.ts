@@ -42,8 +42,5 @@ declare module 'bun:test' {
   export function spyOn<T extends object, K extends keyof T>(
     object: T,
     method: K
-  ): T[K] extends (...args: never[]) => unknown
-    ? MockFunction<T[K]>
-    : never;
+  ): T[K] extends (...args: never[]) => unknown ? MockFunction<T[K]> : never;
 }
-

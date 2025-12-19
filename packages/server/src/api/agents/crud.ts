@@ -1,10 +1,5 @@
 import type { Agent, Character, ElizaOS } from '@elizaos/core';
-import {
-  validateUuid,
-  logger,
-  getSalt,
-  encryptObjectValues,
-} from '@elizaos/core';
+import { validateUuid, logger, getSalt, encryptObjectValues } from '@elizaos/core';
 import express from 'express';
 import type { AgentServer } from '../../index';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -127,10 +122,9 @@ export function createAgentCrudRouter(
       }
       // Also encrypt character.secrets (root level) if it exists
       if (character.secrets && typeof character.secrets === 'object') {
-        character.secrets = encryptObjectValues(
-          character.secrets as Record<string, any>,
-          salt
-        ) as { [key: string]: string | number | boolean };
+        character.secrets = encryptObjectValues(character.secrets as Record<string, any>, salt) as {
+          [key: string]: string | number | boolean;
+        };
       }
 
       const ensureAgentExists = async (character: Character) => {
@@ -203,10 +197,9 @@ export function createAgentCrudRouter(
         );
       }
       if (updates.secrets && typeof updates.secrets === 'object') {
-        updates.secrets = encryptObjectValues(
-          updates.secrets as Record<string, any>,
-          salt
-        ) as { [key: string]: string | number | boolean };
+        updates.secrets = encryptObjectValues(updates.secrets as Record<string, any>, salt) as {
+          [key: string]: string | number | boolean;
+        };
       }
 
       if (Object.keys(updates).length > 0) {
@@ -253,7 +246,13 @@ export function createAgentCrudRouter(
           try {
             await serverInstance?.unregisterAgent(agentId);
 
-            const { enabled: _enabled, status: _status, createdAt: _createdAt, updatedAt: _updatedAt, ...characterData } = updatedAgent;
+            const {
+              enabled: _enabled,
+              status: _status,
+              createdAt: _createdAt,
+              updatedAt: _updatedAt,
+              ...characterData
+            } = updatedAgent;
             const runtimes = await serverInstance?.startAgents([
               { character: characterData as Character },
             ]);

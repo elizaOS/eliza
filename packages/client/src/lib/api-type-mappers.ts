@@ -100,13 +100,23 @@ export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMe
       }
       const attachment = att as Record<string, unknown>;
       return {
-        id: (typeof attachment.id === 'string' ? attachment.id : crypto.randomUUID()),
+        id: typeof attachment.id === 'string' ? attachment.id : crypto.randomUUID(),
         url: typeof attachment.url === 'string' ? attachment.url : '',
-        title: typeof attachment.title === 'string' ? attachment.title : (typeof attachment.name === 'string' ? attachment.name : undefined),
+        title:
+          typeof attachment.title === 'string'
+            ? attachment.title
+            : typeof attachment.name === 'string'
+              ? attachment.name
+              : undefined,
         source: typeof attachment.source === 'string' ? attachment.source : undefined,
-        description: typeof attachment.description === 'string' ? attachment.description : undefined,
+        description:
+          typeof attachment.description === 'string' ? attachment.description : undefined,
         text: typeof attachment.text === 'string' ? attachment.text : undefined,
-        contentType: (typeof attachment.contentType === 'string' ? attachment.contentType : (typeof attachment.type === 'string' ? attachment.type : undefined)) as Media['contentType'],
+        contentType: (typeof attachment.contentType === 'string'
+          ? attachment.contentType
+          : typeof attachment.type === 'string'
+            ? attachment.type
+            : undefined) as Media['contentType'],
       };
     }) || undefined;
 
@@ -153,14 +163,16 @@ export interface AgentLogBody {
   params?: Record<string, unknown> & { prompt?: string };
   prompts?: Array<{ name?: string; content?: string; modelType?: string; prompt?: string }>;
   promptCount?: number;
-  response?: string | {
-    usage?: {
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-    };
-    [key: string]: unknown;
-  };
+  response?:
+    | string
+    | {
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        };
+        [key: string]: unknown;
+      };
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
