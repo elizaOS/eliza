@@ -17,6 +17,7 @@ import {
   type Setting,
   type State,
   type UUID,
+  saltWorldSettings,
   unsaltWorldSettings,
   type WorldSettings,
   type ActionResult,
@@ -277,8 +278,12 @@ export async function updateWorldSettings(
       world.metadata = {};
     }
 
+    // Encrypt secret values before saving (settings must be stored encrypted)
+    const salt = getSalt();
+    const saltedSettings = saltWorldSettings(worldSettings, salt);
+
     // Update settings state
-    world.metadata.settings = worldSettings;
+    world.metadata.settings = saltedSettings;
 
     // Save updated world
     await runtime.updateWorld(world);
