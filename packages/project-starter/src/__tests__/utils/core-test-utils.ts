@@ -87,6 +87,7 @@ export const runCoreActionTests = (actions: Action[]) => {
  */
 export const createMockRuntime = (): IAgentRuntime => {
   return {
+    initPromise: Promise.resolve(),
     character: {
       name: 'Test Character',
       system: 'You are a helpful assistant for testing.',

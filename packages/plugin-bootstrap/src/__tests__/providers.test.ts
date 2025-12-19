@@ -471,10 +471,12 @@ describe('Role Provider', () => {
   it('should retrieve and format role hierarchy', async () => {
     const serverId = 'server-with-roles-simple' as UUID;
     const ownerId = 'owner-simple-test-id' as UUID;
+    const worldId = 'world-for-roles-simple-test' as UUID;
 
     mockState.data = {
       room: {
         id: 'room-for-roles-simple-test' as UUID,
+        worldId: worldId,
         messageServerId: serverId,
         type: ChannelType.GROUP,
         source: 'discord',
@@ -550,14 +552,18 @@ describe('Role Provider', () => {
 
     const mockRoomId = 'room-with-server' as UUID;
     const mockServerId = 'server-for-roles' as UUID;
+    const mockWorldId = 'world-for-no-roles-test' as UUID;
 
     mockMessage.roomId = mockRoomId;
-    (mockRuntime.getRoom as any).mockResolvedValue({
-      id: mockRoomId,
-      messageServerId: mockServerId,
-      type: ChannelType.GROUP,
-      source: 'discord',
-    });
+    mockState.data = {
+      room: {
+        id: mockRoomId,
+        worldId: mockWorldId,
+        messageServerId: mockServerId,
+        type: ChannelType.GROUP,
+        source: 'discord',
+      },
+    };
 
     // Setup getWorld mock to return world data for any ID
     (mockRuntime.getWorld as any).mockImplementation(async (id) => {

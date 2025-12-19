@@ -1,6 +1,5 @@
 import {
   ChannelType,
-  createUniqueUuid,
   logger,
   type IAgentRuntime,
   type Memory,
@@ -47,25 +46,24 @@ export const roleProvider: Provider = {
       };
     }
 
-    const serverId = room.messageServerId;
+    const worldId = room.worldId;
 
-    if (!serverId) {
-      throw new Error('No server ID found');
+    if (!worldId) {
+      throw new Error('No world ID found for room');
     }
 
     logger.info(
-      { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
-      'Using server ID'
+      { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
+      'Using world ID'
     );
 
-    // Get world data instead of using cache
-    const worldId = createUniqueUuid(runtime, serverId);
+    // Get world data
     const world = await runtime.getWorld(worldId);
 
     if (!world || !world.metadata?.ownership?.ownerId) {
       logger.info(
-        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
-        'No ownership data found for server, initializing empty role hierarchy'
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
+        'No ownership data found for world, initializing empty role hierarchy'
       );
       return {
         data: {
@@ -82,8 +80,8 @@ export const roleProvider: Provider = {
 
     if (Object.keys(roles).length === 0) {
       logger.info(
-        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, serverId },
-        'No roles found for server'
+        { src: 'plugin:bootstrap:provider:roles', agentId: runtime.agentId, worldId },
+        'No roles found for world'
       );
       return {
         data: {
