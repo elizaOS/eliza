@@ -61,7 +61,6 @@ interface PostCreationXml {
   thought?: string;
 }
 
-
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
 export * from './providers/index.ts';
@@ -453,7 +452,8 @@ const reactionReceivedHandler = async ({
     await runtime.createMemory(message, 'messages');
   } catch (error: unknown) {
     // PostgreSQL duplicate key violation error code
-    const isDuplicateKeyError = error instanceof Error &&
+    const isDuplicateKeyError =
+      error instanceof Error &&
       'code' in error &&
       (error as NodeJS.ErrnoException).code === '23505';
     if (isDuplicateKeyError) {
@@ -790,14 +790,14 @@ const syncSingleUser = async (
     const worldMetadata =
       type === ChannelType.DM
         ? {
-          ownership: {
-            ownerId: entityId,
-          },
-          roles: {
-            [entityId]: Role.OWNER,
-          },
-          settings: {}, // Initialize empty settings for onboarding
-        }
+            ownership: {
+              ownerId: entityId,
+            },
+            roles: {
+              [entityId]: Role.OWNER,
+            },
+            settings: {}, // Initialize empty settings for onboarding
+          }
         : undefined;
 
     runtime.logger.info(
@@ -910,10 +910,7 @@ const handleServerSync = async ({
  * @param {Object} params.message - The control message
  * @param {string} params.source - Source of the message
  */
-const controlMessageHandler = async ({
-  runtime,
-  message,
-}: ControlMessagePayload) => {
+const controlMessageHandler = async ({ runtime, message }: ControlMessagePayload) => {
   try {
     runtime.logger.debug(
       {
@@ -1103,8 +1100,18 @@ const events: PluginEvents = {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
           interface MessageBusServiceWithNotify {
-            notifyActionStart: (roomId: UUID, worldId: UUID, content: Content, messageId?: UUID) => Promise<void>;
-            notifyActionUpdate: (roomId: UUID, worldId: UUID, content: Content, messageId?: UUID) => Promise<void>;
+            notifyActionStart: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
           }
           const messageBusService = payload.runtime.getService(
             'message-bus-service'
@@ -1173,8 +1180,18 @@ const events: PluginEvents = {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
           interface MessageBusServiceWithNotify {
-            notifyActionStart: (roomId: UUID, worldId: UUID, content: Content, messageId?: UUID) => Promise<void>;
-            notifyActionUpdate: (roomId: UUID, worldId: UUID, content: Content, messageId?: UUID) => Promise<void>;
+            notifyActionStart: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
           }
           const messageBusService = payload.runtime.getService(
             'message-bus-service'

@@ -107,11 +107,23 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   deleteMessage(messageId: UUID): Promise<void>;
   updateChannel(
     channelId: UUID,
-    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: Record<string, unknown> }
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<MessageChannel>;
   deleteChannel(channelId: UUID): Promise<void>;
-  getMessagesForChannel(channelId: UUID, limit?: number, beforeTimestamp?: Date): Promise<CentralRootMessage[]>;
-  findOrCreateDmChannel(user1Id: UUID, user2Id: UUID, messageServerId: UUID): Promise<MessageChannel>;
+  getMessagesForChannel(
+    channelId: UUID,
+    limit?: number,
+    beforeTimestamp?: Date
+  ): Promise<CentralRootMessage[]>;
+  findOrCreateDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID
+  ): Promise<MessageChannel>;
   createMessage(data: {
     messageId?: UUID;
     channelId: UUID;
@@ -467,9 +479,7 @@ export class AgentServer {
       // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
       if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
-        const existingServer = await this.database.getMessageServerByRlsServerId(
-          this.rlsServerId
-        );
+        const existingServer = await this.database.getMessageServerByRlsServerId(this.rlsServerId);
 
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
@@ -611,44 +621,44 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-              // Production CSP - includes upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                // this should probably be unlocked too
-                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // upgrade-insecure-requests is added by helmet automatically
-              },
-              useDefaults: true,
-            }
+                // Production CSP - includes upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  // this should probably be unlocked too
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // upgrade-insecure-requests is added by helmet automatically
+                },
+                useDefaults: true,
+              }
             : {
-              // Development CSP - minimal policy without upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                // unlocking this, so plugin can include the various frameworks from CDN if needed
-                // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: ["'self'", 'data:'],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                // Development CSP - minimal policy without upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                  // unlocking this, so plugin can include the various frameworks from CDN if needed
+                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'self'", 'data:'],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                },
+                useDefaults: false,
               },
-              useDefaults: false,
-            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -660,10 +670,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-              maxAge: 31536000, // 1 year
-              includeSubDomains: true,
-              preload: true,
-            }
+                maxAge: 31536000, // 1 year
+                includeSubDomains: true,
+                preload: true,
+              }
             : false,
           // No Sniff
           noSniff: true,
@@ -1392,7 +1402,8 @@ export class AgentServer {
         await this.startHttpServer(boundPort);
       } catch (error: unknown) {
         // If binding fails due to EADDRINUSE, attempt fallback to next available port
-        const isAddressInUse = error instanceof Error &&
+        const isAddressInUse =
+          error instanceof Error &&
           'code' in error &&
           (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
         if (isAddressInUse) {
@@ -1627,7 +1638,11 @@ export class AgentServer {
 
   async updateChannel(
     channelId: UUID,
-    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: Record<string, unknown> }
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<MessageChannel> {
     return this.database.updateChannel(channelId, updates);
   }

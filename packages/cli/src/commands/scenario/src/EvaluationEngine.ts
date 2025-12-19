@@ -188,17 +188,26 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
 
       // Filter for action_result memories - look for both content.type and metadata.type
       // Type guard for action result content
-      const isActionResultContent = (content: unknown): content is Record<string, unknown> & { actionName?: string; actionStatus?: string; error?: string } => {
+      const isActionResultContent = (
+        content: unknown
+      ): content is Record<string, unknown> & {
+        actionName?: string;
+        actionStatus?: string;
+        error?: string;
+      } => {
         return typeof content === 'object' && content !== null;
       };
 
       const actionResults = actionMemories.filter((mem) => {
         if (!mem || typeof mem.content !== 'object' || mem.content === null) return false;
 
-        const contentType = isActionResultContent(mem.content) ? (mem.content.type as string | undefined) : undefined;
+        const contentType = isActionResultContent(mem.content)
+          ? (mem.content.type as string | undefined)
+          : undefined;
         const metadataType = mem.metadata?.type;
         const contentObj = isActionResultContent(mem.content) ? mem.content : null;
-        const hasActionName = contentObj?.actionName || (mem.metadata as Record<string, unknown>)?.actionName;
+        const hasActionName =
+          contentObj?.actionName || (mem.metadata as Record<string, unknown>)?.actionName;
 
         return (
           contentType === 'action_result' ||
@@ -215,10 +224,12 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
       // Check if any action matches the specified name (normalized) - check both content and metadata
       const matchingAction = actionResults.find((mem) => {
         const contentObj = isActionResultContent(mem.content) ? mem.content : null;
-        const contentActionName = typeof contentObj?.actionName === 'string' ? contentObj.actionName : undefined;
-        const metadataActionName = typeof (mem.metadata as Record<string, unknown>)?.actionName === 'string' 
-          ? (mem.metadata as Record<string, unknown>).actionName as string 
-          : undefined;
+        const contentActionName =
+          typeof contentObj?.actionName === 'string' ? contentObj.actionName : undefined;
+        const metadataActionName =
+          typeof (mem.metadata as Record<string, unknown>)?.actionName === 'string'
+            ? ((mem.metadata as Record<string, unknown>).actionName as string)
+            : undefined;
         const contentNormalized = normalize(contentActionName);
         const metadataNormalized = normalize(metadataActionName);
 
@@ -232,7 +243,9 @@ export class TrajectoryContainsActionEvaluator implements Evaluator {
         };
       }
 
-      const contentObj = isActionResultContent(matchingAction.content) ? matchingAction.content : null;
+      const contentObj = isActionResultContent(matchingAction.content)
+        ? matchingAction.content
+        : null;
       const actionStatus = contentObj?.actionStatus || 'unknown';
       const message =
         actionStatus === 'completed'
@@ -266,7 +279,8 @@ class LLMJudgeEvaluator implements Evaluator {
     // Try OBJECT_SMALL first, then TEXT_LARGE/TEXT_SMALL
     const candidateModels = [ModelType.OBJECT_SMALL, ModelType.TEXT_LARGE, ModelType.TEXT_SMALL];
     const temperature = params.temperature || 0.1;
-    const jsonSchema: JSONSchema = (params.json_schema as JSONSchema | undefined) || this.getDefaultJudgmentSchema();
+    const jsonSchema: JSONSchema =
+      (params.json_schema as JSONSchema | undefined) || this.getDefaultJudgmentSchema();
     const timeoutMs = Number(process.env.LLM_JUDGE_TIMEOUT_MS || 15000);
 
     // Pick first available model
@@ -288,9 +302,15 @@ CRITICAL: You must respond with a JSON object that EXACTLY matches this schema:
 ${JSON.stringify(jsonSchema, null, 2)}
 
 The response MUST include these exact field names:
-${typeof jsonSchema === 'object' && jsonSchema !== null && 'properties' in jsonSchema && typeof jsonSchema.properties === 'object' && jsonSchema.properties !== null
-  ? Object.keys(jsonSchema.properties).join(', ')
-  : 'N/A'}
+${
+  typeof jsonSchema === 'object' &&
+  jsonSchema !== null &&
+  'properties' in jsonSchema &&
+  typeof jsonSchema.properties === 'object' &&
+  jsonSchema.properties !== null
+    ? Object.keys(jsonSchema.properties).join(', ')
+    : 'N/A'
+}
 
 Do not use any other field names. Use only the exact field names specified above.`;
 
@@ -397,7 +417,10 @@ Do not use any other field names. Use only the exact field names specified above
     // Convert JSON schema to Zod schema
     const properties: Record<string, z.ZodTypeAny> = {};
 
-    const schemaProperties = (schema.properties as Record<string, { type?: string; enum?: string[]; minimum?: number; maximum?: number }> | undefined) || {};
+    const schemaProperties =
+      (schema.properties as
+        | Record<string, { type?: string; enum?: string[]; minimum?: number; maximum?: number }>
+        | undefined) || {};
     for (const [key, prop] of Object.entries(schemaProperties)) {
       const propSchema = prop;
 

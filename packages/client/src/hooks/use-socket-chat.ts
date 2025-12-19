@@ -143,7 +143,10 @@ export function useSocketChat({
 
       if (!isCurrentUser && isTargetAgent) onInputDisabledChange(false);
 
-      const clientMessageId = 'clientMessageId' in data ? (data as MessageBroadcastData & { clientMessageId?: string }).clientMessageId : undefined;
+      const clientMessageId =
+        'clientMessageId' in data
+          ? (data as MessageBroadcastData & { clientMessageId?: string }).clientMessageId
+          : undefined;
       if (clientMessageId && isCurrentUser) {
         // Update optimistic message with server response
         onUpdateMessage(clientMessageId, {
@@ -206,13 +209,25 @@ export function useSocketChat({
         const seenIds = seenMessageIdsRef.current;
         const alreadySeen = seenIds.has(messageId);
 
-        clientLogger.info('[useSocketChat] Processing message:', messageId, 'alreadySeen:', alreadySeen, 'source:', data.source);
+        clientLogger.info(
+          '[useSocketChat] Processing message:',
+          messageId,
+          'alreadySeen:',
+          alreadySeen,
+          'source:',
+          data.source
+        );
 
         if (data.source === 'agent_action' && data.id) {
           // For action messages, we receive multiple broadcasts (executing -> completed)
           if (alreadySeen) {
             // Update existing action message with new status
-            clientLogger.info('[useSocketChat] Updating action message:', data.id, 'actionStatus:', (data.rawMessage as { actionStatus?: string })?.actionStatus);
+            clientLogger.info(
+              '[useSocketChat] Updating action message:',
+              data.id,
+              'actionStatus:',
+              (data.rawMessage as { actionStatus?: string })?.actionStatus
+            );
             onUpdateMessage(data.id, {
               text: data.text,
               thought: data.thought,
@@ -370,7 +385,15 @@ export function useSocketChat({
         streamTimeoutsRef.current.clear();
         seenMessageIdsRef.current.clear();
       }
-      detachSubscriptions([msgSub, completeSub, controlSub, deleteSub, clearSub, deletedSub, streamSub]);
+      detachSubscriptions([
+        msgSub,
+        completeSub,
+        controlSub,
+        deleteSub,
+        clearSub,
+        deletedSub,
+        streamSub,
+      ]);
     };
 
     function detachSubscriptions(subscriptions: Array<{ detach: () => void } | undefined>) {

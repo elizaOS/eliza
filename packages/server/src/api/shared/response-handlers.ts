@@ -119,10 +119,7 @@ async function handleSyncMode(
       ...additionalResponseData,
     });
   } catch (syncError) {
-    logger.error(
-      { src: 'http', agentId, error: syncError },
-      'Error in sync mode message handling'
-    );
+    logger.error({ src: 'http', agentId, error: syncError }, 'Error in sync mode message handling');
     res.status(500).json({
       success: false,
       error: 'Failed to process message in sync mode',
@@ -176,7 +173,14 @@ export async function handleResponseMode(options: HandleResponseModeOptions): Pr
       break;
 
     case 'sync':
-      await handleSyncMode(res, elizaOS, agentId, messageMemory, userMessage, additionalResponseData);
+      await handleSyncMode(
+        res,
+        elizaOS,
+        agentId,
+        messageMemory,
+        userMessage,
+        additionalResponseData
+      );
       break;
 
     case 'websocket':

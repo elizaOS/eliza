@@ -169,7 +169,11 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
       interface ErrorWithStatusCode extends Error {
         statusCode?: number;
       }
-      if (typeof error === 'object' && error !== null && (error as ErrorWithStatusCode).statusCode === 404) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        (error as ErrorWithStatusCode).statusCode === 404
+      ) {
         toast({
           title: 'Error Deleting Group',
           description: 'Delete operation not found on server.',

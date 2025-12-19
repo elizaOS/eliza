@@ -382,7 +382,10 @@ export function decryptedCharacter(character: Character, _runtime: IAgentRuntime
  * @param {string} salt - The salt to use for encryption
  * @returns {Record<string, unknown>} - Object with encrypted values
  */
-export function encryptObjectValues(obj: Record<string, unknown>, salt: string): Record<string, unknown> {
+export function encryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
@@ -402,7 +405,10 @@ export function encryptObjectValues(obj: Record<string, unknown>, salt: string):
  * @param {string} salt - The salt to use for decryption
  * @returns {Record<string, unknown>} - Object with decrypted values
  */
-export function decryptObjectValues(obj: Record<string, unknown>, salt: string): Record<string, unknown> {
+export function decryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {

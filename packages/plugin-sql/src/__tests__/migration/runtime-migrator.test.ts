@@ -575,9 +575,13 @@ describe('Runtime Migrator - PostgreSQL Integration Tests', () => {
       const serverIdExists = (columnExists.rows[0] as any).exists;
 
       if (exists) {
-        testResults.passed.push('Table filtering: other_plugin_data table preserved by RuntimeMigrator');
+        testResults.passed.push(
+          'Table filtering: other_plugin_data table preserved by RuntimeMigrator'
+        );
       } else {
-        testResults.failed.push('Table filtering: other_plugin_data table was deleted by RuntimeMigrator!');
+        testResults.failed.push(
+          'Table filtering: other_plugin_data table was deleted by RuntimeMigrator!'
+        );
       }
 
       // Clean up

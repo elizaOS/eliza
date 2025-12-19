@@ -122,7 +122,8 @@ export class DefaultMessageService implements IMessageService {
       maxRetries: options?.maxRetries ?? 3,
       timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
       useMultiStep:
-        options?.useMultiStep ?? parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || '')),
+        options?.useMultiStep ??
+        parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || '')),
       maxMultiStepIterations:
         options?.maxMultiStepIterations ??
         parseInt(String(runtime.getSetting('MAX_MULTISTEP_ITERATIONS') || '6')),
@@ -198,7 +199,9 @@ export class DefaultMessageService implements IMessageService {
 
       // Wrap processing with streaming context for automatic streaming in useModel calls
       // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
-      let streamingContext: { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID } | undefined;
+      let streamingContext:
+        | { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID }
+        | undefined;
       if (opts.onStreamChunk) {
         const extractor = new ResponseStreamExtractor();
         streamingContext = {
@@ -214,15 +217,7 @@ export class DefaultMessageService implements IMessageService {
       }
 
       const processingPromise = runWithStreamingContext(streamingContext, () =>
-        this.processMessage(
-          runtime,
-          message,
-          callback,
-          responseId,
-          runId,
-          startTime,
-          opts
-        )
+        this.processMessage(runtime, message, callback, responseId, runId, startTime, opts)
       );
 
       const result = await Promise.race([processingPromise, timeoutPromise]);
@@ -302,7 +297,9 @@ export class DefaultMessageService implements IMessageService {
 
       // Check if LLM is off by default
       const agentUserState = await runtime.getParticipantUserState(message.roomId, runtime.agentId);
-      const defLllmOff = parseBooleanFromText(String(runtime.getSetting('BOOTSTRAP_DEFLLMOFF') || ''));
+      const defLllmOff = parseBooleanFromText(
+        String(runtime.getSetting('BOOTSTRAP_DEFLLMOFF') || '')
+      );
 
       if (defLllmOff && agentUserState === null) {
         runtime.logger.debug({ src: 'service:message' }, 'LLM is off by default');
@@ -468,14 +465,20 @@ export class DefaultMessageService implements IMessageService {
             }
           } else if (mode === 'actions') {
             // Pass onStreamChunk to processActions so each action can manage its own streaming context
-            await runtime.processActions(message, responseMessages, state, async (content) => {
-              runtime.logger.debug({ src: 'service:message', content }, 'Action callback');
-              responseContent!.actionCallbacks = content;
-              if (callback) {
-                return callback(content);
-              }
-              return [];
-            }, { onStreamChunk: opts.onStreamChunk });
+            await runtime.processActions(
+              message,
+              responseMessages,
+              state,
+              async (content) => {
+                runtime.logger.debug({ src: 'service:message', content }, 'Action callback');
+                responseContent!.actionCallbacks = content;
+                if (callback) {
+                  return callback(content);
+                }
+                return [];
+              },
+              { onStreamChunk: opts.onStreamChunk }
+            );
           }
         }
       } else {
@@ -484,7 +487,9 @@ export class DefaultMessageService implements IMessageService {
 
         // Check if we still have the latest response ID
         const currentResponseId = agentResponses.get(message.roomId);
-        const keepResp = parseBooleanFromText(String(runtime.getSetting('BOOTSTRAP_KEEP_RESP') || ''));
+        const keepResp = parseBooleanFromText(
+          String(runtime.getSetting('BOOTSTRAP_KEEP_RESP') || '')
+        );
 
         if (currentResponseId !== responseId && !keepResp) {
           runtime.logger.info(
@@ -571,7 +576,11 @@ export class DefaultMessageService implements IMessageService {
 
       // Collect metadata for logging
       let entityName = 'noname';
-      if (message.metadata && 'entityName' in message.metadata && typeof message.metadata.entityName === 'string') {
+      if (
+        message.metadata &&
+        'entityName' in message.metadata &&
+        typeof message.metadata.entityName === 'string'
+      ) {
         entityName = message.metadata.entityName;
       }
 
@@ -713,11 +722,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+        runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
     );
     const customSources = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+        runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
     );
 
     const respondChannels = new Set(
@@ -807,12 +816,20 @@ export class DefaultMessageService implements IMessageService {
           const parsedXml = parseKeyValueXml(response);
 
           if (parsedXml && (parsedXml.description || parsedXml.text)) {
-            processedAttachment.description = (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
-            processedAttachment.title = (typeof parsedXml.title === 'string' ? parsedXml.title : 'Image') || 'Image';
-            processedAttachment.text = (typeof parsedXml.text === 'string' ? parsedXml.text : '') || (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
+            processedAttachment.description =
+              (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
+            processedAttachment.title =
+              (typeof parsedXml.title === 'string' ? parsedXml.title : 'Image') || 'Image';
+            processedAttachment.text =
+              (typeof parsedXml.text === 'string' ? parsedXml.text : '') ||
+              (typeof parsedXml.description === 'string' ? parsedXml.description : '') ||
+              '';
 
             runtime.logger.debug(
-              { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+              {
+                src: 'service:message',
+                descriptionPreview: processedAttachment.description?.substring(0, 100),
+              },
               'Generated image description'
             );
           } else {
@@ -828,7 +845,10 @@ export class DefaultMessageService implements IMessageService {
               processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
 
               runtime.logger.debug(
-                { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+                {
+                  src: 'service:message',
+                  descriptionPreview: processedAttachment.description?.substring(0, 100),
+                },
                 'Used fallback XML parsing for description'
               );
             } else {
@@ -846,7 +866,10 @@ export class DefaultMessageService implements IMessageService {
           processedAttachment.text = objResponse.description;
 
           runtime.logger.debug(
-            { src: 'service:message', descriptionPreview: processedAttachment.description?.substring(0, 100) },
+            {
+              src: 'service:message',
+              descriptionPreview: processedAttachment.description?.substring(0, 100),
+            },
             'Generated image description'
           );
         } else {
@@ -922,7 +945,11 @@ export class DefaultMessageService implements IMessageService {
       });
 
       runtime.logger.info(
-        { src: 'service:message', responseLength: response.length, responsePreview: response.substring(0, 500) },
+        {
+          src: 'service:message',
+          responseLength: response.length,
+          responsePreview: response.substring(0, 500),
+        },
         'Raw LLM response received'
       );
 
@@ -930,14 +957,20 @@ export class DefaultMessageService implements IMessageService {
       runtime.logger.info(
         {
           src: 'service:message',
-          parsedXml: parsedXml ? {
-            hasThought: !!parsedXml.thought,
-            thoughtPreview: typeof parsedXml.thought === 'string' ? parsedXml.thought.substring(0, 100) : null,
-            hasActions: !!parsedXml.actions,
-            actions: parsedXml.actions,
-            hasText: !!parsedXml.text,
-            textPreview: typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
-          } : null,
+          parsedXml: parsedXml
+            ? {
+                hasThought: !!parsedXml.thought,
+                thoughtPreview:
+                  typeof parsedXml.thought === 'string'
+                    ? parsedXml.thought.substring(0, 100)
+                    : null,
+                hasActions: !!parsedXml.actions,
+                actions: parsedXml.actions,
+                hasText: !!parsedXml.text,
+                textPreview:
+                  typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
+              }
+            : null,
         },
         'Parsed XML content'
       );
@@ -946,7 +979,9 @@ export class DefaultMessageService implements IMessageService {
         const thought = typeof parsedXml.thought === 'string' ? parsedXml.thought : '';
         const actions = Array.isArray(parsedXml.actions)
           ? parsedXml.actions.filter((a): a is string => typeof a === 'string')
-          : (typeof parsedXml.actions === 'string' ? [parsedXml.actions] : ['IGNORE']);
+          : typeof parsedXml.actions === 'string'
+            ? [parsedXml.actions]
+            : ['IGNORE'];
         const providers = Array.isArray(parsedXml.providers)
           ? parsedXml.providers.filter((p): p is string => typeof p === 'string')
           : [];
@@ -1133,7 +1168,10 @@ export class DefaultMessageService implements IMessageService {
 
         const providerResult = await provider.get(runtime, message, state);
         if (!providerResult) {
-          runtime.logger.warn({ src: 'service:message', providerName }, 'Provider returned no result');
+          runtime.logger.warn(
+            { src: 'service:message', providerName },
+            'Provider returned no result'
+          );
           traceActionResult.push({
             data: { actionName: providerName },
             success: false,
@@ -1186,16 +1224,37 @@ export class DefaultMessageService implements IMessageService {
 
         // Get cached action results from runtime
         const cachedState = runtime.stateCache?.get(`${message.id}_action_results`);
-        const actionResults = Array.isArray(cachedState?.values?.actionResults) ? cachedState.values.actionResults : [];
-        const result = actionResults.length > 0 && typeof actionResults[0] === 'object' && actionResults[0] !== null ? actionResults[0] : null;
-        const success = result && 'success' in result && typeof result.success === 'boolean' ? result.success : false;
+        const actionResults = Array.isArray(cachedState?.values?.actionResults)
+          ? cachedState.values.actionResults
+          : [];
+        const result =
+          actionResults.length > 0 &&
+          typeof actionResults[0] === 'object' &&
+          actionResults[0] !== null
+            ? actionResults[0]
+            : null;
+        const success =
+          result && 'success' in result && typeof result.success === 'boolean'
+            ? result.success
+            : false;
 
         traceActionResult.push({
           data: { actionName: typeof action === 'string' ? action : 'unknown' },
           success,
-          text: result && 'text' in result && typeof result.text === 'string' ? result.text : undefined,
-          values: result && 'values' in result && typeof result.values === 'object' && result.values !== null ? result.values : undefined,
-          error: success ? undefined : (result && 'text' in result && typeof result.text === 'string' ? result.text : undefined),
+          text:
+            result && 'text' in result && typeof result.text === 'string' ? result.text : undefined,
+          values:
+            result &&
+            'values' in result &&
+            typeof result.values === 'object' &&
+            result.values !== null
+              ? result.values
+              : undefined,
+          error: success
+            ? undefined
+            : result && 'text' in result && typeof result.text === 'string'
+              ? result.text
+              : undefined,
         });
       }
     }
@@ -1227,7 +1286,11 @@ export class DefaultMessageService implements IMessageService {
       responseContent = {
         actions: ['MULTI_STEP_SUMMARY'],
         text: summaryText,
-        thought: (typeof summary.thought === 'string' ? summary.thought : 'Final user-facing message after task completion.') || 'Final user-facing message after task completion.',
+        thought:
+          (typeof summary.thought === 'string'
+            ? summary.thought
+            : 'Final user-facing message after task completion.') ||
+          'Final user-facing message after task completion.',
         simple: true,
         responseId,
       };

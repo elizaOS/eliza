@@ -221,10 +221,10 @@ export class ConversationManager {
       if (config.final_evaluations?.length > 0) {
         // Create a combined execution result for final evaluations
         const combinedResult = this.createCombinedExecutionResult(turns, totalDuration);
-          const rawEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
-            config.final_evaluations as Evaluation[],
-            combinedResult
-          );
+        const rawEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
+          config.final_evaluations as Evaluation[],
+          combinedResult
+        );
 
         // BUGFIX: Filter out any malformed evaluation results to prevent ZodError
         finalEvaluations = rawEvaluations.filter(
@@ -611,7 +611,10 @@ export class ConversationManager {
    * Determine overall conversation success
    * @private
    */
-  private determineOverallSuccess(turns: ConversationTurn[], finalEvaluations: EnhancedEvaluationResult[]): boolean {
+  private determineOverallSuccess(
+    turns: ConversationTurn[],
+    finalEvaluations: EnhancedEvaluationResult[]
+  ): boolean {
     // If we have no turns, the conversation failed
     if (turns.length === 0) {
       return false;

@@ -532,10 +532,9 @@ export type StreamableModelType =
 /**
  * Result type for plugin model handlers - includes TextStreamResult for streamable models
  */
-export type PluginModelResult<K extends keyof ModelResultMap> =
-  K extends StreamableModelType
-    ? ModelResultMap[K] | TextStreamResult
-    : ModelResultMap[K];
+export type PluginModelResult<K extends keyof ModelResultMap> = K extends StreamableModelType
+  ? ModelResultMap[K] | TextStreamResult
+  : ModelResultMap[K];
 
 /**
  * Type guard to check if a model type supports streaming.

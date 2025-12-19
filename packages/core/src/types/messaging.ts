@@ -52,7 +52,8 @@ export const MESSAGE_STREAM_EVENT = {
   messageBroadcast: 'messageBroadcast',
 } as const;
 
-export type MessageStreamEventType = (typeof MESSAGE_STREAM_EVENT)[keyof typeof MESSAGE_STREAM_EVENT];
+export type MessageStreamEventType =
+  (typeof MESSAGE_STREAM_EVENT)[keyof typeof MESSAGE_STREAM_EVENT];
 
 /**
  * Payload for messageStreamChunk event

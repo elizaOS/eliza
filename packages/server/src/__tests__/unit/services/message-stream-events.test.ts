@@ -194,7 +194,7 @@ describe('Message Stream Events', () => {
         content: 'Hello World',
         channel_id: 'ch1' as UUID,
         message_server_id: 'server1' as UUID,
-        author_id: 'agent1' as UUID ,
+        author_id: 'agent1' as UUID,
         created_at: Date.now(),
       });
 

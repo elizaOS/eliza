@@ -64,12 +64,16 @@ describe('useModel Streaming', () => {
       const mockChunks = ['Hello', ' ', 'World', '!'];
 
       // Register a mock handler that returns TextStreamResult when stream: true
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test prompt',
@@ -85,12 +89,16 @@ describe('useModel Streaming', () => {
     it('should return full text even when streaming', async () => {
       const mockChunks = ['Part1', 'Part2', 'Part3'];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test',
@@ -103,10 +111,14 @@ describe('useModel Streaming', () => {
     it('should not stream when no callback is provided', async () => {
       let streamRequested = false;
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        streamRequested = (params as any).stream === true;
-        return 'Non-streamed result';
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          streamRequested = (params as any).stream === true;
+          return 'Non-streamed result';
+        },
+        'test-provider'
+      );
 
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test',
@@ -122,10 +134,14 @@ describe('useModel Streaming', () => {
       let streamRequested = false;
       const chunks: string[] = [];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        streamRequested = (params as any).stream === true;
-        return 'Non-streamed result';
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          streamRequested = (params as any).stream === true;
+          return 'Non-streamed result';
+        },
+        'test-provider'
+      );
 
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test',
@@ -144,10 +160,14 @@ describe('useModel Streaming', () => {
       let streamRequested = false;
       const contextChunks: string[] = [];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        streamRequested = (params as any).stream === true;
-        return 'Non-streamed result';
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          streamRequested = (params as any).stream === true;
+          return 'Non-streamed result';
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {
@@ -173,12 +193,16 @@ describe('useModel Streaming', () => {
       const contextChunks: string[] = [];
       const mockChunks = ['Context', ' ', 'streaming'];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {
@@ -204,12 +228,16 @@ describe('useModel Streaming', () => {
       const contextChunks: string[] = [];
       const mockChunks = ['Broadcast', ' ', 'test'];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {
@@ -236,12 +264,16 @@ describe('useModel Streaming', () => {
       const contextChunks: string[] = [];
       const mockChunks = ['A', 'B', 'C'];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {
@@ -274,9 +306,13 @@ describe('useModel Streaming', () => {
     it('should return string directly when handler does not support streaming', async () => {
       const chunks: string[] = [];
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async () => {
-        return 'Plain string response';
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async () => {
+          return 'Plain string response';
+        },
+        'test-provider'
+      );
 
       const result = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: 'Test',
@@ -298,12 +334,16 @@ describe('useModel Streaming', () => {
       const mockChunks = ['A', 'B', 'C', 'D', 'E'];
       const abortController = new AbortController();
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {
@@ -334,12 +374,16 @@ describe('useModel Streaming', () => {
       const mockChunks = ['X', 'Y', 'Z'];
       const abortController = new AbortController();
 
-      runtime.registerModel(ModelType.TEXT_LARGE, async (_rt, params) => {
-        if ((params as any).stream) {
-          return createMockTextStreamResult(mockChunks);
-        }
-        return mockChunks.join('');
-      }, 'test-provider');
+      runtime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
 
       const context: StreamingContext = {
         onStreamChunk: async (chunk) => {

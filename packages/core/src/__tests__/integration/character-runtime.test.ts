@@ -99,7 +99,6 @@ describe('Character-Runtime Integration Tests', () => {
     });
   });
 
-
   describe('Character Validation Flow', () => {
     it('should validate character and create runtime with validated character', () => {
       const validCharacter: Character = {
@@ -127,7 +126,7 @@ describe('Character-Runtime Integration Tests', () => {
       const validation = validateCharacterConfig(invalidCharacter);
       expect(validation.isValid).toBe(false);
       expect(validation.errors.length).toBeGreaterThan(0);
-      
+
       // Runtime should still be creatable but with invalid character
       // This tests that validation doesn't block runtime creation
       const runtime = new AgentRuntime({
@@ -138,4 +137,3 @@ describe('Character-Runtime Integration Tests', () => {
     });
   });
 });
-

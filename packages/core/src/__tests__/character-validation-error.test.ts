@@ -60,4 +60,3 @@ describe('Character Validation Error Handling', () => {
     }).toThrow();
   });
 });
-

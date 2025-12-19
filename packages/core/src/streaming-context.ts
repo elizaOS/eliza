@@ -95,10 +95,7 @@ export function getStreamingContextManager(): IStreamingContextManager {
  * @param fn - The function to run with streaming context
  * @returns The result of the function
  */
-export function runWithStreamingContext<T>(
-  context: StreamingContext | undefined,
-  fn: () => T
-): T {
+export function runWithStreamingContext<T>(context: StreamingContext | undefined, fn: () => T): T {
   return globalContextManager.run(context, fn);
 }
 

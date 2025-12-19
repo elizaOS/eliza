@@ -200,11 +200,11 @@ export const starterPlugin: Plugin = {
     }
   },
   models: {
-    [ModelType.TEXT_SMALL]: (async (_runtime: IAgentRuntime, params: unknown) => {
+    [ModelType.TEXT_SMALL]: async (_runtime: IAgentRuntime, params: unknown) => {
       const { prompt, stopSequences = [] } = params as GenerateTextParams;
       return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
-    }),
-    [ModelType.TEXT_LARGE]: (async (_runtime: IAgentRuntime, params: unknown) => {
+    },
+    [ModelType.TEXT_LARGE]: async (_runtime: IAgentRuntime, params: unknown) => {
       const {
         prompt,
         stopSequences = [],
@@ -214,7 +214,7 @@ export const starterPlugin: Plugin = {
         presencePenalty = 0.7,
       } = params as GenerateTextParams;
       return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
-    }),
+    },
   },
   routes: [
     {

@@ -184,8 +184,10 @@ export interface ChatLocationState {
 export const MemoizedMessageContent = React.memo(MessageContent, (prevProps, nextProps) => {
   // Only re-render if the message content, animation state, or other key props change
   // For action messages, we also need to check rawMessage.actionStatus
-  const prevActionStatus = (prevProps.message.rawMessage as { actionStatus?: string })?.actionStatus;
-  const nextActionStatus = (nextProps.message.rawMessage as { actionStatus?: string })?.actionStatus;
+  const prevActionStatus = (prevProps.message.rawMessage as { actionStatus?: string })
+    ?.actionStatus;
+  const nextActionStatus = (nextProps.message.rawMessage as { actionStatus?: string })
+    ?.actionStatus;
 
   return (
     prevProps.message.id === nextProps.message.id &&

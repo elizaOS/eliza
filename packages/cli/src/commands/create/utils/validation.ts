@@ -55,7 +55,11 @@ export function validateCreateOptions(options: unknown): CreateOptions {
           e.path.includes('type') && (e.code === 'invalid_type' || e.code === 'invalid_value')
       );
       if (typeError) {
-        const enumError = typeError as z.ZodIssue & { received?: unknown; expected?: string; options?: unknown[] };
+        const enumError = typeError as z.ZodIssue & {
+          received?: unknown;
+          expected?: string;
+          options?: unknown[];
+        };
         const receivedValue = enumError.received || 'unknown';
         const expectedValue = enumError.expected || 'unknown';
         const expectedValues = (enumError.options || []) as string[];

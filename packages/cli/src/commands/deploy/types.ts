@@ -89,10 +89,9 @@ export interface CloudApiQuotaResponse extends CloudApiSuccessResponse<QuotaInfo
 /**
  * Generic API response type (union of success and error)
  */
-export type CloudApiResponse<T = Record<string, string | number | boolean | null> | string | number | boolean | null> =
-  | CloudApiSuccessResponse<T>
-  | CloudApiErrorResponse
-  | CloudApiResponseWithCredits<T>;
+export type CloudApiResponse<
+  T = Record<string, string | number | boolean | null> | string | number | boolean | null,
+> = CloudApiSuccessResponse<T> | CloudApiErrorResponse | CloudApiResponseWithCredits<T>;
 
 /**
  * Quota information for container deployments

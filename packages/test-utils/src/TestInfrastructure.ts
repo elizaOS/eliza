@@ -1,4 +1,11 @@
-import type { IAgentRuntime, IDatabaseAdapter, UUID, Character, Memory, AgentRuntime } from '@elizaos/core';
+import type {
+  IAgentRuntime,
+  IDatabaseAdapter,
+  UUID,
+  Character,
+  Memory,
+  AgentRuntime,
+} from '@elizaos/core';
 import { createTestRuntime } from './realRuntime';
 import { stringToUuid } from '@elizaos/core';
 import { createUniqueUuid as _createUniqueUuid } from '@elizaos/core';

@@ -96,13 +96,21 @@ describe('Core Runtime E2E Tests', () => {
     messageService = new DefaultMessageService();
 
     // Register mock model handlers
-    runtime.registerModel(ModelType.TEXT_SMALL, async () => {
-      return '<shouldRespond>true</shouldRespond><reason>User message</reason>';
-    }, 'test');
+    runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      async () => {
+        return '<shouldRespond>true</shouldRespond><reason>User message</reason>';
+      },
+      'test'
+    );
 
-    runtime.registerModel(ModelType.TEXT_LARGE, async () => {
-      return '<thought>I should respond</thought><text>Hello! How can I help you?</text>';
-    }, 'test');
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        return '<thought>I should respond</thought><text>Hello! How can I help you?</text>';
+      },
+      'test'
+    );
   });
 
   afterEach(() => {
@@ -140,7 +148,11 @@ describe('Core Runtime E2E Tests', () => {
 
       await messageService.handleMessage(runtime, userMessage, responseCallback);
 
-      const retrievedMemories = await runtime.adapter.getMemories({ roomId, count: 10, tableName: 'messages' });
+      const retrievedMemories = await runtime.adapter.getMemories({
+        roomId,
+        count: 10,
+        tableName: 'messages',
+      });
       expect(retrievedMemories).toHaveLength(1);
       expect(getMemoryText(retrievedMemories[0])).toBe('Test message for memory');
     });
@@ -159,7 +171,9 @@ describe('Core Runtime E2E Tests', () => {
       });
 
       const conversationHistory: Memory[] = [message1, message2];
-      (mockAdapter.getMemoriesByRoomIds as ReturnType<typeof mock>).mockResolvedValue(conversationHistory);
+      (mockAdapter.getMemoriesByRoomIds as ReturnType<typeof mock>).mockResolvedValue(
+        conversationHistory
+      );
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue(conversationHistory);
 
       await messageService.handleMessage(runtime, message1, responseCallback);
@@ -200,7 +214,11 @@ describe('Core Runtime E2E Tests', () => {
       const storedMemories: Memory[] = [memory];
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue(storedMemories);
 
-      const retrieved = await runtime.adapter.getMemories({ roomId, count: 1, tableName: 'messages' });
+      const retrieved = await runtime.adapter.getMemories({
+        roomId,
+        count: 1,
+        tableName: 'messages',
+      });
       expect(retrieved).toHaveLength(1);
       expect(getMemoryText(retrieved[0])).toBe('Integration test memory');
     });
@@ -221,10 +239,9 @@ describe('Core Runtime E2E Tests', () => {
       expect(result.responseContent).toBeDefined();
       expect(result.state).toBeDefined();
       expect(mockAdapter.createMemory).toHaveBeenCalled();
-      
+
       // Verify the message was stored
       expect((mockAdapter.createMemory as any).mock.calls.length).toBeGreaterThan(0);
     });
   });
 });
-

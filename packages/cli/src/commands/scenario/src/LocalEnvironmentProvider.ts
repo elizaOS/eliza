@@ -138,7 +138,9 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
         };
 
         // Add conversation metadata to result for conversation evaluators
-        (executionResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }).conversationMetadata = {
+        (
+          executionResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }
+        ).conversationMetadata = {
           turnCount: conversationResult.turns.length,
           terminatedEarly: conversationResult.terminatedEarly,
           terminationReason: conversationResult.terminationReason ?? undefined,
@@ -168,7 +170,6 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           this.trajectoryReconstructor && roomId
             ? await this.trajectoryReconstructor.getLatestTrajectory(roomId)
             : [];
-
 
         const endedAtMs = Date.now();
         const durationMs = endedAtMs - startedAtMs;
@@ -243,7 +244,12 @@ export class LocalEnvironmentProvider implements EnvironmentProvider {
           let stderr = '';
           let stdout = '';
 
-          const errorObj = error as { exitCode?: number; stderr?: string; stdout?: string; message?: string };
+          const errorObj = error as {
+            exitCode?: number;
+            stderr?: string;
+            stdout?: string;
+            message?: string;
+          };
           if (errorObj.exitCode !== undefined) {
             exitCode = errorObj.exitCode;
           }

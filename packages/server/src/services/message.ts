@@ -601,8 +601,12 @@ export class MessageBusService extends Service {
     );
 
     try {
-      if (!(await this.validateMessageServerSubscription(message))) {return;}
-      if (!(await this.validateNotSelfMessage(message))) {return;}
+      if (!(await this.validateMessageServerSubscription(message))) {
+        return;
+      }
+      if (!(await this.validateNotSelfMessage(message))) {
+        return;
+      }
 
       logger.debug(
         { src: 'service:message-bus', agentId: this.runtime.agentId },
@@ -997,7 +1001,9 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
+        if (m?.metadata?.sourceId) {
+          centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        }
       }
 
       // For ACTION_START, send text and full ToolPart data
@@ -1103,7 +1109,9 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) {centralInReplyToRootMessageId = m.metadata.sourceId as UUID;}
+        if (m?.metadata?.sourceId) {
+          centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        }
       }
 
       // Update badge with final result for debug (text goes in collapsible details)
@@ -1172,7 +1180,9 @@ export class MessageBusService extends Service {
   }
 
   private async notifyMessageComplete(channelId?: UUID, messageServerId?: UUID) {
-    if (!channelId || !messageServerId) {return;}
+    if (!channelId || !messageServerId) {
+      return;
+    }
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());

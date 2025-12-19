@@ -27,7 +27,11 @@ export type ProgressEventType =
 /**
  * Callback function type for progress updates.
  */
-export type ProgressCallback = (message: string, eventType: ProgressEventType, data?: unknown) => void;
+export type ProgressCallback = (
+  message: string,
+  eventType: ProgressEventType,
+  data?: unknown
+) => void;
 
 /**
  * Overall progress information for the matrix execution.

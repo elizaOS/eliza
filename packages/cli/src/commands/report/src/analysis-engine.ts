@@ -128,7 +128,8 @@ export class AnalysisEngine {
       run.evaluations.forEach((evaluation) => {
         // Extract capability from evaluation details or use evaluator_type as fallback
         const capabilityRaw = evaluation.details?.capability || evaluation.evaluator_type;
-        const capability = typeof capabilityRaw === 'string' ? capabilityRaw : String(capabilityRaw || 'unknown');
+        const capability =
+          typeof capabilityRaw === 'string' ? capabilityRaw : String(capabilityRaw || 'unknown');
         if (capability && capability !== 'unknown') {
           if (!capabilityStats[capability]) {
             capabilityStats[capability] = { total: 0, passed: 0 };
@@ -243,7 +244,13 @@ export class AnalysisEngine {
 
     let currentValue: unknown = value;
     for (const part of pathParts) {
-      if (currentValue && typeof currentValue === 'object' && currentValue !== null && !Array.isArray(currentValue) && part in currentValue) {
+      if (
+        currentValue &&
+        typeof currentValue === 'object' &&
+        currentValue !== null &&
+        !Array.isArray(currentValue) &&
+        part in currentValue
+      ) {
         const valueObj = currentValue as Record<string, unknown>;
         currentValue = valueObj[part];
       } else {

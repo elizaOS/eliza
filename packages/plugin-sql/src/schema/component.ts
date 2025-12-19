@@ -25,7 +25,9 @@ export const componentTable = pgTable('components', {
     .references(() => roomTable.id, { onDelete: 'cascade' })
     .notNull(),
   worldId: uuid('world_id').references(() => worldTable.id, { onDelete: 'cascade' }),
-  sourceEntityId: uuid('source_entity_id').references(() => entityTable.id, { onDelete: 'cascade' }),
+  sourceEntityId: uuid('source_entity_id').references(() => entityTable.id, {
+    onDelete: 'cascade',
+  }),
 
   // Data
   type: text('type').notNull(),

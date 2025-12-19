@@ -233,10 +233,20 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       },
     ]),
     getRoomsForParticipants: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', messageServerId: 'test-server-id' },
+      {
+        id: 'room-id',
+        name: 'Test Room',
+        worldId: 'test-world-id',
+        messageServerId: 'test-server-id',
+      },
     ]),
     getRoomsForEntity: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', messageServerId: 'test-server-id' },
+      {
+        id: 'room-id',
+        name: 'Test Room',
+        worldId: 'test-world-id',
+        messageServerId: 'test-server-id',
+      },
     ]),
     searchEntities: mock().mockResolvedValue([
       { id: 'test-entity-id', names: ['Test Entity'], worldId: 'test-world-id' },

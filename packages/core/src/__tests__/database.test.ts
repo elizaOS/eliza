@@ -45,7 +45,10 @@ class MockDatabaseAdapter extends DatabaseAdapter {
     throw new Error('Method not implemented.');
   }
   runPluginMigrations(
-    _plugins: Array<{ name: string; schema?: Record<string, string | number | boolean | null | Record<string, unknown>> }>,
+    _plugins: Array<{
+      name: string;
+      schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
+    }>,
     _options?: {
       verbose?: boolean;
       force?: boolean;

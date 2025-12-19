@@ -47,8 +47,7 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     if (this.client) {
       try {
         await this.client.close();
-      } catch {
-      }
+      } catch {}
     }
   }
 

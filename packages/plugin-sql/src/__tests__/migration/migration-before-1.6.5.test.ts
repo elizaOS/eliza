@@ -185,7 +185,9 @@ describe('migrateToEntityRLS (pre-1.6.5 migration)', () => {
       expect(rooms.rows[0].name).toBe('Test Room');
       expect(rooms.rows[0].agent_id).toBe(agentId);
 
-      const memories = await db.execute(sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`);
+      const memories = await db.execute(
+        sql`SELECT * FROM memories WHERE agent_id = ${agentId}::uuid`
+      );
       expect(memories.rows).toHaveLength(1);
       expect(memories.rows[0].room_id).toBe(roomId);
     });

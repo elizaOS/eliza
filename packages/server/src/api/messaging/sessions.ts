@@ -238,30 +238,30 @@ function getAgentTimeoutConfig(agent: IAgentRuntime): SessionTimeoutConfig {
   const agentConfig: SessionTimeoutConfig = {
     timeoutMinutes: timeoutSetting
       ? safeParseInt(
-        String(timeoutSetting),
-        DEFAULT_TIMEOUT_MINUTES,
-        MIN_TIMEOUT_MINUTES,
-        MAX_TIMEOUT_MINUTES
-      )
+          String(timeoutSetting),
+          DEFAULT_TIMEOUT_MINUTES,
+          MIN_TIMEOUT_MINUTES,
+          MAX_TIMEOUT_MINUTES
+        )
       : DEFAULT_TIMEOUT_MINUTES,
     autoRenew: agent.getSetting('SESSION_AUTO_RENEW')
       ? agent.getSetting('SESSION_AUTO_RENEW') === 'true'
       : true,
     maxDurationMinutes: maxDurationSetting
       ? safeParseInt(
-        String(maxDurationSetting),
-        DEFAULT_MAX_DURATION_MINUTES,
-        MIN_TIMEOUT_MINUTES,
-        MAX_TIMEOUT_MINUTES * 2
-      )
+          String(maxDurationSetting),
+          DEFAULT_MAX_DURATION_MINUTES,
+          MIN_TIMEOUT_MINUTES,
+          MAX_TIMEOUT_MINUTES * 2
+        )
       : DEFAULT_MAX_DURATION_MINUTES,
     warningThresholdMinutes: warningThresholdSetting
       ? safeParseInt(
-        String(warningThresholdSetting),
-        DEFAULT_WARNING_THRESHOLD_MINUTES,
-        1,
-        MAX_TIMEOUT_MINUTES
-      )
+          String(warningThresholdSetting),
+          DEFAULT_WARNING_THRESHOLD_MINUTES,
+          1,
+          MAX_TIMEOUT_MINUTES
+        )
       : DEFAULT_WARNING_THRESHOLD_MINUTES,
   };
 

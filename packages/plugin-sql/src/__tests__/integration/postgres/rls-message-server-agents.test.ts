@@ -108,7 +108,9 @@ describe.skipIf(!process.env.POSTGRES_URL)(
     afterAll(async () => {
       // Cleanup - each client cleans its own server's data (RLS enforced)
       try {
-        await setupClientA.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [agentAId]);
+        await setupClientA.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [
+          agentAId,
+        ]);
         await setupClientA.query(`DELETE FROM message_servers WHERE id IN ($1, $2)`, [
           messageServerA1Id,
           messageServerA2Id,
@@ -120,7 +122,9 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       }
 
       try {
-        await setupClientB.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [agentBId]);
+        await setupClientB.query(`DELETE FROM message_server_agents WHERE agent_id = $1`, [
+          agentBId,
+        ]);
         await setupClientB.query(`DELETE FROM message_servers WHERE id = $1`, [messageServerB1Id]);
         await setupClientB.query(`DELETE FROM agents WHERE id = $1`, [agentBId]);
         await setupClientB.query(`DELETE FROM servers WHERE id = $1`, [serverBId]);

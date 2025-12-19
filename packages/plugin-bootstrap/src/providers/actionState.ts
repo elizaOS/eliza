@@ -139,7 +139,8 @@ export const actionStateProvider: Provider = {
         })
         .slice(0, 10) // Show last 10 entries
         .map(([key, value]: [string, unknown]) => {
-          const valueObj = value && typeof value === 'object' ? (value as WorkingMemoryEntry) : null;
+          const valueObj =
+            value && typeof value === 'object' ? (value as WorkingMemoryEntry) : null;
           if (valueObj?.actionName && valueObj.result) {
             return `**${valueObj.actionName}**: ${valueObj.result.text || JSON.stringify(valueObj.result.data)}`;
           }

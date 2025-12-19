@@ -1152,7 +1152,9 @@ describe('Utils Comprehensive Tests', () => {
         content: { text: 'there', source: 'chat' },
       },
     ] as Memory[];
-    const entities: Entity[] = [{ id: stringToUuid('e1'), names: ['Alice'], metadata: {}, agentId: stringToUuid('agent-1') }];
+    const entities: Entity[] = [
+      { id: stringToUuid('e1'), names: ['Alice'], metadata: {}, agentId: stringToUuid('agent-1') },
+    ];
     const result = utils.formatPosts({ messages, entities });
     expect(result).toContain('Conversation:');
     expect(result).toContain('Alice');
@@ -1164,8 +1166,12 @@ describe('Utils Comprehensive Tests', () => {
     const runtime = {
       useModel: mock(
         async (type: (typeof ModelType)[keyof typeof ModelType], { prompt, tokens }: any) => {
-          if (type === ModelType.TEXT_TOKENIZER_ENCODE) {return prompt.split(' ');}
-          if (type === ModelType.TEXT_TOKENIZER_DECODE) {return tokens.join(' ');}
+          if (type === ModelType.TEXT_TOKENIZER_ENCODE) {
+            return prompt.split(' ');
+          }
+          if (type === ModelType.TEXT_TOKENIZER_DECODE) {
+            return tokens.join(' ');
+          }
           return [];
         }
       ),
@@ -1173,5 +1179,4 @@ describe('Utils Comprehensive Tests', () => {
     const result = await utils.trimTokens('a b c d e', 3, runtime);
     expect(result).toBe('c d e');
   });
-
 });

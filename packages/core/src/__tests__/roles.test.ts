@@ -32,7 +32,7 @@ describe('roles utilities', () => {
         } else {
           logger_module.logger[method as keyof typeof logger_module.logger] = mock(
             () => {}
-          ) as typeof logger_module.logger[keyof typeof logger_module.logger];
+          ) as (typeof logger_module.logger)[keyof typeof logger_module.logger];
         }
       });
     }

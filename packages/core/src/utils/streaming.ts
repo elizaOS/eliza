@@ -135,10 +135,14 @@ function extractTagContent(
  */
 function validateChunkSize(chunk: string): void {
   if (chunk.length > MAX_CHUNK_SIZE) {
-    throw new StreamError('CHUNK_TOO_LARGE', `Chunk size ${chunk.length} exceeds maximum allowed ${MAX_CHUNK_SIZE}`, {
-      chunkSize: chunk.length,
-      maxAllowed: MAX_CHUNK_SIZE,
-    });
+    throw new StreamError(
+      'CHUNK_TOO_LARGE',
+      `Chunk size ${chunk.length} exceeds maximum allowed ${MAX_CHUNK_SIZE}`,
+      {
+        chunkSize: chunk.length,
+        maxAllowed: MAX_CHUNK_SIZE,
+      }
+    );
   }
 }
 

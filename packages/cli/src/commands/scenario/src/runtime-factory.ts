@@ -251,7 +251,10 @@ export async function askAgentViaApi(
 ): Promise<{ response: string; roomId: UUID }> {
   try {
     // Use provided port or get from environment, fallback to 3000
-    const port = serverPort ?? (process.env.SERVER_PORT ? parseInt(process.env.SERVER_PORT, 10) : undefined) ?? 3000;
+    const port =
+      serverPort ??
+      (process.env.SERVER_PORT ? parseInt(process.env.SERVER_PORT, 10) : undefined) ??
+      3000;
     const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
 
     const { messageServers } = await client.messaging.listMessageServers();
@@ -391,6 +394,8 @@ export async function askAgentViaApi(
       poll();
     });
   } catch (error) {
-    throw new Error(`Failed to get agent response: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get agent response: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

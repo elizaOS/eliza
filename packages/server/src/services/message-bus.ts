@@ -28,7 +28,10 @@ class InternalMessageBus extends EventTarget {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
-  on<K extends keyof MessageBusEventMap>(event: K, handler: MessageBusHandler<MessageBusEventMap[K]>): this {
+  on<K extends keyof MessageBusEventMap>(
+    event: K,
+    handler: MessageBusHandler<MessageBusEventMap[K]>
+  ): this {
     // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
@@ -56,7 +59,10 @@ class InternalMessageBus extends EventTarget {
     return this;
   }
 
-  off<K extends keyof MessageBusEventMap>(event: K, handler: MessageBusHandler<MessageBusEventMap[K]>): void {
+  off<K extends keyof MessageBusEventMap>(
+    event: K,
+    handler: MessageBusHandler<MessageBusEventMap[K]>
+  ): void {
     const eventHandlers = this.handlers.get(event);
     const handlerRef = handler as MessageBusHandler<unknown>;
     const wrappedHandler = eventHandlers?.get(handlerRef);

@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { AgentRuntime } from '../../runtime';
-import {
-  createMessageMemory,
-  getMemoryText,
-} from '../../memory';
+import { createMessageMemory, getMemoryText } from '../../memory';
 import type { Character, Memory, UUID } from '../../types';
 import { MemoryType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -116,7 +113,6 @@ describe('Memory-Runtime Integration Tests', () => {
     });
   });
 
-
   describe('Memory Creation and Retrieval Flow', () => {
     it('should create and store memory through runtime adapter', async () => {
       const memory = createMessageMemory({
@@ -129,8 +125,12 @@ describe('Memory-Runtime Integration Tests', () => {
       const storedMemoryId = await runtime.adapter.createMemory(memory, 'messages');
       expect(storedMemoryId).toBeDefined();
       expect(mockAdapter.createMemory).toHaveBeenCalled();
-      expect((mockAdapter.createMemory as ReturnType<typeof mock>).mock.calls[0][0]).toEqual(memory);
-      expect((mockAdapter.createMemory as ReturnType<typeof mock>).mock.calls[0][1]).toBe('messages');
+      expect((mockAdapter.createMemory as ReturnType<typeof mock>).mock.calls[0][0]).toEqual(
+        memory
+      );
+      expect((mockAdapter.createMemory as ReturnType<typeof mock>).mock.calls[0][1]).toBe(
+        'messages'
+      );
     });
 
     it('should retrieve memories and extract text correctly', async () => {
@@ -165,7 +165,11 @@ describe('Memory-Runtime Integration Tests', () => {
 
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue(testMemories);
 
-      const memories = await runtime.adapter.getMemories({ roomId, count: 10, tableName: 'messages' });
+      const memories = await runtime.adapter.getMemories({
+        roomId,
+        count: 10,
+        tableName: 'messages',
+      });
       expect(memories).toHaveLength(2);
 
       const texts = memories.map((m) => getMemoryText(m));
@@ -176,10 +180,13 @@ describe('Memory-Runtime Integration Tests', () => {
     it('should handle empty memory retrieval gracefully', async () => {
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue([]);
 
-      const memories = await runtime.adapter.getMemories({ roomId, count: 10, tableName: 'messages' });
+      const memories = await runtime.adapter.getMemories({
+        roomId,
+        count: 10,
+        tableName: 'messages',
+      });
       expect(memories).toHaveLength(0);
       expect(memories).toEqual([]);
     });
   });
 });
-

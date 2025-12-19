@@ -293,7 +293,9 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
       });
 
       // Filter for action_result memories
-      const actionResults = actionMemories.filter((mem: Memory) => mem.content?.type === 'action_result');
+      const actionResults = actionMemories.filter(
+        (mem: Memory) => mem.content?.type === 'action_result'
+      );
 
       // Normalize function to compare action names robustly
       const normalize = (name: string | undefined): string =>
@@ -301,7 +303,9 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
       const target = normalize(actionName);
 
       // Type guard for action result content
-      const isActionResultContent = (content: unknown): content is Record<string, unknown> & { actionName?: string } => {
+      const isActionResultContent = (
+        content: unknown
+      ): content is Record<string, unknown> & { actionName?: string } => {
         return typeof content === 'object' && content !== null;
       };
 
@@ -432,21 +436,22 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
         output: 'object',
       } as Omit<ObjectGenerationParams, 'runtime'>;
 
-      const response = await Promise.race([
+      const response = (await Promise.race([
         runtime.useModel(modelType, objectParams),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`LLM judge timeout after ${timeoutMs}ms`)), timeoutMs)
         ),
-      ]) as unknown;
+      ])) as unknown;
 
       // Parse and validate the structured response
       let parsedResponse;
       try {
-        const responseValue = typeof response === 'string' 
-          ? response 
-          : (typeof response === 'object' && response !== null && !Array.isArray(response)
-              ? response as Record<string, unknown>
-              : String(response));
+        const responseValue =
+          typeof response === 'string'
+            ? response
+            : typeof response === 'object' && response !== null && !Array.isArray(response)
+              ? (response as Record<string, unknown>)
+              : String(response);
         parsedResponse = this.validateStructuredResponse(responseValue, jsonSchema);
       } catch (parseError: unknown) {
         const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
@@ -667,7 +672,9 @@ Provide your assessment as a structured JSON response with detailed reasoning fo
 
     if (completeTypedResponse.overall_success === undefined) {
       // Determine overall success based on capability checklist
-      const allAchieved = completeTypedResponse.capability_checklist.every((cap) => cap.achieved === true);
+      const allAchieved = completeTypedResponse.capability_checklist.every(
+        (cap) => cap.achieved === true
+      );
       completeTypedResponse.overall_success = allAchieved;
     }
 

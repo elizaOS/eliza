@@ -74,7 +74,9 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asIntegrationTestChannel(messageServerId, 'message-handling').build(),
+          new ChannelBuilder()
+            .asIntegrationTestChannel(messageServerId, 'message-handling')
+            .build(),
           [testAgentId]
         );
 

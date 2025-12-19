@@ -161,10 +161,7 @@ export function isBuffer(obj: unknown): obj is BufferLike {
   }
   if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
     const typedObj = obj as ArrayBufferViewLike;
-    return (
-      typedObj.buffer instanceof ArrayBuffer &&
-      typeof typedObj.byteLength === 'number'
-    );
+    return typedObj.buffer instanceof ArrayBuffer && typeof typedObj.byteLength === 'number';
   }
   return false;
 }

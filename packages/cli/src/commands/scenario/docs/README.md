@@ -774,12 +774,12 @@ The scenario system is built on several key components:
    - Check response format matches service expectations
    - Ensure all required methods are mocked
 
-3. **Evaluation Failures**: For evaluation issues:
+2. **Evaluation Failures**: For evaluation issues:
    - Check evaluator configuration
    - Verify expected responses match format
    - Review action tracking configuration
 
-4. **Plugin Loading Issues**: If plugins are not being loaded correctly:
+3. **Plugin Loading Issues**: If plugins are not being loaded correctly:
    - Ensure you're running commands from the project root directory
    - If plugins still fail to load, run `bun add elizaos/plugin-name` from the root directory
    - This will add the plugin as a dependency and ensure it's available for loading

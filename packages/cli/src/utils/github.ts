@@ -32,7 +32,12 @@ interface GitHubBranchResponse {
   };
   ref?: string;
   url?: string;
-  [key: string]: string | number | boolean | { sha: string; type?: string; url?: string } | undefined;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | { sha: string; type?: string; url?: string }
+    | undefined;
 }
 
 interface GitHubFileResponse {
@@ -70,7 +75,12 @@ interface GitHubTreeResponse {
     type?: string;
     sha?: string;
   }>;
-  [key: string]: string | number | boolean | Array<{ path?: string; mode?: string; type?: string; sha?: string }> | undefined;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | Array<{ path?: string; mode?: string; type?: string; sha?: string }>
+    | undefined;
 }
 
 interface GitHubCommitResponse {
@@ -82,7 +92,12 @@ interface GitHubCommitResponse {
     date?: string;
   };
   message?: string;
-  [key: string]: string | number | boolean | { name?: string; email?: string; date?: string } | undefined;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | { name?: string; email?: string; date?: string }
+    | undefined;
 }
 
 /**
