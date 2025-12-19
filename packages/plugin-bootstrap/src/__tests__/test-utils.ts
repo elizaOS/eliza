@@ -29,6 +29,7 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
   const mockRuntime: MockRuntime = {
     // Core properties
     agentId: 'test-agent-id' as UUID,
+    initPromise: Promise.resolve(),
     character: {
       name: 'Test Agent',
       bio: 'This is a test agent for unit tests',
@@ -232,10 +233,10 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       },
     ]),
     getRoomsForParticipants: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', messageServerId: 'test-server-id' },
     ]),
     getRoomsForEntity: mock().mockResolvedValue([
-      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', serverId: 'test-server-id' },
+      { id: 'room-id', name: 'Test Room', worldId: 'test-world-id', messageServerId: 'test-server-id' },
     ]),
     searchEntities: mock().mockResolvedValue([
       { id: 'test-entity-id', names: ['Test Entity'], worldId: 'test-world-id' },
@@ -247,14 +248,13 @@ export function createMockRuntime(overrides: Partial<MockRuntime> = {}): MockRun
       id: 'test-entity-id',
       names: ['Test Entity'],
       worldId: 'test-world-id',
-      serverId: 'test-server-id',
     }),
     getWorldSettings: mock().mockResolvedValue([
       { name: 'setting1', value: 'value1', description: 'Description 1' },
       { name: 'setting2', value: 'value2', description: 'Description 2' },
     ]),
     findWorldsForOwner: mock().mockResolvedValue([
-      { id: 'test-world-id', name: 'Test World', serverId: 'test-server-id' },
+      { id: 'test-world-id', name: 'Test World', messageServerId: 'test-server-id' },
     ]),
 
     // File, PDF, and Image service methods
@@ -401,6 +401,7 @@ export function setupActionTest(options?: {
  */
 export type MockRuntime = Partial<IAgentRuntime & IDatabaseAdapter> & {
   agentId: UUID;
+  initPromise: Promise<void>;
   character: Character;
   providers: Provider[];
   actions: Action[];

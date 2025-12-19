@@ -6,8 +6,8 @@ import {
   composePrompt,
   composePromptFromState,
   type Content,
-  createUniqueUuid,
   findWorldsForOwner,
+  getSalt,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -16,6 +16,9 @@ import {
   parseKeyValueXml,
   type Setting,
   type State,
+  type UUID,
+  saltWorldSettings,
+  unsaltWorldSettings,
   type WorldSettings,
   type ActionResult,
 } from '@elizaos/core';
@@ -219,23 +222,25 @@ ${messageCompletionFooter}`;
  */
 /**
  * Retrieves the settings for a specific world from the database.
+ * Settings are stored encrypted; this function decrypts secret values before returning.
  * @param {IAgentRuntime} runtime - The Agent Runtime instance.
- * @param {string} serverId - The ID of the server.
- * @returns {Promise<WorldSettings | null>} The settings of the world, or null if not found.
+ * @param {UUID} worldId - The UUID of the world.
+ * @returns {Promise<WorldSettings | null>} The settings of the world (decrypted), or null if not found.
  */
 export async function getWorldSettings(
   runtime: IAgentRuntime,
-  serverId: string
+  worldId: UUID
 ): Promise<WorldSettings | null> {
   try {
-    const worldId = createUniqueUuid(runtime, serverId);
     const world = await runtime.getWorld(worldId);
 
     if (!world || !world.metadata?.settings) {
       return null;
     }
 
-    return world.metadata.settings as WorldSettings;
+    // Decrypt secret values before returning (settings are stored encrypted)
+    const salt = getSalt();
+    return unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
   } catch (error) {
     logger.error(
       {
@@ -254,17 +259,16 @@ export async function getWorldSettings(
  */
 export async function updateWorldSettings(
   runtime: IAgentRuntime,
-  serverId: string,
+  worldId: UUID,
   worldSettings: WorldSettings
 ): Promise<boolean> {
   try {
-    const worldId = createUniqueUuid(runtime, serverId);
     const world = await runtime.getWorld(worldId);
 
     if (!world) {
       logger.error(
-        { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId },
-        'No world found for server'
+        { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, worldId },
+        'No world found'
       );
       return false;
     }
@@ -274,8 +278,12 @@ export async function updateWorldSettings(
       world.metadata = {};
     }
 
+    // Encrypt secret values before saving (settings must be stored encrypted)
+    const salt = getSalt();
+    const saltedSettings = saltWorldSettings(worldSettings, salt);
+
     // Update settings state
-    world.metadata.settings = worldSettings;
+    world.metadata.settings = saltedSettings;
 
     // Save updated world
     await runtime.updateWorld(world);
@@ -440,7 +448,7 @@ async function extractSettingValues(
  */
 async function processSettingUpdates(
   runtime: IAgentRuntime,
-  serverId: string,
+  worldId: UUID,
   worldSettings: WorldSettings,
   updates: SettingUpdate[]
 ): Promise<{ updatedAny: boolean; messages: string[] }> {
@@ -492,14 +500,14 @@ async function processSettingUpdates(
     // If any updates were made, save the entire state to world metadata
     if (updatedAny) {
       // Save to world metadata
-      const saved = await updateWorldSettings(runtime, serverId, updatedState);
+      const saved = await updateWorldSettings(runtime, worldId, updatedState);
 
       if (!saved) {
         throw new Error('Failed to save updated state to world metadata');
       }
 
       // Verify save by retrieving it again
-      const savedState = await getWorldSettings(runtime, serverId);
+      const savedState = await getWorldSettings(runtime, worldId);
       if (!savedState) {
         throw new Error('Failed to verify state save');
       }
@@ -1035,44 +1043,21 @@ export const updateSettingsAction: Action = {
         };
       }
 
-      const serverId = serverOwnership?.messageServerId;
+      const worldId = serverOwnership.id;
       logger.info(
-        { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId },
-        'Using server ID'
+        { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, worldId },
+        'Using world ID'
       );
 
-      if (!serverId) {
-        logger.error(
-          {
-            src: 'plugin:bootstrap:action:settings',
-            agentId: runtime.agentId,
-            entityId: message.entityId,
-          },
-          'No server ID found for user in handler'
-        );
-        await generateErrorResponse(runtime, state, callback);
-        return {
-          text: 'No server ID found',
-          values: {
-            success: false,
-            error: 'NO_SERVER_ID',
-          },
-          data: {
-            actionName: 'UPDATE_SETTINGS',
-            error: 'No server ID found',
-            entityId: message.entityId,
-          },
-          success: false,
-        };
-      }
-
-      // Get settings state from world metadata
-      const worldSettings = await getWorldSettings(runtime, serverId);
+      // Get settings state directly from the world object we already have
+      // Must decrypt secret values (settings are stored encrypted)
+      const rawSettings = serverOwnership.metadata?.settings as WorldSettings | undefined;
+      const worldSettings = rawSettings ? unsaltWorldSettings(rawSettings, getSalt()) : undefined;
 
       if (!worldSettings) {
         logger.error(
-          { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, serverId },
-          'No settings state found for server in handler'
+          { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId, worldId },
+          'No settings state found for world in handler'
         );
         await generateErrorResponse(runtime, state, callback);
         return {
@@ -1083,8 +1068,8 @@ export const updateSettingsAction: Action = {
           },
           data: {
             actionName: 'UPDATE_SETTINGS',
-            error: 'No settings state found for server',
-            serverId,
+            error: 'No settings state found for world',
+            worldId,
           },
           success: false,
         };
@@ -1112,7 +1097,7 @@ export const updateSettingsAction: Action = {
       // Process extracted settings
       const updateResults = await processSettingUpdates(
         runtime,
-        serverId,
+        worldId,
         worldSettings,
         extractedSettings
       );
@@ -1129,7 +1114,7 @@ export const updateSettingsAction: Action = {
         );
 
         // Get updated settings state
-        const updatedWorldSettings = await getWorldSettings(runtime, serverId);
+        const updatedWorldSettings = await getWorldSettings(runtime, worldId);
         if (!updatedWorldSettings) {
           logger.error(
             { src: 'plugin:bootstrap:action:settings', agentId: runtime.agentId },
@@ -1145,7 +1130,7 @@ export const updateSettingsAction: Action = {
             data: {
               actionName: 'UPDATE_SETTINGS',
               error: 'Failed to retrieve updated settings state',
-              serverId,
+              worldId,
             },
             success: false,
           };
@@ -1171,7 +1156,7 @@ export const updateSettingsAction: Action = {
             updatedSettings: extractedSettings.map((s) => s.key),
             remainingRequired: requiredUnconfigured.length,
             allConfigured,
-            serverId,
+            worldId,
           },
           data: {
             actionName: 'UPDATE_SETTINGS',
@@ -1179,7 +1164,7 @@ export const updateSettingsAction: Action = {
             messages: updateResults.messages,
             remainingRequired: requiredUnconfigured.map(([key, _]) => key),
             allConfigured,
-            serverId,
+            worldId,
           },
           success: true,
         };
@@ -1198,13 +1183,13 @@ export const updateSettingsAction: Action = {
             success: false,
             error: 'NO_UPDATES',
             remainingRequired: requiredUnconfigured.length,
-            serverId,
+            worldId,
           },
           data: {
             actionName: 'UPDATE_SETTINGS',
             error: 'No valid settings found in message',
             remainingRequired: requiredUnconfigured.map(([key, _]) => key),
-            serverId,
+            worldId,
           },
           success: false,
         };
