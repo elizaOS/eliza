@@ -78,7 +78,7 @@ export function useAgentUpdate(initialAgent: Agent) {
    * @param settings The new settings object
    */
   const setSettings = useCallback(
-    (settings: any) => {
+    (settings: Record<string, unknown>) => {
       updateSettings(settings);
     },
     [updateSettings]

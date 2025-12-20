@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB } from '../types';
+import { getRow } from '../../types';
 
 export class MigrationTracker {
   constructor(private db: DrizzleDB) {}
@@ -51,13 +52,18 @@ export class MigrationTracker {
     created_at: string;
   } | null> {
     const result = await this.db.execute(
-      sql`SELECT id, hash, created_at 
-          FROM migrations._migrations 
-          WHERE plugin_name = ${pluginName} 
-          ORDER BY created_at DESC 
+      sql`SELECT id, hash, created_at
+          FROM migrations._migrations
+          WHERE plugin_name = ${pluginName}
+          ORDER BY created_at DESC
           LIMIT 1`
     );
-    return (result.rows[0] as any) || null;
+    interface MigrationRow {
+      id: number;
+      hash: string;
+      created_at: string;
+    }
+    return getRow<MigrationRow>(result) || null;
   }
 
   async recordMigration(pluginName: string, hash: string, createdAt: number): Promise<void> {

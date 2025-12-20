@@ -5,19 +5,22 @@ import { getEnvironment } from '../utils/environment';
 /**
  * Test type definitions
  */
-interface MockProcess {
+interface MockProcess extends Partial<typeof process> {
   versions?: {
     node?: string;
   };
   env?: Record<string, string | undefined>;
 }
 
-interface MockWindow {
+interface MockWindow extends Partial<typeof globalThis.window> {
   document?: object;
   console?: Partial<Console>;
+  location?: {
+    hostname?: string;
+  };
 }
 
-type MockDocument = Record<string, unknown>;
+type MockDocument = Partial<typeof globalThis.document>;
 
 /**
  * Comprehensive tests for both Node.js and Browser logger implementations
@@ -26,8 +29,8 @@ type MockDocument = Record<string, unknown>;
 
 describe('Logger - Cross-Environment Tests', () => {
   let originalProcess: typeof process | undefined;
-  let originalWindow: MockWindow | undefined;
-  let originalDocument: MockDocument | undefined;
+  let originalWindow: typeof globalThis.window | undefined;
+  let originalDocument: typeof globalThis.document | undefined;
 
   beforeEach(() => {
     // Save original globals
@@ -39,9 +42,21 @@ describe('Logger - Cross-Environment Tests', () => {
 
   afterEach(() => {
     // Restore original globals
-    globalThis.process = originalProcess as typeof process;
-    globalThis.window = originalWindow as unknown as typeof globalThis.window;
-    globalThis.document = originalDocument as unknown as typeof globalThis.document;
+    if (originalProcess !== undefined) {
+      globalThis.process = originalProcess;
+    } else {
+      delete globalThis.process;
+    }
+    if (originalWindow !== undefined) {
+      globalThis.window = originalWindow;
+    } else {
+      delete globalThis.window;
+    }
+    if (originalDocument !== undefined) {
+      globalThis.document = originalDocument;
+    } else {
+      delete globalThis.document;
+    }
     mock.restore();
     // Clear environment cache for next test
     getEnvironment().clearCache();
@@ -53,7 +68,7 @@ describe('Logger - Cross-Environment Tests', () => {
       globalThis.process = {
         versions: { node: '20.0.0' },
         env: { LOG_LEVEL: 'info' },
-      } as MockProcess as typeof process;
+      } as typeof process;
       delete globalThis.window;
       delete globalThis.document;
 
@@ -164,7 +179,7 @@ describe('Logger - Cross-Environment Tests', () => {
         trace: mock(),
         clear: mock(),
       };
-      globalThis.console = mockConsole as unknown as Console;
+      globalThis.console = mockConsole as Console;
 
       // Create browser logger with debug level to ensure all levels are logged
       const browserLogger = createLogger({ level: 'debug', __forceType: 'browser' });
@@ -196,7 +211,7 @@ describe('Logger - Cross-Environment Tests', () => {
         debug: mock(),
         trace: mock(),
       };
-      globalThis.console = mockConsole as unknown as Console;
+      globalThis.console = mockConsole as Console;
 
       // Create logger with debug level to ensure all levels are logged
       const browserLogger = createLogger({ level: 'debug', __forceType: 'browser' });
@@ -230,7 +245,7 @@ describe('Logger - Cross-Environment Tests', () => {
         error: mock(),
         log: mock(),
       };
-      globalThis.console = mockConsole as unknown as Console;
+      globalThis.console = mockConsole as Console;
 
       // Clear cache to detect browser environment
       getEnvironment().clearCache();
@@ -279,13 +294,13 @@ describe('Logger - Cross-Environment Tests', () => {
         info: mock(),
         log: mock(),
       };
-      globalThis.console = mockConsole as unknown as Console;
+      globalThis.console = mockConsole as Console;
 
       // Clear cache to detect browser environment
       getEnvironment().clearCache();
 
-      // Force browser type for testing
-      const parentLogger = createLogger({ parent: 'main', __forceType: 'browser' });
+      // Force browser type for testing with explicit level to avoid .env LOG_LEVEL interference
+      const parentLogger = createLogger({ parent: 'main', __forceType: 'browser', level: 'info' });
       const childLogger = parentLogger.child({ child: 'sub' });
 
       childLogger.info('Child message');
@@ -304,7 +319,7 @@ describe('Logger - Cross-Environment Tests', () => {
         ({
           versions: { node: '20.0.0' },
           env: {},
-        } as unknown as typeof process);
+        } as typeof process);
       delete globalThis.window;
       delete globalThis.document;
 
@@ -355,7 +370,7 @@ describe('Logger - Cross-Environment Tests', () => {
     it('should maintain consistent API across environments', async () => {
       // Test Node.js logger
       globalThis.process =
-        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
+        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as typeof process);
       delete globalThis.window;
       const nodeLogger = createLogger();
 
@@ -395,7 +410,7 @@ describe('Logger - Cross-Environment Tests', () => {
 
       // Test in Node.js
       globalThis.process =
-        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
+        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.info(testData, 'Complex object')).not.toThrow();
 
@@ -413,7 +428,7 @@ describe('Logger - Cross-Environment Tests', () => {
 
       // Node.js
       globalThis.process =
-        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
+        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as typeof process);
       const nodeLogger = createLogger();
       expect(() => nodeLogger.error(error)).not.toThrow();
       expect(() => nodeLogger.error({ error }, 'Error occurred')).not.toThrow();
@@ -432,10 +447,11 @@ describe('Logger - Cross-Environment Tests', () => {
     it('should handle undefined console methods in browser', () => {
       globalThis.window = { document: {} };
       globalThis.document = {};
+      // Create a partial console mock - missing methods will fallback to console.log
       globalThis.console = {
         log: mock(),
-        // Missing other methods
-      } as unknown as Console;
+        // Missing other methods - logger will fallback to console.log
+      } as Partial<Console> as Console;
 
       const browserLogger = createLogger({ __forceType: 'browser' });
 
@@ -525,7 +541,7 @@ describe('Logger - Cross-Environment Tests', () => {
 
       // Node.js
       globalThis.process =
-        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
+        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as typeof process);
       delete globalThis.window;
       const nodeLogger = createLogger();
       expect(() => nodeLogger.clear()).not.toThrow();
@@ -533,7 +549,7 @@ describe('Logger - Cross-Environment Tests', () => {
 
     it('should not throw when using __forceType binding in Node', () => {
       globalThis.process =
-        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as unknown as typeof process);
+        originalProcess || ({ versions: { node: '20.0.0' }, env: {} } as typeof process);
       delete globalThis.window;
       delete globalThis.document;
 
@@ -841,7 +857,7 @@ describe('Logger - Cross-Environment Tests', () => {
             versions: { node: '20.0.0' },
             env: {},
             platform: 'darwin',
-          } as unknown as typeof process);
+          } as typeof process);
         delete globalThis.window;
         delete globalThis.document;
         getEnvironment().clearCache();
@@ -936,7 +952,7 @@ describe('Logger - Cross-Environment Tests', () => {
         process.env.LOG_JSON_FORMAT = 'true';
 
         const testError = new Error('Test error');
-        (testError as any).code = 'ERR_TEST';
+        (testError as Error & { code?: string }).code = 'ERR_TEST';
 
         // Node.js
         globalThis.process = originalProcess || savedProcess;

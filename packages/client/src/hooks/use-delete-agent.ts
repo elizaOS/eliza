@@ -47,8 +47,9 @@ export function useDeleteAgent(targetAgentData: Agent) {
         clearTimeout(navigationTimer);
       }
 
-      // Check if response indicates partial completion (need to verify actual API response type)
-      const isPartial = (response as any)?.partial;
+      // Check if response indicates partial completion
+      // Note: deleteAgent returns { success: boolean }, so partial is not part of the response
+      const isPartial = false;
 
       if (isPartial) {
         toast({
@@ -64,15 +65,25 @@ export function useDeleteAgent(targetAgentData: Agent) {
 
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       navigate('/');
-    } catch (deleteError: any) {
+    } catch (deleteError: unknown) {
       responseReceived = true;
 
       if (navigationTimer) {
         clearTimeout(navigationTimer);
       }
 
-      const errorMessage = deleteError?.message ?? 'Failed to delete agent';
-      const statusCode = deleteError?.statusCode || deleteError?.response?.status;
+      const errorMessage =
+        deleteError instanceof Error ? deleteError.message : 'Failed to delete agent';
+      interface ErrorWithStatus {
+        statusCode?: number;
+        response?: {
+          status?: number;
+        };
+      }
+
+      const errorObj =
+        deleteError && typeof deleteError === 'object' ? (deleteError as ErrorWithStatus) : null;
+      const statusCode = errorObj?.statusCode || errorObj?.response?.status;
 
       if (
         statusCode === 409 ||

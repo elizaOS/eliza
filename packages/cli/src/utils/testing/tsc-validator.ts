@@ -42,11 +42,12 @@ export async function runTypeCheck(
       errors: hasErrors ? [stderr || stdout] : [],
       warnings: stderr.includes('warning') ? [stderr] : [],
     };
-  } catch (error: any) {
-    logger.error({ error }, 'TypeScript validation failed:');
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ error: errorMessage }, 'TypeScript validation failed:');
     return {
       success: false,
-      errors: [`TypeScript validation error: ${error.message}`],
+      errors: [`TypeScript validation error: ${errorMessage}`],
       warnings: [],
     };
   }

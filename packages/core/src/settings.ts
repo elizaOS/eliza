@@ -114,7 +114,7 @@ export function encryptStringValue(value: string, salt: string): string {
         // Value is likely already encrypted, return as is
         return value;
       }
-    } catch (e) {
+    } catch {
       // Not a valid hex string, proceed with encryption
     }
   }
@@ -134,34 +134,15 @@ export function encryptStringValue(value: string, salt: string): string {
 
 /**
  * Common decryption function for string values
- * @param {string} value - The encrypted value in 'iv:encrypted' format
- * @param {string} salt - The salt to use for decryption
- * @returns {string} - The decrypted string value
+ * @param value - The encrypted value in 'iv:encrypted' format
+ * @param salt - The salt to use for decryption
+ * @returns The decrypted string value, or original value if not encrypted
  */
 export function decryptStringValue(value: string, salt: string): string {
   try {
-    // Check if value is undefined or null
-    if (value === undefined || value === null) {
-      //logger.debug('Attempted to decrypt undefined or null value');
-      return value; // Return the value as is (undefined or null)
-    }
-
-    if (typeof value === 'boolean' || typeof value === 'number') {
-      //logger.debug('Value is a boolean or number, returning as is');
-      return value;
-    }
-    if (typeof value !== 'string') {
-      return value;
-    }
-
     // Split the IV and encrypted value
     const parts = value.split(':');
     if (parts.length !== 2) {
-      /*
-      logger.debug(
-        `Invalid encrypted value format - expected 'iv:encrypted', returning original value`
-      );
-      */
       return value; // Return the original value without decryption
     }
 
@@ -184,7 +165,7 @@ export function decryptStringValue(value: string, salt: string): string {
     return decrypted;
   } catch (error) {
     logger.error({ src: 'core:settings', error }, 'Decryption failed');
-    // Return the encrypted value on error
+    // Return the original value on error
     return value;
   }
 }
@@ -397,12 +378,15 @@ export function decryptedCharacter(character: Character, _runtime: IAgentRuntime
 
 /**
  * Helper function to encrypt all string values in an object
- * @param {Record<string, any>} obj - Object with values to encrypt
+ * @param {Record<string, unknown>} obj - Object with values to encrypt
  * @param {string} salt - The salt to use for encryption
- * @returns {Record<string, any>} - Object with encrypted values
+ * @returns {Record<string, unknown>} - Object with encrypted values
  */
-export function encryptObjectValues(obj: Record<string, any>, salt: string): Record<string, any> {
-  const result: Record<string, any> = {};
+export function encryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string' && value) {
@@ -417,12 +401,15 @@ export function encryptObjectValues(obj: Record<string, any>, salt: string): Rec
 
 /**
  * Helper function to decrypt all string values in an object
- * @param {Record<string, any>} obj - Object with encrypted values
+ * @param {Record<string, unknown>} obj - Object with encrypted values
  * @param {string} salt - The salt to use for decryption
- * @returns {Record<string, any>} - Object with decrypted values
+ * @returns {Record<string, unknown>} - Object with decrypted values
  */
-export function decryptObjectValues(obj: Record<string, any>, salt: string): Record<string, any> {
-  const result: Record<string, any> = {};
+export function decryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === 'string' && value) {

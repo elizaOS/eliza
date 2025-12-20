@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { AgentRuntime } from './runtime';
 import { setDefaultSecretsFromEnv } from './secrets';
+import { getSalt, encryptObjectValues } from './settings';
 import { resolvePlugins } from './plugin';
 import type {
   Character,
@@ -12,57 +13,13 @@ import type {
   Plugin,
   RuntimeSettings,
   Content,
-  SendMessageOptions,
-  SendMessageResult,
+  HandleMessageOptions,
+  HandleMessageResult,
   IDatabaseAdapter,
+  HealthStatus,
+  ReadonlyRuntime,
 } from './types';
 import type { MessageProcessingOptions, MessageProcessingResult } from './services/message-service';
-
-/**
- * Batch operation for sending messages
- */
-export interface BatchOperation {
-  agentId: UUID;
-  operation: 'message' | 'action' | 'evaluate';
-  payload: any;
-}
-
-/**
- * Result of a batch operation
- */
-export interface BatchResult {
-  agentId: UUID;
-  success: boolean;
-  result?: any;
-  error?: Error;
-}
-
-/**
- * Read-only runtime accessor
- */
-export interface ReadonlyRuntime {
-  getAgent(id: UUID): IAgentRuntime | undefined;
-  getAgents(): IAgentRuntime[];
-  getState(agentId: UUID): State | undefined;
-}
-
-/**
- * Health status for an agent
- */
-export interface HealthStatus {
-  alive: boolean;
-  responsive: boolean;
-  memoryUsage?: number;
-  uptime?: number;
-}
-
-/**
- * Update operation for an agent
- */
-export interface AgentUpdate {
-  id: UUID;
-  character: Partial<Character>;
-}
 
 /**
  * ElizaOS - Multi-agent orchestration framework
@@ -158,11 +115,28 @@ export class ElizaOS extends EventTarget implements IElizaOS {
     const createdRuntimes: IAgentRuntime[] = [];
 
     const promises = agents.map(async (agent) => {
+      const character: Character = JSON.parse(JSON.stringify(agent.character));
+
       // Merge environment secrets with character secrets
       // Priority: .env < character.json (character overrides)
       // In test mode, skip env merge to avoid database bloat from system variables
-      const character = agent.character;
       await setDefaultSecretsFromEnv(character, { skipEnvMerge: options?.isTestMode });
+
+      // Encrypt all secrets after merging env vars
+      const salt = getSalt();
+      if (character.settings?.secrets && typeof character.settings.secrets === 'object') {
+        character.settings.secrets = encryptObjectValues(
+          character.settings.secrets as Record<string, string>,
+          salt
+        );
+      }
+      // Also encrypt character.secrets (root level) if it exists
+      if (character.secrets && typeof character.secrets === 'object') {
+        character.secrets = encryptObjectValues(
+          character.secrets as Record<string, string>,
+          salt
+        ) as { [key: string]: string | boolean | number };
+      }
 
       let resolvedPlugins = agent.plugins
         ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
@@ -181,7 +155,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
       // Register pre-initialized database adapter if provided
       if (agent.databaseAdapter) {
-        runtime.registerDatabaseAdapter(agent.databaseAdapter);
+        (runtime as IAgentRuntime).registerDatabaseAdapter(agent.databaseAdapter);
       }
 
       runtime.elizaOS = this;
@@ -447,7 +421,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
    *
    * @example
    * // SYNC mode with agent ID (HTTP API)
-   * const result = await elizaOS.sendMessage(agentId, {
+   * const result = await elizaOS.handleMessage(agentId, {
    *   entityId: user.id,
    *   roomId: room.id,
    *   content: { text: "Hello", source: 'web' }
@@ -456,7 +430,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
    * @example
    * // Serverless mode with runtime directly (no registry lookup)
    * const [runtime] = await elizaOS.addAgents([config], { ephemeral: true, autoStart: true, returnRuntimes: true });
-   * const result = await elizaOS.sendMessage(runtime, {
+   * const result = await elizaOS.handleMessage(runtime, {
    *   entityId: user.id,
    *   roomId: room.id,
    *   content: { text: "Hello", source: 'web' }
@@ -464,7 +438,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
    *
    * @example
    * // ASYNC mode (WebSocket, MessageBus)
-   * await elizaOS.sendMessage(agentId, {
+   * await elizaOS.handleMessage(agentId, {
    *   entityId: user.id,
    *   roomId: room.id,
    *   content: { text: "Hello", source: 'websocket' }
@@ -474,7 +448,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
    *   }
    * });
    */
-  async sendMessage(
+  async handleMessage(
     target: UUID | IAgentRuntime,
     message: Partial<Memory> & {
       entityId: UUID;
@@ -482,8 +456,8 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       content: Content;
       worldId?: UUID;
     },
-    options?: SendMessageOptions
-  ): Promise<SendMessageResult> {
+    options?: HandleMessageOptions
+  ): Promise<HandleMessageResult> {
     // 1. Resolve the runtime (UUID → lookup, runtime → direct)
     let runtime: IAgentRuntime | undefined;
     let agentId: UUID;
@@ -527,12 +501,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
       channelId: userMessage.roomId,
     });
 
-    // 5. Extract processing options
+    // 5. Extract processing options (includes streaming callback)
     const processingOptions: MessageProcessingOptions = {
       maxRetries: options?.maxRetries,
       timeoutDuration: options?.timeoutDuration,
       useMultiStep: options?.useMultiStep,
       maxMultiStepIterations: options?.maxMultiStepIterations,
+      onStreamChunk: options?.onStreamChunk,
     };
 
     // 6. Helper to wrap message handling with Entity RLS context if available
@@ -605,16 +580,16 @@ export class ElizaOS extends EventTarget implements IElizaOS {
   }
 
   /**
-   * Send messages to multiple agents in parallel
+   * Handle messages to multiple agents in parallel
    *
    * Useful for batch operations where you need to send messages to multiple agents at once.
-   * All messages are sent in parallel for maximum performance.
+   * All messages are handled in parallel for maximum performance.
    *
-   * @param messages - Array of messages to send, each with agentId and message data
+   * @param messages - Array of messages to handle, each with agentId and message data
    * @returns Promise with array of results, one per message
    *
    * @example
-   * const results = await elizaOS.sendMessages([
+   * const results = await elizaOS.handleMessages([
    *   {
    *     agentId: agent1Id,
    *     message: {
@@ -638,7 +613,7 @@ export class ElizaOS extends EventTarget implements IElizaOS {
    *   }
    * ]);
    */
-  async sendMessages(
+  async handleMessages(
     messages: Array<{
       agentId: UUID;
       message: Partial<Memory> & {
@@ -647,13 +622,13 @@ export class ElizaOS extends EventTarget implements IElizaOS {
         content: Content;
         worldId?: UUID;
       };
-      options?: SendMessageOptions;
+      options?: HandleMessageOptions;
     }>
-  ): Promise<Array<{ agentId: UUID; result: SendMessageResult; error?: Error }>> {
+  ): Promise<Array<{ agentId: UUID; result: HandleMessageResult; error?: Error }>> {
     const results = await Promise.all(
       messages.map(async ({ agentId, message, options }) => {
         try {
-          const result = await this.sendMessage(agentId, message, options);
+          const result = await this.handleMessage(agentId, message, options);
           return { agentId, result };
         } catch (error) {
           return {
@@ -737,10 +712,9 @@ export class ElizaOS extends EventTarget implements IElizaOS {
 
         // Access the most recent state from the runtime's state cache
         // Note: This returns the cached state for the most recent message
-        const agentRuntime = agent as any;
-        if (agentRuntime.stateCache && agentRuntime.stateCache.size > 0) {
+        if (agent.stateCache && agent.stateCache.size > 0) {
           // Get the most recent state from the cache
-          const states = Array.from(agentRuntime.stateCache.values());
+          const states = Array.from(agent.stateCache.values());
           return states[states.length - 1] as State;
         }
         return undefined;

@@ -110,8 +110,8 @@ export class MemoryService extends BaseApiClient {
     agentId: UUID,
     agentPerspectiveRoomId: UUID,
     includeEmbedding?: boolean
-  ): Promise<{ success: boolean; data: any[] }> {
-    return this.get<{ success: boolean; data: any[] }>(
+  ): Promise<{ success: boolean; data: Memory[] }> {
+    return this.get<{ success: boolean; data: Memory[] }>(
       `/api/memory/${agentId}/rooms/${agentPerspectiveRoomId}/memories`,
       { params: { includeEmbedding } }
     );
@@ -139,8 +139,12 @@ export class MemoryService extends BaseApiClient {
   /**
    * Update agent internal memory
    */
-  async updateAgentInternalMemory(agentId: UUID, memoryId: UUID, memoryData: any): Promise<any> {
-    return this.patch<any>(`/api/memory/${agentId}/memories/${memoryId}`, memoryData);
+  async updateAgentInternalMemory(
+    agentId: UUID,
+    memoryId: UUID,
+    memoryData: MemoryUpdateParams
+  ): Promise<Memory> {
+    return this.patch<Memory>(`/api/memory/${agentId}/memories/${memoryId}`, memoryData);
   }
 
   /**
@@ -156,8 +160,6 @@ export class MemoryService extends BaseApiClient {
    * Clear group chat (implemented via messaging channel history clearing)
    */
   async clearGroupChat(messageServerId: UUID): Promise<{ success: boolean }> {
-    return this.delete<{ success: boolean }>(
-      `/api/messaging/channels/${messageServerId}/messages`
-    );
+    return this.delete<{ success: boolean }>(`/api/messaging/channels/${messageServerId}/messages`);
   }
 }

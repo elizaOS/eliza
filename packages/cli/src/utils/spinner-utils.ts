@@ -35,48 +35,38 @@ export async function runCommandWithSpinner(
 ): Promise<CommandResult> {
   const spinner = clack.spinner();
 
-  try {
-    spinner.start(options.spinnerText);
+  spinner.start(options.spinnerText);
 
-    const result = await bunExec(command, args, {
-      cwd: options.cwd || process.cwd(),
-    });
+  const result = await bunExec(command, args, {
+    cwd: options.cwd || process.cwd(),
+  });
 
-    if (result.success) {
-      spinner.stop(options.successText);
-      return {
-        success: true,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      };
-    } else {
-      const errorMessage = options.errorText || `Command failed with exit code ${result.exitCode}`;
-      spinner.stop(colors.red(errorMessage));
-
-      // Show captured output on error for debugging
-      if (options.showOutputOnError !== false) {
-        if (result.stdout) {
-          console.error(colors.dim('stdout:'), result.stdout);
-        }
-        if (result.stderr) {
-          console.error(colors.dim('stderr:'), result.stderr);
-        }
-      }
-
-      return {
-        success: false,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        error: new Error(`${errorMessage}: ${result.stderr || result.stdout}`),
-      };
-    }
-  } catch (error) {
-    const errorMessage = options.errorText || 'Command execution failed';
+  if (result.success) {
+    spinner.stop(options.successText);
+    return {
+      success: true,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  } else {
+    const errorMessage = options.errorText || `Command failed with exit code ${result.exitCode}`;
     spinner.stop(colors.red(errorMessage));
+
+    // Show captured output on error for debugging
+    if (options.showOutputOnError !== false) {
+      if (result.stdout) {
+        console.error(colors.dim('stdout:'), result.stdout);
+      }
+      if (result.stderr) {
+        console.error(colors.dim('stderr:'), result.stderr);
+      }
+    }
 
     return {
       success: false,
-      error: error as Error,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      error: new Error(`${errorMessage}: ${result.stderr || result.stdout}`),
     };
   }
 }
@@ -195,7 +185,7 @@ export async function installPluginWithSpinner(
 /**
  * Create a task for use with clack.tasks()
  */
-export function createTask(title: string, fn: () => Promise<any>) {
+export function createTask(title: string, fn: () => Promise<void | string>) {
   return {
     title,
     task: async () => {
@@ -209,7 +199,7 @@ export function createTask(title: string, fn: () => Promise<any>) {
  * Run multiple tasks with clack.tasks()
  */
 export async function runTasks(
-  tasks: Array<{ title: string; task: () => Promise<any> }>
+  tasks: Array<{ title: string; task: () => Promise<void> | Promise<string> }>
 ): Promise<void> {
   await clack.tasks(tasks);
 }

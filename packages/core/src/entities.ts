@@ -9,20 +9,33 @@ import {
   type Relationship,
   type State,
   type UUID,
+  type World,
 } from './types';
 
 /**
- * Template for resolving entity name within a conversation context.
- *
- * @type {string}
+ * Entity match result from resolution
  */
+interface EntityMatch {
+  name?: string;
+  reason?: string;
+}
+
+/**
+ * Parsed resolution result containing matches
+ */
+interface ParsedResolution {
+  resolvedId?: string;
+  confidence?: string;
+  matches?: {
+    match?: EntityMatch | EntityMatch[];
+  };
+}
+
 /**
  * Entity Resolution Template for resolving entity names based on context and recent messages.
  *
  * Contains placeholders for message sender, agent, entities in the room, and recent messages.
  * Provides instructions for analyzing the context and resolving entity references.
- *
- * @return {string} entityResolutionTemplate - The template for resolving entity names with detailed instructions.
  */
 const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
@@ -148,7 +161,7 @@ export async function findEntityByName(
     return null;
   }
 
-  const world = room.worldId ? await runtime.getWorld(room.worldId) : null;
+  const world: World | null = room.worldId ? await runtime.getWorld(room.worldId) : null;
 
   // Get all entities in the room with their components
   const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
@@ -208,15 +221,15 @@ export async function findEntityByName(
     runtime,
     message.entityId,
     allEntities,
-    room.id,
+    room.id as UUID,
     relationships
   );
 
   // Compose context for LLM
   const prompt = composePrompt({
     state: {
-      roomName: room.name || room.id,
-      worldName: world?.name || 'Unknown',
+      roomName: (room.name || room.id) as string,
+      worldName: (world?.name || 'Unknown') as string,
       entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
       entityId: message.entityId,
       senderId: message.entityId,
@@ -260,12 +273,12 @@ export async function findEntityByName(
 
   // For username/name/relationship matches, search through all entities
   // Handle matches - parseKeyValueXml returns nested structures differently
-  let matchesArray: any[] = [];
-  if (resolution.matches?.match) {
+  let matchesArray: EntityMatch[] = [];
+  const parsedResolution = resolution as ParsedResolution;
+  if (parsedResolution.matches?.match) {
     // Normalize to array
-    matchesArray = Array.isArray(resolution.matches.match)
-      ? resolution.matches.match
-      : [resolution.matches.match];
+    const matchValue = parsedResolution.matches.match;
+    matchesArray = Array.isArray(matchValue) ? matchValue : [matchValue];
   }
 
   if (matchesArray.length > 0 && matchesArray[0]?.name) {
@@ -322,9 +335,6 @@ export const createUniqueUuid = (runtime: IAgentRuntime, baseUserId: UUID | stri
 };
 
 /**
- * Get details for a list of entities.
- */
-/**
  * Retrieves entity details for a specific room from the database.
  *
  * @param {Object} params - The input parameters
@@ -359,7 +369,7 @@ export async function getEntityDetails({
     }
 
     // Process merged data
-    const mergedData: Record<string, any> = {};
+    const mergedData: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(allData)) {
       if (!mergedData[key]) {
         mergedData[key] = value;
@@ -375,10 +385,22 @@ export async function getEntityDetails({
     }
 
     // Create the entity details
+    // Helper to safely extract name from metadata
+    const getEntityNameFromMetadata = (source: string): string | undefined => {
+      const sourceMetadata = entity.metadata[source];
+      if (sourceMetadata && typeof sourceMetadata === 'object' && sourceMetadata !== null) {
+        const metadataObj = sourceMetadata as Record<string, unknown>;
+        if ('name' in metadataObj && typeof metadataObj.name === 'string') {
+          return metadataObj.name;
+        }
+      }
+      return undefined;
+    };
+
     uniqueEntities.set(entity.id, {
       id: entity.id,
       name: room?.source
-        ? (entity.metadata[room.source] as { name?: string })?.name || entity.names[0]
+        ? getEntityNameFromMetadata(room.source) || entity.names[0]
         : entity.names[0],
       names: entity.names,
       data: JSON.stringify({ ...mergedData, ...entity.metadata }),
@@ -388,11 +410,6 @@ export async function getEntityDetails({
   return Array.from(uniqueEntities.values());
 }
 
-/**
- * Format entities into a string
- * @param entities - list of entities
- * @returns string
- */
 /**
  * Format the given entities into a string representation.
  *

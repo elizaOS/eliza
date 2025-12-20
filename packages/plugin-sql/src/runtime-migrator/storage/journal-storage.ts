@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB, Journal, JournalEntry } from '../types';
+import { getRow } from '../../types';
 
 export class JournalStorage {
   constructor(private db: DrizzleDB) {}
@@ -15,7 +16,12 @@ export class JournalStorage {
       return null;
     }
 
-    const row = result.rows[0] as any;
+    interface JournalRow {
+      version: string;
+      dialect: string;
+      entries: JournalEntry[];
+    }
+    const row = getRow<JournalRow>(result)!;
     return {
       version: row.version,
       dialect: row.dialect,

@@ -1,6 +1,6 @@
 import { ApiResponse, ApiClientConfig, RequestConfig } from '../types/base';
 
-declare const window: any;
+declare const window: (Window & typeof globalThis) | undefined;
 
 export class ApiError extends Error {
   constructor(
@@ -49,8 +49,8 @@ export abstract class BaseApiClient {
     method: string,
     path: string,
     options?: {
-      body?: any;
-      params?: Record<string, any>;
+      body?: unknown;
+      params?: Record<string, string | number | boolean | null | undefined>;
       headers?: Record<string, string>;
       config?: RequestConfig;
     }
@@ -111,10 +111,10 @@ export abstract class BaseApiClient {
       }
 
       // Parse JSON response
-      let jsonData: any;
+      let jsonData: unknown;
       try {
         jsonData = await response.json();
-      } catch (error) {
+      } catch (_error) {
         // If JSON parsing fails, treat as success for 2xx responses
         if (response.ok) {
           return this.createNoContentResponse<T>();
@@ -131,11 +131,13 @@ export abstract class BaseApiClient {
       // Handle error responses
       if (!response.ok) {
         // Try to extract error information from response
-        const error = jsonData?.error || {
+        const errorData = jsonData as { error?: { code?: string; message?: string; details?: unknown } } | null;
+        const error = errorData?.error || {
           code: 'HTTP_ERROR',
           message: `HTTP ${response.status}: ${response.statusText}`,
         };
-        throw new ApiError(error.code, error.message, error.details, response.status);
+        const details = typeof error.details === 'string' ? error.details : undefined;
+        throw new ApiError(error.code || 'HTTP_ERROR', error.message || 'Unknown error', details, response.status);
       }
 
       // Handle successful responses
@@ -147,9 +149,9 @@ export abstract class BaseApiClient {
             'error' in apiResponse
               ? apiResponse.error
               : {
-                  code: 'UNKNOWN_ERROR',
-                  message: 'An unknown error occurred',
-                };
+                code: 'UNKNOWN_ERROR',
+                message: 'An unknown error occurred',
+              };
           throw new ApiError(error.code, error.message, error.details, response.status);
         }
         return apiResponse.data;
@@ -185,7 +187,7 @@ export abstract class BaseApiClient {
 
   protected async post<T>(
     path: string,
-    body?: any,
+    body?: unknown,
     options?: Parameters<typeof this.request>[2]
   ): Promise<T> {
     return this.request<T>('POST', path, { ...options, body });
@@ -193,7 +195,7 @@ export abstract class BaseApiClient {
 
   protected async put<T>(
     path: string,
-    body?: any,
+    body?: unknown,
     options?: Parameters<typeof this.request>[2]
   ): Promise<T> {
     return this.request<T>('PUT', path, { ...options, body });
@@ -201,7 +203,7 @@ export abstract class BaseApiClient {
 
   protected async patch<T>(
     path: string,
-    body?: any,
+    body?: unknown,
     options?: Parameters<typeof this.request>[2]
   ): Promise<T> {
     return this.request<T>('PATCH', path, { ...options, body });

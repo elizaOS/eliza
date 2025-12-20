@@ -27,7 +27,7 @@ character:
   temperature: 0.7
 
 environment:
-  type: local # or "e2b"
+  type: local
 
 # Optional: Setup configuration
 setup:
@@ -96,7 +96,7 @@ judgment:
 
 - `name`: Unique identifier for the scenario
 - `description`: Human-readable description
-- `environment.type`: Usually "local" or "e2b"
+- `environment.type`: Must be "local" (use `elizaos deploy` for cloud container deployments)
 - `run`: Array of test steps
 - `judgment.strategy`: How to determine pass/fail
 
@@ -321,7 +321,7 @@ termination_conditions:
 
 ```yaml
 - parameter: 'environment.type'
-  values: ['local', 'e2b']
+  values: ['local']
 - parameter: 'setup.mocks[0].response.success'
   values: [true, false]
 - parameter: 'setup.mocks[0].metadata.delay'
@@ -389,7 +389,7 @@ setup:
 
 ```yaml
 environment:
-  type: e2b
+  type: local
   setup:
     workingDirectory: "/tmp/test"
     timeout: 300000
@@ -635,7 +635,7 @@ Matrix files undergo multi-level validation:
 
 ```
 ❌ name: Required
-❌ environment.type: Invalid enum value, expected "local" or "e2b"
+❌ environment.type: Invalid enum value, expected "local"
 ❌ run: Required, must be array with at least 1 element
 ❌ judgment.strategy: Invalid enum value, expected "all_pass" or "any_pass"
 ```

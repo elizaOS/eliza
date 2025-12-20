@@ -161,7 +161,9 @@ export class EmbeddingGenerationService extends Service {
       const priorityOrder = { low: 0, normal: 1, high: 2 };
       const priorityDiff = priorityOrder[a.item.priority] - priorityOrder[b.item.priority];
 
-      if (priorityDiff !== 0) return priorityDiff;
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
 
       // Within same priority, remove older items first
       return a.item.addedAt - b.item.addedAt;
@@ -200,7 +202,9 @@ export class EmbeddingGenerationService extends Service {
       // Find the position after the last high priority item
       let insertIndex = 0;
       for (let i = 0; i < this.queue.length; i++) {
-        if (this.queue[i].priority !== 'high') break;
+        if (this.queue[i].priority !== 'high') {
+          break;
+        }
         insertIndex = i + 1;
       }
       this.queue.splice(insertIndex, 0, queueItem);

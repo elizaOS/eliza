@@ -204,13 +204,13 @@ describe('UI Disable Feature Integration', () => {
       // Mock API routes that should always work
       const mockRouter = {
         routes: [] as string[],
-        get: function (path: string) {
+        get(path: string) {
           this.routes.push(`GET ${path}`);
         },
-        post: function (path: string) {
+        post(path: string) {
           this.routes.push(`POST ${path}`);
         },
-        delete: function (path: string) {
+        delete(path: string) {
           this.routes.push(`DELETE ${path}`);
         },
       };

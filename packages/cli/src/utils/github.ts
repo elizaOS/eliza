@@ -10,31 +10,94 @@ const GITHUB_API_URL = 'https://api.github.com';
 
 interface GitHubUserResponse {
   login: string;
-  [key: string]: unknown;
+  id?: number;
+  avatar_url?: string;
+  name?: string;
+  email?: string;
+  [key: string]: string | number | boolean | undefined;
 }
 
 interface GitHubRepoResponse {
   full_name: string;
-  [key: string]: unknown;
+  id?: number;
+  html_url?: string;
+  [key: string]: string | number | boolean | undefined;
 }
 
 interface GitHubBranchResponse {
   object: {
     sha: string;
-    [key: string]: unknown;
+    type?: string;
+    url?: string;
   };
-  [key: string]: unknown;
+  ref?: string;
+  url?: string;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | { sha: string; type?: string; url?: string }
+    | undefined;
 }
 
 interface GitHubFileResponse {
   content: string;
   sha: string;
-  [key: string]: unknown;
+  size?: number;
+  encoding?: string;
+  name?: string;
+  path?: string;
+  [key: string]: string | number | boolean | undefined;
 }
 
 interface GitHubPullRequestResponse {
   html_url: string;
-  [key: string]: unknown;
+  id?: number;
+  number?: number;
+  state?: string;
+  title?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface GitHubBlobResponse {
+  sha: string;
+  size?: number;
+  url?: string;
+  [key: string]: string | number | boolean | undefined;
+}
+
+interface GitHubTreeResponse {
+  sha: string;
+  url?: string;
+  tree?: Array<{
+    path?: string;
+    mode?: string;
+    type?: string;
+    sha?: string;
+  }>;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | Array<{ path?: string; mode?: string; type?: string; sha?: string }>
+    | undefined;
+}
+
+interface GitHubCommitResponse {
+  sha: string;
+  url?: string;
+  author?: {
+    name?: string;
+    email?: string;
+    date?: string;
+  };
+  message?: string;
+  [key: string]:
+    | string
+    | number
+    | boolean
+    | { name?: string; email?: string; date?: string }
+    | undefined;
 }
 
 /**
@@ -229,7 +292,7 @@ export async function createBranch(
             return false;
           }
 
-          const blobData = (await blobResponse.json()) as { sha: string };
+          const blobData = (await blobResponse.json()) as GitHubBlobResponse;
           const blobSha = blobData.sha;
 
           // Create a tree with the README
@@ -257,7 +320,7 @@ export async function createBranch(
             return false;
           }
 
-          const treeData = (await treeResponse.json()) as { sha: string };
+          const treeData = (await treeResponse.json()) as GitHubTreeResponse;
           const treeSha = treeData.sha;
 
           // Create a commit
@@ -282,7 +345,7 @@ export async function createBranch(
             return false;
           }
 
-          const commitData = (await commitResponse.json()) as { sha: string };
+          const commitData = (await commitResponse.json()) as GitHubCommitResponse;
           const commitSha = commitData.sha;
 
           // Create a reference for main branch

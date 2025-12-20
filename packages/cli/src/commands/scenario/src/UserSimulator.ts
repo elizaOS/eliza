@@ -1,7 +1,7 @@
 // File: packages/cli/src/commands/scenario/src/UserSimulator.ts
 // User simulator for generating realistic user responses in multi-turn conversations
 
-import { AgentRuntime, ModelType } from '@elizaos/core';
+import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { ConversationTurn, SimulationContext, UserSimulatorConfig } from './conversation-types';
 
 /**
@@ -9,10 +9,10 @@ import { ConversationTurn, SimulationContext, UserSimulatorConfig } from './conv
  * Uses LLM to simulate believable user behavior in conversations
  */
 export class UserSimulator {
-  private runtime: AgentRuntime;
+  private runtime: IAgentRuntime;
   private config: UserSimulatorConfig;
 
-  constructor(runtime: AgentRuntime, config: UserSimulatorConfig) {
+  constructor(runtime: IAgentRuntime, config: UserSimulatorConfig) {
     this.runtime = runtime;
     this.config = config;
   }
@@ -38,14 +38,19 @@ export class UserSimulator {
       console.log(`👤 [UserSimulator] Prompt length: ${prompt.length}`);
       console.log(`👤 [UserSimulator] Prompt preview: ${prompt.substring(0, 200)}...`);
 
-      const response = await this.runtime.useModel(this.config.model_type || ModelType.TEXT_LARGE, {
-        prompt: prompt,
-        temperature: this.config.temperature || 0.8,
-      });
+      const rawResponse = await this.runtime.useModel(
+        (this.config.model_type ||
+          ModelType.TEXT_LARGE) as keyof import('@elizaos/core').ModelParamsMap,
+        {
+          prompt: prompt,
+          temperature: this.config.temperature || 0.8,
+        }
+      );
+      const response = String(rawResponse || '');
 
       console.log(`👤 [UserSimulator] Raw LLM response: "${response}"`);
       console.log(`👤 [UserSimulator] Response type: ${typeof response}`);
-      console.log(`👤 [UserSimulator] Response length: ${response?.length || 0}`);
+      console.log(`👤 [UserSimulator] Response length: ${response.length}`);
 
       // Log simulation for debugging
       if (context.debugOptions?.log_user_simulation) {

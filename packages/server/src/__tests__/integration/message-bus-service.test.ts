@@ -15,7 +15,7 @@ describe('MessageBusService Integration Tests', () => {
   let agentFixture: AgentFixture;
   let service: MessageBusService;
   let testAgentId: UUID;
-  let serverId: UUID;
+  let messageServerId: UUID;
   let runtime: any;
 
   beforeAll(async () => {
@@ -25,7 +25,7 @@ describe('MessageBusService Integration Tests', () => {
 
     // Get default server
     const servers = await serverFixture.getServer().getServers();
-    serverId = servers[0].id;
+    messageServerId = servers[0].id;
 
     // Create test agent with real runtime
     agentFixture = new AgentFixture(serverFixture.getServer());
@@ -74,11 +74,13 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asIntegrationTestChannel(serverId, 'message-handling').build(),
+          new ChannelBuilder()
+            .asIntegrationTestChannel(messageServerId, 'message-handling')
+            .build(),
           [testAgentId]
         );
 
-      // Track if message passes all checks (before elizaOS.sendMessage which may have DB issues)
+      // Track if message passes all checks (before elizaOS.handleMessage which may have DB issues)
       let allChecksPassed = false;
       const originalHandleIncomingMessage = (service as any).handleIncomingMessage.bind(service);
       (service as any).handleIncomingMessage = async (data: any) => {
@@ -93,7 +95,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('new_message', {
         id: 'msg-test-1' as UUID,
         channel_id: channel.id,
-        server_id: serverId,
+        message_server_id: messageServerId,
         author_id: stringToUuid('user-123'),
         content: 'Test message',
         raw_message: { content: 'Test message' },
@@ -118,7 +120,7 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asIntegrationTestChannel(serverId, 'self-message').build(),
+          new ChannelBuilder().asIntegrationTestChannel(messageServerId, 'self-message').build(),
           [testAgentId]
         );
 
@@ -136,7 +138,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('new_message', {
         id: 'msg-self' as UUID,
         channel_id: channel.id,
-        server_id: serverId,
+        message_server_id: messageServerId,
         author_id: testAgentId,
         content: 'Self message',
         raw_message: { content: 'Self message' },
@@ -161,7 +163,7 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asGroupChannel('Channel Without Agent', serverId).build()
+          new ChannelBuilder().asGroupChannel('Channel Without Agent', messageServerId).build()
         );
 
       // Track if message processing starts
@@ -178,7 +180,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('new_message', {
         id: 'msg-not-participant' as UUID,
         channel_id: channel.id,
-        server_id: serverId,
+        message_server_id: messageServerId,
         author_id: stringToUuid('user-456'),
         content: 'Message in other channel',
         raw_message: { content: 'Message in other channel' },
@@ -205,7 +207,7 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asIntegrationTestChannel(serverId, 'deletion-test').build(),
+          new ChannelBuilder().asIntegrationTestChannel(messageServerId, 'deletion-test').build(),
           [testAgentId]
         );
 
@@ -256,7 +258,7 @@ describe('MessageBusService Integration Tests', () => {
       const channel = await serverFixture
         .getServer()
         .createChannel(
-          new ChannelBuilder().asIntegrationTestChannel(serverId, 'clear-test').build(),
+          new ChannelBuilder().asIntegrationTestChannel(messageServerId, 'clear-test').build(),
           [testAgentId]
         );
 
@@ -317,7 +319,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('server_agent_update', {
         type: 'agent_added_to_server',
         agentId: testAgentId,
-        serverId: newServer.id,
+        messageServerId: newServer.id,
       });
 
       // Wait for processing
@@ -332,7 +334,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('server_agent_update', {
         type: 'agent_removed_from_server',
         agentId: testAgentId,
-        serverId: serverId,
+        messageServerId: messageServerId,
       });
 
       // Wait
@@ -349,7 +351,7 @@ describe('MessageBusService Integration Tests', () => {
       internalMessageBus.emit('server_agent_update', {
         type: 'agent_added_to_server',
         agentId: otherAgentId,
-        serverId: serverId,
+        messageServerId: messageServerId,
       });
 
       // Wait

@@ -37,7 +37,7 @@ export interface ServerDebugInfo {
       status: string;
     }>;
     connections: number;
-    memory: any;
+    memory: Record<string, unknown>;
   };
   environment: Record<string, string>;
 }
@@ -46,5 +46,5 @@ export interface LogSubmitParams {
   level: 'debug' | 'info' | 'warn' | 'error';
   message: string;
   source?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }

@@ -6,9 +6,6 @@ import { logger } from './logger';
 import { type IAgentRuntime, Role, type World, type UUID } from './types';
 
 /**
- * Represents the state of server ownership, including a mapping of server IDs to their respective World objects.
- */
-/**
  * Interface representing the ownership state of servers.
  * @property {Object.<string, World>} servers - The servers and their corresponding worlds, where the key is the server ID and the value is the World object.
  */
@@ -18,9 +15,6 @@ export interface ServerOwnershipState {
   };
 }
 
-/**
- * Gets a user's role from world metadata
- */
 /**
  * Retrieve the server role of a specified user entity within a given server.
  *
@@ -41,11 +35,6 @@ export async function getUserServerRole(
     return Role.NONE;
   }
 
-  if (world.metadata.roles[entityId as UUID]) {
-    return world.metadata.roles[entityId as UUID] as Role;
-  }
-
-  // Also check original ID format
   if (world.metadata.roles[entityId as UUID]) {
     return world.metadata.roles[entityId as UUID] as Role;
   }

@@ -9,6 +9,7 @@ import type {
   SessionsHealthResponse,
   ListSessionsResponse,
   MessageResponse,
+  ResponseMode,
 } from '../types/sessions';
 
 /**
@@ -30,7 +31,9 @@ function toTimestampString(
   value: Date | string | number | undefined,
   paramName: string
 ): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
 
   let timestamp: number;
 
@@ -104,13 +107,40 @@ export class SessionsService extends BaseApiClient {
   /**
    * Send a message in a session
    * @param sessionId Session ID
-   * @param params Message parameters
-   * @returns Message response
+   * @param params Message parameters (includes optional mode: 'sync' | 'stream' | 'websocket')
+   * @returns Message response with userMessage and optional agentResponse (in sync mode)
+   *
+   * @example
+   * // Default websocket mode - returns immediately
+   * const response = await sessions.sendMessage(sessionId, { content: 'Hello' });
+   * console.log(response.userMessage.id);
+   *
+   * @example
+   * // Sync mode - waits for agent response
+   * const response = await sessions.sendMessage(sessionId, {
+   *   content: 'Hello',
+   *   mode: 'sync'
+   * });
+   * console.log(response.agentResponse?.text);
    */
   async sendMessage(sessionId: string, params: SendMessageParams): Promise<MessageResponse> {
     validateRequiredParam(sessionId, 'sessionId');
     validateRequiredParam(params?.content, 'content');
     return this.post<MessageResponse>(`/api/messaging/sessions/${sessionId}/messages`, params);
+  }
+
+  /**
+   * Send a message and wait for the agent's response (sync mode)
+   * Convenience method that sets mode to 'sync'
+   * @param sessionId Session ID
+   * @param params Message parameters
+   * @returns Message response with agentResponse included
+   */
+  async sendMessageSync(
+    sessionId: string,
+    params: Omit<SendMessageParams, 'mode'>
+  ): Promise<MessageResponse> {
+    return this.sendMessage(sessionId, { ...params, mode: 'sync' as ResponseMode });
   }
 
   /**

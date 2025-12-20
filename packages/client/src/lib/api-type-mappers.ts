@@ -6,7 +6,7 @@ import {
   MessageServer as ApiMessageServer,
   Memory as ApiMemory,
 } from '@elizaos/api-client';
-import { Agent, AgentStatus, UUID, ChannelType, Memory } from '@elizaos/core';
+import { Agent, AgentStatus, UUID, ChannelType, Memory, Media } from '@elizaos/core';
 import type {
   AgentWithStatus,
   MessageChannel as ClientMessageChannel,
@@ -15,45 +15,15 @@ import type {
 } from '../types';
 import type { UiMessage } from '../hooks/use-query-hooks';
 
-// Map API Agent status strings to core AgentStatus enum
-export function mapApiStatusToEnum(status: 'active' | 'inactive' | 'stopped'): AgentStatus {
-  switch (status) {
-    case 'active':
-      return AgentStatus.ACTIVE;
-    case 'inactive':
-    case 'stopped': // Map stopped to inactive since core doesn't have STOPPED
-      return AgentStatus.INACTIVE;
-    default:
-      return AgentStatus.INACTIVE;
-  }
-}
-
-// Map core AgentStatus enum to API status strings
-export function mapEnumToApiStatus(status: AgentStatus): 'active' | 'inactive' | 'stopped' {
-  switch (status) {
-    case AgentStatus.ACTIVE:
-      return 'active';
-    case AgentStatus.INACTIVE:
-      return 'inactive';
-    default:
-      return 'inactive';
-  }
-}
-
 // Convert API Agent to client AgentWithStatus
+// ApiAgent is now the core Agent type (re-exported from @elizaos/api-client)
 export function mapApiAgentToClient(apiAgent: ApiAgent): AgentWithStatus {
   return {
     ...apiAgent,
     id: apiAgent.id as UUID,
-    status: mapApiStatusToEnum(apiAgent.status),
-    createdAt:
-      apiAgent.createdAt instanceof Date
-        ? apiAgent.createdAt.getTime()
-        : new Date(apiAgent.createdAt).getTime(),
-    updatedAt:
-      apiAgent.updatedAt instanceof Date
-        ? apiAgent.updatedAt.getTime()
-        : new Date(apiAgent.updatedAt).getTime(),
+    status: apiAgent.status ?? AgentStatus.INACTIVE,
+    createdAt: apiAgent.createdAt,
+    updatedAt: apiAgent.updatedAt,
   } as AgentWithStatus;
 }
 
@@ -123,15 +93,32 @@ export function mapApiChannelsToClient(apiChannels: ApiMessageChannel[]): Client
 export function mapApiMessageToUi(apiMessage: ApiMessage, serverId?: UUID): UiMessage {
   // Ensure attachments are properly typed as Media[]
   const attachments =
-    apiMessage.metadata?.attachments?.map((att: any) => ({
-      id: att.id || crypto.randomUUID(),
-      url: att.url,
-      title: att.title || att.name,
-      source: att.source,
-      description: att.description,
-      text: att.text,
-      contentType: att.contentType || att.type,
-    })) || undefined;
+    apiMessage.metadata?.attachments?.map((att: unknown): Media => {
+      // Type guard for attachment-like objects
+      if (typeof att !== 'object' || att === null) {
+        throw new Error('Invalid attachment format');
+      }
+      const attachment = att as Record<string, unknown>;
+      return {
+        id: typeof attachment.id === 'string' ? attachment.id : crypto.randomUUID(),
+        url: typeof attachment.url === 'string' ? attachment.url : '',
+        title:
+          typeof attachment.title === 'string'
+            ? attachment.title
+            : typeof attachment.name === 'string'
+              ? attachment.name
+              : undefined,
+        source: typeof attachment.source === 'string' ? attachment.source : undefined,
+        description:
+          typeof attachment.description === 'string' ? attachment.description : undefined,
+        text: typeof attachment.text === 'string' ? attachment.text : undefined,
+        contentType: (typeof attachment.contentType === 'string'
+          ? attachment.contentType
+          : typeof attachment.type === 'string'
+            ? attachment.type
+            : undefined) as Media['contentType'],
+      };
+    }) || undefined;
 
   const messageType = apiMessage.sourceType;
   const rawMessage = apiMessage.rawMessage;
@@ -162,9 +149,36 @@ export function mapApiLogToClient(apiLog: ApiAgentLog): AgentLog {
     message: apiLog.message,
     details: apiLog.details,
     roomId: apiLog.roomId,
-    body: apiLog.body,
+    body: apiLog.body as AgentLogBody,
     createdAt: apiLog.createdAt ? apiDateToTimestamp(apiLog.createdAt) : undefined,
   };
+}
+
+// Body type for AgentLog
+export interface AgentLogBody {
+  modelType?: string;
+  modelKey?: string;
+  action?: string;
+  actionId?: string;
+  params?: Record<string, unknown> & { prompt?: string };
+  prompts?: Array<{ name?: string; content?: string; modelType?: string; prompt?: string }>;
+  promptCount?: number;
+  response?:
+    | string
+    | {
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        };
+        [key: string]: unknown;
+      };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  [key: string]: unknown;
 }
 
 // Type for client-side AgentLog
@@ -175,7 +189,7 @@ export interface AgentLog {
   message?: string;
   details?: string;
   roomId?: UUID;
-  body?: any;
+  body?: AgentLogBody;
   createdAt?: number;
 }
 
@@ -191,10 +205,10 @@ export function mapApiMemoryToClient(apiMemory: ApiMemory): Memory {
     id: apiMemory.id as UUID,
     entityId,
     agentId: apiMemory.agentId as UUID,
-    content: apiMemory.content,
+    content: apiMemory.content as Memory['content'],
     embedding: apiMemory.embedding,
     roomId: apiMemory.roomId as UUID,
     createdAt: apiDateToTimestamp(apiMemory.createdAt),
-    unique: apiMemory.metadata?.unique,
+    unique: apiMemory.metadata?.unique as boolean | undefined,
   };
 }

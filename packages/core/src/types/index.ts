@@ -1,8 +1,8 @@
 export * from './primitives';
+export * from './environment';
 export * from './state';
 export * from './memory';
 export * from './knowledge';
-export * from './environment';
 export * from './agent';
 export * from './components';
 export * from './plugin';
@@ -17,3 +17,4 @@ export * from './messaging';
 export * from './testing';
 export * from './settings';
 export * from './elizaos';
+export * from './streaming';

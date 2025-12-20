@@ -5,6 +5,11 @@
  * This is the full API surface of the core package.
  */
 
+// Configure Node.js-specific streaming context manager (AsyncLocalStorage)
+import { setStreamingContextManager } from './streaming-context';
+import { createNodeStreamingContextManager } from './streaming-context.node';
+setStreamingContextManager(createNodeStreamingContextManager());
+
 // Export everything from types
 export * from './types';
 
@@ -17,6 +22,8 @@ export * from './schemas/character';
 // Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
+// Export streaming utilities
+export * from './utils/streaming';
 // Export Node-specific utilities
 export * from './utils/node';
 
@@ -35,6 +42,7 @@ export * from './services/message-service';
 export * from './services/default-message-service';
 export * from './search';
 export * from './elizaos';
+export * from './streaming-context';
 
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from './character';

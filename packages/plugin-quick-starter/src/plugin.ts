@@ -9,6 +9,8 @@ import {
   ModelType,
   type Provider,
   type ProviderResult,
+  type RouteRequest,
+  type RouteResponse,
   Service,
   type State,
   logger,
@@ -198,23 +200,19 @@ export const starterPlugin: Plugin = {
     }
   },
   models: {
-    [ModelType.TEXT_SMALL]: async (
-      _runtime,
-      { prompt, stopSequences = [] }: GenerateTextParams
-    ) => {
+    [ModelType.TEXT_SMALL]: async (_runtime: IAgentRuntime, params: unknown) => {
+      const { prompt, stopSequences = [] } = params as GenerateTextParams;
       return 'Never gonna give you up, never gonna let you down, never gonna run around and desert you...';
     },
-    [ModelType.TEXT_LARGE]: async (
-      _runtime,
-      {
+    [ModelType.TEXT_LARGE]: async (_runtime: IAgentRuntime, params: unknown) => {
+      const {
         prompt,
         stopSequences = [],
         maxTokens = 8192,
         temperature = 0.7,
         frequencyPenalty = 0.7,
         presencePenalty = 0.7,
-      }: GenerateTextParams
-    ) => {
+      } = params as GenerateTextParams;
       return 'Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...';
     },
   },
@@ -223,7 +221,7 @@ export const starterPlugin: Plugin = {
       name: 'api-status',
       path: '/api/status',
       type: 'GET',
-      handler: async (_req: any, res: any) => {
+      handler: async (_req: RouteRequest, res: RouteResponse) => {
         res.json({
           status: 'ok',
           plugin: 'quick-starter',

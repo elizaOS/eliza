@@ -2,6 +2,7 @@ import { logger, validateUuid, type IDatabaseAdapter } from '@elizaos/core';
 import { sql, eq } from 'drizzle-orm';
 import { serverTable } from './schema/server';
 import { agentTable } from './schema/agent';
+import { getDb } from './types';
 
 /**
  * PostgreSQL Row-Level Security (RLS) for Multi-Server and Entity Isolation
@@ -78,7 +79,7 @@ import { agentTable } from './schema/agent';
  * ```
  */
 export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Create servers table if it doesn't exist
   await db.execute(sql`
@@ -230,7 +231,7 @@ export async function getOrCreateRlsServer(
   adapter: IDatabaseAdapter,
   serverId: string
 ): Promise<string> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Use Drizzle's insert with onConflictDoNothing
   await db
@@ -255,7 +256,7 @@ export async function setServerContext(adapter: IDatabaseAdapter, serverId: stri
   }
 
   // Validate server exists
-  const db = adapter.db;
+  const db = getDb(adapter);
   const servers = await db.select().from(serverTable).where(eq(serverTable.id, serverId));
 
   if (servers.length === 0) {
@@ -281,7 +282,7 @@ export async function assignAgentToServer(
     return;
   }
 
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   // Check if agent exists using Drizzle
   const agents = await db.select().from(agentTable).where(eq(agentTable.id, agentId));
@@ -314,7 +315,7 @@ export async function assignAgentToServer(
  * Apply RLS to all tables by calling PostgreSQL function
  */
 export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_rls_to_all_tables()`);
@@ -332,7 +333,7 @@ export async function applyRLSToNewTables(adapter: IDatabaseAdapter): Promise<vo
  * - Use only in development or when migrating to single-server mode
  */
 export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     // Check if RLS is actually enabled by checking if the servers table exists
@@ -498,7 +499,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
  * ```
  */
 export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   logger.info('[Entity RLS] Installing entity RLS functions and policies...');
 
@@ -545,26 +546,26 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
     BEGIN
       full_table_name := schema_name || '.' || table_name;
 
-      -- Check which columns exist (using camelCase as per schema definition)
+      -- Check which columns exist
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'entityId'
+          AND information_schema.columns.column_name = 'entity_id'
       ) INTO has_entity_id;
 
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'authorId'
+          AND information_schema.columns.column_name = 'author_id'
       ) INTO has_author_id;
 
       SELECT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE information_schema.columns.table_schema = schema_name
           AND information_schema.columns.table_name = add_entity_isolation.table_name
-          AND information_schema.columns.column_name = 'roomId'
+          AND information_schema.columns.column_name = 'room_id'
       ) INTO has_room_id;
 
       -- Skip if no entity-related columns
@@ -574,20 +575,20 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       END IF;
 
       -- Determine which column to use for entity filtering
-      -- Priority: roomId (shared access via participants) > entityId/authorId (direct access)
+      -- Priority: room_id (shared access via participants) > entity_id/author_id (direct access)
       --
-      -- SPECIAL CASE: participants table must use direct entityId to avoid infinite recursion
+      -- SPECIAL CASE: participants table must use direct entity_id to avoid infinite recursion
       IF table_name = 'participants' AND has_entity_id THEN
-        entity_column_name := 'entityId';
+        entity_column_name := 'entity_id';
         room_column_name := NULL;
       ELSIF has_room_id THEN
-        room_column_name := 'roomId';
+        room_column_name := 'room_id';
         entity_column_name := NULL;
       ELSIF has_entity_id THEN
-        entity_column_name := 'entityId';
+        entity_column_name := 'entity_id';
         room_column_name := NULL;
       ELSIF has_author_id THEN
-        entity_column_name := 'authorId';
+        entity_column_name := 'author_id';
         room_column_name := NULL;
       ELSE
         entity_column_name := NULL;
@@ -601,11 +602,11 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
       -- Drop existing entity policies if present
       EXECUTE format('DROP POLICY IF EXISTS entity_isolation_policy ON %I.%I', schema_name, table_name);
 
-      -- CASE 1: Table has roomId or channelId (shared access via participants)
+      -- CASE 1: Table has room_id (shared access via participants)
       IF room_column_name IS NOT NULL THEN
         -- Determine the corresponding column name in participants table
-        -- If the table has roomId, look for roomId in participants.roomId
-        -- participants table uses: entityId (for participant), roomId (for room)
+        -- If the table has room_id, look for room_id in participants.room_id
+        -- participants table uses: entity_id (for participant), room_id (for room)
         -- RESTRICTIVE: Must pass BOTH server RLS AND entity RLS (combined with AND)
 
         -- Build policy with or without NULL check based on require_entity parameter
@@ -617,21 +618,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NOT NULL
               AND %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.roomId, entity REQUIRED)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
           -- PERMISSIVE MODE: NULL entity_id allows system/admin access
           EXECUTE format('
@@ -640,21 +641,21 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
             USING (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
             WITH CHECK (
               current_entity_id() IS NULL
               OR %I IN (
-                SELECT "roomId"
+                SELECT room_id
                 FROM participants
-                WHERE "entityId" = current_entity_id()
+                WHERE entity_id = current_entity_id()
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.roomId, NULL allowed)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.room_id, NULL allowed)', schema_name, table_name, room_column_name;
         END IF;
 
       -- CASE 2: Table has direct entity_id or author_id column
@@ -762,7 +763,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
  * Call this after installEntityRLS() to activate the policies
  */
 export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   try {
     await db.execute(sql`SELECT apply_entity_rls_to_all_tables()`);
@@ -777,7 +778,7 @@ export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Prom
  * Drops entity RLS functions and policies but keeps server RLS intact
  */
 export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
-  const db = adapter.db;
+  const db = getDb(adapter);
 
   logger.info('[Entity RLS] Removing entity RLS policies and functions...');
 
@@ -797,7 +798,7 @@ export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<voi
       try {
         // Drop entity_isolation_policy if it exists
         await db.execute(
-          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON ${schemaName}.${tableName}`)
+          sql.raw(`DROP POLICY IF EXISTS entity_isolation_policy ON "${schemaName}"."${tableName}"`)
         );
         logger.debug(
           `[Entity RLS] Dropped entity_isolation_policy from ${schemaName}.${tableName}`

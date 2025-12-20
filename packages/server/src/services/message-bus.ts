@@ -1,3 +1,7 @@
+import type { MessageBusEventMap } from '../types/server';
+
+type MessageBusHandler<T> = (data: T) => void | Promise<void>;
+
 /**
  * A simple in-memory message bus for distributing messages from the server
  * to subscribed MessageBusService instances within the same process.
@@ -18,22 +22,26 @@
  */
 class InternalMessageBus extends EventTarget {
   private _maxListeners: number = 50; // Kept for API compatibility, see setMaxListeners()
-  private handlers = new Map<string, Map<(data: unknown) => void, EventListener>>();
+  private handlers = new Map<string, Map<MessageBusHandler<unknown>, EventListener>>();
 
-  emit(event: string, data: unknown): boolean {
+  emit<K extends keyof MessageBusEventMap>(event: K, data: MessageBusEventMap[K]): boolean {
     return this.dispatchEvent(new CustomEvent(event, { detail: data }));
   }
 
-  on(event: string, handler: (data: unknown) => void): this {
+  on<K extends keyof MessageBusEventMap>(
+    event: K,
+    handler: MessageBusHandler<MessageBusEventMap[K]>
+  ): this {
     // Check if handler is already registered
     if (!this.handlers.has(event)) {
       this.handlers.set(event, new Map());
     }
 
     const eventHandlers = this.handlers.get(event)!;
+    const handlerRef = handler as MessageBusHandler<unknown>;
 
     // If handler already exists, don't add it again
-    if (eventHandlers.has(handler)) {
+    if (eventHandlers.has(handlerRef)) {
       return this;
     }
 
@@ -41,25 +49,27 @@ class InternalMessageBus extends EventTarget {
     const wrappedHandler = ((e: Event) => {
       if (e instanceof CustomEvent) {
         handler(e.detail);
-      } else {
-        handler(undefined);
       }
     }) as EventListener;
 
     // Store mapping for removal later
-    eventHandlers.set(handler, wrappedHandler);
+    eventHandlers.set(handlerRef, wrappedHandler);
 
     this.addEventListener(event, wrappedHandler);
     return this;
   }
 
-  off(event: string, handler: (data: unknown) => void) {
+  off<K extends keyof MessageBusEventMap>(
+    event: K,
+    handler: MessageBusHandler<MessageBusEventMap[K]>
+  ): void {
     const eventHandlers = this.handlers.get(event);
-    const wrappedHandler = eventHandlers?.get(handler);
+    const handlerRef = handler as MessageBusHandler<unknown>;
+    const wrappedHandler = eventHandlers?.get(handlerRef);
 
     if (wrappedHandler) {
       this.removeEventListener(event, wrappedHandler);
-      eventHandlers?.delete(handler);
+      eventHandlers?.delete(handlerRef);
 
       // Clean up empty maps
       if (eventHandlers && eventHandlers.size === 0) {

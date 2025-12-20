@@ -45,20 +45,26 @@ export const PluginNameSchema = z
 /**
  * Validates create command options using Zod schema
  */
-export function validateCreateOptions(options: any): CreateOptions {
+export function validateCreateOptions(options: unknown): CreateOptions {
   try {
     return initOptionsSchema.parse(options);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const typeError = error.issues.find(
-        (e: any) =>
-          e.path.includes('type') && (e.code === 'invalid_enum_value' || e.code === 'invalid_value')
+        (e: z.ZodIssue) =>
+          e.path.includes('type') && (e.code === 'invalid_type' || e.code === 'invalid_value')
       );
-      if (typeError && ('received' in typeError || 'values' in typeError)) {
-        const enumError = typeError as any;
+      if (typeError) {
+        const enumError = typeError as z.ZodIssue & {
+          received?: unknown;
+          expected?: string;
+          options?: unknown[];
+        };
         const receivedValue = enumError.received || 'unknown';
-        const expectedValues = enumError.options || enumError.values || [];
-        throw new Error(`Invalid type '${receivedValue}'. Expected: ${expectedValues.join(', ')}`);
+        const expectedValue = enumError.expected || 'unknown';
+        const expectedValues = (enumError.options || []) as string[];
+        const expectedList = expectedValues.length > 0 ? expectedValues.join(', ') : expectedValue;
+        throw new Error(`Invalid type '${receivedValue}'. Expected: ${expectedList}`);
       }
     }
     throw error;

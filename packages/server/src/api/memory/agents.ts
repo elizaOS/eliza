@@ -202,8 +202,9 @@ export function createAgentMemoryRouter(elizaOS: ElizaOS): express.Router {
       // Remove undefined fields that might have been explicitly set to undefined by casting above,
       // if the updateMemory implementation doesn't handle them gracefully.
       Object.keys(memoryToUpdate).forEach((key) => {
-        if ((memoryToUpdate as any)[key] === undefined) {
-          delete (memoryToUpdate as any)[key];
+        const value = (memoryToUpdate as Record<string, unknown>)[key];
+        if (value === undefined) {
+          delete (memoryToUpdate as Record<string, unknown>)[key];
         }
       });
 

@@ -26,10 +26,16 @@ export function detectEnvironment(): RuntimeEnvironment {
   }
 
   // Check for browser
+  interface GlobalWithWindow {
+    window?: Window & {
+      document?: Document;
+    };
+  }
+
   if (
     typeof globalThis !== 'undefined' &&
-    typeof (globalThis as any).window !== 'undefined' &&
-    typeof (globalThis as any).window.document !== 'undefined'
+    typeof (globalThis as GlobalWithWindow).window !== 'undefined' &&
+    typeof (globalThis as GlobalWithWindow).window?.document !== 'undefined'
   ) {
     return 'browser';
   }
@@ -44,18 +50,26 @@ class BrowserEnvironmentStore {
   private store: EnvironmentConfig = {};
 
   constructor() {
+    interface GlobalWithWindowEnv {
+      window?: {
+        ENV?: EnvironmentConfig;
+      };
+    }
+
+    interface GlobalWithEnv {
+      __ENV__?: EnvironmentConfig;
+    }
+
     // Load from window.ENV if available (common pattern for browser apps)
-    if (
-      typeof globalThis !== 'undefined' &&
-      (globalThis as any).window &&
-      (globalThis as any).window.ENV
-    ) {
-      this.store = { ...(globalThis as any).window.ENV };
+    const windowWithEnv = globalThis as GlobalWithWindowEnv;
+    if (typeof globalThis !== 'undefined' && windowWithEnv.window && windowWithEnv.window.ENV) {
+      this.store = { ...windowWithEnv.window.ENV };
     }
 
     // Also check for __ENV__ (another common pattern)
-    if (typeof globalThis !== 'undefined' && (globalThis as any).__ENV__) {
-      this.store = { ...this.store, ...(globalThis as any).__ENV__ };
+    const globalWithEnv = globalThis as GlobalWithEnv;
+    if (typeof globalThis !== 'undefined' && globalWithEnv.__ENV__) {
+      this.store = { ...this.store, ...globalWithEnv.__ENV__ };
     }
   }
 
@@ -386,35 +400,27 @@ export function loadEnvFile(envPath?: string): boolean {
     return false;
   }
 
-  try {
-    // Dynamic import to avoid bundling dotenv in browser
-    const dotenv = require('dotenv');
+  // Dynamic import to avoid bundling dotenv in browser
+  const dotenv = require('dotenv');
 
-    // Find .env file if path not explicitly provided
-    const resolvedPath = envPath || findEnvFile();
-    if (!resolvedPath) {
-      return false;
-    }
+  // Find .env file if path not explicitly provided
+  const resolvedPath = envPath || findEnvFile();
+  if (!resolvedPath) {
+    return false;
+  }
 
-    // Load .env into process.env
-    // Note: dotenv won't override existing process.env vars, but calling loadEnvFile()
-    // multiple times with different paths will merge variables from multiple files
-    const result = dotenv.config({ path: resolvedPath });
+  // Load .env into process.env
+  // Note: dotenv won't override existing process.env vars, but calling loadEnvFile()
+  // multiple times with different paths will merge variables from multiple files
+  const result = dotenv.config({ path: resolvedPath });
 
-    if (result.error) {
-      // File exists but couldn't be parsed
-      if (typeof console !== 'undefined' && console.warn) {
-        console.warn(`Failed to parse .env file at ${resolvedPath}:`, result.error);
-      }
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    // Unexpected error (e.g., dotenv not installed)
+  if (result.error) {
+    // File exists but couldn't be parsed
     if (typeof console !== 'undefined' && console.warn) {
-      console.warn('Failed to load .env file:', error);
+      console.warn(`Failed to parse .env file at ${resolvedPath}:`, result.error);
     }
     return false;
   }
+
+  return true;
 }

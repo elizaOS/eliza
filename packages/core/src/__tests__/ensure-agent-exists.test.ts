@@ -3,11 +3,30 @@ import { AgentRuntime } from '../runtime';
 import type { Character, IDatabaseAdapter, Agent, UUID } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
+// Helper type for bun:test mocks with additional methods
+interface BunMockFunction<T extends (...args: never[]) => unknown> {
+  (...args: Parameters<T>): ReturnType<T>;
+  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mockResolvedValue: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mock: {
+    calls: Parameters<T>[][];
+    results: ReturnType<T>[];
+  };
+}
+
 describe('ensureAgentExists - Settings Persistence', () => {
   let runtime: AgentRuntime;
   let mockAdapter: IDatabaseAdapter;
   let testCharacter: Character;
   let agentId: UUID;
+  let getAgentMock: IDatabaseAdapter['getAgent'];
+  let updateAgentMock: IDatabaseAdapter['updateAgent'];
+  let getEntitiesByIdsMock: IDatabaseAdapter['getEntitiesByIds'];
+  let getRoomsByIdsMock: IDatabaseAdapter['getRoomsByIds'];
+  let getParticipantsForRoomMock: IDatabaseAdapter['getParticipantsForRoom'];
+  let createEntitiesMock: IDatabaseAdapter['createEntities'];
+  let createRoomsMock: IDatabaseAdapter['createRooms'];
+  let addParticipantsRoomMock: IDatabaseAdapter['addParticipantsRoom'];
 
   beforeEach(() => {
     agentId = uuidv4() as UUID;
@@ -29,27 +48,89 @@ describe('ensureAgentExists - Settings Persistence', () => {
     };
 
     // Create mock adapter with proper types
+    getAgentMock = mock<IDatabaseAdapter['getAgent']>(async () => null);
+    updateAgentMock = mock<IDatabaseAdapter['updateAgent']>(async () => true);
+    getEntitiesByIdsMock = mock<IDatabaseAdapter['getEntitiesByIds']>(async () => []);
+    getRoomsByIdsMock = mock<IDatabaseAdapter['getRoomsByIds']>(async () => []);
+    getParticipantsForRoomMock = mock<IDatabaseAdapter['getParticipantsForRoom']>(async () => []);
+    createEntitiesMock = mock<IDatabaseAdapter['createEntities']>(async () => true);
+    createRoomsMock = mock<IDatabaseAdapter['createRooms']>(async () => []);
+    addParticipantsRoomMock = mock<IDatabaseAdapter['addParticipantsRoom']>(async () => true);
+
     mockAdapter = {
+      db: {},
       init: mock(async () => {}),
+      initialize: mock(async () => {}),
       close: mock(async () => {}),
       isReady: mock(async () => true),
       getConnection: mock(async () => ({})),
-      getAgent: mock(async () => null),
+      getAgent: getAgentMock,
       getAgents: mock(async () => []),
       createAgent: mock(async () => true),
-      updateAgent: mock(async () => true),
+      updateAgent: updateAgentMock,
       deleteAgent: mock(async () => true),
       ensureEmbeddingDimension: mock(async () => {}),
       log: mock(async () => {}),
       runPluginMigrations: mock(async () => {}),
-      // Add minimal mocks for other required methods
-      getEntitiesByIds: mock(async () => []),
-      getRoomsByIds: mock(async () => []),
-      getParticipantsForRoom: mock(async () => []),
-      createEntities: mock(async () => true),
-      addParticipantsRoom: mock(async () => true),
-      createRooms: mock(async () => []),
-    } as unknown as IDatabaseAdapter;
+      getEntitiesByIds: getEntitiesByIdsMock,
+      getRoomsByIds: getRoomsByIdsMock,
+      getParticipantsForRoom: getParticipantsForRoomMock,
+      createEntities: createEntitiesMock,
+      addParticipantsRoom: addParticipantsRoomMock,
+      createRooms: createRoomsMock,
+      // Add other required methods with minimal implementations
+      getEntitiesForRoom: mock(async () => []),
+      updateEntity: mock(async () => {}),
+      getComponent: mock(async () => null),
+      getComponents: mock(async () => []),
+      createComponent: mock(async () => true),
+      updateComponent: mock(async () => {}),
+      deleteComponent: mock(async () => {}),
+      getMemories: mock(async () => []),
+      getMemoryById: mock(async () => null),
+      getMemoriesByIds: mock(async () => []),
+      getMemoriesByRoomIds: mock(async () => []),
+      getCachedEmbeddings: mock(async () => []),
+      getLogs: mock(async () => []),
+      deleteLog: mock(async () => {}),
+      searchMemories: mock(async () => []),
+      createMemory: mock(async () => 'memory-id' as UUID),
+      updateMemory: mock(async () => true),
+      deleteMemory: mock(async () => {}),
+      deleteManyMemories: mock(async () => {}),
+      deleteAllMemories: mock(async () => {}),
+      countMemories: mock(async () => 0),
+      createWorld: mock(async () => 'world-id' as UUID),
+      getWorld: mock(async () => null),
+      getAllWorlds: mock(async () => []),
+      updateWorld: mock(async () => {}),
+      removeWorld: mock(async () => {}),
+      getRoomsByWorld: mock(async () => []),
+      updateRoom: mock(async () => {}),
+      deleteRoom: mock(async () => {}),
+      deleteRoomsByWorldId: mock(async () => {}),
+      getRoomsForParticipant: mock(async () => []),
+      getRoomsForParticipants: mock(async () => []),
+      removeParticipant: mock(async () => true),
+      getParticipantsForEntity: mock(async () => []),
+      isRoomParticipant: mock(async () => false),
+      getParticipantUserState: mock(async () => null),
+      setParticipantUserState: mock(async () => {}),
+      createRelationship: mock(async () => true),
+      getRelationship: mock(async () => null),
+      getRelationships: mock(async () => []),
+      updateRelationship: mock(async () => {}),
+      getCache: mock(async () => undefined),
+      setCache: mock(async () => true),
+      deleteCache: mock(async () => true),
+      createTask: mock(async () => 'task-id' as UUID),
+      getTasks: mock(async () => []),
+      getTask: mock(async () => null),
+      getTasksByName: mock(async () => []),
+      updateTask: mock(async () => {}),
+      deleteTask: mock(async () => {}),
+      getMemoriesByWorldId: mock(async () => []),
+    } as IDatabaseAdapter;
 
     runtime = new AgentRuntime({
       character: testCharacter,
@@ -94,8 +175,10 @@ describe('ensureAgentExists - Settings Persistence', () => {
       },
     } as Agent;
 
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
-    (mockAdapter.getAgent as any).mockResolvedValueOnce({
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
         SOLANA_PUBLIC_KEY: 'CioDPgLA1o8cuuhXZ7M3Fi1Lzqo2Cr8VudjY6ErtvYp4',
@@ -122,21 +205,24 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     // Verify updateAgent was called with merged settings
     expect(mockAdapter.updateAgent).toHaveBeenCalled();
-    const updateCall = (mockAdapter.updateAgent as any).mock.calls[0];
-    const updatedAgent = updateCall[1];
+    const updateCall = (updateAgentMock as BunMockFunction<IDatabaseAdapter['updateAgent']>).mock
+      .calls[0];
+    // updateAgent signature: (agentId: UUID, agent: Partial<Agent>) => Promise<boolean>
+    // So updateCall[1] is Partial<Agent>
+    const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Check that DB settings were preserved
-    expect(updatedAgent.settings.SOLANA_PUBLIC_KEY).toBe(
+    expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe(
       'CioDPgLA1o8cuuhXZ7M3Fi1Lzqo2Cr8VudjY6ErtvYp4'
     );
-    expect(updatedAgent.settings.OLD_SETTING).toBe('should_be_kept');
+    expect(updatedAgent.settings?.OLD_SETTING).toBe('should_be_kept');
 
     // Check that character.json settings were applied
-    expect(updatedAgent.settings.MODEL).toBe('gpt-4');
-    expect(updatedAgent.settings.TEMPERATURE).toBe('0.7');
+    expect(updatedAgent.settings?.MODEL).toBe('gpt-4');
+    expect(updatedAgent.settings?.TEMPERATURE).toBe('0.7');
 
     // Check that secrets were preserved
-    expect(updatedAgent.settings.secrets.SOLANA_PRIVATE_KEY).toBe(
+    expect((updatedAgent.settings?.secrets as Record<string, string>)?.SOLANA_PRIVATE_KEY).toBe(
       '4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...'
     );
   });
@@ -156,10 +242,12 @@ describe('ensureAgentExists - Settings Persistence', () => {
           SOLANA_PRIVATE_KEY: '4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...',
         },
       },
-    } as unknown as Agent;
+    } as Agent;
 
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
-    (mockAdapter.getAgent as any).mockResolvedValueOnce({
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
         MODEL: 'gpt-4', // Updated by character.json
@@ -181,14 +269,15 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (mockAdapter.updateAgent as any).mock.calls[0];
-    const updatedAgent = updateCall[1];
+    const updateCall = (updateAgentMock as BunMockFunction<IDatabaseAdapter['updateAgent']>).mock
+      .calls[0];
+    const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // MODEL should be overridden by character.json
-    expect(updatedAgent.settings.MODEL).toBe('gpt-4');
+    expect(updatedAgent.settings?.MODEL).toBe('gpt-4');
 
     // But SOLANA_PUBLIC_KEY should be preserved from DB
-    expect(updatedAgent.settings.SOLANA_PUBLIC_KEY).toBe('wallet123');
+    expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe('wallet123');
   });
 
   it('should deep merge secrets from both DB and character.json', async () => {
@@ -206,8 +295,10 @@ describe('ensureAgentExists - Settings Persistence', () => {
       },
     } as Agent;
 
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
-    (mockAdapter.getAgent as any).mockResolvedValueOnce({
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
         secrets: {
@@ -230,13 +321,15 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (mockAdapter.updateAgent as any).mock.calls[0];
-    const updatedAgent = updateCall[1];
+    const updateCall = (updateAgentMock as BunMockFunction<IDatabaseAdapter['updateAgent']>).mock
+      .calls[0];
+    const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Both DB and character secrets should be present
-    expect(updatedAgent.settings.secrets.RUNTIME_SECRET).toBe('from_db');
-    expect(updatedAgent.settings.secrets.WALLET_KEY).toBe('wallet_key_from_db');
-    expect(updatedAgent.settings.secrets.API_KEY).toBe('from_character');
+    const secrets = updatedAgent.settings?.secrets as Record<string, string> | undefined;
+    expect(secrets?.RUNTIME_SECRET).toBe('from_db');
+    expect(secrets?.WALLET_KEY).toBe('wallet_key_from_db');
+    expect(secrets?.API_KEY).toBe('from_character');
   });
 
   it('should handle agent with no settings in DB', async () => {
@@ -246,8 +339,10 @@ describe('ensureAgentExists - Settings Persistence', () => {
       // No settings field
     } as Agent;
 
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
-    (mockAdapter.getAgent as any).mockResolvedValueOnce({
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce({
       ...existingAgentInDB,
       settings: {
         MODEL: 'gpt-4',
@@ -264,11 +359,12 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (mockAdapter.updateAgent as any).mock.calls[0];
-    const updatedAgent = updateCall[1];
+    const updateCall = (updateAgentMock as BunMockFunction<IDatabaseAdapter['updateAgent']>).mock
+      .calls[0];
+    const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Should have character settings even though DB had none
-    expect(updatedAgent.settings.MODEL).toBe('gpt-4');
+    expect(updatedAgent.settings?.MODEL).toBe('gpt-4');
   });
 
   it('should handle character with no settings', async () => {
@@ -283,8 +379,12 @@ describe('ensureAgentExists - Settings Persistence', () => {
       },
     } as Agent;
 
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
-    (mockAdapter.getAgent as any).mockResolvedValueOnce(existingAgentInDB);
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
+    (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>).mockResolvedValueOnce(
+      existingAgentInDB
+    );
 
     const characterAgent: Partial<Agent> = {
       id: agentId,
@@ -294,11 +394,12 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
     await runtime.ensureAgentExists(characterAgent);
 
-    const updateCall = (mockAdapter.updateAgent as any).mock.calls[0];
-    const updatedAgent = updateCall[1];
+    const updateCall = (updateAgentMock as BunMockFunction<IDatabaseAdapter['updateAgent']>).mock
+      .calls[0];
+    const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Should preserve DB settings
-    expect(updatedAgent.settings.DB_SETTING).toBe('value');
+    expect(updatedAgent.settings?.DB_SETTING).toBe('value');
   });
 
   it('should throw error if agent id is not provided', async () => {
@@ -329,13 +430,15 @@ describe('ensureAgentExists - Settings Persistence', () => {
 
       // Mock getAgent to return DB agent on first call (ensureAgentExists)
       // and updated agent on second call (after update)
-      (mockAdapter.getAgent as any).mockResolvedValueOnce(dbAgent).mockResolvedValueOnce({
-        ...dbAgent,
-        settings: {
-          ...dbAgent.settings,
-          MODEL: 'gpt-4', // Added from character file
-        },
-      });
+      (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>)
+        .mockResolvedValueOnce(dbAgent)
+        .mockResolvedValueOnce({
+          ...dbAgent,
+          settings: {
+            ...dbAgent.settings,
+            MODEL: 'gpt-4', // Added from character file
+          },
+        });
 
       // Character file has different settings
       const character: Character = {
@@ -364,14 +467,24 @@ describe('ensureAgentExists - Settings Persistence', () => {
       expect(testRuntime.character.settings?.MODEL).toBe('gpt-4');
 
       // Mock the services that initialize() expects
-      (mockAdapter.getEntitiesByIds as any).mockResolvedValue([
-        { id: agentId, names: ['TestAgent'], metadata: {}, agentId },
+      (
+        getEntitiesByIdsMock as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>
+      ).mockResolvedValue([{ id: agentId, names: ['TestAgent'], metadata: {}, agentId }]);
+      (getRoomsByIdsMock as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue(
+        []
+      );
+      (
+        getParticipantsForRoomMock as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>
+      ).mockResolvedValue([]);
+      (createEntitiesMock as BunMockFunction<IDatabaseAdapter['createEntities']>).mockResolvedValue(
+        true
+      );
+      (createRoomsMock as BunMockFunction<IDatabaseAdapter['createRooms']>).mockResolvedValue([
+        agentId,
       ]);
-      (mockAdapter.getRoomsByIds as any).mockResolvedValue([]);
-      (mockAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
-      (mockAdapter.createEntities as any).mockResolvedValue(true);
-      (mockAdapter.createRooms as any).mockResolvedValue([agentId]);
-      (mockAdapter.addParticipantsRoom as any).mockResolvedValue(true);
+      (
+        addParticipantsRoomMock as BunMockFunction<IDatabaseAdapter['addParticipantsRoom']>
+      ).mockResolvedValue(true);
 
       // Initialize runtime (should load DB settings into character)
       await testRuntime.initialize();
@@ -380,9 +493,9 @@ describe('ensureAgentExists - Settings Persistence', () => {
       expect(testRuntime.character.settings?.SOLANA_PUBLIC_KEY).toBe('wallet_from_db');
       expect(testRuntime.character.settings?.RUNTIME_SETTING).toBe('from_previous_run');
       expect(testRuntime.character.settings?.MODEL).toBe('gpt-4'); // Character file wins
-      expect((testRuntime.character.settings?.secrets as any)?.SOLANA_PRIVATE_KEY).toBe(
-        'secret_from_db'
-      );
+      expect(
+        (testRuntime.character.settings?.secrets as Record<string, string>)?.SOLANA_PRIVATE_KEY
+      ).toBe('secret_from_db');
 
       // Verify getSetting() can now access DB settings
       expect(testRuntime.getSetting('SOLANA_PUBLIC_KEY')).toBe('wallet_from_db');
@@ -403,13 +516,15 @@ describe('ensureAgentExists - Settings Persistence', () => {
         },
       } as Agent;
 
-      (mockAdapter.getAgent as any).mockResolvedValueOnce(dbAgent).mockResolvedValueOnce({
-        ...dbAgent,
-        settings: {
-          MODEL: 'gpt-4', // Updated by character file
-          DB_ONLY_SETTING: 'keep_me',
-        },
-      });
+      (getAgentMock as BunMockFunction<IDatabaseAdapter['getAgent']>)
+        .mockResolvedValueOnce(dbAgent)
+        .mockResolvedValueOnce({
+          ...dbAgent,
+          settings: {
+            MODEL: 'gpt-4', // Updated by character file
+            DB_ONLY_SETTING: 'keep_me',
+          },
+        });
 
       const character: Character = {
         id: agentId,
@@ -431,14 +546,24 @@ describe('ensureAgentExists - Settings Persistence', () => {
         adapter: mockAdapter,
       });
 
-      (mockAdapter.getEntitiesByIds as any).mockResolvedValue([
-        { id: agentId, names: ['TestAgent'], metadata: {}, agentId },
+      (
+        getEntitiesByIdsMock as BunMockFunction<IDatabaseAdapter['getEntitiesByIds']>
+      ).mockResolvedValue([{ id: agentId, names: ['TestAgent'], metadata: {}, agentId }]);
+      (getRoomsByIdsMock as BunMockFunction<IDatabaseAdapter['getRoomsByIds']>).mockResolvedValue(
+        []
+      );
+      (
+        getParticipantsForRoomMock as BunMockFunction<IDatabaseAdapter['getParticipantsForRoom']>
+      ).mockResolvedValue([]);
+      (createEntitiesMock as BunMockFunction<IDatabaseAdapter['createEntities']>).mockResolvedValue(
+        true
+      );
+      (createRoomsMock as BunMockFunction<IDatabaseAdapter['createRooms']>).mockResolvedValue([
+        agentId,
       ]);
-      (mockAdapter.getRoomsByIds as any).mockResolvedValue([]);
-      (mockAdapter.getParticipantsForRoom as any).mockResolvedValue([]);
-      (mockAdapter.createEntities as any).mockResolvedValue(true);
-      (mockAdapter.createRooms as any).mockResolvedValue([agentId]);
-      (mockAdapter.addParticipantsRoom as any).mockResolvedValue(true);
+      (
+        addParticipantsRoomMock as BunMockFunction<IDatabaseAdapter['addParticipantsRoom']>
+      ).mockResolvedValue(true);
 
       await testRuntime.initialize();
 

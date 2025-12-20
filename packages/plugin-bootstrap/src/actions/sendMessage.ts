@@ -5,8 +5,10 @@ import {
   type Action,
   type ActionExample,
   composePromptFromState,
+  type Content,
   findEntityByName,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -15,6 +17,17 @@ import {
   type State,
   type ActionResult,
 } from '@elizaos/core';
+
+/** Shape of the target extraction XML response */
+interface TargetExtractionResult {
+  targetType?: string;
+  source?: string;
+  identifiers?: {
+    roomName?: string;
+    userId?: string;
+    username?: string;
+  };
+}
 
 /**
  * Task: Extract Target and Source Information
@@ -140,7 +153,7 @@ export const sendMessageAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -210,6 +223,16 @@ export const sendMessageAction: Action = {
 
       const sourceEntityId = message.entityId;
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+      if (!room) {
+        return {
+          text: 'Could not find room',
+          values: { success: false, error: 'ROOM_NOT_FOUND' },
+          data: { actionName: 'SEND_MESSAGE', error: 'Room not found' },
+          success: false,
+        };
+      }
+
       const worldId = room.worldId;
 
       // Extract target and source information
@@ -223,7 +246,8 @@ export const sendMessageAction: Action = {
         stopSequences: [],
       });
 
-      const targetData = parseKeyValueXml(targetResult);
+      const targetData = parseKeyValueXml<TargetExtractionResult>(targetResult);
+
       if (!targetData?.targetType || !targetData?.source) {
         await callback({
           text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
@@ -306,7 +330,11 @@ export const sendMessageAction: Action = {
           };
         }
 
-        const sendDirectMessage = (runtime.getService(source) as any)?.sendDirectMessage;
+        interface ServiceWithSendDirectMessage {
+          sendDirectMessage?: (target: string, content: Content) => Promise<void>;
+        }
+        const service = runtime.getService(source) as ServiceWithSendDirectMessage | null;
+        const sendDirectMessage = service?.sendDirectMessage;
 
         if (!sendDirectMessage) {
           await callback({
@@ -333,7 +361,10 @@ export const sendMessageAction: Action = {
         }
         // Send the message using the appropriate client
         try {
-          await sendDirectMessage(runtime, targetEntity.id!, source, message.content.text, worldId);
+          await sendDirectMessage(targetEntity.id!, {
+            text: message.content.text,
+            source: message.content.source,
+          });
 
           await callback({
             text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
@@ -360,7 +391,7 @@ export const sendMessageAction: Action = {
             },
             success: true,
           };
-        } catch (error: any) {
+        } catch (error: unknown) {
           logger.error(
             {
               src: 'plugin:bootstrap:action:send_message',
@@ -384,7 +415,7 @@ export const sendMessageAction: Action = {
             },
             data: {
               actionName: 'SEND_MESSAGE',
-              error: error.message,
+              error: error instanceof Error ? error.message : String(error),
               targetType: 'user',
               targetId: targetEntity.id,
               source,
@@ -395,10 +426,18 @@ export const sendMessageAction: Action = {
         }
       } else if (targetData.targetType === 'room') {
         // Try to find the target room
+        if (!worldId) {
+          return {
+            text: 'Could not determine world for room lookup',
+            values: { success: false, error: 'NO_WORLD_ID' },
+            data: { actionName: 'SEND_MESSAGE', error: 'No world ID available' },
+            success: false,
+          };
+        }
         const rooms = await runtime.getRooms(worldId);
         const targetRoom = rooms.find((r) => {
           // Match room name from identifiers
-          return r.name?.toLowerCase() === targetData.identifiers.roomName?.toLowerCase();
+          return r.name?.toLowerCase() === targetData.identifiers?.roomName?.toLowerCase();
         });
 
         if (!targetRoom) {
@@ -413,20 +452,24 @@ export const sendMessageAction: Action = {
               success: false,
               error: 'ROOM_NOT_FOUND',
               targetType: 'room',
-              roomName: targetData.identifiers.roomName,
+              roomName: targetData.identifiers?.roomName,
             },
             data: {
               actionName: 'SEND_MESSAGE',
               error: 'Could not find target room',
               targetType: 'room',
-              roomName: targetData.identifiers.roomName,
+              roomName: targetData.identifiers?.roomName,
               source,
             },
             success: false,
           };
         }
 
-        const sendRoomMessage = (runtime.getService(source) as any)?.sendRoomMessage;
+        interface ServiceWithSendRoomMessage {
+          sendRoomMessage?: (target: string, content: Content) => Promise<void>;
+        }
+        const service = runtime.getService(source) as ServiceWithSendRoomMessage | null;
+        const sendRoomMessage = service?.sendRoomMessage;
 
         if (!sendRoomMessage) {
           await callback({
@@ -454,7 +497,10 @@ export const sendMessageAction: Action = {
 
         // Send the message to the room
         try {
-          await sendRoomMessage(runtime, targetRoom.id, source, message.content.text, worldId);
+          await sendRoomMessage(targetRoom.id, {
+            text: message.content.text,
+            source: message.content.source,
+          });
 
           await callback({
             text: `Message sent to ${targetRoom.name} on ${source}.`,
@@ -481,7 +527,7 @@ export const sendMessageAction: Action = {
             },
             success: true,
           };
-        } catch (error: any) {
+        } catch (error: unknown) {
           logger.error(
             {
               src: 'plugin:bootstrap:action:send_message',
@@ -505,7 +551,7 @@ export const sendMessageAction: Action = {
             },
             data: {
               actionName: 'SEND_MESSAGE',
-              error: error.message,
+              error: error instanceof Error ? error.message : String(error),
               targetType: 'room',
               targetId: targetRoom.id,
               targetName: targetRoom.name,
@@ -526,7 +572,7 @@ export const sendMessageAction: Action = {
         },
         data: {
           actionName: 'SEND_MESSAGE',
-          error: 'Unknown target type: ' + targetData.targetType,
+          error: `Unknown target type: ${targetData.targetType}`,
         },
         success: false,
       };

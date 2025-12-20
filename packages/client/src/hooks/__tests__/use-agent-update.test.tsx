@@ -79,6 +79,8 @@ type MockAgent = {
     secrets?: Record<string, string>;
     [key: string]: any;
   };
+  createdAt: number;
+  updatedAt: number;
   [key: string]: any;
 };
 
@@ -117,6 +119,8 @@ describe('useAgentUpdate hook', () => {
           INITIAL_API_KEY: 'initial-key-value',
         },
       },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const templateAgent: MockAgent = {
@@ -143,16 +147,18 @@ describe('useAgentUpdate hook', () => {
         newSetting: 'new-template-value',
       },
       extraField: 'extra-field-value',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     // Use renderHook to properly test the React hook
-    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as MockAgent));
 
     // Get the necessary functions
     const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    result.current.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as MockAgent);
 
     // Verify that updateField or updateSettings was called for each field in the template
 
@@ -204,6 +210,8 @@ describe('useAgentUpdate hook', () => {
           },
         },
       },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     const templateAgent: MockAgent = {
@@ -225,16 +233,18 @@ describe('useAgentUpdate hook', () => {
         },
       },
       customField: 'custom value',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
     };
 
     // Use renderHook to properly test the React hook
-    const { result } = renderHook(() => useAgentUpdate(initialAgent as any));
+    const { result } = renderHook(() => useAgentUpdate(initialAgent as MockAgent));
 
     // Get the necessary functions
     const { updateField, updateSettings } = result.current;
 
     // Call importAgent
-    result.current.importAgent(templateAgent as any);
+    result.current.importAgent(templateAgent as MockAgent);
 
     // Verify updateSettings was called with the complex nested object
     expect(updateSettings).toHaveBeenCalledWith(

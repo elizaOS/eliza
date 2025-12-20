@@ -86,6 +86,15 @@ export const unfollowRoomAction: Action = {
 
         const room = state.data.room ?? (await runtime.getRoom(message.roomId));
 
+        if (!room) {
+          return {
+            text: 'Could not find room to unfollow',
+            values: { success: false, error: 'ROOM_NOT_FOUND' },
+            data: { actionName: 'UNFOLLOW_ROOM', error: 'Room not found' },
+            success: false,
+          };
+        }
+
         await runtime.createMemory(
           {
             entityId: message.entityId,

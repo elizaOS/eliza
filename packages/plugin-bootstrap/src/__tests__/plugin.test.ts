@@ -86,7 +86,7 @@ describe('Bootstrap Plugin', () => {
 
   it('should register all providers during initialization', async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all providers were registered
     if (bootstrapPlugin.providers) {
@@ -101,7 +101,7 @@ describe('Bootstrap Plugin', () => {
 
   it('should register all actions during initialization', async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all actions were registered
     if (bootstrapPlugin.actions) {
@@ -116,7 +116,7 @@ describe('Bootstrap Plugin', () => {
 
   it('should register all evaluators during initialization', async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all evaluators were registered
     if (bootstrapPlugin.evaluators) {
@@ -133,7 +133,7 @@ describe('Bootstrap Plugin', () => {
 
   it('should register all events during initialization', async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Count the number of event registrations expected
     let expectedEventCount = 0;
@@ -149,7 +149,7 @@ describe('Bootstrap Plugin', () => {
 
   it('should register all services during initialization', async () => {
     // Execute the mocked initialization function
-    await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+    await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
 
     // Check that all services were registered
     if (bootstrapPlugin.services) {
@@ -175,7 +175,7 @@ describe('Bootstrap Plugin', () => {
 
     // Should not throw error during initialization
     await expect(async () => {
-      await mockInit({}, mockRuntime as unknown as IAgentRuntime);
+      await mockInit({}, mockRuntime as Partial<IAgentRuntime> as IAgentRuntime);
     }).not.toThrow();
 
     // Ensure console.error was called (as the mockInit is expected to log errors)

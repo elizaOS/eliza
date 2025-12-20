@@ -59,7 +59,7 @@ describe('Reply Action', () => {
     // Mock parseKeyValueXml for this test
     const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
       return {
-        message: 'Hello there! How can I help you today?',
+        text: 'Hello there! How can I help you today?',
         thought: 'Responding to the user greeting.',
       };
     });
@@ -74,7 +74,7 @@ describe('Reply Action', () => {
       console.log('specificUseModelMock CALLED WITH - modelType:', modelType, 'params:', params);
       const result = `<response>
   <thought>Responding to the user greeting.</thought>
-  <message>Hello there! How can I help you today?</message>
+  <text>Hello there! How can I help you today?</text>
 </response>`;
       console.log('specificUseModelMock RETURNING:', result);
       return Promise.resolve(result);
@@ -758,7 +758,7 @@ describe('Generate Image Action', () => {
       if (modelType === ModelType.TEXT_LARGE) {
         // Return XML with <prompt>
         return Promise.resolve(
-          `<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>`
+          '<response>\n  <prompt>Draw a cat on the moon</prompt>\n</response>'
         );
       }
       if (modelType === ModelType.IMAGE) {

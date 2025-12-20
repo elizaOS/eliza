@@ -353,7 +353,9 @@ export function createMockResponse(): Response {
       if (typeof options === 'function') {
         callback = options;
       }
-      if (callback) callback();
+      if (callback) {
+        callback();
+      }
     }),
     headersSent: false,
     locals: {},
@@ -383,7 +385,9 @@ export function createMockSocketIO() {
       sockets: new Map(),
     },
     close: jest.fn((callback?: () => void) => {
-      if (callback) callback();
+      if (callback) {
+        callback();
+      }
     }),
   };
 }
@@ -394,10 +398,14 @@ export function createMockSocketIO() {
 export function createMockHttpServer() {
   return {
     listen: jest.fn((_port: number, callback?: () => void) => {
-      if (callback) callback();
+      if (callback) {
+        callback();
+      }
     }),
     close: jest.fn((callback?: () => void) => {
-      if (callback) callback();
+      if (callback) {
+        callback();
+      }
     }),
     listeners: jest.fn(() => []),
     removeAllListeners: jest.fn(),
@@ -464,7 +472,9 @@ export function createMockFetchResponse<T = any>(options: {
     status,
     statusText,
     json: async () => {
-      if (jsonError) throw jsonError;
+      if (jsonError) {
+        throw jsonError;
+      }
       return data;
     },
     text: async () => JSON.stringify(data),

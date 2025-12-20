@@ -13,6 +13,7 @@ import {
   composePromptFromState,
   findEntityByName,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -23,6 +24,12 @@ import {
   parseKeyValueXml,
 } from '@elizaos/core';
 import { v4 as uuidv4 } from 'uuid';
+
+/** Shape of the component extraction XML response */
+interface ComponentExtractionResult {
+  source?: string;
+  data?: Record<string, unknown>;
+}
 
 /**
  * Component Template for Task: Extract Source and Update Component Data
@@ -148,7 +155,7 @@ export const updateEntityAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
@@ -241,6 +248,16 @@ export const updateEntityAction: Action = {
       const sourceEntityId = message.entityId;
       const agentId = runtime.agentId;
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+      if (!room || !room.worldId) {
+        return {
+          text: 'Could not find room or world',
+          values: { success: false, error: 'ROOM_NOT_FOUND' },
+          data: { actionName: 'UPDATE_CONTACT', error: 'Room or world not found' },
+          success: false,
+        };
+      }
+
       const worldId = room.worldId;
 
       // First, find the entity being referenced
@@ -281,21 +298,15 @@ export const updateEntityAction: Action = {
       });
 
       // Parse the generated data
-      let parsedResult: any;
-      try {
-        parsedResult = parseKeyValueXml(result);
+      const parsedResult = parseKeyValueXml<ComponentExtractionResult>(result);
 
-        if (!parsedResult || !parsedResult.source || !parsedResult.data) {
-          throw new Error('Invalid response format - missing source or data');
-        }
-      } catch (error: any) {
+      if (!parsedResult?.source || !parsedResult?.data) {
         logger.error(
           {
             src: 'plugin:bootstrap:action:update_entity',
             agentId: runtime.agentId,
-            error: error instanceof Error ? error.message : String(error),
           },
-          'Failed to parse component data'
+          'Failed to parse component data - missing source or data'
         );
         await callback({
           text: "I couldn't properly understand the component information. Please try again with more specific information.",
@@ -310,10 +321,9 @@ export const updateEntityAction: Action = {
           },
           data: {
             actionName: 'UPDATE_CONTACT',
-            error: error.message,
+            error: 'Invalid response format - missing source or data',
           },
           success: false,
-          error: error,
         };
       }
 

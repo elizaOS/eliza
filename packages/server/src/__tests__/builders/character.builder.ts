@@ -63,7 +63,9 @@ export class CharacterBuilder {
    * Set character settings
    */
   withSettings(settings: Partial<Character['settings']>): this {
-    if (!settings) return this;
+    if (!settings) {
+      return this;
+    }
 
     this.character.settings = {
       ...this.character.settings,

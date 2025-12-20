@@ -4,6 +4,7 @@ import type {
   IAgentRuntime,
   Memory,
   HandlerCallback,
+  HandlerOptions,
   State,
 } from '@elizaos/core';
 
@@ -41,9 +42,9 @@ export const ignoreAction: Action = {
   handler: async (
     _runtime: IAgentRuntime,
     _message: Memory,
-    _state: State,
-    _options: any,
-    callback: HandlerCallback,
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<void> => {
     // If a callback and the agent's response content are available, call the callback

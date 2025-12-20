@@ -138,7 +138,7 @@ export class TaskService extends Service {
           'Error in task timer'
         );
       }
-    }, this.TICK_INTERVAL) as unknown as NodeJS.Timeout;
+    }, this.TICK_INTERVAL) as NodeJS.Timeout;
   }
 
   /**

@@ -8,12 +8,8 @@
 const pathJoin = (...parts: string[]) => {
   if (typeof process !== 'undefined' && process.platform) {
     // Node.js environment - use native path module
-    try {
-      const path = require('node:path');
-      return path.join(...parts);
-    } catch {
-      // Fallback to simple implementation
-    }
+    const path = require('node:path');
+    return path.join(...parts);
   }
   // Browser or fallback implementation
   return parts

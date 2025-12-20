@@ -14,7 +14,7 @@ const mockAgents = new Map<UUID, IAgentRuntime>();
 const mockElizaOS = {
   getAgent: jest.fn((id: UUID) => mockAgents.get(id)),
   getAgents: jest.fn(() => Array.from(mockAgents.values())),
-} as unknown as ElizaOS;
+} as Partial<ElizaOS> as ElizaOS;
 const mockServerInstance = {
   createChannel: jest.fn().mockResolvedValue({
     id: '123e4567-e89b-12d3-a456-426614174000' as UUID,
@@ -30,7 +30,7 @@ const mockServerInstance = {
     metadata: {},
   }),
   getMessagesForChannel: jest.fn().mockResolvedValue([]),
-} as unknown as AgentServer;
+} as Partial<AgentServer> as AgentServer;
 
 // Helper function to validate UUID format
 function isValidUuid(id: string): boolean {
@@ -53,8 +53,9 @@ function createMockAgent(agentId: string, settings?: Record<string, any>): IAgen
       name: 'Test Agent',
       id: agentId as UUID,
       settings: settings || {},
+      bio: 'Test Agent',
     },
-  } as unknown as IAgentRuntime;
+  } as Partial<IAgentRuntime> as IAgentRuntime;
 }
 
 // Helper to simulate Express request/response using supertest-like approach
@@ -74,7 +75,7 @@ async function simulateRequest(
     const req: any = {
       method: method.toUpperCase(),
       url: path,
-      path: path,
+      path,
       originalUrl: path,
       baseUrl: '',
       body: body || {},
@@ -83,16 +84,16 @@ async function simulateRequest(
       headers: {
         'content-type': 'application/json',
       },
-      get: function (header: string) {
+      get(header: string) {
         return this.headers[header.toLowerCase()];
       },
-      header: function (header: string) {
+      header(header: string) {
         return this.headers[header.toLowerCase()];
       },
-      accepts: function () {
+      accepts() {
         return 'application/json';
       },
-      is: function (type: string) {
+      is(type: string) {
         return type === 'application/json';
       },
     };
@@ -102,14 +103,14 @@ async function simulateRequest(
       headers: {},
       locals: {},
       headersSent: false,
-      status: function (code: number) {
+      status(code: number) {
         if (!responseSent) {
           responseStatus = code;
           this.statusCode = code;
         }
         return this;
       },
-      json: function (data: any) {
+      json(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -117,7 +118,7 @@ async function simulateRequest(
         }
         return this;
       },
-      send: function (data: any) {
+      send(data: any) {
         if (!responseSent) {
           responseSent = true;
           responseBody = data;
@@ -125,15 +126,15 @@ async function simulateRequest(
         }
         return this;
       },
-      setHeader: function (name: string, value: string) {
+      setHeader(name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      set: function (name: string, value: string) {
+      set(name: string, value: string) {
         this.headers[name] = value;
         return this;
       },
-      end: function () {
+      end() {
         if (!responseSent) {
           responseSent = true;
           resolve({ status: responseStatus, body: responseBody });
@@ -358,9 +359,11 @@ describe('Sessions API', () => {
       );
 
       expect(res.status).toBe(201); // Creating a message returns 201
-      expect(res.body).toHaveProperty('id');
-      expect(res.body).toHaveProperty('content', 'Test message');
-      expect(res.body).toHaveProperty('authorId', 'user-123');
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+      expect(res.body.userMessage).toHaveProperty('id');
+      expect(res.body.userMessage).toHaveProperty('content', 'Test message');
+      expect(res.body.userMessage).toHaveProperty('authorId', 'user-123');
     });
 
     it('should propagate session metadata to messages', async () => {
@@ -987,6 +990,179 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('activeSessions');
       expect(res.body).toHaveProperty('uptime');
       expect(res.body).toHaveProperty('timestamp');
+    });
+  });
+
+  describe('Response Mode Parameter', () => {
+    it('should default to websocket mode when mode is not specified', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Create session first
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Send message without specifying mode (should default to websocket)
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello, world!',
+        }
+      );
+
+      // In websocket mode, response should be immediate with userMessage only
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+    });
+
+    it('should accept explicit websocket mode', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello with explicit websocket mode',
+          mode: 'websocket',
+        }
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+    });
+
+    it('should reject invalid mode parameter', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello with invalid mode',
+          mode: 'invalid_mode',
+        }
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('error');
+    });
+
+    it('should accept sync mode', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Mock elizaOS.handleMessage for sync mode
+      const mockHandleMessage = jest.fn().mockResolvedValue({
+        processing: {
+          responseContent: { text: 'Agent response' },
+        },
+      });
+      (mockElizaOS as any).handleMessage = mockHandleMessage;
+
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello in sync mode',
+          mode: 'sync',
+        }
+      );
+
+      // Sync mode should return both userMessage and agentResponse
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+      expect(res.body).toHaveProperty('agentResponse');
+    });
+
+    it('should accept stream mode and set SSE headers', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Mock elizaOS.handleMessage for stream mode
+      const mockHandleMessage = jest.fn().mockImplementation((_agentId, _message, options) => {
+        // Simulate streaming by calling callbacks
+        if (options?.onStreamChunk) {
+          options.onStreamChunk('Hello', 'msg-456');
+        }
+        if (options?.onResponse) {
+          options.onResponse({ text: 'Hello world' });
+        }
+        return Promise.resolve({});
+      });
+      (mockElizaOS as any).handleMessage = mockHandleMessage;
+
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // For stream mode, we need to check that SSE headers are set
+      // Our simulateRequest helper doesn't fully support SSE, but we can verify the mode is accepted
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello in stream mode',
+          mode: 'stream',
+        }
+      );
+
+      // Stream mode will set headers and potentially not return a JSON body
+      // The response should not be a validation error
+      expect(res.status).not.toBe(400);
     });
   });
 

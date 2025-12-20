@@ -1,6 +1,6 @@
 import { checkServer, displayAgent, handleError } from '@/src/utils';
 import { AgentsService, MemoryService } from '@elizaos/api-client';
-import { asUUID, UUID } from '@elizaos/core';
+import { asUUID, UUID, type Agent } from '@elizaos/core';
 import type { OptionValues } from 'commander';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -58,7 +58,7 @@ export async function getAgent(opts: OptionValues): Promise<void> {
     }
 
     // Display agent details if not using output option
-    displayAgent(agent as any, 'Agent Details');
+    displayAgent(agent as Partial<Agent>, 'Agent Details');
 
     // Display JSON if requested
     if (opts.json) {

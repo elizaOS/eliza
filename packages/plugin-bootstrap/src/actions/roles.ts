@@ -1,4 +1,5 @@
 import {
+  type HandlerOptions,
   type Action,
   type ActionExample,
   ChannelType,
@@ -16,6 +17,19 @@ import {
   parseKeyValueXml,
 } from '@elizaos/core';
 
+/** Shape of individual assignment in XML response */
+interface RoleAssignmentXml {
+  entityId?: string;
+  newRole?: string;
+}
+
+/** Shape of the role extraction XML response */
+interface RoleExtractionResult {
+  assignments?: {
+    assignment?: RoleAssignmentXml | RoleAssignmentXml[];
+  };
+}
+
 /**
  * Determines if the user with the current role can modify the role to the new role.
  * @param currentRole The current role of the user making the change
@@ -32,7 +46,9 @@ import {
  */
 const canModifyRole = (currentRole: Role, targetRole: Role | null, newRole: Role): boolean => {
   // User's can't change their own role
-  if (targetRole === currentRole) return false;
+  if (targetRole === currentRole) {
+    return false;
+  }
 
   switch (currentRole) {
     // Owners can do everything
@@ -88,7 +104,7 @@ export const updateRoleAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     if (!state) {
@@ -199,7 +215,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
       prompt: extractionPrompt,
     });
 
-    const parsedXml = parseKeyValueXml(response);
+    const parsedXml = parseKeyValueXml<RoleExtractionResult>(response);
 
     // Handle the parsed XML structure
     let assignments: RoleAssignment[] = [];
@@ -209,10 +225,12 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
         ? parsedXml.assignments.assignment
         : [parsedXml.assignments.assignment];
 
-      assignments = assignmentArray.map((a: any) => ({
-        entityId: a.entityId,
-        newRole: a.newRole as Role,
-      }));
+      assignments = assignmentArray
+        .filter((a): a is RoleAssignmentXml & { entityId: string } => !!a.entityId)
+        .map((a) => ({
+          entityId: a.entityId,
+          newRole: a.newRole as Role,
+        }));
     }
 
     if (!assignments.length) {
@@ -241,7 +259,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
     const failedUpdates: Array<{ entityId: string; reason: string }> = [];
 
     for (const assignment of assignments) {
-      let targetEntity = entities.find((e) => e.id === assignment.entityId);
+      const targetEntity = entities.find((e) => e.id === assignment.entityId);
       if (!targetEntity) {
         logger.error(
           {

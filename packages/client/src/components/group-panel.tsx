@@ -166,7 +166,14 @@ export default function GroupPanel({ onClose, channelId }: GroupPanelProps) {
     onError: (error) => {
       clientLogger.error('Failed to delete channel', error);
       const errorMsg = error instanceof Error ? error.message : 'Could not delete group.';
-      if (typeof error === 'object' && error !== null && (error as any).statusCode === 404) {
+      interface ErrorWithStatusCode extends Error {
+        statusCode?: number;
+      }
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        (error as ErrorWithStatusCode).statusCode === 404
+      ) {
         toast({
           title: 'Error Deleting Group',
           description: 'Delete operation not found on server.',

@@ -26,9 +26,7 @@ export default function Home() {
   const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
   const activeAgentsCount = agents.filter((a) => a.status === AgentStatus.ACTIVE).length;
 
-  const { data: serversData } = useServers() as {
-    data: { data: { servers: MessageServer[] } } | undefined;
-  };
+  const { data: serversData } = useServers();
   const servers = serversData?.data?.servers || [];
 
   const [isOverlayOpen, setOverlayOpen] = useState(false);
@@ -187,10 +185,7 @@ export default function Home() {
 
 // Sub-component to fetch and display channels for a given server
 const ServerChannels = React.memo(({ serverId }: { serverId: UUID }) => {
-  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId) as {
-    data: { data: { channels: MessageChannel[] } } | undefined;
-    isLoading: boolean;
-  };
+  const { data: channelsData, isLoading: isLoadingChannels } = useChannels(serverId);
   const groupChannels = useMemo(
     () =>
       channelsData?.data?.channels?.filter(

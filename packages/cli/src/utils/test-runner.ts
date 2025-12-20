@@ -64,11 +64,22 @@ export class TestRunner {
     const testingPlugin = process.env.ELIZA_TESTING_PLUGIN === 'true';
 
     if (testingPlugin && projectAgent?.plugins) {
-      // Find the plugin that's not a core plugin (like sql)
-      const corePlugins = ['@elizaos/plugin-sql'];
+      // Find the plugin that's not a core plugin (like sql or bootstrap)
+      // Core plugins are excluded because they provide infrastructure, not testable features
+      const corePlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap', 'bootstrap'];
+      const excludedPlugins = projectAgent.plugins.filter((plugin) =>
+        corePlugins.includes(plugin.name)
+      );
       const nonCorePlugins = projectAgent.plugins.filter(
         (plugin) => !corePlugins.includes(plugin.name)
       );
+
+      // Log which plugins are being excluded and why
+      if (excludedPlugins.length > 0) {
+        safeLogger.debug(
+          `Excluding ${excludedPlugins.length} core plugin(s) from test scope: ${excludedPlugins.map((p) => p.name).join(', ')} (these provide infrastructure, not testable features)`
+        );
+      }
 
       if (nonCorePlugins.length > 0) {
         // Store the actual plugin being tested
@@ -79,6 +90,9 @@ export class TestRunner {
         );
       } else {
         this.isDirectPluginTest = false;
+        safeLogger.debug(
+          'No non-core plugins found to test - all loaded plugins are infrastructure plugins'
+        );
       }
     } else if (
       projectAgent?.plugins?.length === 1 &&

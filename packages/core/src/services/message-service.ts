@@ -1,6 +1,6 @@
 import type { IAgentRuntime } from '../types/runtime';
 import type { Memory } from '../types/memory';
-import type { Content, UUID } from '../types/primitives';
+import type { Content, UUID, Media } from '../types/primitives';
 import type { State } from '../types/state';
 import type { HandlerCallback } from '../types/components';
 import type { Room } from '../types/environment';
@@ -33,6 +33,16 @@ export interface MessageProcessingOptions {
    * @default 6
    */
   maxMultiStepIterations?: number;
+
+  /**
+   * Called for each chunk of streaming text as it's generated.
+   * Streaming is enabled by default for all TEXT_* model types.
+   * The first chunk indicates streaming has started (useful for typing indicators).
+   *
+   * @param chunk - The text chunk being streamed
+   * @param messageId - ID of the message being generated
+   */
+  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
 }
 
 /**
@@ -164,7 +174,7 @@ export interface IMessageService {
    * @param attachments - Array of media attachments to process
    * @returns Promise resolving to processed attachments with descriptions
    */
-  processAttachments?(runtime: IAgentRuntime, attachments: any[]): Promise<any[]>;
+  processAttachments?(runtime: IAgentRuntime, attachments: Media[]): Promise<Media[]>;
 
   /**
    * Deletes a message from the agent's memory.

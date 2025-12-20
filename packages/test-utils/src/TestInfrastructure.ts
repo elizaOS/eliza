@@ -1,4 +1,11 @@
-import type { IAgentRuntime, IDatabaseAdapter, UUID, Character, Memory } from '@elizaos/core';
+import type {
+  IAgentRuntime,
+  IDatabaseAdapter,
+  UUID,
+  Character,
+  Memory,
+  AgentRuntime,
+} from '@elizaos/core';
 import { createTestRuntime } from './realRuntime';
 import { stringToUuid } from '@elizaos/core';
 import { createUniqueUuid as _createUniqueUuid } from '@elizaos/core';
@@ -91,7 +98,8 @@ export class TestEnvironment {
       isolated: true,
     });
     this.runtime = runtimeResult.runtime;
-    this.databaseAdapter = (this.runtime as any).adapter;
+    // AgentRuntime has a public adapter property
+    this.databaseAdapter = (this.runtime as AgentRuntime).adapter;
 
     // Ensure database adapter is available
     if (!this.databaseAdapter) {
@@ -247,7 +255,7 @@ export class TestDataBuilder {
 
   static async createTestConversation(
     runtime: IAgentRuntime,
-    participants: string[],
+    participants: UUID[],
     messageCount: number = 5
   ) {
     // Create room
@@ -255,14 +263,14 @@ export class TestDataBuilder {
 
     // Add participants
     for (const participantId of participants) {
-      await runtime.addParticipant(participantId as any, roomId);
+      await runtime.ensureParticipantInRoom(participantId, roomId);
     }
 
     // Create conversation messages
     const messages: Memory[] = [];
     for (let i = 0; i < messageCount; i++) {
       const message = {
-        entityId: participants[i % participants.length] as any,
+        entityId: participants[i % participants.length],
         roomId,
         content: {
           text: `Test message ${i + 1} in conversation`,
@@ -276,12 +284,12 @@ export class TestDataBuilder {
     return { roomId, messages };
   }
 
-  static async createTestMemories(runtime: IAgentRuntime, roomId: string, count: number = 10) {
+  static async createTestMemories(runtime: IAgentRuntime, roomId: UUID, count: number = 10) {
     const memories: Memory[] = [];
     for (let i = 0; i < count; i++) {
       const memory = {
         entityId: runtime.agentId,
-        roomId: roomId as any,
+        roomId,
         content: {
           text: `Test memory ${i + 1}`,
           type: 'fact',

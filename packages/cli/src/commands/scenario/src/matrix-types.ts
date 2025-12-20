@@ -15,7 +15,10 @@ export interface MatrixCombination {
   id: string;
 
   /** The set of parameter overrides to apply, mapping parameter paths to values */
-  parameters: Record<string, any>;
+  parameters: Record<
+    string,
+    string | number | boolean | null | Record<string, unknown> | unknown[]
+  >;
 
   /** Metadata about this combination's position in the matrix */
   metadata: {
@@ -39,7 +42,7 @@ export interface MatrixAxisRuntime {
   parameter: string;
 
   /** Array of values to test for this parameter */
-  values: any[];
+  values: Array<string | number | boolean | null | Record<string, unknown> | unknown[]>;
 
   /** Runtime metadata about this axis */
   metadata: {
@@ -157,7 +160,7 @@ export interface CombinationResult {
     error?: string;
 
     /** Detailed evaluation results */
-    evaluations?: any[];
+    evaluations?: Array<{ success: boolean; message: string; [key: string]: unknown }>;
   }>;
 
   /** Error message if the combination failed */

@@ -5,7 +5,7 @@ import type { DrizzleDatabase } from '../../types';
 import { createIsolatedTestDatabaseForMigration } from '../test-helpers';
 import type { UUID } from '@elizaos/core';
 import * as coreSchema from '../../schema';
-import { testPolymarketSchema } from '../plugin-schema/test-plugin-schema.ts';
+import { testPolymarketSchema } from '../fixtures/test-plugin-schema';
 
 describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
   let db: DrizzleDatabase;
@@ -229,7 +229,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       );
 
       // Should only have 1 migration record
-      expect(coreMigrations.rows[0]?.count).toBe(1);
+      expect(Number(coreMigrations.rows[0]?.count)).toBe(1);
 
       // Try to migrate plugin schema again
       const pluginResult = await migrator.migrate('polymarket', testPolymarketSchema, {
@@ -237,12 +237,12 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       });
 
       const pluginMigrations = await db.execute(
-        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations 
+        sql.raw(`SELECT COUNT(*) as count FROM migrations._migrations
                  WHERE plugin_name = 'polymarket'`)
       );
 
       // Should only have 1 migration record
-      expect(pluginMigrations.rows[0]?.count).toBe(1);
+      expect(Number(pluginMigrations.rows[0]?.count)).toBe(1);
     });
   });
 
@@ -328,7 +328,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       try {
         // Import the actual schema tables
         const { polymarketMarketsTable, polymarketTokensTable, polymarketRewardsTable } =
-          await import('../plugin-schema/test-plugin-schema.ts');
+          await import('../fixtures/test-plugin-schema');
 
         // Test 1: Insert a market
         console.log('Inserting test market...');
@@ -465,7 +465,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       console.log('\n🔍 Testing foreign key constraints...\n');
 
       const { polymarketMarketsTable, polymarketTokensTable } =
-        await import('../plugin-schema/test-plugin-schema.ts');
+        await import('../fixtures/test-plugin-schema');
 
       // Try to insert a token with non-existent conditionId (should fail)
       const invalidConditionId = 'non_existent_' + Date.now();
@@ -505,7 +505,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       console.log('\n🔍 Testing transactions with polymarket schema...\n');
 
       const { polymarketMarketsTable, polymarketTokensTable } =
-        await import('../plugin-schema/test-plugin-schema.ts');
+        await import('../fixtures/test-plugin-schema');
 
       const testConditionId = 'tx_test_' + Date.now();
       let transactionSucceeded = false;
@@ -570,7 +570,7 @@ describe('Runtime Migrator - Core + Plugin Schema Tests', () => {
       console.log('\n🔍 Testing schema qualification...\n');
 
       // Test that Drizzle generates correct SQL with schema prefix
-      const { polymarketMarketsTable } = await import('../plugin-schema/test-plugin-schema.ts');
+      const { polymarketMarketsTable } = await import('../fixtures/test-plugin-schema');
 
       // Use Drizzle's query builder to verify it generates correct SQL
       const query = db

@@ -196,11 +196,10 @@ matrix:
     values:
       - '@elizaos/plugin-bootstrap'
       - '@elizaos/plugin-sql'
-      - '@elizaos/plugin-e2b'
   - parameter: 'plugins[0].enabled'
     values: [true, false]
   - parameter: 'environment.type'
-    values: ['local', 'e2b']
+    values: ['local']
 ```
 
 ### Example 4: Mock Configuration Testing
@@ -246,7 +245,7 @@ Here are common parameter paths you might use:
 
 ```yaml
 - parameter: 'environment.type'
-  values: ['local', 'e2b']
+  values: ['local']
 ```
 
 ### Plugin Configuration
@@ -312,7 +311,7 @@ matrix:
   - parameter: 'character.temperature'
     values: [0.1, 0.3, 0.7, 0.9] # 4 values
   - parameter: 'environment.type'
-    values: ['local', 'e2b'] # 2 values
+    values: ['local'] # 2 values
 ```
 
 ### 4. Use Consistent Base Scenarios
@@ -359,7 +358,7 @@ matrix:
 ```yaml
 matrix:
   - parameter: 'environment.type'
-    values: ['local', 'e2b']
+    values: ['local']
   - parameter: 'plugins'
     values:
       - ['@elizaos/plugin-bootstrap']

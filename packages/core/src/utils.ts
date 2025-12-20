@@ -112,7 +112,7 @@ export const composePromptFromState = ({
   const filteredKeys = stateKeys.filter((key) => !['text', 'values', 'data'].includes(key));
 
   // this flattens out key/values in text/values/data
-  const filteredState = filteredKeys.reduce((acc: Record<string, any>, key) => {
+  const filteredState = filteredKeys.reduce((acc: Record<string, unknown>, key) => {
     acc[key] = state[key];
     return acc;
   }, {});
@@ -220,7 +220,6 @@ export const formatPosts = ({
             'No entity found for message'
           );
         }
-        // TODO: These are okay but not great
         const userName = entity?.names[0] || 'Unknown User';
         const displayName = entity?.names[0] || 'unknown';
 
@@ -347,20 +346,30 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * Note: This uses regex and is suitable for simple, predictable XML structures.
  * For complex XML, a proper parsing library is recommended.
  *
+ * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.
- * @returns An object with key-value pairs extracted from the XML, or null if parsing fails.
+ * @returns The parsed object cast to type T, or null if parsing fails.
+ *
+ * @example
+ * interface MyResponse { thought: string; message: string; }
+ * const result = parseKeyValueXml<MyResponse>(xmlText);
+ * // result is MyResponse | null
  */
-export function parseKeyValueXml(text: string): Record<string, any> | null {
+export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T | null {
   if (!text) return null;
 
-  // First, try to find a specific <response> block (the one we actually want)
-  // Use a more permissive regex to handle cases where there might be multiple XML blocks
-  let xmlBlockMatch = text.match(/<response>([\s\S]*?)<\/response>/);
-  let xmlContent: string;
+  // First, try to find a specific <response> block using linear search (avoids regex ReDoS)
+  let xmlContent: string | null = null;
+  const responseStart = text.indexOf('<response>');
+  if (responseStart !== -1) {
+    const contentStart = responseStart + '<response>'.length;
+    const responseEnd = text.indexOf('</response>', contentStart);
+    if (responseEnd !== -1) {
+      xmlContent = text.slice(contentStart, responseEnd);
+    }
+  }
 
-  if (xmlBlockMatch) {
-    xmlContent = xmlBlockMatch[1];
-  } else {
+  if (!xmlContent) {
     // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
     // This avoids potentially expensive backtracking on crafted inputs
     const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
@@ -450,7 +459,7 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     xmlContent = fb.content;
   }
 
-  const result: Record<string, any> = {};
+  const result: Record<string, unknown> = {};
 
   // Safer linear scan to extract direct child <key>value</key> elements
   // Avoids potentially expensive backtracking from broad regexes
@@ -569,7 +578,7 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
     return null;
   }
 
-  return result;
+  return result as T;
 }
 
 /**
@@ -582,10 +591,10 @@ export function parseKeyValueXml(text: string): Record<string, any> | null {
  * @param text - The input text from which to extract and parse the JSON object.
  * @returns An object parsed from the JSON string if successful; otherwise, null or the result of parsing an array.
  */
-export function parseJSONObjectFromText(text: string): Record<string, any> | null {
-  let jsonData = null;
+export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
   const jsonBlockMatch = text.match(jsonBlockPattern);
 
+  let jsonData: Record<string, unknown> | null = null;
   try {
     if (jsonBlockMatch) {
       // Parse the JSON from inside the code block
@@ -594,9 +603,9 @@ export function parseJSONObjectFromText(text: string): Record<string, any> | nul
       // Try to parse the text directly if it's not in a code block
       jsonData = JSON.parse(normalizeJsonString(text.trim()));
     }
-  } catch (_e) {
-    // logger.warn("Could not parse text as JSON, returning null");
-    return null; // Keep null return on error
+  } catch {
+    // Return null on parse error
+    return null;
   }
 
   // Ensure we have a non-null object that's not an array
@@ -604,8 +613,7 @@ export function parseJSONObjectFromText(text: string): Record<string, any> | nul
     return jsonData;
   }
 
-  // logger.warn("Could not parse text as JSON object, returning null");
-  return null; // Return null if not a valid object
+  return null;
 }
 
 /**
@@ -638,17 +646,6 @@ export const normalizeJsonString = (str: string) => {
 
   return str;
 };
-
-// why is this here? maybe types.ts is more appropriate
-// and shouldn't the name include x/twitter
-/*
-export type ActionResponse = {
-  like: boolean;
-  retweet: boolean;
-  quote?: boolean;
-  reply?: boolean;
-};
-*/
 
 /**
  * Truncate text to fit within the character limit, ensuring it ends at a complete sentence.
@@ -707,6 +704,7 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
 
   const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
     prompt,
+    modelType: ModelType.TEXT_TOKENIZER_ENCODE,
   });
 
   // If already within limits, return unchanged
@@ -720,12 +718,13 @@ export async function trimTokens(prompt: string, maxTokens: number, runtime: IAg
   // Decode back to text
   return await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
     tokens: truncatedTokens,
+    modelType: ModelType.TEXT_TOKENIZER_DECODE,
   });
 }
 
 export function safeReplacer() {
   const seen = new WeakSet();
-  return function (_key: string, value: any) {
+  return function (_key: string, value: unknown) {
     if (typeof value === 'object' && value !== null) {
       if (seen.has(value)) {
         return '[Circular]';
@@ -847,19 +846,15 @@ let webCryptoAvailable: boolean | null = null;
 function checkWebCrypto(): boolean {
   if (webCryptoAvailable !== null) return webCryptoAvailable;
 
-  try {
-    // Check for crypto.subtle (WebCrypto API)
-    if (
-      typeof globalThis !== 'undefined' &&
-      globalThis.crypto &&
-      globalThis.crypto.subtle &&
-      typeof globalThis.crypto.subtle.digest === 'function'
-    ) {
-      webCryptoAvailable = true;
-      return true;
-    }
-  } catch {
-    // Ignore errors
+  // Check for crypto.subtle (WebCrypto API)
+  if (
+    typeof globalThis !== 'undefined' &&
+    globalThis.crypto &&
+    globalThis.crypto.subtle &&
+    typeof globalThis.crypto.subtle.digest === 'function'
+  ) {
+    webCryptoAvailable = true;
+    return true;
   }
 
   webCryptoAvailable = false;
@@ -907,14 +902,10 @@ function getCachedSha1(message: string): Uint8Array {
  */
 async function sha1BytesAsync(message: string): Promise<Uint8Array> {
   if (checkWebCrypto()) {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(message);
-      const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', data);
-      return new Uint8Array(hashBuffer);
-    } catch {
-      // Fall through to pure JS
-    }
+    const encoder = new TextEncoder();
+    const data = encoder.encode(message);
+    const hashBuffer = await globalThis.crypto.subtle.digest('SHA-1', data);
+    return new Uint8Array(hashBuffer);
   }
 
   // Fallback to pure JS implementation

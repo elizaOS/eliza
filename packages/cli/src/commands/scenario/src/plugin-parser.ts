@@ -4,7 +4,7 @@ import { Plugin } from '@elizaos/core';
 export interface ParsedPlugin {
   name: string;
   version?: string;
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
   enabled: boolean;
   originalReference: PluginReference;
   loadedPlugin?: Plugin; // Store the actually loaded plugin
@@ -128,7 +128,7 @@ function isValidVersion(version: string): boolean {
 /**
  * Validate plugin configuration object
  */
-function isValidConfig(config: Record<string, any>): boolean {
+function isValidConfig(config: Record<string, unknown>): boolean {
   // Basic validation - config should be an object
   return typeof config === 'object' && config !== null && !Array.isArray(config);
 }
