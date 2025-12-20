@@ -162,8 +162,7 @@ const GroupRow = ({
         >
           {/* Name */}
           <span className="text-base truncate max-w-36">
-            {channel.name ||
-              generateGroupName(channel, (channel as any).participants || [], currentClientId)}
+            {channel.name || generateGroupName(channel, undefined, currentClientId)}
           </span>
           <div className="flex items-center gap-2">
             {/* Avatars */}
@@ -382,11 +381,7 @@ const ChannelsForServer = ({
                       <Users className="h-5 w-5 text-muted-foreground" /> {/* Group icon */}
                       <span className="text-sm truncate max-w-32">
                         {/* Use generateGroupName - assumes channel.participants exists or will be added */}
-                        {generateGroupName(
-                          channel,
-                          (channel as any).participants || [],
-                          currentClientId
-                        )}
+                        {generateGroupName(channel, undefined, currentClientId)}
                       </span>
                     </div>
                   </SidebarMenuButton>

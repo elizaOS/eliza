@@ -26,7 +26,7 @@ export interface ParameterOverride {
   /** Dot-notation path to the parameter (e.g., "character.llm.model" or "run[0].input") */
   path: string;
   /** The value to set at the specified path */
-  value: any;
+  value: unknown;
 }
 
 /**
@@ -54,9 +54,9 @@ export interface OverrideOperation {
   /** The dot-notation path that was modified */
   path: string;
   /** The new value that was set */
-  value: any;
+  value: unknown;
   /** The original value that was replaced (if any) */
-  originalValue?: any;
+  originalValue?: unknown;
   /** Whether this operation created new intermediate objects */
   wasCreated: boolean;
 }
@@ -67,7 +67,7 @@ export interface OverrideOperation {
  */
 export interface OverrideResult {
   /** The scenario object with overrides applied */
-  scenario: any;
+  scenario: Record<string, unknown>;
   /** Details about each override operation performed */
   operations: OverrideOperation[];
   /** Any warnings generated during override application */
@@ -96,7 +96,7 @@ export interface OverrideResult {
  * // invalid.isValid === false, invalid.suggestion === "Available properties: llm"
  * ```
  */
-export function validateParameterPath(obj: any, path: string): ValidationResult {
+export function validateParameterPath(obj: unknown, path: string): ValidationResult {
   if (!obj || typeof obj !== 'object') {
     return {
       isValid: false,
@@ -108,7 +108,7 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
 
   try {
     const parsedPath = parseParameterPath(path);
-    let current = obj;
+    let current: unknown = obj;
     let currentPath = '';
 
     for (let i = 0; i < parsedPath.segments.length; i++) {
@@ -152,11 +152,12 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
           };
         }
 
-        if (!(segment in current)) {
-          const availableProps = Object.keys(current).slice(0, 5);
+        const currentObj = current as Record<string, unknown>;
+        if (!(segment in currentObj)) {
+          const availableProps = Object.keys(currentObj).slice(0, 5);
           const suggestion =
             availableProps.length > 0
-              ? `Available properties: ${availableProps.join(', ')}${Object.keys(current).length > 5 ? '...' : ''}`
+              ? `Available properties: ${availableProps.join(', ')}${Object.keys(currentObj).length > 5 ? '...' : ''}`
               : 'Object has no properties';
 
           return {
@@ -168,7 +169,7 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
           };
         }
 
-        current = current[segment];
+        current = currentObj[segment];
       }
     }
 
@@ -200,7 +201,7 @@ export function validateParameterPath(obj: any, path: string): ValidationResult 
  * Legacy function for backward compatibility.
  * Returns boolean like the original function.
  */
-export function validateParameterPathLegacy(obj: any, path: string): boolean {
+export function validateParameterPathLegacy(obj: unknown, path: string): boolean {
   const result = validateParameterPath(obj, path);
   return result.isValid;
 }
@@ -213,9 +214,9 @@ export function validateParameterPathLegacy(obj: any, path: string): boolean {
  * @returns The value at the path
  * @throws Error if the path doesn't exist
  */
-export function getValueAtPath(obj: any, path: string): any {
+export function getValueAtPath(obj: unknown, path: string): unknown {
   const parsedPath = parseParameterPath(path);
-  let current = obj;
+  let current: unknown = obj;
 
   for (let i = 0; i < parsedPath.segments.length; i++) {
     const segment = parsedPath.segments[i];
@@ -238,10 +239,11 @@ export function getValueAtPath(obj: any, path: string): any {
           `Expected object at path segment, but found ${typeof current} in path: ${path}`
         );
       }
-      if (!(segment in current)) {
+      const currentObj = current as Record<string, unknown>;
+      if (!(segment in currentObj)) {
         throw new Error(`Property '${segment}' not found in path: ${path}`);
       }
-      current = current[segment];
+      current = currentObj[segment];
     }
   }
 
@@ -257,9 +259,9 @@ export function getValueAtPath(obj: any, path: string): any {
  * @param value - The value to set
  * @throws Error if the path doesn't exist or is invalid
  */
-export function setValueAtPath(obj: any, path: string, value: any): void {
+export function setValueAtPath(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parsedPath = parseParameterPath(path);
-  let current = obj;
+  let current: Record<string, unknown> | unknown[] = obj;
 
   // Navigate to the parent of the target property
   for (let i = 0; i < parsedPath.segments.length - 1; i++) {
@@ -275,18 +277,19 @@ export function setValueAtPath(obj: any, path: string, value: any): void {
       if (segment >= current.length || segment < 0) {
         throw new Error(`Array index out of bounds: ${segment} in path: ${path}`);
       }
-      current = current[segment];
+      current = current[segment] as Record<string, unknown> | unknown[];
     } else {
       // Object property
-      if (!current || typeof current !== 'object') {
+      if (!current || typeof current !== 'object' || Array.isArray(current)) {
         throw new Error(
           `Expected object at path segment, but found ${typeof current} in path: ${path}`
         );
       }
-      if (!(segment in current)) {
+      const currentObj = current as Record<string, unknown>;
+      if (!(segment in currentObj)) {
         throw new Error(`Property '${segment}' not found in path: ${path}`);
       }
-      current = current[segment];
+      current = currentObj[segment] as Record<string, unknown> | unknown[];
     }
   }
 
@@ -306,12 +309,13 @@ export function setValueAtPath(obj: any, path: string, value: any): void {
     current[finalSegment] = value;
   } else {
     // Object property
-    if (!current || typeof current !== 'object') {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
       throw new Error(
         `Expected object for final segment, but found ${typeof current} in path: ${path}`
       );
     }
-    current[finalSegment] = value;
+    const currentObj = current as Record<string, unknown>;
+    currentObj[finalSegment] = value;
   }
 }
 
@@ -335,7 +339,11 @@ export function setValueAtPath(obj: any, path: string, value: any): void {
  * // original scenario is unchanged
  * ```
  */
-export function applyParameterOverride(scenario: any, path: string, value: any): any {
+export function applyParameterOverride(
+  scenario: Record<string, unknown>,
+  path: string,
+  value: unknown
+): Record<string, unknown> {
   // Create a deep clone to avoid mutating the original
   const clonedScenario = deepClone(scenario);
 
@@ -346,7 +354,7 @@ export function applyParameterOverride(scenario: any, path: string, value: any):
 }
 
 /**
- * Applies a set of parameter overrides from a Record<string, any> format.
+ * Applies a set of parameter overrides from a Record<string, unknown> format.
  * This is the batch function required by ticket #5780.
  *
  * @param baseScenario - The base scenario object to modify
@@ -363,7 +371,10 @@ export function applyParameterOverride(scenario: any, path: string, value: any):
  * const result = applyMatrixOverrides(baseScenario, overrides);
  * ```
  */
-export function applyMatrixOverrides(baseScenario: any, overrides: Record<string, any>): any {
+export function applyMatrixOverrides(
+  baseScenario: Record<string, unknown>,
+  overrides: Record<string, unknown>
+): Record<string, unknown> {
   // Convert Record to ParameterOverride array
   const parameterOverrides: ParameterOverride[] = Object.entries(overrides).map(
     ([path, value]) => ({
@@ -412,7 +423,10 @@ export function applyMatrixOverrides(baseScenario: any, overrides: Record<string
  * // baseScenario is unchanged
  * ```
  */
-export function applyParameterOverrides(baseScenario: any, overrides: ParameterOverride[]): any {
+export function applyParameterOverrides(
+  baseScenario: Record<string, unknown>,
+  overrides: ParameterOverride[]
+): Record<string, unknown> {
   if (!baseScenario || typeof baseScenario !== 'object') {
     throw new Error('Base scenario must be a valid object');
   }
@@ -451,13 +465,13 @@ export function applyParameterOverrides(baseScenario: any, overrides: ParameterO
           if (segment >= current.length || segment < 0) {
             throw new Error(`Array index out of bounds: ${segment} in path: ${override.path}`);
           }
-          current = current[segment];
+          current = current[segment] as Record<string, unknown>;
         } else {
           // Object property
           if (!current || typeof current !== 'object' || !(segment in current)) {
             throw new Error(`Invalid parameter path: ${override.path}`);
           }
-          current = current[segment];
+          current = (current as Record<string, unknown>)[segment] as Record<string, unknown>;
         }
       }
     } catch (error) {
@@ -502,7 +516,7 @@ export function applyParameterOverrides(baseScenario: any, overrides: ParameterO
  * // ]
  * ```
  */
-export function combinationToOverrides(combination: Record<string, any>): ParameterOverride[] {
+export function combinationToOverrides(combination: Record<string, unknown>): ParameterOverride[] {
   return Object.entries(combination).map(([path, value]) => ({
     path,
     value,
@@ -518,8 +532,8 @@ export function combinationToOverrides(combination: Record<string, any>): Parame
  * @returns Validation result with any invalid paths
  */
 export function validateMatrixParameterPaths(
-  baseScenario: any,
-  matrixAxes: Array<{ parameter: string; values: any[] }>
+  baseScenario: Record<string, unknown>,
+  matrixAxes: Array<{ parameter: string; values: unknown[] }>
 ): { valid: boolean; invalidPaths: string[] } {
   const invalidPaths: string[] = [];
 

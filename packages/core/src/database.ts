@@ -15,10 +15,6 @@ import type {
 } from './types';
 
 /**
- * An abstract class representing a database adapter for managing various entities
- * like entities, memories, entities, goals, and rooms.
- */
-/**
  * Database adapter class to be extended by individual database adapters.
  *
  * @template DB - The type of the database instance.
@@ -33,9 +29,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
 
   /**
    * Initialize the database adapter.
+   * @param config - Optional configuration object
    * @returns A Promise that resolves when initialization is complete.
    */
-  abstract initialize(config?: any): Promise<void>;
+  abstract initialize(config?: Record<string, string | number | boolean | null>): Promise<void>;
 
   /**
    * Initialize the database adapter.
@@ -50,7 +47,10 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * @returns A Promise that resolves when migrations are complete.
    */
   abstract runPluginMigrations(
-    plugins: Array<{ name: string; schema?: any }>,
+    plugins: Array<{
+      name: string;
+      schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
+    }>,
     options?: {
       verbose?: boolean;
       force?: boolean;
@@ -74,7 +74,7 @@ export abstract class DatabaseAdapter<DB = unknown> implements IDatabaseAdapter 
    * Retrieves a connection to the database.
    * @returns A Promise that resolves to the database connection.
    */
-  abstract getConnection(): Promise<unknown>;
+  abstract getConnection(): Promise<DB>;
 
   /**
    * Retrieves an account by its ID.

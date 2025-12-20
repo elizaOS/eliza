@@ -3,7 +3,7 @@ import {
   ChannelType,
   composePromptFromState,
   type Content,
-  type ControlMessage,
+  type ControlMessagePayload,
   ContentType,
   createUniqueUuid,
   type EntityPayload,
@@ -38,6 +38,28 @@ import * as providers from './providers/index.ts';
 
 import { TaskService } from './services/task.ts';
 import { EmbeddingGenerationService } from './services/embedding.ts';
+
+/** Shape of image description XML response */
+interface ImageDescriptionXml {
+  description?: string;
+  title?: string;
+  text?: string;
+}
+
+/** Shape of message handler XML response */
+interface MessageHandlerXml {
+  thought?: string;
+  actions?: string | string[];
+  providers?: string | string[];
+  text?: string;
+  simple?: boolean;
+}
+
+/** Shape of post creation XML response */
+interface PostCreationXml {
+  post?: string;
+  thought?: string;
+}
 
 export * from './actions/index.ts';
 export * from './evaluators/index.ts';
@@ -174,7 +196,9 @@ export async function processAttachments(
         if (!isRemote) {
           // Only convert local/internal media to base64
           const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+          if (!res.ok) {
+            throw new Error(`Failed to fetch image: ${res.statusText}`);
+          }
 
           const arrayBuffer = await res.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
@@ -190,12 +214,12 @@ export async function processAttachments(
 
           if (typeof response === 'string') {
             // Parse XML response
-            const parsedXml = parseKeyValueXml(response);
+            const parsedXml = parseKeyValueXml<ImageDescriptionXml>(response);
 
             if (parsedXml && (parsedXml.description || parsedXml.text)) {
-              processedAttachment.description = parsedXml.description || '';
-              processedAttachment.title = parsedXml.title || 'Image';
-              processedAttachment.text = parsedXml.text || parsedXml.description || '';
+              processedAttachment.description = parsedXml.description ?? '';
+              processedAttachment.title = parsedXml.title ?? 'Image';
+              processedAttachment.text = parsedXml.text ?? parsedXml.description ?? '';
 
               runtime.logger.debug(
                 {
@@ -265,7 +289,9 @@ export async function processAttachments(
         }
       } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch document: ${res.statusText}`);
+        }
 
         const contentType = res.headers.get('content-type') || '';
         const isPlainText = contentType.startsWith('text/plain');
@@ -335,7 +361,9 @@ export function shouldRespond(
   }
 
   function normalizeEnvList(value: unknown): string[] {
-    if (!value || typeof value !== 'string') return [];
+    if (!value || typeof value !== 'string') {
+      return [];
+    }
     const cleaned = value.trim().replace(/^[\[]|[\]]$/g, '');
     return cleaned
       .split(',')
@@ -422,8 +450,13 @@ const reactionReceivedHandler = async ({
 }) => {
   try {
     await runtime.createMemory(message, 'messages');
-  } catch (error: any) {
-    if (error.code === '23505') {
+  } catch (error: unknown) {
+    // PostgreSQL duplicate key violation error code
+    const isDuplicateKeyError =
+      error instanceof Error &&
+      'code' in error &&
+      (error as NodeJS.ErrnoException).code === '23505';
+    if (isDuplicateKeyError) {
       runtime.logger.warn(
         { src: 'plugin:bootstrap', agentId: runtime.agentId },
         'Duplicate reaction memory, skipping'
@@ -475,14 +508,14 @@ const postGeneratedHandler = async ({
     type: ChannelType.FEED,
     channelId: `${userId}-home`,
     messageServerId: userId as UUID,
-    worldId: worldId,
+    worldId,
   });
 
   const message = {
     id: createUniqueUuid(runtime, `tweet-${Date.now()}`) as UUID,
     entityId: runtime.agentId,
     agentId: runtime.agentId,
-    roomId: roomId,
+    roomId,
     content: {},
     metadata: {
       entityName: runtime.character.name,
@@ -502,9 +535,15 @@ const postGeneratedHandler = async ({
 
   // get twitterUserName
   const entity = await runtime.getEntityById(runtime.agentId);
-  if ((entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName) {
-    state.values.twitterUserName =
-      (entity?.metadata?.twitter as any)?.userName || entity?.metadata?.userName;
+  interface TwitterMetadata {
+    twitter?: {
+      userName?: string;
+    };
+    userName?: string;
+  }
+  const metadata = entity?.metadata as TwitterMetadata | undefined;
+  if (metadata?.twitter?.userName || metadata?.userName) {
+    state.values.twitterUserName = metadata.twitter?.userName || metadata.userName;
   }
 
   const prompt = composePromptFromState({
@@ -523,14 +562,17 @@ const postGeneratedHandler = async ({
     });
 
     // Parse XML
-    const parsedXml = parseKeyValueXml(response);
+    const parsedXml = parseKeyValueXml<MessageHandlerXml>(response);
     if (parsedXml) {
+      // Normalize actions/providers to arrays (XML parser may return string or array)
+      const actionsRaw = parsedXml.actions;
+      const providersRaw = parsedXml.providers;
       responseContent = {
-        thought: parsedXml.thought || '',
-        actions: parsedXml.actions || ['IGNORE'],
-        providers: parsedXml.providers || [],
-        text: parsedXml.text || '',
-        simple: parsedXml.simple || false,
+        thought: parsedXml.thought ?? '',
+        actions: Array.isArray(actionsRaw) ? actionsRaw : actionsRaw ? [actionsRaw] : ['IGNORE'],
+        providers: Array.isArray(providersRaw) ? providersRaw : providersRaw ? [providersRaw] : [],
+        text: parsedXml.text ?? '',
+        simple: parsedXml.simple ?? false,
       };
     } else {
       responseContent = null;
@@ -560,7 +602,7 @@ const postGeneratedHandler = async ({
   });
 
   // Parse the XML response
-  const parsedXmlResponse = parseKeyValueXml(xmlResponseText);
+  const parsedXmlResponse = parseKeyValueXml<PostCreationXml>(xmlResponseText);
 
   if (!parsedXmlResponse) {
     runtime.logger.error(
@@ -585,7 +627,7 @@ const postGeneratedHandler = async ({
   }
 
   // Cleanup the tweet text
-  const cleanedText = cleanupPostText(parsedXmlResponse.post || '');
+  const cleanedText = cleanupPostText(parsedXmlResponse.post ?? '');
 
   // Prepare media if included
   // const mediaData: MediaData[] = [];
@@ -607,8 +649,10 @@ const postGeneratedHandler = async ({
   // }
 
   // have we posted it before?
-  const RM = state.data?.providers?.RECENT_MESSAGES;
-  if (RM) {
+  const RM = state.data?.providers?.RECENT_MESSAGES as
+    | { data?: { recentMessages?: Array<{ content: { text?: string } }> } }
+    | undefined;
+  if (RM?.data?.recentMessages) {
     for (const m of RM.data.recentMessages) {
       if (cleanedText === m.content.text) {
         runtime.logger.info(
@@ -670,7 +714,7 @@ const postGeneratedHandler = async ({
         text: cleanedText,
         source,
         channelType: ChannelType.FEED,
-        thought: parsedXmlResponse.thought || '',
+        thought: parsedXmlResponse.thought ?? '',
         type: 'post',
       },
       roomId: message.roomId,
@@ -866,14 +910,7 @@ const handleServerSync = async ({
  * @param {Object} params.message - The control message
  * @param {string} params.source - Source of the message
  */
-const controlMessageHandler = async ({
-  runtime,
-  message,
-}: {
-  runtime: IAgentRuntime;
-  message: ControlMessage;
-  source: string;
-}) => {
+const controlMessageHandler = async ({ runtime, message }: ControlMessagePayload) => {
   try {
     runtime.logger.debug(
       {
@@ -897,9 +934,12 @@ const controlMessageHandler = async ({
 
     if (websocketServiceName) {
       const websocketService = runtime.getService(websocketServiceName);
+      interface WebSocketServiceWithSendMessage {
+        sendMessage: (message: { type: string; payload: unknown }) => Promise<void>;
+      }
       if (websocketService && 'sendMessage' in websocketService) {
         // Send the control message through the WebSocket service
-        await (websocketService as any).sendMessage({
+        await (websocketService as WebSocketServiceWithSendMessage).sendMessage({
           type: 'controlMessage',
           payload: {
             action: message.payload.action,
@@ -1003,12 +1043,17 @@ const events: PluginEvents = {
         return;
       }
 
+      const channelType = payload.metadata?.type;
+      if (typeof channelType !== 'string') {
+        payload.runtime.logger.warn('Missing channel type in entity payload');
+        return;
+      }
       await syncSingleUser(
         payload.entityId,
         payload.runtime,
         payload.worldId,
         payload.roomId,
-        payload.metadata.type,
+        channelType as ChannelType,
         payload.source
       );
     },
@@ -1036,7 +1081,7 @@ const events: PluginEvents = {
           },
           'User left world'
         );
-      } catch (error: any) {
+      } catch (error: unknown) {
         payload.runtime.logger.error(
           {
             src: 'plugin:bootstrap',
@@ -1054,7 +1099,23 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionStart(
               payload.roomId,
@@ -1118,7 +1179,23 @@ const events: PluginEvents = {
       try {
         // Only notify for client_chat messages
         if (payload.content?.source === 'client_chat') {
-          const messageBusService = payload.runtime.getService('message-bus-service') as any;
+          interface MessageBusServiceWithNotify {
+            notifyActionStart: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+            notifyActionUpdate: (
+              roomId: UUID,
+              worldId: UUID,
+              content: Content,
+              messageId?: UUID
+            ) => Promise<void>;
+          }
+          const messageBusService = payload.runtime.getService(
+            'message-bus-service'
+          ) as MessageBusServiceWithNotify | null;
           if (messageBusService) {
             await messageBusService.notifyActionUpdate(
               payload.roomId,
@@ -1285,7 +1362,18 @@ const events: PluginEvents = {
     },
   ],
 
-  CONTROL_MESSAGE: [controlMessageHandler],
+  [EventType.CONTROL_MESSAGE]: [
+    async (payload: ControlMessagePayload) => {
+      if (!payload.message) {
+        payload.runtime.logger.warn(
+          { src: 'plugin:bootstrap' },
+          'CONTROL_MESSAGE received without message property'
+        );
+        return;
+      }
+      await controlMessageHandler(payload);
+    },
+  ],
 };
 
 export const bootstrapPlugin: Plugin = {
@@ -1306,7 +1394,7 @@ export const bootstrapPlugin: Plugin = {
     actions.updateSettingsAction,
     actions.generateImageAction,
   ],
-  events: events,
+  events,
   evaluators: [evaluators.reflectionEvaluator],
   providers: [
     providers.evaluatorsProvider,

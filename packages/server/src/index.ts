@@ -38,7 +38,7 @@ import sqlPlugin, {
   assignAgentToServer,
   uninstallRLS,
 } from '@elizaos/plugin-sql';
-import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+import { stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
 import internalMessageBus from './services/message-bus';
@@ -71,6 +71,89 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Type for database adapter with messaging methods
+ * These methods are provided by BaseDrizzleAdapter implementations
+ * Signatures match BaseDrizzleAdapter in @elizaos/plugin-sql
+ */
+type DatabaseAdapterWithMessaging = DatabaseAdapter & {
+  createMessageServer(data: {
+    id?: UUID;
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<MessageServer>;
+  getMessageServers(): Promise<MessageServer[]>;
+  getMessageServerById(serverId: UUID): Promise<MessageServer | null>;
+  getMessageServerByRlsServerId(rlsServerId: UUID): Promise<MessageServer | null>;
+  createChannel(
+    data: {
+      id?: UUID;
+      messageServerId: UUID;
+      name: string;
+      type: string;
+      sourceType?: string;
+      sourceId?: string;
+      topic?: string;
+      metadata?: Record<string, unknown>;
+    },
+    participantIds?: UUID[]
+  ): Promise<MessageChannel>;
+  addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void>;
+  getChannelsForMessageServer(messageServerId: UUID): Promise<MessageChannel[]>;
+  getChannelDetails(channelId: UUID): Promise<MessageChannel | null>;
+  getChannelParticipants(channelId: UUID): Promise<UUID[]>;
+  isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean>;
+  deleteMessage(messageId: UUID): Promise<void>;
+  updateChannel(
+    channelId: UUID,
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
+  ): Promise<MessageChannel>;
+  deleteChannel(channelId: UUID): Promise<void>;
+  getMessagesForChannel(
+    channelId: UUID,
+    limit?: number,
+    beforeTimestamp?: Date
+  ): Promise<CentralRootMessage[]>;
+  findOrCreateDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID
+  ): Promise<MessageChannel>;
+  createMessage(data: {
+    messageId?: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: Record<string, unknown>;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+    inReplyToRootMessageId?: UUID;
+  }): Promise<CentralRootMessage>;
+  updateMessage(
+    messageId: UUID,
+    patch: {
+      content?: string;
+      rawMessage?: Record<string, unknown>;
+      sourceType?: string;
+      sourceId?: string;
+      metadata?: Record<string, unknown>;
+      inReplyToRootMessageId?: UUID;
+    }
+  ): Promise<CentralRootMessage | null>;
+  addAgentToMessageServer(messageServerId: UUID, agentId: UUID): Promise<void>;
+  removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void>;
+  getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]>;
+  getDatabase?(): unknown;
+  db: { execute: (query: unknown) => Promise<unknown> };
+};
+
+/**
  * Represents an agent server which handles agents, database, and server functionalities.
  */
 export class AgentServer {
@@ -82,7 +165,7 @@ export class AgentServer {
   private clientPath?: string; // Optional path to client dist files
   public elizaOS?: ElizaOS; // Core ElizaOS instance (public for direct access)
 
-  public database!: DatabaseAdapter;
+  public database!: DatabaseAdapterWithMessaging;
   private rlsServerId?: UUID;
   public messageServerId: UUID = DEFAULT_SERVER_ID;
 
@@ -115,7 +198,7 @@ export class AgentServer {
       const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
 
       return {
-        character: encryptedCharacter(agent.character),
+        character: agent.character,
         plugins: allPlugins,
         init: agent.init,
       };
@@ -258,7 +341,7 @@ export class AgentServer {
           postgresUrl: config?.postgresUrl,
         },
         tempServerAgentId
-      ) as DatabaseAdapter;
+      ) as DatabaseAdapterWithMessaging;
       await this.database.init();
       logger.success({ src: 'db' }, 'Database initialized for server operations');
 
@@ -268,7 +351,7 @@ export class AgentServer {
         const migrationService = new DatabaseMigrationService();
 
         // Get the underlying database instance
-        const db = (this.database as any).getDatabase();
+        const db = this.database.getDatabase?.();
         await migrationService.initializeWithDatabase(db);
 
         // Register the SQL plugin schema
@@ -396,9 +479,7 @@ export class AgentServer {
       // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
       if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
-        const existingServer = await (this.database as any).getMessageServerByRlsServerId(
-          this.rlsServerId
-        );
+        const existingServer = await this.database.getMessageServerByRlsServerId(this.rlsServerId);
 
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
@@ -434,17 +515,17 @@ export class AgentServer {
           : 'Default Server';
 
       logger.info({ src: 'db', serverId: this.messageServerId }, 'Checking for server...');
-      const servers = await (this.database as any).getMessageServers();
+      const servers = await this.database.getMessageServers();
       logger.debug({ src: 'db', serverCount: servers.length }, 'Found existing servers');
 
-      const defaultServer = servers.find((s: any) => s.id === this.messageServerId);
+      const defaultServer = servers.find((s) => s.id === this.messageServerId);
 
       if (!defaultServer) {
         logger.info({ src: 'db', serverId: this.messageServerId }, 'Creating server...');
 
         // Use parameterized query to prevent SQL injection
         try {
-          const db = (this.database as any).db;
+          const db = this.database.db;
           await db.execute(sql`
             INSERT INTO message_servers (id, name, source_type, created_at, updated_at)
             VALUES (${this.messageServerId}, ${serverName}, ${'eliza_default'}, NOW(), NOW())
@@ -454,30 +535,34 @@ export class AgentServer {
             { src: 'db', serverId: this.messageServerId },
             'Server created via parameterized query'
           );
-        } catch (sqlError: any) {
-          logger.warn({ src: 'db', error: sqlError }, 'SQL insert failed, trying ORM');
+        } catch (sqlError: unknown) {
+          logger.warn(
+            { src: 'db', error: sqlError instanceof Error ? sqlError.message : String(sqlError) },
+            'SQL insert failed, trying ORM'
+          );
 
           // Try creating with ORM as fallback
           try {
-            await (this.database as any).createMessageServer({
+            await this.database.createMessageServer({
               id: this.messageServerId as UUID,
               name: serverName,
               sourceType: 'eliza_default',
             });
-          } catch (ormError: any) {
-            logger.error({ src: 'db', error: ormError }, 'Both SQL and ORM creation failed');
-            throw new Error(`Failed to create server: ${ormError.message}`);
+          } catch (ormError: unknown) {
+            const errorMessage = ormError instanceof Error ? ormError.message : String(ormError);
+            logger.error({ src: 'db', error: errorMessage }, 'Both SQL and ORM creation failed');
+            throw new Error(`Failed to create server: ${errorMessage}`);
           }
         }
 
         // Verify it was created
-        const verifyServers = await (this.database as any).getMessageServers();
+        const verifyServers = await this.database.getMessageServers();
         logger.debug(
           { src: 'db', serverCount: verifyServers.length },
           'After creation attempt, found servers'
         );
 
-        const verifyDefault = verifyServers.find((s: any) => s.id === this.messageServerId);
+        const verifyDefault = verifyServers.find((s) => s.id === this.messageServerId);
         if (!verifyDefault) {
           throw new Error(`Failed to create or verify server with ID ${this.messageServerId}`);
         } else {
@@ -1030,9 +1115,9 @@ export class AgentServer {
       this.app.use(
         '/api',
         apiRouter,
-        (err: any, req: Request, res: Response, _next: express.NextFunction) => {
+        (err: unknown, req: Request, res: Response, _next: express.NextFunction) => {
           // Capture error with Sentry if configured
-          if (sentryDsn) {
+          if (sentryDsn && err instanceof Error) {
             Sentry.captureException(err, (scope) => {
               scope.setTag('route', req.path);
               scope.setContext('request', {
@@ -1043,15 +1128,23 @@ export class AgentServer {
               return scope;
             });
           }
+          const errorMessage = err instanceof Error ? err.message : 'Internal Server Error';
+          const errorCode = ((): number => {
+            if (err && typeof err === 'object' && 'code' in err) {
+              const code = (err as Record<string, unknown>).code;
+              return typeof code === 'number' ? code : 500;
+            }
+            return 500;
+          })();
           logger.error(
-            { src: 'http', error: err, method: req.method, path: req.path },
+            { src: 'http', error: errorMessage, method: req.method, path: req.path },
             'API error'
           );
           res.status(500).json({
             success: false,
             error: {
-              message: err.message || 'Internal Server Error',
-              code: err.code || 500,
+              message: errorMessage,
+              code: errorCode,
             },
           });
         }
@@ -1067,7 +1160,7 @@ export class AgentServer {
             });
           } catch {}
         });
-        process.on('unhandledRejection', (reason: any) => {
+        process.on('unhandledRejection', (reason: unknown) => {
           try {
             Sentry.captureException(
               reason instanceof Error ? reason : new Error(String(reason)),
@@ -1102,7 +1195,7 @@ export class AgentServer {
       // Main fallback for the SPA - must be registered after all other routes
       // Use a final middleware that handles all unmatched routes
       if (this.isWebUIEnabled) {
-        (this.app as any).use((req: express.Request, res: express.Response) => {
+        this.app.use((req: express.Request, res: express.Response) => {
           // For JavaScript requests that weren't handled by static middleware,
           // return a JavaScript response instead of HTML
           if (
@@ -1141,7 +1234,7 @@ export class AgentServer {
         });
       } else {
         // Return 403 Forbidden for non-API routes when UI is disabled
-        (this.app as any).use((_req: express.Request, res: express.Response) => {
+        this.app.use((_req: express.Request, res: express.Response) => {
           res.sendStatus(403); // Standard HTTP 403 Forbidden
         });
       }
@@ -1307,9 +1400,13 @@ export class AgentServer {
       boundPort = await this.resolveAndFindPort(config?.port);
       try {
         await this.startHttpServer(boundPort);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If binding fails due to EADDRINUSE, attempt fallback to next available port
-        if (error && error.code === 'EADDRINUSE') {
+        const isAddressInUse =
+          error instanceof Error &&
+          'code' in error &&
+          (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
+        if (isAddressInUse) {
           const startFrom = (boundPort ?? 3000) + 1;
           const fallbackPort = await this.findAvailablePort(startFrom);
           logger.warn({ src: 'http', port: boundPort, fallbackPort }, 'Port in use, falling back');
@@ -1403,7 +1500,7 @@ export class AgentServer {
       const server = net.createServer();
       const host = process.env.SERVER_HOST || '0.0.0.0';
 
-      server.once('error', (err: any) => {
+      server.once('error', (err: NodeJS.ErrnoException) => {
         if (err && (err.code === 'EADDRINUSE' || err.code === 'EACCES')) {
           resolve(false);
         } else {
@@ -1448,8 +1545,8 @@ export class AgentServer {
               const baseUrl = `http://${actualHost}:${port}`;
 
               console.log(
-                `\x1b[32mStartup successful!\x1b[0m\n` +
-                  `\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n` +
+                '\x1b[32mStartup successful!\x1b[0m\n' +
+                  '\x1b[33mWeb UI disabled.\x1b[0m \x1b[32mAPI endpoints available at:\x1b[0m\n' +
                   `  \x1b[1m${baseUrl}/api/server/ping\x1b[22m\x1b[0m\n` +
                   `  \x1b[1m${baseUrl}/api/agents\x1b[22m\x1b[0m\n` +
                   `  \x1b[1m${baseUrl}/api/messaging\x1b[22m\x1b[0m`
@@ -1464,7 +1561,7 @@ export class AgentServer {
             // Resolve the promise now that the server is actually listening
             resolve();
           })
-          .on('error', (error: any) => {
+          .on('error', (error: NodeJS.ErrnoException) => {
             logger.error({ src: 'http', error, host, port }, 'Failed to bind server');
             reject(error);
           });
@@ -1491,19 +1588,19 @@ export class AgentServer {
   async createServer(
     data: Omit<MessageServer, 'id' | 'createdAt' | 'updatedAt'>
   ): Promise<MessageServer> {
-    return (this.database as any).createMessageServer(data);
+    return this.database.createMessageServer(data);
   }
 
   async getServers(): Promise<MessageServer[]> {
-    return (this.database as any).getMessageServers();
+    return this.database.getMessageServers();
   }
 
   async getServerById(serverId: UUID): Promise<MessageServer | null> {
-    return (this.database as any).getMessageServerById(serverId);
+    return this.database.getMessageServerById(serverId);
   }
 
   async getMessageServerBySourceType(sourceType: string): Promise<MessageServer | null> {
-    const servers = await (this.database as any).getMessageServers();
+    const servers = await this.database.getMessageServers();
     const filtered = servers.filter((s: MessageServer) => s.sourceType === sourceType);
     return filtered.length > 0 ? filtered[0] : null;
   }
@@ -1512,49 +1609,53 @@ export class AgentServer {
     data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'> & { id?: UUID },
     participantIds?: UUID[]
   ): Promise<MessageChannel> {
-    return (this.database as any).createChannel(data, participantIds);
+    return this.database.createChannel(data, participantIds);
   }
 
   async addParticipantsToChannel(channelId: UUID, userIds: UUID[]): Promise<void> {
-    return (this.database as any).addChannelParticipants(channelId, userIds);
+    return this.database.addChannelParticipants(channelId, userIds);
   }
 
   async getChannelsForMessageServer(messageServerId: UUID): Promise<MessageChannel[]> {
-    return (this.database as any).getChannelsForMessageServer(messageServerId);
+    return this.database.getChannelsForMessageServer(messageServerId);
   }
 
   async getChannelDetails(channelId: UUID): Promise<MessageChannel | null> {
-    return (this.database as any).getChannelDetails(channelId);
+    return this.database.getChannelDetails(channelId);
   }
 
   async getChannelParticipants(channelId: UUID): Promise<UUID[]> {
-    return (this.database as any).getChannelParticipants(channelId);
+    return this.database.getChannelParticipants(channelId);
   }
 
   async isChannelParticipant(channelId: UUID, entityId: UUID): Promise<boolean> {
-    return await (this.database as any).isChannelParticipant(channelId, entityId);
+    return await this.database.isChannelParticipant(channelId, entityId);
   }
 
   async deleteMessage(messageId: UUID): Promise<void> {
-    return (this.database as any).deleteMessage(messageId);
+    return this.database.deleteMessage(messageId);
   }
 
   async updateChannel(
     channelId: UUID,
-    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: any }
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<MessageChannel> {
-    return (this.database as any).updateChannel(channelId, updates);
+    return this.database.updateChannel(channelId, updates);
   }
 
   async deleteChannel(channelId: UUID): Promise<void> {
-    return (this.database as any).deleteChannel(channelId);
+    return this.database.deleteChannel(channelId);
   }
 
   async clearChannelMessages(channelId: UUID): Promise<void> {
     // Get all messages for the channel and delete them one by one
-    const messages = await (this.database as any).getMessagesForChannel(channelId, 1000);
+    const messages = await this.database.getMessagesForChannel(channelId, 1000);
     for (const message of messages) {
-      await (this.database as any).deleteMessage(message.id);
+      await this.database.deleteMessage(message.id);
     }
     logger.debug({ src: 'db', channelId }, 'Cleared channel messages');
   }
@@ -1564,13 +1665,16 @@ export class AgentServer {
     user2Id: UUID,
     messageServerId: UUID
   ): Promise<MessageChannel> {
-    return (this.database as any).findOrCreateDmChannel(user1Id, user2Id, messageServerId);
+    return this.database.findOrCreateDmChannel(user1Id, user2Id, messageServerId);
   }
 
   async createMessage(
-    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
+    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'> & { messageId?: UUID }
   ): Promise<CentralRootMessage> {
-    const createdMessage = await (this.database as any).createMessage(data);
+    const createdMessage = await this.database.createMessage({
+      ...data,
+      messageId: data.messageId, // Pass through to DB so it uses this ID instead of generating new one
+    });
 
     // Get the channel details to find the server ID
     const channel = await this.getChannelDetails(createdMessage.channelId);
@@ -1602,21 +1706,21 @@ export class AgentServer {
     beforeTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
     // TODO: Add afterTimestamp support when database layer is updated
-    return (this.database as any).getMessagesForChannel(channelId, limit, beforeTimestamp);
+    return this.database.getMessagesForChannel(channelId, limit, beforeTimestamp);
   }
 
   async updateMessage(
     messageId: UUID,
     patch: {
       content?: string;
-      rawMessage?: any;
+      rawMessage?: Record<string, unknown>;
       sourceType?: string;
       sourceId?: string;
-      metadata?: any;
+      metadata?: Record<string, unknown>;
       inReplyToRootMessageId?: UUID;
     }
   ): Promise<CentralRootMessage | null> {
-    return (this.database as any).updateMessage(messageId, patch);
+    return this.database.updateMessage(messageId, patch);
   }
 
   // Optional: Method to remove a participant
@@ -1641,7 +1745,7 @@ export class AgentServer {
       throw new Error(`Message server ${messageServerId} not found`);
     }
 
-    return (this.database as any).addAgentToMessageServer(messageServerId, agentId);
+    return this.database.addAgentToMessageServer(messageServerId, agentId);
   }
 
   /**
@@ -1650,7 +1754,7 @@ export class AgentServer {
    * @param {UUID} agentId - The agent ID to remove
    */
   async removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void> {
-    return (this.database as any).removeAgentFromMessageServer(messageServerId, agentId);
+    return this.database.removeAgentFromMessageServer(messageServerId, agentId);
   }
 
   /**
@@ -1659,7 +1763,7 @@ export class AgentServer {
    * @returns {Promise<UUID[]>} Array of agent IDs
    */
   async getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]> {
-    return (this.database as any).getAgentsForMessageServer(messageServerId);
+    return this.database.getAgentsForMessageServer(messageServerId);
   }
 
   /**
@@ -1669,10 +1773,10 @@ export class AgentServer {
    */
   async getMessageServersForAgent(agentId: UUID): Promise<UUID[]> {
     // This method isn't directly supported in the adapter, so we need to implement it differently
-    const messageServers = await (this.database as any).getMessageServers();
+    const messageServers = await this.database.getMessageServers();
     const messageServerIds = [];
     for (const messageServer of messageServers) {
-      const agents = await (this.database as any).getAgentsForMessageServer(messageServer.id);
+      const agents = await this.database.getAgentsForMessageServer(messageServer.id);
       if (agents.includes(agentId)) {
         messageServerIds.push(messageServer.id as never);
       }

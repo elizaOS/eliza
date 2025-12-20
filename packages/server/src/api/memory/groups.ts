@@ -23,8 +23,8 @@ export function createGroupMemoryRouter(
       return sendError(res, 400, 'BAD_REQUEST', 'agentIds must be a non-empty array');
     }
 
-    let results: Room[] = [];
-    let errors: {
+    const results: Room[] = [];
+    const errors: {
       agentId: UUID;
       code: string;
       message: string;
@@ -156,7 +156,7 @@ export function createGroupMemoryRouter(
       const memoryIds = memories.map((memory) => memory.id as UUID);
 
       if (memoryIds.length > 0) {
-        await (db as any).deleteManyMemories(memoryIds);
+        await db.deleteManyMemories(memoryIds);
       }
 
       res.status(204).send();

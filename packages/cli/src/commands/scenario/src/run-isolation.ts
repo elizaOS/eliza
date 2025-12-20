@@ -158,8 +158,8 @@ export async function ensureIsolatedDatabase(dbPath: string): Promise<void> {
  */
 export async function writeTemporaryScenario(
   scenarioPath: string,
-  baseScenario: any,
-  parameters: Record<string, any>
+  baseScenario: Record<string, unknown>,
+  parameters: Record<string, unknown>
 ): Promise<void> {
   try {
     // Simple parameter application for isolated runs
@@ -184,9 +184,9 @@ export async function writeTemporaryScenario(
  * Simple utility to set nested properties using dot notation.
  * This is a simplified version that avoids complex dependencies.
  */
-function setNestedProperty(obj: any, path: string, value: any): void {
+function setNestedProperty(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');
-  let current = obj;
+  let current: Record<string, unknown> = obj;
 
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i];
@@ -194,35 +194,36 @@ function setNestedProperty(obj: any, path: string, value: any): void {
     // Handle array access like "run[0]"
     const arrayMatch = key.match(/^(.+)\[(\d+)\]$/);
     if (arrayMatch) {
-      const [, arrayKey, indexStr] = arrayMatch;
-      const index = parseInt(indexStr, 10);
+      const arrayKey = arrayMatch[1]!;
+      const index = parseInt(arrayMatch[2]!, 10);
 
       if (!current[arrayKey]) {
         current[arrayKey] = [];
       }
-      if (!current[arrayKey][index]) {
-        current[arrayKey][index] = {};
+      const arr = current[arrayKey] as unknown[];
+      if (!arr[index]) {
+        arr[index] = {};
       }
-      current = current[arrayKey][index];
+      current = arr[index] as Record<string, unknown>;
     } else {
       if (!current[key]) {
         current[key] = {};
       }
-      current = current[key];
+      current = current[key] as Record<string, unknown>;
     }
   }
 
   // Set the final value
   const finalKey = keys[keys.length - 1];
-  const arrayMatch = finalKey.match(/^(.+)\[(\d+)\]$/);
-  if (arrayMatch) {
-    const [, arrayKey, indexStr] = arrayMatch;
-    const index = parseInt(indexStr, 10);
+  const finalArrayMatch = finalKey.match(/^(.+)\[(\d+)\]$/);
+  if (finalArrayMatch) {
+    const arrayKey = finalArrayMatch[1]!;
+    const index = parseInt(finalArrayMatch[2]!, 10);
 
     if (!current[arrayKey]) {
       current[arrayKey] = [];
     }
-    current[arrayKey][index] = value;
+    (current[arrayKey] as unknown[])[index] = value;
   } else {
     current[finalKey] = value;
   }
@@ -313,13 +314,17 @@ export function getIsolatedTempDir(prefix: string = 'eliza-matrix'): string {
  * @param baseScenario - The scenario that will be executed
  * @returns Estimated disk space in bytes
  */
-export function estimateRunDiskSpace(baseScenario: any): number {
+export function estimateRunDiskSpace(baseScenario: {
+  run?: Array<{ evaluations?: unknown[] }>;
+}): number {
   // Basic estimation based on scenario complexity
   const baseSize = 50 * 1024 * 1024; // 50 MB base
   const runCount = baseScenario.run?.length || 1;
   const evaluationCount =
-    baseScenario.run?.reduce((sum: number, run: any) => sum + (run.evaluations?.length || 0), 0) ||
-    0;
+    baseScenario.run?.reduce(
+      (sum: number, run: { evaluations?: unknown[] }) => sum + (run.evaluations?.length || 0),
+      0
+    ) || 0;
 
   // Estimate additional space based on complexity
   const complexityMultiplier = 1 + runCount * 0.1 + evaluationCount * 0.05;

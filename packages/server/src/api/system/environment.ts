@@ -78,7 +78,7 @@ export function createEnvironmentRouter(): express.Router {
   const isProd = process.env.NODE_ENV === 'production';
 
   // Get local environment variables
-  (router as any).get('/local', async (_req: express.Request, res: express.Response) => {
+  router.get('/local', async (_req: express.Request, res: express.Response) => {
     if (isProd) {
       return res.status(403).json({
         success: false,
@@ -126,7 +126,7 @@ export function createEnvironmentRouter(): express.Router {
   });
 
   // Update local environment variables
-  (router as any).post('/local', async (req: express.Request, res: express.Response) => {
+  router.post('/local', async (req: express.Request, res: express.Response) => {
     if (isProd) {
       return res.status(403).json({
         success: false,
@@ -150,7 +150,9 @@ export function createEnvironmentRouter(): express.Router {
       }
 
       const localEnvPath = getLocalEnvPath();
-      if (!localEnvPath) throw new Error('Local .env file not found');
+      if (!localEnvPath) {
+        throw new Error('Local .env file not found');
+      }
 
       const envString = serializeEnvObject(content);
       writeFileSync(localEnvPath, envString, 'utf-8');

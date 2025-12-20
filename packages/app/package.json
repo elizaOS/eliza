@@ -1,16 +1,12 @@
 {
   "name": "@elizaos/app",
-  "version": "1.6.6-beta.0",
+  "version": "1.7.0-alpha.0",
   "type": "module",
   "scripts": {
     "start": "tauri dev",
-    "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri",
     "test": "bun test src/__tests__",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
+    "build:tauri": "tauri build",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write ./src",
     "format:check": "prettier --check ./src",
@@ -18,11 +14,6 @@
     "lint:check": "eslint src/"
   },
   "dependencies": {
-    "@elizaos/api-client": "workspace:*",
-    "@elizaos/cli": "workspace:*",
-    "@tauri-apps/api": "^2.6.0",
-    "@tauri-apps/plugin-opener": "^2.4.0",
-    "@tauri-apps/plugin-shell": "^2.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

@@ -312,14 +312,14 @@ describe('Logger', () => {
 
     it('should handle logger clear method when destination exists', () => {
       // Access the clear method if it exists
-      if (typeof (logger as any).clear === 'function') {
-        expect(() => (logger as any).clear()).not.toThrow();
+      if (typeof logger.clear === 'function') {
+        expect(() => logger.clear()).not.toThrow();
       }
 
       // Also test on a newly created logger
       const customLogger = createLogger();
-      if (typeof (customLogger as any).clear === 'function') {
-        expect(() => (customLogger as any).clear()).not.toThrow();
+      if (typeof customLogger.clear === 'function') {
+        expect(() => customLogger.clear()).not.toThrow();
       }
     });
   });
@@ -384,13 +384,13 @@ describe('Logger', () => {
       const customLogger = createLogger();
 
       // Test custom levels exist and work
-      expect(typeof (customLogger as any).log).toBe('function');
-      expect(typeof (customLogger as any).progress).toBe('function');
-      expect(typeof (customLogger as any).success).toBe('function');
+      expect(typeof customLogger.log).toBe('function');
+      expect(typeof customLogger.progress).toBe('function');
+      expect(typeof customLogger.success).toBe('function');
 
-      expect(() => (customLogger as any).log('Custom log message')).not.toThrow();
-      expect(() => (customLogger as any).progress('Progress update')).not.toThrow();
-      expect(() => (customLogger as any).success('Operation successful')).not.toThrow();
+      expect(() => customLogger.log('Custom log message')).not.toThrow();
+      expect(() => customLogger.progress('Progress update')).not.toThrow();
+      expect(() => customLogger.success('Operation successful')).not.toThrow();
     });
   });
 
@@ -406,7 +406,9 @@ describe('Logger', () => {
       const customLogger = createLogger();
 
       // Force a log that might have null level
-      expect(() => (customLogger as any).child({ level: null }).info('Test')).not.toThrow();
+      expect(() =>
+        customLogger.child({ level: null as string | undefined }).info('Test')
+      ).not.toThrow();
     });
 
     it('should handle object level data in prettifier', () => {

@@ -19,7 +19,7 @@ Imagine you want to verify that your agent can write a "Hello, World!" file. Ins
 # A simple scenario to test file writing.
 name: 'Verify Agent can write a file'
 environment:
-  type: e2b # Use a safe, sandboxed environment.
+  type: local # Use a safe, sandboxed environment.
 run:
   - input: "Please write 'Hello, World!' to a file named hello.txt"
     evaluations:
@@ -38,7 +38,7 @@ For more complex interactions, you can define conversation scenarios that simula
 # A conversation scenario to test customer support capabilities
 name: 'Customer Support Conversation Test'
 environment:
-  type: e2b # Use a safe, sandboxed environment
+  type: local # Use a safe, sandboxed environment
 run:
   - name: 'Billing Support'
     input: 'Hi, I need help with my billing'
@@ -76,7 +76,7 @@ When you run either type with `elizaos scenario run` (or `bun packages/cli/dist/
 ## Core Principles
 
 - **Declarative & Human-Readable**: Scenarios should be easy to write and understand by developers, QA engineers, and even product managers. The YAML structure abstracts away the complex underlying test code.
-- **Environment Agnostic**: Scenarios define _what_ the agent should do, not _where_. The same scenario can be executed against a local environment, a sandboxed cloud environment (like E2B), or a live production environment.
+- **Environment Agnostic**: Scenarios define _what_ the agent should do, not _where_. The same scenario can be executed against a local environment or deployed to cloud containers via `elizaos deploy`.
 - **Composable & Reusable**: The building blocks of scenarios (setup steps, evaluators) are designed to be reusable across different tests.
 - **Hybrid Execution**: Scenarios seamlessly support both mocked and live data/services, allowing for a flexible testing strategy that can evolve from pure simulation to live execution.
 
@@ -88,7 +88,7 @@ A scenario is defined in a YAML file and is conceptually composed of the followi
 
 - **Metadata**: High-level information like a `name` and `description`.
 - **Plugins**: A list of the required ElizaOS plugins the agent needs to run the scenario (e.g., `@elizaos/plugin-github`).
-- **Environment**: Defines the execution environment for the agent (e.g., a local shell, a secure E2B sandbox).
+- **Environment**: Defines the execution environment for the agent (currently only 'local' is supported; use `elizaos deploy` for cloud container deployments).
 - **Setup**: Defines the initial state of the world before the test runs. This can include:
   - **Seeding a database**: Can be defined via an inline list of records or a path to an external SQL file.
   - **Creating a virtual file system**: Can be defined via an inline map of file paths to content or a path to a directory to be mounted.

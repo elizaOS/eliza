@@ -5,6 +5,99 @@ import type { Metadata, UUID } from './primitives';
 import type { Task } from './task';
 
 /**
+ * Base log body type with common properties
+ */
+export interface BaseLogBody {
+  runId?: string | UUID;
+  status?: string;
+  messageId?: UUID;
+  roomId?: UUID;
+  entityId?: UUID;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Log body for action logs
+ */
+export interface ActionLogBody extends BaseLogBody {
+  action?: string;
+  actionId?: UUID | string;
+  message?: string;
+  messageId?: UUID;
+  state?: unknown;
+  responses?: unknown;
+  content?: {
+    actions?: string[];
+    [key: string]: unknown;
+  };
+  result?: {
+    success?: boolean;
+    data?: unknown;
+    text?: string;
+    error?: string | Error;
+    [key: string]: unknown;
+  };
+  isLegacyReturn?: boolean;
+  prompts?: Array<{
+    modelType: string;
+    prompt: string;
+    timestamp: number;
+  }>;
+  promptCount?: number;
+  planStep?: string;
+  planThought?: string;
+}
+
+/**
+ * Log body for evaluator logs
+ */
+export interface EvaluatorLogBody extends BaseLogBody {
+  evaluator?: string;
+  messageId?: UUID;
+  message?: string;
+  state?: unknown;
+}
+
+/**
+ * Log body for model logs
+ */
+export interface ModelLogBody extends BaseLogBody {
+  modelType?: string;
+  modelKey?: string;
+  params?: Record<string, unknown>;
+  prompt?: string;
+  systemPrompt?: string | null;
+  timestamp?: number;
+  executionTime?: number;
+  provider?: string;
+  actionContext?: {
+    actionName: string;
+    actionId: UUID;
+  };
+  response?: unknown;
+}
+
+/**
+ * Log body for embedding logs
+ */
+export interface EmbeddingLogBody extends BaseLogBody {
+  status?: string;
+  memoryId?: string;
+  duration?: number;
+}
+
+/**
+ * Union type for all possible log body types
+ */
+export type LogBody =
+  | BaseLogBody
+  | ActionLogBody
+  | EvaluatorLogBody
+  | ModelLogBody
+  | EmbeddingLogBody;
+
+/**
  * Represents a log entry
  */
 export interface Log {
@@ -17,8 +110,8 @@ export interface Log {
   /** Associated room ID */
   roomId?: UUID;
 
-  /** Log body */
-  body: { [key: string]: unknown };
+  /** Log body - can be any of the log body types */
+  body: LogBody;
 
   /** Log type */
   type: string;
@@ -60,10 +153,10 @@ export interface AgentRunSummaryResult {
  */
 export interface IDatabaseAdapter {
   /** Database instance */
-  db: any;
+  db: unknown;
 
   /** Initialize database connection */
-  initialize(config?: any): Promise<void>;
+  initialize(config?: Record<string, string | number | boolean | null>): Promise<void>;
 
   /** Initialize database connection */
   init(): Promise<void>;
@@ -74,7 +167,10 @@ export interface IDatabaseAdapter {
    * @param options Migration options (verbose, force, dryRun, etc.)
    */
   runPluginMigrations?(
-    plugins: Array<{ name: string; schema?: any }>,
+    plugins: Array<{
+      name: string;
+      schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
+    }>,
     options?: {
       verbose?: boolean;
       force?: boolean;
@@ -82,13 +178,19 @@ export interface IDatabaseAdapter {
     }
   ): Promise<void>;
 
+  /**
+   * Run database migrations from migration files
+   * @param migrationsPaths Optional array of migration file paths
+   */
+  runMigrations?(migrationsPaths?: string[]): Promise<void>;
+
   /** Check if the database connection is ready */
   isReady(): Promise<boolean>;
 
   /** Close database connection */
   close(): Promise<void>;
 
-  getConnection(): Promise<any>;
+  getConnection(): Promise<unknown>;
 
   /**
    * Execute a callback with entity context for Entity RLS

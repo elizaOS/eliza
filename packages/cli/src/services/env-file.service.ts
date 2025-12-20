@@ -54,27 +54,23 @@ export class EnvFileService {
   async read(): Promise<Record<string, string>> {
     const result: Record<string, string> = {};
 
-    try {
-      if (!existsSync(this.filePath)) {
-        return result;
-      }
+    if (!existsSync(this.filePath)) {
+      return result;
+    }
 
-      const content = await fs.readFile(this.filePath, 'utf-8');
-      const lines = content.split('\n');
+    const content = await fs.readFile(this.filePath, 'utf-8');
+    const lines = content.split('\n');
 
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine && !trimmedLine.startsWith('#')) {
-          const separatorIndex = trimmedLine.indexOf('=');
-          if (separatorIndex > 0) {
-            const key = trimmedLine.substring(0, separatorIndex).trim();
-            const value = trimmedLine.substring(separatorIndex + 1).trim();
-            result[key] = value;
-          }
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (trimmedLine && !trimmedLine.startsWith('#')) {
+        const separatorIndex = trimmedLine.indexOf('=');
+        if (separatorIndex > 0) {
+          const key = trimmedLine.substring(0, separatorIndex).trim();
+          const value = trimmedLine.substring(separatorIndex + 1).trim();
+          result[key] = value;
         }
       }
-    } catch (error) {
-      logger.error(`Error reading environment file: ${error}`);
     }
 
     return result;
@@ -86,41 +82,37 @@ export class EnvFileService {
   async readWithComments(): Promise<EnvVarEntry[]> {
     const entries: EnvVarEntry[] = [];
 
-    try {
-      if (!existsSync(this.filePath)) {
-        return entries;
-      }
+    if (!existsSync(this.filePath)) {
+      return entries;
+    }
 
-      const content = await fs.readFile(this.filePath, 'utf-8');
-      const lines = content.split('\n');
-      let currentComment: string | undefined;
+    const content = await fs.readFile(this.filePath, 'utf-8');
+    const lines = content.split('\n');
+    let currentComment: string | undefined;
 
-      for (const line of lines) {
-        const trimmedLine = line.trim();
+    for (const line of lines) {
+      const trimmedLine = line.trim();
 
-        if (trimmedLine.startsWith('#')) {
-          // Accumulate comments
-          const comment = trimmedLine.substring(1).trim();
-          currentComment = currentComment ? `${currentComment}\n${comment}` : comment;
-        } else if (trimmedLine && !trimmedLine.startsWith('#')) {
-          const separatorIndex = trimmedLine.indexOf('=');
-          if (separatorIndex > 0) {
-            const key = trimmedLine.substring(0, separatorIndex).trim();
-            const value = trimmedLine.substring(separatorIndex + 1).trim();
-            entries.push({
-              key,
-              value,
-              comment: currentComment,
-            });
-            currentComment = undefined;
-          }
-        } else if (!trimmedLine) {
-          // Reset comment on empty lines
+      if (trimmedLine.startsWith('#')) {
+        // Accumulate comments
+        const comment = trimmedLine.substring(1).trim();
+        currentComment = currentComment ? `${currentComment}\n${comment}` : comment;
+      } else if (trimmedLine && !trimmedLine.startsWith('#')) {
+        const separatorIndex = trimmedLine.indexOf('=');
+        if (separatorIndex > 0) {
+          const key = trimmedLine.substring(0, separatorIndex).trim();
+          const value = trimmedLine.substring(separatorIndex + 1).trim();
+          entries.push({
+            key,
+            value,
+            comment: currentComment,
+          });
           currentComment = undefined;
         }
+      } else if (!trimmedLine) {
+        // Reset comment on empty lines
+        currentComment = undefined;
       }
-    } catch (error) {
-      logger.error(`Error reading environment file with comments: ${error}`);
     }
 
     return entries;

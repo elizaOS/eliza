@@ -71,7 +71,8 @@ describe('Service Type System', () => {
     });
     // Resolve initPromise directly since these tests don't require DB setup
     // Access private resolver for test purposes
-    const resolver = (runtime as any).initResolver as (() => void) | undefined;
+    const resolver = (runtime as AgentRuntime & { initResolver?: (() => void) | undefined })
+      .initResolver;
     if (resolver) resolver();
   });
 

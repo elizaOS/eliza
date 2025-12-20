@@ -95,7 +95,6 @@ export const muteRoomAction: Action = {
       });
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-        runtime,
         prompt: shouldMutePrompt,
         stopSequences: [],
       });
@@ -165,6 +164,15 @@ export const muteRoomAction: Action = {
 
     const shouldMute = await _shouldMute(state);
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+    if (!room) {
+      return {
+        text: 'Could not find room to mute',
+        values: { success: false, error: 'ROOM_NOT_FOUND' },
+        data: { actionName: 'MUTE_ROOM', error: 'Room not found' },
+        success: false,
+      };
+    }
 
     if (shouldMute) {
       try {

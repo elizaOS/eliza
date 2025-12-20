@@ -51,7 +51,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     // Mock the agent's processActions to avoid calling OpenAI
     mockRuntime.processActions = async (message: any, responses: any[]) => {
       responses.push({
-        id: 'mock-response-' + Date.now(),
+        id: `mock-response-${Date.now()}`,
         text: 'Mock response from agent',
         userId: mockRuntime.agentId,
         agentId: mockRuntime.agentId,

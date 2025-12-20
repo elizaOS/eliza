@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { type UUID } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-import { PGliteClientManager } from '../../pglite/manager';
+import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
+import { PGliteClientManager } from '../../../pglite/manager';
 import { PGlite } from '@electric-sql/pglite';
-import { DatabaseMigrationService } from '../../migration-service';
-import * as schema from '../../schema';
+import { DatabaseMigrationService } from '../../../migration-service';
+import * as schema from '../../../schema';
 import { v4 as uuidv4 } from 'uuid';
 
 describe('PostgreSQL Adapter Direct Integration Tests', () => {

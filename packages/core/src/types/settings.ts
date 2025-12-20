@@ -13,9 +13,9 @@ export interface Setting {
   required: boolean;
   public?: boolean; // If true, shown in public channels
   secret?: boolean; // If true, value is masked and only shown during settings
-  validation?: (value: any) => boolean;
+  validation?: (value: string | boolean | null) => boolean;
   dependsOn?: string[];
-  onSetAction?: (value: any) => string;
+  onSetAction?: (value: string | boolean | null) => string;
   visibleIf?: (settings: { [key: string]: Setting }) => boolean;
 }
 

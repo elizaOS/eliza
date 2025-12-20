@@ -133,9 +133,12 @@ export abstract class Service {
   }
 
   /** Stop service connection */
-  static async stop(_runtime: IAgentRuntime): Promise<unknown> {
+  static async stop(_runtime: IAgentRuntime): Promise<void> {
     throw new Error('Not implemented');
   }
+
+  /** Optional static method to register send handlers */
+  static registerSendHandlers?(runtime: IAgentRuntime, service: Service): void;
 }
 
 /**
@@ -145,6 +148,7 @@ export abstract class Service {
  */
 export interface TypedService<
   ConfigType extends Metadata = Metadata,
+  InputType = unknown,
   ResultType = unknown,
 > extends Service {
   /**
@@ -157,7 +161,7 @@ export interface TypedService<
    * @param input The input to process
    * @returns A promise resolving to the result
    */
-  process(input: unknown): Promise<ResultType>;
+  process(input: InputType): Promise<ResultType>;
 }
 
 /**
@@ -166,11 +170,15 @@ export interface TypedService<
  * @param serviceType The type of service to get
  * @returns The service instance or null if not available
  */
-export function getTypedService<T extends TypedService<any, any>>(
+export function getTypedService<
+  ConfigType extends Metadata = Metadata,
+  InputType = unknown,
+  ResultType = unknown,
+>(
   runtime: IAgentRuntime,
   serviceType: ServiceTypeName
-): T | null {
-  return runtime.getService<T>(serviceType);
+): TypedService<ConfigType, InputType, ResultType> | null {
+  return runtime.getService<TypedService<ConfigType, InputType, ResultType>>(serviceType);
 }
 
 /**
@@ -179,7 +187,7 @@ export function getTypedService<T extends TypedService<any, any>>(
 export interface ServiceError {
   code: string;
   message: string;
-  details?: unknown;
+  details?: Record<string, unknown> | string | number | boolean | null;
   cause?: Error;
 }
 

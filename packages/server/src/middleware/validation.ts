@@ -20,8 +20,9 @@ export const agentExistsMiddleware = (elizaOS: ElizaOS) => {
     }
 
     // Add runtime to request object for use in route handlers
-    (req as unknown as Record<string, unknown>).runtime = runtime;
-    (req as unknown as Record<string, unknown>).agentId = agentId;
+    // Extend Express Request type to include our custom properties
+    (req as express.Request & { runtime: typeof runtime; agentId: UUID }).runtime = runtime;
+    (req as express.Request & { runtime: typeof runtime; agentId: UUID }).agentId = agentId;
     next();
   };
 };

@@ -24,6 +24,9 @@ export * from './utils/environment';
 // Export buffer utilities
 export * from './utils/buffer';
 
+// Export streaming utilities
+export * from './utils/streaming';
+
 // Export path utilities - these are Node.js specific but needed for backward compatibility
 // Browser builds will handle this through conditional exports in package.json
 export * from './utils/paths';
@@ -47,11 +50,19 @@ export * from './search';
 // Export ElizaOS
 export * from './elizaos';
 
+// Export streaming context utilities
+export * from './streaming-context';
+
 // Environment detection utilities
+interface GlobalWithWindow {
+  window?: Window;
+  document?: Document;
+}
+
 export const isBrowser =
   typeof globalThis !== 'undefined' &&
-  typeof (globalThis as any).window !== 'undefined' &&
-  typeof (globalThis as any).document !== 'undefined';
+  typeof (globalThis as GlobalWithWindow).window !== 'undefined' &&
+  typeof (globalThis as GlobalWithWindow).document !== 'undefined';
 export const isNode =
   typeof process !== 'undefined' &&
   typeof process.versions !== 'undefined' &&

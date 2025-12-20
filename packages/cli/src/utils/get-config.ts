@@ -613,7 +613,7 @@ interface ProviderPromptConfig {
     type: 'text' | 'password';
     validate: (value: string) => string | undefined;
   }>;
-  storeFunction: (config: any, envFilePath: string) => Promise<void>;
+  storeFunction: (config: Record<string, string>, envFilePath: string) => Promise<void>;
   successMessage: string;
 }
 
@@ -633,12 +633,17 @@ async function promptAndStoreProviderConfig<T>(
     clack.note(config.noteText, 'API Key Information');
   }
 
-  const results: any = {};
+  const results: Record<string, string> = {};
 
   // Collect all inputs
   for (const input of config.inputs) {
     const promptFn = input.type === 'password' ? clack.password : clack.text;
-    const promptConfig: any = {
+    const promptConfig: {
+      message: string;
+      validate: (value: string) => string | undefined;
+      placeholder?: string;
+      initialValue?: string;
+    } = {
       message: input.message,
       validate: input.validate,
     };

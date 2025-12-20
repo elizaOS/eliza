@@ -11,9 +11,14 @@ import {
   type UUID,
   ElizaOS,
 } from '@elizaos/core';
-import type { MessageMetadata } from '@elizaos/api-client';
 import type { AgentServer } from '../index.js';
-import internalMessageBus from './message-bus'; // Import the bus
+import type {
+  ServerAgentUpdatePayload,
+  MessageDeletedPayload,
+  ChannelClearedPayload,
+  MessageServiceStructure,
+} from '../types/server';
+import internalMessageBus from './message-bus';
 
 /**
  * Global ElizaOS instance for MessageBusService
@@ -69,30 +74,17 @@ function getGlobalAgentServer(): AgentServer {
   return globalAgentServer;
 }
 
-// This interface defines the structure of messages coming from the server
-export interface MessageServiceMessage {
-  id: UUID; // root_message.id
-  channel_id: UUID;
-  message_server_id: UUID;
-  author_id: UUID; // UUID of a central user identity
-  author_display_name?: string; // Display name from central user identity
-  content: string;
-  raw_message?: unknown;
-  source_id?: string; // original platform message ID
-  source_type?: string;
-  in_reply_to_message_id?: UUID;
-  created_at: number;
-  metadata?: MessageMetadata;
-}
+// Re-export for backward compatibility
+export type MessageServiceMessage = MessageServiceStructure;
 
 export class MessageBusService extends Service {
   static serviceType = 'message-bus-service';
   capabilityDescription = 'Manages connection and message synchronization with the message server.';
 
   private boundHandleIncomingMessage: (data: unknown) => void;
-  private boundHandleServerAgentUpdate: (data: any) => Promise<void>;
-  private boundHandleMessageDeleted: (data: any) => Promise<void>;
-  private boundHandleChannelCleared: (data: any) => Promise<void>;
+  private boundHandleServerAgentUpdate: (data: ServerAgentUpdatePayload) => Promise<void>;
+  private boundHandleMessageDeleted: (data: MessageDeletedPayload) => Promise<void>;
+  private boundHandleChannelCleared: (data: ChannelClearedPayload) => Promise<void>;
   private subscribedMessageServers: Set<UUID> = new Set();
   private serverInstance: AgentServer;
 
@@ -170,7 +162,7 @@ export class MessageBusService extends Service {
             const data = await response.json();
             if (data.success && data.data?.channels && Array.isArray(data.data.channels)) {
               // Add channel IDs to the set
-              data.data.channels.forEach((channel: any) => {
+              data.data.channels.forEach((channel: Record<string, unknown>) => {
                 if (channel.id && validateUuid(channel.id)) {
                   this.validChannelIds.add(channel.id as UUID);
                 }
@@ -370,7 +362,7 @@ export class MessageBusService extends Service {
     }
   }
 
-  private async handleServerAgentUpdate(data: any) {
+  private async handleServerAgentUpdate(data: ServerAgentUpdatePayload) {
     if (data.agentId !== this.runtime.agentId) {
       return; // Not for this agent
     }
@@ -458,8 +450,8 @@ export class MessageBusService extends Service {
           ...(message.metadata?.serverMetadata || {}),
         },
       });
-    } catch (error: any) {
-      if (error.message && error.message.includes('worlds_pkey')) {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('worlds_pkey')) {
         logger.debug(
           { src: 'service:message-bus', agentId: this.runtime.agentId, worldId: agentWorldId },
           'World already exists'
@@ -483,8 +475,9 @@ export class MessageBusService extends Service {
           ...(message.metadata?.channelMetadata || {}),
         },
       });
-    } catch (error: any) {
-      if (error.message && error.message.includes('rooms_pkey')) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('rooms_pkey')) {
         logger.debug(
           { src: 'service:message-bus', agentId: this.runtime.agentId, roomId: agentRoomId },
           'Room already exists'
@@ -531,14 +524,26 @@ export class MessageBusService extends Service {
       return;
     }
 
-    const messageData = data as any;
+    // Type guard for MessageServiceMessage
+    interface MessageDataCandidate {
+      id?: unknown;
+      channel_id?: unknown;
+      message_server_id?: unknown;
+      author_id?: unknown;
+      content?: unknown;
+      created_at?: unknown;
+      [key: string]: unknown;
+    }
+    const messageData = data as MessageDataCandidate;
 
     // Validate required fields
     if (
       !messageData.id ||
       !messageData.channel_id ||
+      !messageData.message_server_id ||
       !messageData.author_id ||
-      !messageData.content
+      !messageData.content ||
+      messageData.created_at === undefined
     ) {
       logger.error(
         {
@@ -547,15 +552,30 @@ export class MessageBusService extends Service {
           agentName: this.runtime.character.name,
           hasId: !!messageData.id,
           hasChannelId: !!messageData.channel_id,
+          hasMessageServerId: !!messageData.message_server_id,
           hasAuthorId: !!messageData.author_id,
           hasContent: !!messageData.content,
+          hasCreatedAt: messageData.created_at !== undefined,
         },
         'Message missing required fields'
       );
       return;
     }
 
-    const message = messageData as MessageServiceMessage;
+    const message: MessageServiceMessage = {
+      id: messageData.id as UUID,
+      channel_id: messageData.channel_id as UUID,
+      message_server_id: messageData.message_server_id as UUID,
+      author_id: messageData.author_id as UUID,
+      content: messageData.content as string,
+      created_at: messageData.created_at as number,
+      author_display_name: messageData.author_display_name as string | undefined,
+      raw_message: messageData.raw_message as Record<string, unknown> | undefined,
+      source_id: messageData.source_id as string | undefined,
+      source_type: messageData.source_type as string | undefined,
+      in_reply_to_message_id: messageData.in_reply_to_message_id as UUID | undefined,
+      metadata: messageData.metadata as MessageServiceMessage['metadata'],
+    };
     logger.info(
       { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: message.id },
       'Received message from central bus'
@@ -581,8 +601,12 @@ export class MessageBusService extends Service {
     );
 
     try {
-      if (!(await this.validateMessageServerSubscription(message))) return;
-      if (!(await this.validateNotSelfMessage(message))) return;
+      if (!(await this.validateMessageServerSubscription(message))) {
+        return;
+      }
+      if (!(await this.validateNotSelfMessage(message))) {
+        return;
+      }
 
       logger.debug(
         { src: 'service:message-bus', agentId: this.runtime.agentId },
@@ -627,8 +651,8 @@ export class MessageBusService extends Service {
           : undefined,
       };
 
-      // Use elizaOS.sendMessage() with async callback
-      await elizaOS.sendMessage(
+      // Use elizaOS.handleMessage() with async callback
+      await elizaOS.handleMessage(
         this.runtime.agentId,
         {
           id: uniqueMemoryId,
@@ -653,6 +677,23 @@ export class MessageBusService extends Service {
           },
         },
         {
+          onStreamChunk: (() => {
+            let chunkIndex = 0;
+            return async (chunk: string, messageId?: UUID) => {
+              // Emit stream chunk to internal bus for Socket.IO broadcast
+              const room = await this.runtime.getRoom(agentRoomId);
+              const channelId = room?.channelId;
+              if (channelId && messageId) {
+                internalMessageBus.emit('message_stream_chunk', {
+                  channelId,
+                  messageId,
+                  chunk,
+                  index: chunkIndex++,
+                  agentId: this.runtime.agentId,
+                });
+              }
+            };
+          })(),
           onResponse: async (responseContent: Content) => {
             logger.info(
               { src: 'service:message-bus', agentId: this.runtime.agentId },
@@ -661,6 +702,7 @@ export class MessageBusService extends Service {
 
             await this.runtime.createMemory(
               {
+                id: responseContent.responseId as UUID | undefined,
                 entityId: this.runtime.agentId,
                 content: responseContent,
                 roomId: agentRoomId,
@@ -687,7 +729,7 @@ export class MessageBusService extends Service {
                 agentName: this.runtime.character.name,
                 error: error.message,
               },
-              'Error processing message via sendMessage'
+              'Error processing message via handleMessage'
             );
           },
         }
@@ -697,7 +739,7 @@ export class MessageBusService extends Service {
       const room = await this.runtime.getRoom(agentRoomId);
       const world = await this.runtime.getWorld(agentWorldId);
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
       await this.notifyMessageComplete(channelId, messageServerId);
     } catch (error) {
       logger.error(
@@ -712,7 +754,7 @@ export class MessageBusService extends Service {
     }
   }
 
-  private async handleMessageDeleted(data: any) {
+  private async handleMessageDeleted(data: MessageDeletedPayload) {
     try {
       logger.info(
         { src: 'service:message-bus', agentId: this.runtime.agentId, messageId: data.messageId },
@@ -762,7 +804,7 @@ export class MessageBusService extends Service {
     }
   }
 
-  private async handleChannelCleared(data: any) {
+  private async handleChannelCleared(data: ChannelClearedPayload) {
     try {
       logger.info(
         { src: 'service:message-bus', agentId: this.runtime.agentId, channelId: data.channelId },
@@ -863,6 +905,7 @@ export class MessageBusService extends Service {
       }
 
       const payloadToServer = {
+        messageId: content.responseId as UUID | undefined,
         channel_id: channelId,
         message_server_id: messageServerId,
         author_id: this.runtime.agentId, // This needs careful consideration: is it the agent's core ID or a specific central identity for the agent?
@@ -938,7 +981,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
 
       if (!channelId || !messageServerId) {
         logger.error(
@@ -958,22 +1001,30 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        if (m?.metadata?.sourceId) {
+          centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        }
       }
 
+      // For ACTION_START, send text and full ToolPart data
+      // The text response will stream to a SEPARATE message with different ID
       const payloadToServer = {
-        messageId, // passed straight through
+        messageId, // passed straight through - this is the actionId for the badge
         channel_id: channelId,
         message_server_id: messageServerId,
         author_id: this.runtime.agentId,
-        content: content.text,
+        content: content.text, // Action text (e.g., "Executing action: GET_TOKEN")
         in_reply_to_message_id: centralInReplyToRootMessageId,
         source_type: 'agent_action',
         raw_message: {
+          // Full action metadata for ToolPart display
           text: content.text,
           thought: content.thought,
           actions: content.actions,
-          ...content,
+          actionId: content.actionId,
+          actionStatus: content.actionStatus || 'executing',
+          type: content.type,
+          ...content, // Include all other content fields
         },
         metadata: {
           agent_id: this.runtime.agentId,
@@ -1038,7 +1089,7 @@ export class MessageBusService extends Service {
       const world = await this.runtime.getWorld(agentWorldId);
 
       const channelId = room?.channelId as UUID;
-      const messageServerId = (world as any)?.messageServerId as UUID;
+      const messageServerId = world?.messageServerId;
 
       if (!channelId || !messageServerId) {
         logger.error(
@@ -1058,17 +1109,21 @@ export class MessageBusService extends Service {
       let centralInReplyToRootMessageId: UUID | undefined;
       if (inReplyToAgentMemoryId) {
         const m = await this.runtime.getMemoryById(inReplyToAgentMemoryId);
-        if (m?.metadata?.sourceId) centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        if (m?.metadata?.sourceId) {
+          centralInReplyToRootMessageId = m.metadata.sourceId as UUID;
+        }
       }
 
+      // Update badge with final result for debug (text goes in collapsible details)
+      // The streamed text is in a SEPARATE message with different ID
       const patchPayload = {
-        // fields server’s PATCH /action/:id supports
-        content: content.text,
         raw_message: {
-          text: content.text,
           thought: content.thought,
           actions: content.actions,
-          ...content,
+          actionStatus: content.actionStatus,
+          actionResult: content.actionResult,
+          type: content.type,
+          text: content.text, // Final result text shown in badge details for debug
         },
         source_type: 'agent_action',
         in_reply_to_message_id: centralInReplyToRootMessageId,
@@ -1080,6 +1135,7 @@ export class MessageBusService extends Service {
           isDm:
             originalMessage?.metadata?.isDm ||
             (originalMessage?.metadata?.channelType || room?.type) === ChannelType.DM,
+          actionStatus: content.actionStatus,
         },
       };
 
@@ -1124,7 +1180,9 @@ export class MessageBusService extends Service {
   }
 
   private async notifyMessageComplete(channelId?: UUID, messageServerId?: UUID) {
-    if (!channelId || !messageServerId) return;
+    if (!channelId || !messageServerId) {
+      return;
+    }
 
     try {
       const completeUrl = new URL('/api/messaging/complete', this.getCentralMessageServerUrl());

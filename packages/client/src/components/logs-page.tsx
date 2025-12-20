@@ -34,7 +34,7 @@ export default function LogsPage() {
       </div>
 
       <div className="flex-1 border rounded-lg overflow-hidden">
-        <AgentLogViewer level={logLevel as any} />
+        <AgentLogViewer level={logLevel} />
       </div>
     </div>
   );

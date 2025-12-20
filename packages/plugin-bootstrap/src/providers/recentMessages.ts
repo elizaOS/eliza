@@ -145,7 +145,9 @@ export const recentMessagesProvider: Provider = {
                 const error = mem.content?.error || '';
 
                 let memText = `  - ${actionName} (${status})`;
-                if (planStep) memText += ` [${planStep}]`;
+                if (planStep) {
+                  memText += ` [${planStep}]`;
+                }
                 if (error) {
                   memText += `: Error - ${error}`;
                 } else if (text && text !== `Executed action: ${actionName}`) {

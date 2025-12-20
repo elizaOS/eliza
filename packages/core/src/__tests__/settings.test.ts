@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, type MockFunction } from 'bun:test';
 import { mock, spyOn } from 'bun:test';
 import {
   createSettingFromConfig,
@@ -38,6 +38,8 @@ import { getEnvironment } from '../utils/environment';
 describe('settings utilities', () => {
   let mockRuntime: IAgentRuntime;
   let mockWorld: World;
+  let getWorldMock: MockFunction<(id: UUID) => Promise<World | null>>;
+  let updateWorldMock: MockFunction<(world: World) => Promise<void>>;
 
   beforeEach(() => {
     mock.restore();
@@ -64,18 +66,33 @@ describe('settings utilities', () => {
     // Clear environment cache after setting env var
     getEnvironment().clearCache();
 
+    getWorldMock = mock<(id: UUID) => Promise<World | null>>();
+    updateWorldMock = mock<(world: World) => Promise<void>>();
+
     mockRuntime = {
-      agentId: 'agent-123' as any,
-      getWorld: mock(),
-      updateWorld: mock(),
-    } as unknown as IAgentRuntime;
+      agentId: 'agent-123' as UUID,
+      character: {
+        id: 'agent-123' as UUID,
+        name: 'TestAgent',
+        username: 'testagent',
+        bio: [],
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        style: { all: [], chat: [], post: [] },
+        adjectives: [],
+      },
+      getWorld: getWorldMock,
+      updateWorld: updateWorldMock,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
 
     mockWorld = {
-      id: 'world-123' as any,
+      id: 'world-123' as UUID,
       name: 'Test World',
-      agentId: 'agent-123' as any,
+      agentId: 'agent-123' as UUID,
       messageServerId: 'server-123',
       metadata: {},
+      createdAt: Date.now(),
     };
   });
 
@@ -227,6 +244,30 @@ describe('settings utilities', () => {
 
       expect(encrypted).not.toBe(fakeEncrypted);
       expect(encrypted.split(':').length).toBe(2);
+    });
+
+    it('should handle values with colons that are not hex (e.g., URLs)', () => {
+      // This is a regression test - BufferUtils.fromHex throws on non-hex strings
+      // Without try/catch, this would crash
+      const postgresUrl = 'postgres://user:password@localhost:5432/db';
+      const encrypted = encryptStringValue(postgresUrl, salt);
+
+      expect(encrypted).not.toBe(postgresUrl);
+      expect(encrypted).toContain(':');
+
+      // Verify it can be decrypted back
+      const decrypted = decryptStringValue(encrypted, salt);
+      expect(decrypted).toBe(postgresUrl);
+    });
+
+    it('should handle connection strings with multiple colons', () => {
+      const connectionString = 'mongodb://admin:secret123@host1:27017,host2:27017/mydb';
+      const encrypted = encryptStringValue(connectionString, salt);
+
+      expect(encrypted).not.toBe(connectionString);
+
+      const decrypted = decryptStringValue(encrypted, salt);
+      expect(decrypted).toBe(connectionString);
     });
   });
 
@@ -470,8 +511,8 @@ describe('settings utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
-      (mockRuntime.updateWorld as any).mockResolvedValue(true);
+      getWorldMock.mockResolvedValue(mockWorld);
+      updateWorldMock.mockResolvedValue(undefined);
 
       const result = await updateWorldSettings(mockRuntime, 'server-123', worldSettings);
 
@@ -486,7 +527,7 @@ describe('settings utilities', () => {
     });
 
     it('should return false when world not found', async () => {
-      (mockRuntime.getWorld as any).mockResolvedValue(null);
+      getWorldMock.mockResolvedValue(null);
 
       const result = await updateWorldSettings(mockRuntime, 'server-123', {});
 
@@ -496,8 +537,8 @@ describe('settings utilities', () => {
 
     it('should initialize metadata if it does not exist', async () => {
       const worldWithoutMetadata = { ...mockWorld, metadata: undefined };
-      (mockRuntime.getWorld as any).mockResolvedValue(worldWithoutMetadata);
-      (mockRuntime.updateWorld as any).mockResolvedValue(true);
+      getWorldMock.mockResolvedValue(worldWithoutMetadata);
+      updateWorldMock.mockResolvedValue(undefined);
 
       const result = await updateWorldSettings(mockRuntime, 'server-123', {});
 
@@ -530,7 +571,7 @@ describe('settings utilities', () => {
         },
       };
 
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const result = await getWorldSettings(mockRuntime, 'server-123');
 
@@ -539,7 +580,7 @@ describe('settings utilities', () => {
     });
 
     it('should return null when world not found', async () => {
-      (mockRuntime.getWorld as any).mockResolvedValue(null);
+      getWorldMock.mockResolvedValue(null);
 
       const result = await getWorldSettings(mockRuntime, 'server-123');
 
@@ -547,7 +588,7 @@ describe('settings utilities', () => {
     });
 
     it('should return null when world has no settings', async () => {
-      (mockRuntime.getWorld as any).mockResolvedValue(mockWorld);
+      getWorldMock.mockResolvedValue(mockWorld);
 
       const result = await getWorldSettings(mockRuntime, 'server-123');
 
@@ -576,7 +617,7 @@ describe('settings utilities', () => {
         },
       };
 
-      (mockRuntime.updateWorld as any).mockResolvedValue(true);
+      updateWorldMock.mockResolvedValue(undefined);
 
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
@@ -627,7 +668,7 @@ describe('settings utilities', () => {
     it('should handle config without settings', async () => {
       const config: OnboardingConfig = { settings: {} };
 
-      (mockRuntime.updateWorld as any).mockResolvedValue(true);
+      updateWorldMock.mockResolvedValue(undefined);
 
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
@@ -639,7 +680,7 @@ describe('settings utilities', () => {
   describe('encryptedCharacter', () => {
     it('should encrypt character settings.secrets', () => {
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
         settings: {
@@ -660,7 +701,7 @@ describe('settings utilities', () => {
 
     it('should encrypt character.secrets', () => {
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
         secrets: {
@@ -679,7 +720,7 @@ describe('settings utilities', () => {
 
     it('should handle character without secrets', () => {
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
       };
@@ -691,7 +732,7 @@ describe('settings utilities', () => {
 
     it('should not modify original character', () => {
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
         secrets: {
@@ -710,7 +751,7 @@ describe('settings utilities', () => {
     it('should decrypt character settings.secrets', () => {
       const salt = getSalt();
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
         settings: {
@@ -730,7 +771,7 @@ describe('settings utilities', () => {
     it('should decrypt character.secrets', () => {
       const salt = getSalt();
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
         secrets: {
@@ -747,7 +788,7 @@ describe('settings utilities', () => {
 
     it('should handle character without secrets', () => {
       const character: Character = {
-        id: 'char-123' as any,
+        id: 'char-123' as UUID,
         name: 'Test Character',
         bio: 'Test character bio',
       };
@@ -869,15 +910,19 @@ ANOTHER_KEY=another-value`;
         expect(character.settings!.ANOTHER_KEY).toBeUndefined();
 
         // Verify .env values are merged into settings.secrets
-        expect((character.settings!.secrets as any).SIMPLE_KEY).toBe('simple-value');
-        expect((character.settings!.secrets as any).ANOTHER_KEY).toBe('another-value');
+        expect((character.settings!.secrets as Record<string, string>).SIMPLE_KEY).toBe(
+          'simple-value'
+        );
+        expect((character.settings!.secrets as Record<string, string>).ANOTHER_KEY).toBe(
+          'another-value'
+        );
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });
 
         // Clean up test environment variables
         for (const key of testEnvKeys) {
-          delete (process.env as any)[key];
+          delete process.env[key];
         }
       }
     });

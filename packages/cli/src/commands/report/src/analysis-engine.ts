@@ -127,8 +127,10 @@ export class AnalysisEngine {
     runs.forEach((run) => {
       run.evaluations.forEach((evaluation) => {
         // Extract capability from evaluation details or use evaluator_type as fallback
-        const capability = evaluation.details?.capability || evaluation.evaluator_type;
-        if (capability) {
+        const capabilityRaw = evaluation.details?.capability || evaluation.evaluator_type;
+        const capability =
+          typeof capabilityRaw === 'string' ? capabilityRaw : String(capabilityRaw || 'unknown');
+        if (capability && capability !== 'unknown') {
           if (!capabilityStats[capability]) {
             capabilityStats[capability] = { total: 0, passed: 0 };
           }
@@ -204,7 +206,7 @@ export class AnalysisEngine {
    * Recursively collect all parameter paths from a parameters object
    */
   private collectAllParameterPaths(
-    obj: any,
+    obj: unknown,
     currentPath: string,
     paths: Set<string>,
     maxDepth = 3,
@@ -230,7 +232,7 @@ export class AnalysisEngine {
   /**
    * Extract parameter value from nested or flat parameters object
    */
-  private getParameterValue(parameters: Record<string, any>, parameterPath: string): any {
+  private getParameterValue(parameters: Record<string, unknown>, parameterPath: string): unknown {
     // First try the flat key (exact match)
     if (parameterPath in parameters) {
       return parameters[parameterPath];
@@ -240,13 +242,22 @@ export class AnalysisEngine {
     const pathParts = parameterPath.split('.');
     let value = parameters;
 
+    let currentValue: unknown = value;
     for (const part of pathParts) {
-      if (value && typeof value === 'object' && part in value) {
-        value = value[part];
+      if (
+        currentValue &&
+        typeof currentValue === 'object' &&
+        currentValue !== null &&
+        !Array.isArray(currentValue) &&
+        part in currentValue
+      ) {
+        const valueObj = currentValue as Record<string, unknown>;
+        currentValue = valueObj[part];
       } else {
         return undefined;
       }
     }
+    return currentValue;
 
     return value;
   }
@@ -254,7 +265,7 @@ export class AnalysisEngine {
   /**
    * Convert parameter values to strings for consistent grouping
    */
-  private serializeParameterValue(value: any): string {
+  private serializeParameterValue(value: unknown): string {
     if (value === null || value === undefined) {
       return 'undefined';
     }

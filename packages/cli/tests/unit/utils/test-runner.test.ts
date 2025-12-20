@@ -26,7 +26,7 @@ describe('TestRunner Plugin Isolation', () => {
       agentId: 'test-agent-id',
       character: { name: 'Test Agent', bio: 'Test bio' } as Character,
       plugins: [],
-    } as unknown as IAgentRuntime;
+    } as Partial<IAgentRuntime> as IAgentRuntime;
   });
 
   afterEach(() => {

@@ -8,6 +8,8 @@ import {
 } from '@elizaos/core';
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { RESPONSE_MODES, DEFAULT_RESPONSE_MODE, type ResponseMode } from '../shared/constants';
+import { handleResponseMode } from '../shared/response-handlers';
 import type { AgentServer, CentralRootMessage } from '../../index';
 import { transformMessageAttachments } from '../../utils';
 import type {
@@ -700,12 +702,25 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
   /**
    * Send a message in a session
    * POST /api/messaging/sessions/:sessionId/messages
+   * Supports multiple response modes via the 'mode' parameter:
+   * - "sync": Wait for complete agent response (default in future)
+   * - "stream": SSE streaming response
+   * - "websocket": Return immediately, agent response via WebSocket (current default)
    */
   router.post(
     '/sessions/:sessionId/messages',
     asyncHandler(async (req: express.Request, res: express.Response) => {
       const { sessionId } = req.params;
-      const body: SendMessageRequest = req.body;
+      const body: SendMessageRequest & { mode?: ResponseMode } = req.body;
+      const mode: ResponseMode = body.mode || DEFAULT_RESPONSE_MODE;
+
+      // Validate mode parameter
+      if (!RESPONSE_MODES.includes(mode)) {
+        throw new InvalidContentError(
+          `Invalid mode "${mode}". Must be one of: ${RESPONSE_MODES.join(', ')}`,
+          body
+        );
+      }
 
       // Validate request structure
       if (!isSendMessageRequest(body)) {
@@ -755,34 +770,32 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         };
 
         logger.debug({ src: 'http', sessionId }, 'Session near expiration, warning state set');
-        // In a real implementation, you might want to send a notification to the client here
       }
 
-      let message;
+      // Fetch the channel to get its metadata (which includes session metadata)
+      let channelMetadata: Record<string, unknown> = {};
       try {
-        // Fetch the channel to get its metadata (which includes session metadata)
-        let channelMetadata = {};
-        try {
-          const channel = await serverInstance.getChannelDetails(session.channelId);
-          if (channel && channel.metadata) {
-            channelMetadata = channel.metadata;
-          }
-        } catch (error) {
-          logger.debug(
-            { src: 'http', channelId: session.channelId, error: String(error) },
-            'Could not fetch channel metadata'
-          );
+        const channel = await serverInstance.getChannelDetails(session.channelId);
+        if (channel && channel.metadata) {
+          channelMetadata = channel.metadata as Record<string, unknown>;
         }
+      } catch (error) {
+        logger.debug(
+          { src: 'http', channelId: session.channelId, error: String(error) },
+          'Could not fetch channel metadata'
+        );
+      }
 
-        // Merge metadata: channel metadata (includes session metadata) + message-specific metadata
-        const mergedMetadata = {
-          ...channelMetadata, // This includes all session metadata that was stored in the channel
-          sessionId,
-          ...(body.metadata || {}), // Message-specific metadata overrides
-        };
+      // Merge metadata: channel metadata (includes session metadata) + message-specific metadata
+      const mergedMetadata = {
+        ...channelMetadata,
+        sessionId,
+        ...(body.metadata || {}),
+      };
 
-        // Create message in database
-        // Note: createMessage automatically broadcasts to the internal message bus
+      // Create message in database
+      let message: Awaited<ReturnType<typeof serverInstance.createMessage>>;
+      try {
         message = await serverInstance.createMessage({
           channelId: session.channelId,
           authorId: session.userId,
@@ -800,13 +813,24 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         });
       }
 
-      // Include session status in response
-      const response = {
+      // Build Memory object for elizaOS.handleMessage
+      const messageMemory = {
+        entityId: session.userId,
+        roomId: session.channelId,
+        content: { text: body.content },
+      };
+
+      // User message response object
+      const userMessage = {
         id: message.id,
         content: message.content,
         authorId: message.authorId,
         createdAt: message.createdAt,
         metadata: message.metadata,
+      };
+
+      // Session-specific additional data
+      const sessionStatus = {
         sessionStatus: {
           expiresAt: session.expiresAt,
           renewalCount: session.renewalCount,
@@ -815,7 +839,16 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         },
       };
 
-      res.status(201).json(response);
+      // Handle response using shared handler
+      await handleResponseMode({
+        res,
+        mode,
+        elizaOS,
+        agentId: session.agentId,
+        messageMemory,
+        userMessage,
+        additionalResponseData: sessionStatus,
+      });
     })
   );
 

@@ -17,7 +17,8 @@ interface GlobalSingletons {
   postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
 }
 
-const globalSymbols = globalThis as unknown as Record<symbol, GlobalSingletons>;
+// Type assertion needed because globalThis doesn't include symbol keys in its type definition
+const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
@@ -128,12 +129,12 @@ export const plugin: Plugin = {
 
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
     // Only support PGLITE_DATA_DIR going forward
-    const dataDir = runtime.getSetting('PGLITE_DATA_DIR') || undefined;
+    const dataDir = runtime.getSetting('PGLITE_DATA_DIR');
 
     const dbAdapter = createDatabaseAdapter(
       {
-        dataDir,
-        postgresUrl,
+        dataDir: typeof dataDir === 'string' ? dataDir : undefined,
+        postgresUrl: typeof postgresUrl === 'string' ? postgresUrl : undefined,
       },
       runtime.agentId
     );

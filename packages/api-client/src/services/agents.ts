@@ -132,7 +132,10 @@ export class AgentsService extends BaseApiClient {
   async addAgentToMessageServer(
     messageServerId: UUID,
     agentId: UUID
-  ): Promise<{ success: boolean; data: { messageServerId: UUID; agentId: UUID; message: string } }> {
+  ): Promise<{
+    success: boolean;
+    data: { messageServerId: UUID; agentId: UUID; message: string };
+  }> {
     return this.post<{
       success: boolean;
       data: { messageServerId: UUID; agentId: UUID; message: string };
@@ -142,7 +145,10 @@ export class AgentsService extends BaseApiClient {
   async removeAgentFromMessageServer(
     messageServerId: UUID,
     agentId: UUID
-  ): Promise<{ success: boolean; data: { messageServerId: UUID; agentId: UUID; message: string } }> {
+  ): Promise<{
+    success: boolean;
+    data: { messageServerId: UUID; agentId: UUID; message: string };
+  }> {
     return this.delete<{
       success: boolean;
       data: { messageServerId: UUID; agentId: UUID; message: string };

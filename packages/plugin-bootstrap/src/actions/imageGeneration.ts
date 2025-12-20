@@ -3,6 +3,7 @@ import {
   type ActionExample,
   composePromptFromState,
   type HandlerCallback,
+  type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   ModelType,
@@ -50,9 +51,9 @@ export const generateImageAction = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    state: State,
-    _options: any,
-    callback: HandlerCallback,
+    state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
     try {
@@ -72,7 +73,10 @@ export const generateImageAction = {
       // Parse XML response
       const parsedXml = parseKeyValueXml(promptResponse);
 
-      const imagePrompt = parsedXml?.prompt || 'Unable to generate descriptive prompt for image';
+      const imagePrompt: string =
+        typeof parsedXml?.prompt === 'string'
+          ? parsedXml.prompt
+          : 'Unable to generate descriptive prompt for image';
 
       const imageResponse = await runtime.useModel(ModelType.IMAGE, {
         prompt: imagePrompt,
@@ -120,7 +124,7 @@ export const generateImageAction = {
             return extension;
           }
           // Extension not in allowed list, fall through to default
-        } catch (e) {
+        } catch (_e) {
           // URL parsing failed (malformed URL), fall back to png
         }
         return 'png'; // Default fallback for invalid/unknown extensions
@@ -146,7 +150,9 @@ export const generateImageAction = {
         text: imagePrompt,
       };
 
-      await callback(responseContent);
+      if (callback) {
+        await callback(responseContent);
+      }
 
       return {
         text: 'Generated image',

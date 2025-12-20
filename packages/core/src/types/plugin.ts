@@ -2,9 +2,37 @@ import type { Character } from './agent';
 import type { Action, Evaluator, Provider } from './components';
 import type { IDatabaseAdapter } from './database';
 import type { EventHandler, EventPayloadMap } from './events';
+import type { ModelParamsMap, PluginModelResult } from './model';
 import type { IAgentRuntime } from './runtime';
 import type { Service } from './service';
 import type { TestSuite } from './testing';
+
+/**
+ * Minimal request interface
+ * Plugins can use this type for route handlers
+ */
+export interface RouteRequest {
+  body?: unknown;
+  params?: Record<string, string>;
+  query?: Record<string, unknown>;
+  headers?: Record<string, string | string[] | undefined>;
+  method?: string;
+  path?: string;
+  url?: string;
+}
+
+/**
+ * Minimal response interface
+ * Plugins can use this type for route handlers
+ */
+export interface RouteResponse {
+  status: (code: number) => RouteResponse;
+  json: (data: unknown) => RouteResponse;
+  send: (data: unknown) => RouteResponse;
+  end: () => RouteResponse;
+  setHeader?: (name: string, value: string | string[]) => RouteResponse;
+  headersSent?: boolean;
+}
 
 export type Route = {
   type: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'STATIC';
@@ -12,7 +40,7 @@ export type Route = {
   filePath?: string;
   public?: boolean;
   name?: string extends { public: true } ? string : string | undefined;
-  handler?: (req: any, res: any, runtime: IAgentRuntime) => Promise<void>;
+  handler?: (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => Promise<void>;
   isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 };
 
@@ -22,8 +50,11 @@ export type Route = {
 
 export type PluginEvents = {
   [K in keyof EventPayloadMap]?: EventHandler<K>[];
-} & {
-  [key: string]: ((params: any) => Promise<any>)[];
+};
+
+/** Internal type for runtime event storage - allows dynamic access for event registration */
+export type RuntimeEventStorage = PluginEvents & {
+  [key: string]: ((params: unknown) => Promise<void>)[] | undefined;
 };
 
 export interface Plugin {
@@ -34,7 +65,7 @@ export interface Plugin {
   init?: (config: Record<string, string>, runtime: IAgentRuntime) => Promise<void>;
 
   // Configuration
-  config?: { [key: string]: any };
+  config?: { [key: string]: string | number | boolean | null | undefined };
 
   services?: (typeof Service)[];
 
@@ -42,7 +73,7 @@ export interface Plugin {
   componentTypes?: {
     name: string;
     schema: Record<string, unknown>;
-    validator?: (data: any) => boolean;
+    validator?: (data: unknown) => boolean;
   }[];
 
   // Optional plugin features
@@ -51,7 +82,10 @@ export interface Plugin {
   evaluators?: Evaluator[];
   adapter?: IDatabaseAdapter;
   models?: {
-    [key: string]: (...args: any[]) => Promise<any>;
+    [K in keyof ModelParamsMap]?: (
+      runtime: IAgentRuntime,
+      params: ModelParamsMap[K]
+    ) => Promise<PluginModelResult<K>>;
   };
   events?: PluginEvents;
   routes?: Route[];
@@ -63,7 +97,7 @@ export interface Plugin {
 
   priority?: number;
 
-  schema?: any;
+  schema?: Record<string, unknown>;
 }
 
 export interface ProjectAgent {

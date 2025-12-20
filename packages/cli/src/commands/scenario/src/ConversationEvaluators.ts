@@ -1,7 +1,7 @@
 // File: packages/cli/src/commands/scenario/src/ConversationEvaluators.ts
 // Specialized evaluators for conversation scenarios
 
-import { AgentRuntime, ModelType } from '@elizaos/core';
+import { IAgentRuntime, ModelType } from '@elizaos/core';
 import { ExecutionResult } from './providers';
 import { Evaluator, EvaluationResult } from './EvaluationEngine';
 import { Evaluation as EvaluationSchema } from './schema';
@@ -9,9 +9,26 @@ import { Evaluation as EvaluationSchema } from './schema';
 /**
  * Evaluates conversation length against specified criteria
  */
+interface ConversationMetadata {
+  turnCount: number;
+  terminatedEarly?: boolean;
+  terminationReason?: string;
+  finalEvaluations?: unknown;
+}
+
+interface ConversationLengthParams {
+  type: 'conversation_length';
+  min_turns?: number;
+  max_turns?: number;
+  optimal_turns?: number;
+  target_range?: [number, number];
+}
+
 export class ConversationLengthEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    const metadata = (runResult as any).conversationMetadata;
+    const metadata = (
+      runResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }
+    ).conversationMetadata;
     if (!metadata) {
       return {
         success: false,
@@ -20,7 +37,8 @@ export class ConversationLengthEvaluator implements Evaluator {
     }
 
     const { turnCount } = metadata;
-    const { min_turns, max_turns, optimal_turns, target_range } = params as any;
+    const typedParams = params as ConversationLengthParams;
+    const { min_turns, max_turns, optimal_turns, target_range } = typedParams;
 
     let success = true;
     let message = `Conversation lasted ${turnCount} turns`;
@@ -69,13 +87,20 @@ export class ConversationLengthEvaluator implements Evaluator {
 /**
  * Evaluates conversation flow patterns
  */
+interface ConversationFlowParams {
+  type: 'conversation_flow';
+  required_patterns: string[];
+  flow_quality_threshold?: number;
+}
+
 export class ConversationFlowEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult> {
-    const { required_patterns, flow_quality_threshold } = params as any;
+    const typedParams = params as ConversationFlowParams;
+    const { required_patterns, flow_quality_threshold } = typedParams;
     const conversationText = runResult.stdout;
 
     const detectedPatterns: string[] = [];
@@ -110,7 +135,7 @@ export class ConversationFlowEvaluator implements Evaluator {
   private async detectPattern(
     pattern: string,
     conversationText: string,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<boolean> {
     const patternPrompts = {
       question_then_answer:
@@ -138,7 +163,7 @@ Analyze the conversation and respond with only 'yes' or 'no'.`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        messages: [{ role: 'user', content: analysisPrompt }],
+        prompt: analysisPrompt,
         temperature: 0.1,
       });
 
@@ -153,13 +178,24 @@ Analyze the conversation and respond with only 'yes' or 'no'.`;
 /**
  * Evaluates user satisfaction based on conversation content
  */
+interface UserSatisfactionParams {
+  type: 'user_satisfaction';
+  satisfaction_threshold?: number;
+  indicators?: {
+    positive?: string[];
+    negative?: string[];
+  };
+  measurement_method?: 'sentiment_analysis' | 'keyword_analysis' | 'llm_judge';
+}
+
 export class UserSatisfactionEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult> {
-    const { satisfaction_threshold, indicators, measurement_method } = params as any;
+    const typedParams = params as UserSatisfactionParams;
+    const { satisfaction_threshold, indicators, measurement_method } = typedParams;
     const conversationText = runResult.stdout;
 
     let satisfactionScore = 0;
@@ -188,7 +224,10 @@ export class UserSatisfactionEvaluator implements Evaluator {
     return { success, message };
   }
 
-  private analyzeKeywords(conversationText: string, indicators: any): number {
+  private analyzeKeywords(
+    conversationText: string,
+    indicators?: { positive?: string[]; negative?: string[] }
+  ): number {
     const text = conversationText.toLowerCase();
     const positive = indicators?.positive || [
       'thank you',
@@ -226,7 +265,10 @@ export class UserSatisfactionEvaluator implements Evaluator {
     return positiveCount / (positiveCount + negativeCount);
   }
 
-  private async analyzeSentiment(conversationText: string, runtime: AgentRuntime): Promise<number> {
+  private async analyzeSentiment(
+    conversationText: string,
+    runtime: IAgentRuntime
+  ): Promise<number> {
     const prompt = `Analyze the overall sentiment of the user in this conversation on a scale of 0.0 to 1.0, where:
 - 0.0 = Very dissatisfied, angry, frustrated
 - 0.5 = Neutral 
@@ -241,7 +283,7 @@ Respond with only a number between 0.0 and 1.0:`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        messages: [{ role: 'user', content: prompt }],
+        prompt: prompt,
         temperature: 0.1,
       });
 
@@ -253,7 +295,7 @@ Respond with only a number between 0.0 and 1.0:`;
     }
   }
 
-  private async judgeWithLLM(conversationText: string, runtime: AgentRuntime): Promise<number> {
+  private async judgeWithLLM(conversationText: string, runtime: IAgentRuntime): Promise<number> {
     const prompt = `Evaluate how satisfied the user appears to be with this conversation on a scale of 0.0 to 1.0.
 
 Consider:
@@ -270,7 +312,7 @@ Respond with only a number between 0.0 and 1.0:`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        messages: [{ role: 'user', content: prompt }],
+        prompt: prompt,
         temperature: 0.1,
       });
 
@@ -286,13 +328,21 @@ Respond with only a number between 0.0 and 1.0:`;
 /**
  * Evaluates agent's ability to retain context across conversation turns
  */
+interface ContextRetentionParams {
+  type: 'context_retention';
+  test_memory_of: string[];
+  retention_turns?: number;
+  memory_accuracy_threshold?: number;
+}
+
 export class ContextRetentionEvaluator implements Evaluator {
   async evaluate(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EvaluationResult> {
-    const { test_memory_of, retention_turns, memory_accuracy_threshold } = params as any;
+    const typedParams = params as ContextRetentionParams;
+    const { test_memory_of, retention_turns, memory_accuracy_threshold } = typedParams;
     const conversationText = runResult.stdout;
 
     const turns = this.parseConversationTurns(conversationText);
@@ -328,7 +378,7 @@ export class ContextRetentionEvaluator implements Evaluator {
     memoryItem: string,
     turns: string[],
     retentionTurns: number,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<number> {
     // Find where the memory item is first mentioned
     let mentionTurn = -1;
@@ -364,7 +414,7 @@ export class ContextRetentionEvaluator implements Evaluator {
     memoryItem: string,
     currentTurn: string,
     previousTurns: string[],
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<boolean> {
     const context = previousTurns.slice(0, -1).join('\n'); // All turns except current
 
@@ -385,7 +435,7 @@ Respond with only 'yes' or 'no'.`;
 
     try {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        messages: [{ role: 'user', content: prompt }],
+        prompt: prompt,
         temperature: 0.1,
       });
 

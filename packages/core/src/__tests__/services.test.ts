@@ -1,7 +1,7 @@
 import { describe, it, expect, mock } from 'bun:test';
 import { createService, defineService } from '../services';
 import { Service } from '../types';
-import type { IAgentRuntime } from '../types';
+import type { IAgentRuntime, ServiceTypeName } from '../types';
 
 describe('service builder', () => {
   // Mock runtime
@@ -18,14 +18,14 @@ describe('service builder', () => {
           })()
       )
       .build();
-    const instance = await (Builder as any).start(mockRuntime);
+    const instance = await Builder.start(mockRuntime);
     expect(instance).toBeInstanceOf(Service);
     await instance.stop();
   });
 
   it('defineService builds from definition', async () => {
     const Def = defineService({
-      serviceType: 'DEF' as any,
+      serviceType: 'DEF' as ServiceTypeName,
       description: 'desc',
       start: async () =>
         new (class extends Service {
@@ -33,7 +33,7 @@ describe('service builder', () => {
           async stop() {}
         })(),
     });
-    const instance = await (Def as any).start(mockRuntime);
+    const instance = await Def.start(mockRuntime);
     expect(instance).toBeInstanceOf(Service);
     await instance.stop();
   });
@@ -42,7 +42,7 @@ describe('service builder', () => {
     // This test covers lines 59-60 - error when startFn is not defined
     const Builder = createService('NO_START').withDescription('Service without start').build();
 
-    await expect((Builder as any).start(mockRuntime)).rejects.toThrow(
+    await expect(Builder.start(mockRuntime)).rejects.toThrow(
       'Start function not defined for service NO_START'
     );
   });
@@ -63,7 +63,7 @@ describe('service builder', () => {
       .withStop(stopFn)
       .build();
 
-    await (Builder as any).start(mockRuntime);
+    await Builder.start(mockRuntime);
     const builtInstance = new Builder();
     await builtInstance.stop();
 
@@ -91,7 +91,7 @@ describe('service builder', () => {
   it('defineService should provide default stop function', async () => {
     // This test covers the default stop function in defineService
     const Def = defineService({
-      serviceType: 'DEF_NO_STOP' as any,
+      serviceType: 'DEF_NO_STOP' as ServiceTypeName,
       description: 'Definition without stop',
       start: async () =>
         new (class extends Service {
@@ -101,7 +101,7 @@ describe('service builder', () => {
       // Note: no stop function provided
     });
 
-    await (Def as any).start(mockRuntime);
+    await Def.start(mockRuntime);
     const defInstance = new Def();
     // Should not throw when using default stop
     expect(defInstance.stop()).resolves.toBeUndefined();
@@ -131,6 +131,6 @@ describe('service builder', () => {
     expect(withStop).toBe(builder);
 
     const BuiltClass = withStop.build();
-    expect((BuiltClass as any).serviceType).toBe(serviceType);
+    expect(BuiltClass.serviceType).toBe(serviceType);
   });
 });

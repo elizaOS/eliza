@@ -96,7 +96,7 @@ describe('Character Config Functions', () => {
       const merged = mergeCharacterDefaults(partial);
 
       expect(merged.name).toBe('TestChar');
-      expect((merged.settings?.secrets as any)?.key).toBe('value');
+      expect((merged.settings?.secrets as Record<string, string> | undefined)?.key).toBe('value');
       expect(merged.plugins).toHaveLength(1);
     });
   });

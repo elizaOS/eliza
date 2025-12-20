@@ -193,7 +193,6 @@ describe('Server Package Compatibility', () => {
       const safeUnregister = (agentId: any): void => {
         if (!agentId) {
           // CLI expects this to not throw
-          return;
         }
         // Perform unregistration
       };

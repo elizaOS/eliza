@@ -27,7 +27,11 @@ export type ProgressEventType =
 /**
  * Callback function type for progress updates.
  */
-export type ProgressCallback = (message: string, eventType: ProgressEventType, data?: any) => void;
+export type ProgressCallback = (
+  message: string,
+  eventType: ProgressEventType,
+  data?: unknown
+) => void;
 
 /**
  * Overall progress information for the matrix execution.
@@ -66,7 +70,7 @@ export interface CombinationProgress {
   /** Unique identifier for the combination */
   combinationId: string;
   /** Parameters for this combination */
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   /** Total runs for this combination */
   totalRuns: number;
   /** Completed runs for this combination */
@@ -94,7 +98,7 @@ export interface RunProgress {
   /** Combination this run belongs to */
   combinationId: string;
   /** Parameters for this run */
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   /** When the run started */
   startTime: Date;
   /** When the run completed */
@@ -152,7 +156,7 @@ export class ProgressTracker {
   /**
    * Starts tracking a new run.
    */
-  startRun(runId: string, combinationId: string, parameters: Record<string, any>): void {
+  startRun(runId: string, combinationId: string, parameters: Record<string, unknown>): void {
     // Initialize combination if not exists
     if (!this.combinations.has(combinationId)) {
       this.combinations.set(combinationId, {
@@ -275,7 +279,6 @@ export class ProgressTracker {
 
     // Emit completion message
     const completedRuns = this.getOverallProgress().completedRuns;
-    // const totalRuns = this.config.totalCombinations * this.config.runsPerCombination; // unused
 
     if (success) {
       const message = `Run ${completedRuns} completed successfully in ${this.formatDuration(duration)}`;
@@ -437,7 +440,7 @@ export class ProgressTracker {
   /**
    * Emits a progress message to the callback.
    */
-  private emitProgress(message: string, eventType: ProgressEventType, data?: any): void {
+  private emitProgress(message: string, eventType: ProgressEventType, data?: unknown): void {
     if (this.config.onProgress) {
       this.config.onProgress(message, eventType, data);
     }

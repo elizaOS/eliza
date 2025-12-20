@@ -1,27 +1,19 @@
-import { UUID } from '@elizaos/core';
+import { UUID, Agent } from '@elizaos/core';
 import { PaginationParams } from './base';
 
-export interface Agent {
-  id: UUID;
-  name: string;
-  bio?: string | string[];
-  status: 'active' | 'inactive' | 'stopped';
-  enabled?: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  metadata?: Record<string, any>;
-}
+// Re-export Agent from core
+export type { Agent } from '@elizaos/core';
 
 export interface AgentCreateParams {
   characterPath?: string;
-  characterJson?: Record<string, any>;
-  agent?: Record<string, any>;
+  characterJson?: Record<string, unknown>;
+  agent?: Agent;
 }
 
 export interface AgentUpdateParams {
   name?: string;
   bio?: string | string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentWorld {
@@ -33,7 +25,7 @@ export interface AgentWorld {
 
 export interface AgentWorldSettings {
   worldId: UUID;
-  settings: Record<string, any>;
+  settings: Record<string, unknown>;
 }
 
 export interface AgentPanel {
@@ -41,7 +33,7 @@ export interface AgentPanel {
   name: string;
   url: string;
   type: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentLog {
@@ -54,8 +46,8 @@ export interface AgentLog {
   body?: {
     modelType?: string;
     modelKey?: string;
-    params?: any;
-    response?: any;
+    params?: unknown;
+    response?: unknown;
     usage?: {
       prompt_tokens?: number;
       completion_tokens?: number;
@@ -63,7 +55,7 @@ export interface AgentLog {
     };
   };
   createdAt?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface AgentLogsParams extends PaginationParams {

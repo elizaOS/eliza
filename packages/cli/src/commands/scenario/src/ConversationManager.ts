@@ -1,7 +1,7 @@
 // File: packages/cli/src/commands/scenario/src/ConversationManager.ts
 // Orchestrates multi-turn conversations with user simulation and evaluation
 
-import { AgentRuntime, UUID, ModelType } from '@elizaos/core';
+import { IAgentRuntime, UUID, ModelType } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
 import { askAgentViaApi } from './runtime-factory';
 import { UserSimulator } from './UserSimulator';
@@ -14,14 +14,14 @@ import {
   SimulationContext,
 } from './conversation-types';
 import { TrajectoryReconstructor } from './TrajectoryReconstructor';
-import { EnhancedEvaluationResult } from './schema';
+import { EnhancedEvaluationResult, Evaluation } from './schema';
 
 /**
  * ConversationManager orchestrates multi-turn conversations between agents and simulated users
  * Handles turn execution, termination conditions, and evaluation
  */
 export class ConversationManager {
-  private runtime: AgentRuntime;
+  private runtime: IAgentRuntime;
   private server: AgentServer;
   private agentId: UUID;
   private serverPort: number;
@@ -31,7 +31,7 @@ export class ConversationManager {
   private trajectoryReconstructor: TrajectoryReconstructor;
 
   constructor(
-    runtime: AgentRuntime,
+    runtime: IAgentRuntime,
     server: AgentServer,
     agentId: UUID,
     serverPort: number,
@@ -74,7 +74,7 @@ export class ConversationManager {
     // Get default server
     const messageServers = await client.messaging.listMessageServers();
     const defaultMessageServer = messageServers.messageServers.find(
-      (s) => s.name === 'Default Message Server'
+      (s: { name: string }) => s.name === 'Default Message Server'
     );
     if (!defaultMessageServer) throw new Error('Default message server not found');
 
@@ -158,7 +158,7 @@ export class ConversationManager {
         // Run turn-level evaluations
         if (config.turn_evaluations?.length > 0) {
           const rawTurnEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
-            config.turn_evaluations,
+            config.turn_evaluations as Evaluation[],
             turn.executionResult
           );
 
@@ -222,7 +222,7 @@ export class ConversationManager {
         // Create a combined execution result for final evaluations
         const combinedResult = this.createCombinedExecutionResult(turns, totalDuration);
         const rawEvaluations = await this.evaluationEngine.runEnhancedEvaluations(
-          config.final_evaluations,
+          config.final_evaluations as Evaluation[],
           combinedResult
         );
 
@@ -528,7 +528,7 @@ export class ConversationManager {
 
     try {
       const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-        messages: [{ role: 'user', content: prompt }],
+        prompt: prompt,
         temperature: 0.1,
       });
 
@@ -611,7 +611,10 @@ export class ConversationManager {
    * Determine overall conversation success
    * @private
    */
-  private determineOverallSuccess(turns: ConversationTurn[], finalEvaluations: any[]): boolean {
+  private determineOverallSuccess(
+    turns: ConversationTurn[],
+    finalEvaluations: EnhancedEvaluationResult[]
+  ): boolean {
     // If we have no turns, the conversation failed
     if (turns.length === 0) {
       return false;

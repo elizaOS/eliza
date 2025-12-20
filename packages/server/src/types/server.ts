@@ -1,4 +1,12 @@
-import type { UUID, ChannelType, Character, IAgentRuntime, Plugin } from '@elizaos/core';
+import type {
+  UUID,
+  ChannelType,
+  Character,
+  IAgentRuntime,
+  Plugin,
+  MessageStreamChunkPayload,
+  MessageStreamErrorPayload,
+} from '@elizaos/core';
 import type { MessageServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 import type express from 'express';
 
@@ -68,7 +76,7 @@ export interface CentralRootMessage {
   channelId: UUID; // FK to MessageChannel.id
   authorId: UUID; // Identifier for the author (could be an agent's runtime.agentId or a dedicated central user ID)
   content: string;
-  rawMessage?: unknown;
+  rawMessage?: Record<string, unknown>;
   inReplyToRootMessageId?: UUID; // FK to CentralRootMessage.id (self-reference)
   sourceType?: string;
   sourceId?: string; // Original message ID from the source platform
@@ -85,7 +93,7 @@ export interface MessageServiceStructure {
   author_id: UUID;
   author_display_name?: string;
   content: string;
-  raw_message?: unknown;
+  raw_message?: Record<string, unknown>;
   source_id?: string;
   source_type?: string;
   in_reply_to_message_id?: UUID;
@@ -115,6 +123,34 @@ export interface MessageWithAttachments {
   content?: MessageContentWithAttachments | unknown;
   metadata?: MessageMetadataWithAttachments;
   [key: string]: unknown;
+}
+
+// ============================================================================
+// Internal Message Bus Event Types
+// These are for the server's internal message bus, not runtime events
+// ============================================================================
+
+export interface ServerAgentUpdatePayload {
+  agentId: UUID;
+  type: 'agent_added_to_server' | 'agent_removed_from_server';
+  messageServerId: UUID;
+}
+
+export interface MessageDeletedPayload {
+  messageId: UUID;
+}
+
+export interface ChannelClearedPayload {
+  channelId: UUID;
+}
+
+export interface MessageBusEventMap {
+  new_message: MessageServiceStructure;
+  server_agent_update: ServerAgentUpdatePayload;
+  message_deleted: MessageDeletedPayload;
+  channel_cleared: ChannelClearedPayload;
+  message_stream_chunk: MessageStreamChunkPayload;
+  message_stream_error: MessageStreamErrorPayload;
 }
 
 // Re-export session types

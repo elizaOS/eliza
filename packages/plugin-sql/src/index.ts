@@ -25,7 +25,8 @@ interface GlobalSingletons {
   postgresConnectionManager?: PostgresConnectionManager;
 }
 
-const globalSymbols = globalThis as unknown as Record<symbol, GlobalSingletons>;
+// Type assertion needed because globalThis doesn't include symbol keys in its type definition
+const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
 
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
@@ -119,15 +120,23 @@ export const plugin: Plugin = {
     );
 
     // Prefer direct check for existing adapter (avoid readiness heuristics)
+    // AgentRuntime has a public adapter property
+    interface RuntimeWithAdapter {
+      adapter?: IDatabaseAdapter;
+      hasDatabaseAdapter?: () => boolean;
+      getDatabaseAdapter?: () => IDatabaseAdapter | undefined;
+      databaseAdapter?: IDatabaseAdapter;
+    }
+    const runtimeWithAdapter = runtime as RuntimeWithAdapter;
     const adapterRegistered =
-      typeof (runtime as any).hasDatabaseAdapter === 'function'
-        ? (runtime as any).hasDatabaseAdapter()
+      typeof runtimeWithAdapter.hasDatabaseAdapter === 'function'
+        ? runtimeWithAdapter.hasDatabaseAdapter()
         : (() => {
             try {
               const existing =
-                (runtime as any).getDatabaseAdapter?.() ??
-                (runtime as any).databaseAdapter ??
-                (runtime as any).adapter;
+                runtimeWithAdapter.getDatabaseAdapter?.() ??
+                runtimeWithAdapter.databaseAdapter ??
+                runtimeWithAdapter.adapter;
               return Boolean(existing);
             } catch {
               return false;
@@ -150,12 +159,12 @@ export const plugin: Plugin = {
     // Get database configuration from runtime settings
     const postgresUrl = runtime.getSetting('POSTGRES_URL');
     // Only support PGLITE_DATA_DIR going forward
-    const dataDir = runtime.getSetting('PGLITE_DATA_DIR') || undefined;
+    const dataDir = runtime.getSetting('PGLITE_DATA_DIR');
 
     const dbAdapter = createDatabaseAdapter(
       {
-        dataDir,
-        postgresUrl,
+        dataDir: typeof dataDir === 'string' ? dataDir : undefined,
+        postgresUrl: typeof postgresUrl === 'string' ? postgresUrl : undefined,
       },
       runtime.agentId
     );

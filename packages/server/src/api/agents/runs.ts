@@ -1,4 +1,15 @@
-import type { ElizaOS, UUID, Log, IDatabaseAdapter, RunStatus } from '@elizaos/core';
+import type {
+  ElizaOS,
+  UUID,
+  Log,
+  IDatabaseAdapter,
+  IAgentRuntime,
+  RunStatus,
+  ActionLogBody,
+  ModelLogBody,
+  EvaluatorLogBody,
+  EmbeddingLogBody,
+} from '@elizaos/core';
 import { validateUuid } from '@elizaos/core';
 import express from 'express';
 import { sendError, sendSuccess } from '../shared/response-utils';
@@ -75,7 +86,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         }
       }
 
-      const adapter = (runtime as unknown as { adapter?: IDatabaseAdapter }).adapter;
+      // Runtime has an internal adapter property for database operations
+      const adapter =
+        (runtime as IAgentRuntime & { adapter?: IDatabaseAdapter }).adapter ?? runtime;
       const allowedStatuses: Array<RunStatus | 'all'> = [
         'started',
         'completed',
@@ -145,20 +158,19 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       const ingestRunEvents = (logs: Log[]) => {
         for (const log of logs) {
-          const body = log.body as {
-            runId?: string;
-            status?: 'started' | 'completed' | 'timeout' | 'error';
-            messageId?: UUID;
-            roomId?: UUID;
-            entityId?: UUID;
-            metadata?: Record<string, unknown>;
-          };
-          const runId = body.runId as string;
-          if (!runId) continue;
+          const body = log.body;
+          const runId = typeof body.runId === 'string' ? body.runId : undefined;
+          if (!runId) {
+            continue;
+          }
 
           const logTime = new Date(log.createdAt).getTime();
-          if (fromTime && logTime < fromTime) continue;
-          if (toTime && logTime > toTime) continue;
+          if (fromTime && logTime < fromTime) {
+            continue;
+          }
+          if (toTime && logTime > toTime) {
+            continue;
+          }
 
           if (!runMap.has(runId)) {
             runMap.set(runId, {
@@ -230,7 +242,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
           for (const logs of authorRunEvents) {
             ingestRunEvents(logs);
-            if (!needsMoreRuns()) break;
+            if (!needsMoreRuns()) {
+              break;
+            }
           }
         } catch {
           // swallow
@@ -249,7 +263,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             } catch {
               // ignore
             }
-            if (roomIds.length > 20) break; // guardrail
+            if (roomIds.length > 20) {
+              break;
+            } // guardrail
           }
 
           const participantLogs = await Promise.all(
@@ -277,7 +293,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
           for (const logs of participantLogs) {
             ingestRunEvents(logs);
-            if (!needsMoreRuns()) break;
+            if (!needsMoreRuns()) {
+              break;
+            }
           }
         } catch {
           // ignore
@@ -346,38 +364,51 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       // Aggregate action logs
       for (const log of actionLogs) {
-        const rid = (log.body as { runId?: string }).runId;
-        if (!rid || !runIdSet.has(rid)) continue;
+        const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) continue;
+        if (!entry) {
+          continue;
+        }
         entry.actions += 1;
-        const bodyForAction = log.body as { result?: { success?: boolean }; promptCount?: number };
-        if (bodyForAction.result?.success === false) entry.errors += 1;
+        const bodyForAction = log.body as ActionLogBody;
+        if (bodyForAction.result?.success === false) {
+          entry.errors += 1;
+        }
         const promptCount = Number(bodyForAction.promptCount || 0);
-        if (promptCount > 0) entry.modelCalls += promptCount;
+        if (promptCount > 0) {
+          entry.modelCalls += promptCount;
+        }
       }
 
       // Aggregate evaluator logs
       for (const log of evaluatorLogs) {
-        const rid = (log.body as { runId?: string }).runId;
-        if (!rid || !runIdSet.has(rid)) continue;
+        const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) continue;
+        if (!entry) {
+          continue;
+        }
         entry.evaluators += 1;
       }
 
       // Aggregate generic logs (useModel:* and embedding_event failures)
       for (const log of genericLogs) {
-        const rid = (log.body as { runId?: string; status?: string }).runId;
-        if (!rid || !runIdSet.has(rid)) continue;
+        const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) continue;
+        if (!entry) {
+          continue;
+        }
         if (typeof log.type === 'string' && log.type.startsWith('useModel:')) {
           entry.modelCalls += 1;
-        } else if (
-          log.type === 'embedding_event' &&
-          (log.body as { status?: string }).status === 'failed'
-        ) {
+        } else if (log.type === 'embedding_event' && log.body.status === 'failed') {
           entry.errors += 1;
         }
       }
@@ -447,7 +478,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       // Include logs that have this runId OR have this runId as parentRunId (for actions)
       const directlyRelated = logs.filter((l) => {
-        const body = l.body as { runId?: UUID; parentRunId?: UUID };
+        const body = l.body;
         return body.runId === runId || body.parentRunId === runId;
       });
 
@@ -455,20 +486,23 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const actionRunIds = new Set(
         directlyRelated
           .filter((l) => l.type === 'action')
-          .map((l) => (l.body as { runId?: UUID }).runId)
+          .map((l) => {
+            const runId = l.body.runId;
+            return typeof runId === 'string' ? (runId as UUID) : undefined;
+          })
           .filter((id): id is UUID => !!id)
       );
 
       // Also include action_event logs that share runId with matched actions
       // (action_event logs have the action's runId but no parentRunId)
       const related = logs.filter((l) => {
-        const body = l.body as { runId?: UUID; parentRunId?: UUID };
+        const body = l.body;
         // Include if directly related to the main run
         if (body.runId === runId || body.parentRunId === runId) {
           return true;
         }
         // Also include action_event logs that match action runIds
-        if (l.type === 'action_event' && body.runId && actionRunIds.has(body.runId)) {
+        if (l.type === 'action_event' && body.runId && actionRunIds.has(body.runId as UUID)) {
           return true;
         }
         return false;
@@ -478,15 +512,13 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         .filter((l) => l.type === 'run_event')
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-      const started = runEvents.find((e) => (e.body as { status?: string }).status === 'started');
+      const started = runEvents.find((e) => e.body.status === 'started');
       const last = runEvents[runEvents.length - 1];
 
       const startedAt = started ? new Date(started.createdAt).getTime() : undefined;
       const endedAt =
-        last && (last.body as { status?: string }).status !== 'started'
-          ? new Date(last.createdAt).getTime()
-          : undefined;
-      const status = (last?.body as { status?: string })?.status || 'started';
+        last && last.body.status !== 'started' ? new Date(last.createdAt).getTime() : undefined;
+      const status = last?.body.status || 'started';
       const durationMs = startedAt && endedAt ? endedAt - startedAt : undefined;
 
       const actionLogs = related.filter((l) => l.type === 'action');
@@ -500,17 +532,19 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const counts = {
         actions: actionEventLogs.length || actionLogs.length,
         modelCalls:
-          (actionLogs.reduce(
-            (sum: number, l: Log) =>
-              sum + Number((l.body as { promptCount?: number }).promptCount || 0),
-            0
-          ) || 0) + modelLogs.length,
+          (actionLogs.reduce((sum: number, l: Log) => {
+            const body = l.body as ActionLogBody;
+            return sum + Number(body.promptCount || 0);
+          }, 0) || 0) + modelLogs.length,
         errors:
-          actionLogs.filter(
-            (l: Log) => (l.body as { result?: { success?: boolean } }).result?.success === false
-          ).length +
-          embeddingLogs.filter((l: Log) => (l.body as { status?: string }).status === 'failed')
-            .length,
+          actionLogs.filter((l: Log) => {
+            const body = l.body as ActionLogBody;
+            return body.result?.success === false;
+          }).length +
+          embeddingLogs.filter((l: Log) => {
+            const body = l.body as EmbeddingLogBody;
+            return body.status === 'failed';
+          }).length,
         evaluators: evaluatorLogs.length,
       };
 
@@ -518,90 +552,62 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       for (const e of runEvents) {
         const t = new Date(e.createdAt).getTime();
-        const body = e.body as {
-          status?: string;
-          source?: string;
-          messageId?: UUID;
-          error?: string;
-          duration?: number;
-        };
+        const body = e.body;
         const st = body.status;
         if (st === 'started') {
           events.push({
             type: 'RUN_STARTED',
             timestamp: t,
-            data: { source: body.source ?? undefined, messageId: body.messageId },
+            data: { source: body.source as string | undefined, messageId: body.messageId },
           });
         } else {
           events.push({
             type: 'RUN_ENDED',
             timestamp: t,
-            data: { status: st, error: body.error, durationMs: body.duration },
+            data: {
+              status: st,
+              error: body.error as string | undefined,
+              durationMs: body.duration as number | undefined,
+            },
           });
         }
       }
 
       for (const e of actionEventLogs) {
-        const body = e.body as {
-          actionId?: string;
-          actionName?: string;
-          content?: { actions?: string[] };
-          messageId?: UUID;
-          planStep?: string;
-        };
+        const body = e.body as ActionLogBody;
+        const content = body.content;
         events.push({
           type: 'ACTION_STARTED',
           timestamp: new Date(e.createdAt).getTime(),
           data: {
-            actionId: body.actionId,
-            actionName: body.actionName || body.content?.actions?.[0],
+            actionId: typeof body.actionId === 'string' ? body.actionId : undefined,
+            actionName: (body.actionName as string | undefined) || content?.actions?.[0],
             messageId: body.messageId,
-            planStep: body.planStep,
+            planStep: body.planStep as string | undefined,
           },
         });
       }
 
       for (const e of actionLogs) {
-        const body = e.body as {
-          actionId?: string;
-          action?: string;
-          result?: { success?: boolean };
-          promptCount?: number;
-          prompts?: Array<{ prompt?: string; modelType?: string }>;
-          params?: Record<string, unknown>;
-          response?: unknown;
-        };
+        const body = e.body as ActionLogBody;
         events.push({
           type: 'ACTION_COMPLETED',
           timestamp: new Date(e.createdAt).getTime(),
           data: {
-            actionId: body.actionId,
+            actionId: body.actionId as string | undefined,
             actionName: body.action,
             success: body.result?.success !== false,
             result: body.result as Record<string, unknown> | undefined,
             promptCount: body.promptCount,
             prompts: body.prompts,
-            params: body.params,
+            params: body.params as Record<string, unknown> | undefined,
             response: body.response,
           },
         });
       }
 
       for (const e of modelLogs) {
-        const body = e.body as {
-          modelType?: string;
-          provider?: string;
-          executionTime?: number;
-          actionContext?: string;
-          params?: Record<string, unknown>;
-          response?: unknown;
-          usage?: Record<string, unknown>;
-          prompts?: Array<{ prompt?: string; modelType?: string }>;
-          prompt?: string;
-          inputTokens?: number;
-          outputTokens?: number;
-          cost?: number;
-        };
+        const body = e.body as ModelLogBody;
         events.push({
           type: 'MODEL_USED',
           timestamp: new Date(e.createdAt).getTime(),
@@ -611,21 +617,21 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
               (typeof e.type === 'string' ? e.type.replace('useModel:', '') : undefined),
             provider: body.provider,
             executionTime: body.executionTime,
-            actionContext: body.actionContext,
-            params: body.params,
+            actionContext: body.actionContext as string | undefined,
+            params: body.params as Record<string, unknown> | undefined,
             response: body.response,
-            usage: body.usage,
-            prompts: body.prompts,
-            prompt: body.prompt,
-            inputTokens: body.inputTokens,
-            outputTokens: body.outputTokens,
-            cost: body.cost,
+            usage: body.usage as Record<string, unknown> | undefined,
+            prompts: body.prompts as Array<{ prompt?: string; modelType?: string }> | undefined,
+            prompt: body.prompt as string | undefined,
+            inputTokens: body.inputTokens as number | undefined,
+            outputTokens: body.outputTokens as number | undefined,
+            cost: body.cost as number | undefined,
           },
         });
       }
 
       for (const e of evaluatorLogs) {
-        const body = e.body as { evaluator?: string };
+        const body = e.body as EvaluatorLogBody;
         events.push({
           type: 'EVALUATOR_COMPLETED',
           timestamp: new Date(e.createdAt).getTime(),
@@ -637,7 +643,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       }
 
       for (const e of embeddingLogs) {
-        const body = e.body as { status?: string; memoryId?: string; duration?: number };
+        const body = e.body as EmbeddingLogBody;
         events.push({
           type: 'EMBEDDING_EVENT',
           timestamp: new Date(e.createdAt).getTime(),

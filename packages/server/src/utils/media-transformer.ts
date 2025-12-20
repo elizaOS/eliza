@@ -81,7 +81,9 @@ export function transformPathToApiUrl(filePath: string): string {
  * Convert local file paths to API URLs for attachments
  */
 export function attachmentsToApiUrls(attachments: AttachmentInput): AttachmentInput {
-  if (!attachments) return attachments;
+  if (!attachments) {
+    return attachments;
+  }
 
   if (Array.isArray(attachments)) {
     return attachments.map((attachment) => {

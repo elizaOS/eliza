@@ -7,7 +7,7 @@
  * CRITICAL: This is an ADDITIVE enhancement that does NOT break existing functionality.
  */
 
-import { AgentRuntime, ModelType } from '@elizaos/core';
+import { IAgentRuntime, ModelType, Memory } from '@elizaos/core';
 import { ExecutionResult } from './providers';
 import { Evaluation as EvaluationSchema, EnhancedEvaluationResult } from './schema';
 import { Evaluator } from './EvaluationEngine'; // Import existing types
@@ -21,7 +21,7 @@ export interface EnhancedEvaluator {
   evaluateEnhanced(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EnhancedEvaluationResult>;
 }
 
@@ -37,7 +37,7 @@ export interface DualEvaluator extends Evaluator, EnhancedEvaluator {}
 export class EnhancedEvaluationEngine {
   private enhancedEvaluators = new Map<string, EnhancedEvaluator>();
 
-  constructor(private runtime: AgentRuntime) {
+  constructor(private runtime: IAgentRuntime) {
     // Register enhanced versions of all evaluators
     this.register('string_contains', new EnhancedStringContainsEvaluator());
     this.register('regex_match', new EnhancedRegexMatchEvaluator());
@@ -271,7 +271,7 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
   async evaluateEnhanced(
     params: EvaluationSchema,
     _runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EnhancedEvaluationResult> {
     if (params.type !== 'trajectory_contains_action') throw new Error('Mismatched evaluator');
 
@@ -293,21 +293,33 @@ class EnhancedTrajectoryContainsActionEvaluator implements EnhancedEvaluator {
       });
 
       // Filter for action_result memories
-      const actionResults = actionMemories.filter((mem) => mem.content?.type === 'action_result');
+      const actionResults = actionMemories.filter(
+        (mem: Memory) => mem.content?.type === 'action_result'
+      );
 
       // Normalize function to compare action names robustly
       const normalize = (name: string | undefined): string =>
         (typeof name === 'string' ? name : '').toLowerCase().replace(/_/g, '');
       const target = normalize(actionName);
 
-      // Find matching action
-      const matchingAction = actionResults.find(
-        (mem) => normalize((mem.content as any)?.actionName ?? '') === target
-      );
+      // Type guard for action result content
+      const isActionResultContent = (
+        content: unknown
+      ): content is Record<string, unknown> & { actionName?: string } => {
+        return typeof content === 'object' && content !== null;
+      };
 
-      const allActionNames = actionResults.map(
-        (mem) => (mem.content as any)?.actionName || 'unknown'
-      );
+      // Find matching action
+      const matchingAction = actionResults.find((mem: Memory) => {
+        const contentObj = isActionResultContent(mem.content) ? mem.content : null;
+        const actionName = contentObj?.actionName;
+        return typeof actionName === 'string' && normalize(actionName) === target;
+      });
+
+      const allActionNames = actionResults.map((mem) => {
+        const contentObj = isActionResultContent(mem.content) ? mem.content : null;
+        return contentObj?.actionName || 'unknown';
+      });
 
       if (!matchingAction) {
         return {
@@ -365,7 +377,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
   async evaluateEnhanced(
     params: EvaluationSchema,
     runResult: ExecutionResult,
-    runtime: AgentRuntime
+    runtime: IAgentRuntime
   ): Promise<EnhancedEvaluationResult> {
     if (params.type !== 'llm_judge') throw new Error('Mismatched evaluator');
 
@@ -380,7 +392,8 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
       candidateModels.find((m) => runtime.getModel?.(m)) ?? ModelType.TEXT_LARGE;
 
     // Enhanced structured prompt for qualitative analysis with dynamic capabilities
-    const capabilities = (params as any).capabilities; // Extract capabilities from params
+    const paramsWithCapabilities = params as EvaluationSchema & { capabilities?: string[] };
+    const capabilities = paramsWithCapabilities.capabilities; // Extract capabilities from params
 
     // Validate capabilities if provided - use schema validation for proper error messages
     if (capabilities !== undefined) {
@@ -390,8 +403,9 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
           .array(z.string())
           .min(1, 'Capabilities array must not be empty');
         capabilitiesSchema.parse(capabilities);
-      } catch (error: any) {
-        throw new Error(`Invalid capabilities: ${error.message}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Invalid capabilities: ${errorMessage}`);
       }
     }
 
@@ -408,7 +422,7 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
           details: {
             error: 'no_model_available',
             attempted_models: candidateModels,
-            models_available: Array.from(runtime.models.keys()),
+            models_available: [],
             prompt,
             expected,
           },
@@ -420,28 +434,35 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
         schema: jsonSchema,
         temperature,
         output: 'object',
-      } as any;
+      } as Omit<ObjectGenerationParams, 'runtime'>;
 
-      const response = await Promise.race([
+      const response = (await Promise.race([
         runtime.useModel(modelType, objectParams),
         new Promise((_, reject) =>
           setTimeout(() => reject(new Error(`LLM judge timeout after ${timeoutMs}ms`)), timeoutMs)
         ),
-      ]);
+      ])) as unknown;
 
       // Parse and validate the structured response
       let parsedResponse;
       try {
-        parsedResponse = this.validateStructuredResponse(response, jsonSchema);
-      } catch (parseError: any) {
+        const responseValue =
+          typeof response === 'string'
+            ? response
+            : typeof response === 'object' && response !== null && !Array.isArray(response)
+              ? (response as Record<string, unknown>)
+              : String(response);
+        parsedResponse = this.validateStructuredResponse(responseValue, jsonSchema);
+      } catch (parseError: unknown) {
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
         return {
           evaluator_type: 'llm_judge',
           success: false,
-          summary: `LLM Judge FAILED: Invalid LLM response - ${parseError.message}`,
+          summary: `LLM Judge FAILED: Invalid LLM response - ${errorMessage}`,
           details: {
             error: 'llm_parse_error',
             error_type: 'llm_parse_error',
-            error_message: parseError.message,
+            error_message: errorMessage,
             model_used: modelType,
             prompt,
             expected,
@@ -471,8 +492,8 @@ class EnhancedLLMJudgeEvaluator implements EnhancedEvaluator {
           raw_llm_response: response,
         },
       };
-    } catch (error: any) {
-      const msg = error?.message || String(error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       const isTimeout = msg.toLowerCase().includes('timeout');
 
       return {
@@ -587,47 +608,87 @@ Provide your assessment as a structured JSON response with detailed reasoning fo
     };
   }
 
-  private validateStructuredResponse(response: any, _schema: any): any {
-    if (typeof response === 'string') {
-      response = JSON.parse(response);
+  private validateStructuredResponse(
+    response: string | Record<string, unknown>,
+    _schema: Record<string, unknown>
+  ): {
+    qualitative_summary: string;
+    capability_checklist: Array<{ capability: string; achieved: boolean; reasoning: string }>;
+    confidence?: number;
+    overall_success?: boolean;
+  } {
+    interface PartialStructuredResponse {
+      qualitative_summary?: string;
+      capability_checklist?: unknown;
+      confidence?: number;
+      overall_success?: boolean;
     }
 
+    interface CapabilityItem {
+      capability?: string;
+      achieved?: boolean;
+      reasoning?: string;
+    }
+
+    interface CompleteStructuredResponse {
+      qualitative_summary: string;
+      capability_checklist: Array<{ capability: string; achieved: boolean; reasoning: string }>;
+      confidence?: number;
+      overall_success?: boolean;
+    }
+
+    const responseObj = typeof response === 'string' ? JSON.parse(response) : response;
+    const typedResponse = responseObj as PartialStructuredResponse;
+
     // Validate required fields
-    if (!response.qualitative_summary || !response.capability_checklist) {
+    if (!typedResponse.qualitative_summary || !typedResponse.capability_checklist) {
       throw new Error('Invalid LLM response: missing required fields');
     }
 
     // Ensure capability_checklist is properly formatted
-    if (!Array.isArray(response.capability_checklist)) {
+    if (!Array.isArray(typedResponse.capability_checklist)) {
       throw new Error('Invalid LLM response: capability_checklist must be an array');
     }
 
+    const capabilityChecklist = typedResponse.capability_checklist as CapabilityItem[];
+
     // Add default capabilities if none provided
-    if (response.capability_checklist.length === 0) {
-      response.capability_checklist = [
-        {
-          capability: 'Task Completion',
-          achieved: response.overall_success || false,
-          reasoning: 'Default capability assessment based on overall success',
-        },
-      ];
+    if (capabilityChecklist.length === 0) {
+      capabilityChecklist.push({
+        capability: 'Task Completion',
+        achieved: typedResponse.overall_success || false,
+        reasoning: 'Default capability assessment based on overall success',
+      });
     }
 
     // Provide default values for missing fields
-    if (response.confidence === undefined) {
-      response.confidence = 0.8; // Default confidence
+    if (typedResponse.confidence === undefined) {
+      typedResponse.confidence = 0.8; // Default confidence
     }
 
-    if (response.overall_success === undefined) {
+    // Parse again to get complete response (duplicate code but needed for type narrowing)
+    const completeResponseObj = typeof response === 'string' ? JSON.parse(response) : response;
+    const completeTypedResponse = completeResponseObj as CompleteStructuredResponse;
+
+    if (completeTypedResponse.overall_success === undefined) {
       // Determine overall success based on capability checklist
-      const allAchieved = response.capability_checklist.every((cap: any) => cap.achieved === true);
-      response.overall_success = allAchieved;
+      const allAchieved = completeTypedResponse.capability_checklist.every(
+        (cap) => cap.achieved === true
+      );
+      completeTypedResponse.overall_success = allAchieved;
     }
 
-    return response;
+    return completeTypedResponse;
   }
 
-  private compareWithExpected(parsedResponse: any, expected: string): boolean {
+  private compareWithExpected(
+    parsedResponse: {
+      overall_success?: boolean;
+      confidence?: number;
+      [key: string]: unknown;
+    },
+    expected: string
+  ): boolean {
     const overallSuccess = parsedResponse.overall_success;
     const confidence = parsedResponse.confidence || 0;
     const expectedLower = expected.toLowerCase();
@@ -644,6 +705,6 @@ Provide your assessment as a structured JSON response with detailed reasoning fo
     }
 
     // Default: use overall_success from LLM
-    return overallSuccess;
+    return overallSuccess ?? false;
   }
 }

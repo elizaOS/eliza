@@ -106,7 +106,7 @@ export const styleSchema = z
 export const settingsSchema = z
   .record(
     z.string(),
-    z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.any())])
+    z.union([z.string(), z.boolean(), z.number(), z.object({}).loose(), z.array(z.unknown())])
   )
   .optional()
   .describe('Character-specific settings like avatar URL, preferences, and configuration');

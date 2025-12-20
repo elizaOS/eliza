@@ -1,5 +1,5 @@
 import { USER_NAME } from '@/constants';
-import { SOCKET_MESSAGE_TYPE } from '@elizaos/core';
+import { SOCKET_MESSAGE_TYPE, type Media } from '@elizaos/core';
 import { Evt } from 'evt';
 import { io, type Socket } from 'socket.io-client';
 import { randomUUID } from './utils';
@@ -7,6 +7,7 @@ import clientLogger from './logger';
 
 // Define types for the events
 export type MessageBroadcastData = {
+  id?: string;
   senderId: string;
   senderName: string;
   text: string;
@@ -15,17 +16,18 @@ export type MessageBroadcastData = {
   createdAt: number;
   source: string;
   name: string; // Required for ContentWithUser compatibility
-  attachments?: any[];
+  serverId?: string;
+  attachments?: Media[];
   thought?: string; // Agent's thought process
   actions?: string[]; // Actions taken by the agent
   prompt?: string; // The LLM prompt used to generate this message
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 export type MessageCompleteData = {
   channelId: string;
   roomId?: string; // Deprecated - for backward compatibility only
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 // Define type for control messages
@@ -34,7 +36,7 @@ export type ControlMessageData = {
   target?: string;
   channelId: string;
   roomId?: string; // Deprecated - for backward compatibility only
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 // Define type for message deletion events
@@ -42,21 +44,21 @@ export type MessageDeletedData = {
   messageId: string;
   channelId: string;
   roomId?: string; // Deprecated - for backward compatibility only
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 // Define type for channel cleared events
 export type ChannelClearedData = {
   channelId: string;
   roomId?: string; // Deprecated - for backward compatibility only
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 // Define type for channel deleted events
 export type ChannelDeletedData = {
   channelId: string;
   roomId?: string; // Deprecated - for backward compatibility only
-  [key: string]: any;
+  [key: string]: unknown;
 };
 
 // Define type for log stream messages
@@ -69,6 +71,26 @@ export type LogStreamData = {
   channelId?: string;
   roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: string | number | boolean | null | undefined;
+};
+
+// Define type for stream chunk events (real-time LLM streaming)
+// Uses camelCase for client-facing WebSocket events (JS convention)
+export type StreamChunkData = {
+  messageId: string;
+  chunk: string;
+  index: number;
+  agentId: string;
+  channelId: string;
+};
+
+// Define type for stream error events
+// Uses camelCase for client-facing WebSocket events (JS convention)
+export type StreamErrorData = {
+  messageId: string;
+  channelId: string;
+  agentId: string;
+  error: string;
+  partialText?: string;
 };
 
 // A simple class that provides EventEmitter-like interface using Evt internally
@@ -84,18 +106,20 @@ class EventAdapter {
     this.events.channelCleared = Evt.create<ChannelClearedData>();
     this.events.channelDeleted = Evt.create<ChannelDeletedData>();
     this.events.logStream = Evt.create<LogStreamData>();
+    this.events.messageStreamChunk = Evt.create<StreamChunkData>();
+    this.events.messageStreamError = Evt.create<StreamErrorData>();
   }
 
-  on(eventName: string, listener: (...args: any[]) => void) {
+  on<T = unknown>(eventName: string, listener: (data: T) => void) {
     if (!this.events[eventName]) {
       this.events[eventName] = Evt.create();
     }
 
-    this.events[eventName].attach(listener);
+    this.events[eventName].attach(listener as (data: unknown) => void);
     return this;
   }
 
-  off(eventName: string, listener: (...args: any[]) => void) {
+  off<T = unknown>(eventName: string, listener: (data: T) => void) {
     if (this.events[eventName]) {
       const handlers = this.events[eventName].getHandlers();
       for (const handler of handlers) {
@@ -107,14 +131,14 @@ class EventAdapter {
     return this;
   }
 
-  emit(eventName: string, ...args: any[]) {
+  emit(eventName: string, ...args: unknown[]) {
     if (this.events[eventName]) {
       this.events[eventName].post(args.length === 1 ? args[0] : args);
     }
     return this;
   }
 
-  once(eventName: string, listener: (...args: any[]) => void) {
+  once(eventName: string, listener: (...args: unknown[]) => void) {
     if (!this.events[eventName]) {
       this.events[eventName] = Evt.create();
     }
@@ -177,6 +201,14 @@ export class SocketIOManager extends EventAdapter {
 
   public get evtLogStream() {
     return this._getEvt('logStream') as Evt<LogStreamData>;
+  }
+
+  public get evtMessageStreamChunk() {
+    return this._getEvt('messageStreamChunk') as Evt<StreamChunkData>;
+  }
+
+  public get evtMessageStreamError() {
+    return this._getEvt('messageStreamError') as Evt<StreamErrorData>;
   }
 
   private constructor() {
@@ -272,7 +304,7 @@ export class SocketIOManager extends EventAdapter {
       this.emit('unauthorized', reason);
     });
 
-    this.socket.on('messageBroadcast', (raw: any) => {
+    this.socket.on('messageBroadcast', (raw: unknown) => {
       // Server sends objects to others and JSON strings back to the sender.
       const data: MessageBroadcastData =
         typeof raw === 'string'
@@ -284,7 +316,7 @@ export class SocketIOManager extends EventAdapter {
                   '[SocketIO] Failed to parse string messageBroadcast payload:',
                   raw
                 );
-                return {} as any;
+                return {} as MessageBroadcastData;
               }
             })()
           : (raw as MessageBroadcastData);
@@ -293,15 +325,15 @@ export class SocketIOManager extends EventAdapter {
 
       // Log the full data structure to understand formats
       const isObj = data && typeof data === 'object';
-      const keys = isObj ? Object.keys(data as any) : [];
+      const keys = isObj ? Object.keys(data) : [];
       clientLogger.debug('[SocketIO] Message broadcast data structure:', {
         keys,
-        senderId: (data as any).senderId,
-        senderNameType: typeof (data as any).senderName,
-        textType: typeof (data as any).text,
-        textLength: (data as any).text ? (data as any).text.length : 0,
-        hasThought: isObj && 'thought' in (data as any),
-        hasActions: isObj && 'actions' in (data as any),
+        senderId: data.senderId,
+        senderNameType: typeof data.senderName,
+        textType: typeof data.text,
+        textLength: data.text ? data.text.length : 0,
+        hasThought: isObj && 'thought' in data,
+        hasActions: isObj && 'actions' in data,
         additionalKeys: keys.filter(
           (k) =>
             ![
@@ -318,15 +350,15 @@ export class SocketIOManager extends EventAdapter {
       });
 
       // Check if this is a message for one of our active channels
-      const channelId = (data as any).channelId || (data as any).roomId; // Handle both new and old message format
+      const channelId = data.channelId || data.roomId; // Handle both new and old message format
       if (channelId && this.activeChannelIds.has(channelId)) {
         clientLogger.info(`[SocketIO] Handling message for active channel ${channelId}`);
         // Post the message to the event for UI updates
         this.emit('messageBroadcast', {
-          ...(data as any),
+          ...data,
           channelId: channelId, // Ensure channelId is always set
           roomId: channelId, // Keep roomId for backward compatibility
-          name: (data as any).senderName, // Required for ContentWithUser compatibility
+          name: data.senderName, // Required for ContentWithUser compatibility
         });
       } else {
         clientLogger.warn(
@@ -338,6 +370,22 @@ export class SocketIOManager extends EventAdapter {
 
     this.socket.on('messageComplete', (data) => {
       this.emit('messageComplete', data);
+    });
+
+    // Listen for stream chunks (real-time LLM streaming)
+    this.socket.on('messageStreamChunk', (data: StreamChunkData) => {
+      // Check if this is for one of our active channels
+      if (data.channelId && this.activeChannelIds.has(data.channelId)) {
+        this.emit('messageStreamChunk', data);
+      }
+    });
+
+    // Listen for stream errors
+    this.socket.on('messageStreamError', (data: StreamErrorData) => {
+      // Check if this is for one of our active channels
+      if (data.channelId && this.activeChannelIds.has(data.channelId)) {
+        this.emit('messageStreamError', data);
+      }
     });
 
     // Listen for control messages
@@ -565,7 +613,7 @@ export class SocketIOManager extends EventAdapter {
     channelId: string,
     messageServerId: string,
     source: string,
-    attachments?: any[],
+    attachments?: Media[],
     messageId?: string,
     metadata?: Record<string, any>
   ): Promise<void> {
