@@ -187,7 +187,10 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>) | undefined;
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
-  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
+  registerEvent<P extends EventPayload = EventPayload>(
+    event: string,
+    handler: (params: P) => Promise<void>
+  ): void;
 
   getEvent<T extends keyof EventPayloadMap>(event: T): EventHandler<T>[] | undefined;
   getEvent(event: string): ((params: EventPayload) => Promise<void>)[] | undefined;

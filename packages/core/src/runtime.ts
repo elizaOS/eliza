@@ -2466,11 +2466,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
-  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
-  registerEvent(
+  registerEvent<P extends EventPayload = EventPayload>(
     event: string,
-    handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)
-  ): void {
+    handler: (params: P) => Promise<void>
+  ): void;
+  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
