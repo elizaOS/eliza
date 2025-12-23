@@ -33,6 +33,7 @@ import {
 } from '../index';
 import { ResponseStreamExtractor } from '../utils/streaming';
 import { runWithStreamingContext } from '../streaming-context';
+import { CircuitBreaker } from '../utils/circuit-breaker';
 
 /**
  * Image description response from the model
@@ -96,6 +97,15 @@ interface StrategyResult {
 const latestResponseIds = new Map<string, Map<string, string>>();
 
 /**
+ * Circuit breaker for LLM response generation
+ */
+const responseGenerationCircuitBreaker = new CircuitBreaker({
+  failureThreshold: 5,
+  resetTimeout: 60000,
+  halfOpenAttempts: 3,
+});
+
+/**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
  * - Message validation and memory creation
@@ -151,7 +161,7 @@ export class DefaultMessageService implements IMessageService {
         latestResponseIds.set(runtime.agentId, new Map<string, string>());
       }
       const agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) throw new Error('Agent responses map not found');
+      if (!agentResponses) {throw new Error('Agent responses map not found');}
 
       const previousResponseId = agentResponses.get(message.roomId);
       if (previousResponseId) {
@@ -206,7 +216,7 @@ export class DefaultMessageService implements IMessageService {
         const extractor = new ResponseStreamExtractor();
         streamingContext = {
           onStreamChunk: async (chunk: string, msgId?: UUID) => {
-            if (extractor.done) return;
+            if (extractor.done) {return;}
             const textToStream = extractor.push(chunk);
             if (textToStream) {
               await opts.onStreamChunk!(textToStream, msgId);
@@ -245,7 +255,7 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<MessageProcessingResult> {
     try {
       const agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) throw new Error('Agent responses map not found');
+      if (!agentResponses) {throw new Error('Agent responses map not found');}
 
       // Skip messages from self
       if (message.entityId === runtime.agentId) {
@@ -343,15 +353,10 @@ export class DefaultMessageService implements IMessageService {
       const mentionContext = message.content.mentionContext;
       const room = await runtime.getRoom(message.roomId);
 
-      // Process attachments before deciding to respond
+      // Start attachment processing asynchronously (don't block shouldRespond check)
+      let attachmentPromise: Promise<Media[]> | null = null;
       if (message.content.attachments && message.content.attachments.length > 0) {
-        message.content.attachments = await this.processAttachments(
-          runtime,
-          message.content.attachments
-        );
-        if (message.id) {
-          await runtime.updateMemory({ id: message.id, content: message.content });
-        }
+        attachmentPromise = this.processAttachments(runtime, message.content.attachments);
       }
 
       // Determine if we should respond
@@ -418,6 +423,14 @@ export class DefaultMessageService implements IMessageService {
       let mode: StrategyMode = 'none';
 
       if (shouldRespondToMessage) {
+        // Wait for attachment processing only if we're responding
+        if (attachmentPromise) {
+          message.content.attachments = await attachmentPromise;
+          if (message.id) {
+            await runtime.updateMemory({ id: message.id, content: message.content });
+          }
+        }
+
         const result = opts.useMultiStep
           ? await this.runMultiStepCore(runtime, message, state, callback, opts, responseId)
           : await this.runSingleShotCore(runtime, message, state, opts, responseId);
@@ -597,7 +610,7 @@ export class DefaultMessageService implements IMessageService {
           if (roomData.worldId) {
             const worldData = await runtime.getWorld(roomData.worldId);
             if (worldData) {
-              roomName = worldData.name + '-' + roomName;
+              roomName = `${worldData.name}-${roomName}`;
             }
           }
         }
@@ -623,7 +636,7 @@ export class DefaultMessageService implements IMessageService {
 
       const logData = {
         at: date.toString(),
-        timestamp: parseInt('' + date.getTime() / 1000),
+        timestamp: parseInt(`${date.getTime() / 1000}`),
         messageId: message.id,
         userEntityId: message.entityId,
         input: message.content.text,
@@ -700,7 +713,7 @@ export class DefaultMessageService implements IMessageService {
     }
 
     function normalizeEnvList(value: unknown): string[] {
-      if (!value || typeof value !== 'string') return [];
+      if (!value || typeof value !== 'string') {return [];}
       const cleaned = value.trim().replace(/^\[|\]$/g, '');
       return cleaned
         .split(',')
@@ -763,12 +776,27 @@ export class DefaultMessageService implements IMessageService {
       return { shouldRespond: true, skipEvaluation: true, reason: `platform ${mentionType}` };
     }
 
-    // 4. All other cases: let the LLM decide
+    // 4. Additional heuristics to avoid LLM calls
+    const messageText = message.content.text?.toLowerCase() || '';
+    const agentName = runtime.character.name.toLowerCase();
+
+    // Agent name mentioned in text
+    if (messageText.includes(agentName)) {
+      return { shouldRespond: true, skipEvaluation: true, reason: 'agent name mentioned' };
+    }
+
+    // Question heuristic (ends with ? and is substantial)
+    if (messageText.match(/\?$/) && messageText.split(/\s+/).length > 3) {
+      return { shouldRespond: true, skipEvaluation: true, reason: 'question detected' };
+    }
+
+    // 5. All other cases: let the LLM decide
     return { shouldRespond: false, skipEvaluation: false, reason: 'needs LLM evaluation' };
   }
 
   /**
    * Processes attachments by generating descriptions for supported media types.
+   * All attachments are processed in parallel for better performance.
    */
   async processAttachments(runtime: IAgentRuntime, attachments: Media[]): Promise<Media[]> {
     if (!attachments || attachments.length === 0) {
@@ -776,54 +804,94 @@ export class DefaultMessageService implements IMessageService {
     }
     runtime.logger.debug(
       { src: 'service:message', count: attachments.length },
-      'Processing attachments'
+      'Processing attachments in parallel'
     );
 
-    const processedAttachments: Media[] = [];
+    // Process all attachments in parallel
+    const processedAttachments = await Promise.all(
+      attachments.map(async (attachment) => {
+        const processedAttachment: Media = { ...attachment };
 
-    for (const attachment of attachments) {
-      const processedAttachment: Media = { ...attachment };
+        const isRemote = /^(http|https):\/\//.test(attachment.url);
+        const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
 
-      const isRemote = /^(http|https):\/\//.test(attachment.url);
-      const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
+        // Only process images that don't already have descriptions
+        if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
+          runtime.logger.debug(
+            { src: 'service:message', imageUrl: attachment.url },
+            'Generating image description'
+          );
 
-      // Only process images that don't already have descriptions
-      if (attachment.contentType === ContentType.IMAGE && !attachment.description) {
-        runtime.logger.debug(
-          { src: 'service:message', imageUrl: attachment.url },
-          'Generating image description'
-        );
+          let imageUrl = url;
 
-        let imageUrl = url;
+          if (!isRemote) {
+            // Convert local/internal media to base64
+            const res = await fetch(url);
+            if (!res.ok) {throw new Error(`Failed to fetch image: ${res.statusText}`);}
 
-        if (!isRemote) {
-          // Convert local/internal media to base64
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+            const arrayBuffer = await res.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const contentType = res.headers.get('content-type') || 'application/octet-stream';
+            imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+          }
 
-          const arrayBuffer = await res.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const contentType = res.headers.get('content-type') || 'application/octet-stream';
-          imageUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
-        }
+          const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+            prompt: imageDescriptionTemplate,
+            imageUrl,
+          });
 
-        const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-          prompt: imageDescriptionTemplate,
-          imageUrl,
-        });
+          if (typeof response === 'string') {
+            const parsedXml = parseKeyValueXml(response);
 
-        if (typeof response === 'string') {
-          const parsedXml = parseKeyValueXml(response);
+            if (parsedXml && (parsedXml.description || parsedXml.text)) {
+              processedAttachment.description =
+                (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
+              processedAttachment.title =
+                (typeof parsedXml.title === 'string' ? parsedXml.title : 'Image') || 'Image';
+              processedAttachment.text =
+                (typeof parsedXml.text === 'string' ? parsedXml.text : '') ||
+                (typeof parsedXml.description === 'string' ? parsedXml.description : '') ||
+                '';
 
-          if (parsedXml && (parsedXml.description || parsedXml.text)) {
-            processedAttachment.description =
-              (typeof parsedXml.description === 'string' ? parsedXml.description : '') || '';
-            processedAttachment.title =
-              (typeof parsedXml.title === 'string' ? parsedXml.title : 'Image') || 'Image';
-            processedAttachment.text =
-              (typeof parsedXml.text === 'string' ? parsedXml.text : '') ||
-              (typeof parsedXml.description === 'string' ? parsedXml.description : '') ||
-              '';
+              runtime.logger.debug(
+                {
+                  src: 'service:message',
+                  descriptionPreview: processedAttachment.description?.substring(0, 100),
+                },
+                'Generated image description'
+              );
+            } else {
+              // Fallback: Try simple regex parsing
+              const responseStr = response as string;
+              const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
+              const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
+              const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
+
+              if (titleMatch || descMatch || textMatch) {
+                processedAttachment.title = titleMatch?.[1] || 'Image';
+                processedAttachment.description = descMatch?.[1] || '';
+                processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
+
+                runtime.logger.debug(
+                  {
+                    src: 'service:message',
+                    descriptionPreview: processedAttachment.description?.substring(0, 100),
+                  },
+                  'Used fallback XML parsing for description'
+                );
+              } else {
+                runtime.logger.warn(
+                  { src: 'service:message' },
+                  'Failed to parse XML response for image description'
+                );
+              }
+            }
+          } else if (response && typeof response === 'object' && 'description' in response) {
+            // Handle object responses for backwards compatibility
+            const objResponse = response as ImageDescriptionResponse;
+            processedAttachment.description = objResponse.description;
+            processedAttachment.title = objResponse.title || 'Image';
+            processedAttachment.text = objResponse.description;
 
             runtime.logger.debug(
               {
@@ -833,82 +901,43 @@ export class DefaultMessageService implements IMessageService {
               'Generated image description'
             );
           } else {
-            // Fallback: Try simple regex parsing
-            const responseStr = response as string;
-            const titleMatch = responseStr.match(/<title>([^<]+)<\/title>/);
-            const descMatch = responseStr.match(/<description>([^<]+)<\/description>/);
-            const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
-
-            if (titleMatch || descMatch || textMatch) {
-              processedAttachment.title = titleMatch?.[1] || 'Image';
-              processedAttachment.description = descMatch?.[1] || '';
-              processedAttachment.text = textMatch?.[1] || descMatch?.[1] || '';
-
-              runtime.logger.debug(
-                {
-                  src: 'service:message',
-                  descriptionPreview: processedAttachment.description?.substring(0, 100),
-                },
-                'Used fallback XML parsing for description'
-              );
-            } else {
-              runtime.logger.warn(
-                { src: 'service:message' },
-                'Failed to parse XML response for image description'
-              );
-            }
+            runtime.logger.warn(
+              { src: 'service:message' },
+              'Unexpected response format for image description'
+            );
           }
-        } else if (response && typeof response === 'object' && 'description' in response) {
-          // Handle object responses for backwards compatibility
-          const objResponse = response as ImageDescriptionResponse;
-          processedAttachment.description = objResponse.description;
-          processedAttachment.title = objResponse.title || 'Image';
-          processedAttachment.text = objResponse.description;
+        } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
+          const res = await fetch(url);
+          if (!res.ok) {throw new Error(`Failed to fetch document: ${res.statusText}`);}
 
-          runtime.logger.debug(
-            {
-              src: 'service:message',
-              descriptionPreview: processedAttachment.description?.substring(0, 100),
-            },
-            'Generated image description'
-          );
-        } else {
-          runtime.logger.warn(
-            { src: 'service:message' },
-            'Unexpected response format for image description'
-          );
+          const contentType = res.headers.get('content-type') || '';
+          const isPlainText = contentType.startsWith('text/plain');
+
+          if (isPlainText) {
+            runtime.logger.debug(
+              { src: 'service:message', documentUrl: attachment.url },
+              'Processing plain text document'
+            );
+
+            const textContent = await res.text();
+            processedAttachment.text = textContent;
+            processedAttachment.title = processedAttachment.title || 'Text File';
+
+            runtime.logger.debug(
+              { src: 'service:message', textPreview: processedAttachment.text?.substring(0, 100) },
+              'Extracted text content'
+            );
+          } else {
+            runtime.logger.warn(
+              { src: 'service:message', contentType },
+              'Skipping non-plain-text document'
+            );
+          }
         }
-      } else if (attachment.contentType === ContentType.DOCUMENT && !attachment.text) {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${res.statusText}`);
 
-        const contentType = res.headers.get('content-type') || '';
-        const isPlainText = contentType.startsWith('text/plain');
-
-        if (isPlainText) {
-          runtime.logger.debug(
-            { src: 'service:message', documentUrl: attachment.url },
-            'Processing plain text document'
-          );
-
-          const textContent = await res.text();
-          processedAttachment.text = textContent;
-          processedAttachment.title = processedAttachment.title || 'Text File';
-
-          runtime.logger.debug(
-            { src: 'service:message', textPreview: processedAttachment.text?.substring(0, 100) },
-            'Extracted text content'
-          );
-        } else {
-          runtime.logger.warn(
-            { src: 'service:message', contentType },
-            'Skipping non-plain-text document'
-          );
-        }
-      }
-
-      processedAttachments.push(processedAttachment);
-    }
+        return processedAttachment;
+      })
+    );
 
     return processedAttachments;
   }
@@ -936,13 +965,33 @@ export class DefaultMessageService implements IMessageService {
 
     let responseContent: Content | null = null;
 
-    // Retry if missing required fields
+    // Retry if missing required fields with exponential backoff
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
-      const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt,
-      });
+      // Exponential backoff
+      if (retries > 0) {
+        const backoffMs = Math.min(500 * Math.pow(2, retries - 1), 5000);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+
+      let response: string;
+      try {
+        response = await responseGenerationCircuitBreaker.execute(
+          () => runtime.useModel(ModelType.TEXT_LARGE, { prompt }),
+          () => {
+            // Fallback: return empty response that will trigger retry or fail gracefully
+            return '';
+          }
+        );
+      } catch (error) {
+        runtime.logger.error(
+          { src: 'service:message', error, retries },
+          'Circuit breaker rejected request'
+        );
+        retries++;
+        continue;
+      }
 
       runtime.logger.info(
         {
@@ -959,17 +1008,17 @@ export class DefaultMessageService implements IMessageService {
           src: 'service:message',
           parsedXml: parsedXml
             ? {
-                hasThought: !!parsedXml.thought,
-                thoughtPreview:
+              hasThought: !!parsedXml.thought,
+              thoughtPreview:
                   typeof parsedXml.thought === 'string'
                     ? parsedXml.thought.substring(0, 100)
                     : null,
-                hasActions: !!parsedXml.actions,
-                actions: parsedXml.actions,
-                hasText: !!parsedXml.text,
-                textPreview:
+              hasActions: !!parsedXml.actions,
+              actions: parsedXml.actions,
+              hasText: !!parsedXml.text,
+              textPreview:
                   typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
-              }
+            }
             : null,
         },
         'Parsed XML content'
@@ -1154,7 +1203,7 @@ export class DefaultMessageService implements IMessageService {
       }
 
       for (const providerName of providersArray) {
-        if (typeof providerName !== 'string') continue;
+        if (typeof providerName !== 'string') {continue;}
         const provider = runtime.providers.find((p) => p.name === providerName);
         if (!provider) {
           runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
@@ -1175,7 +1224,7 @@ export class DefaultMessageService implements IMessageService {
           traceActionResult.push({
             data: { actionName: providerName },
             success: false,
-            error: `Provider returned no result`,
+            error: 'Provider returned no result',
           });
           continue;
         }
@@ -1298,15 +1347,15 @@ export class DefaultMessageService implements IMessageService {
 
     const responseMessages: Memory[] = responseContent
       ? [
-          {
-            id: responseId,
-            entityId: runtime.agentId,
-            agentId: runtime.agentId,
-            content: responseContent,
-            roomId: message.roomId,
-            createdAt: Date.now(),
-          },
-        ]
+        {
+          id: responseId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          content: responseContent,
+          roomId: message.roomId,
+          createdAt: Date.now(),
+        },
+      ]
       : [];
 
     return {
