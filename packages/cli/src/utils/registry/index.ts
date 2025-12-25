@@ -660,9 +660,8 @@ export async function getPackageDetails(packageName: string): Promise<{
     const packageUrl = `${REGISTRY_URL.replace('index.json', '')}packages/${normalizedName}.json`;
 
     // Use agent only if https_proxy is defined
-    const requestOptions: RequestInit = {};
+    const requestOptions: RequestInit & { agent?: HttpsProxyAgent<string> } = {};
     if (process.env.https_proxy) {
-      // @ts-ignore - HttpsProxyAgent is not in the RequestInit type
       requestOptions.agent = new HttpsProxyAgent(process.env.https_proxy);
     }
 

@@ -8,8 +8,7 @@ import dotenv from 'dotenv';
 import { type UUID, parseBooleanFromText, getDatabaseDir } from '@elizaos/core';
 import { resolveEnvFile } from '../api/system/environment.js';
 
-// Re-export types from types/server.ts for convenience
-export type { ServerMiddleware, ServerConfig } from '../types/server.js';
+// ServerMiddleware and ServerConfig types should be imported from '../types/server.js'
 
 /**
  * Default server ID for single-server deployments

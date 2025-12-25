@@ -114,11 +114,3 @@ export const update = new Command()
     }
   });
 
-// Re-export for backward compatibility
-export * from './actions/cli-update';
-export * from './actions/dependency-update';
-export * from './types';
-export * from './utils/version-utils';
-export * from './utils/package-utils';
-export * from './utils/environment-utils';
-export * from './utils/directory-utils';

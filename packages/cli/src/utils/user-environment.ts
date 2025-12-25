@@ -93,8 +93,7 @@ export class UserEnvironment {
     try {
       // Try to import the generated version file
       // This is generated at build time and avoids runtime package.json resolution
-      // @ts-ignore - This file is generated at build time
-      const { CLI_VERSION, CLI_NAME } = await import('../version.js').catch(() => {
+      const versionModule = await import('../version.js').catch(() => {
         // Fallback if version file doesn't exist (e.g., during development)
         logger.debug(
           { src: 'cli', util: 'user-environment' },
@@ -104,7 +103,8 @@ export class UserEnvironment {
           CLI_VERSION: '0.0.0-dev',
           CLI_NAME: '@elizaos/cli',
         };
-      });
+      }) as { CLI_VERSION: string; CLI_NAME: string };
+      const { CLI_VERSION, CLI_NAME } = versionModule;
 
       return {
         version: CLI_VERSION,

@@ -280,31 +280,5 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
     }
   );
 
-  // ============================================================================
-  // DEPRECATED ROUTES - For backward compatibility only
-  // ============================================================================
-
-  /**
-   * @deprecated Use GET /message-servers instead
-   * Kept for backward compatibility. Will be removed in future versions.
-   */
-  router.get('/central-servers', async (_req: express.Request, res: express.Response) => {
-    logger.warn(
-      '[DEPRECATED] GET /central-servers is deprecated. Use GET /message-servers instead.'
-    );
-
-    try {
-      const messageServers = await serverInstance.getServers();
-      // Return with old key name for backward compatibility
-      res.json({ success: true, data: { servers: messageServers } });
-    } catch (error) {
-      logger.error(
-        '[Messages Router /central-servers] Error fetching servers:',
-        error instanceof Error ? error.message : String(error)
-      );
-      res.status(500).json({ success: false, error: 'Failed to fetch servers' });
-    }
-  });
-
   return router;
 }

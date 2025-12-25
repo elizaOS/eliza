@@ -1,5 +1,4 @@
-// Re-export upload configurations from the main upload module
-// This allows us to import upload configs from the shared directory
+// Upload configurations - internal re-export for package structure
 export {
   agentAudioUpload,
   agentMediaUpload,

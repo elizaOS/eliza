@@ -1,23 +1,9 @@
 {
   "$schema": "https://turborepo.org/schema.json",
+  "extends": ["//"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/client#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/cli#build": {
-      "dependsOn": ["^build"],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"]
-    },
-    "@elizaos/server#build": {
-      "dependsOn": ["@elizaos/client#build", "^build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
@@ -34,12 +20,12 @@
       "outputs": []
     },
     "start": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
       "persistent": true
     },
     "dev": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["^build"],
       "persistent": true
     },
     "test": {
@@ -48,11 +34,11 @@
       "inputs": ["src/**/*.ts", "src/**/*.js", "__tests__/**/*", "*.test.*"]
     },
     "migrate": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["^build"],
       "cache": false
     },
     "migrate:generate": {
-      "dependsOn": ["@elizaos/core#build"],
+      "dependsOn": ["^build"],
       "cache": false
     },
     "clean": {

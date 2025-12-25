@@ -182,35 +182,6 @@ export async function createScenarioAgent(
 }
 
 /**
- * Creates a configured AgentServer and starts an agent (backward compatible wrapper)
- * @deprecated Consider using createScenarioServer() + createScenarioAgent() for better flexibility
- */
-export async function createScenarioServerAndAgent(
-  existingServer: AgentServer | null = null,
-  desiredPort: number = 3000,
-  pluginNames: string[] = [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-openai',
-    '@elizaos/plugin-bootstrap',
-  ],
-  agentName: string = 'scenario-agent'
-): Promise<{
-  server: AgentServer;
-  runtime: IAgentRuntime;
-  agentId: UUID;
-  port: number;
-  createdServer: boolean;
-}> {
-  // Step 1: Create/configure the server
-  const { server, port, createdServer } = await createScenarioServer(existingServer, desiredPort);
-
-  // Step 2: Create the agent on the server
-  const { runtime, agentId } = await createScenarioAgent(server, agentName, pluginNames);
-
-  return { server, runtime, agentId, port, createdServer };
-}
-
-/**
  * Properly shutdown an AgentServer instance
  */
 export async function shutdownScenarioServer(server: AgentServer, port: number): Promise<void> {

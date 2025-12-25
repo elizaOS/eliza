@@ -511,5 +511,4 @@ export async function runIntegrationTest(
   }
 }
 
-// Re-export helper functions from test-models
-export { createSpecializedModelProvider, scenarios };
+// Helper functions should be imported directly from './testModels'

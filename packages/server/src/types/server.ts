@@ -117,5 +117,4 @@ export interface MessageWithAttachments {
   [key: string]: unknown;
 }
 
-// Re-export session types
-export * from './sessions';
+// Session types should be imported directly from './sessions'

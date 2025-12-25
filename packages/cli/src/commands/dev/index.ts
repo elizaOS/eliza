@@ -32,9 +32,3 @@ export const dev = new Command()
     }
   });
 
-// Re-export for backward compatibility
-export * from './actions/dev-server';
-export * from './types';
-export * from './utils/build-utils';
-export * from './utils/file-watcher';
-export * from './utils/server-manager';

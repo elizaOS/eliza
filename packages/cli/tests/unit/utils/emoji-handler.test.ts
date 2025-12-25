@@ -105,8 +105,7 @@ describe('emoji-handler', () => {
     });
 
     it('should handle unknown emoji key', () => {
-      // @ts-ignore - testing invalid key
-      expect(getEmoji('invalid-key')).toBe('');
+      expect(getEmoji('invalid-key' as Parameters<typeof getEmoji>[0])).toBe('');
       // expect(logger.warn).toHaveBeenCalledWith('Unknown emoji key: invalid-key'); // TODO: Fix for bun test
     });
   });

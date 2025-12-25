@@ -114,12 +114,3 @@ export const TEST_TIMEOUTS = {
         ? 12 * 1000
         : 10 * 1000, // Platform-specific locally
 } as const;
-
-/**
- * Legacy timeout values for gradual migration
- * @deprecated Use TEST_TIMEOUTS instead
- */
-export const LEGACY_TIMEOUTS = {
-  DEFAULT_EXECSYNC: TEST_TIMEOUTS.STANDARD_COMMAND,
-  PROJECT_SETUP: TEST_TIMEOUTS.PROJECT_CREATION,
-} as const;

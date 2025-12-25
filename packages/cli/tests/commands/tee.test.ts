@@ -35,8 +35,7 @@ describe('TEE Command', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
     });
 
     it('should have enablePositionalOptions set', () => {
-      // @ts-ignore - accessing private property for testing
-      expect(teeCommand._enablePositionalOptions).toBe(true);
+      expect((teeCommand as unknown as { _enablePositionalOptions: boolean })._enablePositionalOptions).toBe(true);
     });
   });
 
@@ -51,8 +50,7 @@ describe('TEE Command', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
     });
 
     it('should allow unknown options', () => {
-      // @ts-ignore - accessing private property for testing
-      expect(phalaCliCommand._allowUnknownOption).toBe(true);
+      expect((phalaCliCommand as unknown as { _allowUnknownOption: boolean })._allowUnknownOption).toBe(true);
     });
 
     it('should have help disabled', () => {
@@ -62,18 +60,15 @@ describe('TEE Command', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
     });
 
     it('should allow excess arguments', () => {
-      // @ts-ignore - accessing private property for testing
-      expect(phalaCliCommand._allowExcessArguments).toBe(true);
+      expect((phalaCliCommand as unknown as { _allowExcessArguments: boolean })._allowExcessArguments).toBe(true);
     });
 
     it('should have passthrough options enabled', () => {
-      // @ts-ignore - accessing private property for testing
-      expect(phalaCliCommand._passThroughOptions).toBe(true);
+      expect((phalaCliCommand as unknown as { _passThroughOptions: boolean })._passThroughOptions).toBe(true);
     });
 
     it('should have variadic arguments configured', () => {
-      // @ts-ignore - accessing private property for testing
-      const args = phalaCliCommand._args || [];
+      const args = (phalaCliCommand as unknown as { _args: Array<{ variadic: boolean; name: () => string }> })._args || [];
       expect(args.length).toBeGreaterThan(0);
       expect(args[0].variadic).toBe(true);
       // The name property is actually a function that returns the name
@@ -83,10 +78,8 @@ describe('TEE Command', { timeout: TEST_TIMEOUTS.SUITE_TIMEOUT }, () => {
 
     it.skipIf(skipPhalaTests)('should have action handler configured', () => {
       // Verify the command has an action handler
-      // @ts-ignore - accessing private property for testing
-      expect(phalaCliCommand._actionHandler).toBeDefined();
-      // @ts-ignore - accessing private property for testing
-      expect(typeof phalaCliCommand._actionHandler).toBe('function');
+      expect((phalaCliCommand as unknown as { _actionHandler: unknown })._actionHandler).toBeDefined();
+      expect(typeof (phalaCliCommand as unknown as { _actionHandler: unknown })._actionHandler).toBe('function');
     });
 
     it('should pass arguments to phala CLI', () => {

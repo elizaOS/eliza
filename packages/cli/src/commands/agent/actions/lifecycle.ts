@@ -16,7 +16,6 @@ export async function startAgent(options: OptionValues): Promise<void> {
   const config = createApiClientConfig(options);
   const agentsService = new AgentsService(config);
   try {
-    // Consolidated error handling for missing/invalid inputs
     // First check if we have enough info to start an agent
     const hasValidInput =
       options.path ||

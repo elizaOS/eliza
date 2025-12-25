@@ -18,7 +18,8 @@ export * from './schemas/character';
 export * from './utils/environment';
 export * from './utils/buffer';
 // Export Node-specific utilities
-export * from './utils/node';
+export * from './utils/paths';
+export * from './utils/server-health';
 
 // Export all core modules
 export * from './actions';

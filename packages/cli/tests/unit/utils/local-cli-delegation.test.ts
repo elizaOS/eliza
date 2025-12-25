@@ -96,7 +96,6 @@ describe('Local CLI Delegation', () => {
     delete process.env.NODE_ENV;
     delete process.env.ELIZA_TEST_MODE;
     delete process.env.BUN_TEST;
-    delete process.env.VITEST;
     delete process.env.JEST_WORKER_ID;
     delete process.env.npm_lifecycle_event;
     delete process.env.ELIZA_SKIP_LOCAL_CLI_DELEGATION;
@@ -149,19 +148,6 @@ describe('Local CLI Delegation', () => {
 
     it('should skip delegation when BUN_TEST is true', async () => {
       process.env.BUN_TEST = 'true';
-      mockExistsSync.mockReturnValue(true);
-
-      const result = await tryDelegateToLocalCli();
-
-      expect(result).toBe(false);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        'Running in test or CI environment, skipping local CLI delegation'
-      );
-      expect(spawnSpy).not.toHaveBeenCalled();
-    });
-
-    it('should skip delegation when VITEST is true', async () => {
-      process.env.VITEST = 'true';
       mockExistsSync.mockReturnValue(true);
 
       const result = await tryDelegateToLocalCli();

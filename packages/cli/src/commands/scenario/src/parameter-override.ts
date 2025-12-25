@@ -10,15 +10,6 @@
 import { parseParameterPath } from './path-parser';
 import { deepClone } from './deep-clone';
 
-// Re-export functions from modules for backward compatibility
-export {
-  parseParameterPath,
-  isValidPathSyntax,
-  normalizeParameterPath,
-  ParameterPath,
-} from './path-parser';
-export { deepClone, hasCircularReference, deepCloneWithLimit } from './deep-clone';
-
 /**
  * Represents a single parameter override.
  */

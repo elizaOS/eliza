@@ -1,5 +1,5 @@
 /**
- * Consolidated middleware for the ElizaOS server
+ * Middleware for the ElizaOS server
  * All middleware is organized into logical modules for better maintainability
  */
 

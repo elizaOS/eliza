@@ -3,12 +3,11 @@ import {
   applyParameterOverrides,
   applyParameterOverride,
   applyMatrixOverrides,
-  parseParameterPath,
   validateParameterPath,
-  ParameterOverride,
-  ParameterPath,
-  ValidationResult,
+  type ParameterOverride,
+  type ValidationResult,
 } from '../parameter-override';
+import { parseParameterPath, type ParameterPath } from '../path-parser';
 
 describe('Parameter Override System', () => {
   let baseScenario: any;

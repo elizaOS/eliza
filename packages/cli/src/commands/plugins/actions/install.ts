@@ -12,7 +12,7 @@ import colors from 'yoctocolors';
 // Character updater imports removed - reverting to project-scoped plugins
 
 /**
- * Show consolidated success message with next steps
+ * Show success message with next steps
  */
 function showInstallationSuccess(pluginName: string): void {
   const message =
@@ -87,7 +87,6 @@ export async function installPluginFromGitHub(
       console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
-    // Show consolidated next steps
     showInstallationSuccess(packageName);
 
     process.exit(0);
@@ -160,7 +159,6 @@ export async function installPluginFromRegistry(
       console.log(`\n⏭️  Skipping environment variable prompts due to --skip-env-prompt flag`);
     }
 
-    // Show consolidated next steps
     showInstallationSuccess(actualPackageName);
 
     process.exit(0);

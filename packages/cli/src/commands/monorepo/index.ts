@@ -38,7 +38,3 @@ export const monorepo = new Command()
     }
   });
 
-// Re-export for backward compatibility
-export * from './actions/clone';
-export * from './types';
-export * from './utils/setup-instructions';

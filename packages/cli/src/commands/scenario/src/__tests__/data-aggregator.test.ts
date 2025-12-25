@@ -1,6 +1,7 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test';
 import { type IAgentRuntime } from '@elizaos/core';
-import { RunDataAggregator, type ScenarioRunResult } from '../data-aggregator';
+import { RunDataAggregator } from '../data-aggregator';
+import { type ScenarioRunResult } from '../schema';
 import { TrajectoryReconstructor } from '../TrajectoryReconstructor';
 import { EvaluationEngine } from '../EvaluationEngine';
 

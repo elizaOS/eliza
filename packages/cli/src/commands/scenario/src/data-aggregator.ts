@@ -213,5 +213,3 @@ export class RunDataAggregator {
   }
 }
 
-// Re-export types for convenience
-export type { ScenarioRunResult, ScenarioRunMetrics, TrajectoryStep };

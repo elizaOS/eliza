@@ -152,14 +152,13 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
   };
 };
 
-interface UnifiedChatViewProps {
+interface ChatViewProps {
   chatType: ChannelType.DM | ChannelType.GROUP;
   contextId: UUID; // agentId for DM, channelId for GROUP
   messageServerId?: UUID; // Required for GROUP, optional for DM
   initialDmChannelId?: UUID; // New prop for specific DM channel from URL
 }
 
-// Consolidated chat state type
 interface ChatUIState {
   showGroupEditPanel: boolean;
   showProfileOverlay: boolean;
@@ -309,7 +308,7 @@ export default function Chat({
   contextId,
   messageServerId,
   initialDmChannelId,
-}: UnifiedChatViewProps) {
+}: ChatViewProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -327,7 +326,6 @@ export default function Chat({
     setSidebarPanelSize,
   } = usePanelWidthState();
 
-  // Consolidate all chat UI state into a single object (excluding showSidebar which is now managed separately)
   const [chatState, setChatState] = useState<ChatUIState>({
     showGroupEditPanel: false,
     showProfileOverlay: false,

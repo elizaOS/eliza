@@ -515,13 +515,6 @@ export class SocketIOManager extends EventAdapter {
   }
 
   /**
-   * @deprecated Use joinChannel instead
-   */
-  public async joinRoom(channelId: string): Promise<void> {
-    return this.joinChannel(channelId);
-  }
-
-  /**
    * Leave a channel to stop receiving messages from it
    * @param channelId Channel ID to leave
    */
@@ -542,13 +535,6 @@ export class SocketIOManager extends EventAdapter {
     );
     // No server-side message for leaving a room in this client's protocol,
     // client just stops listening / tracking.
-  }
-
-  /**
-   * @deprecated Use leaveChannel instead
-   */
-  public leaveRoom(channelId: string): void {
-    return this.leaveChannel(channelId);
   }
 
   /**

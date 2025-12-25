@@ -70,8 +70,3 @@ export {
 } from './test-utils/environment';
 export type { EnvironmentSnapshot } from './test-utils/environment';
 
-// ============================================================================
-// Re-exports from @elizaos/core for convenience
-// ============================================================================
-export { stringToUuid, ChannelType, ModelType } from '@elizaos/core';
-export type { UUID, Character, Plugin, IAgentRuntime } from '@elizaos/core';

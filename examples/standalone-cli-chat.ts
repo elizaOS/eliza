@@ -151,8 +151,8 @@ class AgentInitializer {
     await adapter.init();
 
     const migrator = new DatabaseMigrationService();
-    // @ts-ignore getDatabase is available on the adapter base class
-    await migrator.initializeWithDatabase(adapter.getDatabase());
+    // getDatabase is available on the adapter base class
+    await migrator.initializeWithDatabase((adapter as unknown as { getDatabase: () => unknown }).getDatabase());
     migrator.discoverAndRegisterPluginSchemas([sqlPlugin]);
     await migrator.runAllPluginMigrations();
 

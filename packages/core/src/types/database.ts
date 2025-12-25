@@ -462,12 +462,12 @@ export interface MultiRoomMemoryOptions {
 }
 
 /**
- * Unified options pattern for memory operations
+ * Options pattern for memory operations
  * Provides a simpler, more consistent interface
  */
-export interface UnifiedMemoryOptions {
+export interface MemoryOptions {
   roomId: UUID;
-  limit?: number; // Unified naming (replacing 'count')
+  limit?: number; // Replaces 'count' for consistency
   agentId?: UUID; // Common optional parameter
   unique?: boolean; // Common flag for duplication control
   start?: number; // Pagination start
@@ -477,7 +477,7 @@ export interface UnifiedMemoryOptions {
 /**
  * Specialized memory search options
  */
-export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
+export interface SearchOptions extends MemoryOptions {
   embedding: number[];
   similarity?: number; // Clearer name than 'match_threshold'
 }

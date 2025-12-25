@@ -72,13 +72,16 @@ export class ServiceBuilder<TService extends Service = Service> {
       }
     }
 
-    // TypeScript needs help here because we're creating a dynamic class
-    // The class already matches the interface, so this cast is safe
-    return ServiceClass as unknown as {
+    // The dynamic ServiceClass extends Service and has the required static members.
+    // The intermediate 'unknown' cast is necessary because TService is a generic type -
+    // TypeScript cannot statically verify that ServiceClass produces TService instances.
+    // The startFn parameter guarantees the returned Promise<TService> at runtime.
+    type ServiceConstructor = {
       new (runtime?: IAgentRuntime): TService;
       serviceType: ServiceTypeName;
       start(runtime: IAgentRuntime): Promise<TService>;
     };
+    return ServiceClass as unknown as ServiceConstructor;
   }
 }
 

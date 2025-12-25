@@ -5,7 +5,8 @@
  * to create a custom agent server without the CLI dependency.
  */
 
-import { AgentServer, ServerOptions, ServerMiddleware } from '@elizaos/server';
+import { AgentServer } from '@elizaos/server';
+import type { ServerConfig, ServerMiddleware } from '../src/types/server';
 import { logger } from '@elizaos/core';
 import { Request, Response, NextFunction } from 'express';
 
@@ -26,7 +27,7 @@ const customLoggingMiddleware: ServerMiddleware = (
 };
 
 // Server configuration
-const serverOptions: ServerOptions = {
+const serverOptions: ServerConfig = {
   dataDir: './data/eliza-server',
   middlewares: [customLoggingMiddleware],
   // postgresUrl: process.env.DATABASE_URL, // Optional PostgreSQL

@@ -71,15 +71,15 @@ describe('CLI API Exports', () => {
   });
 
   describe('Utility Functions', () => {
-    it('should export expandTildePath', async () => {
-      const { expandTildePath } = await import('../../../index');
+    it('should export expandTildePath from utils/config', async () => {
+      const { expandTildePath } = await import('../../../utils/config');
 
       expect(expandTildePath).toBeDefined();
       expect(typeof expandTildePath).toBe('function');
     });
 
-    it('should export resolvePgliteDir', async () => {
-      const { resolvePgliteDir } = await import('../../../index');
+    it('should export resolvePgliteDir from utils/config', async () => {
+      const { resolvePgliteDir } = await import('../../../utils/config');
 
       expect(resolvePgliteDir).toBeDefined();
       expect(typeof resolvePgliteDir).toBe('function');

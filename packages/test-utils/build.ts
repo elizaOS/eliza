@@ -21,7 +21,6 @@ const run = createBuildRunner({
       '@elizaos/core',
       '@elizaos/plugin-sql',
       'zod',
-      'vitest',
     ],
     sourcemap: true,
     minify: false,

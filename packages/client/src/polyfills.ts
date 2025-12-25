@@ -8,8 +8,7 @@ const g: any =
     ? globalThis
     : typeof window !== 'undefined'
       ? window
-      : // @ts-ignore
-        typeof global !== 'undefined'
+      : typeof global !== 'undefined'
         ? global
         : {};
 

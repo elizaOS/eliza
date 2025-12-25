@@ -312,13 +312,3 @@ export function getCurrentProcess(): Subprocess | null {
   return getServerProcess();
 }
 
-// Export functional interface for backwards compatibility
-export interface DevServerManager extends ServerProcess {}
-
-/**
- * Create a new server manager instance (factory function)
- * @deprecated Use createServerManager() instead
- */
-export function DevServerManager(): ServerProcess {
-  return createServerManager();
-}

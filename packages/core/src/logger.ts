@@ -319,13 +319,24 @@ const getAdzeActiveLevel = () => {
 
 const adzeActiveLevel = getAdzeActiveLevel();
 
-// Reusable custom level configuration - improved colors and emojis for better terminal readability
+// Adze terminal style values - matches what the library accepts
+type AdzeTerminalStyle =
+  | 'bgRed' | 'white' | 'bold' | 'whiteBright' | 'bgYellow' | 'black'
+  | 'cyan' | 'red' | 'underline' | 'green' | 'gray' | 'dim' | 'italic'
+  | 'yellow' | 'blue' | 'magenta' | 'blackBright' | 'strikethrough';
+
+// Adze console methods - subset that the library accepts
+type AdzeConsoleMethod =
+  | 'error' | 'debug' | 'log' | 'info' | 'warn' | 'clear'
+  | 'dir' | 'dirxml' | 'group' | 'groupCollapsed' | 'groupEnd' | 'table';
+
+// Adze level configuration as expected by setup()
 interface AdzeLevelConfig {
   levelName: string;
   level: number;
   style: string;
-  terminalStyle: readonly string[];
-  method: keyof Console;
+  terminalStyle: AdzeTerminalStyle[];
+  method: AdzeConsoleMethod;
   emoji: string;
 }
 
@@ -334,82 +345,84 @@ const customLevelConfig: Record<string, AdzeLevelConfig> = {
     levelName: 'alert',
     level: 0,
     style: 'font-size: 12px; color: #ff0000;',
-    terminalStyle: ['bgRed' as const, 'white' as const, 'bold' as const], // Critical - keep background
-    method: 'error' as keyof Console,
+    terminalStyle: ['bgRed', 'white', 'bold'], // Critical - keep background
+    method: 'error',
     emoji: '', // Visual scanning help
   },
   error: {
     levelName: 'error',
     level: 1,
     style: 'font-size: 12px; color: #ff0000;',
-    terminalStyle: ['bgRed' as const, 'whiteBright' as const, 'bold' as const], // Loud and bright - white on red
-    method: 'error' as keyof Console,
+    terminalStyle: ['bgRed', 'whiteBright', 'bold'], // Loud and bright - white on red
+    method: 'error',
     emoji: '',
   },
   warn: {
     levelName: 'warn',
     level: 2,
     style: 'font-size: 12px; color: #ffaa00;',
-    terminalStyle: ['bgYellow' as const, 'black' as const, 'bold' as const], // Bright but less than error - black on yellow
-    method: 'warn' as keyof Console,
+    terminalStyle: ['bgYellow', 'black', 'bold'], // Bright but less than error - black on yellow
+    method: 'warn',
     emoji: '',
   },
   info: {
     levelName: 'info',
     level: 3,
     style: 'font-size: 12px; color: #0099ff;',
-    terminalStyle: ['cyan' as const], // Minimal - just cyan text, no background
-    method: 'info' as keyof Console,
+    terminalStyle: ['cyan'], // Minimal - just cyan text, no background
+    method: 'info',
     emoji: '',
   },
   fail: {
     levelName: 'fail',
     level: 4,
     style: 'font-size: 12px; color: #ff6600;',
-    terminalStyle: ['red' as const, 'underline' as const], // Red underlined text, no background
-    method: 'error' as keyof Console,
+    terminalStyle: ['red', 'underline'], // Red underlined text, no background
+    method: 'error',
     emoji: '',
   },
   success: {
     levelName: 'success',
     level: 5,
     style: 'font-size: 12px; color: #00cc00;',
-    terminalStyle: ['green' as const], // Minimal - just green text
-    method: 'log' as keyof Console,
+    terminalStyle: ['green'], // Minimal - just green text
+    method: 'log',
     emoji: '',
   },
   log: {
     levelName: 'log',
     level: 6,
     style: 'font-size: 12px; color: #888888;',
-    terminalStyle: ['white' as const], // Minimal - just white text
-    method: 'log' as keyof Console,
+    terminalStyle: ['white'], // Minimal - just white text
+    method: 'log',
     emoji: '',
   },
   debug: {
     levelName: 'debug',
     level: 7,
     style: 'font-size: 12px; color: #9b59b6;',
-    terminalStyle: ['gray' as const, 'dim' as const], // Dark and subtle since off by default
-    method: 'debug' as keyof Console,
+    terminalStyle: ['gray', 'dim'], // Dark and subtle since off by default
+    method: 'debug',
     emoji: '',
   },
   verbose: {
     levelName: 'verbose',
     level: 8,
     style: 'font-size: 12px; color: #666666;',
-    terminalStyle: ['gray' as const, 'dim' as const, 'italic' as const], // Very subtle
-    method: 'debug' as keyof Console,
+    terminalStyle: ['gray', 'dim', 'italic'], // Very subtle
+    method: 'debug',
     emoji: '',
   },
 };
 
+// Adze's setup function has a specific type expectation for levels.
+// Our AdzeLevelConfig already matches the structure Adze expects.
 const adzeStore = setup({
   activeLevel: adzeActiveLevel,
   format: raw ? 'json' : 'pretty',
   timestampFormatter: showTimestamps ? undefined : () => '',
   withEmoji: false,
-  levels: customLevelConfig as unknown as Record<string, { levelName: string; level: number; style: string; terminalStyle: Array<'bgRed' | 'white' | 'bold' | 'whiteBright' | 'bgYellow' | 'black' | 'cyan' | 'red' | 'underline' | 'green' | 'gray' | 'dim' | 'italic' | 'yellow' | 'blue' | 'magenta' | 'blackBright' | 'strikethrough'>; method: 'error' | 'debug' | 'log' | 'info' | 'warn' | 'clear' | 'dir' | 'dirxml' | 'group' | 'groupCollapsed' | 'groupEnd' | 'table'; emoji: string }>,
+  levels: customLevelConfig as Record<string, AdzeLevelConfig>,
 });
 
 // Mirror Adze output to in-memory storage
@@ -490,15 +503,18 @@ function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
     }
 
   // This ensures the sealed logger inherits the correct log level and styling
+  // The type cast to unknown is necessary because Adze's seal() method has overly strict
+  // parameter types that don't match its actual runtime expectations.
   const globalConfig = {
     activeLevel: getAdzeActiveLevel(),
     format: raw ? 'json' : 'pretty',
     timestampFormatter: showTimestamps ? undefined : () => '',
     withEmoji: false,
-    levels: customLevelConfig as Record<string, { levelName: string; level: number; style: string; terminalStyle: string[]; method: keyof Console; emoji: string }>, // Use same reusable config
+    levels: customLevelConfig as Record<string, AdzeLevelConfig>,
   };
 
-  return chain.meta(metaBase).seal(globalConfig as unknown as Parameters<ReturnType<typeof chain.meta>['seal']>[0]);
+  type SealParams = Parameters<ReturnType<typeof chain.meta>['seal']>[0];
+  return chain.meta(metaBase).seal(globalConfig as unknown as SealParams);
 }
 
 /**
@@ -708,8 +724,10 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
       adzeMethod = 'verbose';
     }
 
-    // Adze sealed logger has dynamic method names, use type assertion for method access
-    const sealedRecord = sealed as unknown as Record<string, (...args: unknown[]) => void>;
+    // Adze sealed loggers have dynamically generated methods based on configured log levels.
+    // The TypeScript types don't expose these methods, so we use a record type to call them.
+    type AdzeLogMethod = (...args: unknown[]) => void;
+    const sealedRecord = sealed as unknown as Record<string, AdzeLogMethod>;
     if (adzeMethod in sealedRecord && typeof sealedRecord[adzeMethod] === 'function') {
       sealedRecord[adzeMethod](...adzeArgs);
     }

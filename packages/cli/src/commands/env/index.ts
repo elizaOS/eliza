@@ -82,12 +82,3 @@ env.action(() => {
   console.log('  http://localhost:3000/settings');
 });
 
-// Re-export for backward compatibility
-export * from './actions/edit';
-export * from './actions/interactive';
-export * from './actions/list';
-export * from './actions/reset';
-export * from './types';
-export * from './utils/directory-operations';
-export * from './utils/file-operations';
-export * from './utils/validation';

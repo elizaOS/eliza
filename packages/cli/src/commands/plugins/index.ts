@@ -78,9 +78,3 @@ plugins
     }
   });
 
-// Re-export for backward compatibility
-export * from './actions/install';
-export * from './actions/remove';
-export * from './actions/list';
-export * from './types';
-export * from './utils/naming';

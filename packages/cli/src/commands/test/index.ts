@@ -85,11 +85,3 @@ export default function registerCommand(cli: Command) {
   return cli.addCommand(test);
 }
 
-// Re-export for backward compatibility
-export * from './actions/component-tests';
-export * from './actions/e2e-tests';
-export * from './actions/run-all-tests';
-export * from './types';
-export * from './utils/project-utils';
-export * from './utils/port-utils';
-export * from './utils/plugin-utils';

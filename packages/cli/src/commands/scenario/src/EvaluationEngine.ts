@@ -372,7 +372,7 @@ Do not use any other field names. Use only the exact field names specified above
     };
   }
 
-  private validateResponse(response: unknown, schema: z.ZodSchema): unknown {
+  private validateResponse(response: unknown, schema: z.ZodType): unknown {
     // The object model should return a proper object, but let's validate it
     if (typeof response === 'string') {
       // Fallback: parse as JSON if it's a string
@@ -384,7 +384,7 @@ Do not use any other field names. Use only the exact field names specified above
     return this.validateWithZod(response, schema);
   }
 
-  private validateWithZod(response: unknown, schema: z.ZodSchema): unknown {
+  private validateWithZod(response: unknown, schema: z.ZodType): unknown {
     try {
       const zodSchema = this.convertToZodSchema(schema);
       return zodSchema.parse(response);

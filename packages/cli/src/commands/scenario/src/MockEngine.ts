@@ -1,6 +1,5 @@
 import { IAgentRuntime, Service } from '@elizaos/core';
 import { Scenario } from './schema';
-// @ts-ignore - lodash types not available
 import _ from 'lodash';
 
 type MockDefinition = NonNullable<NonNullable<Scenario['setup']>['mocks']>[0];

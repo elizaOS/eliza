@@ -18,6 +18,18 @@
  */
 
 /**
+ * Convert a cipher/decipher result to a Buffer.
+ * Node crypto can return Buffer or string depending on encoding arguments.
+ */
+function toBuffer(result: Buffer | string): Buffer {
+  if (Buffer.isBuffer(result)) {
+    return result;
+  }
+  // String result - convert to buffer (happens with encoding specified)
+  return Buffer.from(result, 'utf8');
+}
+
+/**
  * Check if we're in Node.js or Bun with native crypto module available
  * @returns {boolean} True if Node.js or Bun crypto is available
  */
@@ -380,8 +392,9 @@ export async function encryptAsync(
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     const updateResult = cipher.update(dataBuffer);
     const finalResult = cipher.final();
-    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
-    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    // Convert results to Buffers - cipher can return Buffer or string depending on encoding args
+    const updateBuf = toBuffer(updateResult);
+    const finalBuf = toBuffer(finalResult);
     const encrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(encrypted);
   }
@@ -428,8 +441,9 @@ export async function decryptAsync(
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     const updateResult = decipher.update(dataBuffer);
     const finalResult = decipher.final();
-    const updateBuf = Buffer.isBuffer(updateResult) ? updateResult : (typeof updateResult === 'string' ? Buffer.from(updateResult, 'utf8') : Buffer.from(updateResult as unknown as number[] | Uint8Array));
-    const finalBuf = Buffer.isBuffer(finalResult) ? finalResult : (typeof finalResult === 'string' ? Buffer.from(finalResult, 'utf8') : Buffer.from(finalResult as unknown as number[] | Uint8Array));
+    // Convert results to Buffers - decipher can return Buffer or string depending on encoding args
+    const updateBuf = toBuffer(updateResult);
+    const finalBuf = toBuffer(finalResult);
     const decrypted = Buffer.concat([updateBuf, finalBuf]);
     return new Uint8Array(decrypted);
   }
@@ -438,18 +452,3 @@ export async function decryptAsync(
   return webCryptoDecrypt(key, iv, data);
 }
 
-/**
- * Legacy Web Crypto API export for backward compatibility
- *
- * **Deprecated:** Use the top-level async functions instead:
- * - `createHashAsync()` instead of `webCrypto.hash()`
- * - `encryptAsync()` instead of `webCrypto.encrypt()`
- * - `decryptAsync()` instead of `webCrypto.decrypt()`
- *
- * @deprecated Use top-level async functions for better cross-platform support
- */
-export const webCrypto = {
-  hash: webCryptoHash,
-  encrypt: webCryptoEncrypt,
-  decrypt: webCryptoDecrypt,
-};

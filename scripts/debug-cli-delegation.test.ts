@@ -66,7 +66,6 @@ describe('CLI Delegation Debug Tool', () => {
     delete process.env.NODE_ENV;
     delete process.env.ELIZA_TEST_MODE;
     delete process.env.BUN_TEST;
-    delete process.env.VITEST;
     delete process.env.JEST_WORKER_ID;
     delete process.env.npm_lifecycle_event;
     delete process.env.CI;

@@ -148,7 +148,6 @@ function checkProblematicEnvVars(): string[] {
     'ELIZA_SKIP_LOCAL_CLI_DELEGATION',
     'ELIZA_DISABLE_LOCAL_CLI_DELEGATION',
     'BUN_TEST',
-    'VITEST',
     'JEST_WORKER_ID',
     'npm_lifecycle_event',
     'CI',
@@ -181,7 +180,6 @@ function checkProblematicEnvVars(): string[] {
         (envVar === 'ELIZA_SKIP_LOCAL_CLI_DELEGATION' && value === 'true') ||
         (envVar === 'ELIZA_DISABLE_LOCAL_CLI_DELEGATION' && value === 'true') ||
         (envVar === 'BUN_TEST' && value === 'true') ||
-        (envVar === 'VITEST' && value === 'true') ||
         envVar === 'JEST_WORKER_ID' ||
         (envVar === 'npm_lifecycle_event' && value === 'test') ||
         (envVar === 'CI' && value === 'true') ||

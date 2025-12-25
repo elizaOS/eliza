@@ -2283,7 +2283,7 @@ export class AgentRuntime implements IAgentRuntime {
           source: (paramsObj.source as string) || 'runtime',
         } as EventPayload;
       }
-      await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime as unknown as EventPayload)));
+      await Promise.all(eventHandlers.map((handler) => handler(paramsWithRuntime)));
     }
   }
 

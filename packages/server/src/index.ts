@@ -49,24 +49,23 @@ import type {
   MessageServiceStructure,
 } from './types/server';
 
-// Re-export config utilities for backward compatibility
+// Import config utilities
+import {
+  DEFAULT_SERVER_ID,
+  expandTildePath,
+  isWebUIEnabled,
+  resolvePgliteDir,
+} from './utils/config';
+import type { ServerConfig, ServerMiddleware } from './types/server';
+
+// Export config utilities for package consumers
 export {
   DEFAULT_SERVER_ID,
   expandTildePath,
-  resolvePgliteDir,
-  isWebUIEnabled,
-  type ServerMiddleware,
-  type ServerConfig,
-} from './utils/config';
-
-// Import for internal use
-import {
-  DEFAULT_SERVER_ID,
   isWebUIEnabled,
   resolvePgliteDir,
-  type ServerConfig,
-  type ServerMiddleware,
-} from './utils/config';
+};
+export type { ServerConfig, ServerMiddleware };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1796,8 +1795,5 @@ export {
   loadCharacters,
 } from './services/loader';
 
-// Export types
-export * from './types/server';
-
-// Export ElizaOS from core (re-export for convenience)
-export { ElizaOS } from '@elizaos/core';
+// Types should be imported directly from './types/server'
+// ElizaOS should be imported directly from '@elizaos/core'

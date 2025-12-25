@@ -59,8 +59,7 @@ describe('bun-exec', () => {
     };
 
     // Mock Bun.spawn
-    // @ts-ignore - Mocking Bun.spawn
-    Bun.spawn = mock(() => mockProc);
+    (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
   });
 
   afterEach(() => {
@@ -106,8 +105,7 @@ describe('bun-exec', () => {
           },
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExec('false');
 
@@ -155,8 +153,7 @@ describe('bun-exec', () => {
         kill: mock(() => {}),
         killed: false,
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExec('test-concurrent');
 
@@ -210,8 +207,7 @@ describe('bun-exec', () => {
         kill: mock(() => {}),
         killed: false,
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       try {
         await bunExec('sleep', ['10'], { timeout: 100 });
@@ -234,8 +230,7 @@ describe('bun-exec', () => {
           }, 200);
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const controller = new AbortController();
       const execPromise = bunExec('sleep', ['10'], { signal: controller.signal });
@@ -258,8 +253,7 @@ describe('bun-exec', () => {
           return code;
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       await bunExec('echo', ['test']);
 
@@ -297,8 +291,7 @@ describe('bun-exec', () => {
         }),
         killed: false,
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       try {
         await bunExec('stubborn-process', [], { timeout: 50 });
@@ -320,8 +313,7 @@ describe('bun-exec', () => {
           return code;
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExec('echo', ['test']);
 
@@ -343,8 +335,7 @@ describe('bun-exec', () => {
           return code;
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExec('echo', ['test']);
 
@@ -376,8 +367,7 @@ describe('bun-exec', () => {
           return code;
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExec('echo', ['test']);
 
@@ -394,8 +384,7 @@ describe('bun-exec', () => {
         exitCode: null,
         exited: Promise.reject(new Error('Process error')),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       try {
         await bunExec('bad-command');
@@ -415,8 +404,7 @@ describe('bun-exec', () => {
         }),
         exited: Promise.reject(new Error('Process error')),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       // Should not throw the cleanup error
       try {
@@ -451,8 +439,7 @@ describe('bun-exec', () => {
         }),
         killed: false,
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       try {
         await bunExec('race-condition-test');
@@ -496,8 +483,7 @@ describe('bun-exec', () => {
           },
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       try {
         await bunExecSimple('false');
@@ -516,8 +502,7 @@ describe('bun-exec', () => {
           return code;
         }),
       };
-      // @ts-ignore
-      Bun.spawn = mock(() => mockProc);
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
       const result = await bunExecSimple('false', [], { stdio: 'ignore' });
 
@@ -580,22 +565,20 @@ describe('bun-exec', () => {
           exitCode: null,
           exited: Promise.resolve(1).then((code) => {
             mockProc.exitCode = 1;
-            return code;
-          }),
-        };
-        // @ts-ignore
-        Bun.spawn = mock(() => mockProc);
+          return code;
+        }),
+      };
+      (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => mockProc) as typeof Bun.spawn;
 
-        const exists = await commandExists('nonexistent');
+      const exists = await commandExists('nonexistent');
 
         expect(exists).toBe(false);
       });
 
       it('should return false on error', async () => {
-        // @ts-ignore
-        Bun.spawn = mock(() => {
+        (Bun as { spawn: typeof Bun.spawn }).spawn = mock(() => {
           throw new Error('Command failed');
-        });
+        }) as typeof Bun.spawn;
 
         const exists = await commandExists('bad-command');
 
