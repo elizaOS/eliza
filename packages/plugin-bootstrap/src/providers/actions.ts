@@ -22,7 +22,7 @@ function formatActionsWithParams(actions: Action[]): string {
     .map((action: Action) => {
       let formatted = `## ${action.name}\n${action.description}`;
 
-      if (action.parameters !== undefined) {
+      if (action.parameters !== undefined && action.parameters !== null) {
         const paramEntries = Object.entries(
           action.parameters as Record<string, ActionParameter>
         );

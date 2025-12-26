@@ -869,14 +869,14 @@ async function runMultiStepCoreTest({
 
   const responseMessages: Memory[] = responseContent
     ? [
-        {
-          id: 'test-response-id' as UUID,
-          entityId: runtime.agentId,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-          content: responseContent,
-        },
-      ]
+      {
+        id: 'test-response-id' as UUID,
+        entityId: runtime.agentId,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+        content: responseContent,
+      },
+    ]
     : [];
 
   return {
@@ -1062,8 +1062,14 @@ async function runMultiStepCoreTestWithParams({
     if (parameters) {
       if (typeof parameters === 'string') {
         try {
-          actionParams = JSON.parse(parameters);
-          runtime.logger.debug(`[MultiStep] Parsed parameters from string`);
+          const parsed = JSON.parse(parameters);
+          // Validate that parsed result is a non-null object (not array, primitive, or null)
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            actionParams = parsed as Record<string, unknown>;
+            runtime.logger.debug(`[MultiStep] Parsed parameters from string`);
+          } else {
+            runtime.logger.warn(`[MultiStep] Parsed parameters is not a valid object, ignoring`);
+          }
         } catch (e) {
           runtime.logger.warn(`[MultiStep] Failed to parse parameters JSON`);
         }
