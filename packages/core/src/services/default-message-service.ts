@@ -1107,18 +1107,88 @@ export class DefaultMessageService implements IMessageService {
           runtime.character.templates?.multiStepDecisionTemplate || multiStepDecisionTemplate,
       });
 
-      const stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
-      const parsedStep = parseKeyValueXml(stepResultRaw);
+      // Retry logic for parsing failures with bounds checking
+      const parseRetriesSetting = runtime.getSetting('MULTISTEP_PARSE_RETRIES');
+      const rawParseRetries = parseInt(
+        String(parseRetriesSetting ?? '5'),
+        10
+      );
+      // Validate retry count is within reasonable bounds (1-10)
+      const maxParseRetries = Math.max(1, Math.min(10, isNaN(rawParseRetries) ? 5 : rawParseRetries));
+      let stepResultRaw: string = '';
+      let parsedStep: Record<string, unknown> | null = null;
+
+      for (let parseAttempt = 1; parseAttempt <= maxParseRetries; parseAttempt++) {
+        try {
+          runtime.logger.debug(
+            {
+              src: 'service:message',
+              attempt: parseAttempt,
+              maxAttempts: maxParseRetries,
+              iteration: iterationCount,
+            },
+            'Decision step model call attempt'
+          );
+          stepResultRaw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+          parsedStep = parseKeyValueXml(stepResultRaw);
+
+          if (parsedStep) {
+            runtime.logger.debug(
+              { src: 'service:message', attempt: parseAttempt, iteration: iterationCount },
+              'Successfully parsed decision step'
+            );
+            break;
+          } else {
+            runtime.logger.warn(
+              {
+                src: 'service:message',
+                attempt: parseAttempt,
+                maxAttempts: maxParseRetries,
+                iteration: iterationCount,
+                rawResponsePreview: stepResultRaw.substring(0, 200),
+              },
+              'Failed to parse XML response'
+            );
+
+            if (parseAttempt < maxParseRetries) {
+              // Exponential backoff: 1s, 2s, 4s, etc. (capped at 8s)
+              const backoffMs = Math.min(1000 * Math.pow(2, parseAttempt - 1), 8000);
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
+            }
+          }
+        } catch (error) {
+          runtime.logger.error(
+            {
+              src: 'service:message',
+              attempt: parseAttempt,
+              maxAttempts: maxParseRetries,
+              iteration: iterationCount,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'Error during model call attempt'
+          );
+          if (parseAttempt >= maxParseRetries) {
+            throw error;
+          }
+          // Exponential backoff on error
+          const backoffMs = Math.min(1000 * Math.pow(2, parseAttempt - 1), 8000);
+          await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        }
+      }
 
       if (!parsedStep) {
         runtime.logger.warn(
-          { src: 'service:message', iteration: iterationCount },
-          'Failed to parse multi-step result'
+          {
+            src: 'service:message',
+            iteration: iterationCount,
+            maxParseRetries,
+          },
+          'Failed to parse step result after all retry attempts'
         );
         traceActionResult.push({
           data: { actionName: 'parse_error' },
           success: false,
-          error: 'Failed to parse step result',
+          error: `Failed to parse step result after ${maxParseRetries} attempts`,
         });
         break;
       }
@@ -1127,6 +1197,54 @@ export class DefaultMessageService implements IMessageService {
       const providers = Array.isArray(parsedStep.providers) ? parsedStep.providers : [];
       const action = typeof parsedStep.action === 'string' ? parsedStep.action : undefined;
       const isFinish = parsedStep.isFinish;
+      const parameters = parsedStep.parameters;
+
+      // Parse and store parameters if provided
+      let actionParams: Record<string, unknown> = {};
+      if (parameters) {
+        if (typeof parameters === 'string') {
+          try {
+            actionParams = JSON.parse(parameters);
+            runtime.logger.debug(
+              { src: 'service:message', params: actionParams },
+              'Parsed action parameters from string'
+            );
+          } catch (e) {
+            runtime.logger.warn(
+              {
+                src: 'service:message',
+                rawParams: parameters,
+                error: e instanceof Error ? e.message : String(e),
+              },
+              'Failed to parse parameters JSON'
+            );
+          }
+        } else if (typeof parameters === 'object' && parameters !== null) {
+          actionParams = parameters as Record<string, unknown>;
+          runtime.logger.debug(
+            { src: 'service:message', params: actionParams },
+            'Using parameters object directly'
+          );
+        }
+      }
+
+      // Store parameters in state for action to consume
+      if (action && Object.keys(actionParams).length > 0) {
+        accumulatedState.data.actionParams = actionParams;
+
+        // Also support action-specific namespaces for backwards compatibility
+        const actionKey = action.toLowerCase().replace(/_/g, '');
+        accumulatedState.data[actionKey] = {
+          ...actionParams,
+          source: 'multiStepDecisionTemplate',
+          timestamp: Date.now(),
+        };
+
+        runtime.logger.info(
+          { src: 'service:message', action, params: actionParams },
+          'Stored parameters for action'
+        );
+      }
 
       // Check for completion condition
       if (isFinish === 'true' || isFinish === true) {
@@ -1350,22 +1468,103 @@ export class DefaultMessageService implements IMessageService {
       template: runtime.character.templates?.multiStepSummaryTemplate || multiStepSummaryTemplate,
     });
 
-    const finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
-      prompt: summaryPrompt,
-    });
-    const summary = parseKeyValueXml(finalOutput);
+    // Retry logic for summary parsing failures with bounds checking
+    const summaryRetriesSetting = runtime.getSetting('MULTISTEP_SUMMARY_PARSE_RETRIES');
+    const rawSummaryRetries = parseInt(
+      String(summaryRetriesSetting ?? '5'),
+      10
+    );
+    // Validate retry count is within reasonable bounds (1-10)
+    const maxSummaryRetries = Math.max(1, Math.min(10, isNaN(rawSummaryRetries) ? 5 : rawSummaryRetries));
+    let finalOutput: string = '';
+    let summary: Record<string, unknown> | null = null;
+
+    for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
+      try {
+        runtime.logger.debug(
+          {
+            src: 'service:message',
+            attempt: summaryAttempt,
+            maxAttempts: maxSummaryRetries,
+          },
+          'Summary generation attempt'
+        );
+        finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: summaryPrompt,
+        });
+        summary = parseKeyValueXml(finalOutput);
+
+        if (summary?.text) {
+          runtime.logger.debug(
+            { src: 'service:message', attempt: summaryAttempt },
+            'Successfully parsed summary'
+          );
+          break;
+        } else {
+          runtime.logger.warn(
+            {
+              src: 'service:message',
+              attempt: summaryAttempt,
+              maxAttempts: maxSummaryRetries,
+              rawResponsePreview: finalOutput.substring(0, 200),
+            },
+            'Failed to parse summary XML'
+          );
+
+          if (summaryAttempt < maxSummaryRetries) {
+            // Exponential backoff: 1s, 2s, 4s, etc. (capped at 8s)
+            const backoffMs = Math.min(1000 * Math.pow(2, summaryAttempt - 1), 8000);
+            await new Promise((resolve) => setTimeout(resolve, backoffMs));
+          }
+        }
+      } catch (error) {
+        runtime.logger.error(
+          {
+            src: 'service:message',
+            attempt: summaryAttempt,
+            maxAttempts: maxSummaryRetries,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error during summary generation attempt'
+        );
+        if (summaryAttempt >= maxSummaryRetries) {
+          runtime.logger.warn(
+            { src: 'service:message' },
+            'Failed to generate summary after all retries, using fallback'
+          );
+          break;
+        }
+        // Exponential backoff on error
+        const backoffMs = Math.min(1000 * Math.pow(2, summaryAttempt - 1), 8000);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
 
     let responseContent: Content | null = null;
     const summaryText = summary?.text;
     if (typeof summaryText === 'string' && summaryText) {
+      const summaryThought = summary?.thought;
       responseContent = {
         actions: ['MULTI_STEP_SUMMARY'],
         text: summaryText,
         thought:
-          (typeof summary.thought === 'string'
-            ? summary.thought
+          (typeof summaryThought === 'string'
+            ? summaryThought
             : 'Final user-facing message after task completion.') ||
           'Final user-facing message after task completion.',
+        simple: true,
+        responseId,
+      };
+    } else {
+      // Fallback response when summary generation fails
+      runtime.logger.warn(
+        { src: 'service:message', maxSummaryRetries },
+        'No valid summary generated after all attempts, using fallback'
+      );
+      responseContent = {
+        actions: ['MULTI_STEP_SUMMARY'],
+        text: 'I completed the requested actions, but encountered an issue generating the summary.',
+        thought: 'Summary generation failed after retries.',
         simple: true,
         responseId,
       };
