@@ -1232,11 +1232,19 @@ export class DefaultMessageService implements IMessageService {
               'Failed to parse parameters JSON'
             );
           }
-        } else if (typeof parameters === 'object' && parameters !== null) {
+        } else if (typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters)) {
           actionParams = parameters as Record<string, unknown>;
           runtime.logger.debug(
             { src: 'service:message', params: actionParams },
             'Using parameters object directly'
+          );
+        } else if (Array.isArray(parameters)) {
+          runtime.logger.warn(
+            {
+              src: 'service:message',
+              rawParams: parameters,
+            },
+            'Parameters is an array, expected object, ignoring'
           );
         }
       }
@@ -1249,8 +1257,9 @@ export class DefaultMessageService implements IMessageService {
         const actionKey = action.toLowerCase().replace(/_/g, '');
         accumulatedState.data[actionKey] = {
           ...actionParams,
-          source: 'multiStepDecisionTemplate',
-          timestamp: Date.now(),
+          // Metadata properties prefixed with underscore to avoid collision with legitimate action parameters
+          _source: 'multiStepDecisionTemplate',
+          _timestamp: Date.now(),
         };
 
         runtime.logger.info(
