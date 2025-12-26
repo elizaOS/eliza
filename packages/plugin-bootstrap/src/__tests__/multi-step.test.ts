@@ -1073,9 +1073,11 @@ async function runMultiStepCoreTestWithParams({
         } catch (e) {
           runtime.logger.warn(`[MultiStep] Failed to parse parameters JSON`);
         }
-      } else if (typeof parameters === 'object' && parameters !== null) {
+      } else if (typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters)) {
         actionParams = parameters as Record<string, unknown>;
         runtime.logger.debug(`[MultiStep] Using parameters object directly`);
+      } else if (Array.isArray(parameters)) {
+        runtime.logger.warn(`[MultiStep] Parameters is an array, expected object, ignoring`);
       }
     }
 
