@@ -9,8 +9,12 @@ import type { AgentServer } from '../../index';
 export function createMessageServersRouter(serverInstance: AgentServer): express.Router {
   const router = express.Router();
 
-  // GET /server/current - Get current server's ID (for this running instance)
-  // This is the serverId that clients should use when creating channels/messages
+  // ============================================================================
+  // CURRENT ROUTES - Canonical endpoints
+  // ============================================================================
+
+  // GET /message-server/current - Get current server's ID (for this running instance)
+  // This is the messageServerId that clients should use when creating channels/messages
   router.get('/message-server/current', async (_req: express.Request, res: express.Response) => {
     try {
       res.json({
@@ -46,8 +50,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
     }
   });
 
-  // POST /servers - Create a new server
-  router.post('/servers', async (req: express.Request, res: express.Response) => {
+  // POST /message-servers - Create a new message server
+  router.post('/message-servers', async (req: express.Request, res: express.Response) => {
     const { name, sourceType, sourceId, metadata } = req.body;
 
     if (!name || !sourceType) {
@@ -69,89 +73,137 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       logger.error(
         {
           src: 'http',
-          path: '/servers',
+          path: '/message-servers',
           error: error instanceof Error ? error.message : String(error),
         },
-        'Error creating server'
+        'Error creating message server'
       );
-      res.status(500).json({ success: false, error: 'Failed to create server' });
+      res.status(500).json({ success: false, error: 'Failed to create message server' });
     }
   });
 
   // ===============================
-  // Server-Agent Association Endpoints
+  // Message Server-Agent Association Endpoints
   // ===============================
 
-  // POST /servers/:serverId/agents - Add agent to server
-  router.post('/servers/:serverId/agents', async (req: express.Request, res: express.Response) => {
-    const serverId = validateUuid(req.params.serverId);
-    const { agentId } = req.body;
-
-    if (!serverId || !validateUuid(agentId)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId or agentId format',
-      });
-    }
-
-    // RLS security: Only allow modifying agents for current server
-    if (serverId !== serverInstance.messageServerId) {
-      return res.status(403).json({
-        success: false,
-        error: 'Cannot modify agents for a different server',
-      });
-    }
-
-    try {
-      // Add agent to message server association
-      await serverInstance.addAgentToMessageServer(serverId, agentId as UUID);
-
-      // Notify the agent's message bus service to start listening for this message server
-      internalMessageBus.emit('server_agent_update', {
-        type: 'agent_added_to_server' as const,
-        messageServerId: serverId,
-        agentId,
-      });
-
-      res.status(201).json({
-        success: true,
-        data: {
-          serverId,
-          agentId,
-          message: 'Agent added to server successfully',
-        },
-      });
-    } catch (error) {
-      logger.error(
-        {
-          src: 'http',
-          path: req.path,
-          serverId,
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Error adding agent to server'
-      );
-      res.status(500).json({ success: false, error: 'Failed to add agent to server' });
-    }
-  });
-
-  // DELETE /servers/:serverId/agents/:agentId - Remove agent from server
-  router.delete(
-    '/servers/:serverId/agents/:agentId',
+  // GET /message-servers/:messageServerId/agents - List agents in message server
+  router.get(
+    '/message-servers/:messageServerId/agents',
     async (req: express.Request, res: express.Response) => {
-      const serverId = validateUuid(req.params.serverId);
-      const agentId = validateUuid(req.params.agentId);
+      const messageServerId = validateUuid(req.params.messageServerId);
 
-      if (!serverId || !agentId) {
+      if (!messageServerId) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid serverId or agentId format',
+          error: 'Invalid messageServerId format',
+        });
+      }
+
+      // RLS security: Only allow accessing agents for current server
+      if (messageServerId !== serverInstance.messageServerId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot access agents for a different server',
+        });
+      }
+
+      try {
+        const agents = await serverInstance.getAgentsForMessageServer(messageServerId);
+        res.json({
+          success: true,
+          data: {
+            messageServerId,
+            agents, // Array of agent IDs
+          },
+        });
+      } catch (error) {
+        logger.error(
+          {
+            src: 'http',
+            path: req.path,
+            messageServerId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error fetching agents for message server'
+        );
+        res.status(500).json({ success: false, error: 'Failed to fetch message server agents' });
+      }
+    }
+  );
+
+  // POST /message-servers/:messageServerId/agents - Add agent to message server
+  router.post(
+    '/message-servers/:messageServerId/agents',
+    async (req: express.Request, res: express.Response) => {
+      const messageServerId = validateUuid(req.params.messageServerId);
+      const { agentId } = req.body;
+
+      if (!messageServerId || !validateUuid(agentId)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid messageServerId or agentId format',
         });
       }
 
       // RLS security: Only allow modifying agents for current server
-      if (serverId !== serverInstance.messageServerId) {
+      if (messageServerId !== serverInstance.messageServerId) {
+        return res.status(403).json({
+          success: false,
+          error: 'Cannot modify agents for a different server',
+        });
+      }
+
+      try {
+        // Add agent to message server association
+        await serverInstance.addAgentToMessageServer(messageServerId, agentId as UUID);
+
+        // Notify the agent's message bus service to start listening for this message server
+        internalMessageBus.emit('server_agent_update', {
+          type: 'agent_added_to_server' as const,
+          messageServerId,
+          agentId,
+        });
+
+        res.status(201).json({
+          success: true,
+          data: {
+            messageServerId,
+            agentId,
+            message: 'Agent added to message server successfully',
+          },
+        });
+      } catch (error) {
+        logger.error(
+          {
+            src: 'http',
+            path: req.path,
+            messageServerId,
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Error adding agent to message server'
+        );
+        res.status(500).json({ success: false, error: 'Failed to add agent to message server' });
+      }
+    }
+  );
+
+  // DELETE /message-servers/:messageServerId/agents/:agentId - Remove agent from message server
+  router.delete(
+    '/message-servers/:messageServerId/agents/:agentId',
+    async (req: express.Request, res: express.Response) => {
+      const messageServerId = validateUuid(req.params.messageServerId);
+      const agentId = validateUuid(req.params.agentId);
+
+      if (!messageServerId || !agentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid messageServerId or agentId format',
+        });
+      }
+
+      // RLS security: Only allow modifying agents for current server
+      if (messageServerId !== serverInstance.messageServerId) {
         return res.status(403).json({
           success: false,
           error: 'Cannot modify agents for a different server',
@@ -160,21 +212,21 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
 
       try {
         // Remove agent from message server association
-        await serverInstance.removeAgentFromMessageServer(serverId, agentId);
+        await serverInstance.removeAgentFromMessageServer(messageServerId, agentId);
 
         // Notify the agent's message bus service to stop listening for this message server
         internalMessageBus.emit('server_agent_update', {
           type: 'agent_removed_from_server' as const,
-          messageServerId: serverId,
+          messageServerId,
           agentId,
         });
 
         res.status(200).json({
           success: true,
           data: {
-            serverId,
+            messageServerId,
             agentId,
-            message: 'Agent removed from server successfully',
+            message: 'Agent removed from message server successfully',
           },
         });
       } catch (error) {
@@ -182,58 +234,18 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
           {
             src: 'http',
             path: req.path,
-            serverId,
+            messageServerId,
             agentId,
             error: error instanceof Error ? error.message : String(error),
           },
-          'Error removing agent from server'
+          'Error removing agent from message server'
         );
-        res.status(500).json({ success: false, error: 'Failed to remove agent from server' });
+        res
+          .status(500)
+          .json({ success: false, error: 'Failed to remove agent from message server' });
       }
     }
   );
-
-  // GET /servers/:serverId/agents - List agents in server
-  router.get('/servers/:serverId/agents', async (req: express.Request, res: express.Response) => {
-    const serverId = validateUuid(req.params.serverId);
-
-    if (!serverId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid serverId format',
-      });
-    }
-
-    // RLS security: Only allow accessing agents for current server
-    if (serverId !== serverInstance.messageServerId) {
-      return res.status(403).json({
-        success: false,
-        error: 'Cannot access agents for a different server',
-      });
-    }
-
-    try {
-      const agents = await serverInstance.getAgentsForMessageServer(serverId);
-      res.json({
-        success: true,
-        data: {
-          serverId,
-          agents, // Array of agent IDs
-        },
-      });
-    } catch (error) {
-      logger.error(
-        {
-          src: 'http',
-          path: req.path,
-          serverId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Error fetching agents for server'
-      );
-      res.status(500).json({ success: false, error: 'Failed to fetch server agents' });
-    }
-  });
 
   // GET /agents/:agentId/message-servers - List message servers agent belongs to
   router.get(
@@ -274,6 +286,8 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
 
   // ============================================================================
   // DEPRECATED ROUTES - For backward compatibility only
+  // These routes maintain the old naming (/servers, :serverId, /central-servers)
+  // and forward to the new endpoints. They will be removed in a future version.
   // ============================================================================
 
   /**
@@ -297,6 +311,75 @@ export function createMessageServersRouter(serverInstance: AgentServer): express
       res.status(500).json({ success: false, error: 'Failed to fetch servers' });
     }
   });
+
+  /**
+   * @deprecated Use POST /message-servers instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  router.post(
+    '/servers',
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.warn('[DEPRECATED] POST /servers is deprecated. Use POST /message-servers instead.');
+
+      // Forward to new endpoint
+      req.url = '/message-servers';
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
+    }
+  );
+
+  /**
+   * @deprecated Use GET /message-servers/:messageServerId/agents instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  router.get(
+    '/servers/:serverId/agents',
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.warn(
+        '[DEPRECATED] GET /servers/:serverId/agents is deprecated. Use GET /message-servers/:messageServerId/agents instead.'
+      );
+
+      // Forward to new endpoint with parameter rename
+      req.url = req.url.replace('/servers/', '/message-servers/');
+      req.params.messageServerId = req.params.serverId;
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
+    }
+  );
+
+  /**
+   * @deprecated Use POST /message-servers/:messageServerId/agents instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  router.post(
+    '/servers/:serverId/agents',
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.warn(
+        '[DEPRECATED] POST /servers/:serverId/agents is deprecated. Use POST /message-servers/:messageServerId/agents instead.'
+      );
+
+      // Forward to new endpoint with parameter rename
+      req.url = req.url.replace('/servers/', '/message-servers/');
+      req.params.messageServerId = req.params.serverId;
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
+    }
+  );
+
+  /**
+   * @deprecated Use DELETE /message-servers/:messageServerId/agents/:agentId instead
+   * Kept for backward compatibility. Will be removed in future versions.
+   */
+  router.delete(
+    '/servers/:serverId/agents/:agentId',
+    async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      logger.warn(
+        '[DEPRECATED] DELETE /servers/:serverId/agents/:agentId is deprecated. Use DELETE /message-servers/:messageServerId/agents/:agentId instead.'
+      );
+
+      // Forward to new endpoint with parameter rename
+      req.url = req.url.replace('/servers/', '/message-servers/');
+      req.params.messageServerId = req.params.serverId;
+      return (router as express.Router & { handle: express.RequestHandler }).handle(req, res, next);
+    }
+  );
 
   return router;
 }
