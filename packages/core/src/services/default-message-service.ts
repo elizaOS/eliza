@@ -31,7 +31,7 @@ import {
   getLocalServerUrl,
   logger,
 } from '../index';
-import { ResponseStreamExtractor } from '../utils/streaming';
+import { ResponseStreamExtractor, XmlTagExtractor } from '../utils/streaming';
 import { runWithStreamingContext } from '../streaming-context';
 
 /**
@@ -199,10 +199,17 @@ export class DefaultMessageService implements IMessageService {
 
       // Wrap processing with streaming context for automatic streaming in useModel calls
       // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
+      // NOTE: Multi-step mode handles its own streaming contexts per-phase (decision, action, summary)
+      // so we only set up the top-level streaming context for single-shot mode
+      const useMultiStep =
+        opts.useMultiStep ??
+        parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || ''));
+
       let streamingContext:
         | { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID }
         | undefined;
-      if (opts.onStreamChunk) {
+      if (opts.onStreamChunk && !useMultiStep) {
+        // Single-shot mode: use top-level streaming context with single extractor
         const extractor = new ResponseStreamExtractor();
         streamingContext = {
           onStreamChunk: async (chunk: string, msgId?: UUID) => {
@@ -215,6 +222,8 @@ export class DefaultMessageService implements IMessageService {
           messageId: responseId,
         };
       }
+      // Multi-step mode: streaming is handled per-phase in runMultiStepCore
+      // (action execution and summary generation each get their own streaming context)
 
       const processingPromise = runWithStreamingContext(streamingContext, () =>
         this.processMessage(runtime, message, callback, responseId, runId, startTime, opts)
@@ -722,11 +731,11 @@ export class DefaultMessageService implements IMessageService {
     // Support runtime-configurable overrides via env settings
     const customChannels = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_CHANNELS') ||
-      runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
+        runtime.getSetting('SHOULD_RESPOND_BYPASS_TYPES')
     );
     const customSources = normalizeEnvList(
       runtime.getSetting('ALWAYS_RESPOND_SOURCES') ||
-      runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
+        runtime.getSetting('SHOULD_RESPOND_BYPASS_SOURCES')
     );
 
     const respondChannels = new Set(
@@ -959,17 +968,17 @@ export class DefaultMessageService implements IMessageService {
           src: 'service:message',
           parsedXml: parsedXml
             ? {
-              hasThought: !!parsedXml.thought,
-              thoughtPreview:
-                typeof parsedXml.thought === 'string'
-                  ? parsedXml.thought.substring(0, 100)
-                  : null,
-              hasActions: !!parsedXml.actions,
-              actions: parsedXml.actions,
-              hasText: !!parsedXml.text,
-              textPreview:
-                typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
-            }
+                hasThought: !!parsedXml.thought,
+                thoughtPreview:
+                  typeof parsedXml.thought === 'string'
+                    ? parsedXml.thought.substring(0, 100)
+                    : null,
+                hasActions: !!parsedXml.actions,
+                actions: parsedXml.actions,
+                hasText: !!parsedXml.text,
+                textPreview:
+                  typeof parsedXml.text === 'string' ? parsedXml.text.substring(0, 100) : null,
+              }
             : null,
         },
         'Parsed XML content'
@@ -1084,15 +1093,25 @@ export class DefaultMessageService implements IMessageService {
     let accumulatedState: MultiStepState = state as MultiStepState;
     let iterationCount = 0;
 
+    runtime.logger.info(
+      {
+        src: 'service:message:multistep',
+        responseId,
+        maxIterations: opts.maxMultiStepIterations,
+        streamingEnabled: !!opts.onStreamChunk,
+      },
+      '[MULTI-STEP] Starting multi-step processing'
+    );
+
     while (iterationCount < opts.maxMultiStepIterations) {
       iterationCount++;
-      runtime.logger.debug(
+      runtime.logger.info(
         {
-          src: 'service:message',
-          iteration: iterationCount,
-          maxIterations: opts.maxMultiStepIterations,
+          src: 'service:message:multistep',
+          step: iterationCount,
+          maxSteps: opts.maxMultiStepIterations,
         },
-        'Starting multi-step iteration'
+        `[MULTI-STEP] Step ${iterationCount}/${opts.maxMultiStepIterations} - Beginning iteration`
       );
 
       accumulatedState = (await runtime.composeState(message, [
@@ -1109,12 +1128,12 @@ export class DefaultMessageService implements IMessageService {
 
       // Retry logic for parsing failures with bounds checking
       const parseRetriesSetting = runtime.getSetting('MULTISTEP_PARSE_RETRIES');
-      const rawParseRetries = parseInt(
-        String(parseRetriesSetting ?? '5'),
-        10
-      );
+      const rawParseRetries = parseInt(String(parseRetriesSetting ?? '5'), 10);
       // Validate retry count is within reasonable bounds (1-10)
-      const maxParseRetries = Math.max(1, Math.min(10, isNaN(rawParseRetries) ? 5 : rawParseRetries));
+      const maxParseRetries = Math.max(
+        1,
+        Math.min(10, isNaN(rawParseRetries) ? 5 : rawParseRetries)
+      );
       let stepResultRaw: string = '';
       let parsedStep: Record<string, unknown> | null = null;
 
@@ -1199,6 +1218,18 @@ export class DefaultMessageService implements IMessageService {
       const isFinish = parsedStep.isFinish;
       const parameters = parsedStep.parameters;
 
+      runtime.logger.info(
+        {
+          src: 'service:message:multistep',
+          step: iterationCount,
+          thought: thought ? thought.substring(0, 100) + (thought.length > 100 ? '...' : '') : null,
+          action: action || null,
+          providers: providers.length > 0 ? providers : null,
+          isFinish: isFinish === 'true' || isFinish === true,
+        },
+        `[MULTI-STEP] Step ${iterationCount} - Decision: ${action || 'no action'}${providers.length > 0 ? `, providers: [${providers.join(', ')}]` : ''}`
+      );
+
       // Parse and store parameters if provided
       let actionParams: Record<string, unknown> = {};
       if (parameters) {
@@ -1217,7 +1248,8 @@ export class DefaultMessageService implements IMessageService {
                 {
                   src: 'service:message',
                   rawParams: parameters,
-                  parsedType: parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed,
+                  parsedType:
+                    parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed,
                 },
                 'Parsed parameters is not a valid object, ignoring'
               );
@@ -1232,7 +1264,11 @@ export class DefaultMessageService implements IMessageService {
               'Failed to parse parameters JSON'
             );
           }
-        } else if (typeof parameters === 'object' && parameters !== null && !Array.isArray(parameters)) {
+        } else if (
+          typeof parameters === 'object' &&
+          parameters !== null &&
+          !Array.isArray(parameters)
+        ) {
           actionParams = parameters as Record<string, unknown>;
           runtime.logger.debug(
             { src: 'service:message', params: actionParams },
@@ -1271,8 +1307,12 @@ export class DefaultMessageService implements IMessageService {
       // Check for completion condition
       if (isFinish === 'true' || isFinish === true) {
         runtime.logger.info(
-          { src: 'service:message', agentId: runtime.agentId, iteration: iterationCount },
-          'Multi-step task completed'
+          {
+            src: 'service:message:multistep',
+            step: iterationCount,
+            totalActions: traceActionResult.length,
+          },
+          `[MULTI-STEP] Step ${iterationCount} - Task marked as finished by agent`
         );
         if (callback) {
           await callback({
@@ -1302,12 +1342,30 @@ export class DefaultMessageService implements IMessageService {
       // Track which providers have completed (for timeout diagnostics)
       const completedProviders = new Set<string>();
 
+      runtime.logger.info(
+        {
+          src: 'service:message:multistep',
+          step: iterationCount,
+          providers: providersArray,
+          parallelExecution: true,
+        },
+        `[MULTI-STEP] Step ${iterationCount} - Executing ${providersArray.length} providers in parallel`
+      );
+
       const providerPromises = providersArray
         .filter((name): name is string => typeof name === 'string')
         .map(async (providerName) => {
+          runtime.logger.debug(
+            { src: 'service:message:multistep', step: iterationCount, provider: providerName },
+            `[MULTI-STEP] Step ${iterationCount} - Starting provider: ${providerName}`
+          );
+
           const provider = runtime.providers.find((p) => p.name === providerName);
           if (!provider) {
-            runtime.logger.warn({ src: 'service:message', providerName }, 'Provider not found');
+            runtime.logger.warn(
+              { src: 'service:message:multistep', step: iterationCount, providerName },
+              `[MULTI-STEP] Step ${iterationCount} - Provider not found: ${providerName}`
+            );
             completedProviders.add(providerName);
             return { providerName, success: false, error: `Provider not found: ${providerName}` };
           }
@@ -1318,13 +1376,23 @@ export class DefaultMessageService implements IMessageService {
 
             if (!providerResult) {
               runtime.logger.warn(
-                { src: 'service:message', providerName },
-                'Provider returned no result'
+                { src: 'service:message:multistep', step: iterationCount, providerName },
+                `[MULTI-STEP] Step ${iterationCount} - Provider returned no result: ${providerName}`
               );
               return { providerName, success: false, error: 'Provider returned no result' };
             }
 
             const success = !!providerResult.text;
+            runtime.logger.info(
+              {
+                src: 'service:message:multistep',
+                step: iterationCount,
+                provider: providerName,
+                success,
+                resultLength: providerResult.text?.length || 0,
+              },
+              `[MULTI-STEP] Step ${iterationCount} - Provider completed: ${providerName} (${success ? providerResult.text?.length || 0 : 0} chars)`
+            );
             return {
               providerName,
               success,
@@ -1335,8 +1403,13 @@ export class DefaultMessageService implements IMessageService {
             completedProviders.add(providerName);
             const errorMsg = err instanceof Error ? err.message : String(err);
             runtime.logger.error(
-              { src: 'service:message', providerName, error: errorMsg },
-              'Provider execution failed'
+              {
+                src: 'service:message:multistep',
+                step: iterationCount,
+                providerName,
+                error: errorMsg,
+              },
+              `[MULTI-STEP] Step ${iterationCount} - Provider execution failed: ${providerName}`
             );
             return { providerName, success: false, error: errorMsg };
           }
@@ -1365,12 +1438,13 @@ export class DefaultMessageService implements IMessageService {
 
         runtime.logger.error(
           {
-            src: 'service:message',
+            src: 'service:message:multistep',
+            step: iterationCount,
             timeoutMs: PROVIDERS_TOTAL_TIMEOUT_MS,
             pendingProviders,
             completedProviders: Array.from(completedProviders),
           },
-          `Providers took too long (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms) - slow providers: ${pendingProviders.join(', ')}`
+          `[MULTI-STEP] Step ${iterationCount} - Provider timeout (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms): ${pendingProviders.join(', ')}`
         );
 
         if (callback) {
@@ -1414,6 +1488,11 @@ export class DefaultMessageService implements IMessageService {
       }
 
       if (action) {
+        runtime.logger.info(
+          { src: 'service:message:multistep', step: iterationCount, action },
+          `[MULTI-STEP] Step ${iterationCount} - Executing action: ${action}`
+        );
+
         const actionContent = {
           text: `🔎 Executing action: ${action}`,
           actions: [action],
@@ -1434,7 +1513,9 @@ export class DefaultMessageService implements IMessageService {
           state,
           async () => {
             return [];
-          }
+          },
+          // Enable streaming for action execution in multi-step mode
+          { onStreamChunk: opts.onStreamChunk }
         );
 
         // Get cached action results from runtime
@@ -1444,8 +1525,8 @@ export class DefaultMessageService implements IMessageService {
           : [];
         const result =
           actionResults.length > 0 &&
-            typeof actionResults[0] === 'object' &&
-            actionResults[0] !== null
+          typeof actionResults[0] === 'object' &&
+          actionResults[0] !== null
             ? actionResults[0]
             : null;
         const success =
@@ -1453,33 +1534,51 @@ export class DefaultMessageService implements IMessageService {
             ? result.success
             : false;
 
+        const actionResultText =
+          result && 'text' in result && typeof result.text === 'string' ? result.text : undefined;
         traceActionResult.push({
           data: { actionName: typeof action === 'string' ? action : 'unknown' },
           success,
-          text:
-            result && 'text' in result && typeof result.text === 'string' ? result.text : undefined,
+          text: actionResultText,
           values:
             result &&
-              'values' in result &&
-              typeof result.values === 'object' &&
-              result.values !== null
+            'values' in result &&
+            typeof result.values === 'object' &&
+            result.values !== null
               ? result.values
               : undefined,
-          error: success
-            ? undefined
-            : result && 'text' in result && typeof result.text === 'string'
-              ? result.text
-              : undefined,
+          error: success ? undefined : actionResultText,
         });
+
+        runtime.logger.info(
+          {
+            src: 'service:message:multistep',
+            step: iterationCount,
+            action,
+            success,
+            resultLength: actionResultText?.length || 0,
+          },
+          `[MULTI-STEP] Step ${iterationCount} - Action completed: ${action} (success=${success})`
+        );
       }
     }
 
     if (iterationCount >= opts.maxMultiStepIterations) {
       runtime.logger.warn(
-        { src: 'service:message', maxIterations: opts.maxMultiStepIterations },
-        'Reached maximum iterations, forcing completion'
+        { src: 'service:message:multistep', maxIterations: opts.maxMultiStepIterations },
+        `[MULTI-STEP] Reached maximum iterations (${opts.maxMultiStepIterations}), forcing completion`
       );
     }
+
+    runtime.logger.info(
+      {
+        src: 'service:message:multistep',
+        totalSteps: iterationCount,
+        actionsExecuted: traceActionResult.length,
+        streamingEnabled: !!opts.onStreamChunk,
+      },
+      `[MULTI-STEP] Generating summary (${iterationCount} steps completed, ${traceActionResult.length} actions traced)`
+    );
 
     accumulatedState = (await runtime.composeState(message, [
       'RECENT_MESSAGES',
@@ -1492,12 +1591,12 @@ export class DefaultMessageService implements IMessageService {
 
     // Retry logic for summary parsing failures with bounds checking
     const summaryRetriesSetting = runtime.getSetting('MULTISTEP_SUMMARY_PARSE_RETRIES');
-    const rawSummaryRetries = parseInt(
-      String(summaryRetriesSetting ?? '5'),
-      10
-    );
+    const rawSummaryRetries = parseInt(String(summaryRetriesSetting ?? '5'), 10);
     // Validate retry count is within reasonable bounds (1-10)
-    const maxSummaryRetries = Math.max(1, Math.min(10, isNaN(rawSummaryRetries) ? 5 : rawSummaryRetries));
+    const maxSummaryRetries = Math.max(
+      1,
+      Math.min(10, isNaN(rawSummaryRetries) ? 5 : rawSummaryRetries)
+    );
     let finalOutput: string = '';
     let summary: Record<string, unknown> | null = null;
 
@@ -1511,9 +1610,31 @@ export class DefaultMessageService implements IMessageService {
           },
           'Summary generation attempt'
         );
-        finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: summaryPrompt,
-        });
+
+        // Stream the final summary to the user (extracts <text> content only)
+        // (ResponseStreamExtractor doesn't work here because summary has no <actions> tag)
+        if (opts.onStreamChunk) {
+          const extractor = new XmlTagExtractor('text');
+          const summaryStreamingContext = {
+            onStreamChunk: async (chunk: string, msgId?: UUID) => {
+              if (extractor.done) return;
+              const textToStream = extractor.push(chunk);
+              if (textToStream) {
+                await opts.onStreamChunk!(textToStream, msgId);
+              }
+            },
+            messageId: responseId,
+          };
+          finalOutput = await runWithStreamingContext(summaryStreamingContext, () =>
+            runtime.useModel(ModelType.TEXT_LARGE, {
+              prompt: summaryPrompt,
+            })
+          );
+        } else {
+          finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: summaryPrompt,
+          });
+        }
         summary = parseKeyValueXml(finalOutput);
 
         if (summary?.text) {
@@ -1594,16 +1715,28 @@ export class DefaultMessageService implements IMessageService {
 
     const responseMessages: Memory[] = responseContent
       ? [
-        {
-          id: responseId,
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          content: responseContent,
-          roomId: message.roomId,
-          createdAt: Date.now(),
-        },
-      ]
+          {
+            id: responseId,
+            entityId: runtime.agentId,
+            agentId: runtime.agentId,
+            content: responseContent,
+            roomId: message.roomId,
+            createdAt: Date.now(),
+          },
+        ]
       : [];
+
+    runtime.logger.info(
+      {
+        src: 'service:message:multistep',
+        responseId,
+        totalSteps: iterationCount,
+        actionsExecuted: traceActionResult.length,
+        successfulActions: traceActionResult.filter((r) => r.success).length,
+        responseLength: responseContent?.text?.length || 0,
+      },
+      `[MULTI-STEP] Complete - ${iterationCount} steps, ${traceActionResult.filter((r) => r.success).length}/${traceActionResult.length} actions succeeded`
+    );
 
     return {
       responseContent,
