@@ -1371,7 +1371,7 @@ export class DefaultMessageService implements IMessageService {
           }
 
           try {
-            const providerResult = await provider.get(runtime, message, state);
+            const providerResult = await provider.get(runtime, message, accumulatedState);
             completedProviders.add(providerName);
 
             if (!providerResult) {
@@ -1510,7 +1510,7 @@ export class DefaultMessageService implements IMessageService {
               content: actionContent,
             },
           ],
-          state,
+          accumulatedState,
           async () => {
             return [];
           },
@@ -1600,6 +1600,10 @@ export class DefaultMessageService implements IMessageService {
     let finalOutput: string = '';
     let summary: Record<string, unknown> | null = null;
 
+    // Track whether streaming has already been sent to the user.
+    // We only stream on the first attempt to avoid duplicate/garbled output when retries occur.
+    let hasStreamedToUser = false;
+
     for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
       try {
         runtime.logger.debug(
@@ -1611,9 +1615,14 @@ export class DefaultMessageService implements IMessageService {
           'Summary generation attempt'
         );
 
-        // Stream the final summary to the user (extracts <text> content only)
-        // (ResponseStreamExtractor doesn't work here because summary has no <actions> tag)
-        if (opts.onStreamChunk) {
+        // Only stream on the first attempt.
+        // If the first attempt fails and we retry, subsequent attempts do NOT stream
+        // to avoid duplicate content being sent to the user.
+        const shouldStreamThisAttempt = opts.onStreamChunk && !hasStreamedToUser;
+
+        if (shouldStreamThisAttempt) {
+          // Stream the final summary to the user (extracts <text> content only)
+          // (ResponseStreamExtractor doesn't work here because summary has no <actions> tag)
           const extractor = new XmlTagExtractor('text');
           const summaryStreamingContext = {
             onStreamChunk: async (chunk: string, msgId?: UUID) => {
@@ -1630,7 +1639,10 @@ export class DefaultMessageService implements IMessageService {
               prompt: summaryPrompt,
             })
           );
+          // Mark that we've streamed to the user (even if parsing fails)
+          hasStreamedToUser = true;
         } else {
+          // No streaming: either streaming is disabled, or this is a retry attempt
           finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: summaryPrompt,
           });
@@ -1650,6 +1662,7 @@ export class DefaultMessageService implements IMessageService {
               attempt: summaryAttempt,
               maxAttempts: maxSummaryRetries,
               rawResponsePreview: finalOutput.substring(0, 200),
+              hasStreamedToUser,
             },
             'Failed to parse summary XML'
           );
