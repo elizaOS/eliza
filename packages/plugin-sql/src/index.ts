@@ -193,3 +193,11 @@ export {
   uninstallRLS,
 } from './rls';
 export { schema };
+
+// Export cached adapter wrapper and external cache interface
+export {
+  CachedDatabaseAdapter,
+  createCachedAdapter,
+  type CachedAdapterConfig,
+  type ExternalCacheAdapter,
+} from './cached-adapter';

@@ -21,6 +21,7 @@ import {
   EventType,
   ModelType,
   MODEL_SETTINGS,
+  VECTOR_DIMS,
   type Content,
   type ControlMessage,
   type MemoryMetadata,
@@ -125,6 +126,9 @@ export class AgentRuntime implements IAgentRuntime {
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
   private eventHandlers: Map<string, ((data: unknown) => void)[]> = new Map();
+
+  // Cached embedding dimension (determined once per model, static thereafter)
+  private embeddingDimension: number | null = null;
 
   /**
    * Reference to the ElizaOS instance that created this runtime
@@ -549,14 +553,27 @@ export class AgentRuntime implements IAgentRuntime {
       this.logger.debug({ src: 'agent', agentId: this.agentId }, 'Agent linked to room');
     }
 
-    const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
-    if (!embeddingModel) {
-      this.logger.warn(
-        { src: 'agent', agentId: this.agentId },
-        'No TEXT_EMBEDDING model registered, skipping embedding setup'
+    // Check if embedding dimension was pre-set via setEmbeddingDimension() (serverless optimization)
+    if (this.embeddingDimension !== null) {
+      this.logger.debug(
+        { src: 'agent', agentId: this.agentId, dimension: this.embeddingDimension },
+        'Using pre-configured embedding dimension, skipping model call'
       );
+      // Still need to ensure the database is configured for this dimension
+      if (!this.adapter) {
+        throw new Error('Database adapter not initialized before ensureEmbeddingDimension');
+      }
+      await this.adapter.ensureEmbeddingDimension(this.embeddingDimension);
     } else {
-      await this.ensureEmbeddingDimension();
+      const embeddingModel = this.getModel(ModelType.TEXT_EMBEDDING);
+      if (!embeddingModel) {
+        this.logger.warn(
+          { src: 'agent', agentId: this.agentId },
+          'No TEXT_EMBEDDING model registered, skipping embedding setup'
+        );
+      } else {
+        await this.ensureEmbeddingDimension();
+      }
     }
 
     // Resolve init promise to allow services to start
@@ -2507,6 +2524,17 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.adapter) {
       throw new Error('Database adapter not initialized before ensureEmbeddingDimension');
     }
+
+    // If we already have the dimension cached, use it
+    if (this.embeddingDimension !== null) {
+      this.logger.debug(
+        { src: 'agent', agentId: this.agentId, dimension: this.embeddingDimension },
+        'Using cached embedding dimension'
+      );
+      await this.adapter.ensureEmbeddingDimension(this.embeddingDimension);
+      return;
+    }
+
     const model = this.getModel(ModelType.TEXT_EMBEDDING);
     if (!model) {
       throw new Error('No TEXT_EMBEDDING model registered');
@@ -2517,10 +2545,39 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error('Invalid embedding received');
     }
 
+    // Cache the embedding dimension
+    this.embeddingDimension = embedding.length;
+
     await this.adapter.ensureEmbeddingDimension(embedding.length);
     this.logger.debug(
       { src: 'agent', agentId: this.agentId, dimension: embedding.length },
       'Embedding dimension set'
+    );
+  }
+
+  /**
+   * Get the cached embedding dimension, or null if not yet determined.
+   */
+  getEmbeddingDimension(): number | null {
+    return this.embeddingDimension;
+  }
+
+  /**
+   * Set the embedding dimension (useful for serverless to skip the model call).
+   * @param dimension - The embedding dimension to use (must be one of the values in VECTOR_DIMS)
+   * @throws Error if dimension is not a supported value
+   */
+  setEmbeddingDimension(dimension: number): void {
+    const supportedDimensions = Object.values(VECTOR_DIMS) as number[];
+    if (!supportedDimensions.includes(dimension)) {
+      throw new Error(
+        `Invalid embedding dimension: ${dimension}. Supported dimensions are: ${supportedDimensions.join(', ')}`
+      );
+    }
+    this.embeddingDimension = dimension;
+    this.logger.debug(
+      { src: 'agent', agentId: this.agentId, dimension },
+      'Embedding dimension set manually'
     );
   }
 
