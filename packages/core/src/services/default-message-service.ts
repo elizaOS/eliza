@@ -1621,6 +1621,12 @@ export class DefaultMessageService implements IMessageService {
         const shouldStreamThisAttempt = opts.onStreamChunk && !hasStreamedToUser;
 
         if (shouldStreamThisAttempt) {
+          // CRITICAL: Mark that we're about to stream BEFORE starting.
+          // This prevents duplicate streaming if an error occurs mid-stream.
+          // Once any content is sent to the user, we cannot undo it, so we must
+          // ensure retries do not stream again even if this attempt fails.
+          hasStreamedToUser = true;
+
           // Stream the final summary to the user (extracts <text> content only)
           // (ResponseStreamExtractor doesn't work here because summary has no <actions> tag)
           const extractor = new XmlTagExtractor('text');
@@ -1639,8 +1645,6 @@ export class DefaultMessageService implements IMessageService {
               prompt: summaryPrompt,
             })
           );
-          // Mark that we've streamed to the user (even if parsing fails)
-          hasStreamedToUser = true;
         } else {
           // No streaming: either streaming is disabled, or this is a retry attempt
           finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {

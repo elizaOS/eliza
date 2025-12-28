@@ -32,8 +32,14 @@ function formatActionsWithParams(actions: Action[]): string {
         } else {
           formatted += '\n\n**Parameters:**';
           for (const [paramName, paramDef] of paramEntries) {
+            // Skip invalid parameter definitions (null, undefined, or non-object values)
+            if (paramDef === null || paramDef === undefined || typeof paramDef !== 'object') {
+              continue;
+            }
             const required = paramDef.required ? '(required)' : '(optional)';
-            formatted += `\n- \`${paramName}\` ${required}: ${paramDef.type} - ${paramDef.description}`;
+            const paramType = paramDef.type ?? 'unknown';
+            const paramDesc = paramDef.description ?? 'No description provided';
+            formatted += `\n- \`${paramName}\` ${required}: ${paramType} - ${paramDesc}`;
           }
         }
       }
