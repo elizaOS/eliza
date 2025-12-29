@@ -48,7 +48,7 @@ The correct build is automatically selected based on your environment through pa
 npm install buffer crypto-browserify stream-browserify events
 ```
 
-For more details on the dual build system, see [BUILD_SYSTEM.md](./BUILD_SYSTEM.md).
+The dual build system uses conditional exports in package.json to automatically select the appropriate build based on the runtime environment.
 
 ## Configuration
 
