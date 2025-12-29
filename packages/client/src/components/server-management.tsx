@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useAgents, useServers } from '@/hooks/use-query-hooks';
+import { useElizaAgents } from '@/hooks/use-eliza';
+import { useServers } from '@/hooks/use-query-hooks';
 import { useToast } from '@/hooks/use-toast';
 import { getElizaClient } from '@/lib/api-client-config';
 import type { UUID } from '@elizaos/core';
@@ -32,7 +33,7 @@ interface ServerManagementProps {
 export function ServerManagement({ open, onOpenChange }: ServerManagementProps) {
   const { toast } = useToast();
   const { data: serversData } = useServers();
-  const { data: agentsData } = useAgents();
+  const { agents } = useElizaAgents();
 
   const [selectedServerId, setSelectedServerId] = useState<UUID | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<UUID | null>(null);
@@ -140,17 +141,15 @@ export function ServerManagement({ open, onOpenChange }: ServerManagementProps) 
   };
 
   const getAgentName = (agentId: UUID) => {
-    const agent = agentsData?.data?.agents?.find((a) => a.id === agentId);
+    const agent = agents?.find((a) => a.id === agentId);
     return agent?.name || agentId;
   };
 
   const getAvailableAgents = () => {
-    if (!selectedServerId || !agentsData?.data?.agents) return [];
+    if (!selectedServerId || !agents) return [];
 
     const currentAgents = serverAgents.get(selectedServerId) || [];
-    return agentsData.data.agents.filter(
-      (agent) => agent.id && !currentAgents.includes(agent.id as UUID)
-    );
+    return agents.filter((agent) => agent.id && !currentAgents.includes(agent.id as UUID));
   };
 
   return (

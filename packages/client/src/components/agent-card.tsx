@@ -4,16 +4,15 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { formatAgentName, cn, getAgentAvatar } from '@/lib/utils';
+import { formatAgentName, cn, getAgentAvatar, getAgentStatus } from '@/lib/utils';
 import type { Agent } from '@elizaos/core';
 import { AgentStatus as CoreAgentStatus } from '@elizaos/core';
 import { Settings } from 'lucide-react';
 import { useAgentManagement } from '@/hooks/use-agent-management';
-import type { AgentWithStatus } from '@/types';
 import clientLogger from '@/lib/logger';
 
 interface AgentCardProps {
-  agent: Partial<AgentWithStatus>;
+  agent: Agent;
   onChat: (forceNew: boolean) => void;
 }
 

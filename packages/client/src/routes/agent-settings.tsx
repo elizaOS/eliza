@@ -1,15 +1,14 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import AgentSettings from '@/components/agent-settings';
-import { useAgent } from '@/hooks/use-query-hooks';
-import { ArrowLeft } from 'lucide-react';
+import { useElizaAgent } from '@/hooks/use-eliza';
 import { Loader2 } from 'lucide-react';
 import type { UUID, Agent } from '@elizaos/core';
 
 export default function AgentSettingsRoute() {
   const { agentId } = useParams<{ agentId: string }>();
   const navigate = useNavigate();
-  const { data: agentData, isLoading } = useAgent(agentId as UUID);
+  const { agent: agentData, isLoading } = useElizaAgent(agentId as UUID | undefined);
 
   if (isLoading) {
     return (
@@ -19,7 +18,7 @@ export default function AgentSettingsRoute() {
     );
   }
 
-  if (!agentData?.data) {
+  if (!agentData) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <p className="text-muted-foreground">Agent not found</p>
@@ -29,13 +28,13 @@ export default function AgentSettingsRoute() {
   }
 
   const agent: Agent = {
-    ...agentData.data,
-    createdAt: agentData.data.createdAt ?? Date.now(),
-    bio: agentData.data.bio ?? [],
-    topics: agentData.data.topics ?? [],
-    adjectives: agentData.data.adjectives ?? [],
-    style: agentData.data.style ?? { all: [], chat: [], post: [] },
-    settings: agentData.data.settings ?? { secrets: {} },
+    ...agentData,
+    createdAt: agentData.createdAt ?? Date.now(),
+    bio: agentData.bio ?? [],
+    topics: agentData.topics ?? [],
+    adjectives: agentData.adjectives ?? [],
+    style: agentData.style ?? { all: [], chat: [], post: [] },
+    settings: agentData.settings ?? { secrets: {} },
   } as Agent;
 
   return (
