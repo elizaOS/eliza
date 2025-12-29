@@ -76,10 +76,15 @@ export interface CreateSessionResponse {
 }
 
 /**
- * Valid response modes for messaging API
- * - "sync": Wait for complete agent response
- * - "stream": SSE streaming response
+ * Valid transport types for messaging API
+ * - "http": Wait for complete agent response (HTTP request/response, no streaming)
+ * - "sse": Server-Sent Events streaming response
  * - "websocket": Return immediately, agent response via WebSocket (default)
+ */
+export type TransportType = 'http' | 'sse' | 'websocket';
+
+/**
+ * @deprecated Use TransportType instead. Maps: sync→http, stream→sse, websocket→websocket
  */
 export type ResponseMode = 'sync' | 'stream' | 'websocket';
 
@@ -91,12 +96,12 @@ export interface SendMessageParams {
   attachments?: MessageAttachment[];
   metadata?: SessionMessageMetadata;
   /**
-   * Response mode for the message
-   * - "sync": Wait for complete agent response (returns agentResponse)
-   * - "stream": SSE streaming response
+   * Transport type for the message
+   * - "http": Wait for complete agent response (returns agentResponse)
+   * - "sse": Server-Sent Events streaming response
    * - "websocket": Return immediately, agent response via WebSocket (default)
    */
-  mode?: ResponseMode;
+  transport?: TransportType;
 }
 
 /**
@@ -193,7 +198,7 @@ export interface SessionStatusData {
 export interface MessageResponse {
   success: boolean;
   userMessage: UserMessageData;
-  /** Only present when mode is "sync" */
+  /** Only present when transport is "http" */
   agentResponse?: AgentResponseContent;
   /** Session status information */
   sessionStatus?: SessionStatusData;

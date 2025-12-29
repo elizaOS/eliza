@@ -144,11 +144,11 @@ describe('SessionsService', () => {
       );
     });
 
-    it('should send a message with sync mode and get agent response', async () => {
+    it('should send a message with http transport and get agent response', async () => {
       const sessionId = 'session-789';
       const params = {
         content: 'Hello, agent!',
-        mode: 'sync' as const,
+        transport: 'http' as const,
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -203,7 +203,7 @@ describe('SessionsService', () => {
   });
 
   describe('sendMessageSync', () => {
-    it('should send a message with sync mode automatically', async () => {
+    it('should send a message with http transport automatically', async () => {
       const sessionId = 'session-789';
       const params = { content: 'Hello, agent!' };
 
@@ -238,7 +238,7 @@ describe('SessionsService', () => {
         'http://localhost:3000/api/messaging/sessions/session-789/messages',
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({ ...params, mode: 'sync' }),
+          body: JSON.stringify({ ...params, transport: 'http' }),
         })
       );
     });

@@ -1,18 +1,11 @@
 import ChatComponent from '@/components/chat';
 import { Button } from '@/components/ui/button';
-import { useAgentManagement } from '@/hooks/use-agent-management';
-import { useAgent } from '@/hooks/use-query-hooks';
+import { useElizaAgent } from '@/hooks/use-eliza';
 import clientLogger from '@/lib/logger';
-import {
-  type Agent,
-  ChannelType,
-  AgentStatus as CoreAgentStatusEnum,
-  type UUID,
-} from '@elizaos/core';
+import { ChannelType, AgentStatus as CoreAgentStatusEnum, type UUID } from '@elizaos/core';
 import { Loader2, Play, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import type { AgentWithStatus } from '../types';
 
 /**
  * Displays the agent chat interface with an optional details sidebar in a resizable layout.
@@ -31,69 +24,31 @@ function AgentRouteContent() {
     };
   }, [agentId, channelId]);
 
-  const { data: agentDataResponse, isLoading: isLoadingAgent } = useAgent(agentId);
-  const { startAgent, isAgentStarting } = useAgentManagement();
-
-  const agentFromHook: Agent | undefined = agentDataResponse?.data
-    ? ({
-        ...(agentDataResponse.data as AgentWithStatus),
-        status:
-          agentDataResponse.data.status === 'active'
-            ? CoreAgentStatusEnum.ACTIVE
-            : agentDataResponse.data.status === 'inactive'
-              ? CoreAgentStatusEnum.INACTIVE
-              : CoreAgentStatusEnum.INACTIVE,
-        username: agentDataResponse.data.username || agentDataResponse.data.name || 'Unknown',
-        bio: agentDataResponse.data.bio || '',
-        messageExamples: agentDataResponse.data.messageExamples || [],
-        postExamples: agentDataResponse.data.postExamples || [],
-        topics: agentDataResponse.data.topics || [],
-        adjectives: agentDataResponse.data.adjectives || [],
-        knowledge: agentDataResponse.data.knowledge || [],
-        plugins: agentDataResponse.data.plugins || [],
-        settings: agentDataResponse.data.settings || {},
-        secrets: agentDataResponse.data.secrets || {},
-        style: agentDataResponse.data.style || {},
-        templates: agentDataResponse.data.templates || {},
-        enabled:
-          typeof agentDataResponse.data.enabled === 'boolean'
-            ? agentDataResponse.data.enabled
-            : true,
-        createdAt:
-          typeof agentDataResponse.data.createdAt === 'number'
-            ? agentDataResponse.data.createdAt
-            : Date.now(),
-        updatedAt:
-          typeof agentDataResponse.data.updatedAt === 'number'
-            ? agentDataResponse.data.updatedAt
-            : Date.now(),
-      } as Agent)
-    : undefined;
+  const { agent, isLoading, isStarting, start } = useElizaAgent(agentId);
 
   if (!agentId) return <div className="p-4">Agent ID not provided.</div>;
-  if (isLoadingAgent || !agentFromHook)
+  if (isLoading || !agent)
     return (
       <div className="p-4 flex items-center justify-center h-full" data-testid="loader">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
 
-  const isActive = agentFromHook.status === CoreAgentStatusEnum.ACTIVE;
-  const isStarting = isAgentStarting(agentFromHook.id);
+  const isActive = agent.status === CoreAgentStatusEnum.ACTIVE;
 
   const handleStartAgent = () => {
-    if (agentFromHook) {
-      startAgent(agentFromHook);
+    if (agent) {
+      start();
     }
   };
 
   if (!isActive) {
     clientLogger.info('[AgentRoute] Agent is not active, rendering inactive state UI', {
-      agentName: agentFromHook?.name,
+      agentName: agent?.name,
     });
     return (
       <div className="flex flex-col items-center justify-center h-full w-full p-8 text-center">
-        <h2 className="text-2xl font-semibold mb-4">{agentFromHook.name} is not active.</h2>
+        <h2 className="text-2xl font-semibold mb-4">{agent.name} is not active.</h2>
         <p className="text-muted-foreground mb-6">Press the button below to start this agent.</p>
         <div className="flex gap-3">
           <Button onClick={() => navigate(`/settings/${agentId}`)} variant="outline" size="lg">
@@ -113,7 +68,7 @@ function AgentRouteContent() {
   }
 
   clientLogger.info('[AgentRoute] Agent is active, rendering chat for DM', {
-    agentName: agentFromHook?.name,
+    agentName: agent?.name,
     dmChannelIdFromRoute: channelId,
   });
 
