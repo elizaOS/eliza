@@ -1,13 +1,13 @@
 /**
  * Shared response handlers for messaging API endpoints
- * Handles sync, stream (SSE), and websocket response modes
+ * Handles http (sync), sse (streaming), and websocket response modes
  */
 
 import type { Response } from 'express';
 import type { ElizaOS, Memory } from '@elizaos/core';
 import type { UUID, Content } from '@elizaos/core';
 import { logger } from '@elizaos/core';
-import { ResponseMode } from './constants';
+import { type TransportType } from './constants';
 
 /**
  * Message memory type for elizaOS.handleMessage
@@ -16,18 +16,32 @@ import { ResponseMode } from './constants';
 export type { Memory };
 
 /**
- * Options for handling response modes
+ * Options for handling transport types
  */
-export interface HandleResponseModeOptions {
+export interface HandleTransportOptions {
   res: Response;
-  mode: ResponseMode;
+  transport: TransportType;
   elizaOS: ElizaOS;
   agentId: UUID;
   messageMemory: Partial<Memory> & { entityId: UUID; roomId: UUID; content: Content };
   userMessage: unknown;
-  /** Additional data to include in sync/websocket JSON responses */
+  /** Additional data to include in http/websocket JSON responses */
   additionalResponseData?: Record<string, unknown>;
-  /** Callback for websocket mode - called before returning response */
+  /** Callback for websocket transport - called before returning response */
+  onWebSocketMode?: () => void | Promise<void>;
+}
+
+/**
+ * @deprecated Use HandleTransportOptions instead
+ */
+export interface HandleResponseModeOptions {
+  res: Response;
+  mode: TransportType;
+  elizaOS: ElizaOS;
+  agentId: UUID;
+  messageMemory: Partial<Memory> & { entityId: UUID; roomId: UUID; content: Content };
+  userMessage: unknown;
+  additionalResponseData?: Record<string, unknown>;
   onWebSocketMode?: () => void | Promise<void>;
 }
 
@@ -152,13 +166,13 @@ function handleWebSocketMode(
 }
 
 /**
- * Main handler for different response modes
- * Routes to appropriate handler based on mode parameter
+ * Main handler for different transport types
+ * Routes to appropriate handler based on transport parameter
  */
-export async function handleResponseMode(options: HandleResponseModeOptions): Promise<void> {
+export async function handleTransport(options: HandleTransportOptions): Promise<void> {
   const {
     res,
-    mode,
+    transport,
     elizaOS,
     agentId,
     messageMemory,
@@ -167,12 +181,12 @@ export async function handleResponseMode(options: HandleResponseModeOptions): Pr
     onWebSocketMode,
   } = options;
 
-  switch (mode) {
-    case 'stream':
+  switch (transport) {
+    case 'sse':
       await handleStreamMode(res, elizaOS, agentId, messageMemory, userMessage);
       break;
 
-    case 'sync':
+    case 'http':
       await handleSyncMode(
         res,
         elizaOS,
@@ -188,4 +202,20 @@ export async function handleResponseMode(options: HandleResponseModeOptions): Pr
       handleWebSocketMode(res, userMessage, additionalResponseData, onWebSocketMode);
       break;
   }
+}
+
+/**
+ * @deprecated Use handleTransport instead
+ */
+export async function handleResponseMode(options: HandleResponseModeOptions): Promise<void> {
+  return handleTransport({
+    res: options.res,
+    transport: options.mode,
+    elizaOS: options.elizaOS,
+    agentId: options.agentId,
+    messageMemory: options.messageMemory,
+    userMessage: options.userMessage,
+    additionalResponseData: options.additionalResponseData,
+    onWebSocketMode: options.onWebSocketMode,
+  });
 }

@@ -1,5 +1,5 @@
 /**
- * Test suite for Channels API response mode parameter
+ * Test suite for Channels API transport parameter
  */
 
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
@@ -205,7 +205,7 @@ async function simulateRequest(
   });
 }
 
-describe('Channels API - Response Mode Parameter', () => {
+describe('Channels API - Transport Parameter', () => {
   let app: express.Application;
 
   const channelId = '123e4567-e89b-12d3-a456-426614174000';
@@ -233,7 +233,7 @@ describe('Channels API - Response Mode Parameter', () => {
   });
 
   describe('POST /channels/:channelId/messages', () => {
-    it('should default to websocket mode when mode is not specified', async () => {
+    it('should default to websocket transport when transport is not specified', async () => {
       const res = await simulateRequest(
         app,
         'POST',
@@ -244,16 +244,16 @@ describe('Channels API - Response Mode Parameter', () => {
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('success', true);
       expect(res.body).toHaveProperty('userMessage');
-      // WebSocket mode doesn't include agentResponse
+      // WebSocket transport doesn't include agentResponse
       expect(res.body).not.toHaveProperty('agentResponse');
     });
 
-    it('should accept explicit websocket mode', async () => {
+    it('should accept explicit websocket transport', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'websocket' }
+        { ...validPayload, transport: 'websocket' }
       );
 
       expect(res.status).toBe(201);
@@ -261,25 +261,25 @@ describe('Channels API - Response Mode Parameter', () => {
       expect(res.body).toHaveProperty('userMessage');
     });
 
-    it('should reject invalid mode parameter', async () => {
+    it('should reject invalid transport parameter', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'invalid_mode' }
+        { ...validPayload, transport: 'invalid_transport' }
       );
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
-      expect((res.body as { error: string }).error).toContain('Invalid mode');
+      expect((res.body as { error: string }).error).toContain('Invalid transport');
     });
 
-    it('should accept sync mode and return agentResponse', async () => {
+    it('should accept http transport and return agentResponse', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'sync' }
+        { ...validPayload, transport: 'http' }
       );
 
       expect(res.status).toBe(201);
@@ -291,7 +291,7 @@ describe('Channels API - Response Mode Parameter', () => {
       });
     });
 
-    it('should accept stream mode and set SSE headers', async () => {
+    it('should accept sse transport and set SSE headers', async () => {
       // Mock handleMessage to call the onResponse callback
       mockHandleMessage.mockImplementation(
         async (
@@ -310,21 +310,21 @@ describe('Channels API - Response Mode Parameter', () => {
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'stream' }
+        { ...validPayload, transport: 'sse' }
       );
 
-      // Stream mode should set SSE headers
+      // SSE transport should set SSE headers
       expect(res.headers['Content-Type']).toBe('text/event-stream');
       expect(res.headers['Cache-Control']).toBe('no-cache');
       expect(res.headers['Connection']).toBe('keep-alive');
     });
 
-    it('should validate all three modes are accepted', async () => {
-      const modes = ['sync', 'stream', 'websocket'] as const;
+    it('should validate all three transports are accepted', async () => {
+      const transports = ['http', 'sse', 'websocket'] as const;
 
-      for (const mode of modes) {
-        // Reset mock for stream mode
-        if (mode === 'stream') {
+      for (const transport of transports) {
+        // Reset mock for sse transport
+        if (transport === 'sse') {
           mockHandleMessage.mockImplementation(
             async (
               _agentId: unknown,
@@ -349,56 +349,98 @@ describe('Channels API - Response Mode Parameter', () => {
           app,
           'POST',
           `/api/messaging/channels/${channelId}/messages`,
-          { ...validPayload, mode }
+          { ...validPayload, transport }
         );
 
-        // None of the valid modes should return 400
+        // None of the valid transports should return 400
         expect(res.status).not.toBe(400);
       }
     });
 
-    it('should reject non-string mode parameter (number)', async () => {
+    it('should reject non-string transport parameter (number)', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 123 }
+        { ...validPayload, transport: 123 }
       );
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
-      expect((res.body as { error: string }).error).toContain('Mode must be a string');
+      expect((res.body as { error: string }).error).toContain('Transport must be a string');
     });
 
-    it('should reject non-string mode parameter (boolean)', async () => {
+    it('should reject non-string transport parameter (boolean)', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: true }
+        { ...validPayload, transport: true }
       );
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
-      expect((res.body as { error: string }).error).toContain('Mode must be a string');
+      expect((res.body as { error: string }).error).toContain('Transport must be a string');
     });
 
-    it('should reject non-string mode parameter (object)', async () => {
+    it('should reject non-string transport parameter (object)', async () => {
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: { type: 'sync' } }
+        { ...validPayload, transport: { type: 'http' } }
       );
 
       expect(res.status).toBe(400);
       expect(res.body).toHaveProperty('error');
-      expect((res.body as { error: string }).error).toContain('Mode must be a string');
+      expect((res.body as { error: string }).error).toContain('Transport must be a string');
+    });
+
+    it('should accept legacy mode parameter for backward compatibility', async () => {
+      // Test with legacy 'sync' mode - should map to 'http'
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/channels/${channelId}/messages`,
+        { ...validPayload, mode: 'sync' }
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+      expect(res.body).toHaveProperty('agentResponse');
+    });
+
+    it('should accept legacy stream mode for backward compatibility', async () => {
+      // Mock handleMessage to call the onResponse callback
+      mockHandleMessage.mockImplementation(
+        async (
+          _agentId: unknown,
+          _message: unknown,
+          options?: { onResponse?: (content: unknown) => Promise<void> }
+        ) => {
+          if (options?.onResponse) {
+            await options.onResponse({ text: 'Streamed response' });
+          }
+          return { processing: { responseContent: { text: 'Streamed response' } } };
+        }
+      );
+
+      // Test with legacy 'stream' mode - should map to 'sse'
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/channels/${channelId}/messages`,
+        { ...validPayload, mode: 'stream' }
+      );
+
+      // Should set SSE headers like 'sse' transport
+      expect(res.headers['Content-Type']).toBe('text/event-stream');
     });
   });
 
   describe('Streaming Error Handling', () => {
-    it('should handle provider errors in stream mode via onError callback', async () => {
+    it('should handle provider errors in sse transport via onError callback', async () => {
       mockHandleMessage.mockImplementation(
         async (
           _agentId: unknown,
@@ -416,16 +458,16 @@ describe('Channels API - Response Mode Parameter', () => {
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'stream' }
+        { ...validPayload, transport: 'sse' }
       );
 
-      // Stream mode should still set SSE headers
+      // SSE transport should still set SSE headers
       expect(res.headers['Content-Type']).toBe('text/event-stream');
       // The response body should contain error event
       expect(res.body).toBeDefined();
     });
 
-    it('should handle thrown errors in sync mode gracefully', async () => {
+    it('should handle thrown errors in http transport gracefully', async () => {
       mockHandleMessage.mockImplementation(() => {
         throw new Error('Unexpected provider error');
       });
@@ -434,24 +476,24 @@ describe('Channels API - Response Mode Parameter', () => {
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'sync' }
+        { ...validPayload, transport: 'http' }
       );
 
       // Should return error status
       expect(res.status).toBeGreaterThanOrEqual(500);
     });
 
-    it('should handle rejected promises in stream mode', async () => {
+    it('should handle rejected promises in sse transport', async () => {
       mockHandleMessage.mockImplementation(() => Promise.reject(new Error('Network timeout')));
 
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/channels/${channelId}/messages`,
-        { ...validPayload, mode: 'stream' }
+        { ...validPayload, transport: 'sse' }
       );
 
-      // Stream mode should still set SSE headers even on error
+      // SSE transport should still set SSE headers even on error
       expect(res.headers['Content-Type']).toBe('text/event-stream');
     });
   });
