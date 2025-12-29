@@ -34,6 +34,32 @@ const watchDirs = [
   path.resolve(packagesDir, 'config/src'),
 ];
 
+/**
+ * Extract the package name from a watched directory path, in a cross-platform way.
+ *
+ * Example: "/repo/packages/cli/src" -> "cli"
+ * Example: "C:\\repo\\packages\\cli\\src" -> "cli"
+ *
+ * @param {string} dir
+ * @returns {string}
+ */
+function getPackageNameFromDir(dir) {
+  const normalizedDir = path.normalize(dir);
+  const parts = normalizedDir.split(/[\\/]+/).filter(Boolean);
+
+  const packagesIndex = parts.lastIndexOf('packages');
+  if (packagesIndex !== -1 && parts.length > packagesIndex + 1) {
+    return parts[packagesIndex + 1];
+  }
+
+  // Common case in this script: "<package>/src"
+  if (parts.length >= 2 && parts[parts.length - 1] === 'src') {
+    return parts[parts.length - 2];
+  }
+
+  return parts.length > 0 ? parts[parts.length - 1] : dir;
+}
+
 /** @type {ProcessInfo[]} */
 let processes = [];
 /** @type {boolean} */
@@ -431,12 +457,12 @@ function startFileWatcher() {
   watchDirs.forEach((dir, index) => {
     // Check if directory exists before watching (CRITICAL FIX)
     if (!existsSync(dir)) {
-      const packageName = dir.split('/').slice(-2, -1)[0];
+      const packageName = getPackageNameFromDir(dir);
       log('WATCH', `⚠️  Skipping ${packageName} - directory does not exist: ${dir}`);
       return;
     }
 
-    const packageName = dir.split('/').slice(-2, -1)[0]; // Extract package name from path
+    const packageName = getPackageNameFromDir(dir); // Extract package name from path
 
     try {
       const watcher = watch(dir, { recursive: true }, (eventType, filename) => {
