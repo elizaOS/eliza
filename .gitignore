@@ -185,3 +185,7 @@ tsconfig.tsbuildinfo
 test-data/
 standalone.ts
 /.claude
+
+# Continuous Claude cache (local only)
+.claude/cache/
+/thoughts
