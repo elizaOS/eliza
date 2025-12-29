@@ -255,6 +255,8 @@ elizaos test -t component     # Run only component tests
 elizaos test -t e2e          # Run only e2e tests
 elizaos test --name "test"   # Filter tests by name (case sensitive)
 elizaos test --skip-build    # Skip building before tests
+elizaos test --port <port>   # Port for e2e tests
+elizaos test --skip-type-check  # Skip TypeScript validation
 ```
 
 **Test Types:**
