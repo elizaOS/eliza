@@ -11,7 +11,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
 import { tmpdir } from 'os';
 import { executeGenerateCommand } from '../../generate';
 import { ScenarioRunResult } from '../../../scenario/src/schema';
