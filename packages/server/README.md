@@ -19,8 +19,6 @@ This package is used internally by the ElizaOS CLI (`@elizaos/cli`) but can also
 ## Installation
 
 ```bash
-npm install @elizaos/server
-# or
 bun add @elizaos/server
 ```
 
