@@ -144,6 +144,47 @@ describe('SessionsService', () => {
       );
     });
 
+    it('should send a message with sse transport for streaming', async () => {
+      const sessionId = 'session-789';
+      const params = {
+        content: 'Hello, agent!',
+        transport: 'sse' as const,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: {
+            success: true,
+            userMessage: {
+              id: 'msg-123',
+              content: 'Hello, agent!',
+              authorId: 'user-456',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            },
+            streamUrl: '/api/messaging/sessions/session-789/stream',
+          },
+        }),
+      });
+
+      const result = await service.sendMessage(sessionId, params);
+
+      expect(result.success).toBe(true);
+      expect(result.userMessage.id).toBe('msg-123');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:3000/api/messaging/sessions/session-789/messages',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(params),
+        })
+      );
+    });
+
     it('should send a message with http transport and get agent response', async () => {
       const sessionId = 'session-789';
       const params = {
