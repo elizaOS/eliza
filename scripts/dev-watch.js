@@ -338,21 +338,43 @@ async function rebuildAndRestartServer() {
 
         // Use exit event to properly track process termination
         const killPromise = new Promise((resolve) => {
+          // Set up timeout for force kill
+          const forceKillTimeout = setTimeout(() => {
+            if (child.exitCode === null) {
+              log('REBUILD', 'Server did not stop gracefully, force killing...');
+              try {
+                child.kill('SIGKILL');
+              } catch (error) {
+                // Ignore errors during force kill
+              }
+            }
+            resolve(true); // Always resolve after timeout
+          }, 500);
+
+          // Listen for the process to exit
           child.exited.then(() => {
+            clearTimeout(forceKillTimeout);
             log('REBUILD', 'Server stopped gracefully');
+            resolve(true);
+          }).catch(() => {
+            // Handle rejection from child.exited
+            clearTimeout(forceKillTimeout);
             resolve(true);
           });
 
           // Try graceful shutdown first
-          child.kill('SIGTERM');
-
-          // Force kill after timeout
-          setTimeout(() => {
-            if (child.exitCode === null) {
-              log('REBUILD', 'Server did not stop gracefully, force killing...');
+          try {
+            child.kill('SIGTERM');
+          } catch (error) {
+            // If kill fails, try SIGKILL immediately
+            try {
               child.kill('SIGKILL');
+            } catch (killError) {
+              // Process might already be dead
             }
-          }, 500);
+            clearTimeout(forceKillTimeout);
+            resolve(true);
+          }
         });
 
         await killPromise;
