@@ -3,6 +3,7 @@ import type { UUID, Media } from '@elizaos/core';
 import { getElizaClient } from '@/lib/api-client-config';
 import { getEntityId, randomUUID, getAttachmentType } from '@/lib/utils';
 import { USER_NAME } from '@/constants';
+import clientLogger from '@/lib/logger';
 import type { UiMessage } from '../types';
 
 interface UseHTTPChatOptions {
@@ -90,7 +91,7 @@ export function useHTTPChat({
           onAddMessage(agentMessage);
         }
       } catch (error) {
-        console.error('[useHTTPChat] Error sending message:', error);
+        clientLogger.error('[useHTTPChat] Error sending message:', error);
         onUpdateMessage(tempId, {
           isLoading: false,
           text: `${text} (Failed to send)`,
