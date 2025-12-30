@@ -59,7 +59,9 @@ type AgentActionViewerProps = {
 // Helper functions
 function getModelUsageType(modelType: string): string {
   if (
-    (modelType.includes('TEXT') || modelType.includes('OBJECT')) &&
+    (modelType.includes('TEXT') ||
+      modelType.includes('OBJECT') ||
+      modelType.includes('REASONING')) &&
     !modelType.includes('EMBEDDING') &&
     !modelType.includes('TRANSCRIPTION')
   ) {
@@ -74,15 +76,7 @@ function getModelUsageType(modelType: string): string {
   if (modelType.includes('IMAGE')) {
     return 'Image';
   }
-  if (
-    !modelType.includes('TEXT') &&
-    !modelType.includes('IMAGE') &&
-    !modelType.includes('EMBEDDING') &&
-    !modelType.includes('TRANSCRIPTION')
-  ) {
-    return 'Other';
-  }
-  return 'Unknown';
+  return 'Other';
 }
 
 function formatDate(timestamp: number | undefined) {
@@ -164,9 +158,10 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
   const modelType = action.body?.modelType || '';
   const modelKey = action.body?.modelKey || '';
-  const isActionLog = action.type === 'action';
+  const logType = action.type || '';
+  const isActionLog = logType === 'action';
   const actionName = action.body?.action || '';
-  const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType);
+  const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType || logType);
   const usageType = isActionLog ? 'Action' : getModelUsageType(modelType);
   const responseObj = typeof action.body?.response === 'object' ? action.body.response : undefined;
   const tokenUsage = formatTokenUsage(responseObj?.usage || action.body?.usage);
@@ -361,7 +356,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
               <div className="flex items-center gap-2 mb-1">
                 <h4 className="font-semibold text-sm">{isActionLog ? actionName : usageType}</h4>
                 <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {isActionLog ? 'Action' : modelType}
+                  {isActionLog ? 'Action' : modelType || logType}
                 </span>
                 {action.body?.promptCount && action.body.promptCount > 1 && (
                   <Badge variant="secondary" className="text-xs px-1.5">
