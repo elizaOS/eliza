@@ -267,20 +267,28 @@ function startCliServer() {
 
 /**
  * Start the actual CLI server process
- * @returns {Promise<BunSubprocess | null>}
+ * @returns {Promise<BunSubprocess | null>} Returns the subprocess on success, null if spawn fails
  */
 function startActualCliServer() {
   return new Promise((resolve) => {
     log('CLI', 'Starting CLI server process...');
 
-    const child = Bun.spawn(['bun', 'dist/index.js', 'start'], {
-      cwd: cliDir,
-      stdio: ['inherit', 'inherit', 'inherit'],
-      env: {
-        ...process.env,
-        NODE_ENV: 'development',
-      },
-    });
+    /** @type {BunSubprocess} */
+    let child;
+    try {
+      child = Bun.spawn(['bun', 'dist/index.js', 'start'], {
+        cwd: cliDir,
+        stdio: ['inherit', 'inherit', 'inherit'],
+        env: {
+          ...process.env,
+          NODE_ENV: 'development',
+        },
+      });
+    } catch (error) {
+      log('CLI', `Failed to spawn CLI server: ${error.message}`);
+      resolve(null);
+      return;
+    }
 
     child.exited.then((exitCode) => {
       if (!isShuttingDown && !isRebuilding) {
@@ -294,7 +302,8 @@ function startActualCliServer() {
       if (!isShuttingDown && !isRebuilding) {
         log('CLI', `CLI server error: ${error.message}`);
         cleanup('cli-error');
-        resolve(null);
+        // NOTE: We don't resolve(null) here because the Promise is already resolved
+        // with `child` below. Async errors after process spawn are handled via cleanup().
       }
     });
 
