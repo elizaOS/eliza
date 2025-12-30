@@ -57,6 +57,7 @@ describe('SSE Transport Integration', () => {
   let baseUrl: string;
   let agentId: UUID;
   let sessionId: UUID;
+  let originalHandleMessage: ElizaOS['handleMessage'];
 
   beforeAll(async () => {
     // Arrange - Setup server
@@ -77,11 +78,48 @@ describe('SSE Transport Integration', () => {
 
     agentId = runtime.agentId;
 
-    // Mock processActions to simulate streaming
-    runtime.processActions = async (_message: unknown, responses: unknown[]) => {
-      (responses as Array<{ text: string }>).push({
-        text: 'SSE streaming response',
-      });
+    // Mock elizaOS.handleMessage to support SSE callbacks
+    const elizaOS = serverFixture.getServer().elizaOS!;
+    originalHandleMessage = elizaOS.handleMessage.bind(elizaOS);
+    elizaOS.handleMessage = async (
+      _agentId: UUID,
+      message: any,
+      options?: {
+        onStreamChunk?: (chunk: string) => Promise<void>;
+        onResponse?: (content: any) => Promise<void>;
+      }
+    ): Promise<HandleMessageResult> => {
+      const mockMessageId = stringToUuid(`mock-msg-${Date.now()}`);
+
+      // Simulate streaming chunks if callback provided
+      if (options?.onStreamChunk) {
+        await options.onStreamChunk('SSE ');
+        await options.onStreamChunk('streaming ');
+        await options.onStreamChunk('response');
+      }
+
+      // Call onResponse callback for SSE done event
+      if (options?.onResponse) {
+        await options.onResponse({ text: 'SSE streaming response' });
+      }
+
+      return {
+        messageId: mockMessageId,
+        userMessage: {
+          id: mockMessageId,
+          entityId: message.entityId,
+          agentId: _agentId,
+          roomId: message.roomId,
+          content: message.content,
+          createdAt: Date.now(),
+        } as any,
+        processing: {
+          didRespond: true,
+          responseContent: { text: 'SSE streaming response' },
+          responseMessages: [],
+          state: {} as any,
+        },
+      };
     };
 
     // Create a session for testing
@@ -102,6 +140,10 @@ describe('SSE Transport Integration', () => {
   }, 30000);
 
   afterAll(async () => {
+    // Restore original handleMessage
+    if (originalHandleMessage && serverFixture.getServer().elizaOS) {
+      serverFixture.getServer().elizaOS!.handleMessage = originalHandleMessage;
+    }
     await agentFixture.cleanup();
     await serverFixture.cleanup();
   });
@@ -220,7 +262,7 @@ describe('SSE Transport Integration', () => {
       expect(response.status).toBe(400);
 
       const data = await response.json();
-      expect(data.error).toContain('Invalid transport');
+      expect(data.error.message).toContain('Invalid transport');
     });
 
     it('should reject non-string transport parameter', async () => {
@@ -242,7 +284,7 @@ describe('SSE Transport Integration', () => {
       expect(response.status).toBe(400);
 
       const data = await response.json();
-      expect(data.error).toContain('Transport must be a string');
+      expect(data.error.message).toContain('Transport must be a string');
     });
   });
 

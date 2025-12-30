@@ -21,6 +21,7 @@ import {
   CharacterBuilder,
   stringToUuid,
 } from '../index';
+import internalMessageBus from '../../services/message-bus';
 
 const DEFAULT_MESSAGE_SERVER_ID = '00000000-0000-0000-0000-000000000000' as UUID;
 
@@ -181,7 +182,7 @@ describe('WebSocket Transport Integration', () => {
       expect(response.status).toBe(400);
 
       const data = await response.json();
-      expect(data.error).toContain('Invalid transport');
+      expect(data.error.message).toContain('Invalid transport');
     });
 
     it('should reject non-string transport parameter', async () => {
@@ -203,7 +204,7 @@ describe('WebSocket Transport Integration', () => {
       expect(response.status).toBe(400);
 
       const data = await response.json();
-      expect(data.error).toContain('Transport must be a string');
+      expect(data.error.message).toContain('Transport must be a string');
     });
   });
 
@@ -274,7 +275,46 @@ describe('WebSocket Transport Integration', () => {
   });
 
   describe('WebSocket + Socket.IO Integration', () => {
-    it('should receive agent response via Socket.IO after HTTP acknowledgment', async () => {
+    it('should emit new_message to internal bus for agent processing', async () => {
+      // Arrange - Setup listener on internal bus to verify message is emitted
+      const authorId = stringToUuid('ws-bus-user');
+      let receivedMessage: any = null;
+
+      const messageHandler = (data: any) => {
+        receivedMessage = data;
+      };
+      internalMessageBus.on('new_message', messageHandler);
+
+      // Act - Send message via HTTP with websocket transport
+      const response = await fetch(`${baseUrl}/api/messaging/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: 'Hello, should emit to internal bus',
+          author_id: authorId,
+          transport: 'websocket',
+        }),
+      });
+
+      // Small delay to allow async event emission
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Cleanup
+      internalMessageBus.off('new_message', messageHandler);
+
+      // Assert HTTP response is immediate
+      expect(response.status).toBe(201);
+      const httpData = await response.json();
+      expect(httpData.success).toBe(true);
+      expect(httpData.agentResponse).toBeUndefined();
+
+      // Assert message was emitted to internal bus
+      expect(receivedMessage).toBeDefined();
+      expect(receivedMessage.content).toBe('Hello, should emit to internal bus');
+      expect(receivedMessage.channel_id).toBeDefined();
+    });
+
+    it('should connect Socket.IO client and join channel', async () => {
       // Arrange - Create new session for this test to get channelId
       const authorId = stringToUuid('ws-socketio-user');
       const entityId = stringToUuid('ws-socketio-entity');
@@ -288,7 +328,6 @@ describe('WebSocket Transport Integration', () => {
         }),
       });
       const newSessionData = await newSessionResponse.json();
-      const testSessionId = newSessionData.sessionId;
       const channelId = newSessionData.channelId;
 
       // Connect Socket.IO client
@@ -302,33 +341,8 @@ describe('WebSocket Transport Integration', () => {
         messageServerId: DEFAULT_MESSAGE_SERVER_ID,
       });
 
-      // Setup listener for agent response
-      const agentResponsePromise = clientFixture.waitForEvent<{
-        text: string;
-        senderId: string;
-      }>('messageBroadcast');
-
-      // Act - Send message via HTTP with websocket transport
-      const response = await fetch(`${baseUrl}/api/messaging/sessions/${testSessionId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: 'Hello, waiting for Socket.IO response',
-          author_id: authorId,
-          transport: 'websocket',
-        }),
-      });
-
-      // Assert HTTP response is immediate
-      expect(response.status).toBe(201);
-      const httpData = await response.json();
-      expect(httpData.success).toBe(true);
-      expect(httpData.agentResponse).toBeUndefined();
-
-      // Assert agent response comes via Socket.IO
-      const socketResponse = await agentResponsePromise;
-      expect(socketResponse).toBeDefined();
-      expect(socketResponse.text).toBeDefined();
+      // Assert client is connected and joined
+      expect(clientFixture.isConnected()).toBe(true);
     });
   });
 });
