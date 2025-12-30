@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStartAgent, useStopAgent } from './use-query-hooks';
 import { useToast } from './use-toast';
-// Direct error handling
+import clientLogger from '@/lib/logger';
 
 /**
  * Custom hook for managing agents (starting, stopping, and tracking status)
@@ -55,7 +55,7 @@ export function useAgentManagement() {
       // Start the agent
       await startAgentMutation.mutateAsync(agentId);
     } catch (error) {
-      console.error('Failed to start agent:', error);
+      clientLogger.error('Failed to start agent:', error);
       // Let the mutation's onError handler show the appropriate toast
     } finally {
       // Remove agent from starting list regardless of success/failure
@@ -95,7 +95,7 @@ export function useAgentManagement() {
         description: `${agent.name} has been stopped`,
       });
     } catch (error) {
-      console.error('Failed to stop agent:', error);
+      clientLogger.error('Failed to stop agent:', error);
       // Let the mutation's onError handler show the appropriate toast
     } finally {
       // Remove agent from stopping list regardless of success/failure

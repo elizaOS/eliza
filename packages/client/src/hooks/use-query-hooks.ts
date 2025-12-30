@@ -1206,7 +1206,7 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
         }
         return { success: true, data: participants };
       } catch (error) {
-        console.error('[useChannelParticipants] Error:', error);
+        clientLogger.error('[useChannelParticipants] Error:', error);
         return { success: false, data: [] };
       }
     },
