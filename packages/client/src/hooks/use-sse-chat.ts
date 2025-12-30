@@ -3,6 +3,7 @@ import type { UUID, Media } from '@elizaos/core';
 import { createApiClientConfig } from '@/lib/api-client-config';
 import { getEntityId, randomUUID, getAttachmentType } from '@/lib/utils';
 import { USER_NAME } from '@/constants';
+import clientLogger from '@/lib/logger';
 import type { UiMessage } from '../types';
 
 interface UseSSEChatOptions {
@@ -167,8 +168,12 @@ export function useSSEChat({
                 } else if (chunk.type === 'error') {
                   throw new Error(chunk.error || 'Stream error');
                 }
-              } catch {
+              } catch (parseError) {
                 // Non-JSON data, treat as text chunk
+                clientLogger.debug('[useSSEChat] Non-JSON SSE data, treating as text chunk', {
+                  data,
+                  parseError,
+                });
                 accumulatedText += data;
                 onUpdateMessage(agentMessageId, {
                   text: accumulatedText,
@@ -190,7 +195,7 @@ export function useSSEChat({
           return;
         }
 
-        console.error('[useSSEChat] Error sending message:', error);
+        clientLogger.error('[useSSEChat] Error sending message:', error);
         onUpdateMessage(tempId, {
           isLoading: false,
           text: `${text} (Failed to send)`,

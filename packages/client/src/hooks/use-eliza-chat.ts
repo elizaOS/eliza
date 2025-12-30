@@ -7,6 +7,7 @@ import { useSSEChat } from './use-sse-chat';
 import { useHTTPChat } from './use-http-chat';
 import { getEntityId, randomUUID } from '@/lib/utils';
 import { USER_NAME } from '@/constants';
+import clientLogger from '@/lib/logger';
 
 interface UseElizaChatOptions {
   channelId: UUID | undefined;
@@ -283,7 +284,7 @@ export function useElizaChat({
           await socketSend(text, serverId, source, attachments, tempId, undefined, targetChannelId);
         }
       } catch (error) {
-        console.error('[useElizaChat] Error sending message:', error);
+        clientLogger.error('[useElizaChat] Error sending message:', error);
         onError?.(error instanceof Error ? error : new Error(String(error)));
       }
     },

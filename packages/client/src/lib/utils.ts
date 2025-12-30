@@ -1,10 +1,9 @@
 import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
-import type { UUID } from '@elizaos/core';
 import { type ClassValue, clsx } from 'clsx';
 import dayjs from 'dayjs';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import { twMerge } from 'tailwind-merge';
-import { AgentStatus, type Agent, type UUID as CoreUUID } from '@elizaos/core';
+import { AgentStatus, type Agent, type UUID } from '@elizaos/core';
 import type { MessageChannel as ClientMessageChannel } from '@/types';
 
 /**
@@ -170,7 +169,7 @@ export function getAttachmentType(contentType: string | undefined): AttachmentTy
 export const generateGroupName = (
   channel: Partial<ClientMessageChannel> | undefined,
   participants: Partial<Agent>[] | undefined,
-  currentUserId: CoreUUID | string | undefined
+  currentUserId: UUID | string | undefined
 ): string => {
   if (channel?.name && channel.name.trim() !== '') {
     return channel.name;
