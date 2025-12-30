@@ -259,8 +259,8 @@ describe('HTTP Transport Integration', () => {
       expect(response.status).toBe(201);
       expect(data.userMessage).toHaveProperty('id');
       expect(data.userMessage).toHaveProperty('content');
-      expect(data.userMessage).toHaveProperty('authorId');
-      expect(data.userMessage).toHaveProperty('createdAt');
+      expect(data.userMessage).toHaveProperty('author_id');
+      expect(data.userMessage).toHaveProperty('created_at');
     });
 
     it('should include agentResponse with text', async () => {
