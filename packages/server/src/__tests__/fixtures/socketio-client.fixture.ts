@@ -128,6 +128,13 @@ export class SocketIOClientFixture {
   }
 
   /**
+   * Check if the client is currently connected
+   */
+  isConnected(): boolean {
+    return this.client?.connected ?? false;
+  }
+
+  /**
    * Join a channel
    */
   async joinChannel(payload: JoinChannelPayload): Promise<void> {
