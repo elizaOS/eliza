@@ -2,12 +2,13 @@
  * Unit tests for SocketIORouter
  */
 
-import { describe, it, expect, beforeEach, jest, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, jest } from 'bun:test';
 import { SocketIORouter } from '../../../socketio';
 import { createMockAgentRuntime } from '../../test-utils/mocks';
-import type { IAgentRuntime, UUID, ElizaOS } from '@elizaos/core';
-import { EventType, SOCKET_MESSAGE_TYPE, ChannelType, logger } from '@elizaos/core';
+import type { IAgentRuntime, ElizaOS } from '@elizaos/core';
+import { EventType, SOCKET_MESSAGE_TYPE, ChannelType } from '@elizaos/core';
 import type { AgentServer } from '../../../index';
+import internalMessageBus from '../../../services/message-bus';
 
 // Mock types for testing
 type MockElizaOS = Pick<ElizaOS, 'getAgent' | 'getAgents'>;
@@ -371,6 +372,55 @@ describe('SocketIORouter', () => {
       expect(mockSocket.emit).toHaveBeenCalledWith('messageError', {
         error: expect.stringContaining('required'),
       });
+    });
+
+    it('should emit message to internal bus for agent processing', async () => {
+      const messageHandler = mockSocket.on.mock.calls.find(
+        (call) => call[0] === String(SOCKET_MESSAGE_TYPE.SEND_MESSAGE)
+      )?.[1];
+
+      expect(messageHandler).toBeDefined();
+
+      const payload = {
+        channelId: '123e4567-e89b-12d3-a456-426614174000',
+        senderId: '987e6543-e89b-12d3-a456-426614174000',
+        senderName: 'Test User',
+        message: 'Hello agent',
+        messageServerId: '00000000-0000-0000-0000-000000000000',
+      };
+
+      (mockServerInstance.getChannelDetails as jest.Mock).mockReturnValue(
+        Promise.resolve({ id: payload.channelId })
+      );
+      (mockServerInstance.createMessage as jest.Mock).mockReturnValue(
+        Promise.resolve({
+          id: 'msg-456',
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      // Setup listener on internal bus
+      let receivedMessage: any = null;
+      const busHandler = (data: any) => {
+        receivedMessage = data;
+      };
+      internalMessageBus.on('new_message', busHandler);
+
+      await messageHandler(payload);
+
+      // Wait for async operations
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Cleanup
+      internalMessageBus.off('new_message', busHandler);
+
+      // Assert message was emitted to internal bus for agent processing
+      expect(receivedMessage).toBeDefined();
+      expect(receivedMessage.id).toBe('msg-456');
+      expect(receivedMessage.channel_id).toBe(payload.channelId);
+      expect(receivedMessage.author_id).toBe(payload.senderId);
+      expect(receivedMessage.content).toBe(payload.message);
+      expect(receivedMessage.message_server_id).toBe(payload.messageServerId);
     });
   });
 
