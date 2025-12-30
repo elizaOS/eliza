@@ -614,8 +614,15 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
       const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
-      // Map the API logs to client format
-      return response ? response.map(mapApiLogToClient) : [];
+      if (!response) return [];
+
+      // Filter to only include model calls (useModel:*) and actions
+      const relevantLogs = response.filter((log) => {
+        const logType = log.type || '';
+        return logType.startsWith('useModel:') || logType === 'action';
+      });
+
+      return relevantLogs.map(mapApiLogToClient);
     },
     refetchInterval: 1000,
     staleTime: 1000,
