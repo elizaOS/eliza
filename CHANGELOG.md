@@ -1060,7 +1060,7 @@
 - chore: add contributor license [\#502](https://github.com/elizaOS/eliza/pull/502) ([awidearray](https://github.com/awidearray))
 - node-v [\#501](https://github.com/elizaOS/eliza/pull/501) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
 - fix: improve embeddings [\#496](https://github.com/elizaOS/eliza/pull/496) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
-- feat: improve type saftey [\#494](https://github.com/elizaOS/eliza/pull/494) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
+- feat: improve type safety [\#494](https://github.com/elizaOS/eliza/pull/494) ([ponderingdemocritus](https://github.com/ponderingdemocritus))
 - fix: added missing packages to tsup configs' externals [\#488](https://github.com/elizaOS/eliza/pull/488) ([massivefermion](https://github.com/massivefermion))
 - fix: fix character path loading [\#487](https://github.com/elizaOS/eliza/pull/487) ([bmgalego](https://github.com/bmgalego))
 - fix: agent loadCharacters file resolver [\#486](https://github.com/elizaOS/eliza/pull/486) ([bmgalego](https://github.com/bmgalego))
