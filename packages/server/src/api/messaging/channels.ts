@@ -92,10 +92,11 @@ export function createChannelsRouter(
   });
 
   // GUI posts NEW messages from a user here
-  // Supports multiple response modes via the 'mode' parameter:
-  // - "sync": Wait for complete agent response
-  // - "stream": SSE streaming response
-  // - "websocket": Return immediately, agent response via WebSocket (current default)
+  // Supports multiple transport types via the 'transport' parameter:
+  // - "http": Wait for complete agent response (sync)
+  // - "sse": SSE streaming response
+  // - "websocket": Return immediately, agent response via WebSocket (default)
+  // Note: 'mode' parameter is deprecated but still supported for backward compatibility
   router.post(
     '/channels/:channelId/messages',
     async (req: express.Request, res: express.Response) => {
@@ -108,11 +109,12 @@ export function createChannelsRouter(
         raw_message,
         metadata, // Should include user_display_name
         source_type, // Should be something like 'eliza_gui'
-        mode,
+        transport: transportParam,
+        mode, // @deprecated - use 'transport' instead
       } = req.body;
 
-      // Validate transport parameter with proper type checking (supports legacy 'mode' param)
-      const transportValidation = validateTransport(mode);
+      // Validate transport parameter (supports both 'transport' and legacy 'mode')
+      const transportValidation = validateTransport(transportParam ?? mode);
       if (!transportValidation.isValid) {
         return res.status(400).json({
           success: false,
@@ -304,7 +306,7 @@ export function createChannelsRouter(
           agentId: agentId as UUID,
           messageMemory,
           userMessage: messageForBus,
-          onWebSocketMode: () => {
+          onWebSocketTransport: () => {
             // Emit to internal bus for agent processing
             internalMessageBus.emit('new_message', messageForBus);
             logger.debug(

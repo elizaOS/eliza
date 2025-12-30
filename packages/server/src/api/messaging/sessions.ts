@@ -12,6 +12,8 @@ import { type TransportType } from '../shared/constants';
 import { handleTransport } from '../shared/response-handlers';
 import { validateTransport } from '../shared/validation';
 import type { AgentServer, CentralRootMessage } from '../../index';
+import internalMessageBus from '../../services/message-bus';
+import type { MessageServiceStructure } from '../../types/server';
 import { transformMessageAttachments } from '../../utils';
 import type {
   Session,
@@ -820,13 +822,18 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         content: { text: body.content },
       };
 
-      // User message response object
-      const userMessage = {
+      // Build messageForBus for WebSocket transport (MessageServiceStructure format)
+      const messageForBus: MessageServiceStructure = {
         id: message.id,
+        channel_id: message.channelId,
+        message_server_id: serverInstance.messageServerId,
+        author_id: message.authorId,
         content: message.content,
-        authorId: message.authorId,
-        createdAt: message.createdAt,
+        created_at: new Date(message.createdAt).getTime(),
+        source_type: message.sourceType,
+        raw_message: message.rawMessage,
         metadata: message.metadata,
+        in_reply_to_message_id: message.inReplyToRootMessageId,
       };
 
       // Session-specific additional data
@@ -846,8 +853,16 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
         elizaOS,
         agentId: session.agentId,
         messageMemory,
-        userMessage,
+        userMessage: messageForBus,
         additionalResponseData: sessionStatus,
+        onWebSocketTransport: () => {
+          // Emit to internal bus for agent processing
+          internalMessageBus.emit('new_message', messageForBus);
+          logger.debug(
+            { src: 'http', messageId: messageForBus.id, sessionId, transport },
+            'Session message published to internal bus'
+          );
+        },
       });
     })
   );

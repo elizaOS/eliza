@@ -363,7 +363,7 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('userMessage');
       expect(res.body.userMessage).toHaveProperty('id');
       expect(res.body.userMessage).toHaveProperty('content', 'Test message');
-      expect(res.body.userMessage).toHaveProperty('authorId', 'user-123');
+      expect(res.body.userMessage).toHaveProperty('author_id', 'user-123');
     });
 
     it('should propagate session metadata to messages', async () => {

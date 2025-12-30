@@ -28,7 +28,7 @@ export interface HandleTransportOptions {
   /** Additional data to include in http/websocket JSON responses */
   additionalResponseData?: Record<string, unknown>;
   /** Callback for websocket transport - called before returning response */
-  onWebSocketMode?: () => void | Promise<void>;
+  onWebSocketTransport?: () => void | Promise<void>;
 }
 
 /**
@@ -73,9 +73,9 @@ function setupSSEHeaders(res: Response): void {
 }
 
 /**
- * Handles SSE streaming mode
+ * Handles SSE transport - streaming response
  */
-async function handleStreamMode(
+async function handleSSETransport(
   res: Response,
   elizaOS: ElizaOS,
   agentId: UUID,
@@ -114,9 +114,9 @@ async function handleStreamMode(
 }
 
 /**
- * Handles sync mode - waits for complete response
+ * Handles HTTP transport - waits for complete response (sync)
  */
-async function handleSyncMode(
+async function handleHttpTransport(
   res: Response,
   elizaOS: ElizaOS,
   agentId: UUID,
@@ -132,29 +132,29 @@ async function handleSyncMode(
       agentResponse: result.processing?.responseContent,
       ...additionalResponseData,
     });
-  } catch (syncError) {
-    logger.error({ src: 'http', agentId, error: syncError }, 'Error in sync mode message handling');
+  } catch (error) {
+    logger.error({ src: 'http', agentId, error }, 'Error in HTTP transport message handling');
     res.status(500).json({
       success: false,
-      error: 'Failed to process message in sync mode',
+      error: 'Failed to process message in HTTP transport',
     });
   }
 }
 
 /**
- * Handles websocket mode - returns immediately
+ * Handles websocket transport - returns immediately
  */
-function handleWebSocketMode(
+function handleWebSocketTransport(
   res: Response,
   userMessage: unknown,
   additionalResponseData?: Record<string, unknown>,
-  onWebSocketMode?: () => void | Promise<void>
+  onWebSocketTransport?: () => void | Promise<void>
 ): void {
   // Execute callback if provided (e.g., emit to message bus)
-  if (onWebSocketMode) {
+  if (onWebSocketTransport) {
     // Fire and forget - don't await
-    Promise.resolve(onWebSocketMode()).catch((err) => {
-      logger.error({ src: 'http', error: err }, 'Error in websocket mode callback');
+    Promise.resolve(onWebSocketTransport()).catch((err) => {
+      logger.error({ src: 'http', error: err }, 'Error in websocket transport callback');
     });
   }
 
@@ -178,16 +178,16 @@ export async function handleTransport(options: HandleTransportOptions): Promise<
     messageMemory,
     userMessage,
     additionalResponseData,
-    onWebSocketMode,
+    onWebSocketTransport,
   } = options;
 
   switch (transport) {
     case 'sse':
-      await handleStreamMode(res, elizaOS, agentId, messageMemory, userMessage);
+      await handleSSETransport(res, elizaOS, agentId, messageMemory, userMessage);
       break;
 
     case 'http':
-      await handleSyncMode(
+      await handleHttpTransport(
         res,
         elizaOS,
         agentId,
@@ -199,7 +199,7 @@ export async function handleTransport(options: HandleTransportOptions): Promise<
 
     case 'websocket':
     default:
-      handleWebSocketMode(res, userMessage, additionalResponseData, onWebSocketMode);
+      handleWebSocketTransport(res, userMessage, additionalResponseData, onWebSocketTransport);
       break;
   }
 }
@@ -216,6 +216,6 @@ export async function handleResponseMode(options: HandleResponseModeOptions): Pr
     messageMemory: options.messageMemory,
     userMessage: options.userMessage,
     additionalResponseData: options.additionalResponseData,
-    onWebSocketMode: options.onWebSocketMode,
+    onWebSocketTransport: options.onWebSocketMode,
   });
 }
