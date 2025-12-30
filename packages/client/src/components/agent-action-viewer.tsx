@@ -40,6 +40,7 @@ const ITEMS_PER_PAGE = 15;
 enum ActionType {
   all = 'all',
   llm = 'llm',
+  embedding = 'embedding',
   transcription = 'transcription',
   image = 'image',
   other = 'other',
@@ -596,8 +597,11 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
 
       switch (selectedType) {
         case ActionType.llm:
-          // Include both LLM calls and actions (which often contain LLM prompts)
-          if (usageType !== 'LLM' && !isActionLog) return false;
+          // Only show LLM model calls (not actions)
+          if (usageType !== 'LLM') return false;
+          break;
+        case ActionType.embedding:
+          if (usageType !== 'Embedding') return false;
           break;
         case ActionType.transcription:
           if (usageType !== 'Transcription') return false;
@@ -606,6 +610,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
           if (usageType !== 'Image') return false;
           break;
         case ActionType.other:
+          // "Other" includes actions and unknown model types
           if (usageType !== 'Other' && usageType !== 'Unknown' && !isActionLog) return false;
           break;
       }
@@ -756,6 +761,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
               <SelectContent>
                 <SelectItem value={ActionType.all}>All Actions</SelectItem>
                 <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
+                <SelectItem value={ActionType.embedding}>Embeddings</SelectItem>
                 <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
                 <SelectItem value={ActionType.image}>Image Operations</SelectItem>
                 <SelectItem value={ActionType.other}>Other</SelectItem>
