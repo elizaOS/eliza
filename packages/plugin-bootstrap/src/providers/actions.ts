@@ -29,17 +29,18 @@ function formatActionsWithParams(actions: Action[]): string {
         typeof action.parameters === 'object' &&
         !Array.isArray(action.parameters)
       ) {
-        const paramEntries = Object.entries(action.parameters as Record<string, ActionParameter>);
+        const validParams = Object.entries(
+          action.parameters as Record<string, ActionParameter>
+        ).filter(
+          ([, paramDef]) =>
+            paramDef !== null && paramDef !== undefined && typeof paramDef === 'object'
+        );
 
-        if (paramEntries.length === 0) {
+        if (validParams.length === 0) {
           formatted += '\n\n**Parameters:** None (can be called directly without parameters)';
         } else {
           formatted += '\n\n**Parameters:**';
-          for (const [paramName, paramDef] of paramEntries) {
-            // Skip invalid parameter definitions (null, undefined, or non-object values)
-            if (paramDef === null || paramDef === undefined || typeof paramDef !== 'object') {
-              continue;
-            }
+          for (const [paramName, paramDef] of validParams) {
             const required = paramDef.required ? '(required)' : '(optional)';
             const paramType = paramDef.type ?? 'unknown';
             const paramDesc = paramDef.description ?? 'No description provided';
