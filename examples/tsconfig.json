@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/core": ["../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../packages/core/src/*"],
+      "@elizaos/plugin-sql": ["../packages/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-sql/*": ["../packages/plugin-sql/src/*"],
+      "@elizaos/plugin-bootstrap": ["../packages/plugin-bootstrap/src/index.ts"],
+      "@elizaos/plugin-bootstrap/*": ["../packages/plugin-bootstrap/src/*"]
+    }
+  },
+  "include": ["./**/*.ts"]
+}
