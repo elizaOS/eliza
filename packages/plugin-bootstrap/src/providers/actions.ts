@@ -22,10 +22,14 @@ function formatActionsWithParams(actions: Action[]): string {
     .map((action: Action) => {
       let formatted = `## ${action.name}\n${action.description}`;
 
-      if (action.parameters !== undefined && action.parameters !== null) {
-        const paramEntries = Object.entries(
-          action.parameters as Record<string, ActionParameter>
-        );
+      // Validate parameters is a non-null object (not an array)
+      if (
+        action.parameters !== undefined &&
+        action.parameters !== null &&
+        typeof action.parameters === 'object' &&
+        !Array.isArray(action.parameters)
+      ) {
+        const paramEntries = Object.entries(action.parameters as Record<string, ActionParameter>);
 
         if (paramEntries.length === 0) {
           formatted += '\n\n**Parameters:** None (can be called directly without parameters)';
