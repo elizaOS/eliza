@@ -1214,7 +1214,10 @@ export class DefaultMessageService implements IMessageService {
 
       const thought = typeof parsedStep.thought === 'string' ? parsedStep.thought : undefined;
       const providers = Array.isArray(parsedStep.providers) ? parsedStep.providers : [];
-      const action = typeof parsedStep.action === 'string' ? parsedStep.action : undefined;
+      // Normalize action: empty string or whitespace-only should be treated as undefined
+      const rawAction =
+        typeof parsedStep.action === 'string' ? parsedStep.action.trim() : undefined;
+      const action = rawAction && rawAction.length > 0 ? rawAction : undefined;
       const isFinish = parsedStep.isFinish;
       const parameters = parsedStep.parameters;
 
