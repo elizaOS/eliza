@@ -31,8 +31,12 @@ import {
   getLocalServerUrl,
   logger,
 } from '../index';
-import { ResponseStreamExtractor, XmlTagExtractor } from '../utils/streaming';
-import { runWithStreamingContext } from '../streaming-context';
+import {
+  ResponseStreamExtractor,
+  XmlTagExtractor,
+  createStreamingContext,
+} from '../utils/streaming';
+import { runWithStreamingContext, getStreamingContext } from '../streaming-context';
 
 /**
  * Image description response from the model
@@ -205,23 +209,11 @@ export class DefaultMessageService implements IMessageService {
         opts.useMultiStep ??
         parseBooleanFromText(String(runtime.getSetting('USE_MULTI_STEP') || ''));
 
-      let streamingContext:
-        | { onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>; messageId?: UUID }
-        | undefined;
-      if (opts.onStreamChunk && !useMultiStep) {
-        // Single-shot mode: use top-level streaming context with single extractor
-        const extractor = new ResponseStreamExtractor();
-        streamingContext = {
-          onStreamChunk: async (chunk: string, msgId?: UUID) => {
-            if (extractor.done) return;
-            const textToStream = extractor.push(chunk);
-            if (textToStream) {
-              await opts.onStreamChunk!(textToStream, msgId);
-            }
-          },
-          messageId: responseId,
-        };
-      }
+      // Single-shot mode: use top-level streaming context with single extractor
+      const streamingContext =
+        opts.onStreamChunk && !useMultiStep
+          ? createStreamingContext(new ResponseStreamExtractor(), opts.onStreamChunk, responseId)
+          : undefined;
       // Multi-step mode: streaming is handled per-phase in runMultiStepCore
       // (action execution and summary generation each get their own streaming context)
 
@@ -949,6 +941,32 @@ export class DefaultMessageService implements IMessageService {
     let retries = 0;
 
     while (retries < opts.maxRetries && (!responseContent?.thought || !responseContent?.actions)) {
+      // Check if text extraction is already complete - no point in retrying
+      const ctx = getStreamingContext();
+      if (retries > 0 && ctx?.isComplete?.()) {
+        // Text was fully extracted (found </text>) - exit loop to use streamedText
+        runtime.logger.info(
+          { src: 'service:message', retries },
+          'Text extraction complete despite XML parse failure - skipping further retries'
+        );
+        break;
+      }
+
+      // Check if we have partial streamed text - if so, exit to let continuation handle it
+      if (retries > 0) {
+        const partialText = ctx?.getStreamedText?.() || '';
+        if (partialText.length > 0) {
+          // Has partial text - exit loop to let continuation logic handle it
+          runtime.logger.debug(
+            { src: 'service:message', streamedTextLength: partialText.length },
+            'Partial text streamed - exiting retry loop for continuation'
+          );
+          break;
+        }
+        // No text streamed yet, safe to reset and retry
+        ctx?.reset?.();
+      }
+
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
       });
@@ -1025,6 +1043,98 @@ export class DefaultMessageService implements IMessageService {
             actionsValue: responseContent?.actions,
           },
           'Missing required fields (thought or actions), retrying'
+        );
+      }
+    }
+
+    // Intelligent streaming retry logic (inspired by Anthropic's partial response recovery)
+    const streamingCtx = getStreamingContext();
+    const streamedText = streamingCtx?.getStreamedText?.() || '';
+    const isTextComplete = streamingCtx?.isComplete?.() ?? false;
+
+    // Case B: XML parsing failed OR response text doesn't match streamed text
+    // but <text> extraction is complete - use streamed text as the response
+    if (isTextComplete && streamedText && (!responseContent || !responseContent.text)) {
+      runtime.logger.info(
+        {
+          src: 'service:message',
+          streamedTextLength: streamedText.length,
+          streamedTextPreview: streamedText.substring(0, 100),
+          hadResponseContent: !!responseContent,
+        },
+        'Text extraction complete - using streamed text'
+      );
+
+      responseContent = {
+        ...(responseContent || {}),
+        thought: responseContent?.thought || 'Response generated via streaming',
+        actions: responseContent?.actions || ['REPLY'],
+        providers: responseContent?.providers || [],
+        text: streamedText,
+        simple: true,
+      };
+    } else if (streamedText && !isTextComplete) {
+      // Case C: Text was cut mid-stream - retry with continuation prompt
+      runtime.logger.debug(
+        {
+          src: 'service:message',
+          streamedTextLength: streamedText.length,
+          streamedTextPreview: streamedText.substring(0, 100),
+        },
+        'Text cut mid-stream - attempting continuation'
+      );
+
+      // Reset extractor for fresh streaming of continuation
+      streamingCtx?.reset?.();
+
+      // Build continuation prompt with full context
+      const continuationPrompt = `${prompt}
+
+[CONTINUATION REQUIRED]
+Your previous response was cut off. The user already received this text:
+"${streamedText}"
+
+Continue EXACTLY from where you left off. Do NOT repeat what was already said.
+Output ONLY the continuation, starting immediately after the last character above.
+Wrap your continuation in <text></text> tags.`;
+
+      const continuationResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: continuationPrompt,
+      });
+
+      runtime.logger.debug(
+        {
+          src: 'service:message',
+          continuationLength: continuationResponse.length,
+          continuationPreview: continuationResponse.substring(0, 200),
+        },
+        'Continuation response received'
+      );
+
+      // Extract continuation text
+      const continuationParsed = parseKeyValueXml(continuationResponse);
+      const continuationText =
+        typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
+
+      if (continuationText) {
+        // Combine original streamed text with continuation
+        const fullText = streamedText + continuationText;
+
+        responseContent = {
+          ...(responseContent || {}),
+          thought: responseContent?.thought || 'Response completed via continuation',
+          actions: responseContent?.actions || ['REPLY'],
+          providers: responseContent?.providers || [],
+          text: fullText,
+          simple: true,
+        };
+
+        runtime.logger.info(
+          {
+            src: 'service:message',
+            fullTextLength: fullText.length,
+          },
+          'Continuation successful - combined text'
         );
       }
     }
@@ -1603,11 +1713,21 @@ export class DefaultMessageService implements IMessageService {
     let finalOutput: string = '';
     let summary: Record<string, unknown> | null = null;
 
-    // Track whether streaming has already been sent to the user.
-    // We only stream on the first attempt to avoid duplicate/garbled output when retries occur.
-    let hasStreamedToUser = false;
+    // Set up streaming context for summary (uses XmlTagExtractor for <text> extraction)
+    const summaryStreamingContext = opts.onStreamChunk
+      ? createStreamingContext(new XmlTagExtractor('text'), opts.onStreamChunk, responseId)
+      : undefined;
 
     for (let summaryAttempt = 1; summaryAttempt <= maxSummaryRetries; summaryAttempt++) {
+      // Check if text extraction is already complete - no point in retrying
+      if (summaryAttempt > 1 && summaryStreamingContext?.isComplete?.()) {
+        runtime.logger.info(
+          { src: 'service:message:multistep', attempt: summaryAttempt },
+          'Summary text extraction complete despite XML parse failure - skipping further retries'
+        );
+        break;
+      }
+
       try {
         runtime.logger.debug(
           {
@@ -1618,38 +1738,29 @@ export class DefaultMessageService implements IMessageService {
           'Summary generation attempt'
         );
 
-        // Only stream on the first attempt.
-        // If the first attempt fails and we retry, subsequent attempts do NOT stream
-        // to avoid duplicate content being sent to the user.
-        const shouldStreamThisAttempt = opts.onStreamChunk && !hasStreamedToUser;
+        // Check if we have partial streamed text - if so, exit to let continuation handle it
+        if (summaryAttempt > 1 && summaryStreamingContext) {
+          const partialText = summaryStreamingContext.getStreamedText?.() || '';
+          if (partialText.length > 0) {
+            runtime.logger.debug(
+              { src: 'service:message:multistep', streamedTextLength: partialText.length },
+              'Partial text streamed - exiting retry loop for continuation'
+            );
+            break;
+          }
+          // No text streamed yet, safe to reset and retry
+          summaryStreamingContext.reset?.();
+        }
 
-        if (shouldStreamThisAttempt) {
-          // CRITICAL: Mark that we're about to stream BEFORE starting.
-          // This prevents duplicate streaming if an error occurs mid-stream.
-          // Once any content is sent to the user, we cannot undo it, so we must
-          // ensure retries do not stream again even if this attempt fails.
-          hasStreamedToUser = true;
-
+        if (summaryStreamingContext) {
           // Stream the final summary to the user (extracts <text> content only)
-          // (ResponseStreamExtractor doesn't work here because summary has no <actions> tag)
-          const extractor = new XmlTagExtractor('text');
-          const summaryStreamingContext = {
-            onStreamChunk: async (chunk: string, msgId?: UUID) => {
-              if (extractor.done) return;
-              const textToStream = extractor.push(chunk);
-              if (textToStream) {
-                await opts.onStreamChunk!(textToStream, msgId);
-              }
-            },
-            messageId: responseId,
-          };
           finalOutput = await runWithStreamingContext(summaryStreamingContext, () =>
             runtime.useModel(ModelType.TEXT_LARGE, {
               prompt: summaryPrompt,
             })
           );
         } else {
-          // No streaming: either streaming is disabled, or this is a retry attempt
+          // No streaming: streaming is disabled
           finalOutput = await runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: summaryPrompt,
           });
@@ -1669,7 +1780,7 @@ export class DefaultMessageService implements IMessageService {
               attempt: summaryAttempt,
               maxAttempts: maxSummaryRetries,
               rawResponsePreview: finalOutput.substring(0, 200),
-              hasStreamedToUser,
+              streamedTextLength: summaryStreamingContext?.getStreamedText?.()?.length ?? 0,
             },
             'Failed to parse summary XML'
           );
@@ -1700,6 +1811,76 @@ export class DefaultMessageService implements IMessageService {
         // Exponential backoff on error
         const backoffMs = Math.min(1000 * Math.pow(2, summaryAttempt - 1), 8000);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+
+    // Intelligent streaming retry logic for multi-step summary
+    const currentStreamedText = summaryStreamingContext?.getStreamedText?.() || '';
+    const isTextComplete = summaryStreamingContext?.isComplete?.() ?? false;
+
+    // Case B: XML parsing failed OR summary text doesn't exist
+    // but <text> extraction is complete - use streamed text
+    if (isTextComplete && currentStreamedText && !summary?.text) {
+      runtime.logger.info(
+        {
+          src: 'service:message:multistep',
+          streamedTextLength: currentStreamedText.length,
+          streamedTextPreview: currentStreamedText.substring(0, 100),
+          hadSummary: !!summary,
+        },
+        'Summary text extraction complete - using streamed text'
+      );
+
+      summary = {
+        ...(summary || {}),
+        text: currentStreamedText,
+        thought: summary?.thought || 'Summary generated via streaming',
+      };
+    } else if (currentStreamedText && !isTextComplete) {
+      // Case C: Text was cut mid-stream - retry with continuation prompt
+      runtime.logger.debug(
+        {
+          src: 'service:message:multistep',
+          streamedTextLength: currentStreamedText.length,
+          streamedTextPreview: currentStreamedText.substring(0, 100),
+        },
+        'Summary text cut mid-stream - attempting continuation'
+      );
+
+      // Reset extractor for fresh streaming of continuation
+      summaryStreamingContext?.reset?.();
+
+      const continuationPrompt = `${summaryPrompt}
+
+[CONTINUATION REQUIRED]
+Your previous response was cut off. The user already received this text:
+"${currentStreamedText}"
+
+Continue EXACTLY from where you left off. Do NOT repeat what was already said.
+Output ONLY the continuation, starting immediately after the last character above.
+Wrap your continuation in <text></text> tags.`;
+
+      const continuationResponse = await runWithStreamingContext(summaryStreamingContext, () =>
+        runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: continuationPrompt,
+        })
+      );
+
+      const continuationParsed = parseKeyValueXml(continuationResponse);
+      const continuationText =
+        typeof continuationParsed?.text === 'string' ? continuationParsed.text : '';
+
+      if (continuationText) {
+        const fullText = currentStreamedText + continuationText;
+        summary = { text: fullText, thought: 'Summary completed via continuation' };
+
+        runtime.logger.info(
+          {
+            src: 'service:message:multistep',
+            fullTextLength: fullText.length,
+          },
+          'Summary continuation successful'
+        );
       }
     }
 
