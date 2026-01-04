@@ -96,7 +96,9 @@ export function useConvertCharacter() {
     return Array.from(matched).sort();
   };
 
-  function isV1MessageExampleFormat(example: unknown): example is { user: string; content: Content } {
+  function isV1MessageExampleFormat(
+    example: unknown
+  ): example is { user: string; content: Content } {
     return typeof example === 'object' && example !== null && 'user' in example;
   }
 
@@ -104,16 +106,28 @@ export function useConvertCharacter() {
     const bio = [...(Array.isArray(v1.bio) ? v1.bio : v1.bio ? [v1.bio] : []), ...(v1.lore ?? [])];
 
     const messageExamples =
-      (v1.messageExamples ?? []).map((thread: Array<{ user?: string; content?: Content } | string>) =>
-        thread.map((msg: { user?: string; content?: Content } | string) => {
-          if (isV1MessageExampleFormat(msg)) {
+      (v1.messageExamples ?? []).map(
+        (thread: Array<{ user?: string; content?: Content } | string>) =>
+          thread.map((msg: { user?: string; content?: Content } | string) => {
+            if (isV1MessageExampleFormat(msg)) {
+              return {
+                name: msg.user ?? 'user',
+                content: msg.content ?? { text: '' },
+              };
+            }
+            // If msg is a string, wrap it in a MessageExample format
+            if (typeof msg === 'string') {
+              return {
+                name: 'user',
+                content: { text: msg },
+              };
+            }
+            // For any other format, convert to MessageExample
             return {
-              name: msg.user,
-              content: msg.content,
+              name: (msg as { user?: string }).user ?? 'user',
+              content: (msg as { content?: Content }).content ?? { text: '' },
             };
-          }
-          return msg;
-        })
+          })
       ) ?? [];
 
     const plugins = matchPlugins(v1);

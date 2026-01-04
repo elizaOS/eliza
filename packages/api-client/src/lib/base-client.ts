@@ -131,11 +131,13 @@ export abstract class BaseApiClient {
       // Handle error responses
       if (!response.ok) {
         // Try to extract error information from response
-        const error = jsonData?.error || {
+        const errorData = jsonData as { error?: { code?: string; message?: string; details?: unknown } } | null;
+        const error = errorData?.error || {
           code: 'HTTP_ERROR',
           message: `HTTP ${response.status}: ${response.statusText}`,
         };
-        throw new ApiError(error.code, error.message, error.details, response.status);
+        const details = typeof error.details === 'string' ? error.details : undefined;
+        throw new ApiError(error.code || 'HTTP_ERROR', error.message || 'Unknown error', details, response.status);
       }
 
       // Handle successful responses

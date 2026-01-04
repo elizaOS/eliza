@@ -3,7 +3,7 @@ import { SessionsService } from '../../services/sessions';
 import type { ApiClientConfig } from '../../types/base';
 
 const mockFetch = mock();
-global.fetch = mockFetch;
+global.fetch = mockFetch as unknown as typeof fetch;
 
 describe('SessionsService', () => {
   let service: SessionsService;
@@ -94,7 +94,7 @@ describe('SessionsService', () => {
   });
 
   describe('sendMessage', () => {
-    it('should send a message in a session', async () => {
+    it('should send a message in a session (websocket mode by default)', async () => {
       const sessionId = 'session-789';
       const params = {
         content: 'Hello, agent!',
@@ -112,17 +112,75 @@ describe('SessionsService', () => {
         json: async () => ({
           success: true,
           data: {
-            id: 'msg-123',
-            content: 'Hello, agent!',
-            authorId: 'user-456',
-            createdAt: '2024-01-01T00:00:00.000Z',
+            success: true,
+            userMessage: {
+              id: 'msg-123',
+              content: 'Hello, agent!',
+              authorId: 'user-456',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            },
+            sessionStatus: {
+              expiresAt: '2024-01-01T00:30:00.000Z',
+              renewalCount: 0,
+              wasRenewed: false,
+              isNearExpiration: false,
+            },
           },
         }),
       });
 
       const result = await service.sendMessage(sessionId, params);
 
-      expect(result.id).toBe('msg-123');
+      expect(result.success).toBe(true);
+      expect(result.userMessage.id).toBe('msg-123');
+      expect(result.userMessage.content).toBe('Hello, agent!');
+      expect(result.sessionStatus?.isNearExpiration).toBe(false);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:3000/api/messaging/sessions/session-789/messages',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify(params),
+        })
+      );
+    });
+
+    it('should send a message with sync mode and get agent response', async () => {
+      const sessionId = 'session-789';
+      const params = {
+        content: 'Hello, agent!',
+        mode: 'sync' as const,
+      };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: {
+            success: true,
+            userMessage: {
+              id: 'msg-123',
+              content: 'Hello, agent!',
+              authorId: 'user-456',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            },
+            agentResponse: {
+              text: 'Hello! How can I help you today?',
+              thought: 'User is greeting me',
+            },
+          },
+        }),
+      });
+
+      const result = await service.sendMessage(sessionId, params);
+
+      expect(result.success).toBe(true);
+      expect(result.userMessage.id).toBe('msg-123');
+      expect(result.agentResponse).toBeDefined();
+      expect(result.agentResponse?.text).toBe('Hello! How can I help you today?');
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:3000/api/messaging/sessions/session-789/messages',
         expect.objectContaining({
@@ -140,6 +198,48 @@ describe('SessionsService', () => {
     it('should throw error when content is empty', async () => {
       await expect(service.sendMessage('session-123', { content: '' })).rejects.toThrow(
         'content is required'
+      );
+    });
+  });
+
+  describe('sendMessageSync', () => {
+    it('should send a message with sync mode automatically', async () => {
+      const sessionId = 'session-789';
+      const params = { content: 'Hello, agent!' };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (name: string) => (name === 'content-length' ? '100' : null),
+        },
+        json: async () => ({
+          success: true,
+          data: {
+            success: true,
+            userMessage: {
+              id: 'msg-123',
+              content: 'Hello, agent!',
+              authorId: 'user-456',
+              createdAt: '2024-01-01T00:00:00.000Z',
+            },
+            agentResponse: {
+              text: 'Hi there!',
+            },
+          },
+        }),
+      });
+
+      const result = await service.sendMessageSync(sessionId, params);
+
+      expect(result.success).toBe(true);
+      expect(result.agentResponse?.text).toBe('Hi there!');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:3000/api/messaging/sessions/session-789/messages',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ ...params, mode: 'sync' }),
+        })
       );
     });
   });

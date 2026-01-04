@@ -15,7 +15,18 @@ const MatrixAxisSchema = z.object({
    * A list of values to be substituted for the specified parameter.
    * Values can be of any type (string, number, boolean, object, array, null).
    */
-  values: z.array(z.union([z.string(), z.number(), z.boolean(), z.null(), z.record(z.unknown()), z.array(z.unknown())])).min(1, 'Values array must contain at least 1 element'),
+  values: z
+    .array(
+      z.union([
+        z.string(),
+        z.number(),
+        z.boolean(),
+        z.null(),
+        z.record(z.string(), z.unknown()),
+        z.array(z.unknown()),
+      ])
+    )
+    .min(1, 'Values array must contain at least 1 element'),
 });
 
 /**
@@ -195,14 +206,25 @@ export function calculateTotalRuns(config: MatrixConfig): number {
  * // ]
  * ```
  */
-export function generateParameterCombinations(config: MatrixConfig): Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>[] {
+export function generateParameterCombinations(
+  config: MatrixConfig
+): Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>[] {
   if (config.matrix.length === 0) {
     return [{}];
   }
 
-  const combinations: Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>[] = [];
+  const combinations: Record<
+    string,
+    string | number | boolean | null | Record<string, unknown> | unknown[]
+  >[] = [];
 
-  function generateCombos(axisIndex: number, currentCombo: Record<string, string | number | boolean | null | Record<string, unknown> | unknown[]>): void {
+  function generateCombos(
+    axisIndex: number,
+    currentCombo: Record<
+      string,
+      string | number | boolean | null | Record<string, unknown> | unknown[]
+    >
+  ): void {
     if (axisIndex >= config.matrix.length) {
       combinations.push({ ...currentCombo });
       return;

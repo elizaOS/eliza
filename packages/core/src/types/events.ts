@@ -1,8 +1,9 @@
 import type { HandlerCallback } from './components';
 import type { Entity, Room, World } from './environment';
 import type { Memory } from './memory';
+import type { ControlMessage } from './messaging';
 import type { ModelTypeName } from './model';
-import type { Content, Metadata, UUID } from './primitives';
+import type { Content, UUID } from './primitives';
 import type { IAgentRuntime } from './runtime';
 
 /**
@@ -60,6 +61,9 @@ export enum EventType {
   EMBEDDING_GENERATION_REQUESTED = 'EMBEDDING_GENERATION_REQUESTED',
   EMBEDDING_GENERATION_COMPLETED = 'EMBEDDING_GENERATION_COMPLETED',
   EMBEDDING_GENERATION_FAILED = 'EMBEDDING_GENERATION_FAILED',
+
+  // Control events
+  CONTROL_MESSAGE = 'CONTROL_MESSAGE',
 }
 
 /**
@@ -97,7 +101,7 @@ export interface EntityPayload extends EventPayload {
   worldId?: UUID;
   roomId?: UUID;
   metadata?: {
-    orginalId: string;
+    originalId: string;
     username: string;
     displayName?: string;
     [key: string]: unknown;
@@ -195,6 +199,13 @@ export interface EmbeddingGenerationPayload extends EventPayload {
 }
 
 /**
+ * Payload for control message events
+ */
+export interface ControlMessagePayload extends EventPayload {
+  message: ControlMessage;
+}
+
+/**
  * Maps event types to their corresponding payload types
  */
 export interface EventPayloadMap {
@@ -207,6 +218,8 @@ export interface EventPayloadMap {
   [EventType.MESSAGE_RECEIVED]: MessagePayload;
   [EventType.MESSAGE_SENT]: MessagePayload;
   [EventType.MESSAGE_DELETED]: MessagePayload;
+  [EventType.VOICE_MESSAGE_RECEIVED]: MessagePayload;
+  [EventType.VOICE_MESSAGE_SENT]: MessagePayload;
   [EventType.CHANNEL_CLEARED]: ChannelClearedPayload;
   [EventType.REACTION_RECEIVED]: MessagePayload;
   [EventType.POST_GENERATED]: InvokePayload;
@@ -222,6 +235,7 @@ export interface EventPayloadMap {
   [EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload;
   [EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload;
   [EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload;
+  [EventType.CONTROL_MESSAGE]: ControlMessagePayload;
 }
 
 /**

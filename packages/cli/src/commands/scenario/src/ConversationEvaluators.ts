@@ -26,7 +26,9 @@ interface ConversationLengthParams {
 
 export class ConversationLengthEvaluator implements Evaluator {
   async evaluate(params: EvaluationSchema, runResult: ExecutionResult): Promise<EvaluationResult> {
-    const metadata = (runResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }).conversationMetadata;
+    const metadata = (
+      runResult as ExecutionResult & { conversationMetadata?: ConversationMetadata }
+    ).conversationMetadata;
     if (!metadata) {
       return {
         success: false,
@@ -222,7 +224,10 @@ export class UserSatisfactionEvaluator implements Evaluator {
     return { success, message };
   }
 
-  private analyzeKeywords(conversationText: string, indicators?: { positive?: string[]; negative?: string[] }): number {
+  private analyzeKeywords(
+    conversationText: string,
+    indicators?: { positive?: string[]; negative?: string[] }
+  ): number {
     const text = conversationText.toLowerCase();
     const positive = indicators?.positive || [
       'thank you',
@@ -260,7 +265,10 @@ export class UserSatisfactionEvaluator implements Evaluator {
     return positiveCount / (positiveCount + negativeCount);
   }
 
-  private async analyzeSentiment(conversationText: string, runtime: IAgentRuntime): Promise<number> {
+  private async analyzeSentiment(
+    conversationText: string,
+    runtime: IAgentRuntime
+  ): Promise<number> {
     const prompt = `Analyze the overall sentiment of the user in this conversation on a scale of 0.0 to 1.0, where:
 - 0.0 = Very dissatisfied, angry, frustrated
 - 0.5 = Neutral 

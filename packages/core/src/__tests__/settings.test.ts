@@ -245,6 +245,30 @@ describe('settings utilities', () => {
       expect(encrypted).not.toBe(fakeEncrypted);
       expect(encrypted.split(':').length).toBe(2);
     });
+
+    it('should handle values with colons that are not hex (e.g., URLs)', () => {
+      // This is a regression test - BufferUtils.fromHex throws on non-hex strings
+      // Without try/catch, this would crash
+      const postgresUrl = 'postgres://user:password@localhost:5432/db';
+      const encrypted = encryptStringValue(postgresUrl, salt);
+
+      expect(encrypted).not.toBe(postgresUrl);
+      expect(encrypted).toContain(':');
+
+      // Verify it can be decrypted back
+      const decrypted = decryptStringValue(encrypted, salt);
+      expect(decrypted).toBe(postgresUrl);
+    });
+
+    it('should handle connection strings with multiple colons', () => {
+      const connectionString = 'mongodb://admin:secret123@host1:27017,host2:27017/mydb';
+      const encrypted = encryptStringValue(connectionString, salt);
+
+      expect(encrypted).not.toBe(connectionString);
+
+      const decrypted = decryptStringValue(encrypted, salt);
+      expect(decrypted).toBe(connectionString);
+    });
   });
 
   describe('decryptStringValue', () => {
@@ -886,8 +910,12 @@ ANOTHER_KEY=another-value`;
         expect(character.settings!.ANOTHER_KEY).toBeUndefined();
 
         // Verify .env values are merged into settings.secrets
-        expect((character.settings!.secrets as Record<string, string>).SIMPLE_KEY).toBe('simple-value');
-        expect((character.settings!.secrets as Record<string, string>).ANOTHER_KEY).toBe('another-value');
+        expect((character.settings!.secrets as Record<string, string>).SIMPLE_KEY).toBe(
+          'simple-value'
+        );
+        expect((character.settings!.secrets as Record<string, string>).ANOTHER_KEY).toBe(
+          'another-value'
+        );
       } finally {
         process.chdir(originalCwd);
         fs.rmSync(testDir, { recursive: true, force: true });

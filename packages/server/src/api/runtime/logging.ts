@@ -68,15 +68,25 @@ export function createLoggingRouter(): express.Router {
             // Map log level string to numeric value
             let level: number = LOG_LEVELS.info; // Default
             const levelLower = levelStr.trim().toLowerCase();
-            if (levelLower === 'error') {level = LOG_LEVELS.error;}
-            else if (levelLower === 'warn') {level = LOG_LEVELS.warn;}
-            else if (levelLower === 'info') {level = LOG_LEVELS.info;}
-            else if (levelLower === 'log') {level = LOG_LEVELS.log;}
-            else if (levelLower === 'progress') {level = LOG_LEVELS.progress;}
-            else if (levelLower === 'success') {level = LOG_LEVELS.success;}
-            else if (levelLower === 'debug') {level = LOG_LEVELS.debug;}
-            else if (levelLower === 'trace') {level = LOG_LEVELS.trace;}
-            else if (levelLower === 'fatal') {level = LOG_LEVELS.fatal;}
+            if (levelLower === 'error') {
+              level = LOG_LEVELS.error;
+            } else if (levelLower === 'warn') {
+              level = LOG_LEVELS.warn;
+            } else if (levelLower === 'info') {
+              level = LOG_LEVELS.info;
+            } else if (levelLower === 'log') {
+              level = LOG_LEVELS.log;
+            } else if (levelLower === 'progress') {
+              level = LOG_LEVELS.progress;
+            } else if (levelLower === 'success') {
+              level = LOG_LEVELS.success;
+            } else if (levelLower === 'debug') {
+              level = LOG_LEVELS.debug;
+            } else if (levelLower === 'trace') {
+              level = LOG_LEVELS.trace;
+            } else if (levelLower === 'fatal') {
+              level = LOG_LEVELS.fatal;
+            }
 
             return {
               time: new Date(timestamp).getTime(),

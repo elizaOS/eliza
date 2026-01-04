@@ -14,7 +14,7 @@ describe('service builder', () => {
         async () =>
           new (class extends Service {
             capabilityDescription = 'Test service';
-            async stop() { }
+            async stop() {}
           })()
       )
       .build();
@@ -30,7 +30,7 @@ describe('service builder', () => {
       start: async () =>
         new (class extends Service {
           capabilityDescription = 'Definition service';
-          async stop() { }
+          async stop() {}
         })(),
     });
     const instance = await Def.start(mockRuntime);
@@ -57,7 +57,7 @@ describe('service builder', () => {
         async () =>
           new (class extends Service {
             capabilityDescription = 'Service with stop';
-            async stop() { }
+            async stop() {}
           })()
       )
       .withStop(stopFn)
@@ -78,7 +78,7 @@ describe('service builder', () => {
         async () =>
           new (class extends Service {
             capabilityDescription = 'Service without stop';
-            async stop() { }
+            async stop() {}
           })()
       )
       .build();
@@ -96,7 +96,7 @@ describe('service builder', () => {
       start: async () =>
         new (class extends Service {
           capabilityDescription = 'Definition without stop';
-          async stop() { }
+          async stop() {}
         })(),
       // Note: no stop function provided
     });
@@ -121,12 +121,12 @@ describe('service builder', () => {
     const startFn = async () =>
       new (class extends Service {
         capabilityDescription = 'Chained service';
-        async stop() { }
+        async stop() {}
       })();
     const withStart = withDesc.withStart(startFn);
     expect(withStart).toBe(builder);
 
-    const stopFn = async () => { };
+    const stopFn = async () => {};
     const withStop = withStart.withStop(stopFn);
     expect(withStop).toBe(builder);
 

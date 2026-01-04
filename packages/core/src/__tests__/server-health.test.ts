@@ -71,7 +71,7 @@ describe('Server Health Utilities', () => {
 
     it('should handle request timeout', async () => {
       const abortError = new DOMException('Aborted', 'AbortError');
-      
+
       fetchMock.mockImplementationOnce(() => {
         return Promise.reject(abortError);
       });
@@ -200,4 +200,3 @@ describe('Server Health Utilities', () => {
     });
   });
 });
-

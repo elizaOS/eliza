@@ -7,7 +7,6 @@ import {
   type Memory,
   ModelType,
   type Relationship,
-  type Room,
   type State,
   type UUID,
   type World,
@@ -153,8 +152,7 @@ export async function findEntityByName(
   message: Memory,
   state: State
 ): Promise<Entity | null> {
-  const roomData = state.data.room as Room | undefined;
-  const room = roomData ?? (await runtime.getRoom(message.roomId));
+  const room = state.data.room ?? (await runtime.getRoom(message.roomId));
   if (!room) {
     logger.warn(
       { src: 'core:entities', roomId: message.roomId },
@@ -401,7 +399,9 @@ export async function getEntityDetails({
 
     uniqueEntities.set(entity.id, {
       id: entity.id,
-      name: room?.source ? getEntityNameFromMetadata(room.source) || entity.names[0] : entity.names[0],
+      name: room?.source
+        ? getEntityNameFromMetadata(room.source) || entity.names[0]
+        : entity.names[0],
       names: entity.names,
       data: JSON.stringify({ ...mergedData, ...entity.metadata }),
     });

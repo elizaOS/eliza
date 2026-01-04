@@ -246,7 +246,7 @@ describe('World and Entity Events', () => {
         roomId: 'test-room-id' as UUID,
         metadata: {
           type: 'user',
-          orginalId: 'original-id-123',
+          originalId: 'original-id-123',
           username: 'testuser',
           displayName: 'Test User',
           avatarUrl: 'https://example.com/avatar.png',

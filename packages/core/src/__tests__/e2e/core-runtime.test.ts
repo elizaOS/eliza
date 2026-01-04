@@ -15,9 +15,11 @@ import { AgentRuntime } from '../../runtime';
 import { DefaultMessageService } from '../../services/default-message-service';
 import { createMessageMemory, getMemoryText } from '../../memory';
 import { parseCharacter } from '../../character';
-import type { Character, IDatabaseAdapter, Memory, UUID, Content, HandlerCallback } from '../../types';
+import type { Character, Memory, UUID, Content, HandlerCallback } from '../../types';
 import { MemoryType, ModelType, ChannelType } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
+import { createMockAdapter } from '../test-helpers';
+import type { IDatabaseAdapter } from '../../types';
 
 describe('Core Runtime E2E Tests', () => {
   let runtime: AgentRuntime;
@@ -65,92 +67,26 @@ describe('Core Runtime E2E Tests', () => {
       ];
     });
 
-    mockAdapter = {
-      db: {},
-      init: mock(async () => {}),
-      initialize: mock(async () => {}),
-      close: mock(async () => {}),
-      isReady: mock(async () => true),
-      getConnection: mock(async () => ({})),
-      getAgent: mock(async () => null),
-      getAgents: mock(async () => []),
-      createAgent: mock(async () => true),
-      updateAgent: mock(async () => true),
-      deleteAgent: mock(async () => true),
-      ensureEmbeddingDimension: mock(async () => {}),
-      log: mock(async () => {}),
-      runPluginMigrations: mock(async () => {}),
+    mockAdapter = createMockAdapter({
       getEntitiesByIds: mock(async () => [
         {
           id: entityId,
           names: ['TestUser'],
           agentId,
+          metadata: {},
         },
       ]),
       getRoomsByIds: mock(async () => [
         {
           id: roomId,
           name: 'Test Room',
+          source: 'test',
           type: ChannelType.GROUP,
           worldId: uuidv4() as UUID,
         },
       ]),
-      getParticipantsForRoom: mock(async () => []),
-      createEntities: mock(async () => true),
-      addParticipantsRoom: mock(async () => true),
       createRooms: mock(async () => [roomId]),
-      getEntitiesForRoom: mock(async () => []),
-      updateEntity: mock(async () => {}),
-      getComponent: mock(async () => null),
-      getComponents: mock(async () => []),
-      createComponent: mock(async () => true),
-      updateComponent: mock(async () => {}),
-      deleteComponent: mock(async () => {}),
-      getMemories: mock(async () => []),
-      getMemoryById: mock(async () => null),
-      getMemoriesByIds: mock(async () => []),
-      getMemoriesByRoomIds: mock(async () => []),
-      getCachedEmbeddings: mock(async () => []),
-      getLogs: mock(async () => []),
-      deleteLog: mock(async () => {}),
-      searchMemories: mock(async () => []),
-      createMemory: mock(async () => uuidv4() as UUID),
-      updateMemory: mock(async () => true),
-      deleteMemory: mock(async () => {}),
-      deleteManyMemories: mock(async () => {}),
-      deleteAllMemories: mock(async () => {}),
-      countMemories: mock(async () => 0),
-      createWorld: mock(async () => uuidv4() as UUID),
-      getWorld: mock(async () => null),
-      getAllWorlds: mock(async () => []),
-      updateWorld: mock(async () => {}),
-      removeWorld: mock(async () => {}),
-      getRoomsByWorld: mock(async () => []),
-      updateRoom: mock(async () => {}),
-      deleteRoom: mock(async () => {}),
-      deleteRoomsByWorldId: mock(async () => {}),
-      getRoomsForParticipant: mock(async () => []),
-      getRoomsForParticipants: mock(async () => []),
-      removeParticipant: mock(async () => true),
-      getParticipantsForEntity: mock(async () => []),
-      isRoomParticipant: mock(async () => false),
-      getParticipantUserState: mock(async () => null),
-      setParticipantUserState: mock(async () => {}),
-      createRelationship: mock(async () => true),
-      getRelationship: mock(async () => null),
-      getRelationships: mock(async () => []),
-      updateRelationship: mock(async () => {}),
-      getCache: mock(async () => undefined),
-      setCache: mock(async () => true),
-      deleteCache: mock(async () => true),
-      createTask: mock(async () => uuidv4() as UUID),
-      getTasks: mock(async () => []),
-      getTask: mock(async () => null),
-      getTasksByName: mock(async () => []),
-      updateTask: mock(async () => {}),
-      deleteTask: mock(async () => {}),
-      getMemoriesByWorldId: mock(async () => []),
-    } as IDatabaseAdapter;
+    });
 
     runtime = new AgentRuntime({
       character: testCharacter,
@@ -159,13 +95,22 @@ describe('Core Runtime E2E Tests', () => {
 
     messageService = new DefaultMessageService();
 
-    // Mock useModel to return realistic responses
-    runtime.useModel = mock(async (modelType: string) => {
-      if (modelType === ModelType.TEXT_SMALL) {
+    // Register mock model handlers
+    runtime.registerModel(
+      ModelType.TEXT_SMALL,
+      async () => {
         return '<shouldRespond>true</shouldRespond><reason>User message</reason>';
-      }
-      return '<thought>I should respond</thought><text>Hello! How can I help you?</text>';
-    });
+      },
+      'test'
+    );
+
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => {
+        return '<thought>I should respond</thought><text>Hello! How can I help you?</text>';
+      },
+      'test'
+    );
   });
 
   afterEach(() => {
@@ -203,7 +148,11 @@ describe('Core Runtime E2E Tests', () => {
 
       await messageService.handleMessage(runtime, userMessage, responseCallback);
 
-      const retrievedMemories = await runtime.adapter.getMemories({ roomId, count: 10, tableName: 'messages' });
+      const retrievedMemories = await runtime.adapter.getMemories({
+        roomId,
+        count: 10,
+        tableName: 'messages',
+      });
       expect(retrievedMemories).toHaveLength(1);
       expect(getMemoryText(retrievedMemories[0])).toBe('Test message for memory');
     });
@@ -222,7 +171,9 @@ describe('Core Runtime E2E Tests', () => {
       });
 
       const conversationHistory: Memory[] = [message1, message2];
-      (mockAdapter.getMemoriesByRoomIds as ReturnType<typeof mock>).mockResolvedValue(conversationHistory);
+      (mockAdapter.getMemoriesByRoomIds as ReturnType<typeof mock>).mockResolvedValue(
+        conversationHistory
+      );
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue(conversationHistory);
 
       await messageService.handleMessage(runtime, message1, responseCallback);
@@ -230,7 +181,7 @@ describe('Core Runtime E2E Tests', () => {
 
       // Message service creates memories for both user messages and agent responses
       expect(mockAdapter.createMemory).toHaveBeenCalled();
-      expect(mockAdapter.createMemory.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect((mockAdapter.createMemory as any).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -263,7 +214,11 @@ describe('Core Runtime E2E Tests', () => {
       const storedMemories: Memory[] = [memory];
       (mockAdapter.getMemories as ReturnType<typeof mock>).mockResolvedValue(storedMemories);
 
-      const retrieved = await runtime.adapter.getMemories({ roomId, count: 1, tableName: 'messages' });
+      const retrieved = await runtime.adapter.getMemories({
+        roomId,
+        count: 1,
+        tableName: 'messages',
+      });
       expect(retrieved).toHaveLength(1);
       expect(getMemoryText(retrieved[0])).toBe('Integration test memory');
     });
@@ -284,10 +239,9 @@ describe('Core Runtime E2E Tests', () => {
       expect(result.responseContent).toBeDefined();
       expect(result.state).toBeDefined();
       expect(mockAdapter.createMemory).toHaveBeenCalled();
-      
+
       // Verify the message was stored
-      expect(mockAdapter.createMemory.mock.calls.length).toBeGreaterThan(0);
+      expect((mockAdapter.createMemory as any).mock.calls.length).toBeGreaterThan(0);
     });
   });
 });
-

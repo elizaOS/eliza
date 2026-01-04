@@ -398,7 +398,7 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
           internalMessageBus.emit('new_message', {
             id: userMessage.id,
             channel_id: channelId,
-            server_id: DEFAULT_SERVER_ID,
+            message_server_id: DEFAULT_SERVER_ID,
             author_id: userId,
             content: body.content,
             created_at: new Date(userMessage.createdAt).getTime(),
@@ -427,7 +427,9 @@ export function createJobsRouter(elizaOS: ElizaOS, serverInstance: AgentServer):
 
           const responseHandler = async (data: unknown) => {
             // Type guard for message structure
-            if (!data || typeof data !== 'object') {return;}
+            if (!data || typeof data !== 'object') {
+              return;
+            }
 
             const message = data as JobMessage;
 

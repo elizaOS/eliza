@@ -146,7 +146,11 @@ export async function startAgent(options: OptionValues): Promise<void> {
     }
 
     // Type assertion to handle the specific structure returned by the start endpoint
-    const data = (await response.json()) as ApiResponse<{ name?: string; character?: { name?: string }; [key: string]: unknown }>;
+    const data = (await response.json()) as ApiResponse<{
+      name?: string;
+      character?: { name?: string };
+      [key: string]: unknown;
+    }>;
     const result = data.data;
 
     if (!result) {

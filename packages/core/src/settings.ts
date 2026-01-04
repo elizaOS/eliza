@@ -107,11 +107,15 @@ export function encryptStringValue(value: string, salt: string): string {
   // Check if value is already encrypted (has the format "iv:encrypted")
   const parts = value.split(':');
   if (parts.length === 2) {
-    // Try to parse the first part as hex to see if it's already encrypted
-    const possibleIv = BufferUtils.fromHex(parts[0]);
-    if (possibleIv.length === 16) {
-      // Value is likely already encrypted, return as is
-      return value;
+    try {
+      // Try to parse the first part as hex to see if it's already encrypted
+      const possibleIv = BufferUtils.fromHex(parts[0]);
+      if (possibleIv.length === 16) {
+        // Value is likely already encrypted, return as is
+        return value;
+      }
+    } catch {
+      // Not a valid hex string, proceed with encryption
     }
   }
 
@@ -130,46 +134,40 @@ export function encryptStringValue(value: string, salt: string): string {
 
 /**
  * Common decryption function for string values
- * @param {string} value - The encrypted value in 'iv:encrypted' format
- * @param {string} salt - The salt to use for decryption
- * @returns {string} - The decrypted string value
+ * @param value - The encrypted value in 'iv:encrypted' format
+ * @param salt - The salt to use for decryption
+ * @returns The decrypted string value, or original value if not encrypted
  */
 export function decryptStringValue(value: string, salt: string): string {
-  // Check if value is undefined or null
-  if (value === undefined || value === null) {
-    return value; // Return the value as is (undefined or null)
-  }
+  try {
+    // Split the IV and encrypted value
+    const parts = value.split(':');
+    if (parts.length !== 2) {
+      return value; // Return the original value without decryption
+    }
 
-  if (typeof value === 'boolean' || typeof value === 'number') {
+    const iv = BufferUtils.fromHex(parts[0]);
+    const encrypted = parts[1];
+
+    // Verify IV length
+    if (iv.length !== 16) {
+      return value; // Return the original value without decryption
+    }
+
+    // Create key from the salt
+    const key = cryptoUtils.createHash('sha256').update(salt).digest().slice(0, 32);
+
+    // Decrypt the value
+    const decipher = cryptoUtils.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
+  } catch (error) {
+    logger.error({ src: 'core:settings', error }, 'Decryption failed');
+    // Return the original value on error
     return value;
   }
-  if (typeof value !== 'string') {
-    return value;
-  }
-
-  // Split the IV and encrypted value
-  const parts = value.split(':');
-  if (parts.length !== 2) {
-    return value; // Return the original value without decryption
-  }
-
-  const iv = BufferUtils.fromHex(parts[0]);
-  const encrypted = parts[1];
-
-  // Verify IV length
-  if (iv.length !== 16) {
-    return value; // Return the original value without decryption
-  }
-
-  // Create key from the salt
-  const key = cryptoUtils.createHash('sha256').update(salt).digest().slice(0, 32);
-
-  // Decrypt the value
-  const decipher = cryptoUtils.createDecipheriv('aes-256-cbc', key, iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return decrypted;
 }
 
 /**
@@ -384,7 +382,10 @@ export function decryptedCharacter(character: Character, _runtime: IAgentRuntime
  * @param {string} salt - The salt to use for encryption
  * @returns {Record<string, unknown>} - Object with encrypted values
  */
-export function encryptObjectValues(obj: Record<string, unknown>, salt: string): Record<string, unknown> {
+export function encryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {
@@ -404,7 +405,10 @@ export function encryptObjectValues(obj: Record<string, unknown>, salt: string):
  * @param {string} salt - The salt to use for decryption
  * @returns {Record<string, unknown>} - Object with decrypted values
  */
-export function decryptObjectValues(obj: Record<string, unknown>, salt: string): Record<string, unknown> {
+export function decryptObjectValues(
+  obj: Record<string, unknown>,
+  salt: string
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(obj)) {

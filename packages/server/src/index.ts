@@ -38,7 +38,7 @@ import sqlPlugin, {
   assignAgentToServer,
   uninstallRLS,
 } from '@elizaos/plugin-sql';
-import { encryptedCharacter, stringToUuid, type Plugin } from '@elizaos/core';
+import { stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
 import internalMessageBus from './services/message-bus';
@@ -72,14 +72,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /**
  * Type for database adapter with messaging methods
  * These methods are provided by BaseDrizzleAdapter implementations
+ * Signatures match BaseDrizzleAdapter in @elizaos/plugin-sql
  */
 type DatabaseAdapterWithMessaging = DatabaseAdapter & {
-  createMessageServer(data: Omit<MessageServer, 'id' | 'createdAt' | 'updatedAt'>): Promise<MessageServer>;
+  createMessageServer(data: {
+    id?: UUID;
+    name: string;
+    sourceType: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<MessageServer>;
   getMessageServers(): Promise<MessageServer[]>;
   getMessageServerById(serverId: UUID): Promise<MessageServer | null>;
   getMessageServerByRlsServerId(rlsServerId: UUID): Promise<MessageServer | null>;
   createChannel(
-    data: Omit<MessageChannel, 'id' | 'createdAt' | 'updatedAt'> & { id?: UUID },
+    data: {
+      id?: UUID;
+      messageServerId: UUID;
+      name: string;
+      type: string;
+      sourceType?: string;
+      sourceId?: string;
+      topic?: string;
+      metadata?: Record<string, unknown>;
+    },
     participantIds?: UUID[]
   ): Promise<MessageChannel>;
   addChannelParticipants(channelId: UUID, userIds: UUID[]): Promise<void>;
@@ -90,17 +106,39 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   deleteMessage(messageId: UUID): Promise<void>;
   updateChannel(
     channelId: UUID,
-    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: Record<string, unknown> }
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<MessageChannel>;
   deleteChannel(channelId: UUID): Promise<void>;
-  getMessagesForChannel(channelId: UUID, limit?: number, beforeTimestamp?: Date): Promise<CentralRootMessage[]>;
-  findOrCreateDmChannel(user1Id: UUID, user2Id: UUID, messageServerId: UUID): Promise<MessageChannel>;
-  createMessage(data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>): Promise<CentralRootMessage>;
+  getMessagesForChannel(
+    channelId: UUID,
+    limit?: number,
+    beforeTimestamp?: Date
+  ): Promise<CentralRootMessage[]>;
+  findOrCreateDmChannel(
+    user1Id: UUID,
+    user2Id: UUID,
+    messageServerId: UUID
+  ): Promise<MessageChannel>;
+  createMessage(data: {
+    messageId?: UUID;
+    channelId: UUID;
+    authorId: UUID;
+    content: string;
+    rawMessage?: Record<string, unknown>;
+    sourceType?: string;
+    sourceId?: string;
+    metadata?: Record<string, unknown>;
+    inReplyToRootMessageId?: UUID;
+  }): Promise<CentralRootMessage>;
   updateMessage(
     messageId: UUID,
     patch: {
       content?: string;
-      rawMessage?: unknown;
+      rawMessage?: Record<string, unknown>;
       sourceType?: string;
       sourceId?: string;
       metadata?: Record<string, unknown>;
@@ -111,7 +149,7 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   removeAgentFromMessageServer(messageServerId: UUID, agentId: UUID): Promise<void>;
   getAgentsForMessageServer(messageServerId: UUID): Promise<UUID[]>;
   getDatabase?(): unknown;
-  db?: unknown;
+  db: { execute: (query: unknown) => Promise<unknown> };
 };
 
 /**
@@ -159,7 +197,7 @@ export class AgentServer {
       const allPlugins = [...(agent.character.plugins || []), ...(agent.plugins || []), sqlPlugin];
 
       return {
-        character: encryptedCharacter(agent.character),
+        character: agent.character,
         plugins: allPlugins,
         init: agent.init,
       };
@@ -302,7 +340,7 @@ export class AgentServer {
           postgresUrl: config?.postgresUrl,
         },
         tempServerAgentId
-      ) as DatabaseAdapter;
+      ) as DatabaseAdapterWithMessaging;
       await this.database.init();
       logger.success({ src: 'db' }, 'Database initialized for server operations');
 
@@ -440,9 +478,7 @@ export class AgentServer {
       // This prevents leaking sensitive ELIZA_SERVER_ID values in public API paths
       if (dataIsolationEnabled && this.rlsServerId) {
         // Check if a message_server already exists for this RLS server instance
-        const existingServer = await this.database.getMessageServerByRlsServerId(
-          this.rlsServerId
-        );
+        const existingServer = await this.database.getMessageServerByRlsServerId(this.rlsServerId);
 
         if (existingServer) {
           // Reuse existing message_server ID (stable across restarts)
@@ -584,44 +620,44 @@ export class AgentServer {
           // Content Security Policy - environment-aware configuration
           contentSecurityPolicy: isProd
             ? {
-              // Production CSP - includes upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-                // this should probably be unlocked too
-                scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // upgrade-insecure-requests is added by helmet automatically
-              },
-              useDefaults: true,
-            }
+                // Production CSP - includes upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+                  // this should probably be unlocked too
+                  scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: [this.isWebUIEnabled ? "'self'" : "'none'"],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // upgrade-insecure-requests is added by helmet automatically
+                },
+                useDefaults: true,
+              }
             : {
-              // Development CSP - minimal policy without upgrade-insecure-requests
-              directives: {
-                defaultSrc: ["'self'"],
-                styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
-                // unlocking this, so plugin can include the various frameworks from CDN if needed
-                // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
-                scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
-                imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
-                fontSrc: ["'self'", 'https:', 'http:', 'data:'],
-                connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
-                mediaSrc: ["'self'", 'blob:', 'data:'],
-                objectSrc: ["'none'"],
-                frameSrc: ["'self'", 'data:'],
-                baseUri: ["'self'"],
-                formAction: ["'self'"],
-                // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                // Development CSP - minimal policy without upgrade-insecure-requests
+                directives: {
+                  defaultSrc: ["'self'"],
+                  styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'http:'],
+                  // unlocking this, so plugin can include the various frameworks from CDN if needed
+                  // https://cdn.tailwindcss.com and https://cdn.jsdelivr.net should definitely be unlocked as a minimum
+                  scriptSrc: ['*', "'unsafe-inline'", "'unsafe-eval'"],
+                  imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+                  fontSrc: ["'self'", 'https:', 'http:', 'data:'],
+                  connectSrc: ["'self'", 'ws:', 'wss:', 'https:', 'http:'],
+                  mediaSrc: ["'self'", 'blob:', 'data:'],
+                  objectSrc: ["'none'"],
+                  frameSrc: ["'self'", 'data:'],
+                  baseUri: ["'self'"],
+                  formAction: ["'self'"],
+                  // Note: upgrade-insecure-requests is intentionally omitted for Safari compatibility
+                },
+                useDefaults: false,
               },
-              useDefaults: false,
-            },
           // Cross-Origin Embedder Policy - disabled for compatibility
           crossOriginEmbedderPolicy: false,
           // Cross-Origin Resource Policy
@@ -633,10 +669,10 @@ export class AgentServer {
           // HTTP Strict Transport Security - only in production
           hsts: isProd
             ? {
-              maxAge: 31536000, // 1 year
-              includeSubDomains: true,
-              preload: true,
-            }
+                maxAge: 31536000, // 1 year
+                includeSubDomains: true,
+                preload: true,
+              }
             : false,
           // No Sniff
           noSniff: true,
@@ -1365,7 +1401,8 @@ export class AgentServer {
         await this.startHttpServer(boundPort);
       } catch (error: unknown) {
         // If binding fails due to EADDRINUSE, attempt fallback to next available port
-        const isAddressInUse = error instanceof Error &&
+        const isAddressInUse =
+          error instanceof Error &&
           'code' in error &&
           (error as NodeJS.ErrnoException).code === 'EADDRINUSE';
         if (isAddressInUse) {
@@ -1600,7 +1637,11 @@ export class AgentServer {
 
   async updateChannel(
     channelId: UUID,
-    updates: { name?: string; participantCentralUserIds?: UUID[]; metadata?: Record<string, unknown> }
+    updates: {
+      name?: string;
+      participantCentralUserIds?: UUID[];
+      metadata?: Record<string, unknown>;
+    }
   ): Promise<MessageChannel> {
     return this.database.updateChannel(channelId, updates);
   }
@@ -1627,9 +1668,12 @@ export class AgentServer {
   }
 
   async createMessage(
-    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'>
+    data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'> & { messageId?: UUID }
   ): Promise<CentralRootMessage> {
-    const createdMessage = await this.database.createMessage(data);
+    const createdMessage = await this.database.createMessage({
+      ...data,
+      messageId: data.messageId, // Pass through to DB so it uses this ID instead of generating new one
+    });
 
     // Get the channel details to find the server ID
     const channel = await this.getChannelDetails(createdMessage.channelId);
@@ -1668,7 +1712,7 @@ export class AgentServer {
     messageId: UUID,
     patch: {
       content?: string;
-      rawMessage?: unknown;
+      rawMessage?: Record<string, unknown>;
       sourceType?: string;
       sourceId?: string;
       metadata?: Record<string, unknown>;

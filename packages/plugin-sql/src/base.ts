@@ -5,9 +5,11 @@ import {
   DatabaseAdapter,
   type Entity,
   type Log,
+  type LogBody,
   logger,
   type Memory,
   type MemoryMetadata,
+  type Metadata,
   type Participant,
   type Relationship,
   type Room,
@@ -57,6 +59,7 @@ import {
   taskTable,
   worldTable,
 } from './schema/index';
+import type { DrizzleDatabase } from './types';
 
 // Define the metadata type inline since we can't import it
 /**
@@ -103,7 +106,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    */
   public abstract withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: unknown) => Promise<T>
+    callback: (tx: DrizzleDatabase) => Promise<T>
   ): Promise<T>;
 
   public abstract init(): Promise<void>;
@@ -198,7 +201,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     // Handle other iterables (including Maps) - convert to array and ensure all elements are strings
     // Maps yield [key, value] tuples, so we need to convert those to strings too
     if (typeof names === 'object' && typeof names[Symbol.iterator] === 'function') {
-      return Array.from(names).map(String);
+      return Array.from(names as Iterable<unknown>).map(String);
     }
 
     // Handle non-iterable primitives (numbers, booleans, objects)
@@ -277,12 +280,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           embeddings: typeof embeddingTable.$inferSelect;
         }
         const joinedResult = existingMemory[0] as JoinedMemoryResult;
-        Object.entries(DIMENSION_MAP).find(
-          ([_, colName]) => {
-            const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
-            return joinedResult.embeddings[embeddingCol] !== null;
-          }
-        );
+        Object.entries(DIMENSION_MAP).find(([_, colName]) => {
+          const embeddingCol = colName as keyof typeof embeddingTable.$inferSelect;
+          return joinedResult.embeddings[embeddingCol] !== null;
+        });
         // We don't actually need to use usedDimension for now, but it's good to know it's there.
       }
 
@@ -457,7 +458,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns The merged settings object
    * @private
    */
-  private async mergeAgentSettings(tx: unknown, agentId: UUID, updatedSettings: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async mergeAgentSettings<T extends Record<string, unknown>>(
+    tx: DrizzleDatabase,
+    agentId: UUID,
+    updatedSettings: T
+  ): Promise<T> {
     // First get the current agent data
     const currentAgent = await tx
       .select({ settings: agentTable.settings })
@@ -468,7 +473,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const currentSettings =
       currentAgent.length > 0 && currentAgent[0].settings ? currentAgent[0].settings : {};
 
-    const deepMerge = (target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> => {
+    const deepMerge = (
+      target: Record<string, unknown> | unknown,
+      source: Record<string, unknown>
+    ): Record<string, unknown> | undefined => {
       // If source is explicitly null, it means the intention is to set this entire branch to null (or delete if top-level handled by caller).
       // For recursive calls, if a sub-object in source is null, it effectively means "remove this sub-object from target".
       // However, our primary deletion signal is a *property value* being null within an object.
@@ -498,7 +506,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           delete output[key];
         } else if (typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
           // If value is an object, recurse.
-          const nestedMergeResult = deepMerge(output[key], sourceValue);
+          const nestedMergeResult = deepMerge(output[key], sourceValue as Record<string, unknown>);
           if (nestedMergeResult === undefined) {
             // If recursive merge resulted in undefined (meaning the nested object should be deleted)
             delete output[key];
@@ -528,7 +536,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const finalSettings = deepMerge(currentSettings, updatedSettings);
     // If the entire settings object becomes undefined (e.g. all keys removed),
     // return an empty object instead of undefined/null to keep the settings field present.
-    return finalSettings === undefined ? {} : finalSettings;
+    return (finalSettings ?? {}) as T;
   }
 
   /**
@@ -1313,7 +1321,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       try {
         // Drizzle database has execute method for raw SQL
         interface DrizzleDatabaseWithExecute {
-          execute: (query: ReturnType<typeof sql>) => Promise<unknown[]>;
+          execute: (query: ReturnType<typeof sql>) => Promise<{ rows: Record<string, unknown>[] }>;
         }
         const results = await (this.db as DrizzleDatabaseWithExecute).execute(sql`
                     WITH content_text AS (
@@ -1517,13 +1525,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         .limit(count ?? 10)
         .offset(offset ?? 0);
 
-      const logs = result.map((log: Record<string, unknown>) => ({
+      const logs = result.map((log) => ({
         ...log,
         id: log.id as UUID,
         entityId: log.entityId as UUID,
         roomId: log.roomId as UUID,
-        body: log.body,
-        createdAt: new Date(log.createdAt),
+        type: log.type as string,
+        body: log.body as LogBody,
+        createdAt: new Date(log.createdAt as string | number | Date),
       }));
 
       if (logs.length === 0) return [];
@@ -2139,7 +2148,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param documentId The UUID of the document memory whose fragments should be deleted
    * @private
    */
-  private async deleteMemoryFragments(tx: unknown, documentId: UUID): Promise<void> {
+  private async deleteMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<void> {
     const fragmentsToDelete = await this.getMemoryFragments(tx, documentId);
 
     if (fragmentsToDelete.length > 0) {
@@ -2160,7 +2169,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @returns An array of memory fragments
    * @private
    */
-  private async getMemoryFragments(tx: unknown, documentId: UUID): Promise<{ id: UUID }[]> {
+  private async getMemoryFragments(tx: DrizzleDatabase, documentId: UUID): Promise<{ id: UUID }[]> {
     const fragments = await tx
       .select({ id: memoryTable.id })
       .from(memoryTable)
@@ -2769,7 +2778,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
           relationship.created_at || relationship.createdAt
             ? (relationship.created_at || relationship.createdAt) instanceof Date
               ? ((relationship.created_at || relationship.createdAt) as Date).toISOString()
-              : new Date(relationship.created_at as string || relationship.createdAt as string).toISOString()
+              : new Date(
+                  (relationship.created_at as string) || (relationship.createdAt as string)
+                ).toISOString()
             : new Date().toISOString(),
       }));
     });
@@ -2997,8 +3008,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
               ...(params.roomId ? [eq(taskTable.roomId, params.roomId)] : []),
               ...(params.tags && params.tags.length > 0
                 ? [
-                    sql`${taskTable.tags} @> ARRAY[${sql.raw(
-                      params.tags.map((t) => `'${t.replace(/'/g, "''")}'`).join(', ')
+                    sql`${taskTable.tags} @> ARRAY[${sql.join(
+                      params.tags.map((t) => sql`${t}`),
+                      sql`, `
                     )}]::text[]`,
                   ]
                 : [])

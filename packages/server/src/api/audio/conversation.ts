@@ -5,7 +5,7 @@ import {
   ModelType,
   ChannelType,
   createUniqueUuid,
-  composePrompt,
+  composePromptFromState,
   messageHandlerTemplate,
 } from '@elizaos/core';
 import express from 'express';
@@ -79,24 +79,14 @@ export function createConversationRouter(elizaOS: ElizaOS): express.Router {
       const state = await runtime.composeState(userMessageMemory);
 
       logger.debug({ src: 'http', agentId }, 'Creating context');
-      const prompt = composePrompt({
+      const prompt = composePromptFromState({
         state,
         template: messageHandlerTemplate,
       });
 
       logger.debug({ src: 'http', agentId }, 'Using LLM for response');
       const llmResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-        // Renamed to llmResponse
-        messages: [
-          {
-            role: 'system',
-            content: messageHandlerTemplate,
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        prompt,
       });
 
       if (!llmResponse) {

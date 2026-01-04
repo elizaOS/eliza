@@ -150,6 +150,11 @@ export function createMockDatabase(overrides: MockDatabaseOverrides = {}): IData
 }
 
 /**
+ * Alias for createMockDatabase for backwards compatibility
+ */
+export const createMockDatabaseAdapter = createMockDatabase;
+
+/**
  * Create a simple mock database connection object
  *
  * @param overrides - Partial object to override specific methods

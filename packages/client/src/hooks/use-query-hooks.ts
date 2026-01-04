@@ -1,6 +1,6 @@
 import { GROUP_CHAT_SOURCE, USER_NAME } from '@/constants';
 // Direct error handling without bridge layer
-import type { Agent, Content, Memory, UUID, Memory as CoreMemory } from '@elizaos/core';
+import type { Agent, Content, Memory, UUID, Memory as CoreMemory, Media } from '@elizaos/core';
 import {
   useQuery,
   useMutation,
@@ -344,6 +344,7 @@ export type UiMessage = Content & {
   isAgent: boolean;
   createdAt: number; // Timestamp ms
   isLoading?: boolean;
+  isStreaming?: boolean; // Whether the message is currently being streamed
   channelId: UUID; // Central Channel ID
   serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
   prompt?: string; // The LLM prompt used to generate this message (for agents)
@@ -436,7 +437,7 @@ export function useChannelMessages(
         senderId: sm.authorId,
         isAgent: isAgent,
         createdAt: timestamp,
-        attachments: (sm.metadata?.attachments as Array<{ url: string; [key: string]: unknown }>) || [],
+        attachments: (sm.metadata?.attachments as Media[]) || [],
         thought: isAgent ? sm.metadata?.thought : undefined,
         actions: isAgent ? sm.metadata?.actions : undefined,
         channelId: sm.channelId,
@@ -711,7 +712,9 @@ export function useAgentMemories(
         result,
         dataLength: result.memories?.length,
         firstMemory: result.memories?.[0],
-        hasEmbeddings: (result.memories || []).some((m: { embedding?: number[] }) => m.embedding?.length > 0),
+        hasEmbeddings: (result.memories || []).some(
+          (m: { embedding?: number[] }) => (m.embedding?.length ?? 0) > 0
+        ),
       });
       // Map the API memories to client format
       const memories = result.memories || [];
@@ -794,7 +797,11 @@ export function useUpdateMemory() {
       memoryId: UUID;
       memoryData: Partial<Memory>;
     }) => {
-      const result = await getClient().memory.updateMemory(agentId, memoryId, memoryData);
+      const result = await getClient().memory.updateMemory(
+        agentId,
+        memoryId,
+        memoryData as Record<string, unknown>
+      );
       return { agentId, memoryId, result };
     },
 
@@ -1044,7 +1051,7 @@ export function useAgentInternalMemories(
         agentPerspectiveRoomId,
         includeEmbedding
       );
-      return response.data || [];
+      return (response.data || []).map(mapApiMemoryToClient);
     },
     enabled: !!agentId && !!agentPerspectiveRoomId,
     staleTime: STALE_TIMES.STANDARD,
@@ -1116,7 +1123,7 @@ export function useUpdateAgentInternalMemory() {
     {
       agentId: UUID;
       memoryId: string;
-      response: { success: boolean; data: { id: UUID; message: string } };
+      response: unknown;
     },
     Error,
     { agentId: UUID; memoryId: UUID; memoryData: Partial<CoreMemory> }
@@ -1125,7 +1132,7 @@ export function useUpdateAgentInternalMemory() {
       const response = await getClient().memory.updateAgentInternalMemory(
         agentId,
         memoryId,
-        memoryData
+        memoryData as Record<string, unknown>
       );
       return { agentId, memoryId, response };
     },

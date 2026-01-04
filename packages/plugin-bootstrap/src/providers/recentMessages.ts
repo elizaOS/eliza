@@ -238,9 +238,9 @@ export const recentMessagesProvider: Provider = {
 
       const focusHeader = hasReceivedMessage
         ? addHeader(
-          '# Focus your response',
-          `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
-        )
+            '# Focus your response',
+            `You are replying to the above message from **${senderName}**. Keep your answer relevant to that message. Do not repeat earlier replies unless the sender asks again.`
+          )
         : '';
 
       // Preload all necessary entities for both types of interactions

@@ -5,7 +5,7 @@
  * and memories WITHOUT modifying the core runtime.
  */
 
-import { IAgentRuntime, UUID } from '@elizaos/core';
+import { IAgentRuntime, UUID, Memory } from '@elizaos/core';
 
 /**
  * Agent trajectory step (matching GitHub ticket #5785 specification)
@@ -110,10 +110,7 @@ export class TrajectoryReconstructor {
             `🎯 FOUND ACTION_RESULT - FULL CONTENT:`,
             JSON.stringify(mem.content, null, 2)
           );
-        } else if (
-          contentObj.type === 'user' ||
-          contentObj.type === 'agent'
-        ) {
+        } else if (contentObj.type === 'user' || contentObj.type === 'agent') {
           console.log(
             `💬 MESSAGE CONTENT:`,
             JSON.stringify(
@@ -191,17 +188,17 @@ export class TrajectoryReconstructor {
       // Extract action information (same structure as TrajectoryContainsActionEvaluator)
       const actionName = content.actionName || 'unknown';
       const actionParams = content.actionParams || {};
-      const actionResult = content.actionResult || {};
+      const actionResult = content.actionResult as Record<string, unknown> | string | undefined;
       const thought = content.thought || content.planThought || '';
 
       // Get observation content from various possible locations
       let observationContent = '';
-      if (actionResult?.text) {
-        observationContent = actionResult.text;
-      } else if (actionResult?.stdout) {
-        observationContent = actionResult.stdout;
-      } else if (actionResult?.output) {
-        observationContent = actionResult.output;
+      if (actionResult && typeof actionResult === 'object' && 'text' in actionResult) {
+        observationContent = String(actionResult.text);
+      } else if (actionResult && typeof actionResult === 'object' && 'stdout' in actionResult) {
+        observationContent = String(actionResult.stdout);
+      } else if (actionResult && typeof actionResult === 'object' && 'output' in actionResult) {
+        observationContent = String(actionResult.output);
       } else if (typeof actionResult === 'string') {
         observationContent = actionResult;
       } else if (actionResult && typeof actionResult === 'object') {
@@ -265,7 +262,9 @@ export class TrajectoryReconstructor {
 
       console.log(`\n🔄 Processing message memory ${memory.id}...`);
       console.log(`   type: ${content.type || 'undefined'}`);
-      console.log(`   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`);
+      console.log(
+        `   text: ${content.text ? String(content.text).substring(0, 100) + '...' : 'undefined'}`
+      );
       console.log(`   source: ${content.source || 'undefined'}`);
       console.log(`   thought: ${content.thought ? 'present' : 'absent'}`);
       console.log(`   Content Type: ${typeof content}`);
@@ -273,7 +272,9 @@ export class TrajectoryReconstructor {
       console.log(`   Full Content: ${JSON.stringify(content, null, 2)}`);
 
       // Determine if this is an agent message or user message
-      const isAgentMessage = content.type === 'agent' || (typeof content.thought !== 'undefined' && typeof content.actions !== 'undefined');
+      const isAgentMessage =
+        content.type === 'agent' ||
+        (typeof content.thought !== 'undefined' && typeof content.actions !== 'undefined');
 
       // Create thought step from agent messages
       if (isAgentMessage && content?.thought) {

@@ -1,8 +1,9 @@
-import type { ElizaOS } from '@elizaos/core';
+import type { ElizaOS, LogEntry, Media } from '@elizaos/core';
 import {
   logger,
   customLevels,
   SOCKET_MESSAGE_TYPE,
+  MESSAGE_STREAM_EVENT,
   validateUuid,
   ChannelType,
   type UUID,
@@ -11,6 +12,7 @@ import {
 import type { Socket, Server as SocketIOServer } from 'socket.io';
 import type { AgentServer } from '../index';
 import { attachmentsToApiUrls } from '../utils';
+import internalMessageBus from '../services/message-bus';
 
 /**
  * Socket.io socket.data structure for authenticated sockets
@@ -28,6 +30,8 @@ interface ChannelJoiningPayload {
   agentId?: UUID;
   entityId?: UUID;
   messageServerId?: UUID;
+  username?: string;
+  displayName?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -40,16 +44,14 @@ interface MessageSubmissionPayload {
   messageServerId?: UUID;
   source?: string;
   metadata?: Record<string, unknown>;
-  attachments?: Array<Record<string, unknown>>;
+  attachments?: Media[];
+  targetUserId?: UUID;
+  messageId?: string;
 }
 
 interface GenericMessageData {
-  type: string;
+  type: SOCKET_MESSAGE_TYPE | number | string;
   payload: Record<string, unknown>;
-}
-
-interface LogEntry {
-  [key: string]: unknown;
 }
 
 export class SocketIORouter {
@@ -82,6 +84,32 @@ export class SocketIORouter {
     logger.debug({ src: 'ws', messageTypes }, 'Registered message types');
     io.on('connection', (socket: Socket) => {
       this.handleNewConnection(socket, io);
+    });
+
+    // Listen for stream chunks from the internal message bus and broadcast to clients
+    internalMessageBus.on('message_stream_chunk', (data) => {
+      const { channelId, messageId, chunk, agentId, index } = data;
+      // Broadcast to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamChunk, {
+        messageId,
+        chunk,
+        index,
+        agentId,
+        channelId,
+      });
+    });
+
+    // Listen for stream errors from the internal message bus and broadcast to clients
+    internalMessageBus.on('message_stream_error', (data) => {
+      const { channelId, messageId, agentId, error, partialText } = data;
+      // Broadcast error to all clients in the channel (camelCase for JS convention)
+      io.to(channelId).emit(MESSAGE_STREAM_EVENT.messageStreamError, {
+        messageId,
+        channelId,
+        agentId,
+        error,
+        partialText,
+      });
     });
   }
 
@@ -215,7 +243,11 @@ export class SocketIORouter {
       }
     } catch (error: unknown) {
       logger.error(
-        { src: 'ws', socketId: socket.id, error: error instanceof Error ? error.message : String(error) },
+        {
+          src: 'ws',
+          socketId: socket.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
         'Error processing message'
       );
     }
@@ -273,7 +305,10 @@ export class SocketIORouter {
 
       return isParticipant;
     } catch (error: unknown) {
-      logger.error('[SocketIO Security] Error verifying channel access:', error instanceof Error ? error.message : String(error));
+      logger.error(
+        '[SocketIO Security] Error verifying channel access:',
+        error instanceof Error ? error.message : String(error)
+      );
       return false; // Fail closed - deny on error
     }
   }
@@ -288,7 +323,7 @@ export class SocketIORouter {
    */
   private async handleChannelJoining(socket: Socket, payload: ChannelJoiningPayload) {
     const channelId = payload.channelId || payload.roomId; // Support both for backward compatibility
-    const { agentId, entityId, messageServerId, metadata } = payload;
+    const { agentId, entityId, messageServerId, username, displayName, metadata } = payload;
 
     if (!channelId) {
       this.sendErrorResponse(socket, 'channelId is required for joining.');
@@ -344,6 +379,9 @@ export class SocketIORouter {
           worldId: finalMessageServerId, // Use messageServerId as worldId identifier
           roomId: channelId as UUID,
           metadata: {
+            originalId: entityId as string,
+            username: username || (entityId as string),
+            displayName,
             type: isDm ? ChannelType.DM : ChannelType.GROUP,
             isDm,
             ...metadata,
@@ -395,6 +433,9 @@ export class SocketIORouter {
       return;
     }
 
+    // After validation, channelId is guaranteed to be a valid UUID
+    const validChannelId = channelId as UUID;
+
     try {
       // Check if this is a DM channel and emit ENTITY_JOINED for proper world setup
       const isDmForWorldSetup = metadata?.isDm || metadata?.channelType === ChannelType.DM;
@@ -405,8 +446,11 @@ export class SocketIORouter {
             entityId: senderId as UUID,
             runtime,
             worldId: messageServerId, // Use messageServerId as worldId identifier
-            roomId: channelId as UUID,
+            roomId: validChannelId,
             metadata: {
+              originalId: senderId as string,
+              username: senderName || (senderId as string),
+              displayName: senderName,
               type: ChannelType.DM,
               isDm: true,
               ...metadata,
@@ -419,7 +463,7 @@ export class SocketIORouter {
       // Ensure the channel exists before creating the message
       // Fetch channel details and servers in parallel for better performance
       const [existingChannel, servers] = await Promise.all([
-        this.serverInstance.getChannelDetails(channelId as UUID).catch(() => null),
+        this.serverInstance.getChannelDetails(validChannelId).catch(() => null),
         this.serverInstance.getServers(),
       ]);
       const channelExists = !!existingChannel;
@@ -455,11 +499,11 @@ export class SocketIORouter {
           const isDmChannel = metadata?.isDm || metadata?.channelType === ChannelType.DM;
 
           const channelData = {
-            id: channelId as UUID, // Use the specific channel ID from the client
+            id: validChannelId,
             messageServerId: messageServerId as UUID,
             name: isDmChannel
-              ? `DM ${channelId.substring(0, 8)}`
-              : `Chat ${channelId.substring(0, 8)}`,
+              ? `DM ${validChannelId.substring(0, 8)}`
+              : `Chat ${validChannelId.substring(0, 8)}`,
             type: isDmChannel ? ChannelType.DM : ChannelType.GROUP,
             sourceType: 'auto_created',
             metadata: {
@@ -486,7 +530,8 @@ export class SocketIORouter {
             'Auto-created channel'
           );
         } catch (createError: unknown) {
-          const errorMessage = createError instanceof Error ? createError.message : String(createError);
+          const errorMessage =
+            createError instanceof Error ? createError.message : String(createError);
           logger.error(
             { src: 'ws', socketId: socket.id, channelId, error: errorMessage },
             'Failed to auto-create channel'
@@ -497,10 +542,10 @@ export class SocketIORouter {
       }
 
       const newRootMessageData = {
-        channelId: channelId as UUID,
+        channelId: validChannelId,
         authorId: senderId as UUID,
         content: message as string,
-        rawMessage: payload,
+        rawMessage: { ...payload },
         metadata: {
           ...(metadata || {}),
           user_display_name: senderName,
@@ -511,13 +556,13 @@ export class SocketIORouter {
         sourceType: source || 'socketio_client',
         sourceId:
           payload.messageId || `socketio-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        inReplyToRootMessageId: null as UUID | null,
+        inReplyToRootMessageId: undefined,
       };
 
       const createdRootMessage = await this.serverInstance.createMessage(newRootMessageData);
 
-      // Transform attachments for web client
-      const transformedAttachments = attachmentsToApiUrls(attachments);
+      // Transform attachments for web client (only if present)
+      const transformedAttachments = attachments ? attachmentsToApiUrls(attachments) : undefined;
 
       // Immediately broadcast the message to all clients in the channel
       const messageBroadcast = {
@@ -525,8 +570,8 @@ export class SocketIORouter {
         senderId,
         senderName: senderName || 'User',
         text: message,
-        channelId,
-        roomId: channelId, // Keep for backward compatibility
+        channelId: validChannelId,
+        roomId: validChannelId, // Keep for backward compatibility
         messageServerId, // Use messageS erverId at message server layer
         createdAt: new Date(createdRootMessage.createdAt).getTime(),
         source: source || 'socketio_client',
@@ -534,7 +579,7 @@ export class SocketIORouter {
       };
 
       // Broadcast to everyone in the channel except the sender
-      socket.to(channelId).emit('messageBroadcast', messageBroadcast);
+      socket.to(validChannelId).emit('messageBroadcast', messageBroadcast);
 
       // Also send back to the sender with the server-assigned ID (if still connected)
       if (socket.connected) {
@@ -607,7 +652,9 @@ export class SocketIORouter {
   }
 
   public broadcastLog(io: SocketIOServer, logEntry: LogEntry) {
-    if (this.logStreamConnections.size === 0) {return;}
+    if (this.logStreamConnections.size === 0) {
+      return;
+    }
     const logData = { type: 'log_entry', payload: logEntry };
     this.logStreamConnections.forEach((filters, socketId) => {
       const socket = io.sockets.sockets.get(socketId);
@@ -622,7 +669,8 @@ export class SocketIORouter {
             typeof filters.level === 'string'
               ? customLevels[filters.level.toLowerCase()] || 70
               : filters.level;
-          shouldBroadcast = shouldBroadcast && logEntry.level >= numericLevel;
+          const entryLevel = logEntry.level ?? 30; // Default to info level
+          shouldBroadcast = shouldBroadcast && entryLevel >= numericLevel;
         }
         if (shouldBroadcast) {
           socket.emit('log_stream', logData);

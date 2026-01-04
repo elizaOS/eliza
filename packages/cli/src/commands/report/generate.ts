@@ -12,7 +12,12 @@ import { promises as fs, existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { glob } from 'glob';
 import { AnalysisEngine } from './src/analysis-engine';
-import { ScenarioRunResult, ScenarioRunResultSchema, TrajectoryStep, EnhancedEvaluationResult } from '../scenario/src/schema';
+import {
+  ScenarioRunResult,
+  ScenarioRunResultSchema,
+  TrajectoryStep,
+  EnhancedEvaluationResult,
+} from '../scenario/src/schema';
 import { MatrixConfig } from '../scenario/src/matrix-schema';
 import { MatrixRunResult } from '../scenario/src/matrix-orchestrator';
 import { ReportData, ReportDataSchema } from './src/report-schema';
@@ -53,10 +58,15 @@ function transformMatrixRunResultToScenarioRunResult(
       // Extract trajectory
       if (firstExecutionResult.trajectory) {
         trajectory = firstExecutionResult.trajectory.map(
-          (step: { type: string; timestamp: string; content: string | unknown }): TrajectoryStep => {
-            const stepType = step.type === 'action' || step.type === 'thought' || step.type === 'observation' 
-              ? step.type 
-              : 'observation'; // Default to observation if type is invalid
+          (step: {
+            type: string;
+            timestamp: string;
+            content: string | unknown;
+          }): TrajectoryStep => {
+            const stepType =
+              step.type === 'action' || step.type === 'thought' || step.type === 'observation'
+                ? step.type
+                : 'observation'; // Default to observation if type is invalid
             return {
               type: stepType,
               timestamp: step.timestamp,
@@ -88,18 +98,20 @@ function transformMatrixRunResultToScenarioRunResult(
   const scenarioResultWithEvaluations = scenarioResult as ScenarioResultWithEvaluations | undefined;
   if (scenarioResultWithEvaluations && scenarioResultWithEvaluations.evaluations) {
     // Keep enhanced evaluation results in their original format - ScenarioRunResult expects EnhancedEvaluationResult[]
-    const filteredEvaluations = scenarioResultWithEvaluations.evaluations.filter((evaluation: EvaluationResult) => {
-      // Only include evaluations that have the expected enhanced format
-      return (
-        evaluation &&
-        typeof evaluation.evaluator_type === 'string' &&
-        typeof evaluation.success === 'boolean' &&
-        typeof evaluation.summary === 'string' &&
-        evaluation.details !== undefined &&
-        typeof evaluation.details === 'object' &&
-        evaluation.details !== null
-      );
-    });
+    const filteredEvaluations = scenarioResultWithEvaluations.evaluations.filter(
+      (evaluation: EvaluationResult) => {
+        // Only include evaluations that have the expected enhanced format
+        return (
+          evaluation &&
+          typeof evaluation.evaluator_type === 'string' &&
+          typeof evaluation.success === 'boolean' &&
+          typeof evaluation.summary === 'string' &&
+          evaluation.details !== undefined &&
+          typeof evaluation.details === 'object' &&
+          evaluation.details !== null
+        );
+      }
+    );
     evaluations = filteredEvaluations.map((evaluation) => ({
       evaluator_type: evaluation.evaluator_type as string,
       success: evaluation.success as boolean,
@@ -474,7 +486,9 @@ async function validateInputDirectory(inputDir: string): Promise<void> {
     if (errorWithCode.code === 'ENOENT') {
       throw new Error(`Input directory not found: ${inputDir}`);
     }
-    throw new Error(`Cannot access input directory: ${inputDir}. ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Cannot access input directory: ${inputDir}. ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 

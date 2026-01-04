@@ -23,7 +23,8 @@ import { MatrixCombination } from './matrix-types';
 import { MatrixConfig } from './matrix-schema';
 import { IAgentRuntime, UUID, logger } from '@elizaos/core';
 import { AgentServer } from '@elizaos/server';
-import { Scenario } from './schema';
+import { Scenario, EnhancedEvaluationResult } from './schema';
+import { ExecutionResult } from './providers';
 
 /**
  * Results from executing a single matrix run.
@@ -234,7 +235,10 @@ export async function executeMatrixRuns(
     const defaultPlugins = ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'];
     const scenarioPlugins = Array.isArray(baseScenario.plugins)
       ? baseScenario.plugins
-          .filter((p: string | { name: string; enabled?: boolean }) => typeof p === 'string' || p.enabled !== false)
+          .filter(
+            (p: string | { name: string; enabled?: boolean }) =>
+              typeof p === 'string' || p.enabled !== false
+          )
           .map((p: string | { name: string }) => (typeof p === 'string' ? p : p.name))
       : [];
     const finalPlugins = Array.from(
@@ -320,8 +324,7 @@ export async function executeMatrixRuns(
             if (activeRun) {
               try {
                 await activeRun.context.cleanup();
-              } catch (cleanupError) {
-              }
+              } catch (cleanupError) {}
               activeRuns.delete(runId);
 
               // Force garbage collection if available
@@ -331,7 +334,6 @@ export async function executeMatrixRuns(
             }
           })
           .catch(async (error) => {
-
             // Capture actual resource usage even for failed runs
             let resourceMetrics = {
               memoryUsage: 0,
@@ -353,7 +355,15 @@ export async function executeMatrixRuns(
               }
             } catch (metricsError) {
               // Metrics collection failed - use default values, don't fail the run
-              logger.debug({ src: 'cli', command: 'scenario:matrix', error: metricsError instanceof Error ? metricsError.message : String(metricsError) }, 'Failed to collect resource metrics for failed run');
+              logger.debug(
+                {
+                  src: 'cli',
+                  command: 'scenario:matrix',
+                  error:
+                    metricsError instanceof Error ? metricsError.message : String(metricsError),
+                },
+                'Failed to collect resource metrics for failed run'
+              );
             }
 
             // Handle run failure
@@ -379,7 +389,15 @@ export async function executeMatrixRuns(
                 await activeRun.context.cleanup();
               } catch (cleanupError) {
                 // Cleanup failed - log but don't fail the run
-                logger.debug({ src: 'cli', command: 'scenario:matrix', error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) }, 'Failed to cleanup context for failed run');
+                logger.debug(
+                  {
+                    src: 'cli',
+                    command: 'scenario:matrix',
+                    error:
+                      cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+                  },
+                  'Failed to cleanup context for failed run'
+                );
               }
               activeRuns.delete(runId);
 
@@ -399,7 +417,6 @@ export async function executeMatrixRuns(
       try {
         await waitForCombinationCompletion(combination.id, activeRuns);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
         // Continue with next combination even if this one failed
         if (!continueOnFailure) {
           throw error;
@@ -432,8 +449,7 @@ export async function executeMatrixRuns(
       try {
         const { shutdownScenarioServer } = await import('./runtime-factory');
         await shutdownScenarioServer(sharedServer.server, sharedServer.port);
-      } catch (error) {
-      }
+      } catch (error) {}
     }
 
     // Cleanup
@@ -448,8 +464,7 @@ export async function executeMatrixRuns(
     for (const activeRun of activeRuns.values()) {
       try {
         await activeRun.context.cleanup();
-      } catch (error) {
-      }
+      } catch (error) {}
     }
   }
 }
@@ -516,7 +531,7 @@ async function executeIndividualRun(
       const metrics = {
         memoryUsage: resourcesAfter.memoryUsage - resourcesBefore.memoryUsage,
         diskUsage: await calculateRunDiskUsage(context.tempDir),
-        tokenCount: (scenarioResult as MatrixRunResult & { tokenCount?: number }).tokenCount || 0,
+        tokenCount: scenarioResult.tokenCount || 0,
         cpuUsage: resourcesAfter.cpuUsage,
       };
 
@@ -583,6 +598,25 @@ async function executeIndividualRun(
 }
 
 /**
+ * Result of executing a scenario with evaluations.
+ */
+interface ScenarioExecutionResult {
+  success: boolean;
+  evaluations: Array<
+    | EnhancedEvaluationResult
+    | {
+        evaluator_type: string;
+        success: boolean;
+        summary: string;
+        details: { step: number; error: string };
+      }
+  >;
+  executionResults: ExecutionResult[];
+  tokenCount: number;
+  duration: number;
+}
+
+/**
  * Executes a scenario with timeout and progress updates using the real scenario runner.
  */
 async function executeScenarioWithTimeout(
@@ -593,7 +627,7 @@ async function executeScenarioWithTimeout(
   sharedServer?: { server: AgentServer; port: number }, // Optional shared server for matrix testing
   runId?: string, // Optional run ID for unique agent naming
   dynamicPlugins?: string[] // Plugins extracted from scenario configuration
-): Promise<ExecutionResult> {
+): Promise<ScenarioExecutionResult> {
   return new Promise(async (resolve, reject) => {
     const scenarioStartTime = Date.now();
     const timeoutHandle = setTimeout(() => {
@@ -621,11 +655,8 @@ async function executeScenarioWithTimeout(
 
       // Create isolated environment provider
       const { LocalEnvironmentProvider } = await import('./LocalEnvironmentProvider');
-      const {
-        createScenarioServerAndAgent,
-        createScenarioAgent,
-        shutdownScenarioServer,
-      } = await import('./runtime-factory');
+      const { createScenarioServerAndAgent, createScenarioAgent, shutdownScenarioServer } =
+        await import('./runtime-factory');
 
       // Override environment variables for isolation
       const originalEnv = process.env;
@@ -782,14 +813,6 @@ async function executeScenarioWithTimeout(
 /**
  * Estimates token count from execution results using actual trajectory data.
  */
-interface ExecutionResult {
-  stdout?: string;
-  stderr?: string;
-  trajectory?: Array<{
-    content: string | Record<string, unknown>;
-  }>;
-}
-
 function estimateTokenCount(executionResults: ExecutionResult[]): number {
   let tokenCount = 0;
 
@@ -830,7 +853,6 @@ async function waitForAvailableSlot(
   maxParallel: number
 ): Promise<void> {
   while (activeRuns.size >= maxParallel) {
-
     // Wait for at least one run to complete
     const promises = Array.from(activeRuns.values()).map((run) => run.promise);
     if (promises.length === 0) {

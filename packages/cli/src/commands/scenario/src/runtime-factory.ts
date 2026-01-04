@@ -107,9 +107,8 @@ export async function createScenarioServer(
         process.env.SERVER_PORT = port.toString();
 
         // Register the server process for cleanup
-        const serverPid = server.server?.pid || process.pid;
         const runId = `agent-server-${port}`;
-        processManager.registerProcess(runId, serverPid, 'agent-server', port);
+        processManager.registerProcess(runId, process.pid, 'agent-server', port);
       }
       break; // Success, exit retry loop
     } catch (error) {
@@ -196,8 +195,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
     processManager.unregisterProcess(runId);
   } catch {
     // Force terminate the process if graceful shutdown failed
-    const serverPid = server.server?.pid || process.pid;
-    if (processManager.isProcessRunning(serverPid)) {
+    if (processManager.isProcessRunning(process.pid)) {
       const runId = `agent-server-${port}`;
       processManager.terminateProcess(runId);
     }
@@ -215,7 +213,7 @@ export async function shutdownScenarioServer(server: AgentServer, port: number):
  * @returns Promise with agent response and channel/room ID
  */
 export async function askAgentViaApi(
-  server: AgentServer,
+  _server: AgentServer,
   agentId: UUID,
   input: string,
   timeoutMs: number = 60000,
@@ -224,7 +222,10 @@ export async function askAgentViaApi(
 ): Promise<{ response: string; roomId: UUID }> {
   try {
     // Use provided port or get from environment, fallback to 3000
-    const port = serverPort ?? (process.env.SERVER_PORT ? parseInt(process.env.SERVER_PORT, 10) : undefined) ?? 3000;
+    const port =
+      serverPort ??
+      (process.env.SERVER_PORT ? parseInt(process.env.SERVER_PORT, 10) : undefined) ??
+      3000;
     const client = ElizaClient.create({ baseUrl: `http://localhost:${port}` });
 
     const { messageServers } = await client.messaging.listMessageServers();
@@ -364,6 +365,8 @@ export async function askAgentViaApi(
       poll();
     });
   } catch (error) {
-    throw new Error(`Failed to get agent response: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to get agent response: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

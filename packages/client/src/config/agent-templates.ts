@@ -121,7 +121,6 @@ export const agentTemplates: AgentTemplate[] = [
         ],
       },
       settings: {
-        clients: ['telegram'],
         allowDirectMessages: true,
         shouldOnlyJoinInAllowedGroups: false,
         messageTrackingLimit: 100,

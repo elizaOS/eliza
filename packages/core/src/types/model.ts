@@ -223,7 +223,99 @@ export type GenerateTextParams = {
   /** Optional. Response format specification. Forces the model to return a specific format (e.g., JSON).
    * Common formats: 'json_object' (OpenAI), 'text'. Plugin implementations should map this to provider-specific formats. */
   responseFormat?: { type: 'json_object' | 'text' } | string;
+  /**
+   * Enable or disable streaming mode.
+   * - `true`: Force streaming (requires onStreamChunk or context)
+   * - `false`: Force non-streaming even if callback exists
+   * - `undefined`: Auto (streams if onStreamChunk or context exists)
+   */
+  stream?: boolean;
+  /**
+   * Optional. Callback function for receiving streaming chunks.
+   * When provided, streaming is automatically enabled and chunks are sent to this callback.
+   *
+   * @example
+   * ```typescript
+   * const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+   *   prompt: "Hello",
+   *   onStreamChunk: (chunk) => process.stdout.write(chunk)
+   * });
+   * ```
+   */
+  onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
 };
+
+/**
+ * Token usage information from a model response.
+ * Provides metrics about token consumption for billing and monitoring.
+ */
+export interface TokenUsage {
+  /** Number of tokens in the input prompt */
+  promptTokens: number;
+  /** Number of tokens in the generated response */
+  completionTokens: number;
+  /** Total tokens used (promptTokens + completionTokens) */
+  totalTokens: number;
+}
+
+/**
+ * Represents a single chunk in a text stream.
+ * Each chunk contains a piece of the generated text.
+ */
+export interface TextStreamChunk {
+  /** The text content of this chunk */
+  text: string;
+  /** Whether this is the final chunk in the stream */
+  done: boolean;
+}
+
+/**
+ * Result of a streaming text generation request.
+ * Provides an async iterable for consuming text chunks as they arrive.
+ *
+ * @example
+ * ```typescript
+ * const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+ *   prompt: "Hello",
+ *   stream: true
+ * }) as TextStreamResult;
+ *
+ * let fullText = '';
+ * for await (const chunk of result.textStream) {
+ *   fullText += chunk;
+ *   console.log('Received:', chunk);
+ * }
+ *
+ * // After stream completes
+ * const usage = await result.usage;
+ * console.log('Total tokens:', usage.totalTokens);
+ * ```
+ */
+export interface TextStreamResult {
+  /**
+   * Async iterable that yields text chunks as they are generated.
+   * Each iteration provides a string chunk of the response.
+   */
+  textStream: AsyncIterable<string>;
+
+  /**
+   * Promise that resolves to the complete text after streaming finishes.
+   * Useful when you need the full response after streaming.
+   */
+  text: Promise<string>;
+
+  /**
+   * Promise that resolves to token usage information after streaming completes.
+   * May be undefined if the provider doesn't report usage for streaming.
+   */
+  usage: Promise<TokenUsage | undefined>;
+
+  /**
+   * Promise that resolves to the finish reason after streaming completes.
+   * Common values: 'stop', 'length', 'content-filter'
+   */
+  finishReason: Promise<string | undefined>;
+}
 
 /**
  * Options for the simplified generateText API.
@@ -393,12 +485,19 @@ export interface ModelParamsMap {
   [ModelType.VIDEO]: VideoProcessingParams;
   [ModelType.OBJECT_SMALL]: ObjectGenerationParams;
   [ModelType.OBJECT_LARGE]: ObjectGenerationParams;
-  // Allow string index for custom model types
-  [key: string]: unknown;
+  [ModelType.TEXT_COMPLETION]: GenerateTextParams;
+  // Custom model types should be registered via runtime.registerModel() in plugin init()
 }
 
 /**
- * Map of model types to their return value types
+ * Map of model types to their DEFAULT return value types.
+ *
+ * Note: For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*),
+ * the actual return type depends on the parameters and is handled by overloads:
+ * - `{ prompt }`: Returns `string` (this default)
+ * - `{ prompt, stream: true }`: Returns `TextStreamResult` (via overload)
+ *
+ * The overloads in IAgentRuntime.useModel() provide the correct type inference.
  */
 export interface ModelResultMap {
   [ModelType.TEXT_SMALL]: string;
@@ -412,12 +511,42 @@ export interface ModelResultMap {
   [ModelType.IMAGE_DESCRIPTION]: { title: string; description: string };
   [ModelType.TRANSCRIPTION]: string;
   [ModelType.TEXT_TO_SPEECH]: Buffer | ArrayBuffer | Uint8Array;
-  [ModelType.AUDIO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
-  [ModelType.VIDEO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>; // Specific return type depends on processing type
+  [ModelType.AUDIO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>;
+  [ModelType.VIDEO]: Buffer | ArrayBuffer | Uint8Array | Record<string, unknown>;
   [ModelType.OBJECT_SMALL]: Record<string, unknown>;
   [ModelType.OBJECT_LARGE]: Record<string, unknown>;
-  // Allow string index for custom model types
-  [key: string]: unknown;
+  [ModelType.TEXT_COMPLETION]: string;
+  // Custom model types should be registered via runtime.registerModel() in plugin init()
+}
+
+/**
+ * Models that support streaming - their handlers can return either string or TextStreamResult
+ */
+export type StreamableModelType =
+  | typeof ModelType.TEXT_SMALL
+  | typeof ModelType.TEXT_LARGE
+  | typeof ModelType.TEXT_REASONING_SMALL
+  | typeof ModelType.TEXT_REASONING_LARGE
+  | typeof ModelType.TEXT_COMPLETION;
+
+/**
+ * Result type for plugin model handlers - includes TextStreamResult for streamable models
+ */
+export type PluginModelResult<K extends keyof ModelResultMap> = K extends StreamableModelType
+  ? ModelResultMap[K] | TextStreamResult
+  : ModelResultMap[K];
+
+/**
+ * Type guard to check if a model type supports streaming.
+ */
+export function isStreamableModelType(modelType: ModelTypeName): boolean {
+  return [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+    ModelType.TEXT_REASONING_SMALL,
+    ModelType.TEXT_REASONING_LARGE,
+    ModelType.TEXT_COMPLETION,
+  ].includes(modelType as any);
 }
 
 /**

@@ -1,9 +1,9 @@
 import { loadProject, type Project } from '@/src/project';
 import { buildProject, TestRunner, UserEnvironment } from '@/src/utils';
 import { type DirectoryInfo } from '@/src/utils/directory-detection';
-import { logger, type IAgentRuntime, type ProjectAgent, type Character } from '@elizaos/core';
+import { logger, type IAgentRuntime, type ProjectAgent } from '@elizaos/core';
 import { getDefaultCharacter } from '@/src/characters/eliza';
-import { AgentServer, jsonToCharacter, loadCharacterTryPath } from '@elizaos/server';
+import { AgentServer } from '@elizaos/server';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import path from 'node:path';
@@ -44,7 +44,7 @@ export async function runE2eTests(
     }
   }
 
-  let server: { startAgent: (character: Character) => Promise<void> } | undefined; // Will be AgentServer instance from module loader
+  let server: AgentServer | undefined; // Will be AgentServer instance from module loader
   try {
     const runtimes: IAgentRuntime[] = [];
     const projectAgents: ProjectAgent[] = [];
@@ -111,25 +111,8 @@ export async function runE2eTests(
     server = new AgentServer();
     logger.info({ src: 'cli', command: 'test-e2e' }, 'Server instance created');
 
-    // Initialize the server explicitly before starting
-    logger.info({ src: 'cli', command: 'test-e2e' }, 'Initializing server');
-    try {
-      await server.initialize({
-        dataDir: elizaDbDir,
-        postgresUrl,
-      });
-      logger.info({ src: 'cli', command: 'test-e2e' }, 'Server initialized successfully');
-    } catch (initError) {
-      logger.error(
-        {
-          src: 'cli',
-          command: 'test-e2e',
-          error: initError instanceof Error ? initError.message : String(initError),
-        },
-        'Server initialization failed'
-      );
-      throw initError;
-    }
+    // Server will initialize automatically when start() is called
+    logger.info({ src: 'cli', command: 'test-e2e' }, 'Server instance ready');
 
     let project: Project | undefined;
     try {
@@ -159,21 +142,7 @@ export async function runE2eTests(
         'Found agents'
       );
 
-      // Set up server properties using AgentServer's built-in methods
-      logger.info({ src: 'cli', command: 'test-e2e' }, 'Setting up server properties');
       // Note: AgentManager was removed, using AgentServer's startAgents directly
-      server.startAgent = async (character: Character) => {
-        logger.info(
-          { src: 'cli', command: 'test-e2e', characterName: character.name },
-          'Starting agent for character'
-        );
-        const runtimes = await server.startAgents([character], [], { isTestMode: true });
-        return runtimes[0];
-      };
-      server.loadCharacterTryPath = loadCharacterTryPath;
-      server.jsonToCharacter = jsonToCharacter;
-      logger.info({ src: 'cli', command: 'test-e2e' }, 'Server properties set up');
-
       logger.info({ src: 'cli', command: 'test-e2e' }, 'Starting server');
       try {
         // Server will auto-discover available port (don't pass port for auto-discovery)
@@ -232,8 +201,12 @@ export async function runE2eTests(
             // Use AgentServer's startAgents method with the plugin under test
             // isTestMode: true ensures testDependencies are loaded
             const startedRuntimes = await server.startAgents(
-              [defaultElizaCharacter],
-              [pluginUnderTest], // Pass the local plugin module directly
+              [
+                {
+                  character: defaultElizaCharacter,
+                  plugins: [pluginUnderTest],
+                },
+              ],
               { isTestMode: true }
             );
             const runtime = startedRuntimes[0];

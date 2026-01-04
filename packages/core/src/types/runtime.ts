@@ -14,8 +14,10 @@ import type {
   ModelTypeName,
   GenerateTextOptions,
   GenerateTextResult,
+  GenerateTextParams,
+  TextGenerationModelType,
 } from './model';
-import type { Plugin, PluginEvents, Route } from './plugin';
+import type { Plugin, RuntimeEventStorage, Route } from './plugin';
 import type { Content, UUID } from './primitives';
 import type { Service, ServiceTypeName } from './service';
 import type { State } from './state';
@@ -32,13 +34,14 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   // Properties
   agentId: UUID;
   character: Character;
+  initPromise: Promise<void>;
   messageService: IMessageService | null;
   providers: Provider[];
   actions: Action[];
   evaluators: Evaluator[];
   plugins: Plugin[];
   services: Map<ServiceTypeName, Service[]>;
-  events: PluginEvents;
+  events: RuntimeEventStorage;
   fetch?: typeof fetch | null;
   routes: Route[];
   logger: Logger;
@@ -73,7 +76,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   setSetting(key: string, value: string | boolean | null, secret?: boolean): void;
 
-  getSetting(key: string): string | boolean | null;
+  getSetting(key: string): string | boolean | number | null;
 
   getConversationLength(): number;
 
@@ -81,7 +84,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     message: Memory,
     responses: Memory[],
     state?: State,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
+    options?: { onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void> }
   ): Promise<void>;
 
   getActionResults(messageId: UUID): ActionResult[];
@@ -142,9 +146,30 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     skipCache?: boolean
   ): Promise<State>;
 
-  useModel<T extends ModelTypeName, R = ModelResultMap[T]>(
+  /**
+   * Use a model for inference with proper type inference based on parameters.
+   *
+   * For text generation models (TEXT_SMALL, TEXT_LARGE, TEXT_REASONING_*):
+   * - Always returns `string`
+   * - If streaming context is active, chunks are sent to callback automatically
+   *
+   * @example
+   * ```typescript
+   * // Simple usage - streaming happens automatically if context is active
+   * const text = await runtime.useModel(ModelType.TEXT_LARGE, { prompt: "Hello" });
+   * ```
+   */
+  // Overload 1: Text generation → string (auto-streams via context)
+  useModel(
+    modelType: TextGenerationModelType,
+    params: GenerateTextParams,
+    provider?: string
+  ): Promise<string>;
+
+  // Overload 2: Generic fallback for other model types
+  useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
-    params: Omit<ModelParamsMap[T], 'runtime'>,
+    params: ModelParamsMap[T],
     provider?: string
   ): Promise<R>;
 
@@ -162,12 +187,18 @@ export interface IAgentRuntime extends IDatabaseAdapter {
   ): ((runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>) | undefined;
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
-  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
+  registerEvent<P extends EventPayload = EventPayload>(
+    event: string,
+    handler: (params: P) => Promise<void>
+  ): void;
 
   getEvent<T extends keyof EventPayloadMap>(event: T): EventHandler<T>[] | undefined;
   getEvent(event: string): ((params: EventPayload) => Promise<void>)[] | undefined;
 
-  emitEvent<T extends keyof EventPayloadMap>(event: T | T[], params: EventPayloadMap[T]): Promise<void>;
+  emitEvent<T extends keyof EventPayloadMap>(
+    event: T | T[],
+    params: EventPayloadMap[T]
+  ): Promise<void>;
   emitEvent(event: string | string[], params: EventPayload): Promise<void>;
 
   // In-memory task definition methods

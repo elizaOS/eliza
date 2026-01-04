@@ -5,6 +5,11 @@
  * stubs or alternatives for Node.js-specific functionality.
  */
 
+// Configure Browser-specific streaming context manager (Stack-based)
+import { setStreamingContextManager } from './streaming-context';
+import { createBrowserStreamingContextManager } from './streaming-context.browser';
+setStreamingContextManager(createBrowserStreamingContextManager());
+
 // Export everything from types (type-only, safe for browser)
 export * from './types';
 
@@ -17,7 +22,6 @@ export * from './schemas/character';
 // Export browser-compatible utilities
 export * from './utils/environment';
 export * from './utils/buffer';
-// Note: Excluding server-health and paths as they're Node-specific
 
 // Export core modules (all browser-compatible after refactoring)
 export * from './actions';
@@ -34,6 +38,7 @@ export * from './services/message-service';
 export * from './services/default-message-service';
 export * from './search';
 export * from './elizaos';
+export * from './streaming-context';
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;

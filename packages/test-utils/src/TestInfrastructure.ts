@@ -1,4 +1,11 @@
-import type { IAgentRuntime, IDatabaseAdapter, UUID, Character, Memory } from '@elizaos/core';
+import type {
+  IAgentRuntime,
+  IDatabaseAdapter,
+  UUID,
+  Character,
+  Memory,
+  AgentRuntime,
+} from '@elizaos/core';
 import { createTestRuntime } from './realRuntime';
 import { stringToUuid } from '@elizaos/core';
 import { createUniqueUuid as _createUniqueUuid } from '@elizaos/core';
@@ -92,7 +99,7 @@ export class TestEnvironment {
     });
     this.runtime = runtimeResult.runtime;
     // AgentRuntime has a public adapter property
-    this.databaseAdapter = this.runtime.adapter;
+    this.databaseAdapter = (this.runtime as AgentRuntime).adapter;
 
     // Ensure database adapter is available
     if (!this.databaseAdapter) {
@@ -248,7 +255,7 @@ export class TestDataBuilder {
 
   static async createTestConversation(
     runtime: IAgentRuntime,
-    participants: string[],
+    participants: UUID[],
     messageCount: number = 5
   ) {
     // Create room
@@ -277,7 +284,7 @@ export class TestDataBuilder {
     return { roomId, messages };
   }
 
-  static async createTestMemories(runtime: IAgentRuntime, roomId: string, count: number = 10) {
+  static async createTestMemories(runtime: IAgentRuntime, roomId: UUID, count: number = 10) {
     const memories: Memory[] = [];
     for (let i = 0; i < count; i++) {
       const memory = {

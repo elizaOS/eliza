@@ -76,12 +76,27 @@ export interface CreateSessionResponse {
 }
 
 /**
+ * Valid response modes for messaging API
+ * - "sync": Wait for complete agent response
+ * - "stream": SSE streaming response
+ * - "websocket": Return immediately, agent response via WebSocket (default)
+ */
+export type ResponseMode = 'sync' | 'stream' | 'websocket';
+
+/**
  * Request parameters for sending a message
  */
 export interface SendMessageParams {
   content: string;
   attachments?: MessageAttachment[];
   metadata?: SessionMessageMetadata;
+  /**
+   * Response mode for the message
+   * - "sync": Wait for complete agent response (returns agentResponse)
+   * - "stream": SSE streaming response
+   * - "websocket": Return immediately, agent response via WebSocket (default)
+   */
+  mode?: ResponseMode;
 }
 
 /**
@@ -142,9 +157,52 @@ export interface ListSessionsResponse {
 }
 
 /**
+ * User message data in the response
+ */
+export interface UserMessageData {
+  id: string;
+  content: string;
+  authorId: string;
+  createdAt: Date;
+  metadata?: SessionMessageMetadata;
+}
+
+/**
+ * Agent response content
+ */
+export interface AgentResponseContent {
+  text: string;
+  thought?: string;
+  actions?: string[];
+}
+
+/**
+ * Session status in the response
+ */
+export interface SessionStatusData {
+  expiresAt: Date;
+  renewalCount: number;
+  wasRenewed: boolean;
+  isNearExpiration: boolean;
+}
+
+/**
  * Message response when sending a message
+ * New unified format with success flag and structured data
  */
 export interface MessageResponse {
+  success: boolean;
+  userMessage: UserMessageData;
+  /** Only present when mode is "sync" */
+  agentResponse?: AgentResponseContent;
+  /** Session status information */
+  sessionStatus?: SessionStatusData;
+}
+
+/**
+ * @deprecated Use MessageResponse instead - old format for backward compatibility
+ */
+export interface LegacyMessageResponse {
   id: string;
   content: string;
   authorId: string;

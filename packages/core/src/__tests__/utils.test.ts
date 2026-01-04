@@ -242,7 +242,7 @@ describe('Utils Comprehensive Tests', () => {
     });
 
     it('should respect chunk overlap', async () => {
-      const text = 'Word1 Word2 Word3 Word4 Word5 ' + 'Word6 '.repeat(100);
+      const text = `Word1 Word2 Word3 Word4 Word5 ${'Word6 '.repeat(100)}`;
       const chunks = await splitChunks(text, 50, 10);
 
       expect(chunks.length).toBeGreaterThan(1);
@@ -258,7 +258,7 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should use RecursiveCharacterTextSplitter from @langchain/textsplitters', async () => {
       // This test verifies the migration to @langchain/textsplitters is working
-      const text = 'This is a test. ' + 'More text here. '.repeat(50);
+      const text = `This is a test. ${'More text here. '.repeat(50)}`;
       const chunks = await splitChunks(text, 100, 20);
 
       // Verify basic functionality
@@ -457,30 +457,44 @@ describe('Utils Comprehensive Tests', () => {
       const result = parseKeyValueXml(xml);
       expect(result).toEqual({ key: 'value' });
     });
+
+    it('should handle malicious input without ReDoS (unclosed response tag)', () => {
+      // This input would cause exponential backtracking with regex /<response>([\s\S]*?)<\/response>/
+      // With linear search, it should complete in O(n) time
+      const maliciousInput = `<response>${'a'.repeat(10000)}`;
+      const startTime = Date.now();
+      const result = parseKeyValueXml(maliciousInput);
+      const elapsed = Date.now() - startTime;
+
+      // Should return null (no closing tag) and complete quickly (< 100ms)
+      expect(result).toBeNull();
+      expect(elapsed).toBeLessThan(100);
+    });
   });
 
   describe('formatMessages', () => {
     const mockEntities: Entity[] = [
       {
-        id: 'entity-1' as UUID,
+        id: stringToUuid('entity-1'),
         names: ['Alice'],
         metadata: {},
-        agentId: 'agent-1' as UUID,
+        agentId: stringToUuid('agent-1'),
       },
       {
-        id: 'entity-2' as UUID,
+        id: stringToUuid('entity-2'),
         names: ['Bob'],
         metadata: {},
-        agentId: 'agent-1' as UUID,
+        agentId: stringToUuid('agent-1'),
       },
     ];
 
     it('should format messages with basic content', () => {
+      const entityId = stringToUuid('entity-1');
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId,
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now() - 60000, // 1 minute ago
           content: {
             text: 'Hello world',
@@ -494,15 +508,15 @@ describe('Utils Comprehensive Tests', () => {
       expect(result).toContain('Alice');
       expect(result).toContain('Hello world');
       expect(result).toContain('1 minute ago');
-      expect(result).toContain('[entity-1]');
+      expect(result).toContain(`[${entityId}]`);
     });
 
     it('should format messages with actions and thoughts', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-2' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-2'),
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: {
             text: 'Doing something',
@@ -524,9 +538,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should handle attachments', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-1'),
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: {
             text: 'Check this out',
@@ -549,16 +563,16 @@ describe('Utils Comprehensive Tests', () => {
     it('should filter out messages without entityId', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: null as UUID, // Testing with null value
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: null as any, // Testing with null value
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: { text: 'Should be filtered', source: 'chat' } as Content,
         },
         {
-          id: 'msg-2' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-2'),
+          entityId: stringToUuid('entity-1'),
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: { text: 'Should appear', source: 'chat' } as Content,
         },
@@ -574,19 +588,20 @@ describe('Utils Comprehensive Tests', () => {
   describe('formatPosts', () => {
     const mockEntities: Entity[] = [
       {
-        id: 'entity-1' as UUID,
+        id: stringToUuid('entity-1'),
         names: ['Alice'],
         metadata: {},
-        agentId: 'agent-1' as UUID,
+        agentId: stringToUuid('agent-1'),
       },
     ];
 
     it('should format posts grouped by room', () => {
+      const roomId = stringToUuid('room-1');
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-1'),
+          roomId,
           createdAt: Date.now() - 3600000,
           content: {
             text: 'First message',
@@ -594,9 +609,9 @@ describe('Utils Comprehensive Tests', () => {
           } as Content,
         },
         {
-          id: 'msg-2' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-2'),
+          entityId: stringToUuid('entity-1'),
+          roomId,
           createdAt: Date.now(),
           content: {
             text: 'Second message',
@@ -608,7 +623,7 @@ describe('Utils Comprehensive Tests', () => {
       const result = formatPosts({ messages, entities: mockEntities });
 
       // formatPosts uses roomId.slice(-5) to show only last 5 chars
-      expect(result).toContain('Conversation: oom-1');
+      expect(result).toContain(`Conversation: ${roomId.slice(-5)}`);
       expect(result).toContain('Name: Alice');
       expect(result).toContain('First message');
       expect(result).toContain('Second message');
@@ -618,13 +633,13 @@ describe('Utils Comprehensive Tests', () => {
     it('should include reply information', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-1'),
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: {
             text: 'Reply message',
-            inReplyTo: '12345678-1234-1234-1234-123456789012' as UUID,
+            inReplyTo: stringToUuid('12345678-1234-1234-1234-123456789012'),
             source: 'chat',
           } as Content,
         },
@@ -638,9 +653,9 @@ describe('Utils Comprehensive Tests', () => {
     it('should format without conversation header when specified', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-1'),
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: { text: 'Message', source: 'chat' } as Content,
         },
@@ -657,11 +672,12 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle missing entity with warning', () => {
       // This tests line 209 - logger.warn when entity not found
+      const unknownEntityId = stringToUuid('non-existent-entity');
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'non-existent-entity' as UUID,
-          roomId: 'room-1' as UUID,
+          id: stringToUuid('msg-1'),
+          entityId: unknownEntityId,
+          roomId: stringToUuid('room-1'),
           createdAt: Date.now(),
           content: {
             text: 'Message from unknown entity',
@@ -676,15 +692,15 @@ describe('Utils Comprehensive Tests', () => {
       // Should use "Unknown User" when entity not found
       expect(result).toContain('Unknown User');
       expect(result).toContain('unknown');
-      expect(result).toContain('non-existent-entity');
+      expect(result).toContain(unknownEntityId);
     });
 
     it('should handle messages without roomId', () => {
       const messages: Memory[] = [
         {
-          id: 'msg-1' as UUID,
-          entityId: 'entity-1' as UUID,
-          roomId: null as UUID, // No roomId - testing with null value
+          id: stringToUuid('msg-1'),
+          entityId: stringToUuid('entity-1'),
+          roomId: null as any, // No roomId - testing with null value
           createdAt: Date.now(),
           content: {
             text: 'Message without room',
@@ -744,11 +760,11 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should throw TypeError for non-string/non-number input', () => {
       // These are intentional type errors to test error handling
-      expect(() => stringToUuid(null as string | number)).toThrow(TypeError);
-      expect(() => stringToUuid(undefined as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid(null as unknown as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid(undefined as unknown as string | number)).toThrow(TypeError);
       expect(() => stringToUuid({} as string | number)).toThrow(TypeError);
-      expect(() => stringToUuid([] as string | number)).toThrow(TypeError);
-      expect(() => stringToUuid(true as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid([] as unknown as string | number)).toThrow(TypeError);
+      expect(() => stringToUuid(true as unknown as string | number)).toThrow(TypeError);
     });
 
     it('should generate consistent UUID for same input', () => {
@@ -857,7 +873,7 @@ describe('Utils Comprehensive Tests', () => {
         role: 'developer',
         task: 'write tests',
       };
-      const template = `Hello {{name}}, as a {{role}}, please {{task}}.`;
+      const template = 'Hello {{name}}, as a {{role}}, please {{task}}.';
 
       const result = composePrompt({ state, template });
 
@@ -868,7 +884,7 @@ describe('Utils Comprehensive Tests', () => {
       const state = {
         name: 'Bob',
       };
-      const template = `Hello {{name}}, your role is {{role}}.`;
+      const template = 'Hello {{name}}, your role is {{role}}.';
 
       const result = composePrompt({ state, template });
 
@@ -878,7 +894,7 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle empty state', () => {
       const state = {};
-      const template = `Template with {{placeholder}}.`;
+      const template = 'Template with {{placeholder}}.';
 
       const result = composePrompt({ state, template });
 
@@ -890,7 +906,7 @@ describe('Utils Comprehensive Tests', () => {
       const state = {
         word: 'test',
       };
-      const template = `{{word}} {{word}} {{word}}`;
+      const template = '{{word}} {{word}} {{word}}';
 
       const result = composePrompt({ state, template });
 
@@ -902,19 +918,19 @@ describe('Utils Comprehensive Tests', () => {
     it('should compose prompt from State object', () => {
       const mockState: State = {
         // Required State properties
-        userId: 'user-123' as UUID,
-        agentId: 'agent-123' as UUID,
-        roomId: 'room-123' as UUID,
+        userId: stringToUuid('user-123'),
+        agentId: stringToUuid('agent-123'),
+        roomId: stringToUuid('room-123'),
         bio: 'I am a helpful assistant',
         lore: 'Created to help with tasks',
         senderName: 'Assistant',
         actors: 'user123',
         actorsData: [
           {
-            id: 'actor-1' as UUID,
+            id: stringToUuid('actor-1'),
             names: ['John'],
             metadata: {},
-            agentId: 'agent-123' as UUID,
+            agentId: stringToUuid('agent-123'),
           },
         ],
         // Template values
@@ -922,9 +938,9 @@ describe('Utils Comprehensive Tests', () => {
         relevantKnowledge: 'Relevant facts',
         recentMessagesData: [
           {
-            id: 'msg-1' as UUID,
-            entityId: 'entity-1' as UUID,
-            roomId: 'room-123' as UUID,
+            id: stringToUuid('msg-1'),
+            entityId: stringToUuid('entity-1'),
+            roomId: stringToUuid('room-123'),
             createdAt: Date.now(),
             content: {
               text: 'Hello',
@@ -938,7 +954,7 @@ describe('Utils Comprehensive Tests', () => {
         text: '',
       };
 
-      const template = `Bio: {{bio}}\nLore: {{lore}}\nRecent: {{recentMessages}}`;
+      const template = 'Bio: {{bio}}\nLore: {{lore}}\nRecent: {{recentMessages}}';
 
       const result = composePromptFromState({ state: mockState, template });
 
@@ -949,25 +965,25 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle State with array data', () => {
       const mockState: State = {
-        userId: 'user-123' as UUID,
-        agentId: 'agent-123' as UUID,
-        roomId: 'room-123' as UUID,
+        userId: stringToUuid('user-123'),
+        agentId: stringToUuid('agent-123'),
+        roomId: stringToUuid('room-123'),
         bio: 'Assistant bio',
         lore: 'Assistant lore',
         senderName: 'User',
         actors: '',
         actorsData: [
           {
-            id: 'actor-1' as UUID,
+            id: stringToUuid('actor-1'),
             names: ['Alice'],
             metadata: {},
-            agentId: 'agent-123' as UUID,
+            agentId: stringToUuid('agent-123'),
           },
           {
-            id: 'actor-2' as UUID,
+            id: stringToUuid('actor-2'),
             names: ['Bob'],
             metadata: {},
-            agentId: 'agent-123' as UUID,
+            agentId: stringToUuid('agent-123'),
           },
         ],
         recentMessagesData: [],
@@ -976,7 +992,7 @@ describe('Utils Comprehensive Tests', () => {
         text: '',
       };
 
-      const template = `Actors: {{actors}}\nSender: {{senderName}}`;
+      const template = 'Actors: {{actors}}\nSender: {{senderName}}';
 
       const result = composePromptFromState({ state: mockState, template });
 
@@ -987,9 +1003,9 @@ describe('Utils Comprehensive Tests', () => {
 
     it('should handle missing properties in State', () => {
       const mockState: State = {
-        userId: 'user-123' as UUID,
-        agentId: 'agent-123' as UUID,
-        roomId: 'room-123' as UUID,
+        userId: stringToUuid('user-123'),
+        agentId: stringToUuid('agent-123'),
+        roomId: stringToUuid('room-123'),
         bio: '',
         lore: '',
         senderName: '',
@@ -1001,7 +1017,7 @@ describe('Utils Comprehensive Tests', () => {
         text: '',
       };
 
-      const template = `Bio: {{bio}}\nMissing: {{missingProp}}`;
+      const template = 'Bio: {{bio}}\nMissing: {{missingProp}}';
 
       const result = composePromptFromState({ state: mockState, template });
 
@@ -1129,14 +1145,16 @@ describe('Utils Comprehensive Tests', () => {
         content: { text: 'hi', source: 'chat' },
       },
       {
-        id: '2',
-        entityId: 'e1',
-        roomId: 'r1',
+        id: stringToUuid('2'),
+        entityId: stringToUuid('e1'),
+        roomId: stringToUuid('r1'),
         createdAt: 2,
         content: { text: 'there', source: 'chat' },
       },
     ] as Memory[];
-    const entities: Entity[] = [{ id: 'e1' as UUID, names: ['Alice'], metadata: {}, agentId: 'agent-1' as UUID }];
+    const entities: Entity[] = [
+      { id: stringToUuid('e1'), names: ['Alice'], metadata: {}, agentId: stringToUuid('agent-1') },
+    ];
     const result = utils.formatPosts({ messages, entities });
     expect(result).toContain('Conversation:');
     expect(result).toContain('Alice');
@@ -1148,8 +1166,12 @@ describe('Utils Comprehensive Tests', () => {
     const runtime = {
       useModel: mock(
         async (type: (typeof ModelType)[keyof typeof ModelType], { prompt, tokens }: any) => {
-          if (type === ModelType.TEXT_TOKENIZER_ENCODE) return prompt.split(' ');
-          if (type === ModelType.TEXT_TOKENIZER_DECODE) return tokens.join(' ');
+          if (type === ModelType.TEXT_TOKENIZER_ENCODE) {
+            return prompt.split(' ');
+          }
+          if (type === ModelType.TEXT_TOKENIZER_DECODE) {
+            return tokens.join(' ');
+          }
           return [];
         }
       ),

@@ -346,20 +346,30 @@ const jsonBlockPattern = /```json\n([\s\S]*?)\n```/;
  * Note: This uses regex and is suitable for simple, predictable XML structures.
  * For complex XML, a proper parsing library is recommended.
  *
+ * @typeParam T - The expected shape of the parsed result. Defaults to Record<string, unknown>.
  * @param text - The input text containing the XML structure.
- * @returns An object with key-value pairs extracted from the XML, or null if parsing fails.
+ * @returns The parsed object cast to type T, or null if parsing fails.
+ *
+ * @example
+ * interface MyResponse { thought: string; message: string; }
+ * const result = parseKeyValueXml<MyResponse>(xmlText);
+ * // result is MyResponse | null
  */
-export function parseKeyValueXml(text: string): Record<string, unknown> | null {
+export function parseKeyValueXml<T = Record<string, unknown>>(text: string): T | null {
   if (!text) return null;
 
-  // First, try to find a specific <response> block (the one we actually want)
-  // Use a more permissive regex to handle cases where there might be multiple XML blocks
-  let xmlBlockMatch = text.match(/<response>([\s\S]*?)<\/response>/);
-  let xmlContent: string;
+  // First, try to find a specific <response> block using linear search (avoids regex ReDoS)
+  let xmlContent: string | null = null;
+  const responseStart = text.indexOf('<response>');
+  if (responseStart !== -1) {
+    const contentStart = responseStart + '<response>'.length;
+    const responseEnd = text.indexOf('</response>', contentStart);
+    if (responseEnd !== -1) {
+      xmlContent = text.slice(contentStart, responseEnd);
+    }
+  }
 
-  if (xmlBlockMatch) {
-    xmlContent = xmlBlockMatch[1];
-  } else {
+  if (!xmlContent) {
     // Fall back: perform a linear scan to find the first simple XML element and its matching close tag
     // This avoids potentially expensive backtracking on crafted inputs
     const findFirstXmlBlock = (input: string): { tag: string; content: string } | null => {
@@ -568,7 +578,7 @@ export function parseKeyValueXml(text: string): Record<string, unknown> | null {
     return null;
   }
 
-  return result;
+  return result as T;
 }
 
 /**
@@ -585,12 +595,17 @@ export function parseJSONObjectFromText(text: string): Record<string, unknown> |
   const jsonBlockMatch = text.match(jsonBlockPattern);
 
   let jsonData: Record<string, unknown> | null = null;
-  if (jsonBlockMatch) {
-    // Parse the JSON from inside the code block
-    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-  } else {
-    // Try to parse the text directly if it's not in a code block
-    jsonData = JSON.parse(normalizeJsonString(text.trim()));
+  try {
+    if (jsonBlockMatch) {
+      // Parse the JSON from inside the code block
+      jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
+    } else {
+      // Try to parse the text directly if it's not in a code block
+      jsonData = JSON.parse(normalizeJsonString(text.trim()));
+    }
+  } catch {
+    // Return null on parse error
+    return null;
   }
 
   // Ensure we have a non-null object that's not an array

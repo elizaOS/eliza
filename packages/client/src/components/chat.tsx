@@ -98,7 +98,12 @@ const convertActionMessageToToolPart = (message: UiMessage): ToolPart => {
   // rawMessage is unknown, but we need to access its properties
   interface RawMessageWithActionStatus {
     actionStatus?: string;
-    [key: string]: unknown;
+    actions?: string[];
+    action?: string;
+    thought?: string;
+    text?: string;
+    actionId?: string;
+    actionResult?: unknown;
   }
   const rawMessage = (message.rawMessage as RawMessageWithActionStatus) || {};
 
@@ -177,12 +182,19 @@ export interface ChatLocationState {
 // Message content component - exported for use in ChatMessageListComponent
 export const MemoizedMessageContent = React.memo(MessageContent, (prevProps, nextProps) => {
   // Only re-render if the message content, animation state, or other key props change
+  // For action messages, we also need to check rawMessage.actionStatus
+  const prevActionStatus = (prevProps.message.rawMessage as { actionStatus?: string })
+    ?.actionStatus;
+  const nextActionStatus = (nextProps.message.rawMessage as { actionStatus?: string })
+    ?.actionStatus;
+
   return (
     prevProps.message.id === nextProps.message.id &&
     prevProps.message.text === nextProps.message.text &&
     prevProps.message.isLoading === nextProps.message.isLoading &&
     prevProps.shouldAnimate === nextProps.shouldAnimate &&
-    prevProps.isUser === nextProps.isUser
+    prevProps.isUser === nextProps.isUser &&
+    prevActionStatus === nextActionStatus
   );
 });
 
@@ -926,7 +938,7 @@ export default function Chat({
     }
   };
 
-  const { sendMessage, animatedMessageId } = useSocketChat({
+  const { sendMessage } = useSocketChat({
     channelId: finalChannelIdForHooks,
     currentUserId: currentClientEntityId,
     contextId,
@@ -970,19 +982,12 @@ export default function Chat({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      // Create a synthetic form event from the keyboard event
-      const syntheticEvent = {
-        ...e,
-        preventDefault: () => e.preventDefault(),
-        currentTarget: e.currentTarget,
-        target: e.target,
-      } as React.FormEvent<HTMLFormElement>;
-      handleSendMessage(syntheticEvent);
+      handleSendMessage();
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSendMessage = async (e?: React.FormEvent<HTMLFormElement>) => {
+    e?.preventDefault();
 
     // For DM chats, ensure we have a channel before sending
     let channelIdToUse = finalChannelIdForHooks;
@@ -1638,9 +1643,8 @@ export default function Chat({
                   currentClientEntityId={currentClientEntityId}
                   targetAgentData={targetAgentData}
                   allAgents={allAgents}
-                  animatedMessageId={animatedMessageId}
-                  scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
-                  contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
+                  scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                  contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                   isAtBottom={isAtBottom}
                   scrollToBottom={scrollToBottom}
                   disableAutoScroll={disableAutoScroll}
@@ -1727,9 +1731,8 @@ export default function Chat({
                         currentClientEntityId={currentClientEntityId}
                         targetAgentData={targetAgentData}
                         allAgents={allAgents}
-                        animatedMessageId={animatedMessageId}
-                        scrollRef={scrollRef as React.RefObject<HTMLDivElement | null>}
-                        contentRef={contentRef as React.RefObject<HTMLDivElement | null>}
+                        scrollRef={scrollRef as unknown as React.RefObject<HTMLDivElement>}
+                        contentRef={contentRef as unknown as React.RefObject<HTMLDivElement>}
                         isAtBottom={isAtBottom}
                         scrollToBottom={scrollToBottom}
                         disableAutoScroll={disableAutoScroll}

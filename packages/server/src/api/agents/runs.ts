@@ -3,6 +3,7 @@ import type {
   UUID,
   Log,
   IDatabaseAdapter,
+  IAgentRuntime,
   RunStatus,
   ActionLogBody,
   ModelLogBody,
@@ -86,7 +87,8 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       }
 
       // Runtime has an internal adapter property for database operations
-      const adapter = (runtime as IAgentRuntime & { adapter?: IDatabaseAdapter }).adapter ?? runtime;
+      const adapter =
+        (runtime as IAgentRuntime & { adapter?: IDatabaseAdapter }).adapter ?? runtime;
       const allowedStatuses: Array<RunStatus | 'all'> = [
         'started',
         'completed',
@@ -158,11 +160,17 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
         for (const log of logs) {
           const body = log.body;
           const runId = typeof body.runId === 'string' ? body.runId : undefined;
-          if (!runId) {continue;}
+          if (!runId) {
+            continue;
+          }
 
           const logTime = new Date(log.createdAt).getTime();
-          if (fromTime && logTime < fromTime) {continue;}
-          if (toTime && logTime > toTime) {continue;}
+          if (fromTime && logTime < fromTime) {
+            continue;
+          }
+          if (toTime && logTime > toTime) {
+            continue;
+          }
 
           if (!runMap.has(runId)) {
             runMap.set(runId, {
@@ -221,20 +229,22 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           const authorRunEvents = entityId
             ? []
             : await Promise.all(
-              authorIds.map(() =>
-                runtime
-                  .getLogs({
-                    roomId: roomId ? (roomId as UUID) : undefined,
-                    type: 'run_event',
-                    count: 500,
-                  })
-                  .catch(() => [])
-              )
-            );
+                authorIds.map(() =>
+                  runtime
+                    .getLogs({
+                      roomId: roomId ? (roomId as UUID) : undefined,
+                      type: 'run_event',
+                      count: 500,
+                    })
+                    .catch(() => [])
+                )
+              );
 
           for (const logs of authorRunEvents) {
             ingestRunEvents(logs);
-            if (!needsMoreRuns()) {break;}
+            if (!needsMoreRuns()) {
+              break;
+            }
           }
         } catch {
           // swallow
@@ -253,7 +263,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
             } catch {
               // ignore
             }
-            if (roomIds.length > 20) {break;} // guardrail
+            if (roomIds.length > 20) {
+              break;
+            } // guardrail
           }
 
           const participantLogs = await Promise.all(
@@ -281,7 +293,9 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
           for (const logs of participantLogs) {
             ingestRunEvents(logs);
-            if (!needsMoreRuns()) {break;}
+            if (!needsMoreRuns()) {
+              break;
+            }
           }
         } catch {
           // ignore
@@ -351,37 +365,50 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       // Aggregate action logs
       for (const log of actionLogs) {
         const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
-        if (!rid || !runIdSet.has(rid)) {continue;}
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) {continue;}
+        if (!entry) {
+          continue;
+        }
         entry.actions += 1;
         const bodyForAction = log.body as ActionLogBody;
-        if (bodyForAction.result?.success === false) {entry.errors += 1;}
+        if (bodyForAction.result?.success === false) {
+          entry.errors += 1;
+        }
         const promptCount = Number(bodyForAction.promptCount || 0);
-        if (promptCount > 0) {entry.modelCalls += promptCount;}
+        if (promptCount > 0) {
+          entry.modelCalls += promptCount;
+        }
       }
 
       // Aggregate evaluator logs
       for (const log of evaluatorLogs) {
         const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
-        if (!rid || !runIdSet.has(rid)) {continue;}
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) {continue;}
+        if (!entry) {
+          continue;
+        }
         entry.evaluators += 1;
       }
 
       // Aggregate generic logs (useModel:* and embedding_event failures)
       for (const log of genericLogs) {
         const rid = typeof log.body.runId === 'string' ? log.body.runId : undefined;
-        if (!rid || !runIdSet.has(rid)) {continue;}
+        if (!rid || !runIdSet.has(rid)) {
+          continue;
+        }
         const entry = countsByRunId[rid];
-        if (!entry) {continue;}
+        if (!entry) {
+          continue;
+        }
         if (typeof log.type === 'string' && log.type.startsWith('useModel:')) {
           entry.modelCalls += 1;
-        } else if (
-          log.type === 'embedding_event' &&
-          log.body.status === 'failed'
-        ) {
+        } else if (log.type === 'embedding_event' && log.body.status === 'failed') {
           entry.errors += 1;
         }
       }
@@ -490,9 +517,7 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
 
       const startedAt = started ? new Date(started.createdAt).getTime() : undefined;
       const endedAt =
-        last && last.body.status !== 'started'
-          ? new Date(last.createdAt).getTime()
-          : undefined;
+        last && last.body.status !== 'started' ? new Date(last.createdAt).getTime() : undefined;
       const status = last?.body.status || 'started';
       const durationMs = startedAt && endedAt ? endedAt - startedAt : undefined;
 
@@ -507,20 +532,15 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
       const counts = {
         actions: actionEventLogs.length || actionLogs.length,
         modelCalls:
-          (actionLogs.reduce(
-            (sum: number, l: Log) => {
-              const body = l.body as ActionLogBody;
-              return sum + Number(body.promptCount || 0);
-            },
-            0
-          ) || 0) + modelLogs.length,
+          (actionLogs.reduce((sum: number, l: Log) => {
+            const body = l.body as ActionLogBody;
+            return sum + Number(body.promptCount || 0);
+          }, 0) || 0) + modelLogs.length,
         errors:
-          actionLogs.filter(
-            (l: Log) => {
-              const body = l.body as ActionLogBody;
-              return body.result?.success === false;
-            }
-          ).length +
+          actionLogs.filter((l: Log) => {
+            const body = l.body as ActionLogBody;
+            return body.result?.success === false;
+          }).length +
           embeddingLogs.filter((l: Log) => {
             const body = l.body as EmbeddingLogBody;
             return body.status === 'failed';
@@ -544,7 +564,11 @@ export function createAgentRunsRouter(elizaOS: ElizaOS): express.Router {
           events.push({
             type: 'RUN_ENDED',
             timestamp: t,
-            data: { status: st, error: body.error as string | undefined, durationMs: body.duration as number | undefined },
+            data: {
+              status: st,
+              error: body.error as string | undefined,
+              durationMs: body.duration as number | undefined,
+            },
           });
         }
       }

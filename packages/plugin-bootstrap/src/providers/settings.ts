@@ -4,8 +4,9 @@
 import {
   ChannelType,
   findWorldsForOwner,
-  getWorldSettings,
+  getSalt,
   logger,
+  unsaltWorldSettings,
   World,
   type IAgentRuntime,
   type Memory,
@@ -231,22 +232,11 @@ export const settingsProvider: Provider = {
 
         serverId = world.messageServerId;
 
-        // Fetch world settings based on the server ID
-        if (serverId) {
-          try {
-            worldSettings = await getWorldSettings(runtime, serverId);
-          } catch (error) {
-            logger.error(
-              {
-                src: 'plugin:bootstrap:provider:settings',
-                agentId: runtime.agentId,
-                serverId,
-                error: error instanceof Error ? error.message : String(error),
-              },
-              'Error fetching world settings'
-            );
-            throw new Error(`Failed to retrieve settings for server ${serverId}`);
-          }
+        // Get world settings directly from the world object we already have
+        // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
+        if (world.metadata?.settings) {
+          const salt = getSalt();
+          worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
         }
       } else {
         // For non-onboarding, we need to get the world associated with the room
@@ -267,17 +257,19 @@ export const settingsProvider: Provider = {
 
           serverId = world.messageServerId;
 
-          // Once we have the serverId, get the settings
-          if (serverId) {
-            worldSettings = await getWorldSettings(runtime, serverId);
-          } else {
-            logger.error(
+          // Get world settings directly from the world object we already have
+          // Must decrypt secret values using unsaltWorldSettings (settings are stored encrypted)
+          if (world.metadata?.settings) {
+            const salt = getSalt();
+            worldSettings = unsaltWorldSettings(world.metadata.settings as WorldSettings, salt);
+          } else if (!serverId) {
+            logger.debug(
               {
                 src: 'plugin:bootstrap:provider:settings',
                 agentId: runtime.agentId,
                 worldId: room.worldId,
               },
-              'No server ID found for world'
+              'No server ID or settings found for world'
             );
           }
         } catch (error) {
@@ -305,24 +297,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings:
+              data: {
+                settings: [],
+              },
+              values: {
+                settings:
                   "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-            },
-            text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
-          }
+              },
+              text: "The user doesn't appear to have ownership of any servers. They should make sure they're using the correct account.",
+            }
           : {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings: 'Error: No configuration access',
-            },
-            text: 'Error: No configuration access',
-          };
+              data: {
+                settings: [],
+              },
+              values: {
+                settings: 'Error: No configuration access',
+              },
+              text: 'Error: No configuration access',
+            };
       }
 
       if (!worldSettings) {
@@ -332,24 +324,24 @@ export const settingsProvider: Provider = {
         );
         return isOnboarding
           ? {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings:
+              data: {
+                settings: [],
+              },
+              values: {
+                settings:
                   "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-            },
-            text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
-          }
+              },
+              text: "The user doesn't appear to have any settings configured for this server. They should configure some settings for this server.",
+            }
           : {
-            data: {
-              settings: [],
-            },
-            values: {
-              settings: 'Configuration has not been completed yet.',
-            },
-            text: 'Configuration has not been completed yet.',
-          };
+              data: {
+                settings: [],
+              },
+              values: {
+                settings: 'Configuration has not been completed yet.',
+              },
+              text: 'Configuration has not been completed yet.',
+            };
       }
 
       // Generate the status message based on the settings
