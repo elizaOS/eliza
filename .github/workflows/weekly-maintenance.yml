@@ -37,7 +37,7 @@ jobs:
             Perform weekly repository maintenance:
 
             1. Check for outdated dependencies using `bun outdated`
-            2. Scan for security vulnerabilities using `bun audit` (or `bun x npm-audit`)
+            2. Scan for security vulnerabilities using `bun x better-npm-audit audit`
             3. Review open issues older than 90 days
             4. Check for TODO/FIXME comments in recent commits (last 7 days)
             5. Verify README.md examples and docs are up to date
