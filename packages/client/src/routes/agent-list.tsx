@@ -1,10 +1,8 @@
 import React from 'react';
-import { useAgents } from '@/hooks/use-query-hooks';
-import type { AgentWithStatus } from '@/types';
+import { useElizaAgents } from '@/hooks/use-eliza';
 
 const AgentList: React.FC = () => {
-  const { data, isLoading, error } = useAgents();
-  const agents = data?.data?.agents || [];
+  const { agents, isLoading, error } = useElizaAgents();
 
   if (isLoading) return <div>Loading agents...</div>;
   if (error) return <div>Error loading agents: {(error as Error).message}</div>;

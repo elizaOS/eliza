@@ -41,13 +41,7 @@ import sqlPlugin, {
 import { stringToUuid, type Plugin } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
 
-import internalMessageBus from './services/message-bus';
-import type {
-  CentralRootMessage,
-  MessageChannel,
-  MessageServer,
-  MessageServiceStructure,
-} from './types/server';
+import type { CentralRootMessage, MessageChannel, MessageServer } from './types/server';
 
 // Re-export config utilities for backward compatibility
 export {
@@ -1668,36 +1662,16 @@ export class AgentServer {
     return this.database.findOrCreateDmChannel(user1Id, user2Id, messageServerId);
   }
 
+  /**
+   * Creates a message in the database.
+   */
   async createMessage(
     data: Omit<CentralRootMessage, 'id' | 'createdAt' | 'updatedAt'> & { messageId?: UUID }
   ): Promise<CentralRootMessage> {
-    const createdMessage = await this.database.createMessage({
+    return this.database.createMessage({
       ...data,
-      messageId: data.messageId, // Pass through to DB so it uses this ID instead of generating new one
+      messageId: data.messageId,
     });
-
-    // Get the channel details to find the server ID
-    const channel = await this.getChannelDetails(createdMessage.channelId);
-    if (channel) {
-      // Emit to internal message bus for agent consumption
-      const messageForBus: MessageServiceStructure = {
-        id: createdMessage.id,
-        channel_id: createdMessage.channelId,
-        message_server_id: channel.messageServerId,
-        author_id: createdMessage.authorId,
-        content: createdMessage.content,
-        raw_message: createdMessage.rawMessage,
-        source_id: createdMessage.sourceId,
-        source_type: createdMessage.sourceType,
-        in_reply_to_message_id: createdMessage.inReplyToRootMessageId,
-        created_at: createdMessage.createdAt.getTime(),
-        metadata: createdMessage.metadata,
-      };
-
-      internalMessageBus.emit('new_message', messageForBus);
-    }
-
-    return createdMessage;
   }
 
   async getMessagesForChannel(

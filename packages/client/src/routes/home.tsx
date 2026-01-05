@@ -2,12 +2,13 @@ import AgentCard from '@/components/agent-card';
 import GroupCard from '@/components/group-card';
 import GroupPanel from '@/components/group-panel';
 import ProfileOverlay from '@/components/profile-overlay';
-import { useAgentsWithDetails, useChannels, useServers } from '@/hooks/use-query-hooks';
+import { useChannels, useServers } from '@/hooks/use-query-hooks';
+import { useElizaAgents } from '@/hooks/use-eliza';
 import clientLogger from '@/lib/logger';
 import { type Agent, type UUID, ChannelType as CoreChannelType, AgentStatus } from '@elizaos/core';
 import type { MessageChannel, MessageServer } from '@/types';
 import { Plus } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
@@ -19,11 +20,10 @@ import { Separator } from '@/components/ui/separator';
  * Displays lists of agents and groups with status indicators, action buttons, and overlays for detailed views and settings. Handles loading and error states, and supports navigation to chat and settings pages.
  */
 export default function Home() {
-  const { data: agentsData, isLoading, isError, error } = useAgentsWithDetails();
+  const { agents, isLoading, error } = useElizaAgents();
+  const isError = !!error;
   const navigate = useNavigate();
 
-  // Extract agents properly from the response
-  const agents = useMemo(() => agentsData?.agents || [], [agentsData]);
   const activeAgentsCount = agents.filter((a) => a.status === AgentStatus.ACTIVE).length;
 
   const { data: serversData } = useServers();
