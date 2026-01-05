@@ -78,6 +78,9 @@ jobs:
 
             Skip explanations. List issues with fixes.
 
+          # Allow cursor bot to trigger reviews
+          allowed_bots: "cursor"
+
           # Claude CLI arguments for model and allowed tools
           claude_args: |
             --model claude-opus-4-5-20251101
