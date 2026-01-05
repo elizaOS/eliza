@@ -1,7 +1,7 @@
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient, type PoolConfig } from 'pg';
 import { sql } from 'drizzle-orm';
-import { logger, type UUID } from '@elizaos/core';
+import { logger, type UUID, validateUuid } from '@elizaos/core';
 
 export class PostgresConnectionManager {
   private pool: Pool;
@@ -111,8 +111,14 @@ export class PostgresConnectionManager {
     return await this.db.transaction(async (tx) => {
       // Only set entity context if ENABLE_DATA_ISOLATION is true AND entityId is provided
       if (dataIsolationEnabled && entityId) {
+        // Validate UUID format to prevent SQL injection since SET LOCAL requires sql.raw()
+        if (!validateUuid(entityId)) {
+          throw new Error(`Invalid UUID format for entity context: ${entityId}`);
+        }
+
         try {
           // SET LOCAL does not support parameterized queries, so we must use sql.raw()
+          // UUID format is validated above to prevent SQL injection
           await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
