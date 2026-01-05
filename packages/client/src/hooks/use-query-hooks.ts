@@ -31,7 +31,6 @@ import {
   mapApiMessageToUi,
   mapApiLogToClient,
   mapApiMemoryToClient,
-  mapEnumToApiStatus,
   apiDateToTimestamp,
   type AgentLog,
 } from '@/lib/api-type-mappers';
