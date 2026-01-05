@@ -1,59 +1,74 @@
 /**
  * Tests for shared response handlers
  *
- * These tests verify the logic and format of response mode handling
+ * These tests verify the logic and format of transport type handling
  * for the messaging API endpoints.
  */
 
 import { describe, it, expect } from 'bun:test';
 import { SSE_EVENTS } from '../../../api/shared/response-handlers';
 import {
-  RESPONSE_MODES,
-  DEFAULT_RESPONSE_MODE,
-  type ResponseMode,
+  TRANSPORT_TYPES,
+  DEFAULT_TRANSPORT,
+  type TransportType,
+  LEGACY_MODE_MAP,
 } from '../../../api/shared/constants';
 
-describe('Response Mode Constants', () => {
-  describe('RESPONSE_MODES', () => {
-    it('should have exactly three valid modes', () => {
-      expect(RESPONSE_MODES).toHaveLength(3);
+describe('Transport Type Constants', () => {
+  describe('TRANSPORT_TYPES', () => {
+    it('should have exactly three valid types', () => {
+      expect(TRANSPORT_TYPES).toHaveLength(3);
     });
 
-    it('should include sync mode', () => {
-      expect(RESPONSE_MODES).toContain('sync');
+    it('should include http transport', () => {
+      expect(TRANSPORT_TYPES).toContain('http');
     });
 
-    it('should include stream mode', () => {
-      expect(RESPONSE_MODES).toContain('stream');
+    it('should include sse transport', () => {
+      expect(TRANSPORT_TYPES).toContain('sse');
     });
 
-    it('should include websocket mode', () => {
-      expect(RESPONSE_MODES).toContain('websocket');
+    it('should include websocket transport', () => {
+      expect(TRANSPORT_TYPES).toContain('websocket');
     });
 
     it('should be a readonly array', () => {
       // TypeScript compile-time check - array should be immutable
-      const modes: readonly string[] = RESPONSE_MODES;
-      expect(Array.isArray(modes)).toBe(true);
+      const types: readonly string[] = TRANSPORT_TYPES;
+      expect(Array.isArray(types)).toBe(true);
     });
   });
 
-  describe('DEFAULT_RESPONSE_MODE', () => {
+  describe('DEFAULT_TRANSPORT', () => {
     it('should be websocket for backward compatibility', () => {
-      expect(DEFAULT_RESPONSE_MODE).toBe('websocket');
+      expect(DEFAULT_TRANSPORT).toBe('websocket');
     });
 
-    it('should be a valid response mode', () => {
-      expect(RESPONSE_MODES).toContain(DEFAULT_RESPONSE_MODE);
+    it('should be a valid transport type', () => {
+      expect(TRANSPORT_TYPES).toContain(DEFAULT_TRANSPORT);
     });
   });
 
-  describe('ResponseMode type', () => {
-    it('should accept valid modes', () => {
-      const validModes: ResponseMode[] = ['sync', 'stream', 'websocket'];
-      validModes.forEach((mode) => {
-        expect(RESPONSE_MODES).toContain(mode);
+  describe('TransportType type', () => {
+    it('should accept valid types', () => {
+      const validTypes: TransportType[] = ['http', 'sse', 'websocket'];
+      validTypes.forEach((type) => {
+        expect(TRANSPORT_TYPES).toContain(type);
       });
+    });
+  });
+
+  describe('LEGACY_MODE_MAP', () => {
+    it('should map sync to http', () => {
+      expect(LEGACY_MODE_MAP['sync']).toBe('http');
+    });
+
+    it('should map stream to sse', () => {
+      expect(LEGACY_MODE_MAP['stream']).toBe('sse');
+    });
+
+    it('should map websocket to websocket', () => {
+      expect(LEGACY_MODE_MAP['websocket']).toBe('websocket');
     });
   });
 });
@@ -83,73 +98,73 @@ describe('SSE Events', () => {
   });
 });
 
-describe('Response Mode Validation Logic', () => {
-  describe('Mode validation', () => {
-    it('should validate sync mode', () => {
-      const mode = 'sync';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+describe('Transport Type Validation Logic', () => {
+  describe('Transport validation', () => {
+    it('should validate http transport', () => {
+      const transport = 'http';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(true);
     });
 
-    it('should validate stream mode', () => {
-      const mode = 'stream';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+    it('should validate sse transport', () => {
+      const transport = 'sse';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(true);
     });
 
-    it('should validate websocket mode', () => {
-      const mode = 'websocket';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+    it('should validate websocket transport', () => {
+      const transport = 'websocket';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(true);
     });
 
-    it('should reject invalid mode', () => {
-      const mode = 'invalid_mode';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+    it('should reject invalid transport', () => {
+      const transport = 'invalid_transport';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(false);
     });
 
     it('should reject empty string', () => {
-      const mode = '';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+      const transport = '';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(false);
     });
 
     it('should be case sensitive', () => {
-      const mode = 'SYNC';
-      const isValid = RESPONSE_MODES.includes(mode as ResponseMode);
+      const transport = 'HTTP';
+      const isValid = TRANSPORT_TYPES.includes(transport as TransportType);
       expect(isValid).toBe(false);
     });
   });
 });
 
 describe('Response Format', () => {
-  describe('Sync mode response', () => {
+  describe('HTTP transport response', () => {
     it('should have correct structure', () => {
-      const syncResponse = {
+      const httpResponse = {
         success: true,
         userMessage: { id: 'msg-123', content: 'Hello' },
         agentResponse: { text: 'Hi there!' },
       };
 
-      expect(syncResponse).toHaveProperty('success', true);
-      expect(syncResponse).toHaveProperty('userMessage');
-      expect(syncResponse).toHaveProperty('agentResponse');
+      expect(httpResponse).toHaveProperty('success', true);
+      expect(httpResponse).toHaveProperty('userMessage');
+      expect(httpResponse).toHaveProperty('agentResponse');
     });
 
     it('should include additional data when provided', () => {
-      const syncResponse = {
+      const httpResponse = {
         success: true,
         userMessage: { id: 'msg-123' },
         agentResponse: { text: 'Response' },
         sessionStatus: { expiresAt: '2024-01-01' },
       };
 
-      expect(syncResponse).toHaveProperty('sessionStatus');
+      expect(httpResponse).toHaveProperty('sessionStatus');
     });
   });
 
-  describe('WebSocket mode response', () => {
+  describe('WebSocket transport response', () => {
     it('should have correct structure without agentResponse', () => {
       const wsResponse = {
         success: true,
@@ -162,7 +177,7 @@ describe('Response Format', () => {
     });
   });
 
-  describe('Stream mode SSE format', () => {
+  describe('SSE transport format', () => {
     it('should format user_message event correctly', () => {
       const event = 'user_message';
       const data = { id: 'msg-123', content: 'Hello' };
@@ -204,10 +219,10 @@ describe('Response Format', () => {
   });
 
   describe('Error response format', () => {
-    it('should have correct structure for sync mode error', () => {
+    it('should have correct structure for http transport error', () => {
       const errorResponse = {
         success: false,
-        error: 'Failed to process message in sync mode',
+        error: 'Failed to process message in http transport',
       };
 
       expect(errorResponse).toHaveProperty('success', false);

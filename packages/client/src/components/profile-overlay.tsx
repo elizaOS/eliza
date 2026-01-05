@@ -4,9 +4,9 @@ import { exportCharacterAsJson } from '@/lib/export-utils';
 import { formatAgentName, moment } from '@/lib/utils';
 import type { Agent, UUID } from '@elizaos/core';
 import { AgentStatus } from '@elizaos/core';
-import { Brain, Cog, Loader2, Play, X, Download, Settings } from 'lucide-react';
+import { Brain, Loader2, Play, X, Download, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useAgent } from '../hooks/use-query-hooks';
+import { useElizaAgent } from '../hooks/use-eliza';
 import StopAgentButton from './stop-agent-button';
 import { Button } from './ui/button';
 import { Card, CardContent, CardFooter, CardHeader } from './ui/card';
@@ -36,9 +36,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const { data: agentData } = useAgent(agentId);
-
-  const agent = agentData?.data as Agent | undefined;
+  const { agent } = useElizaAgent(agentId);
 
   const isActive = agent?.status === AgentStatus.ACTIVE;
   const isStarting = isAgentStarting(agentId);
@@ -64,16 +62,16 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
 
   // Handle character export
   const handleExportCharacter = () => {
-    if (!agentData?.data) return;
+    if (!agent) return;
 
     // Ensure agent has required properties for export
-    const agent = {
-      ...agentData.data,
-      createdAt: agentData.data.createdAt || Date.now(),
-      updatedAt: agentData.data.updatedAt || Date.now(),
+    const agentForExport = {
+      ...agent,
+      createdAt: agent.createdAt || Date.now(),
+      updatedAt: agent.updatedAt || Date.now(),
     } as Agent;
 
-    exportCharacterAsJson(agent, toast);
+    exportCharacterAsJson(agentForExport, toast);
   };
 
   return (
@@ -157,7 +155,7 @@ export default function ProfileOverlay({ isOpen, onClose, agentId }: ProfileOver
         <CardContent className="p-6 overflow-auto">
           <div className="rounded-md bg-muted p-4 mb-6 max-h-60 overflow-y-auto">
             <p className="font-medium text-sm mb-2">About Me</p>
-            <p className="font-light text-sm text-gray-500">{agentData?.data?.system}</p>
+            <p className="font-light text-sm text-gray-500">{agent?.system}</p>
           </div>
 
           <div className="space-y-6">

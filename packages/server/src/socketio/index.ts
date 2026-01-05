@@ -596,6 +596,26 @@ export class SocketIORouter {
           roomId: channelId, // Keep for backward compatibility
         });
       }
+
+      // Emit to internal message bus for agent processing
+      // This follows the same pattern as channels.ts and sessions.ts
+      const messageForBus = {
+        id: createdRootMessage.id,
+        channel_id: validChannelId,
+        message_server_id: messageServerId as UUID,
+        author_id: senderId as UUID,
+        content: message,
+        created_at: new Date(createdRootMessage.createdAt).getTime(),
+        source_type: source || 'socketio_client',
+        raw_message: { ...payload },
+        metadata: newRootMessageData.metadata,
+        author_display_name: senderName,
+      };
+      internalMessageBus.emit('new_message', messageForBus);
+      logger.debug(
+        { src: 'ws', messageId: messageForBus.id, channelId: validChannelId },
+        'WebSocket message published to internal bus for agent processing'
+      );
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(

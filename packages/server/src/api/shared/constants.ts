@@ -46,19 +46,44 @@ export const ALLOWED_MEDIA_MIME_TYPES = [
 ] as const;
 
 /**
- * Valid response modes for messaging API endpoints
- * - "sync": Wait for complete agent response
- * - "stream": SSE streaming response
+ * Valid transport types for messaging API endpoints
+ * - "http": Wait for complete agent response (sync)
+ * - "sse": SSE streaming response
  * - "websocket": Return immediately, agent response via WebSocket (default)
  */
-export const RESPONSE_MODES = ['sync', 'stream', 'websocket'] as const;
+export const TRANSPORT_TYPES = ['http', 'sse', 'websocket'] as const;
 
 /**
- * Type for response mode parameter
+ * Type for transport parameter
  */
-export type ResponseMode = (typeof RESPONSE_MODES)[number];
+export type TransportType = (typeof TRANSPORT_TYPES)[number];
 
 /**
- * Default response mode for backward compatibility
+ * Default transport type for backward compatibility
  */
-export const DEFAULT_RESPONSE_MODE: ResponseMode = 'websocket';
+export const DEFAULT_TRANSPORT: TransportType = 'websocket';
+
+/**
+ * Legacy response mode aliases for backward compatibility
+ * Maps old mode names to new transport types
+ */
+export const LEGACY_MODE_MAP: Record<string, TransportType> = {
+  sync: 'http',
+  stream: 'sse',
+  websocket: 'websocket',
+};
+
+/**
+ * @deprecated Use TRANSPORT_TYPES instead
+ */
+export const RESPONSE_MODES = TRANSPORT_TYPES;
+
+/**
+ * @deprecated Use TransportType instead
+ */
+export type ResponseMode = TransportType;
+
+/**
+ * @deprecated Use DEFAULT_TRANSPORT instead
+ */
+export const DEFAULT_RESPONSE_MODE = DEFAULT_TRANSPORT;
