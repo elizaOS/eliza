@@ -5,6 +5,7 @@ const mockPoolInstance = {
   connect: mock(),
   end: mock(),
   query: mock(),
+  on: mock(), // Required for pool error handler
 };
 
 // Mock the 'pg' module
