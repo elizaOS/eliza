@@ -251,6 +251,9 @@ function startCliServer() {
               log('CLI', 'Server failed to start properly, shutting down...');
               cleanup('server-health-check-failed');
             }
+          } else if (!isShuttingDown) {
+            log('CLI', 'Failed to spawn server process, shutting down...');
+            cleanup('server-spawn-failed');
           }
         } else {
           log('CLI', `Build failed with code ${exitCode}`);
@@ -468,6 +471,9 @@ async function rebuildAndRestartServer() {
           log('REBUILD', '❌ Server failed health check after rebuild');
           cleanup('rebuild-health-check-failed');
         }
+      } else if (!isShuttingDown) {
+        log('REBUILD', '❌ Failed to spawn server process after rebuild');
+        cleanup('rebuild-spawn-failed');
       }
     } else if (!buildSuccess) {
       log('REBUILD', '❌ Build failed, server stopped');
