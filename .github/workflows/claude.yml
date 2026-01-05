@@ -36,6 +36,9 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
+          # Allow cursor bot to trigger reviews
+          allowed_bots: "cursor"
+
           # Claude CLI arguments for model, allowed tools, and system prompt
           claude_args: |
             --model claude-opus-4-5-20251101
