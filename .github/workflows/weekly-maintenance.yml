@@ -30,7 +30,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
-          model: claude-opus-4-5-20251101
 
           prompt: |
             REPO: ${{ github.repository }}
@@ -55,4 +54,7 @@ jobs:
 
             If critical security issues are found, also comment on relevant open PRs.
 
-          allowed_tools: 'Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)'
+          # Claude CLI arguments for model and allowed tools
+          claude_args: |
+            --model claude-opus-4-5-20251101
+            --allowedTools "Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)"
