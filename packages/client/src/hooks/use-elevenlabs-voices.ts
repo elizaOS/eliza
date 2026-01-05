@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { elevenLabsVoiceModels } from '@/config/voice-models';
 import type { VoiceModel } from '@/config/voice-models';
+import clientLogger from '@/lib/logger';
 
 // TODO: Move this to a shared config file, or the 11labs plugin once plugin categories are implemented
 
@@ -45,7 +46,7 @@ export function useElevenLabsVoices() {
         });
 
         if (!response.ok) {
-          console.error('Failed to fetch ElevenLabs voices:', response.statusText);
+          clientLogger.error('Failed to fetch ElevenLabs voices:', response.statusText);
           return [];
         }
 
@@ -71,7 +72,7 @@ export function useElevenLabsVoices() {
 
         return apiVoices;
       } catch (error) {
-        console.error('Error fetching ElevenLabs voices:', error);
+        clientLogger.error('Error fetching ElevenLabs voices:', error);
         return [];
       }
     },

@@ -1,11 +1,17 @@
 import { AVATAR_IMAGE_MAX_SIZE } from '@/constants';
-import type { UUID } from '@elizaos/core';
 import { type ClassValue, clsx } from 'clsx';
 import dayjs from 'dayjs';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import { twMerge } from 'tailwind-merge';
-import type { Agent, UUID as CoreUUID } from '@elizaos/core';
+import { AgentStatus, type Agent, type UUID } from '@elizaos/core';
 import type { MessageChannel as ClientMessageChannel } from '@/types';
+
+/**
+ * Get the agent status with a default fallback to INACTIVE
+ */
+export function getAgentStatus(agent: Agent | undefined): AgentStatus {
+  return agent?.status ?? AgentStatus.INACTIVE;
+}
 
 /**
  * Combines multiple class names into a single string.
@@ -136,10 +142,34 @@ export const getAgentAvatar = (
   return '/elizaos-icon.png';
 };
 
+/**
+ * Maps a MIME contentType to the API attachment type.
+ * Properly handles image, audio, video, and document types.
+ */
+export type AttachmentType = 'image' | 'file' | 'audio' | 'video' | 'document';
+
+export function getAttachmentType(contentType: string | undefined): AttachmentType {
+  if (!contentType) return 'file';
+
+  if (contentType.startsWith('image/')) return 'image';
+  if (contentType.startsWith('audio/')) return 'audio';
+  if (contentType.startsWith('video/')) return 'video';
+  if (
+    contentType === 'application/pdf' ||
+    contentType.startsWith('application/msword') ||
+    contentType.startsWith('application/vnd.openxmlformats-officedocument') ||
+    contentType === 'text/plain'
+  ) {
+    return 'document';
+  }
+
+  return 'file';
+}
+
 export const generateGroupName = (
   channel: Partial<ClientMessageChannel> | undefined,
   participants: Partial<Agent>[] | undefined,
-  currentUserId: CoreUUID | string | undefined
+  currentUserId: UUID | string | undefined
 ): string => {
   if (channel?.name && channel.name.trim() !== '') {
     return channel.name;

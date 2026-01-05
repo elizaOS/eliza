@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { useAgents } from '../hooks/use-query-hooks';
+import { useElizaAgents } from '../hooks/use-eliza';
 import { getElizaClient } from '../lib/api-client-config';
 import SocketIOManager, { type LogStreamData } from '../lib/socketio-manager';
 import { useConfirmation } from '@/hooks/use-confirmation';
@@ -266,7 +266,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
     enabled: true, // Always enable the query
   });
 
-  const { data: agents } = useAgents();
+  const { agents } = useElizaAgents();
 
   // WebSocket log streaming integration
   const handleLogStream = useCallback(
@@ -352,7 +352,7 @@ export function AgentLogViewer({ agentName, level }: AgentLogViewerProps) {
   // Sort logs by timestamp in descending order (newest first)
   const logs = combinedLogs.sort((a, b) => b.time - a.time);
   const levels = logResponse?.levels || [];
-  const agentNames = agents?.data?.agents?.map((agent) => agent.name) || [];
+  const agentNames = agents?.map((agent) => agent.name) || [];
 
   // Filter and search logs
   const filteredLogs = logs.filter((log: LogEntry) => {

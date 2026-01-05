@@ -403,4 +403,73 @@ describe('useModel Streaming', () => {
       expect(result).toBe('XYZ');
     });
   });
+
+  describe('database logging', () => {
+    it('should log streaming model calls to database', async () => {
+      const mockChunks = ['Hello', ' ', 'World'];
+      const mockAdapter = createMockAdapter();
+
+      const streamingRuntime = new AgentRuntime({
+        agentId: stringToUuid('test-logging-agent'),
+        character: mockCharacter,
+        adapter: mockAdapter,
+      });
+
+      streamingRuntime.registerModel(
+        ModelType.TEXT_LARGE,
+        async (_rt, params) => {
+          if ((params as any).stream) {
+            return createMockTextStreamResult(mockChunks);
+          }
+          return mockChunks.join('');
+        },
+        'test-provider'
+      );
+
+      await streamingRuntime.useModel(ModelType.TEXT_LARGE, {
+        prompt: 'Test prompt',
+        onStreamChunk: () => {},
+      });
+
+      // Verify adapter.log was called
+      const logCalls = (mockAdapter.log as any).mock.calls;
+      expect(logCalls.length).toBeGreaterThan(0);
+
+      // Verify the log contains correct model info
+      const logCall = logCalls[0][0];
+      expect(logCall.type).toBe('useModel:TEXT_LARGE');
+      expect(logCall.body.modelKey).toBe('TEXT_LARGE');
+      expect(logCall.body.response).toBe('Hello World');
+    });
+
+    it('should log non-streaming model calls to database', async () => {
+      const mockAdapter = createMockAdapter();
+
+      const nonStreamingRuntime = new AgentRuntime({
+        agentId: stringToUuid('test-logging-agent-2'),
+        character: mockCharacter,
+        adapter: mockAdapter,
+      });
+
+      nonStreamingRuntime.registerModel(
+        ModelType.TEXT_LARGE,
+        async () => 'Non-streamed response',
+        'test-provider'
+      );
+
+      await nonStreamingRuntime.useModel(ModelType.TEXT_LARGE, {
+        prompt: 'Test prompt',
+      });
+
+      // Verify adapter.log was called
+      const logCalls = (mockAdapter.log as any).mock.calls;
+      expect(logCalls.length).toBeGreaterThan(0);
+
+      // Verify the log contains correct model info
+      const logCall = logCalls[0][0];
+      expect(logCall.type).toBe('useModel:TEXT_LARGE');
+      expect(logCall.body.modelKey).toBe('TEXT_LARGE');
+      expect(logCall.body.response).toBe('Non-streamed response');
+    });
+  });
 });

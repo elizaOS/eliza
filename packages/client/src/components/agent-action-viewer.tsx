@@ -40,6 +40,7 @@ const ITEMS_PER_PAGE = 15;
 enum ActionType {
   all = 'all',
   llm = 'llm',
+  embedding = 'embedding',
   transcription = 'transcription',
   image = 'image',
   other = 'other',
@@ -59,7 +60,9 @@ type AgentActionViewerProps = {
 // Helper functions
 function getModelUsageType(modelType: string): string {
   if (
-    (modelType.includes('TEXT') || modelType.includes('OBJECT')) &&
+    (modelType.includes('TEXT') ||
+      modelType.includes('OBJECT') ||
+      modelType.includes('REASONING')) &&
     !modelType.includes('EMBEDDING') &&
     !modelType.includes('TRANSCRIPTION')
   ) {
@@ -74,15 +77,7 @@ function getModelUsageType(modelType: string): string {
   if (modelType.includes('IMAGE')) {
     return 'Image';
   }
-  if (
-    !modelType.includes('TEXT') &&
-    !modelType.includes('IMAGE') &&
-    !modelType.includes('EMBEDDING') &&
-    !modelType.includes('TRANSCRIPTION')
-  ) {
-    return 'Other';
-  }
-  return 'Unknown';
+  return 'Other';
 }
 
 function formatDate(timestamp: number | undefined) {
@@ -164,9 +159,10 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
 
   const modelType = action.body?.modelType || '';
   const modelKey = action.body?.modelKey || '';
-  const isActionLog = action.type === 'action';
+  const logType = action.type || '';
+  const isActionLog = logType === 'action';
   const actionName = action.body?.action || '';
-  const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType);
+  const IconComponent = getModelIcon(isActionLog ? 'ACTION' : modelType || logType);
   const usageType = isActionLog ? 'Action' : getModelUsageType(modelType);
   const responseObj = typeof action.body?.response === 'object' ? action.body.response : undefined;
   const tokenUsage = formatTokenUsage(responseObj?.usage || action.body?.usage);
@@ -361,7 +357,7 @@ function ActionCard({ action, onDelete }: ActionCardProps) {
               <div className="flex items-center gap-2 mb-1">
                 <h4 className="font-semibold text-sm">{isActionLog ? actionName : usageType}</h4>
                 <span className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                  {isActionLog ? 'Action' : modelType}
+                  {isActionLog ? 'Action' : modelType || logType}
                 </span>
                 {action.body?.promptCount && action.body.promptCount > 1 && (
                   <Badge variant="secondary" className="text-xs px-1.5">
@@ -601,8 +597,11 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
 
       switch (selectedType) {
         case ActionType.llm:
-          // Include both LLM calls and actions (which often contain LLM prompts)
-          if (usageType !== 'LLM' && !isActionLog) return false;
+          // Only show LLM model calls (not actions)
+          if (usageType !== 'LLM') return false;
+          break;
+        case ActionType.embedding:
+          if (usageType !== 'Embedding') return false;
           break;
         case ActionType.transcription:
           if (usageType !== 'Transcription') return false;
@@ -611,6 +610,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
           if (usageType !== 'Image') return false;
           break;
         case ActionType.other:
+          // "Other" includes actions and unknown model types
           if (usageType !== 'Other' && usageType !== 'Unknown' && !isActionLog) return false;
           break;
       }
@@ -761,6 +761,7 @@ export function AgentActionViewer({ agentId, roomId }: AgentActionViewerProps) {
               <SelectContent>
                 <SelectItem value={ActionType.all}>All Actions</SelectItem>
                 <SelectItem value={ActionType.llm}>LLM Calls</SelectItem>
+                <SelectItem value={ActionType.embedding}>Embeddings</SelectItem>
                 <SelectItem value={ActionType.transcription}>Transcriptions</SelectItem>
                 <SelectItem value={ActionType.image}>Image Operations</SelectItem>
                 <SelectItem value={ActionType.other}>Other</SelectItem>

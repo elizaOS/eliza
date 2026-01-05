@@ -363,7 +363,7 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('userMessage');
       expect(res.body.userMessage).toHaveProperty('id');
       expect(res.body.userMessage).toHaveProperty('content', 'Test message');
-      expect(res.body.userMessage).toHaveProperty('authorId', 'user-123');
+      expect(res.body.userMessage).toHaveProperty('author_id', 'user-123');
     });
 
     it('should propagate session metadata to messages', async () => {
@@ -993,8 +993,8 @@ describe('Sessions API', () => {
     });
   });
 
-  describe('Response Mode Parameter', () => {
-    it('should default to websocket mode when mode is not specified', async () => {
+  describe('Transport Parameter', () => {
+    it('should default to websocket transport when transport is not specified', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
@@ -1009,7 +1009,7 @@ describe('Sessions API', () => {
 
       const sessionId = createRes.body.sessionId;
 
-      // Send message without specifying mode (should default to websocket)
+      // Send message without specifying transport (should default to websocket)
       const res = await simulateRequest(
         app,
         'POST',
@@ -1019,13 +1019,13 @@ describe('Sessions API', () => {
         }
       );
 
-      // In websocket mode, response should be immediate with userMessage only
+      // In websocket transport, response should be immediate with userMessage only
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('success', true);
       expect(res.body).toHaveProperty('userMessage');
     });
 
-    it('should accept explicit websocket mode', async () => {
+    it('should accept explicit websocket transport', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
@@ -1044,8 +1044,8 @@ describe('Sessions API', () => {
         'POST',
         `/api/messaging/sessions/${sessionId}/messages`,
         {
-          content: 'Hello with explicit websocket mode',
-          mode: 'websocket',
+          content: 'Hello with explicit websocket transport',
+          transport: 'websocket',
         }
       );
 
@@ -1054,7 +1054,7 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('userMessage');
     });
 
-    it('should reject invalid mode parameter', async () => {
+    it('should reject invalid transport parameter', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
@@ -1073,8 +1073,8 @@ describe('Sessions API', () => {
         'POST',
         `/api/messaging/sessions/${sessionId}/messages`,
         {
-          content: 'Hello with invalid mode',
-          mode: 'invalid_mode',
+          content: 'Hello with invalid transport',
+          transport: 'invalid_transport',
         }
       );
 
@@ -1082,14 +1082,14 @@ describe('Sessions API', () => {
       expect(res.body).toHaveProperty('error');
     });
 
-    it('should accept sync mode', async () => {
+    it('should accept http transport', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
-      // Mock elizaOS.handleMessage for sync mode
+      // Mock elizaOS.handleMessage for http transport
       const mockHandleMessage = jest.fn().mockResolvedValue({
         processing: {
           responseContent: { text: 'Agent response' },
@@ -1109,26 +1109,26 @@ describe('Sessions API', () => {
         'POST',
         `/api/messaging/sessions/${sessionId}/messages`,
         {
-          content: 'Hello in sync mode',
-          mode: 'sync',
+          content: 'Hello in http transport',
+          transport: 'http',
         }
       );
 
-      // Sync mode should return both userMessage and agentResponse
+      // HTTP transport should return both userMessage and agentResponse
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('success', true);
       expect(res.body).toHaveProperty('userMessage');
       expect(res.body).toHaveProperty('agentResponse');
     });
 
-    it('should accept stream mode and set SSE headers', async () => {
+    it('should accept sse transport and set SSE headers', async () => {
       const agentId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '456e7890-e89b-12d3-a456-426614174000';
 
       const agent = createMockAgent(agentId);
       mockAgents.set(agentId as UUID, agent);
 
-      // Mock elizaOS.handleMessage for stream mode
+      // Mock elizaOS.handleMessage for sse transport
       const mockHandleMessage = jest.fn().mockImplementation((_agentId, _message, options) => {
         // Simulate streaming by calling callbacks
         if (options?.onStreamChunk) {
@@ -1148,21 +1148,61 @@ describe('Sessions API', () => {
 
       const sessionId = createRes.body.sessionId;
 
-      // For stream mode, we need to check that SSE headers are set
-      // Our simulateRequest helper doesn't fully support SSE, but we can verify the mode is accepted
+      // For sse transport, we need to check that SSE headers are set
+      // Our simulateRequest helper doesn't fully support SSE, but we can verify the transport is accepted
       const res = await simulateRequest(
         app,
         'POST',
         `/api/messaging/sessions/${sessionId}/messages`,
         {
-          content: 'Hello in stream mode',
-          mode: 'stream',
+          content: 'Hello in sse transport',
+          transport: 'sse',
         }
       );
 
-      // Stream mode will set headers and potentially not return a JSON body
+      // SSE transport will set headers and potentially not return a JSON body
       // The response should not be a validation error
       expect(res.status).not.toBe(400);
+    });
+
+    it('should accept legacy mode parameter for backward compatibility', async () => {
+      const agentId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '456e7890-e89b-12d3-a456-426614174000';
+
+      const agent = createMockAgent(agentId);
+      mockAgents.set(agentId as UUID, agent);
+
+      // Mock elizaOS.handleMessage for http transport
+      const mockHandleMessage = jest.fn().mockResolvedValue({
+        processing: {
+          responseContent: { text: 'Agent response' },
+        },
+      });
+      (mockElizaOS as any).handleMessage = mockHandleMessage;
+
+      const createRes = await simulateRequest(app, 'POST', '/api/messaging/sessions', {
+        agentId,
+        userId,
+      });
+
+      const sessionId = createRes.body.sessionId;
+
+      // Use legacy 'mode: sync' - should map to 'http' transport
+      const res = await simulateRequest(
+        app,
+        'POST',
+        `/api/messaging/sessions/${sessionId}/messages`,
+        {
+          content: 'Hello with legacy sync mode',
+          mode: 'sync',
+        }
+      );
+
+      // Should work like http transport
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('success', true);
+      expect(res.body).toHaveProperty('userMessage');
+      expect(res.body).toHaveProperty('agentResponse');
     });
   });
 

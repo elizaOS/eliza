@@ -1,6 +1,11 @@
 import type { ElizaOS, UUID } from '@elizaos/core';
 import { validateUuid, logger } from '@elizaos/core';
-import { RESPONSE_MODES, DEFAULT_RESPONSE_MODE, type ResponseMode } from './constants';
+import {
+  TRANSPORT_TYPES,
+  DEFAULT_TRANSPORT,
+  LEGACY_MODE_MAP,
+  type TransportType,
+} from './constants';
 
 /**
  * Validates and retrieves an agent runtime from the agents map
@@ -72,37 +77,55 @@ export const validateWorldId = (worldId: string): UUID | null => {
 };
 
 /**
- * Validates and normalizes a response mode parameter
- * Returns the validated mode or default if invalid/missing
+ * Validates and normalizes a transport type parameter
+ * Supports both new transport types (http, sse, websocket) and legacy mode names (sync, stream)
  *
- * @param mode - The mode parameter from the request (can be any type)
- * @returns Object with validated mode and whether it was valid
+ * @param value - The transport/mode parameter from the request (can be any type)
+ * @returns Object with validated transport and whether it was valid
  */
-export const validateResponseMode = (
-  mode: unknown
-): { mode: ResponseMode; isValid: boolean; error?: string } => {
+export const validateTransport = (
+  value: unknown
+): { transport: TransportType; isValid: boolean; error?: string } => {
   // Handle undefined/null - use default
-  if (mode === undefined || mode === null) {
-    return { mode: DEFAULT_RESPONSE_MODE, isValid: true };
+  if (value === undefined || value === null) {
+    return { transport: DEFAULT_TRANSPORT, isValid: true };
   }
 
   // Must be a string
-  if (typeof mode !== 'string') {
+  if (typeof value !== 'string') {
     return {
-      mode: DEFAULT_RESPONSE_MODE,
+      transport: DEFAULT_TRANSPORT,
       isValid: false,
-      error: `Invalid mode type "${typeof mode}". Mode must be a string.`,
+      error: `Invalid transport type "${typeof value}". Transport must be a string.`,
     };
   }
 
-  // Must be one of the valid modes
-  if (!RESPONSE_MODES.includes(mode as ResponseMode)) {
-    return {
-      mode: DEFAULT_RESPONSE_MODE,
-      isValid: false,
-      error: `Invalid mode "${mode}". Must be one of: ${RESPONSE_MODES.join(', ')}`,
-    };
+  // Check if it's a valid transport type
+  if (TRANSPORT_TYPES.includes(value as TransportType)) {
+    return { transport: value as TransportType, isValid: true };
   }
 
-  return { mode: mode as ResponseMode, isValid: true };
+  // Check if it's a legacy mode name and map it
+  if (value in LEGACY_MODE_MAP) {
+    return { transport: LEGACY_MODE_MAP[value], isValid: true };
+  }
+
+  // Invalid value
+  const allValid = [...TRANSPORT_TYPES, ...Object.keys(LEGACY_MODE_MAP)];
+  return {
+    transport: DEFAULT_TRANSPORT,
+    isValid: false,
+    error: `Invalid transport "${value}". Must be one of: ${[...new Set(allValid)].join(', ')}`,
+  };
+};
+
+/**
+ * @deprecated Use validateTransport instead
+ * Validates and normalizes a response mode parameter (legacy API)
+ */
+export const validateResponseMode = (
+  mode: unknown
+): { mode: TransportType; isValid: boolean; error?: string } => {
+  const result = validateTransport(mode);
+  return { mode: result.transport, isValid: result.isValid, error: result.error };
 };

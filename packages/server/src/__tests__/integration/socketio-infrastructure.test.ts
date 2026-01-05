@@ -1,5 +1,18 @@
 /**
- * Integration tests for Socket.IO end-to-end message flow
+ * Socket.IO Infrastructure Tests
+ *
+ * Tests the Socket.IO server infrastructure:
+ * - Connection and authentication
+ * - Room/channel joining and management
+ * - Message broadcasting between clients
+ * - Log streaming subscriptions
+ * - Error handling and disconnection
+ *
+ * These tests verify Socket.IO mechanics, NOT the transport layer API.
+ * For transport-specific tests, see:
+ * - http-transport.test.ts
+ * - sse-transport.test.ts
+ * - websocket-transport.test.ts
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'bun:test';
