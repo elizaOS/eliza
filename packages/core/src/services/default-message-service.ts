@@ -1098,9 +1098,12 @@ Continue EXACTLY from where you left off. Do NOT repeat what was already said.
 Output ONLY the continuation, starting immediately after the last character above.
 Wrap your continuation in <text></text> tags.`;
 
-      const continuationResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: continuationPrompt,
-      });
+      // Use runWithStreamingContext to ensure continuation is streamed to user
+      const continuationResponse = await runWithStreamingContext(streamingCtx, () =>
+        runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: continuationPrompt,
+        })
+      );
 
       runtime.logger.debug(
         {
