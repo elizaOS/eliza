@@ -9,7 +9,7 @@ import type {
   SessionsHealthResponse,
   ListSessionsResponse,
   MessageResponse,
-  ResponseMode,
+  TransportType,
 } from '../types/sessions';
 
 /**
@@ -107,19 +107,19 @@ export class SessionsService extends BaseApiClient {
   /**
    * Send a message in a session
    * @param sessionId Session ID
-   * @param params Message parameters (includes optional mode: 'sync' | 'stream' | 'websocket')
-   * @returns Message response with userMessage and optional agentResponse (in sync mode)
+   * @param params Message parameters (includes optional transport: 'http' | 'sse' | 'websocket')
+   * @returns Message response with userMessage and optional agentResponse (in http mode)
    *
    * @example
-   * // Default websocket mode - returns immediately
+   * // Default websocket transport - returns immediately
    * const response = await sessions.sendMessage(sessionId, { content: 'Hello' });
    * console.log(response.userMessage.id);
    *
    * @example
-   * // Sync mode - waits for agent response
+   * // HTTP transport - waits for agent response
    * const response = await sessions.sendMessage(sessionId, {
    *   content: 'Hello',
-   *   mode: 'sync'
+   *   transport: 'http'
    * });
    * console.log(response.agentResponse?.text);
    */
@@ -130,17 +130,17 @@ export class SessionsService extends BaseApiClient {
   }
 
   /**
-   * Send a message and wait for the agent's response (sync mode)
-   * Convenience method that sets mode to 'sync'
+   * Send a message and wait for the agent's response (HTTP transport)
+   * Convenience method that sets transport to 'http'
    * @param sessionId Session ID
    * @param params Message parameters
    * @returns Message response with agentResponse included
    */
   async sendMessageSync(
     sessionId: string,
-    params: Omit<SendMessageParams, 'mode'>
+    params: Omit<SendMessageParams, 'transport'>
   ): Promise<MessageResponse> {
-    return this.sendMessage(sessionId, { ...params, mode: 'sync' as ResponseMode });
+    return this.sendMessage(sessionId, { ...params, transport: 'http' as TransportType });
   }
 
   /**

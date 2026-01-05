@@ -1,6 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAgentPanels, useAgent, type AgentPanel } from '@/hooks/use-query-hooks';
-import type { UUID, Agent } from '@elizaos/core';
+import { useAgentPanels, type AgentPanel } from '@/hooks/use-query-hooks';
+import { useElizaAgent } from '@/hooks/use-eliza';
+import type { UUID } from '@elizaos/core';
 import { Columns3, Database, Eye, Code, InfoIcon, Loader2, Activity } from 'lucide-react';
 import { JSX, useMemo } from 'react';
 import { AgentActionViewer } from './agent-action-viewer';
@@ -26,13 +27,7 @@ export function AgentSidebar({ agentId, agentName, channelId }: AgentSidebarProp
     enabled: !!agentId,
   });
 
-  const {
-    data: agentDataResponse,
-    isLoading: isLoadingAgent,
-    error: agentError,
-  } = useAgent(agentId, { enabled: !!agentId && detailsTab === 'details' });
-
-  const agent = agentDataResponse?.data as Agent | undefined;
+  const { agent, isLoading: isLoadingAgent, error: agentError } = useElizaAgent(agentId);
 
   const agentPanels = useMemo(() => {
     return panelsResponse?.data || [];
