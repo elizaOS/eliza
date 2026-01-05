@@ -81,7 +81,8 @@ export class PostgresConnectionManager {
       // Only set entity context if ENABLE_DATA_ISOLATION is true AND entityId is provided
       if (dataIsolationEnabled && entityId) {
         try {
-          await tx.execute(sql`SET LOCAL app.entity_id = ${entityId}`);
+          // SET LOCAL does not support parameterized queries, so we must use sql.raw()
+          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
           // This is an unexpected error since we already checked ENABLE_DATA_ISOLATION
