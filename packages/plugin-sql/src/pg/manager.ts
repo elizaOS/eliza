@@ -8,10 +8,29 @@ export class PostgresConnectionManager {
   private db: NodePgDatabase;
 
   constructor(connectionString: string, rlsServerId?: string) {
+    // Production-optimized pool configuration
+    // See: https://node-postgres.com/apis/pool
+    const poolConfig: PoolConfig = {
+      connectionString,
+
+      // Pool sizing - conservative defaults suitable for most deployments
+      // For multi-instance deployments, ensure: max * instances < database connection limit
+      max: 20,
+      min: 2,
+
+      // Timeouts
+      // CRITICAL: connectionTimeoutMillis defaults to 0 (infinite) which can hang forever
+      idleTimeoutMillis: 30000, // 30s - balance between cleanup and reconnection overhead
+      connectionTimeoutMillis: 5000, // 5s - prevents indefinite hangs if DB is unreachable
+
+      // Connection health - essential for cloud environments (Railway, AWS, Heroku, etc.)
+      // Cloud load balancers/firewalls often terminate idle connections silently
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+    };
+
     // If RLS is enabled, set application_name to the server_id
     // This allows the RLS function current_server_id() to read it
-    const poolConfig: PoolConfig = { connectionString };
-
     if (rlsServerId) {
       poolConfig.application_name = rlsServerId;
       logger.debug(
@@ -21,6 +40,18 @@ export class PostgresConnectionManager {
     }
 
     this.pool = new Pool(poolConfig);
+
+    // CRITICAL: Handle pool errors to prevent Node.js process crashes
+    // When an idle client encounters an error (DB restart, network partition, etc.),
+    // the pool emits 'error'. Without a handler, this crashes the process.
+    // The pool automatically removes and replaces the failed connection.
+    this.pool.on('error', (err) => {
+      logger.warn(
+        { src: 'plugin:sql', error: err?.message || String(err) },
+        'Pool client error (connection will be replaced)'
+      );
+    });
+
     this.db = drizzle(this.pool, { casing: 'snake_case' });
   }
 
