@@ -63,6 +63,7 @@ jobs:
         working-directory: ./packages/plugin-sql
         env:
           POSTGRES_URL: postgresql://eliza_test:test123@localhost:5433/eliza_test
+          ENABLE_DATA_ISOLATION: 'true'
         run: |
           bun run test:integration:postgres
           bun run test:migration:postgres

@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
 import { Client } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import type { IDatabaseAdapter } from '@elizaos/core';
+import type { IDatabaseAdapter, UUID } from '@elizaos/core';
 import { DatabaseMigrationService } from '../../../migration-service';
 import { plugin as sqlPlugin } from '../../../index';
 import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from '../../../rls';
+import { PostgresConnectionManager } from '../../../pg/manager';
 
 /**
  * PostgreSQL RLS Entity Integration Tests
@@ -17,19 +19,20 @@ import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } f
  * - Entity-level isolation (user privacy)
  * - Participant-based access control (room membership)
  * - Entity RLS works with Server RLS (double isolation)
+ * - withEntityContext() correctly sets entity context (regression test for sql.raw fix)
  *
  * This test is the FIRST in BATCH_RLS and is responsible for:
  * 1. Running migrations to create the schema
  * 2. Installing RLS functions and policies
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS.
+ * IMPORTANT: Uses PostgresConnectionManager.withEntityContext() to test the actual
+ * production code path. This ensures the Drizzle sql.raw() fix is tested (no $1 error).
  */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
 describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', () => {
-  let setupClient: Client; // Setup client with server context
-  let userClient: Client;
+  let setupClient: Client; // Setup client for migrations and data setup
+  let manager: PostgresConnectionManager; // Production code path for RLS tests
 
   const POSTGRES_URL =
     process.env.POSTGRES_URL || 'postgresql://eliza_test:test123@localhost:5432/eliza_test';
@@ -103,12 +106,12 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       console.log('[RLS Test] Permission grant skipped (may already be granted)');
     }
 
-    // User client with server context (for test assertions)
-    userClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
-    await userClient.connect();
+    // Create PostgresConnectionManager for test assertions
+    // This tests the actual production code path (withEntityContext + sql.raw fix)
+    manager = new PostgresConnectionManager(POSTGRES_URL, serverId);
+
+    // Enable data isolation for these tests (required for withEntityContext to set entity context)
+    process.env.ENABLE_DATA_ISOLATION = 'true';
 
     // Setup test data (with server context via application_name)
     // servers table has no RLS, so any connection can insert
@@ -243,150 +246,103 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     }
 
     await setupClient.end();
-    await userClient.end();
+    await manager.close();
   });
 
   it('should block access without entity context', async () => {
     // Without entity context, user should see 0 memories (STRICT mode)
-    await userClient.query('BEGIN');
-    try {
-      const result = await userClient.query(`
-        SELECT COUNT(*) as count FROM memories
-      `);
+    // Use withEntityContext with null to test no entity context
+    const result = await manager.withEntityContext(null, async (tx) => {
+      return await tx.execute(sql`SELECT COUNT(*) as count FROM memories`);
+    });
 
-      expect(parseInt(result.rows[0].count)).toBe(0);
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    expect(parseInt(String(result.rows[0].count))).toBe(0);
   });
 
-  it('should allow Alice to see room1 memories', async () => {
-    await userClient.query('BEGIN');
-    try {
-      // Set Alice's entity context
-      await userClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
+  it('should allow Alice to see room1 memories (tests withEntityContext + sql.raw fix)', async () => {
+    // This test verifies the production code path works:
+    // withEntityContext() -> sql.raw(`SET LOCAL app.entity_id = '${entityId}'`)
+    // Before the fix, this would fail with "syntax error at or near $1"
+    const result = await manager.withEntityContext(aliceId as UUID, async (tx) => {
+      return await tx.execute(sql`SELECT id, room_id, content FROM memories`);
+    });
 
-      const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories
-      `);
-
-      // Alice is in room1, so should see 1 memory
-      expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].room_id).toBe(room1Id);
-      expect(result.rows[0].content.text).toContain('room1');
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    // Alice is in room1, so should see 1 memory
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].room_id).toBe(room1Id);
+    expect((result.rows[0].content as { text: string }).text).toContain('room1');
   });
 
   it('should allow Bob to see BOTH room1 and room2 memories', async () => {
-    await userClient.query('BEGIN');
-    try {
-      // Set Bob's entity context
-      await userClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
+    const result = await manager.withEntityContext(bobId as UUID, async (tx) => {
+      return await tx.execute(sql`SELECT id, room_id, content FROM memories ORDER BY room_id`);
+    });
 
-      const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories ORDER BY room_id
-      `);
-
-      // Bob is in both rooms, so should see 2 memories
-      expect(result.rows).toHaveLength(2);
-      expect(result.rows.map((r) => r.room_id)).toContain(room1Id);
-      expect(result.rows.map((r) => r.room_id)).toContain(room2Id);
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    // Bob is in both rooms, so should see 2 memories
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows.map((r: { room_id: string }) => r.room_id)).toContain(room1Id);
+    expect(result.rows.map((r: { room_id: string }) => r.room_id)).toContain(room2Id);
   });
 
   it('should allow Charlie to see ONLY room2 memories', async () => {
-    await userClient.query('BEGIN');
-    try {
-      // Set Charlie's entity context
-      await userClient.query(`SET LOCAL app.entity_id = '${charlieId}'`);
+    const result = await manager.withEntityContext(charlieId as UUID, async (tx) => {
+      return await tx.execute(sql`SELECT id, room_id, content FROM memories`);
+    });
 
-      const result = await userClient.query(`
-        SELECT id, room_id, content FROM memories
-      `);
-
-      // Charlie is only in room2
-      expect(result.rows).toHaveLength(1);
-      expect(result.rows[0].room_id).toBe(room2Id);
-      expect(result.rows[0].content.text).toContain('room2');
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    // Charlie is only in room2
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].room_id).toBe(room2Id);
+    expect((result.rows[0].content as { text: string }).text).toContain('room2');
   });
 
   it('should block non-participant from seeing any memories', async () => {
-    await userClient.query('BEGIN');
-    try {
-      const nonParticipantId = uuidv4();
+    const nonParticipantId = uuidv4();
 
-      // Set non-participant entity context
-      await userClient.query(`SET LOCAL app.entity_id = '${nonParticipantId}'`);
+    const result = await manager.withEntityContext(nonParticipantId as UUID, async (tx) => {
+      return await tx.execute(sql`SELECT COUNT(*) as count FROM memories`);
+    });
 
-      const result = await userClient.query(`
-        SELECT COUNT(*) as count FROM memories
-      `);
-
-      // Non-participant should see 0
-      expect(parseInt(result.rows[0].count)).toBe(0);
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    // Non-participant should see 0
+    expect(parseInt(String(result.rows[0].count))).toBe(0);
   });
 
   it('should have entity_isolation_policy on key tables', async () => {
     // pg_policies is a system catalog, any user can query it
-    const result = await userClient.query(`
-      SELECT DISTINCT tablename
-      FROM pg_policies
-      WHERE policyname = 'entity_isolation_policy'
-        AND tablename IN ('memories', 'participants', 'components', 'logs', 'tasks')
-    `);
+    const result = await manager.withEntityContext(null, async (tx) => {
+      return await tx.execute(sql`
+        SELECT DISTINCT tablename
+        FROM pg_policies
+        WHERE policyname = 'entity_isolation_policy'
+          AND tablename IN ('memories', 'participants', 'components', 'logs', 'tasks')
+      `);
+    });
 
     expect(result.rows.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('should use current_entity_id() function correctly', async () => {
-    await userClient.query('BEGIN');
-    try {
-      await userClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
+  it('should use current_entity_id() function correctly via withEntityContext', async () => {
+    const result = await manager.withEntityContext(aliceId as UUID, async (tx) => {
+      return await tx.execute(sql`SELECT current_entity_id() as eid`);
+    });
 
-      const result = await userClient.query(`SELECT current_entity_id() as eid`);
-
-      expect(result.rows[0].eid).toBe(aliceId);
-    } finally {
-      await userClient.query('ROLLBACK');
-    }
+    expect(result.rows[0].eid).toBe(aliceId);
   });
 
   it('should combine Server RLS + Entity RLS (double isolation)', async () => {
-    // Create a different server context client
+    // Create a manager with wrong server context
     const wrongServerId = uuidv4();
-    const wrongServerClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: wrongServerId,
-    });
-    await wrongServerClient.connect();
+    const wrongServerManager = new PostgresConnectionManager(POSTGRES_URL, wrongServerId);
 
     try {
-      await wrongServerClient.query('BEGIN');
-      try {
-        // Even with correct entity_id, wrong server_id should see nothing
-        await wrongServerClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
+      // Even with correct entity_id, wrong server_id should see nothing
+      const result = await wrongServerManager.withEntityContext(aliceId as UUID, async (tx) => {
+        return await tx.execute(sql`SELECT COUNT(*) as count FROM memories`);
+      });
 
-        const result = await wrongServerClient.query(`
-          SELECT COUNT(*) as count FROM memories
-        `);
-
-        // Wrong server context blocks access
-        expect(parseInt(result.rows[0].count)).toBe(0);
-      } finally {
-        await wrongServerClient.query('ROLLBACK');
-      }
+      // Wrong server context blocks access
+      expect(parseInt(String(result.rows[0].count))).toBe(0);
     } finally {
-      await wrongServerClient.end();
+      await wrongServerManager.close();
     }
   });
 });
