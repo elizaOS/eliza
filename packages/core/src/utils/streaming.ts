@@ -160,9 +160,6 @@ const MAX_BUFFER = 100 * 1024;
 /** Maximum chunk size to prevent DoS (1MB) */
 const MAX_CHUNK_SIZE = 1024 * 1024;
 
-/** Pre-compiled regex for actions tag extraction */
-const ACTIONS_REGEX = /<actions>([\s\S]*?)<\/actions>/;
-
 /**
  * Result of attempting to extract content from an XML tag.
  */
@@ -476,13 +473,20 @@ export class ResponseStreamExtractor implements IStreamExtractor {
     return '';
   }
 
-  /** Detect response strategy from <actions> tag using pre-compiled regex */
+  /** Detect response strategy from <actions> tag using indexOf (ReDoS-safe) */
   private detectResponseStrategy(): void {
-    const match = this.buffer.match(ACTIONS_REGEX);
-    if (match) {
-      const actions = this.parseActions(match[1]);
-      this.responseStrategy = this.isDirectReply(actions) ? 'direct' : 'delegated';
-    }
+    const openTag = '<actions>';
+    const closeTag = '</actions>';
+    const startIdx = this.buffer.indexOf(openTag);
+    if (startIdx === -1) return;
+
+    const contentStart = startIdx + openTag.length;
+    const endIdx = this.buffer.indexOf(closeTag, contentStart);
+    if (endIdx === -1) return;
+
+    const actionsContent = this.buffer.substring(contentStart, endIdx);
+    const actions = this.parseActions(actionsContent);
+    this.responseStrategy = this.isDirectReply(actions) ? 'direct' : 'delegated';
   }
 
   /** Parse comma-separated actions */
