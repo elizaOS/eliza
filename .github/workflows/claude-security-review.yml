@@ -25,10 +25,11 @@ concurrency:
 
 jobs:
   security:
-    # Skip for draft PRs and [skip-security] in title
+    # Skip for draft PRs, [skip-security] in title, or bot-triggered
     if: |
       github.event.pull_request.draft != true &&
-      !contains(github.event.pull_request.title, '[skip-security]')
+      !contains(github.event.pull_request.title, '[skip-security]') &&
+      github.actor != 'cursor[bot]'
 
     runs-on: ubuntu-latest
     permissions:
