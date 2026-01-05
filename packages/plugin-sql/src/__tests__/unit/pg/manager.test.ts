@@ -149,4 +149,126 @@ describe('PostgresConnectionManager', () => {
       await expect(manager.close()).rejects.toThrow('Close failed');
     });
   });
+
+  describe('withEntityContext', () => {
+    const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+    const testEntityId = '9f984e0e-1329-43f3-b2b7-02f74a148990';
+
+    beforeEach(() => {
+      // Reset environment variable
+      delete process.env.ENABLE_DATA_ISOLATION;
+    });
+
+    it('should skip SET LOCAL when ENABLE_DATA_ISOLATION is not set', async () => {
+      const manager = new PostgresConnectionManager(connectionUrl);
+      const db = manager.getDatabase();
+
+      // Mock the transaction method
+      const mockTx = {
+        execute: mock().mockResolvedValue({ rows: [] }),
+        select: mock().mockReturnThis(),
+        from: mock().mockReturnThis(),
+      };
+
+      const originalTransaction = db.transaction;
+      db.transaction = mock(async (callback: any) => {
+        return callback(mockTx);
+      }) as any;
+
+      const result = await manager.withEntityContext(testEntityId as any, async (_tx) => {
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+      // SET LOCAL should NOT be called when ENABLE_DATA_ISOLATION is not true
+      expect(mockTx.execute).not.toHaveBeenCalled();
+
+      db.transaction = originalTransaction;
+    });
+
+    it('should skip SET LOCAL when entityId is null', async () => {
+      process.env.ENABLE_DATA_ISOLATION = 'true';
+
+      const manager = new PostgresConnectionManager(connectionUrl);
+      const db = manager.getDatabase();
+
+      const mockTx = {
+        execute: mock().mockResolvedValue({ rows: [] }),
+      };
+
+      const originalTransaction = db.transaction;
+      db.transaction = mock(async (callback: any) => {
+        return callback(mockTx);
+      }) as any;
+
+      const result = await manager.withEntityContext(null, async (_tx) => {
+        return 'success';
+      });
+
+      expect(result).toBe('success');
+      // SET LOCAL should NOT be called when entityId is null
+      expect(mockTx.execute).not.toHaveBeenCalled();
+
+      db.transaction = originalTransaction;
+    });
+
+    it('should execute SET LOCAL with raw SQL (not parameterized) when isolation is enabled', async () => {
+      process.env.ENABLE_DATA_ISOLATION = 'true';
+
+      const manager = new PostgresConnectionManager(connectionUrl);
+      const db = manager.getDatabase();
+
+      let executedQuery: any = null;
+      const mockTx = {
+        execute: mock((query: any) => {
+          executedQuery = query;
+          return Promise.resolve({ rows: [] });
+        }),
+      };
+
+      const originalTransaction = db.transaction;
+      db.transaction = mock(async (callback: any) => {
+        return callback(mockTx);
+      }) as any;
+
+      await manager.withEntityContext(testEntityId as any, async (_tx) => {
+        return 'success';
+      });
+
+      expect(mockTx.execute).toHaveBeenCalled();
+
+      // Verify the query uses sql.raw() (inline value) not parameterized
+      // sql.raw() produces a query with the value embedded in queryChunks[0].value[0]
+      expect(executedQuery).toBeDefined();
+      const queryStr = executedQuery?.queryChunks?.[0]?.value?.[0] || String(executedQuery);
+      expect(queryStr).toContain(testEntityId);
+      expect(queryStr).not.toContain('$1');
+
+      db.transaction = originalTransaction;
+    });
+
+    it('should propagate callback errors', async () => {
+      process.env.ENABLE_DATA_ISOLATION = 'true';
+
+      const manager = new PostgresConnectionManager(connectionUrl);
+      const db = manager.getDatabase();
+
+      const mockTx = {
+        execute: mock().mockResolvedValue({ rows: [] }),
+      };
+
+      const originalTransaction = db.transaction;
+      db.transaction = mock(async (callback: any) => {
+        return callback(mockTx);
+      }) as any;
+
+      await expect(
+        manager.withEntityContext(testEntityId as any, async (_tx) => {
+          throw new Error('Callback error');
+        })
+      ).rejects.toThrow('Callback error');
+
+      db.transaction = originalTransaction;
+    });
+  });
 });
