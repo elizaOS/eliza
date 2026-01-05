@@ -94,17 +94,17 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
 
   /**
    * Asynchronously runs the provided database operation while checking if the database is currently shutting down.
-   * If the database is shutting down, a warning is logged and null is returned.
+   * If the database is shutting down, an error is thrown to prevent operations on a closing database.
    *
    * @param {Function} operation - The database operation to be performed.
    * @returns {Promise<T>} A promise that resolves with the result of the database operation.
+   * @throws {Error} If the database is shutting down.
    */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
-      logger.warn({ src: 'plugin:sql' }, 'Database is shutting down');
-      // Note: Returning null here is not type-safe for all T, but matches the documented behavior
-      // Consider throwing an error instead for better type safety
-      return null as T;
+      const error = new Error('Database is shutting down - operation rejected');
+      logger.warn({ src: 'plugin:sql', error: error.message }, 'Database operation rejected during shutdown');
+      throw error;
     }
     return operation();
   }
