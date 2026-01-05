@@ -1,5 +1,5 @@
 import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
@@ -81,43 +81,24 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   /**
    * Executes the provided operation with a database connection.
    *
-   * This method acquires a dedicated connection from the pool, executes the operation,
-   * and properly releases the connection back to the pool. On error, the connection
-   * is released with the error flag set to true, signaling the pool to destroy the
-   * connection rather than returning it to the pool in a potentially corrupted state.
+   * This method uses the shared pool-based database instance from the manager.
+   * The pg Pool handles connection management internally, automatically acquiring
+   * and releasing connections for each query. This avoids race conditions that
+   * could occur with manual client management and shared state.
    *
-   * IMPORTANT: This method creates a per-operation database instance to avoid race
-   * conditions when multiple operations run concurrently. The operation callback
-   * receives the database instance directly rather than relying on shared state.
+   * Note: The this.db instance is set once in the constructor from manager.getDatabase()
+   * and is backed by a connection pool, so concurrent operations are safe.
    *
    * @template T
-   * @param {(db: NodePgDatabase) => Promise<T>} operation - The operation to be executed with the database connection.
+   * @param {() => Promise<T>} operation - The operation to be executed with the database connection.
    * @returns {Promise<T>} A promise that resolves with the result of the operation.
    */
-  protected async withDatabase<T>(operation: (db?: NodePgDatabase) => Promise<T>): Promise<T> {
+  protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
-      const client = await this.manager.getClient();
-      let hasError = false;
-      try {
-        // Create a per-operation database instance to avoid race conditions
-        // when multiple operations run concurrently. This ensures each operation
-        // has its own isolated database context.
-        const db = drizzle(client);
-
-        // Also update instance db for backward compatibility with code that
-        // accesses this.db directly (though new code should use the callback parameter)
-        this.db = db;
-
-        return await operation(db);
-      } catch (error) {
-        hasError = true;
-        throw error;
-      } finally {
-        // Release with error flag to signal pool to destroy connection if there was an error
-        // This prevents returning a potentially corrupted connection (e.g., aborted transaction)
-        // back to the pool where it could be reused by another operation
-        client.release(hasError);
-      }
+      // Use the pool-based database instance from the manager
+      // The pool handles connection acquisition/release internally for each query
+      // This avoids the race condition of manually managing this.db state
+      return await operation();
     });
   }
 
