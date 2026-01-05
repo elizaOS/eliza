@@ -35,16 +35,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-opus-4-5-20251101
 
-          # Allow Claude to run bash and GitHub CLI commands
-          allowed_tools: 'Bash(*),Bash(gh *)'
-
-          # Custom instructions for Claude to handle ElizaOS standards
-          custom_instructions: |
-            Be concise. Focus on actionable solutions.
-            - Use bun only (no npm/pnpm/yarn)
-            - Use bun test only (no jest/vitest)
-            - Check logs: gh run view <run-id> --log
-            - Follow CLAUDE.md standards
-            - **IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed.**
+          # Claude CLI arguments for model, allowed tools, and system prompt
+          claude_args: |
+            --model claude-opus-4-5-20251101
+            --allowedTools "Bash(*),Bash(gh *)"
+            --system-prompt "Be concise. Focus on actionable solutions. Use bun only (no npm/pnpm/yarn). Use bun test only (no jest/vitest). Check logs: gh run view <run-id> --log. Follow CLAUDE.md standards. IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed."
