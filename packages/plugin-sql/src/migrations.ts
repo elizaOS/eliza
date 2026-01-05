@@ -1,6 +1,39 @@
 import { logger, type IDatabaseAdapter } from '@elizaos/core';
 import { sql } from 'drizzle-orm';
-import { getDb } from './types';
+import { getDb, type DrizzleDatabase } from './types';
+
+/**
+ * Executes a database operation within a transaction with proper error handling.
+ * If the operation fails, the transaction is rolled back.
+ *
+ * @param db - The database connection
+ * @param operation - The async operation to execute within the transaction
+ * @returns The result of the operation
+ * @throws Rethrows any error after rolling back the transaction
+ */
+async function withTransaction<T>(
+  db: DrizzleDatabase,
+  operation: () => Promise<T>
+): Promise<T> {
+  let transactionStarted = false;
+  try {
+    await db.execute(sql`BEGIN`);
+    transactionStarted = true;
+    const result = await operation();
+    await db.execute(sql`COMMIT`);
+    return result;
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await db.execute(sql`ROLLBACK`);
+        logger.debug('[Migration] Transaction rolled back due to error');
+      } catch (rollbackError) {
+        logger.error('[Migration] Failed to rollback transaction:', String(rollbackError));
+      }
+    }
+    throw error;
+  }
+}
 
 /**
  * TEMPORARY MIGRATION: pre-1.6.5 → 1.6.5+ schema migration
@@ -99,7 +132,9 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
 
   logger.info('[Migration] Starting pre-1.6.5 → 1.6.5+ schema migration...');
 
-  try {
+  // Wrap entire schema migration in a transaction for atomicity
+  // If any operation fails, all changes are rolled back to prevent inconsistent state
+  await withTransaction(db, async () => {
     // Clear RuntimeMigrator snapshot cache to force fresh introspection
     // This ensures the snapshot matches the current database state after our migrations
     logger.debug('[Migration] → Clearing RuntimeMigrator snapshot cache...');
@@ -718,9 +753,5 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
     logger.debug('[Migration] ✓ Completed camelCase → snake_case column renames');
 
     logger.info('[Migration] ✓ Migration complete - pre-1.6.5 → 1.6.5+ schema migration finished');
-  } catch (error) {
-    // Re-throw errors to prevent RuntimeMigrator from running on broken state
-    logger.error('[Migration] Migration failed:', String(error));
-    throw error;
-  }
+  });
 }
