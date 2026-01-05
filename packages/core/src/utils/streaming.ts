@@ -83,9 +83,12 @@ export function createStreamingRetryState(
   return {
     getStreamedText: () => {
       // Include any buffered content that wasn't returned yet (SAFE_MARGIN)
-      // Note: flush() empties the buffer, so subsequent calls return same result
+      // Accumulate flushed content into streamedText to ensure consistent results
       const buffered = extractor.flush?.() ?? '';
-      return streamedText + buffered;
+      if (buffered) {
+        streamedText += buffered;
+      }
+      return streamedText;
     },
     isComplete: () => extractor.done,
     reset: () => {
