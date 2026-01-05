@@ -1,5 +1,5 @@
 import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { BaseDrizzleAdapter } from '../base';
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
 import type { PostgresConnectionManager } from './manager';
@@ -81,23 +81,24 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   /**
    * Executes the provided operation with a database connection.
    *
+   * This method uses the shared pool-based database instance from the manager.
+   * The pg Pool handles connection management internally, automatically acquiring
+   * and releasing connections for each query. This avoids race conditions that
+   * could occur with manual client management and shared state.
+   *
+   * Note: The this.db instance is set once in the constructor from manager.getDatabase()
+   * and is backed by a connection pool, so concurrent operations are safe.
+   *
    * @template T
    * @param {() => Promise<T>} operation - The operation to be executed with the database connection.
    * @returns {Promise<T>} A promise that resolves with the result of the operation.
    */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
-      const client = await this.manager.getClient();
-      try {
-        // drizzle-orm/node-postgres accepts PoolClient from pg package
-        // PoolClient is compatible with drizzle's expected client type
-        const db = drizzle(client);
-        this.db = db;
-
-        return await operation();
-      } finally {
-        client.release();
-      }
+      // Use the pool-based database instance from the manager
+      // The pool handles connection acquisition/release internally for each query
+      // This avoids the race condition of manually managing this.db state
+      return await operation();
     });
   }
 
