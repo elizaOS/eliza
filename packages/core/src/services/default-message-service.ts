@@ -1210,7 +1210,7 @@ Wrap your continuation in <text></text> tags.`;
         maxIterations: opts.maxMultiStepIterations,
         streamingEnabled: !!opts.onStreamChunk,
       },
-      '[MULTI-STEP] Starting multi-step processing'
+      'Starting multi-step processing'
     );
 
     while (iterationCount < opts.maxMultiStepIterations) {
@@ -1221,7 +1221,7 @@ Wrap your continuation in <text></text> tags.`;
           step: iterationCount,
           maxSteps: opts.maxMultiStepIterations,
         },
-        `[MULTI-STEP] Step ${iterationCount}/${opts.maxMultiStepIterations} - Beginning iteration`
+        `Step ${iterationCount}/${opts.maxMultiStepIterations} - Beginning iteration`
       );
 
       accumulatedState = (await runtime.composeState(message, [
@@ -1340,7 +1340,7 @@ Wrap your continuation in <text></text> tags.`;
           providers: providers.length > 0 ? providers : null,
           isFinish: isFinish === 'true' || isFinish === true,
         },
-        `[MULTI-STEP] Step ${iterationCount} - Decision: ${action || 'no action'}${providers.length > 0 ? `, providers: [${providers.join(', ')}]` : ''}`
+        `Step ${iterationCount} - Decision: ${action || 'no action'}${providers.length > 0 ? `, providers: [${providers.join(', ')}]` : ''}`
       );
 
       // Parse and store parameters if provided
@@ -1425,7 +1425,7 @@ Wrap your continuation in <text></text> tags.`;
             step: iterationCount,
             totalActions: traceActionResult.length,
           },
-          `[MULTI-STEP] Step ${iterationCount} - Task marked as finished by agent`
+          `Step ${iterationCount} - Task marked as finished by agent`
         );
         if (callback) {
           await callback({
@@ -1462,7 +1462,7 @@ Wrap your continuation in <text></text> tags.`;
           providers: providersArray,
           parallelExecution: true,
         },
-        `[MULTI-STEP] Step ${iterationCount} - Executing ${providersArray.length} providers in parallel`
+        `Step ${iterationCount} - Executing ${providersArray.length} providers in parallel`
       );
 
       const providerPromises = providersArray
@@ -1470,14 +1470,14 @@ Wrap your continuation in <text></text> tags.`;
         .map(async (providerName) => {
           runtime.logger.debug(
             { src: 'service:message:multistep', step: iterationCount, provider: providerName },
-            `[MULTI-STEP] Step ${iterationCount} - Starting provider: ${providerName}`
+            `Step ${iterationCount} - Starting provider: ${providerName}`
           );
 
           const provider = runtime.providers.find((p) => p.name === providerName);
           if (!provider) {
             runtime.logger.warn(
               { src: 'service:message:multistep', step: iterationCount, providerName },
-              `[MULTI-STEP] Step ${iterationCount} - Provider not found: ${providerName}`
+              `Step ${iterationCount} - Provider not found: ${providerName}`
             );
             completedProviders.add(providerName);
             return { providerName, success: false, error: `Provider not found: ${providerName}` };
@@ -1490,7 +1490,7 @@ Wrap your continuation in <text></text> tags.`;
             if (!providerResult) {
               runtime.logger.warn(
                 { src: 'service:message:multistep', step: iterationCount, providerName },
-                `[MULTI-STEP] Step ${iterationCount} - Provider returned no result: ${providerName}`
+                `Step ${iterationCount} - Provider returned no result: ${providerName}`
               );
               return { providerName, success: false, error: 'Provider returned no result' };
             }
@@ -1504,7 +1504,7 @@ Wrap your continuation in <text></text> tags.`;
                 success,
                 resultLength: providerResult.text?.length || 0,
               },
-              `[MULTI-STEP] Step ${iterationCount} - Provider completed: ${providerName} (${success ? providerResult.text?.length || 0 : 0} chars)`
+              `Step ${iterationCount} - Provider completed: ${providerName} (${success ? providerResult.text?.length || 0 : 0} chars)`
             );
             return {
               providerName,
@@ -1522,7 +1522,7 @@ Wrap your continuation in <text></text> tags.`;
                 providerName,
                 error: errorMsg,
               },
-              `[MULTI-STEP] Step ${iterationCount} - Provider execution failed: ${providerName}`
+              `Step ${iterationCount} - Provider execution failed: ${providerName}`
             );
             return { providerName, success: false, error: errorMsg };
           }
@@ -1557,7 +1557,7 @@ Wrap your continuation in <text></text> tags.`;
             pendingProviders,
             completedProviders: Array.from(completedProviders),
           },
-          `[MULTI-STEP] Step ${iterationCount} - Provider timeout (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms): ${pendingProviders.join(', ')}`
+          `Step ${iterationCount} - Provider timeout (>${PROVIDERS_TOTAL_TIMEOUT_MS}ms): ${pendingProviders.join(', ')}`
         );
 
         if (callback) {
@@ -1603,7 +1603,7 @@ Wrap your continuation in <text></text> tags.`;
       if (action) {
         runtime.logger.info(
           { src: 'service:message:multistep', step: iterationCount, action },
-          `[MULTI-STEP] Step ${iterationCount} - Executing action: ${action}`
+          `Step ${iterationCount} - Executing action: ${action}`
         );
 
         const actionContent = {
@@ -1671,7 +1671,7 @@ Wrap your continuation in <text></text> tags.`;
             success,
             resultLength: actionResultText?.length || 0,
           },
-          `[MULTI-STEP] Step ${iterationCount} - Action completed: ${action} (success=${success})`
+          `Step ${iterationCount} - Action completed: ${action} (success=${success})`
         );
       }
     }
@@ -1679,7 +1679,7 @@ Wrap your continuation in <text></text> tags.`;
     if (iterationCount >= opts.maxMultiStepIterations) {
       runtime.logger.warn(
         { src: 'service:message:multistep', maxIterations: opts.maxMultiStepIterations },
-        `[MULTI-STEP] Reached maximum iterations (${opts.maxMultiStepIterations}), forcing completion`
+        `Reached maximum iterations (${opts.maxMultiStepIterations}), forcing completion`
       );
     }
 
@@ -1690,7 +1690,7 @@ Wrap your continuation in <text></text> tags.`;
         actionsExecuted: traceActionResult.length,
         streamingEnabled: !!opts.onStreamChunk,
       },
-      `[MULTI-STEP] Generating summary (${iterationCount} steps completed, ${traceActionResult.length} actions traced)`
+      `Generating summary (${iterationCount} steps completed, ${traceActionResult.length} actions traced)`
     );
 
     accumulatedState = (await runtime.composeState(message, [
@@ -1936,7 +1936,7 @@ Wrap your continuation in <text></text> tags.`;
         successfulActions: traceActionResult.filter((r) => r.success).length,
         responseLength: responseContent?.text?.length || 0,
       },
-      `[MULTI-STEP] Complete - ${iterationCount} steps, ${traceActionResult.filter((r) => r.success).length}/${traceActionResult.length} actions succeeded`
+      `Complete - ${iterationCount} steps, ${traceActionResult.filter((r) => r.success).length}/${traceActionResult.length} actions succeeded`
     );
 
     return {
