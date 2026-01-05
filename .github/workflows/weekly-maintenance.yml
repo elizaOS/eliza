@@ -55,4 +55,4 @@ jobs:
 
             If critical security issues are found, also comment on relevant open PRs.
 
-          allowed_tools: 'Read,Bash(bun:*),Bash(gh issue:*),Bash(gh pr:*),Bash(git:*),Bash(grep:*),Bash(find:*)'
+          allowed_tools: 'Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)'
