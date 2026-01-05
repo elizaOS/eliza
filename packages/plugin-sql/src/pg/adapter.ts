@@ -81,22 +81,42 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   /**
    * Executes the provided operation with a database connection.
    *
+   * This method acquires a dedicated connection from the pool, executes the operation,
+   * and properly releases the connection back to the pool. On error, the connection
+   * is released with the error flag set to true, signaling the pool to destroy the
+   * connection rather than returning it to the pool in a potentially corrupted state.
+   *
+   * IMPORTANT: This method creates a per-operation database instance to avoid race
+   * conditions when multiple operations run concurrently. The operation callback
+   * receives the database instance directly rather than relying on shared state.
+   *
    * @template T
-   * @param {() => Promise<T>} operation - The operation to be executed with the database connection.
+   * @param {(db: NodePgDatabase) => Promise<T>} operation - The operation to be executed with the database connection.
    * @returns {Promise<T>} A promise that resolves with the result of the operation.
    */
-  protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
+  protected async withDatabase<T>(operation: (db?: NodePgDatabase) => Promise<T>): Promise<T> {
     return await this.withRetry(async () => {
       const client = await this.manager.getClient();
+      let hasError = false;
       try {
-        // drizzle-orm/node-postgres accepts PoolClient from pg package
-        // PoolClient is compatible with drizzle's expected client type
+        // Create a per-operation database instance to avoid race conditions
+        // when multiple operations run concurrently. This ensures each operation
+        // has its own isolated database context.
         const db = drizzle(client);
+
+        // Also update instance db for backward compatibility with code that
+        // accesses this.db directly (though new code should use the callback parameter)
         this.db = db;
 
-        return await operation();
+        return await operation(db);
+      } catch (error) {
+        hasError = true;
+        throw error;
       } finally {
-        client.release();
+        // Release with error flag to signal pool to destroy connection if there was an error
+        // This prevents returning a potentially corrupted connection (e.g., aborted transaction)
+        // back to the pool where it could be reused by another operation
+        client.release(hasError);
       }
     });
   }
