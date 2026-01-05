@@ -142,20 +142,22 @@ function startViteDevServer() {
   });
 
   // Monitor process exit
-  child.exited.then((exitCode) => {
-    if (!isShuttingDown) {
-      log('CLIENT', `Vite dev server exited with code ${exitCode}`);
-      if (exitCode !== 0) {
-        log('CLIENT', 'Vite dev server failed, shutting down...');
+  child.exited
+    .then((exitCode) => {
+      if (!isShuttingDown) {
+        log('CLIENT', `Vite dev server exited with code ${exitCode}`);
+        if (exitCode !== 0) {
+          log('CLIENT', 'Vite dev server failed, shutting down...');
+          cleanup('vite-error');
+        }
+      }
+    })
+    .catch((error) => {
+      if (!isShuttingDown) {
+        log('CLIENT', `Vite dev server error: ${error.message}`);
         cleanup('vite-error');
       }
-    }
-  }).catch((error) => {
-    if (!isShuttingDown) {
-      log('CLIENT', `Vite dev server error: ${error.message}`);
-      cleanup('vite-error');
-    }
-  });
+    });
 
   processes.push({ name: 'VITE-DEV', child, type: 'client' });
   return child;
@@ -222,44 +224,46 @@ function startCliServer() {
     }
   })();
 
-  child.exited.then(async (exitCode) => {
-    if (!isShuttingDown) {
-      if (exitCode === 0) {
-        log('CLI', 'Build completed, starting server...');
-        // Now start the actual CLI server
-        const serverProcess = await startActualCliServer();
-        if (serverProcess) {
-          // Wait for server to be ready before starting frontend
-          const port = process.env.SERVER_PORT || 3000;
-          const url = `http://localhost:${port}/api/server/ping`;
-          const ready = await waitForServer(url);
+  child.exited
+    .then(async (exitCode) => {
+      if (!isShuttingDown) {
+        if (exitCode === 0) {
+          log('CLI', 'Build completed, starting server...');
+          // Now start the actual CLI server
+          const serverProcess = await startActualCliServer();
+          if (serverProcess) {
+            // Wait for server to be ready before starting frontend
+            const port = process.env.SERVER_PORT || 3000;
+            const url = `http://localhost:${port}/api/server/ping`;
+            const ready = await waitForServer(url);
 
-          if (ready && !isShuttingDown) {
-            serverReady = true;
-            log('DEV', '🔧 Backend server is ready!');
-            startViteDevServer();
-            startFileWatcher();
-            log('DEV', '🚀 Development environment fully ready!');
-            log('DEV', `📱 Frontend: ${cyan('http://localhost:5173')} (with HMR)`);
-            log('DEV', `🔧 Backend API: ${cyan('http://localhost:3000')}`);
-            log('DEV', '✨ All services are connected and ready!');
-            log('DEV', '🔄 Hot reload enabled for backend code changes');
-          } else if (!isShuttingDown) {
-            log('CLI', 'Server failed to start properly, shutting down...');
-            cleanup('server-health-check-failed');
+            if (ready && !isShuttingDown) {
+              serverReady = true;
+              log('DEV', '🔧 Backend server is ready!');
+              startViteDevServer();
+              startFileWatcher();
+              log('DEV', '🚀 Development environment fully ready!');
+              log('DEV', `📱 Frontend: ${cyan('http://localhost:5173')} (with HMR)`);
+              log('DEV', `🔧 Backend API: ${cyan('http://localhost:3000')}`);
+              log('DEV', '✨ All services are connected and ready!');
+              log('DEV', '🔄 Hot reload enabled for backend code changes');
+            } else if (!isShuttingDown) {
+              log('CLI', 'Server failed to start properly, shutting down...');
+              cleanup('server-health-check-failed');
+            }
           }
+        } else {
+          log('CLI', `Build failed with code ${exitCode}`);
+          cleanup('cli-build-error');
         }
-      } else {
-        log('CLI', `Build failed with code ${exitCode}`);
+      }
+    })
+    .catch((error) => {
+      if (!isShuttingDown) {
+        log('CLI', `CLI build error: ${error.message}`);
         cleanup('cli-build-error');
       }
-    }
-  }).catch((error) => {
-    if (!isShuttingDown) {
-      log('CLI', `CLI build error: ${error.message}`);
-      cleanup('cli-build-error');
-    }
-  });
+    });
 
   processes.push({ name: 'CLI-BUILD', child, type: 'build' });
   return child;
@@ -290,22 +294,24 @@ function startActualCliServer() {
       return;
     }
 
-    child.exited.then((exitCode) => {
-      if (!isShuttingDown && !isRebuilding) {
-        log('CLI', `CLI server exited with code ${exitCode}`);
-        if (exitCode !== 0) {
-          log('CLI', 'CLI server failed, shutting down...');
-          cleanup('cli-error');
+    child.exited
+      .then((exitCode) => {
+        if (!isShuttingDown && !isRebuilding) {
+          log('CLI', `CLI server exited with code ${exitCode}`);
+          if (exitCode !== 0) {
+            log('CLI', 'CLI server failed, shutting down...');
+            cleanup('cli-error');
+          }
         }
-      }
-    }).catch((error) => {
-      if (!isShuttingDown && !isRebuilding) {
-        log('CLI', `CLI server error: ${error.message}`);
-        cleanup('cli-error');
-        // NOTE: We don't resolve(null) here because the Promise is already resolved
-        // with `child` below. Async errors after process spawn are handled via cleanup().
-      }
-    });
+      })
+      .catch((error) => {
+        if (!isShuttingDown && !isRebuilding) {
+          log('CLI', `CLI server error: ${error.message}`);
+          cleanup('cli-error');
+          // NOTE: We don't resolve(null) here because the Promise is already resolved
+          // with `child` below. Async errors after process spawn are handled via cleanup().
+        }
+      });
 
     // Replace the build process with the server process
     const buildIndex = processes.findIndex((p) => p.name === 'CLI-BUILD');
@@ -361,15 +367,17 @@ async function rebuildAndRestartServer() {
           }, 500);
 
           // Listen for the process to exit
-          child.exited.then(() => {
-            clearTimeout(forceKillTimeout);
-            log('REBUILD', 'Server stopped gracefully');
-            resolve(true);
-          }).catch(() => {
-            // Handle rejection from child.exited
-            clearTimeout(forceKillTimeout);
-            resolve(true);
-          });
+          child.exited
+            .then(() => {
+              clearTimeout(forceKillTimeout);
+              log('REBUILD', 'Server stopped gracefully');
+              resolve(true);
+            })
+            .catch(() => {
+              // Handle rejection from child.exited
+              clearTimeout(forceKillTimeout);
+              resolve(true);
+            });
 
           // Try graceful shutdown first
           try {
@@ -443,7 +451,7 @@ async function rebuildAndRestartServer() {
     const exitCode = await buildChild.exited;
     const buildSuccess = exitCode === 0;
 
-    if (buildSuccess) {
+    if (buildSuccess && !isShuttingDown) {
       log('REBUILD', '✅ Build completed, restarting server...');
       // Restart the server
       const serverProcess = await startActualCliServer();
@@ -461,16 +469,18 @@ async function rebuildAndRestartServer() {
           cleanup('rebuild-health-check-failed');
         }
       }
-    } else {
+    } else if (!buildSuccess) {
       log('REBUILD', '❌ Build failed, server stopped');
     }
+    // If buildSuccess && isShuttingDown, we silently skip server restart
   } catch (error) {
     log('REBUILD', `Error during rebuild: ${error.message}`);
   } finally {
     isRebuilding = false;
 
     // If another rebuild was queued while we were rebuilding, start it now
-    if (rebuildQueued) {
+    // But only if we're not shutting down
+    if (rebuildQueued && !isShuttingDown) {
       log('REBUILD', '🔄 Starting queued rebuild...');
       rebuildAndRestartServer();
     }
@@ -483,7 +493,10 @@ async function rebuildAndRestartServer() {
  */
 function startFileWatcher() {
   log('WATCH', '👀 Watching for changes in backend packages...');
-  log('WATCH', 'Monitored packages: cli, core, server, api-client, plugin-bootstrap, plugin-sql, config');
+  log(
+    'WATCH',
+    'Monitored packages: cli, core, server, api-client, plugin-bootstrap, plugin-sql, config'
+  );
 
   watchDirs.forEach((dir, index) => {
     // Check if directory exists before watching (CRITICAL FIX)
@@ -587,14 +600,16 @@ function cleanup(signal = 'SIGTERM') {
         }, timeout);
 
         // Listen for the process to exit
-        child.exited.then(() => {
-          clearTimeout(forceKillTimeout);
-          log('DEV', `${name} stopped`);
-          resolve(true);
-        }).catch(() => {
-          clearTimeout(forceKillTimeout);
-          resolve(true);
-        });
+        child.exited
+          .then(() => {
+            clearTimeout(forceKillTimeout);
+            log('DEV', `${name} stopped`);
+            resolve(true);
+          })
+          .catch(() => {
+            clearTimeout(forceKillTimeout);
+            resolve(true);
+          });
 
         // For CLI server, try SIGINT first (more graceful for Node.js apps)
         try {
