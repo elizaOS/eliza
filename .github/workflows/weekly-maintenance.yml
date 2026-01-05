@@ -1,0 +1,60 @@
+name: Weekly Maintenance
+
+on:
+  schedule:
+    - cron: "0 0 * * 0" # Every Sunday at midnight UTC
+  workflow_dispatch: # Manual trigger option
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Run Weekly Maintenance
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+
+          prompt: |
+            REPO: ${{ github.repository }}
+
+            Perform weekly repository maintenance:
+
+            1. Check for outdated dependencies using `bun outdated`
+            2. Scan for security vulnerabilities using `bun x better-npm-audit audit`
+            3. Review open issues older than 90 days
+            4. Check for TODO/FIXME comments in recent commits (last 7 days)
+            5. Verify README.md examples and docs are up to date
+            6. Check for any failing or skipped tests
+
+            **Important:** This is an ElizaOS project - use `bun` for all package operations, never npm/yarn/pnpm.
+
+            Create a single issue summarizing any findings with sections:
+            - 🔒 Security Issues (if any)
+            - 📦 Outdated Dependencies
+            - 🐛 Stale Issues (>90 days)
+            - 📝 TODO Comments Found
+            - 📚 Documentation Status
+
+            If critical security issues are found, also comment on relevant open PRs.
+
+          # Claude CLI arguments for model and allowed tools
+          claude_args: |
+            --model claude-opus-4-5-20251101
+            --allowedTools "Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)"

@@ -2183,6 +2183,61 @@ export class AgentRuntime implements IAgentRuntime {
     return Object.keys(modelSettings).length > 0 ? modelSettings : null;
   }
 
+  /**
+   * Helper to log model calls to the database (used by both streaming and non-streaming paths)
+   */
+  private logModelCall(
+    modelType: string,
+    modelKey: string,
+    params: unknown,
+    promptContent: string | null,
+    elapsedTime: number,
+    provider: string | undefined,
+    response: unknown
+  ): void {
+    // Log prompts to action context (except embeddings)
+    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
+      if (this.currentActionContext) {
+        this.currentActionContext.prompts.push({
+          modelType: modelKey,
+          prompt: promptContent,
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Log to database
+    this.adapter.log({
+      entityId: this.agentId,
+      roomId: this.currentRoomId ?? this.agentId,
+      body: {
+        modelType,
+        modelKey,
+        params: {
+          ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
+          prompt: promptContent,
+        },
+        prompt: promptContent,
+        systemPrompt: this.character?.system || null,
+        runId: this.getCurrentRunId(),
+        timestamp: Date.now(),
+        executionTime: elapsedTime,
+        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
+        actionContext: this.currentActionContext
+          ? {
+              actionName: this.currentActionContext.actionName,
+              actionId: this.currentActionContext.actionId,
+            }
+          : undefined,
+        response:
+          Array.isArray(response) && response.every((x) => typeof x === 'number')
+            ? '[array]'
+            : response,
+      },
+      type: `useModel:${modelKey}`,
+    });
+  }
+
   async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
     modelType: T,
     params: ModelParamsMap[T],
@@ -2349,6 +2404,15 @@ export class AgentRuntime implements IAgentRuntime {
         'Model output (stream with callback complete)'
       );
 
+      this.logModelCall(
+        modelType,
+        modelKey,
+        params,
+        promptContent,
+        elapsedTime,
+        provider,
+        fullText
+      );
       return fullText as R;
     }
 
@@ -2368,49 +2432,7 @@ export class AgentRuntime implements IAgentRuntime {
       'Model output'
     );
 
-    // Log all prompts except TEXT_EMBEDDING to track agent behavior
-    if (modelKey !== ModelType.TEXT_EMBEDDING && promptContent) {
-      // If we're in an action context, collect the prompt
-      if (this.currentActionContext) {
-        this.currentActionContext.prompts.push({
-          modelType: modelKey,
-          prompt: promptContent,
-          timestamp: Date.now(),
-        });
-      }
-    }
-
-    // Keep the existing model logging for backward compatibility
-    this.adapter.log({
-      entityId: this.agentId,
-      roomId: this.currentRoomId ?? this.agentId,
-      body: {
-        modelType,
-        modelKey,
-        params: {
-          ...(typeof params === 'object' && !Array.isArray(params) && params ? params : {}),
-          prompt: promptContent,
-        },
-        prompt: promptContent,
-        systemPrompt: this.character?.system || null,
-        runId: this.getCurrentRunId(),
-        timestamp: Date.now(),
-        executionTime: elapsedTime,
-        provider: provider || this.models.get(modelKey)?.[0]?.provider || 'unknown',
-        actionContext: this.currentActionContext
-          ? {
-              actionName: this.currentActionContext.actionName,
-              actionId: this.currentActionContext.actionId,
-            }
-          : undefined,
-        response:
-          Array.isArray(response) && response.every((x) => typeof x === 'number')
-            ? '[array]'
-            : response,
-      },
-      type: `useModel:${modelKey}`,
-    });
-
+    this.logModelCall(modelType, modelKey, params, promptContent, elapsedTime, provider, response);
     return response as R;
   }
 
@@ -2483,11 +2505,11 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void;
-  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void;
-  registerEvent(
+  registerEvent<P extends EventPayload = EventPayload>(
     event: string,
-    handler: ((params: EventPayload) => Promise<void>) | ((params: unknown) => Promise<void>)
-  ): void {
+    handler: (params: P) => Promise<void>
+  ): void;
+  registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
