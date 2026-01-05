@@ -112,4 +112,56 @@ describe('PgliteDatabaseAdapter', () => {
       await expect(connection.query('SELECT 1')).rejects.toThrow('Query failed');
     });
   });
+
+  describe('withDatabase shutdown handling', () => {
+    it('should throw error instead of returning null when database is shutting down', async () => {
+      // Create adapter with manager that is shutting down
+      const shuttingDownManager = {
+        getConnection: mock().mockReturnValue({
+          query: mock().mockResolvedValue({ rows: [] }),
+          close: mock().mockResolvedValue(undefined),
+          transaction: mock(),
+        }),
+        close: mock().mockResolvedValue(undefined),
+        isShuttingDown: mock().mockReturnValue(true),
+      } as any;
+
+      const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
+
+      // Attempt operation during shutdown should throw
+      await expect(shuttingDownAdapter.getAgent(agentId)).rejects.toThrow(
+        'Database is shutting down - operation rejected'
+      );
+
+      // Verify warning was logged
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          src: 'plugin:sql',
+          error: 'Database is shutting down - operation rejected',
+        }),
+        'Database operation rejected during shutdown'
+      );
+    });
+
+    it('should include descriptive error message for shutdown rejection', async () => {
+      const shuttingDownManager = {
+        getConnection: mock().mockReturnValue({
+          query: mock().mockResolvedValue({ rows: [] }),
+          transaction: mock(),
+        }),
+        close: mock().mockResolvedValue(undefined),
+        isShuttingDown: mock().mockReturnValue(true),
+      } as any;
+
+      const shuttingDownAdapter = new PgliteDatabaseAdapter(agentId, shuttingDownManager);
+
+      try {
+        await shuttingDownAdapter.getAgent(agentId);
+        expect.unreachable('Should have thrown');
+      } catch (error: any) {
+        expect(error.message).toBe('Database is shutting down - operation rejected');
+        expect(error).toBeInstanceOf(Error);
+      }
+    });
+  });
 });
