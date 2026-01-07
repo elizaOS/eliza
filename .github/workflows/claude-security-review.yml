@@ -1,0 +1,60 @@
+name: Security Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # Focus on code changes that could introduce vulnerabilities
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.json'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/Dockerfile'
+      - '**/.env.example'
+
+  # Allow manual security scans
+  workflow_dispatch:
+
+# Cancel previous runs for the same PR
+concurrency:
+  group: security-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    # Skip for draft PRs, [skip-security] in title, or bot-triggered
+    if: |
+      github.event.pull_request.draft != true &&
+      !contains(github.event.pull_request.title, '[skip-security]') &&
+      github.actor != 'cursor[bot]'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Run Claude Security Review
+        # Note: Using @main as no stable version tag exists yet
+        uses: anthropics/claude-code-security-review@main
+        with:
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: true
+          upload-results: true
+          claudecode-timeout: 30
+
+          # Exclude non-critical directories
+          exclude-directories: 'node_modules,dist,coverage,.turbo,.next,docs'
+
+          # Use Opus 4.5 for deeper security analysis
+          claude-model: claude-opus-4-5-20251101

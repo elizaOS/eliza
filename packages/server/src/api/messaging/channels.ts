@@ -18,8 +18,8 @@ import type {
 } from '../../types/server';
 import { createUploadRateLimit, createFileSystemRateLimit } from '../../middleware';
 import { MAX_FILE_SIZE, ALLOWED_MEDIA_MIME_TYPES } from '../shared/constants';
-import { handleResponseMode } from '../shared/response-handlers';
-import { validateResponseMode } from '../shared/validation';
+import { handleTransport } from '../shared/response-handlers';
+import { validateTransport } from '../shared/validation';
 
 import multer from 'multer';
 import fs from 'fs';
@@ -92,10 +92,11 @@ export function createChannelsRouter(
   });
 
   // GUI posts NEW messages from a user here
-  // Supports multiple response modes via the 'mode' parameter:
-  // - "sync": Wait for complete agent response
-  // - "stream": SSE streaming response
-  // - "websocket": Return immediately, agent response via WebSocket (current default)
+  // Supports multiple transport types via the 'transport' parameter:
+  // - "http": Wait for complete agent response (sync)
+  // - "sse": SSE streaming response
+  // - "websocket": Return immediately, agent response via WebSocket (default)
+  // Note: 'mode' parameter is deprecated but still supported for backward compatibility
   router.post(
     '/channels/:channelId/messages',
     async (req: express.Request, res: express.Response) => {
@@ -108,18 +109,19 @@ export function createChannelsRouter(
         raw_message,
         metadata, // Should include user_display_name
         source_type, // Should be something like 'eliza_gui'
-        mode,
+        transport: transportParam,
+        mode, // @deprecated - use 'transport' instead
       } = req.body;
 
-      // Validate mode parameter with proper type checking
-      const modeValidation = validateResponseMode(mode);
-      if (!modeValidation.isValid) {
+      // Validate transport parameter (supports both 'transport' and legacy 'mode')
+      const transportValidation = validateTransport(transportParam ?? mode);
+      if (!transportValidation.isValid) {
         return res.status(400).json({
           success: false,
-          error: modeValidation.error,
+          error: transportValidation.error,
         });
       }
-      const responseMode = modeValidation.mode;
+      const transport = transportValidation.transport;
 
       if (
         !channelIdParam ||
@@ -297,18 +299,18 @@ export function createChannelsRouter(
         }
 
         // Handle response using shared handler
-        await handleResponseMode({
+        await handleTransport({
           res,
-          mode: responseMode,
+          transport,
           elizaOS,
           agentId: agentId as UUID,
           messageMemory,
           userMessage: messageForBus,
-          onWebSocketMode: () => {
+          onWebSocketTransport: () => {
             // Emit to internal bus for agent processing
             internalMessageBus.emit('new_message', messageForBus);
             logger.debug(
-              { src: 'http', messageId: messageForBus.id, mode: responseMode },
+              { src: 'http', messageId: messageForBus.id, transport },
               'GUI Message published to internal bus'
             );
 

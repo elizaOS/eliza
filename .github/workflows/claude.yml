@@ -20,42 +20,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: write
       id-token: write
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
-          # model: "claude-opus-4-20250514"
+          # Allow cursor bot to trigger reviews
+          allowed_bots: "cursor"
 
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-
-          # Allow Claude to run all bash and GitHub CLI commands
-          allowed_tools: 'Bash(*),Bash(gh *)'
-
-          # Custom instructions for Claude to handle ElizaOS standards
-          custom_instructions: |
-            Be concise. Focus on actionable solutions.
-            - Use bun only (no npm/pnpm/yarn)
-            - Use bun test only (no jest/vitest)
-            - Check logs: gh run view <run-id> --log
-            - Follow CLAUDE.md standards
-            - **IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed.**
-
-          # Optional: Custom environment variables for Claude
-          # claude_env: |
-          #   NODE_ENV: test
+          # Claude CLI arguments for model, allowed tools, and system prompt
+          claude_args: |
+            --model claude-opus-4-5-20251101
+            --allowedTools "Bash(*),Bash(gh *)"
+            --system-prompt "Be concise. Focus on actionable solutions. Use bun only (no npm/pnpm/yarn). Use bun test only (no jest/vitest). Check logs: gh run view <run-id> --log. Follow CLAUDE.md standards. IMPORTANT: When reviewing PRs, always check and consider all previous comments in the PR thread. Don't repeat suggestions that have already been made or addressed."

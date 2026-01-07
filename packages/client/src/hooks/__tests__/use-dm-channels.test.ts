@@ -1,6 +1,9 @@
 import { describe, test, expect, mock } from 'bun:test';
 import type { UUID } from '@elizaos/core';
 
+// Import actual modules BEFORE mocking to preserve exports
+const actualUtils = await import('@/lib/utils');
+
 // Mock the client creation
 const mockCreateGroupChannel = mock(() =>
   Promise.resolve({
@@ -42,6 +45,7 @@ mock.module('@/hooks/use-toast', () => ({
 }));
 
 mock.module('@/lib/utils', () => ({
+  ...actualUtils,
   getEntityId: () => 'user-123' as UUID,
 }));
 

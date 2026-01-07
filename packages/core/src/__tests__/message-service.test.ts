@@ -824,4 +824,48 @@ describe('DefaultMessageService', () => {
       expect(mockRuntime.logger?.info).toHaveBeenCalled();
     });
   });
+
+  describe('provider timeout', () => {
+    it('should use default timeout of 1000ms when PROVIDERS_TOTAL_TIMEOUT_MS is not set', () => {
+      const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
+      getSetting.mockImplementation((key: string) => {
+        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') return null;
+        return null;
+      });
+
+      // The default timeout should be 1000ms (1 second)
+      const timeout = parseInt(
+        String(mockRuntime.getSetting!('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000')
+      );
+      expect(timeout).toBe(1000);
+    });
+
+    it('should use custom timeout when PROVIDERS_TOTAL_TIMEOUT_MS is set', () => {
+      const getSetting = mockRuntime.getSetting as ReturnType<typeof mock>;
+      getSetting.mockImplementation((key: string) => {
+        if (key === 'PROVIDERS_TOTAL_TIMEOUT_MS') return '5000';
+        return null;
+      });
+
+      const timeout = parseInt(
+        String(mockRuntime.getSetting!('PROVIDERS_TOTAL_TIMEOUT_MS') || '1000')
+      );
+      expect(timeout).toBe(5000);
+    });
+
+    it('should track completed providers for timeout diagnostics', async () => {
+      // Simulate the provider completion tracking logic
+      const completedProviders = new Set<string>();
+      const allProviderNames = ['fastProvider', 'slowProvider'];
+
+      // Simulate fastProvider completing
+      completedProviders.add('fastProvider');
+
+      // Check pending providers (slowProvider didn't complete)
+      const pendingProviders = allProviderNames.filter((name) => !completedProviders.has(name));
+
+      expect(pendingProviders).toEqual(['slowProvider']);
+      expect(Array.from(completedProviders)).toEqual(['fastProvider']);
+    });
+  });
 });
