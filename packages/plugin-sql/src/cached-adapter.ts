@@ -97,7 +97,7 @@ class LRUCache<K, V> {
 
   get(key: K): V | undefined {
     const entry = this.cache.get(key);
-    if (!entry) return undefined;
+    if (!entry) {return undefined;}
 
     if (this.ttl !== null && Date.now() - entry.timestamp > this.ttl) {
       this.cache.delete(key);
@@ -204,7 +204,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   ): Promise<T | undefined> {
     // Check L1 (in-memory)
     const l1Value = cache.get(id);
-    if (l1Value !== undefined) return l1Value;
+    if (l1Value !== undefined) {return l1Value;}
 
     // Check L2 (external) if available
     if (this.externalCache) {
@@ -235,10 +235,12 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
     type: string,
     id: string
   ): Promise<void> {
-    cache.delete(id);
+    // Delete from L2 (external) first to prevent stale data if L2 delete fails
     if (this.externalCache) {
       await this.externalCache.delete(this.cacheKey(type, id));
     }
+    // Then delete from L1 (in-memory)
+    cache.delete(id);
   }
 
   // ==================== Passthrough Properties ====================
@@ -262,7 +264,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   }
 
   async close(): Promise<void> {
-    this.clearAllCaches();
+    await this.clearAllCaches();
     return this.baseAdapter.close();
   }
 
@@ -278,7 +280,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async getAgent(agentId: UUID): Promise<Agent | null> {
     const cached = await this.getFromCache<Agent>(this.agentCache, 'agent', agentId);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const agent = await this.baseAdapter.getAgent(agentId);
     if (agent) {
@@ -294,9 +296,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async createAgent(agent: Partial<Agent>): Promise<boolean> {
     const result = await this.baseAdapter.createAgent(agent);
-    if (result && agent.id) {
-      await this.setInCache(this.agentCache, 'agent', agent.id, agent as Agent);
-    }
+    // Don't cache partial data - let next getAgent call fetch complete data from DB
     return result;
   }
 
@@ -319,16 +319,16 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   // ==================== Entity Methods (Cached) ====================
 
   async getEntitiesByIds(entityIds: UUID[]): Promise<Entity[] | null> {
-    if (!entityIds.length) return [];
+    if (!entityIds.length) {return [];}
 
-    const results: Entity[] = [];
+    const resultMap = new Map<UUID, Entity>();
     const missingIds: UUID[] = [];
 
     // Check cache for each ID
     for (const id of entityIds) {
       const cached = await this.getFromCache<Entity>(this.entityCache, 'entity', id);
       if (cached) {
-        results.push(cached);
+        resultMap.set(id, cached);
       } else {
         missingIds.push(id);
       }
@@ -341,11 +341,16 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
         for (const entity of fetched) {
           if (entity.id) {
             await this.setInCache(this.entityCache, 'entity', entity.id, entity);
-            results.push(entity);
+            resultMap.set(entity.id, entity);
           }
         }
       }
     }
+
+    // Return results in original input order
+    const results = entityIds
+      .map((id) => resultMap.get(id))
+      .filter((entity): entity is Entity => entity !== undefined);
 
     return results.length > 0 ? results : null;
   }
@@ -357,7 +362,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
       'entitiesForRoom',
       cacheKey
     );
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const entities = await this.baseAdapter.getEntitiesForRoom(roomId, includeComponents);
 
@@ -397,15 +402,15 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   // ==================== Room Methods (Cached) ====================
 
   async getRoomsByIds(roomIds: UUID[]): Promise<Room[] | null> {
-    if (!roomIds.length) return [];
+    if (!roomIds.length) {return [];}
 
-    const results: Room[] = [];
+    const resultMap = new Map<UUID, Room>();
     const missingIds: UUID[] = [];
 
     for (const id of roomIds) {
       const cached = await this.getFromCache<Room>(this.roomCache, 'room', id);
       if (cached) {
-        results.push(cached);
+        resultMap.set(id, cached);
       } else {
         missingIds.push(id);
       }
@@ -417,11 +422,16 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
         for (const room of fetched) {
           if (room.id) {
             await this.setInCache(this.roomCache, 'room', room.id, room);
-            results.push(room);
+            resultMap.set(room.id, room);
           }
         }
       }
     }
+
+    // Return results in original input order
+    const results = roomIds
+      .map((id) => resultMap.get(id))
+      .filter((room): room is Room => room !== undefined);
 
     return results.length > 0 ? results : null;
   }
@@ -440,8 +450,13 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   }
 
   async deleteRoom(roomId: UUID): Promise<void> {
-    // Get room first to invalidate world cache
-    const room = await this.getFromCache<Room>(this.roomCache, 'room', roomId);
+    // Get room first to invalidate world cache - check cache then DB
+    let room = await this.getFromCache<Room>(this.roomCache, 'room', roomId);
+    if (!room) {
+      // Not in cache, fetch from DB to get worldId for cache invalidation
+      const rooms = await this.baseAdapter.getRoomsByIds([roomId]);
+      room = rooms?.[0];
+    }
     await this.baseAdapter.deleteRoom(roomId);
     await this.deleteFromCache(this.roomCache, 'room', roomId);
     await this.deleteFromCache(this.participantCache, 'participants', roomId);
@@ -484,7 +499,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
     const cached = await this.getFromCache<Room[]>(this.roomsByWorldCache, 'roomsByWorld', worldId);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const rooms = await this.baseAdapter.getRoomsByWorld(worldId);
     await this.setInCache(this.roomsByWorldCache, 'roomsByWorld', worldId, rooms);
@@ -511,7 +526,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async getWorld(id: UUID): Promise<World | null> {
     const cached = await this.getFromCache<World>(this.worldCache, 'world', id);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const world = await this.baseAdapter.getWorld(id);
     if (world) {
@@ -560,7 +575,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
     const cached = await this.getFromCache<UUID[]>(this.participantCache, 'participants', roomId);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const participants = await this.baseAdapter.getParticipantsForRoom(roomId);
     await this.setInCache(this.participantCache, 'participants', roomId, participants);
@@ -608,7 +623,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
   ): Promise<Component | null> {
     const cacheKey = `${entityId}:${type}:${worldId ?? 'null'}:${sourceEntityId ?? 'null'}`;
     const cached = await this.getFromCache<Component>(this.componentCache, 'component', cacheKey);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const component = await this.baseAdapter.getComponent(entityId, type, worldId, sourceEntityId);
     if (component) {
@@ -681,7 +696,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
       'relationship',
       cacheKey
     );
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const relationship = await this.baseAdapter.getRelationship(params);
     if (relationship) {
@@ -712,7 +727,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   async getTask(id: UUID): Promise<Task | null> {
     const cached = await this.getFromCache<Task>(this.taskCache, 'task', id);
-    if (cached) return cached;
+    if (cached) {return cached;}
 
     const task = await this.baseAdapter.getTask(id);
     if (task) {
@@ -869,7 +884,7 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
 
   // ==================== Optional Methods ====================
 
-  async runPluginMigrations?(
+  async runPluginMigrations(
     plugins: Array<{
       name: string;
       schema?: Record<string, string | number | boolean | null | Record<string, unknown>>;
@@ -877,24 +892,24 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
     options?: { verbose?: boolean; force?: boolean; dryRun?: boolean }
   ): Promise<void> {
     if (this.baseAdapter.runPluginMigrations) {
-      return this.baseAdapter.runPluginMigrations(plugins, options);
+      await this.baseAdapter.runPluginMigrations(plugins, options);
     }
   }
 
-  async runMigrations?(migrationsPaths?: string[]): Promise<void> {
+  async runMigrations(migrationsPaths?: string[]): Promise<void> {
     if (this.baseAdapter.runMigrations) {
-      return this.baseAdapter.runMigrations(migrationsPaths);
+      await this.baseAdapter.runMigrations(migrationsPaths);
     }
   }
 
-  async withEntityContext?<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T> {
+  withEntityContext<T>(entityId: UUID | null, callback: () => Promise<T>): Promise<T> {
     if (this.baseAdapter.withEntityContext) {
       return this.baseAdapter.withEntityContext(entityId, callback);
     }
     return callback();
   }
 
-  async getAgentRunSummaries?(params: {
+  getAgentRunSummaries(params: {
     limit?: number;
     roomId?: UUID;
     status?: RunStatus | 'all';
@@ -905,15 +920,16 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
     if (this.baseAdapter.getAgentRunSummaries) {
       return this.baseAdapter.getAgentRunSummaries(params);
     }
-    return { runs: [], total: 0, hasMore: false };
+    return Promise.resolve({ runs: [], total: 0, hasMore: false });
   }
 
   // ==================== Cache Management Methods ====================
 
   /**
-   * Clear all in-memory caches
+   * Clear all in-memory caches and external cache if configured
    */
-  clearAllCaches(): void {
+  async clearAllCaches(): Promise<void> {
+    // Clear L1 in-memory caches
     this.entityCache.clear();
     this.roomCache.clear();
     this.worldCache.clear();
@@ -924,6 +940,11 @@ export class CachedDatabaseAdapter implements IDatabaseAdapter {
     this.taskCache.clear();
     this.roomsByWorldCache.clear();
     this.entitiesForRoomCache.clear();
+
+    // Clear L2 external cache if configured
+    if (this.externalCache) {
+      await this.externalCache.clear(this.cacheKeyPrefix);
+    }
   }
 
   /**
