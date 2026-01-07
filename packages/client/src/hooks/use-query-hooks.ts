@@ -14,9 +14,9 @@ import { useToast } from './use-toast';
 import { getEntityId } from '@/lib/utils';
 import type {
   ServerMessage,
-  AgentWithStatus,
   MessageChannel as ClientMessageChannel,
   MessageServer as ClientMessageServer,
+  UiMessage,
 } from '@/types';
 import clientLogger from '@/lib/logger';
 import { useNavigate } from 'react-router-dom';
@@ -115,7 +115,7 @@ const useNetworkStatus = () => {
 export function useAgents(options = {}) {
   const network = useNetworkStatus();
 
-  return useQuery<{ data: { agents: Partial<AgentWithStatus>[] } }>({
+  return useQuery<{ data: { agents: Agent[] } }>({
     queryKey: ['agents'],
     queryFn: async () => {
       const result = await getClient().agents.listAgents();
@@ -148,7 +148,7 @@ export function useAgents(options = {}) {
 export function useAgent(agentId: UUID | undefined | null, options = {}) {
   const network = useNetworkStatus();
 
-  return useQuery<{ data: AgentWithStatus }>({
+  return useQuery<{ data: Agent }>({
     queryKey: ['agent', agentId],
     queryFn: async () => {
       if (!agentId) throw new Error('Agent ID is required');
@@ -336,20 +336,8 @@ export function useStopAgent() {
   });
 }
 
-// Type for UI message list items
-export type UiMessage = Content & {
-  id: UUID; // Message ID
-  name: string; // Display name of sender (USER_NAME or agent name)
-  senderId: UUID; // Central ID of the sender
-  isAgent: boolean;
-  createdAt: number; // Timestamp ms
-  isLoading?: boolean;
-  isStreaming?: boolean; // Whether the message is currently being streamed
-  channelId: UUID; // Central Channel ID
-  serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
-  prompt?: string; // The LLM prompt used to generate this message (for agents)
-  // attachments and other Content props are inherited
-};
+// Re-export UiMessage from types for backwards compatibility
+export type { UiMessage } from '@/types';
 
 /**
  * Custom hook to manage fetching and loading messages for a specific channel.
@@ -614,8 +602,15 @@ export function useAgentActions(agentId: UUID, roomId?: UUID, excludeTypes?: str
       const response = await getClient().agents.getAgentLogs(agentId, {
         limit: 50,
       });
-      // Map the API logs to client format
-      return response ? response.map(mapApiLogToClient) : [];
+      if (!response) return [];
+
+      // Filter to only include model calls (useModel:*) and actions
+      const relevantLogs = response.filter((log) => {
+        const logType = log.type || '';
+        return logType.startsWith('useModel:') || logType === 'action';
+      });
+
+      return relevantLogs.map(mapApiLogToClient);
     },
     refetchInterval: 1000,
     staleTime: 1000,
@@ -704,18 +699,6 @@ export function useAgentMemories(
       const result = channelId
         ? await getClient().memory.getRoomMemories(agentId, channelId, params)
         : await getClient().memory.getAgentMemories(agentId, params);
-      console.log('Agent memories result:', {
-        agentId,
-        tableName,
-        includeEmbedding,
-        channelId,
-        result,
-        dataLength: result.memories?.length,
-        firstMemory: result.memories?.[0],
-        hasEmbeddings: (result.memories || []).some(
-          (m: { embedding?: number[] }) => (m.embedding?.length ?? 0) > 0
-        ),
-      });
       // Map the API memories to client format
       const memories = result.memories || [];
       return memories.map(mapApiMemoryToClient);
@@ -1223,7 +1206,7 @@ export function useChannelParticipants(channelId: UUID | undefined, options = {}
         }
         return { success: true, data: participants };
       } catch (error) {
-        console.error('[useChannelParticipants] Error:', error);
+        clientLogger.error('[useChannelParticipants] Error:', error);
         return { success: false, data: [] };
       }
     },

@@ -7,13 +7,7 @@ concurrency:
 
 on:
   pull_request:
-    types: [opened, ready_for_review, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    types: [opened, ready_for_review, synchronize, reopened]
 
   # Allow manual triggering for when you specifically want a review
   workflow_dispatch:
@@ -28,27 +22,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
       id-token: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@beta
+        uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
 
-          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4)
-          # model: "claude-opus-4-20250514"
+          # Prompt for automated review (no @claude mention needed)
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
 
-          # Direct prompt for automated review (no @claude mention needed)
-          direct_prompt: |
             Review this PR. Be concise and actionable.
 
             **📝 IMPORTANT: Check and consider all previous review comments in this PR before making new suggestions. Don't repeat issues that have already been addressed or are being discussed.**
@@ -74,6 +69,7 @@ jobs:
             - Docs updated if needed
 
             **🎯 OUTPUT FORMAT:**
+            Provide detailed feedback using inline comments for specific issues.
             ```
             ❌ CRITICAL: [issue] → Fix: [specific action]
             ⚠️ IMPORTANT: [issue] → Fix: [specific action]
@@ -82,5 +78,10 @@ jobs:
 
             Skip explanations. List issues with fixes.
 
-          # Allow Claude to run all bash and gh commands during review
-          allowed_tools: 'Bash(*),Bash(gh *)'
+          # Allow cursor bot to trigger reviews
+          allowed_bots: "cursor"
+
+          # Claude CLI arguments for model and allowed tools
+          claude_args: |
+            --model claude-opus-4-5-20251101
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"

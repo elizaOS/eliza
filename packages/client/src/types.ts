@@ -1,13 +1,4 @@
-// Update the IAttachment interface
-
-import { Agent, UUID } from '@elizaos/core';
-import type {
-  Agent as CoreAgent,
-  Character as CoreCharacter,
-  Room as CoreRoom,
-  AgentStatus as CoreAgentStatus,
-  ChannelType as CoreChannelType,
-} from '@elizaos/core';
+import type { UUID, Content, ChannelType as CoreChannelType } from '@elizaos/core';
 import type { MessageServerMetadata, ChannelMetadata, MessageMetadata } from '@elizaos/api-client';
 
 /**
@@ -23,17 +14,20 @@ export interface IAttachment {
   title: string;
 }
 
-// Agent type for client-side display, extending core Agent with a string status for UI flexibility if needed,
-// but ideally aligns with CoreAgentStatus enum.
-export interface AgentWithStatus extends Partial<CoreAgent> {
-  id: UUID;
-  name: string;
-  characterName?: string; // From core Agent, which extends Character
-  bio?: string | string[];
-  status: CoreAgentStatus; // Use the enum from @elizaos/core
-  settings?: CoreCharacter['settings']; // From core Character
-  // any other client-specific properties
-}
+// Type for UI message list items
+export type UiMessage = Content & {
+  id: UUID; // Message ID
+  name: string; // Display name of sender (USER_NAME or agent name)
+  senderId: UUID; // Central ID of the sender
+  isAgent: boolean;
+  createdAt: number; // Timestamp ms
+  isLoading?: boolean;
+  isStreaming?: boolean; // Whether the message is currently being streamed
+  channelId: UUID; // Central Channel ID
+  serverId?: UUID; // Server ID (optional in some contexts, but good for full context)
+  prompt?: string; // The LLM prompt used to generate this message (for agents)
+  // attachments and other Content props are inherited
+};
 
 // Interface for agent panels (public routes)
 export interface AgentPanel {
