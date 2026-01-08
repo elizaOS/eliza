@@ -16,8 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
  * NOTE: This test expects rls-entity.test.ts to have run first (same BATCH_RLS),
  * which creates the schema and installs RLS functions.
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS. Each server's data is set up via its own connection.
+ * Uses SET app.server_id for server context (unified approach for pg and Neon).
  */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
@@ -33,33 +32,23 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Server Integration', 
   const server2Id = uuidv4();
 
   beforeAll(async () => {
-    // Setup clients - each with its own server context (application_name)
-    // No superuser needed - eliza_test is subject to RLS, so each connection
-    // can only manage data for its own server_id
-    setupClient1 = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: server1Id,
-    });
-    setupClient2 = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: server2Id,
-    });
+    // Setup clients - each with its own server context
+    setupClient1 = new Client({ connectionString: POSTGRES_URL });
+    setupClient2 = new Client({ connectionString: POSTGRES_URL });
 
     await setupClient1.connect();
     await setupClient2.connect();
+    await setupClient1.query(`SET app.server_id = '${server1Id}'`);
+    await setupClient2.query(`SET app.server_id = '${server2Id}'`);
 
     // User clients (same as setup, just clearer naming for test assertions)
-    userClient1 = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: server1Id,
-    });
-    userClient2 = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: server2Id,
-    });
+    userClient1 = new Client({ connectionString: POSTGRES_URL });
+    userClient2 = new Client({ connectionString: POSTGRES_URL });
 
     await userClient1.connect();
     await userClient2.connect();
+    await userClient1.query(`SET app.server_id = '${server1Id}'`);
+    await userClient2.query(`SET app.server_id = '${server2Id}'`);
 
     // Create servers - each setup client creates its own server
     // (servers table may not have RLS, but this pattern is consistent)

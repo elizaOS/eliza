@@ -219,7 +219,7 @@ describe('PostgresConnectionManager', () => {
     });
   });
 
-  describe('withEntityContext', () => {
+  describe('withIsolationContext', () => {
     const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
     const testEntityId = '9f984e0e-1329-43f3-b2b7-02f74a148990';
 
@@ -244,7 +244,7 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      const result = await manager.withEntityContext(testEntityId as any, async (_tx) => {
+      const result = await manager.withIsolationContext(testEntityId as any, async (_tx) => {
         return 'success';
       });
 
@@ -270,7 +270,7 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      const result = await manager.withEntityContext(null, async (_tx) => {
+      const result = await manager.withIsolationContext(null, async (_tx) => {
         return 'success';
       });
 
@@ -300,7 +300,7 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      await manager.withEntityContext(testEntityId as any, async (_tx) => {
+      await manager.withIsolationContext(testEntityId as any, async (_tx) => {
         return 'success';
       });
 
@@ -332,7 +332,7 @@ describe('PostgresConnectionManager', () => {
       }) as any;
 
       await expect(
-        manager.withEntityContext(testEntityId as any, async (_tx) => {
+        manager.withIsolationContext(testEntityId as any, async (_tx) => {
           throw new Error('Callback error');
         })
       ).rejects.toThrow('Callback error');

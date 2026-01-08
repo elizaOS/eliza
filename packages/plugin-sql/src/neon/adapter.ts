@@ -31,13 +31,13 @@ export class NeonDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Execute a callback with entity context for Entity RLS
+   * Execute a callback with full isolation context (Server RLS + Entity RLS).
    */
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     entityId: UUID | null,
     callback: (tx: NeonDatabase) => Promise<T>
   ): Promise<T> {
-    return await this.manager.withEntityContext(entityId, callback);
+    return await this.manager.withIsolationContext(entityId, callback);
   }
 
   async getEntityByIds(entityIds: UUID[]): Promise<Entity[] | null> {
