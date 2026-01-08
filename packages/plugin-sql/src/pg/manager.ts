@@ -6,8 +6,13 @@ import { logger, type UUID, validateUuid } from '@elizaos/core';
 export class PostgresConnectionManager {
   private pool: Pool;
   private db: NodePgDatabase;
+  private _closed = false;
+  private readonly connectionString: string;
+  private readonly rlsServerId?: string;
 
   constructor(connectionString: string, rlsServerId?: string) {
+    this.connectionString = connectionString;
+    this.rlsServerId = rlsServerId;
     // Production-optimized pool configuration
     // See: https://node-postgres.com/apis/pool
     const poolConfig: PoolConfig = {
@@ -145,10 +150,38 @@ export class PostgresConnectionManager {
 
   /**
    * Closes the connection pool.
+   * After calling close(), the manager is unusable and isClosed() returns true.
+   * The singleton pattern in index.node.ts will detect this and recreate the manager.
    * @returns {Promise<void>}
    * @memberof PostgresConnectionManager
    */
   public async close(): Promise<void> {
+    if (this._closed) return;
+    this._closed = true;
     await this.pool.end();
+  }
+
+  /**
+   * Check if the connection pool has been closed.
+   * Used by the singleton pattern to detect stale managers after close().
+   */
+  public isClosed(): boolean {
+    return this._closed;
+  }
+
+  /**
+   * Get the connection string for this manager.
+   * Used when recreating a manager after it was closed.
+   */
+  public getConnectionString(): string {
+    return this.connectionString;
+  }
+
+  /**
+   * Get the RLS server ID for this manager.
+   * Used when recreating a manager after it was closed.
+   */
+  public getRlsServerId(): string | undefined {
+    return this.rlsServerId;
   }
 }
