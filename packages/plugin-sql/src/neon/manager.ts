@@ -64,7 +64,7 @@ export class NeonConnectionManager {
 
   /**
    * Execute a query with full isolation context (Server RLS + Entity RLS).
-   * Sets app.server_id and app.entity_id via SET LOCAL at transaction start.
+   * Uses set_config() with parameterized queries for proper SQL injection protection.
    */
   public async withIsolationContext<T>(
     entityId: UUID | null,
@@ -74,15 +74,17 @@ export class NeonConnectionManager {
 
     return await this.db.transaction(async (tx) => {
       if (dataIsolationEnabled) {
+        // Set server context (Server RLS) using parameterized set_config()
         if (this.rlsServerId) {
-          await tx.execute(sql.raw(`SET LOCAL app.server_id = '${this.rlsServerId}'`));
+          await tx.execute(sql`SELECT set_config('app.server_id', ${this.rlsServerId}, true)`);
         }
 
+        // Set entity context (Entity RLS) using parameterized set_config()
         if (entityId) {
           if (!validateUuid(entityId)) {
             throw new Error(`Invalid UUID format for entity context: ${entityId}`);
           }
-          await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
+          await tx.execute(sql`SELECT set_config('app.entity_id', ${entityId}, true)`);
         }
       }
 
