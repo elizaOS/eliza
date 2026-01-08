@@ -37,15 +37,6 @@ export class NeonConnectionManager {
       connectionString,
     });
 
-    // Note: Neon serverless doesn't support application_name in the same way as pg
-    // RLS server context would need to be set differently if needed
-    if (rlsServerId) {
-      logger.debug(
-        { src: 'plugin:sql:neon', rlsServerId: rlsServerId.substring(0, 8) },
-        'Neon pool configured (RLS via SET LOCAL)'
-      );
-    }
-
     this.db = drizzle(this.pool, { casing: 'snake_case' });
   }
 
@@ -72,31 +63,26 @@ export class NeonConnectionManager {
   }
 
   /**
-   * Execute a query with entity context for Entity RLS.
-   * Sets app.entity_id before executing the callback.
+   * Execute a query with full isolation context (Server RLS + Entity RLS).
+   * Sets app.server_id and app.entity_id via SET LOCAL at transaction start.
    */
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     entityId: UUID | null,
     callback: (tx: NeonDatabase) => Promise<T>
   ): Promise<T> {
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
 
     return await this.db.transaction(async (tx) => {
-      if (dataIsolationEnabled && entityId) {
-        if (!validateUuid(entityId)) {
-          throw new Error(`Invalid UUID format for entity context: ${entityId}`);
+      if (dataIsolationEnabled) {
+        if (this.rlsServerId) {
+          await tx.execute(sql.raw(`SET LOCAL app.server_id = '${this.rlsServerId}'`));
         }
 
-        try {
+        if (entityId) {
+          if (!validateUuid(entityId)) {
+            throw new Error(`Invalid UUID format for entity context: ${entityId}`);
+          }
           await tx.execute(sql.raw(`SET LOCAL app.entity_id = '${entityId}'`));
-          logger.debug(`[Neon Entity Context] Set app.entity_id = ${entityId}`);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          logger.error(
-            { error, entityId },
-            `[Neon Entity Context] Failed to set entity context: ${errorMessage}`
-          );
-          throw error;
         }
       }
 
