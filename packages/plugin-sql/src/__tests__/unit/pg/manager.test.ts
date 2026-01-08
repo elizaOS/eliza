@@ -149,6 +149,74 @@ describe('PostgresConnectionManager', () => {
 
       await expect(manager.close()).rejects.toThrow('Close failed');
     });
+
+    it('should set isClosed to true after close', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      expect(manager.isClosed()).toBe(false);
+      await manager.close();
+      expect(manager.isClosed()).toBe(true);
+    });
+
+    it('should be idempotent - calling close twice only calls pool.end once', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      await manager.close();
+      await manager.close();
+
+      expect(mockPoolInstance.end).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('isClosed', () => {
+    it('should return false initially', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.isClosed()).toBe(false);
+    });
+
+    it('should return true after close', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      await manager.close();
+      expect(manager.isClosed()).toBe(true);
+    });
+  });
+
+  describe('getConnectionString', () => {
+    it('should return the connection string used to create the manager', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.getConnectionString()).toBe(connectionUrl);
+    });
+  });
+
+  describe('getRlsServerId', () => {
+    it('should return undefined when no RLS server ID is provided', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.getRlsServerId()).toBeUndefined();
+    });
+
+    it('should return the RLS server ID when provided', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const rlsServerId = '12345678-1234-1234-1234-123456789012';
+      const manager = new PostgresConnectionManager(connectionUrl, rlsServerId);
+
+      expect(manager.getRlsServerId()).toBe(rlsServerId);
+    });
   });
 
   describe('withEntityContext', () => {
