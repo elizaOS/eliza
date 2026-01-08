@@ -281,7 +281,7 @@ describe('PostgresConnectionManager', () => {
       db.transaction = originalTransaction;
     });
 
-    it('should execute SET LOCAL with raw SQL (not parameterized) when isolation is enabled', async () => {
+    it('should execute set_config with parameterized SQL when isolation is enabled', async () => {
       process.env.ENABLE_DATA_ISOLATION = 'true';
 
       const manager = new PostgresConnectionManager(connectionUrl);
@@ -306,12 +306,12 @@ describe('PostgresConnectionManager', () => {
 
       expect(mockTx.execute).toHaveBeenCalled();
 
-      // Verify the query uses sql.raw() (inline value) not parameterized
-      // sql.raw() produces a query with the value embedded in queryChunks[0].value[0]
+      // Verify the query uses set_config() with parameterized values
+      // Drizzle sql template produces a query with the value in params array
       expect(executedQuery).toBeDefined();
       const queryStr = executedQuery?.queryChunks?.[0]?.value?.[0] || String(executedQuery);
-      expect(queryStr).toContain(testEntityId);
-      expect(queryStr).not.toContain('$1');
+      expect(queryStr).toContain('set_config');
+      expect(queryStr).toContain('app.entity_id');
 
       db.transaction = originalTransaction;
     });
