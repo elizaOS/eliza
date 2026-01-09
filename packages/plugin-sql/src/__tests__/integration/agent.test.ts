@@ -1,20 +1,27 @@
-import { type Agent, stringToUuid, type UUID } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
-import { PgDatabaseAdapter } from '../../pg/adapter';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-import { agentTable } from '../../schema';
-import { mockCharacter } from '../fixtures';
-import { createIsolatedTestDatabase, createTestDatabase } from '../test-helpers';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
+import { type Agent, stringToUuid, type UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { PgDatabaseAdapter } from "../../pg/adapter";
+import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { agentTable } from "../../schema";
+import { mockCharacter } from "../fixtures";
+import { createIsolatedTestDatabase } from "../test-helpers";
 
-describe('Agent Integration Tests', () => {
+describe("Agent Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testAgent: Agent;
 
   beforeAll(async () => {
-    const setup = await createIsolatedTestDatabase('agent-tests');
+    const setup = await createIsolatedTestDatabase("agent-tests");
     adapter = setup.adapter;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
@@ -24,15 +31,15 @@ describe('Agent Integration Tests', () => {
     // Reset or seed data before each test if needed
     testAgent = {
       id: testAgentId,
-      name: 'Test Agent',
-      bio: 'A test agent for running tests.',
-      system: 'You are a helpful assistant.',
+      name: "Test Agent",
+      bio: "A test agent for running tests.",
+      system: "You are a helpful assistant.",
       plugins: [],
-      settings: { testSetting: 'test value' },
-      createdAt: new Date().getTime(),
-      updatedAt: new Date().getTime(),
+      settings: { testSetting: "test value" },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
       enabled: true,
-      username: 'test_agent',
+      username: "test_agent",
     };
   });
 
@@ -42,10 +49,15 @@ describe('Agent Integration Tests', () => {
     }
   });
 
-  describe('Agent Tests', () => {
+  describe("Agent Tests", () => {
     beforeEach(async () => {
       // Clean up agents table before each test
-      await adapter.getDatabase().delete(agentTable);
+      const db = adapter.getDatabase() as {
+        delete: (table: typeof agentTable) => Promise<void>;
+      };
+      if (db && typeof db.delete === "function") {
+        await db.delete(agentTable);
+      }
       // Re-create the test agent
       await adapter.createAgent({
         id: testAgentId,
@@ -53,18 +65,18 @@ describe('Agent Integration Tests', () => {
       } as Agent);
     });
 
-    describe('createAgent', () => {
-      it('should successfully create an agent', async () => {
-        const newAgentId = stringToUuid('new-test-agent-create');
+    describe("createAgent", () => {
+      it("should successfully create an agent", async () => {
+        const newAgentId = stringToUuid("new-test-agent-create");
         const newAgent: Agent = {
           id: newAgentId,
-          name: 'Integration Test Create',
+          name: "Integration Test Create",
           enabled: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          username: 'integration-create',
-          system: 'System message',
-          bio: ['Bio line 1'],
+          username: "integration-create",
+          system: "System message",
+          bio: ["Bio line 1"],
           messageExamples: [],
           postExamples: [],
           topics: [],
@@ -83,8 +95,8 @@ describe('Agent Integration Tests', () => {
         expect(createdAgent?.name).toBe(newAgent.name);
       });
 
-      it('should allow creating multiple agents with the same name (UUID-based identification)', async () => {
-        const sharedName = 'duplicate-name';
+      it("should allow creating multiple agents with the same name (UUID-based identification)", async () => {
+        const sharedName = "duplicate-name";
         const agent1Id = uuidv4() as UUID; // Use random UUID
         const agent1: Agent = {
           id: agent1Id,
@@ -92,9 +104,9 @@ describe('Agent Integration Tests', () => {
           enabled: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          username: 'duplicate-name-1',
-          system: 'System message',
-          bio: ['First agent with this name'],
+          username: "duplicate-name-1",
+          system: "System message",
+          bio: ["First agent with this name"],
           messageExamples: [],
           postExamples: [],
           topics: [],
@@ -114,9 +126,9 @@ describe('Agent Integration Tests', () => {
           enabled: true,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          username: 'duplicate-name-2',
-          system: 'System message',
-          bio: ['Second agent with this name'],
+          username: "duplicate-name-2",
+          system: "System message",
+          bio: ["Second agent with this name"],
           messageExamples: [],
           postExamples: [],
           topics: [],
@@ -138,15 +150,15 @@ describe('Agent Integration Tests', () => {
         expect(retrievedAgent1?.name).toBe(sharedName);
         expect(retrievedAgent2?.name).toBe(sharedName);
         expect(retrievedAgent1?.id).not.toBe(retrievedAgent2?.id);
-        expect(retrievedAgent1?.bio).toContain('First agent with this name');
-        expect(retrievedAgent2?.bio).toContain('Second agent with this name');
+        expect(retrievedAgent1?.bio).toContain("First agent with this name");
+        expect(retrievedAgent2?.bio).toContain("Second agent with this name");
       });
 
-      it('should return false when creating an agent with a duplicate ID', async () => {
+      it("should return false when creating an agent with a duplicate ID", async () => {
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Duplicate ID Test 1',
+          name: "Duplicate ID Test 1",
         };
         const created = await adapter.createAgent(agent1);
         expect(created).toBe(true);
@@ -154,45 +166,45 @@ describe('Agent Integration Tests', () => {
         const agent2 = {
           ...testAgent,
           id: agent1.id, // Same ID
-          name: 'Duplicate ID Test 2',
+          name: "Duplicate ID Test 2",
         };
 
         const result = await adapter.createAgent(agent2);
         expect(result).toBe(false);
       });
 
-      it('should create agent with complex settings structure', async () => {
+      it("should create agent with complex settings structure", async () => {
         // Create an agent with complex settings
         const complexSettings = {
           apiSettings: {
             endpoints: {
-              primary: 'https://api.example.com',
-              secondary: 'https://backup.example.com',
+              primary: "https://api.example.com",
+              secondary: "https://backup.example.com",
             },
             auth: {
-              type: 'oauth',
+              type: "oauth",
               tokens: {
-                access: 'access-token',
-                refresh: 'refresh-token',
+                access: "access-token",
+                refresh: "refresh-token",
               },
             },
           },
           preferences: {
-            theme: 'dark',
+            theme: "dark",
             notifications: true,
-            languages: ['en', 'fr', 'es'],
+            languages: ["en", "fr", "es"],
           },
           features: [
-            { id: 'feature1', enabled: true, config: { timeout: 1000 } },
-            { id: 'feature2', enabled: false },
+            { id: "feature1", enabled: true, config: { timeout: 1000 } },
+            { id: "feature2", enabled: false },
           ],
         };
 
-        const newAgent = {
+        const newAgent: Agent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Complex Settings',
-          settings: complexSettings,
+          name: "Integration Test Complex Settings",
+          settings: complexSettings as Record<string, unknown>,
         };
 
         const result = await adapter.createAgent(newAgent);
@@ -200,25 +212,36 @@ describe('Agent Integration Tests', () => {
 
         // Verify the complex settings were stored correctly
         const createdAgent = await adapter.getAgent(newAgent.id);
-        expect(createdAgent?.settings?.apiSettings?.['endpoints']?.primary).toBe(
-          'https://api.example.com'
-        );
-        expect(createdAgent?.settings?.apiSettings?.['auth']?.tokens?.refresh).toBe(
-          'refresh-token'
-        );
-        expect(createdAgent?.settings?.preferences?.['languages']).toEqual(['en', 'fr', 'es']);
-        expect(createdAgent?.settings?.features?.[0]?.id).toBe('feature1');
+        const settings = createdAgent?.settings as
+          | Record<string, unknown>
+          | undefined;
+        const apiSettings = settings?.apiSettings as
+          | Record<string, unknown>
+          | undefined;
+        const endpoints = apiSettings?.endpoints as
+          | Record<string, unknown>
+          | undefined;
+        const auth = apiSettings?.auth as Record<string, unknown> | undefined;
+        const tokens = auth?.tokens as Record<string, unknown> | undefined;
+        expect(endpoints?.primary).toBe("https://api.example.com");
+        expect(tokens?.refresh).toBe("refresh-token");
+        expect(createdAgent?.settings?.preferences?.languages).toEqual([
+          "en",
+          "fr",
+          "es",
+        ]);
+        expect(createdAgent?.settings?.features?.[0]?.id).toBe("feature1");
         expect(createdAgent?.settings?.features?.[1]?.enabled).toBe(false);
       });
 
-      it('should handle creating agent with missing optional fields', async () => {
+      it("should handle creating agent with missing optional fields", async () => {
         // Create an agent with minimal required fields
         const minimalAgent = {
           id: uuidv4() as UUID,
-          name: 'Minimal Agent',
-          bio: 'Just the required fields',
-          createdAt: new Date().getTime(),
-          updatedAt: new Date().getTime(),
+          name: "Minimal Agent",
+          bio: "Just the required fields",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
 
         const result = await adapter.createAgent(minimalAgent);
@@ -233,13 +256,13 @@ describe('Agent Integration Tests', () => {
       });
     });
 
-    describe('getAgent and getAgents', () => {
-      it('should retrieve an agent by ID', async () => {
+    describe("getAgent and getAgents", () => {
+      it("should retrieve an agent by ID", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Get Agent',
+          name: "Integration Test Get Agent",
         };
 
         await adapter.createAgent(newAgent);
@@ -252,7 +275,7 @@ describe('Agent Integration Tests', () => {
         expect(result?.name).toBe(newAgent.name);
       });
 
-      it('should return null for non-existent agent ID', async () => {
+      it("should return null for non-existent agent ID", async () => {
         const nonExistentId = uuidv4() as UUID;
 
         const result = await adapter.getAgent(nonExistentId);
@@ -260,18 +283,18 @@ describe('Agent Integration Tests', () => {
         expect(result).toBeNull();
       });
 
-      it('should retrieve all agents', async () => {
+      it("should retrieve all agents", async () => {
         // Create multiple agents
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Agent 1',
+          name: "Integration Test Agent 1",
         };
 
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Agent 2',
+          name: "Integration Test Agent 2",
         };
 
         await adapter.createAgent(agent1);
@@ -281,7 +304,9 @@ describe('Agent Integration Tests', () => {
         const agents = await adapter.getAgents();
 
         // Verify at least our test agents are included
-        const testAgents = agents.filter((a) => a.name === agent1.name || a.name === agent2.name);
+        const testAgents = agents.filter(
+          (a) => a.name === agent1.name || a.name === agent2.name,
+        );
 
         expect(testAgents.length).toBeGreaterThanOrEqual(2);
         expect(testAgents.some((a) => a.id === agent1.id)).toBe(true);
@@ -289,22 +314,22 @@ describe('Agent Integration Tests', () => {
       });
     });
 
-    describe('updateAgent', () => {
-      it('should update an existing agent', async () => {
+    describe("updateAgent", () => {
+      it("should update an existing agent", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Update',
+          name: "Integration Test Update",
         };
 
         await adapter.createAgent(newAgent);
 
         // Update the agent
         const updateData: Partial<Agent> = {
-          bio: 'Updated bio',
+          bio: "Updated bio",
           settings: {
-            updatedSetting: 'new value',
+            updatedSetting: "new value",
           },
         };
 
@@ -315,18 +340,21 @@ describe('Agent Integration Tests', () => {
         // Verify the agent was updated
         const updatedAgent = await adapter.getAgent(newAgent.id);
         expect(updatedAgent?.bio).toBe(updateData.bio as string);
-        expect(updatedAgent?.settings).toHaveProperty('updatedSetting', 'new value');
+        expect(updatedAgent?.settings).toHaveProperty(
+          "updatedSetting",
+          "new value",
+        );
       });
 
-      it('should merge settings when updating', async () => {
+      it("should merge settings when updating", async () => {
         // Create an agent with initial settings
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Settings Merge',
+          name: "Integration Test Settings Merge",
           settings: {
-            initialSetting: 'initial value',
-            toBeKept: 'keep this value',
+            initialSetting: "initial value",
+            toBeKept: "keep this value",
           },
         };
 
@@ -335,8 +363,8 @@ describe('Agent Integration Tests', () => {
         // Update with new settings
         const updateData: Partial<Agent> = {
           settings: {
-            initialSetting: 'updated value', // Update existing setting
-            newSetting: 'new value', // Add new setting
+            initialSetting: "updated value", // Update existing setting
+            newSetting: "new value", // Add new setting
             // toBeKept is not mentioned, should be kept
           },
         };
@@ -345,24 +373,33 @@ describe('Agent Integration Tests', () => {
 
         // Verify the settings were properly merged
         const updatedAgent = await adapter.getAgent(newAgent.id);
-        expect(updatedAgent?.settings).toHaveProperty('initialSetting', 'updated value');
-        expect(updatedAgent?.settings).toHaveProperty('newSetting', 'new value');
-        expect(updatedAgent?.settings).toHaveProperty('toBeKept', 'keep this value');
+        expect(updatedAgent?.settings).toHaveProperty(
+          "initialSetting",
+          "updated value",
+        );
+        expect(updatedAgent?.settings).toHaveProperty(
+          "newSetting",
+          "new value",
+        );
+        expect(updatedAgent?.settings).toHaveProperty(
+          "toBeKept",
+          "keep this value",
+        );
       });
 
-      it('should remove settings when set to null', async () => {
+      it("should remove settings when set to null", async () => {
         // Create an agent with initial settings
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Settings Remove',
+          name: "Integration Test Settings Remove",
           settings: {
-            initialSetting: 'initial value',
-            toBeRemoved: 'remove this value',
-            toBeKept: 'keep this value',
+            initialSetting: "initial value",
+            toBeRemoved: "remove this value",
+            toBeKept: "keep this value",
             secrets: {
-              password: 'secret123',
-              token: 'token123',
+              password: "secret123",
+              token: "token123",
             },
           },
         };
@@ -375,7 +412,7 @@ describe('Agent Integration Tests', () => {
             toBeRemoved: null, // This should be removed
             secrets: {
               password: null, // This should be removed
-              token: 'newToken', // This should be updated
+              token: "newToken", // This should be updated
             },
           } as any,
         };
@@ -384,24 +421,33 @@ describe('Agent Integration Tests', () => {
 
         // Verify the settings were properly updated
         const updatedAgent = await adapter.getAgent(newAgent.id);
-        expect(updatedAgent?.settings).toHaveProperty('initialSetting', 'initial value');
-        expect(updatedAgent?.settings).toHaveProperty('toBeKept', 'keep this value');
-        expect(updatedAgent?.settings).not.toHaveProperty('toBeRemoved');
+        expect(updatedAgent?.settings).toHaveProperty(
+          "initialSetting",
+          "initial value",
+        );
+        expect(updatedAgent?.settings).toHaveProperty(
+          "toBeKept",
+          "keep this value",
+        );
+        expect(updatedAgent?.settings).not.toHaveProperty("toBeRemoved");
         // Check secrets only if they exist
-        if (updatedAgent?.settings && updatedAgent.settings.secrets) {
-          expect(updatedAgent.settings.secrets).not.toHaveProperty('password');
-          expect(updatedAgent.settings.secrets).toHaveProperty('token', 'newToken');
+        if (updatedAgent?.settings?.secrets) {
+          expect(updatedAgent.settings.secrets).not.toHaveProperty("password");
+          expect(updatedAgent.settings.secrets).toHaveProperty(
+            "token",
+            "newToken",
+          );
         }
       });
 
-      it('should update only non-settings fields', async () => {
+      it("should update only non-settings fields", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Update Non-Settings',
+          name: "Integration Test Update Non-Settings",
           settings: {
-            initialSetting: 'should remain unchanged',
+            initialSetting: "should remain unchanged",
           },
         };
 
@@ -409,8 +455,8 @@ describe('Agent Integration Tests', () => {
 
         // Update only non-settings fields
         const updateData: Partial<Agent> = {
-          bio: 'Updated bio only',
-          username: 'new_username',
+          bio: "Updated bio only",
+          username: "new_username",
         };
 
         const result = await adapter.updateAgent(newAgent.id, updateData);
@@ -420,16 +466,19 @@ describe('Agent Integration Tests', () => {
         const updatedAgent = await adapter.getAgent(newAgent.id);
         expect(updatedAgent?.bio).toBe(updateData.bio as string);
         expect(updatedAgent?.username).toBe(updateData.username as string);
-        expect(updatedAgent?.settings).toHaveProperty('initialSetting', 'should remain unchanged');
+        expect(updatedAgent?.settings).toHaveProperty(
+          "initialSetting",
+          "should remain unchanged",
+        );
       });
 
-      it('should update only settings fields', async () => {
+      it("should update only settings fields", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Update Settings Only',
-          bio: 'Original bio',
+          name: "Integration Test Update Settings Only",
+          bio: "Original bio",
         };
 
         await adapter.createAgent(newAgent);
@@ -437,7 +486,7 @@ describe('Agent Integration Tests', () => {
         // Update only settings
         const updateData: Partial<Agent> = {
           settings: {
-            newSetting: 'settings only update',
+            newSetting: "settings only update",
           },
         };
 
@@ -447,32 +496,38 @@ describe('Agent Integration Tests', () => {
         // Verify the agent was updated correctly
         const updatedAgent = await adapter.getAgent(newAgent.id);
         expect(updatedAgent?.bio).toBe(newAgent.bio); // Bio should remain unchanged
-        expect(updatedAgent?.settings).toHaveProperty('newSetting', 'settings only update');
-        expect(updatedAgent?.settings).toHaveProperty('testSetting', 'test value'); // Original setting should be kept
+        expect(updatedAgent?.settings).toHaveProperty(
+          "newSetting",
+          "settings only update",
+        );
+        expect(updatedAgent?.settings).toHaveProperty(
+          "testSetting",
+          "test value",
+        ); // Original setting should be kept
       });
 
-      it('should remove top-level and nested secret settings when set to null', async () => {
+      it("should remove top-level and nested secret settings when set to null", async () => {
         // Create an agent with initial settings
         const agentId = uuidv4() as UUID;
         const initialAgent = {
           id: agentId,
-          name: 'Test Agent Settings Removal',
-          username: 'test_settings_removal',
-          bio: 'test bio',
+          name: "Test Agent Settings Removal",
+          username: "test_settings_removal",
+          bio: "test bio",
           settings: {
-            topLevelToBeRemoved: 'keep this for a moment',
-            anotherTopLevel: 'this should stay',
+            topLevelToBeRemoved: "keep this for a moment",
+            anotherTopLevel: "this should stay",
             secrets: {
-              secretKeyToRemove: 'secret value to be removed',
-              anotherSecret: 'this secret should also stay',
+              secretKeyToRemove: "secret value to be removed",
+              anotherSecret: "this secret should also stay",
             },
             nestedObject: {
-              prop1: 'value1',
-              propToRemove: 'will be removed',
+              prop1: "value1",
+              propToRemove: "will be removed",
             },
           },
-          createdAt: new Date().getTime(),
-          updatedAt: new Date().getTime(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
         await adapter.createAgent(initialAgent);
 
@@ -492,46 +547,57 @@ describe('Agent Integration Tests', () => {
         await adapter.updateAgent(agentId, updateData as any);
 
         const updatedAgent = await adapter.getAgent(agentId);
-        expect(updatedAgent?.settings).not.toHaveProperty('topLevelToBeRemoved');
-        expect(updatedAgent?.settings?.anotherTopLevel).toBe('this should stay');
-        expect(updatedAgent?.settings?.secrets).not.toHaveProperty('secretKeyToRemove');
-        expect(updatedAgent?.settings?.secrets?.['anotherSecret']).toBe(
-          'this secret should also stay'
+        expect(updatedAgent?.settings).not.toHaveProperty(
+          "topLevelToBeRemoved",
         );
-        expect(updatedAgent?.settings?.nestedObject).not.toHaveProperty('propToRemove');
-        expect(updatedAgent?.settings?.nestedObject?.['prop1']).toBe('value1');
+        expect(updatedAgent?.settings?.anotherTopLevel).toBe(
+          "this should stay",
+        );
+        expect(updatedAgent?.settings?.secrets).not.toHaveProperty(
+          "secretKeyToRemove",
+        );
+        expect(updatedAgent?.settings?.secrets?.anotherSecret).toBe(
+          "this secret should also stay",
+        );
+        expect(updatedAgent?.settings?.nestedObject).not.toHaveProperty(
+          "propToRemove",
+        );
+        expect(updatedAgent?.settings?.nestedObject?.prop1).toBe("value1");
       });
 
-      it('should correctly remove specific secrets from a complex settings object when set to null', async () => {
+      it("should correctly remove specific secrets from a complex settings object when set to null", async () => {
         const agentId = uuidv4() as UUID;
         const initialAgentSettings = {
-          avatar: 'data:image/jpeg;base64,short_mock_base64_string',
+          avatar: "data:image/jpeg;base64,short_mock_base64_string",
           secrets: {
-            DISCORD_API_TOKEN: 'discord_token_old',
-            ELEVENLABS_VOICE_ID: 'elevenlabs_voice_id_old',
-            ELEVENLABS_XI_API_KEY: 'elevenlabs_xi_api_key_old',
-            DISCORD_APPLICATION_ID: 'discord_app_id_old',
-            PERPLEXITY_API_KEY: 'perplexity_api_key_to_keep',
+            DISCORD_API_TOKEN: "discord_token_old",
+            ELEVENLABS_VOICE_ID: "elevenlabs_voice_id_old",
+            ELEVENLABS_XI_API_KEY: "elevenlabs_xi_api_key_old",
+            DISCORD_APPLICATION_ID: "discord_app_id_old",
+            PERPLEXITY_API_KEY: "perplexity_api_key_to_keep",
           },
-          someOtherSetting: 'should_remain',
+          someOtherSetting: "should_remain",
         };
 
         const agentToCreate: Agent = {
           id: agentId,
-          name: 'Complex Secrets Agent',
-          bio: 'This is a test agent with complex secrets',
-          username: 'complex_secrets_agent',
+          name: "Complex Secrets Agent",
+          bio: "This is a test agent with complex secrets",
+          username: "complex_secrets_agent",
           settings: initialAgentSettings,
-          createdAt: new Date().getTime(),
-          updatedAt: new Date().getTime(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
         };
 
         const creationResult = await adapter.createAgent(agentToCreate);
-        expect(creationResult, 'Agent creation failed').toBe(true);
+        expect(creationResult, "Agent creation failed").toBe(true);
 
         // Verify agent was created before update
         const agentBeforeUpdate = await adapter.getAgent(agentId);
-        expect(agentBeforeUpdate, 'Agent not found after creation, before update').not.toBeNull();
+        expect(
+          agentBeforeUpdate,
+          "Agent not found after creation, before update",
+        ).not.toBeNull();
 
         // Update: set some secrets to null, and update one
         const updatePayload: Partial<Agent> = {
@@ -539,42 +605,49 @@ describe('Agent Integration Tests', () => {
             secrets: {
               DISCORD_API_TOKEN: null, // Remove
               ELEVENLABS_VOICE_ID: null, // Remove
-              ELEVENLABS_XI_API_KEY: 'elevenlabs_xi_api_key_new', // Update
+              ELEVENLABS_XI_API_KEY: "elevenlabs_xi_api_key_new", // Update
             },
           },
         };
 
-        const updateResult = await adapter.updateAgent(agentId, updatePayload as any);
-        expect(updateResult, 'Agent update failed').toBe(true);
+        const updateResult = await adapter.updateAgent(
+          agentId,
+          updatePayload as any,
+        );
+        expect(updateResult, "Agent update failed").toBe(true);
 
         const updatedAgent = await adapter.getAgent(agentId);
-        expect(updatedAgent, 'Agent not found after update').not.toBeNull();
+        expect(updatedAgent, "Agent not found after update").not.toBeNull();
         expect(updatedAgent?.settings).toBeDefined();
 
         // Check avatar and other settings are preserved
-        expect(updatedAgent?.settings?.avatar).toBe(initialAgentSettings.avatar);
-        expect(updatedAgent?.settings?.someOtherSetting).toBe('should_remain');
+        expect(updatedAgent?.settings?.avatar).toBe(
+          initialAgentSettings.avatar,
+        );
+        expect(updatedAgent?.settings?.someOtherSetting).toBe("should_remain");
 
         // Check secrets
         const updatedSecrets = updatedAgent?.settings?.secrets;
         expect(updatedSecrets).toBeDefined();
-        expect(updatedSecrets).not.toHaveProperty('DISCORD_API_TOKEN');
-        expect(updatedSecrets).not.toHaveProperty('ELEVENLABS_VOICE_ID');
-        expect(updatedSecrets?.['ELEVENLABS_XI_API_KEY']).toBe('elevenlabs_xi_api_key_new');
-        expect(updatedSecrets?.['DISCORD_APPLICATION_ID']).toBe(
-          initialAgentSettings.secrets.DISCORD_APPLICATION_ID
+        expect(updatedSecrets).not.toHaveProperty("DISCORD_API_TOKEN");
+        expect(updatedSecrets).not.toHaveProperty("ELEVENLABS_VOICE_ID");
+        expect(updatedSecrets?.ELEVENLABS_XI_API_KEY).toBe(
+          "elevenlabs_xi_api_key_new",
         );
-        expect(updatedSecrets?.['PERPLEXITY_API_KEY']).toBe(
-          initialAgentSettings.secrets.PERPLEXITY_API_KEY
+        expect(updatedSecrets?.DISCORD_APPLICATION_ID).toBe(
+          initialAgentSettings.secrets.DISCORD_APPLICATION_ID,
+        );
+        expect(updatedSecrets?.PERPLEXITY_API_KEY).toBe(
+          initialAgentSettings.secrets.PERPLEXITY_API_KEY,
         );
       });
 
-      it('should handle updating with empty object', async () => {
+      it("should handle updating with empty object", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Empty Update',
+          name: "Integration Test Empty Update",
         };
 
         await adapter.createAgent(newAgent);
@@ -591,19 +664,19 @@ describe('Agent Integration Tests', () => {
         expect(updatedAgent?.bio).toBe(newAgent.bio);
       });
 
-      it('should handle deep nested settings objects', async () => {
+      it("should handle deep nested settings objects", async () => {
         // Create an agent with nested settings
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Deep Nested Settings',
+          name: "Integration Test Deep Nested Settings",
           settings: {
             level1: {
               level2: {
-                level3: 'deep value',
+                level3: "deep value",
                 toKeep: true,
               },
-              sibling: 'sibling value',
+              sibling: "sibling value",
             },
           },
         };
@@ -615,8 +688,8 @@ describe('Agent Integration Tests', () => {
           settings: {
             level1: {
               level2: {
-                level3: 'updated deep value',
-                newProperty: 'new nested value',
+                level3: "updated deep value",
+                newProperty: "new nested value",
               },
             },
           },
@@ -626,26 +699,26 @@ describe('Agent Integration Tests', () => {
 
         // Verify the deep settings were properly merged
         const updatedAgent = await adapter.getAgent(newAgent.id);
-        if (updatedAgent?.settings && updatedAgent.settings.level1) {
+        if (updatedAgent?.settings?.level1) {
           const level1 = updatedAgent.settings.level1 as any;
-          expect(level1.sibling).toBe('sibling value'); // Should be kept
+          expect(level1.sibling).toBe("sibling value"); // Should be kept
 
           if (level1.level2) {
-            expect(level1.level2.level3).toBe('updated deep value'); // Should be updated
-            expect(level1.level2.newProperty).toBe('new nested value'); // Should be added
+            expect(level1.level2.level3).toBe("updated deep value"); // Should be updated
+            expect(level1.level2.newProperty).toBe("new nested value"); // Should be added
             expect(level1.level2.toKeep).toBe(true); // Should be kept
           }
         }
       });
 
-      it('should handle array values in settings', async () => {
+      it("should handle array values in settings", async () => {
         // Create an agent with array in settings
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Array Settings',
+          name: "Integration Test Array Settings",
           settings: {
-            tags: ['tag1', 'tag2', 'tag3'],
+            tags: ["tag1", "tag2", "tag3"],
             config: {
               options: [1, 2, 3],
             },
@@ -657,7 +730,7 @@ describe('Agent Integration Tests', () => {
         // Update arrays in settings
         const updateData: Partial<Agent> = {
           settings: {
-            tags: ['new-tag1', 'new-tag2'], // Replace entire array
+            tags: ["new-tag1", "new-tag2"], // Replace entire array
             config: {
               options: [4, 5, 6, 7], // Replace nested array
             },
@@ -668,18 +741,20 @@ describe('Agent Integration Tests', () => {
 
         // Verify arrays were properly updated
         const updatedAgent = await adapter.getAgent(newAgent.id);
-        expect(updatedAgent?.settings?.tags).toEqual(['new-tag1', 'new-tag2']);
+        expect(updatedAgent?.settings?.tags).toEqual(["new-tag1", "new-tag2"]);
         if (updatedAgent?.settings?.config) {
-          expect((updatedAgent.settings.config as any).options).toEqual([4, 5, 6, 7]);
+          expect((updatedAgent.settings.config as any).options).toEqual([
+            4, 5, 6, 7,
+          ]);
         }
       });
 
-      it('should handle non-existent agent ID', async () => {
+      it("should handle non-existent agent ID", async () => {
         const nonExistentId = uuidv4() as UUID;
 
         // Try to update non-existent agent
         const updateData: Partial<Agent> = {
-          bio: 'This should not be saved',
+          bio: "This should not be saved",
         };
 
         const result = await adapter.updateAgent(nonExistentId, updateData);
@@ -693,13 +768,13 @@ describe('Agent Integration Tests', () => {
       });
     });
 
-    describe('deleteAgent', () => {
-      it('should delete an agent and return true', async () => {
+    describe("deleteAgent", () => {
+      it("should delete an agent and return true", async () => {
         // Create an agent first
         const newAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Delete',
+          name: "Integration Test Delete",
         };
 
         await adapter.createAgent(newAgent);
@@ -714,9 +789,9 @@ describe('Agent Integration Tests', () => {
         expect(deletedAgent).toBeNull();
       });
 
-      it('should cascade delete all related data when deleting an agent', async () => {
+      it("should cascade delete all related data when deleting an agent", async () => {
         // Create a separate test instance for cascade delete test
-        const setup = await createIsolatedTestDatabase('agent-cascade-delete');
+        const setup = await createIsolatedTestDatabase("agent-cascade-delete");
         const cascadeAdapter = setup.adapter;
         const agentId = setup.testAgentId;
 
@@ -727,7 +802,7 @@ describe('Agent Integration Tests', () => {
           const worldId = uuidv4() as UUID;
           await cascadeAdapter.createWorld({
             id: worldId,
-            name: 'Test World',
+            name: "Test World",
             agentId: agentId,
             serverId: uuidv4() as UUID,
           });
@@ -738,23 +813,23 @@ describe('Agent Integration Tests', () => {
           await cascadeAdapter.createRooms([
             {
               id: roomId1,
-              name: 'Test Room 1',
+              name: "Test Room 1",
               agentId: agentId,
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: 'PUBLIC' as any,
-              source: 'test',
+              type: "PUBLIC" as any,
+              source: "test",
             },
             {
               id: roomId2,
-              name: 'Test Room 2',
+              name: "Test Room 2",
               agentId: agentId,
               serverId: uuidv4() as UUID,
               worldId: worldId,
               channelId: uuidv4() as UUID,
-              type: 'PRIVATE' as any,
-              source: 'test',
+              type: "PRIVATE" as any,
+              source: "test",
             },
           ]);
 
@@ -765,14 +840,14 @@ describe('Agent Integration Tests', () => {
             {
               id: entityId1,
               agentId: agentId,
-              names: ['Entity 1'],
-              metadata: { type: 'test' },
+              names: ["Entity 1"],
+              metadata: { type: "test" },
             },
             {
               id: entityId2,
               agentId: agentId,
-              names: ['Entity 2'],
-              metadata: { type: 'test' },
+              names: ["Entity 2"],
+              metadata: { type: "test" },
             },
           ]);
 
@@ -783,11 +858,11 @@ describe('Agent Integration Tests', () => {
               agentId: agentId,
               entityId: entityId1,
               roomId: roomId1,
-              content: { text: 'Test memory 1' },
+              content: { text: "Test memory 1" },
               createdAt: Date.now(),
               embedding: new Array(384).fill(0.1), // Create a test embedding
             },
-            'test_memories'
+            "test_memories",
           );
 
           const memoryId2 = await cascadeAdapter.createMemory(
@@ -796,19 +871,19 @@ describe('Agent Integration Tests', () => {
               agentId: agentId,
               entityId: entityId2,
               roomId: roomId2,
-              content: { text: 'Test memory 2' },
+              content: { text: "Test memory 2" },
               createdAt: Date.now(),
               embedding: new Array(384).fill(0.2), // Create a test embedding
             },
-            'test_memories'
+            "test_memories",
           );
 
           // Create components
           await cascadeAdapter.createComponent({
             id: uuidv4() as UUID,
             entityId: entityId1,
-            type: 'test_component',
-            data: { value: 'test' },
+            type: "test_component",
+            data: { value: "test" },
             agentId: agentId,
             roomId: roomId1,
             worldId: worldId,
@@ -824,40 +899,47 @@ describe('Agent Integration Tests', () => {
           await cascadeAdapter.createRelationship({
             sourceEntityId: entityId1,
             targetEntityId: entityId2,
-            tags: ['test_relationship'],
+            tags: ["test_relationship"],
             metadata: { strength: 0.8 },
           });
 
           // Create tasks
           const taskId = await cascadeAdapter.createTask({
             id: uuidv4() as UUID,
-            name: 'Test Task',
-            description: 'A test task',
+            name: "Test Task",
+            description: "A test task",
             roomId: roomId1,
             worldId: worldId,
-            tags: ['test'],
-            metadata: { priority: 'high' },
+            tags: ["test"],
+            metadata: { priority: "high" },
           });
 
           // Create cache entries
-          await cascadeAdapter.setCache('test_cache_key', { value: 'cached data' });
+          await cascadeAdapter.setCache("test_cache_key", {
+            value: "cached data",
+          });
 
           // Create logs
           await cascadeAdapter.log({
-            body: { action: 'test_log' },
+            body: { action: "test_log" },
             entityId: entityId1,
             roomId: roomId1,
-            type: 'test',
+            type: "test",
           });
 
           // Verify all data was created
           expect(await cascadeAdapter.getWorld(worldId)).not.toBeNull();
-          expect((await cascadeAdapter.getRoomsByIds([roomId1, roomId2]))?.length).toBe(2);
-          expect((await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]))?.length).toBe(2);
+          expect(
+            (await cascadeAdapter.getRoomsByIds([roomId1, roomId2]))?.length,
+          ).toBe(2);
+          expect(
+            (await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]))
+              ?.length,
+          ).toBe(2);
           expect(await cascadeAdapter.getMemoryById(memoryId1)).not.toBeNull();
           expect(await cascadeAdapter.getMemoryById(memoryId2)).not.toBeNull();
           expect(await cascadeAdapter.getTask(taskId)).not.toBeNull();
-          expect(await cascadeAdapter.getCache('test_cache_key')).toBeDefined();
+          expect(await cascadeAdapter.getCache("test_cache_key")).toBeDefined();
 
           // Now delete the agent - this should cascade delete everything
           const deleteResult = await cascadeAdapter.deleteAgent(agentId);
@@ -875,7 +957,10 @@ describe('Agent Integration Tests', () => {
           expect(rooms).toEqual([]);
 
           // Entities should be deleted
-          const entities = await cascadeAdapter.getEntitiesByIds([entityId1, entityId2]);
+          const entities = await cascadeAdapter.getEntitiesByIds([
+            entityId1,
+            entityId2,
+          ]);
           expect(entities).toEqual([]);
 
           // Memories should be deleted
@@ -886,7 +971,9 @@ describe('Agent Integration Tests', () => {
           expect(await cascadeAdapter.getTask(taskId)).toBeNull();
 
           // Cache should be deleted
-          expect(await cascadeAdapter.getCache('test_cache_key')).toBeUndefined();
+          expect(
+            await cascadeAdapter.getCache("test_cache_key"),
+          ).toBeUndefined();
 
           // Components, participants, relationships, and logs should also be deleted
           // but we don't have direct methods to verify these in the adapter
@@ -896,7 +983,7 @@ describe('Agent Integration Tests', () => {
         }
       });
 
-      it('should return false when deleting non-existent agent', async () => {
+      it("should return false when deleting non-existent agent", async () => {
         const nonExistentId = uuidv4() as UUID;
 
         const result = await adapter.deleteAgent(nonExistentId);
@@ -905,40 +992,40 @@ describe('Agent Integration Tests', () => {
         expect(result).toBe(false);
       });
 
-      it('should delete agent with complex data structure', async () => {
+      it("should delete agent with complex data structure", async () => {
         // Create an agent with complex settings and other fields
         const complexAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Delete Complex',
+          name: "Integration Test Delete Complex",
           settings: {
             nestedObject: {
               deeplyNested: {
-                value: 'test',
+                value: "test",
                 array: [1, 2, 3],
               },
             },
-            simpleValue: 'hello',
+            simpleValue: "hello",
           },
           messageExamples: [
             [
               {
-                name: 'user',
+                name: "user",
                 content: {
-                  text: 'Hello there',
+                  text: "Hello there",
                 },
               },
               {
-                name: 'assistant',
+                name: "assistant",
                 content: {
-                  text: 'Hi, how can I help you?',
+                  text: "Hi, how can I help you?",
                 },
               },
             ],
           ],
-          postExamples: ['Example post'],
-          topics: ['topic1', 'topic2'],
-          adjectives: ['smart', 'helpful'],
+          postExamples: ["Example post"],
+          topics: ["topic1", "topic2"],
+          adjectives: ["smart", "helpful"],
         };
 
         await adapter.createAgent(complexAgent);
@@ -953,17 +1040,17 @@ describe('Agent Integration Tests', () => {
       });
     });
 
-    describe('countAgents', () => {
-      it('should return the correct count of agents', async () => {
+    describe("countAgents", () => {
+      it("should return the correct count of agents", async () => {
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Count Test Agent 1',
+          name: "Count Test Agent 1",
         };
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Count Test Agent 2',
+          name: "Count Test Agent 2",
         };
         await adapter.createAgent(agent1);
         await adapter.createAgent(agent2);
@@ -974,8 +1061,8 @@ describe('Agent Integration Tests', () => {
     });
 
     // Add tests for cleanupAgents if this method is implemented
-    describe('cleanupAgents', () => {
-      it('should clean up agents properly', async () => {
+    describe("cleanupAgents", () => {
+      it("should clean up agents properly", async () => {
         // This test is a placeholder and should be implemented
         // if the cleanupAgents method is actually used
 
@@ -983,7 +1070,7 @@ describe('Agent Integration Tests', () => {
         const tempAgent = {
           ...testAgent,
           id: uuidv4() as UUID,
-          name: 'Integration Test Cleanup',
+          name: "Integration Test Cleanup",
         };
 
         await adapter.createAgent(tempAgent);
@@ -996,33 +1083,33 @@ describe('Agent Integration Tests', () => {
       });
     });
 
-    describe('UUID-Based Agent Identification', () => {
-      it('should allow multiple agents with identical names in real database', async () => {
-        const sharedName = 'TestAgent-Duplicate';
+    describe("UUID-Based Agent Identification", () => {
+      it("should allow multiple agents with identical names in real database", async () => {
+        const sharedName = "TestAgent-Duplicate";
 
         // Create 3 agents with the same name
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'user1',
-          bio: ['First agent instance'],
+          username: "user1",
+          bio: ["First agent instance"],
         };
 
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'user2',
-          bio: ['Second agent instance'],
+          username: "user2",
+          bio: ["Second agent instance"],
         };
 
         const agent3 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'user3',
-          bio: ['Third agent instance'],
+          username: "user3",
+          bio: ["Third agent instance"],
         };
 
         // All should succeed
@@ -1050,27 +1137,27 @@ describe('Agent Integration Tests', () => {
         expect(retrieved3?.id).toBe(agent3.id);
 
         // And different bios (to prove they're distinct)
-        expect(retrieved1?.bio).toContain('First agent instance');
-        expect(retrieved2?.bio).toContain('Second agent instance');
-        expect(retrieved3?.bio).toContain('Third agent instance');
+        expect(retrieved1?.bio).toContain("First agent instance");
+        expect(retrieved2?.bio).toContain("Second agent instance");
+        expect(retrieved3?.bio).toContain("Third agent instance");
       });
 
-      it('should get all agents including those with duplicate names', async () => {
-        const sharedName = 'ListTest-Duplicate';
+      it("should get all agents including those with duplicate names", async () => {
+        const sharedName = "ListTest-Duplicate";
 
         // Create agents with duplicate names
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'list_user1',
+          username: "list_user1",
         };
 
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'list_user2',
+          username: "list_user2",
         };
 
         await adapter.createAgent(agent1);
@@ -1087,23 +1174,23 @@ describe('Agent Integration Tests', () => {
         expect(testAgents.some((a) => a.id === agent2.id)).toBe(true);
       });
 
-      it('should update only the targeted agent when multiple have the same name', async () => {
-        const sharedName = 'UpdateTest-Duplicate';
+      it("should update only the targeted agent when multiple have the same name", async () => {
+        const sharedName = "UpdateTest-Duplicate";
 
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'update_user1',
-          bio: ['Original bio 1'],
+          username: "update_user1",
+          bio: ["Original bio 1"],
         };
 
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'update_user2',
-          bio: ['Original bio 2'],
+          username: "update_user2",
+          bio: ["Original bio 2"],
         };
 
         await adapter.createAgent(agent1);
@@ -1111,7 +1198,7 @@ describe('Agent Integration Tests', () => {
 
         // Update only agent1
         await adapter.updateAgent(agent1.id, {
-          bio: ['Updated bio for agent 1'],
+          bio: ["Updated bio for agent 1"],
           settings: { updated: true },
         });
 
@@ -1119,29 +1206,29 @@ describe('Agent Integration Tests', () => {
         const retrieved1 = await adapter.getAgent(agent1.id);
         const retrieved2 = await adapter.getAgent(agent2.id);
 
-        expect(retrieved1?.bio).toContain('Updated bio for agent 1');
+        expect(retrieved1?.bio).toContain("Updated bio for agent 1");
         expect(retrieved1?.settings?.updated).toBe(true);
 
         // Agent 2 should be unchanged
-        expect(retrieved2?.bio).toContain('Original bio 2');
+        expect(retrieved2?.bio).toContain("Original bio 2");
         expect(retrieved2?.settings?.updated).toBeUndefined();
       });
 
-      it('should delete only the targeted agent when multiple have the same name', async () => {
-        const sharedName = 'DeleteTest-Duplicate';
+      it("should delete only the targeted agent when multiple have the same name", async () => {
+        const sharedName = "DeleteTest-Duplicate";
 
         const agent1 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'delete_user1',
+          username: "delete_user1",
         };
 
         const agent2 = {
           ...testAgent,
           id: uuidv4() as UUID,
           name: sharedName,
-          username: 'delete_user2',
+          username: "delete_user2",
         };
 
         await adapter.createAgent(agent1);
@@ -1160,8 +1247,8 @@ describe('Agent Integration Tests', () => {
         expect(retrieved2?.name).toBe(sharedName);
       });
 
-      it('should handle 10+ agents with the same name', async () => {
-        const sharedName = 'ManyAgents-SameName';
+      it("should handle 10+ agents with the same name", async () => {
+        const sharedName = "ManyAgents-SameName";
         const agentIds: UUID[] = [];
 
         // Create 10 agents with the same name

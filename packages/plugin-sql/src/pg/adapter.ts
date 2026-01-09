@@ -1,8 +1,18 @@
-import { type UUID, logger, Agent, Entity, Memory, Component } from '@elizaos/core';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { BaseDrizzleAdapter } from '../base';
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
-import type { PostgresConnectionManager } from './manager';
+import {
+  type Agent,
+  type Component,
+  type Entity,
+  logger,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { BaseDrizzleAdapter } from "../base";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+} from "../schema/embedding";
+import type { PostgresConnectionManager } from "./manager";
 
 /**
  * Adapter class for interacting with a PostgreSQL database.
@@ -15,7 +25,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
   constructor(
     agentId: UUID,
     manager: PostgresConnectionManager,
-    _schema?: Record<string, unknown>
+    _schema?: Record<string, unknown>,
   ) {
     super(agentId);
     this.manager = manager;
@@ -35,7 +45,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
   ): Promise<T> {
     return await this.manager.withEntityContext(entityId, callback);
   }
@@ -46,10 +56,16 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+  async getMemoriesByServerId(_params: {
+    serverId: UUID;
+    count?: number;
+  }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn({ src: 'plugin:sql' }, 'getMemoriesByServerId called but not implemented');
+    logger.warn(
+      { src: "plugin:sql" },
+      "getMemoriesByServerId called but not implemented",
+    );
     return [];
   }
 
@@ -63,9 +79,9 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     // Create the agent with required fields
     const newAgent: Agent = {
       id: this.agentId,
-      name: agent.name || 'Unknown Agent',
+      name: agent.name || "Unknown Agent",
       username: agent.username,
-      bio: agent.bio || 'An AI agent',
+      bio: agent.bio || "An AI agent",
       createdAt: agent.createdAt || Date.now(),
       updatedAt: agent.updatedAt || Date.now(),
     };
@@ -73,7 +89,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     await this.createAgent(newAgent);
     const createdAgent = await this.getAgent(this.agentId);
     if (!createdAgent) {
-      throw new Error('Failed to create agent');
+      throw new Error("Failed to create agent");
     }
     return createdAgent;
   }
@@ -109,7 +125,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
    * @returns {Promise<void>} A promise that resolves when initialization is complete.
    */
   async init(): Promise<void> {
-    logger.debug({ src: 'plugin:sql' }, 'PgDatabaseAdapter initialized');
+    logger.debug({ src: "plugin:sql" }, "PgDatabaseAdapter initialized");
   }
 
   /**
@@ -190,7 +206,7 @@ export class PgDatabaseAdapter extends BaseDrizzleAdapter {
     entityId: UUID,
     type: string,
     worldId?: UUID,
-    sourceEntityId?: UUID
+    sourceEntityId?: UUID,
   ): Promise<Component | null> {
     return super.getComponent(entityId, type, worldId, sourceEntityId);
   }

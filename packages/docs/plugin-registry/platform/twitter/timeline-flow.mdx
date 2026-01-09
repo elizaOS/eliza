@@ -1,0 +1,463 @@
+---
+title: "Timeline Flow"
+description: "This document provides a comprehensive breakdown of how the Twitter plugin processes timeline data and generates interactions."
+---
+
+This document provides a comprehensive breakdown of how the Twitter plugin processes timeline data and generates interactions.
+
+## Complete Timeline Flow Diagram
+
+```mermaid
+flowchart TD
+    Start([Timeline Processing]) --> A[Fetch Home Timeline]
+    
+    A --> B{Cache Valid?}
+    B -->|Yes| C[Use Cached Data]
+    B -->|No| D[API Request]
+    
+    D --> E[Rate Limit Check]
+    E --> F{Within Limits?}
+    F -->|No| G[Wait/Queue]
+    F -->|Yes| H[Fetch Timeline]
+    
+    G --> H
+    C --> I[Filter Tweets]
+    H --> I
+    
+    I --> J{Remove Processed}
+    J --> K[New Tweets Only]
+    
+    K --> L{Algorithm Type?}
+    L -->|Weighted| M[Weighted Processing]
+    L -->|Latest| N[Latest Processing]
+    
+    M --> O[Calculate Scores]
+    O --> P[Sort by Score]
+    
+    N --> Q[Sort by Time]
+    
+    P --> R[Select Top Tweets]
+    Q --> R
+    
+    R --> S[Process Each Tweet]
+    S --> T{Should Interact?}
+    
+    T -->|Yes| U[Generate Response]
+    T -->|No| V[Mark Processed]
+    
+    U --> W{Response Type}
+    W -->|Reply| X[Post Reply]
+    W -->|Quote| Y[Quote Tweet]
+    W -->|Like| Z[Like Tweet]
+    W -->|Retweet| AA[Retweet]
+    
+    X --> AB[Update Cache]
+    Y --> AB
+    Z --> AB
+    AA --> AB
+    V --> AB
+    
+    AB --> AC{More Tweets?}
+    AC -->|Yes| S
+    AC -->|No| AD[Schedule Next Run]
+```
+
+## Detailed Processing Flows
+
+### 1. Timeline Fetching
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant Q as Request Queue
+    participant R as Rate Limiter
+    participant A as Twitter API
+    participant Ca as Cache
+    
+    C->>Ca: Check cache validity
+    alt Cache valid
+        Ca->>C: Return cached timeline
+    else Cache invalid
+        C->>Q: Queue timeline request
+        Q->>R: Check rate limits
+        
+        alt Within limits
+            R->>A: GET /2/users/:id/timelines/home
+            A->>R: Timeline data
+            R->>Ca: Update cache
+            Ca->>C: Return timeline
+        else Rate limited
+            R->>R: Calculate wait time
+            R->>Q: Delay request
+            Q->>C: Request queued
+        end
+    end
+```
+
+### 2. Weighted Algorithm Flow
+
+```mermaid
+flowchart TD
+    A[Tweet List] --> B[For Each Tweet]
+    
+    B --> C[Calculate User Score]
+    C --> D{Target User?}
+    D -->|Yes| E[Score = 10]
+    D -->|No| F[Base Score = 5]
+    
+    F --> G{Verified?}
+    G -->|Yes| H[Score +2]
+    G -->|No| I[Continue]
+    
+    H --> J{High Followers?}
+    I --> J
+    J -->|Yes| K[Score +1]
+    J -->|No| L[Continue]
+    
+    K --> M[User Score Complete]
+    L --> M
+    E --> M
+    
+    B --> N[Calculate Time Score]
+    N --> O[Age in Hours]
+    O --> P[Score = 10 - (Age/2)]
+    P --> Q[Cap at 0-10]
+    
+    B --> R[Calculate Relevance]
+    R --> S[Analyze Content]
+    S --> T{Keywords Match?}
+    T -->|Yes| U[High Relevance]
+    T -->|No| V[Low Relevance]
+    
+    U --> W[Relevance Score]
+    V --> W
+    
+    M --> X[Combine Scores]
+    Q --> X
+    W --> X
+    
+    X --> Y[Final Score = (U*3 + T*2 + R*5)]
+    Y --> Z[Add to Scored List]
+```
+
+### 3. Interaction Decision Flow
+
+```mermaid
+flowchart TD
+    A[Tweet to Process] --> B{Is Reply?}
+    
+    B -->|Yes| C{To Me?}
+    B -->|No| D{Mentions Me?}
+    
+    C -->|Yes| E[Should Reply = Yes]
+    C -->|No| F{In Thread?}
+    
+    D -->|Yes| E
+    D -->|No| G{Target User?}
+    
+    F -->|Yes| H[Check Context]
+    F -->|No| I[Skip]
+    
+    G -->|Yes| J[Check Relevance]
+    G -->|No| K{High Score?}
+    
+    H --> L{Relevant?}
+    L -->|Yes| E
+    L -->|No| I
+    
+    J --> M{Above Threshold?}
+    M -->|Yes| E
+    M -->|No| I
+    
+    K -->|Yes| N[Maybe Reply]
+    K -->|No| I
+    
+    E --> O[Generate Response]
+    N --> P[Probability Check]
+    P --> Q{Random < 0.3?}
+    Q -->|Yes| O
+    Q -->|No| I
+```
+
+### 4. Response Generation Flow
+
+```mermaid
+sequenceDiagram
+    participant T as Tweet
+    participant P as Processor
+    participant C as Context Builder
+    participant L as LLM
+    participant V as Validator
+    
+    T->>P: Tweet to respond to
+    P->>C: Build context
+    
+    C->>C: Get thread history
+    C->>C: Get user history
+    C->>C: Get recent interactions
+    
+    C->>L: Generate response
+    Note over L: System: Character personality<br/>Context: Thread + history<br/>Task: Generate reply
+    
+    L->>V: Generated text
+    
+    V->>V: Check length
+    V->>V: Check appropriateness
+    V->>V: Remove duplicates
+    
+    alt Valid response
+        V->>P: Approved response
+    else Invalid
+        V->>L: Regenerate
+    end
+```
+
+### 5. Action Processing Flow
+
+```mermaid
+flowchart TD
+    A[Timeline Tweets] --> B[Evaluate Each Tweet]
+    
+    B --> C{Like Candidate?}
+    C -->|Yes| D[Calculate Like Score]
+    C -->|No| E{Retweet Candidate?}
+    
+    D --> F[Add to Actions]
+    
+    E -->|Yes| G[Calculate RT Score]
+    E -->|No| H{Quote Candidate?}
+    
+    G --> F
+    
+    H -->|Yes| I[Calculate Quote Score]
+    H -->|No| J[Next Tweet]
+    
+    I --> F
+    
+    F --> K[Action List]
+    J --> K
+    
+    K --> L[Sort by Score]
+    L --> M[Select Top Action]
+    
+    M --> N{Action Type}
+    N -->|Like| O[POST /2/users/:id/likes]
+    N -->|Retweet| P[POST /2/users/:id/retweets]
+    N -->|Quote| Q[Generate Quote Text]
+    
+    Q --> R[POST /2/tweets]
+    
+    O --> S[Log Action]
+    P --> S
+    R --> S
+```
+
+## Timeline State Management
+
+### Cache Structure
+
+```typescript
+interface TimelineCache {
+  tweets: Tweet[];
+  users: Map<string, TwitterUser>;
+  timestamp: number;
+  etag?: string;
+}
+
+interface ProcessingState {
+  processedTweets: Set<string>;
+  lastProcessTime: number;
+  interactionCount: number;
+  rateLimitStatus: RateLimitInfo;
+}
+```
+
+### Scoring Components
+
+```typescript
+interface ScoringWeights {
+  user: number;      // Default: 3
+  time: number;      // Default: 2
+  relevance: number; // Default: 5
+}
+
+interface TweetScore {
+  tweetId: string;
+  userScore: number;
+  timeScore: number;
+  relevanceScore: number;
+  totalScore: number;
+  factors: {
+    isTargetUser: boolean;
+    isVerified: boolean;
+    followerCount: number;
+    hasKeywords: boolean;
+    age: number;
+  };
+}
+```
+
+## Error Handling in Timeline Flow
+
+```mermaid
+flowchart TD
+    A[Timeline Error] --> B{Error Type}
+    
+    B -->|Rate Limit| C[429 Error]
+    B -->|Auth Error| D[401 Error]
+    B -->|Network| E[Network Error]
+    B -->|API Error| F[API Error]
+    
+    C --> G[Get Reset Time]
+    G --> H[Queue Until Reset]
+    H --> I[Retry After Wait]
+    
+    D --> J[Check Credentials]
+    J --> K{Valid?}
+    K -->|No| L[Stop Processing]
+    K -->|Yes| M[Refresh Token]
+    M --> N[Retry Once]
+    
+    E --> O{Retry Count}
+    O -->|< 3| P[Exponential Backoff]
+    O -->|>= 3| Q[Skip Cycle]
+    P --> R[Retry Request]
+    
+    F --> S[Log Error]
+    S --> T{Critical?}
+    T -->|Yes| U[Alert & Stop]
+    T -->|No| V[Skip & Continue]
+```
+
+## Performance Optimization
+
+### Batch Processing
+
+```mermaid
+sequenceDiagram
+    participant P as Processor
+    participant B as Batcher
+    participant A as API
+    
+    P->>B: Add tweet IDs [1,2,3,4,5]
+    P->>B: Add user IDs [a,b,c]
+    
+    Note over B: Batch window (100ms)
+    
+    B->>A: GET /2/tweets?ids=1,2,3,4,5
+    B->>A: GET /2/users?ids=a,b,c
+    
+    par Parallel Requests
+        A->>B: Tweets data
+        A->>B: Users data
+    end
+    
+    B->>P: Combined results
+```
+
+### Processing Pipeline
+
+```mermaid
+flowchart LR
+    A[Fetch] --> B[Filter]
+    B --> C[Score]
+    C --> D[Sort]
+    D --> E[Process]
+    
+    F[Cache Layer] --> A
+    F --> B
+    F --> E
+    
+    G[Queue Manager] --> A
+    G --> E
+    
+    H[Rate Limiter] --> A
+    H --> E
+```
+
+## Monitoring & Metrics
+
+### Timeline Processing Metrics
+
+```typescript
+interface TimelineMetrics {
+  fetchTime: number;
+  tweetCount: number;
+  newTweetCount: number;
+  processedCount: number;
+  interactionCount: number;
+  errorCount: number;
+  cacheHitRate: number;
+  averageScore: number;
+}
+```
+
+### Performance Tracking
+
+```mermaid
+flowchart TD
+    A[Start Timer] --> B[Fetch Timeline]
+    B --> C[Log Fetch Time]
+    
+    C --> D[Process Tweets]
+    D --> E[Log Process Time]
+    
+    E --> F[Generate Metrics]
+    F --> G{Performance OK?}
+    
+    G -->|Yes| H[Continue]
+    G -->|No| I[Adjust Parameters]
+    
+    I --> J[Reduce Batch Size]
+    I --> K[Increase Intervals]
+    I --> L[Optimize Algorithm]
+```
+
+## Configuration Impact
+
+### Algorithm Selection
+
+| Algorithm | Best For | Performance | Quality |
+|-----------|----------|-------------|---------|
+| Weighted | Quality interactions | Slower | Higher |
+| Latest | High volume | Faster | Lower |
+
+### Weight Configuration Effects
+
+```mermaid
+graph LR
+    A[User Weight ↑] --> B[More targeted interactions]
+    C[Time Weight ↑] --> D[Prefer recent tweets]
+    E[Relevance Weight ↑] --> F[More on-topic responses]
+    
+    B --> G[Higher engagement quality]
+    D --> H[Faster response time]
+    F --> I[Better conversation flow]
+```
+
+## Best Practices
+
+1. **Cache Management**
+   - Implement TTL for timeline cache
+   - Clear processed tweets periodically
+   - Monitor cache hit rates
+
+2. **Rate Limit Handling**
+   - Track limits per endpoint
+   - Implement request queuing
+   - Use exponential backoff
+
+3. **Score Tuning**
+   - Monitor interaction quality
+   - Adjust weights based on results
+   - A/B test different configurations
+
+4. **Error Recovery**
+   - Implement circuit breakers
+   - Log all failures with context
+   - Graceful degradation
+
+5. **Performance Monitoring**
+   - Track processing times
+   - Monitor API usage
+   - Alert on anomalies

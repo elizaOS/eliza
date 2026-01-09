@@ -182,6 +182,25 @@ bun.lock
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 
+# Rust build artifacts
+**/target/
+**/*.rs.bk
+
+# Python build artifacts
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/.coverage.*
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
 test-data/
 standalone.ts
 /.claude
@@ -189,3 +208,4 @@ standalone.ts
 # Continuous Claude cache (local only)
 .claude/cache/
 /thoughts
+plugins/

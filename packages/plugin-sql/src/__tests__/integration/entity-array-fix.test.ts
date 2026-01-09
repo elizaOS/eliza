@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import type { Entity, UUID } from '@elizaos/core';
-import { stringToUuid } from '@elizaos/core';
-import { createTestDatabase } from '../test-helpers';
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { Entity, UUID } from "@elizaos/core";
+import { stringToUuid } from "@elizaos/core";
+import { createTestDatabase } from "../test-helpers";
 
-describe('Entity Array Serialization Fix Tests', () => {
+describe("Entity Array Serialization Fix Tests", () => {
   let adapter: any;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
@@ -21,14 +21,14 @@ describe('Entity Array Serialization Fix Tests', () => {
     }
   });
 
-  describe('Entity Creation with Names Array', () => {
-    it('should create entity with single name in array', async () => {
+  describe("Entity Creation with Names Array", () => {
+    it("should create entity with single name in array", async () => {
       const entityId = stringToUuid(`entity-single-${Date.now()}`);
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['user-test123'],
-        metadata: { web: { userName: 'user-test123' } },
+        names: ["user-test123"],
+        metadata: { web: { userName: "user-test123" } },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -38,16 +38,16 @@ describe('Entity Array Serialization Fix Tests', () => {
       expect(retrieved).not.toBeNull();
       expect(retrieved?.length).toBe(1);
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['user-test123']);
+      expect(retrieved?.[0]?.names).toEqual(["user-test123"]);
     });
 
-    it('should create entity with multiple names in array', async () => {
+    it("should create entity with multiple names in array", async () => {
       const entityId = stringToUuid(`entity-multiple-${Date.now()}`);
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['user-primary', 'user-alias1', 'user-alias2'],
-        metadata: { web: { userName: 'user-primary' } },
+        names: ["user-primary", "user-alias1", "user-alias2"],
+        metadata: { web: { userName: "user-primary" } },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -56,10 +56,14 @@ describe('Entity Array Serialization Fix Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['user-primary', 'user-alias1', 'user-alias2']);
+      expect(retrieved?.[0]?.names).toEqual([
+        "user-primary",
+        "user-alias1",
+        "user-alias2",
+      ]);
     });
 
-    it('should handle entity with empty names array', async () => {
+    it("should handle entity with empty names array", async () => {
       const entityId = stringToUuid(`entity-empty-${Date.now()}`);
       const entity: Entity = {
         id: entityId,
@@ -77,11 +81,11 @@ describe('Entity Array Serialization Fix Tests', () => {
       expect(retrieved?.[0]?.names).toEqual([]);
     });
 
-    it('should handle entity with Set-like names by converting to array', async () => {
+    it("should handle entity with Set-like names by converting to array", async () => {
       const entityId = stringToUuid(`entity-set-${Date.now()}`);
 
       // Simulate what might happen if names accidentally becomes a Set
-      const namesSet = new Set(['user-name1', 'user-name2']);
+      const namesSet = new Set(["user-name1", "user-name2"]);
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
@@ -97,20 +101,20 @@ describe('Entity Array Serialization Fix Tests', () => {
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
       // Set order is not guaranteed, so we just check the values are present
       expect(retrieved?.[0]?.names.length).toBe(2);
-      expect(retrieved?.[0]?.names).toContain('user-name1');
-      expect(retrieved?.[0]?.names).toContain('user-name2');
+      expect(retrieved?.[0]?.names).toContain("user-name1");
+      expect(retrieved?.[0]?.names).toContain("user-name2");
     });
   });
 
-  describe('Entity Update with Names Array', () => {
-    it('should update entity names correctly', async () => {
+  describe("Entity Update with Names Array", () => {
+    it("should update entity names correctly", async () => {
       const entityId = stringToUuid(`entity-update-${Date.now()}`);
 
       // Create initial entity
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name'],
+        names: ["original-name"],
         metadata: {},
       };
 
@@ -120,7 +124,7 @@ describe('Entity Array Serialization Fix Tests', () => {
       const updatedEntity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name', 'new-name', 'another-name'],
+        names: ["original-name", "new-name", "another-name"],
         metadata: { updated: true },
       };
 
@@ -129,24 +133,28 @@ describe('Entity Array Serialization Fix Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['original-name', 'new-name', 'another-name']);
+      expect(retrieved?.[0]?.names).toEqual([
+        "original-name",
+        "new-name",
+        "another-name",
+      ]);
     });
 
-    it('should handle Set-like names in update by converting to array', async () => {
+    it("should handle Set-like names in update by converting to array", async () => {
       const entityId = stringToUuid(`entity-update-set-${Date.now()}`);
 
       // Create initial entity
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name'],
+        names: ["original-name"],
         metadata: {},
       };
 
       await adapter.createEntities([entity]);
 
       // Update with Set-like names
-      const namesSet = new Set(['updated-name1', 'updated-name2']);
+      const namesSet = new Set(["updated-name1", "updated-name2"]);
       const updatedEntity: any = {
         id: entityId,
         agentId: testAgentId,
@@ -160,13 +168,13 @@ describe('Entity Array Serialization Fix Tests', () => {
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
       expect(retrieved?.[0]?.names.length).toBe(2);
-      expect(retrieved?.[0]?.names).toContain('updated-name1');
-      expect(retrieved?.[0]?.names).toContain('updated-name2');
+      expect(retrieved?.[0]?.names).toContain("updated-name1");
+      expect(retrieved?.[0]?.names).toContain("updated-name2");
     });
   });
 
-  describe('Batch Entity Creation', () => {
-    it('should create multiple entities with proper name arrays', async () => {
+  describe("Batch Entity Creation", () => {
+    it("should create multiple entities with proper name arrays", async () => {
       const timestamp = Date.now();
       const entities: Entity[] = Array.from({ length: 5 }, (_, i) => ({
         id: stringToUuid(`batch-entity-${timestamp}-${i}`),
@@ -194,13 +202,18 @@ describe('Entity Array Serialization Fix Tests', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle entity with special characters in names', async () => {
+  describe("Edge Cases", () => {
+    it("should handle entity with special characters in names", async () => {
       const entityId = stringToUuid(`entity-special-${Date.now()}`);
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['user@test.com', 'user-with-dash', 'user_with_underscore', 'user{with}braces'],
+        names: [
+          "user@test.com",
+          "user-with-dash",
+          "user_with_underscore",
+          "user{with}braces",
+        ],
         metadata: {},
       };
 
@@ -211,19 +224,19 @@ describe('Entity Array Serialization Fix Tests', () => {
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
       expect(retrieved?.[0]?.names).toEqual([
-        'user@test.com',
-        'user-with-dash',
-        'user_with_underscore',
-        'user{with}braces',
+        "user@test.com",
+        "user-with-dash",
+        "user_with_underscore",
+        "user{with}braces",
       ]);
     });
 
-    it('should handle entity with unicode characters in names', async () => {
+    it("should handle entity with unicode characters in names", async () => {
       const entityId = stringToUuid(`entity-unicode-${Date.now()}`);
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['用户名', 'ユーザー', 'пользователь', '👤user'],
+        names: ["用户名", "ユーザー", "пользователь", "👤user"],
         metadata: {},
       };
 
@@ -233,7 +246,12 @@ describe('Entity Array Serialization Fix Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['用户名', 'ユーザー', 'пользователь', '👤user']);
+      expect(retrieved?.[0]?.names).toEqual([
+        "用户名",
+        "ユーザー",
+        "пользователь",
+        "👤user",
+      ]);
     });
   });
 });

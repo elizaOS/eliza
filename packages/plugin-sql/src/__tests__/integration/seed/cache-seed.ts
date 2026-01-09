@@ -1,22 +1,22 @@
 /**
  * Seed data for cache integration tests
  */
-import { type UUID, AgentStatus, type Agent } from '@elizaos/core';
-import { v4 } from 'uuid';
+import { type Agent, AgentStatus, type UUID } from "@elizaos/core";
+import { v4 } from "uuid";
 
 /**
  * Default test agent settings for cache tests
  */
 export const cacheTestAgentSettings = {
   id: v4() as UUID,
-  name: 'Cache Test Agent',
-  username: 'cache_test_agent',
-  system: 'Test agent system prompt',
-  bio: 'An agent for testing cache operations',
+  name: "Cache Test Agent",
+  username: "cache_test_agent",
+  system: "Test agent system prompt",
+  bio: "An agent for testing cache operations",
   enabled: true,
   status: AgentStatus.ACTIVE,
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
   messageExamples: [],
   postExamples: [],
   topics: [],
@@ -24,7 +24,7 @@ export const cacheTestAgentSettings = {
   knowledge: [],
   plugins: [],
   settings: {
-    cacheTestSetting: 'cache test value',
+    cacheTestSetting: "cache test value",
   },
   style: {
     all: [],
@@ -38,27 +38,27 @@ export const cacheTestAgentSettings = {
  */
 export const testCacheEntries = {
   stringValue: {
-    key: 'test_string',
-    value: 'test value',
+    key: "test_string",
+    value: "test value",
   },
   numberValue: {
-    key: 'test_number',
+    key: "test_number",
     value: 42,
   },
   objectValue: {
-    key: 'test_object',
+    key: "test_object",
     value: {
-      name: 'Test Object',
+      name: "Test Object",
       properties: {
         id: 1,
         active: true,
       },
-      tags: ['test', 'cache', 'integration'],
+      tags: ["test", "cache", "integration"],
     },
   },
   arrayValue: {
-    key: 'test_array',
-    value: [1, 2, 3, 'four', { five: 5 }],
+    key: "test_array",
+    value: [1, 2, 3, "four", { five: 5 }],
   },
 };
 
@@ -67,14 +67,14 @@ export const testCacheEntries = {
  */
 export const testCacheWithExpiration = {
   expired: {
-    key: 'expired_cache',
-    value: 'This value has expired',
+    key: "expired_cache",
+    value: "This value has expired",
     // Set expiration to 1 hour in the past
     expiresAt: Date.now() - 60 * 60 * 1000,
   },
   notExpired: {
-    key: 'not_expired_cache',
-    value: 'This value has not expired',
+    key: "not_expired_cache",
+    value: "This value has not expired",
     // Set expiration to 1 hour in the future
     expiresAt: Date.now() + 60 * 60 * 1000,
   },

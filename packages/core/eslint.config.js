@@ -1,4 +1,4 @@
-import pluginConfig from '@elizaos/config/eslint/eslint.config.plugin.js';
+import pluginConfig from "@elizaos/config/eslint/eslint.config.plugin.js";
 
 /**
  * ESLint config for core

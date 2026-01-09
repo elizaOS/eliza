@@ -1,6 +1,6 @@
-import type { SchemaSnapshot } from '../types';
-import type { SchemaDiff } from './diff-calculator';
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
+import type { SchemaSnapshot } from "../types";
+import type { SchemaDiff } from "./diff-calculator";
 
 /**
  * Data loss detection result
@@ -42,7 +42,9 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     result.requiresConfirmation = true;
     result.tablesToRemove = [...diff.tables.deleted];
     for (const table of diff.tables.deleted) {
-      result.warnings.push(`Table "${table}" will be dropped with all its data`);
+      result.warnings.push(
+        `Table "${table}" will be dropped with all its data`,
+      );
     }
   }
 
@@ -52,7 +54,9 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
     result.requiresConfirmation = true;
     for (const col of diff.columns.deleted) {
       result.columnsToRemove.push(`${col.table}.${col.column}`);
-      result.warnings.push(`Column "${col.column}" in table "${col.table}" will be dropped`);
+      result.warnings.push(
+        `Column "${col.column}" in table "${col.table}" will be dropped`,
+      );
     }
   }
 
@@ -77,7 +81,7 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
         result.tablesToTruncate.push(modified.table);
         result.warnings.push(
           `Column "${modified.column}" in table "${modified.table}" changes type from "${from.type}" to "${to.type}". ` +
-            `This may require truncating the table to avoid data conversion errors.`
+            `This may require truncating the table to avoid data conversion errors.`,
         );
       }
     }
@@ -88,7 +92,7 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
       result.requiresConfirmation = true;
       result.warnings.push(
         `Column "${modified.column}" in table "${modified.table}" is becoming NOT NULL without a default value. ` +
-          `This will fail if the table contains NULL values.`
+          `This will fail if the table contains NULL values.`,
       );
     }
   }
@@ -100,7 +104,7 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
       // We'll flag it as a potential issue
       result.warnings.push(
         `Column "${added.column}" is being added to table "${added.table}" as NOT NULL without a default value. ` +
-          `This will fail if the table contains data.`
+          `This will fail if the table contains data.`,
       );
       // Don't set requiresConfirmation here - it's only a warning
     }
@@ -114,49 +118,49 @@ export function checkForDataLoss(diff: SchemaDiff): DataLossCheck {
  * Handles equivalent type variations between introspected DB and schema definitions
  */
 function normalizeType(type: string | undefined): string {
-  if (!type) return '';
+  if (!type) return "";
 
   const normalized = type.toLowerCase().trim();
 
   // Handle timestamp variations - all are equivalent
   if (
-    normalized === 'timestamp without time zone' ||
-    normalized === 'timestamp with time zone' ||
-    normalized === 'timestamptz'
+    normalized === "timestamp without time zone" ||
+    normalized === "timestamp with time zone" ||
+    normalized === "timestamptz"
   ) {
-    return 'timestamp';
+    return "timestamp";
   }
 
   // Handle serial vs integer with identity
   // serial is essentially integer with auto-increment
-  if (normalized === 'serial') {
-    return 'integer';
+  if (normalized === "serial") {
+    return "integer";
   }
-  if (normalized === 'bigserial') {
-    return 'bigint';
+  if (normalized === "bigserial") {
+    return "bigint";
   }
-  if (normalized === 'smallserial') {
-    return 'smallint';
+  if (normalized === "smallserial") {
+    return "smallint";
   }
 
   // Handle numeric/decimal equivalence
-  if (normalized.startsWith('numeric') || normalized.startsWith('decimal')) {
+  if (normalized.startsWith("numeric") || normalized.startsWith("decimal")) {
     // Extract precision and scale if present
     const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
     if (match) {
-      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ''})`;
+      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ""})`;
     }
-    return 'numeric';
+    return "numeric";
   }
 
   // Handle varchar/character varying
-  if (normalized.startsWith('character varying')) {
-    return normalized.replace('character varying', 'varchar');
+  if (normalized.startsWith("character varying")) {
+    return normalized.replace("character varying", "varchar");
   }
 
   // Handle text array variations
-  if (normalized === 'text[]' || normalized === '_text') {
-    return 'text[]';
+  if (normalized === "text[]" || normalized === "_text") {
+    return "text[]";
   }
 
   return normalized;
@@ -166,7 +170,10 @@ function normalizeType(type: string | undefined): string {
  * Check if a type change is destructive
  * Based on PostgreSQL's type casting rules
  */
-function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boolean {
+function checkIfTypeChangeIsDestructive(
+  fromType: string,
+  toType: string,
+): boolean {
   // First normalize the types to handle equivalent variations
   const normalizedFrom = normalizeType(fromType);
   const normalizedTo = normalizeType(toType);
@@ -178,25 +185,25 @@ function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boole
 
   // Safe conversions (PostgreSQL) - based on Drizzle's logic
   const safeConversions: Record<string, string[]> = {
-    smallint: ['integer', 'bigint', 'numeric', 'real', 'double precision'],
-    integer: ['bigint', 'numeric', 'real', 'double precision'],
-    bigint: ['numeric'],
-    real: ['double precision'],
-    varchar: ['text'],
-    char: ['varchar', 'text'],
-    citext: ['text'],
-    text: ['citext'],
+    smallint: ["integer", "bigint", "numeric", "real", "double precision"],
+    integer: ["bigint", "numeric", "real", "double precision"],
+    bigint: ["numeric"],
+    real: ["double precision"],
+    varchar: ["text"],
+    char: ["varchar", "text"],
+    citext: ["text"],
+    text: ["citext"],
     // UUID to text is safe
-    uuid: ['text', 'varchar'],
+    uuid: ["text", "varchar"],
     // Timestamp variations are generally safe (now handled by normalization)
-    timestamp: ['timestamp'], // Simplified since normalization handles variations
+    timestamp: ["timestamp"], // Simplified since normalization handles variations
     // Date/time conversions
-    date: ['timestamp'],
-    time: ['timetz'],
+    date: ["timestamp"],
+    time: ["timetz"],
   };
 
-  const fromBase = normalizedFrom.split('(')[0];
-  const toBase = normalizedTo.split('(')[0];
+  const fromBase = normalizedFrom.split("(")[0];
+  const toBase = normalizedTo.split("(")[0];
 
   // Same type is always safe
   if (fromBase === toBase) {
@@ -205,7 +212,7 @@ function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boole
 
   // Check if it's a safe conversion
   const safeTo = safeConversions[fromBase];
-  if (safeTo && safeTo.includes(toBase)) {
+  if (safeTo?.includes(toBase)) {
     return false;
   }
 
@@ -220,13 +227,13 @@ function checkIfTypeChangeIsDestructive(fromType: string, toType: string): boole
 export async function generateMigrationSQL(
   previousSnapshot: SchemaSnapshot | null,
   currentSnapshot: SchemaSnapshot,
-  diff?: SchemaDiff
+  diff?: SchemaDiff,
 ): Promise<string[]> {
   const statements: string[] = [];
 
   // If no diff provided, calculate it
   if (!diff) {
-    const { calculateDiff } = await import('./diff-calculator');
+    const { calculateDiff } = await import("./diff-calculator");
     diff = await calculateDiff(previousSnapshot, currentSnapshot);
   }
 
@@ -236,8 +243,8 @@ export async function generateMigrationSQL(
   // Log warnings if any
   if (dataLossCheck.warnings.length > 0) {
     logger.warn(
-      { src: 'plugin:sql', warnings: dataLossCheck.warnings },
-      'Schema changes may cause data loss'
+      { src: "plugin:sql", warnings: dataLossCheck.warnings },
+      "Schema changes may cause data loss",
     );
   }
 
@@ -246,8 +253,8 @@ export async function generateMigrationSQL(
   for (const tableName of diff.tables.created) {
     const table = currentSnapshot.tables[tableName];
     if (table) {
-      const schema = table.schema || 'public';
-      if (schema !== 'public') {
+      const schema = table.schema || "public";
+      if (schema !== "public") {
         schemasToCreate.add(schema);
       }
     }
@@ -299,14 +306,18 @@ export async function generateMigrationSQL(
 
   // Generate DROP TABLE statements for deleted tables
   for (const tableName of diff.tables.deleted) {
-    const [schema, name] = tableName.includes('.') ? tableName.split('.') : ['public', tableName];
+    const [schema, name] = tableName.includes(".")
+      ? tableName.split(".")
+      : ["public", tableName];
     statements.push(`DROP TABLE IF EXISTS "${schema}"."${name}" CASCADE;`);
   }
 
   // Generate ALTER TABLE statements for column changes
   // Handle column additions
   for (const added of diff.columns.added) {
-    statements.push(generateAddColumnSQL(added.table, added.column, added.definition));
+    statements.push(
+      generateAddColumnSQL(added.table, added.column, added.definition),
+    );
   }
 
   // Handle column deletions
@@ -319,7 +330,7 @@ export async function generateMigrationSQL(
     const alterStatements = generateAlterColumnSQL(
       modified.table,
       modified.column,
-      modified.changes
+      modified.changes,
     );
     statements.push(...alterStatements);
   }
@@ -348,13 +359,15 @@ export async function generateMigrationSQL(
   for (const constraint of diff.uniqueConstraints.created) {
     // Skip if it's part of a new table (already handled)
     const isNewTable = diff.tables.created.some((tableName) => {
-      const [schema, table] = tableName.includes('.')
-        ? tableName.split('.')
-        : ['public', tableName];
-      const constraintTable = constraint.table || '';
-      const [constraintSchema, constraintTableName] = constraintTable.includes('.')
-        ? constraintTable.split('.')
-        : ['public', constraintTable];
+      const [schema, table] = tableName.includes(".")
+        ? tableName.split(".")
+        : ["public", tableName];
+      const constraintTable = constraint.table || "";
+      const [constraintSchema, constraintTableName] = constraintTable.includes(
+        ".",
+      )
+        ? constraintTable.split(".")
+        : ["public", constraintTable];
       return table === constraintTableName && schema === constraintSchema;
     });
 
@@ -372,13 +385,15 @@ export async function generateMigrationSQL(
   for (const constraint of diff.checkConstraints.created) {
     // Skip if it's part of a new table (already handled)
     const isNewTable = diff.tables.created.some((tableName) => {
-      const [schema, table] = tableName.includes('.')
-        ? tableName.split('.')
-        : ['public', tableName];
-      const constraintTable = constraint.table || '';
-      const [constraintSchema, constraintTableName] = constraintTable.includes('.')
-        ? constraintTable.split('.')
-        : ['public', constraintTable];
+      const [schema, table] = tableName.includes(".")
+        ? tableName.split(".")
+        : ["public", tableName];
+      const constraintTable = constraint.table || "";
+      const [constraintSchema, constraintTableName] = constraintTable.includes(
+        ".",
+      )
+        ? constraintTable.split(".")
+        : ["public", constraintTable];
       return table === constraintTableName && schema === constraintSchema;
     });
 
@@ -406,14 +421,14 @@ export async function generateMigrationSQL(
   for (const fk of diff.foreignKeys.created) {
     // Only add if it's not part of a new table (those were handled above)
     // Check both with and without schema prefix
-    const tableFrom = fk.tableFrom || '';
-    const schemaFrom = fk.schemaFrom || 'public';
+    const tableFrom = fk.tableFrom || "";
+    const schemaFrom = fk.schemaFrom || "public";
 
     const isNewTable = diff.tables.created.some((tableName) => {
       // Compare table names, handling schema prefixes
-      const [createdSchema, createdTable] = tableName.includes('.')
-        ? tableName.split('.')
-        : ['public', tableName];
+      const [createdSchema, createdTable] = tableName.includes(".")
+        ? tableName.split(".")
+        : ["public", tableName];
 
       // Compare using the actual schema and table from the FK
       return createdTable === tableFrom && createdSchema === schemaFrom;
@@ -438,11 +453,11 @@ export async function generateMigrationSQL(
  */
 function generateCreateTableSQL(
   fullTableName: string,
-  table: any
+  table: any,
 ): { tableSQL: string; fkSQLs: string[] } {
-  const [schema, tableName] = fullTableName.includes('.')
-    ? fullTableName.split('.')
-    : ['public', fullTableName];
+  const [schema, tableName] = fullTableName.includes(".")
+    ? fullTableName.split(".")
+    : ["public", fullTableName];
   const columns: string[] = [];
   const fkSQLs: string[] = [];
 
@@ -457,7 +472,7 @@ function generateCreateTableSQL(
     const pk = pkDef as any;
     if (pk.columns && pk.columns.length > 0) {
       columns.push(
-        `CONSTRAINT "${pkName}" PRIMARY KEY (${pk.columns.map((c: string) => `"${c}"`).join(', ')})`
+        `CONSTRAINT "${pkName}" PRIMARY KEY (${pk.columns.map((c: string) => `"${c}"`).join(", ")})`,
       );
     }
   }
@@ -468,8 +483,8 @@ function generateCreateTableSQL(
     const uq = uqDef as any;
     if (uq.columns && uq.columns.length > 0) {
       const uniqueDef = uq.nullsNotDistinct
-        ? `CONSTRAINT "${uqName}" UNIQUE NULLS NOT DISTINCT (${uq.columns.map((c: string) => `"${c}"`).join(', ')})`
-        : `CONSTRAINT "${uqName}" UNIQUE (${uq.columns.map((c: string) => `"${c}"`).join(', ')})`;
+        ? `CONSTRAINT "${uqName}" UNIQUE NULLS NOT DISTINCT (${uq.columns.map((c: string) => `"${c}"`).join(", ")})`
+        : `CONSTRAINT "${uqName}" UNIQUE (${uq.columns.map((c: string) => `"${c}"`).join(", ")})`;
       columns.push(uniqueDef);
     }
   }
@@ -484,13 +499,13 @@ function generateCreateTableSQL(
   }
 
   // Following drizzle-kit pattern: don't create schema here, it's handled separately
-  const tableSQL = `CREATE TABLE IF NOT EXISTS "${schema}"."${tableName}" (\n  ${columns.join(',\n  ')}\n);`;
+  const tableSQL = `CREATE TABLE IF NOT EXISTS "${schema}"."${tableName}" (\n  ${columns.join(",\n  ")}\n);`;
 
   // Collect foreign keys to be added AFTER all tables are created
   const foreignKeys = table.foreignKeys || {};
   for (const [fkName, fkDef] of Object.entries(foreignKeys)) {
     const fk = fkDef as any;
-    const fkSQL = `ALTER TABLE "${schema}"."${tableName}" ADD CONSTRAINT "${fkName}" FOREIGN KEY (${fk.columnsFrom.map((c: string) => `"${c}"`).join(', ')}) REFERENCES "${fk.schemaTo || 'public'}"."${fk.tableTo}" (${fk.columnsTo.map((c: string) => `"${c}"`).join(', ')})${fk.onDelete ? ` ON DELETE ${fk.onDelete}` : ''}${fk.onUpdate ? ` ON UPDATE ${fk.onUpdate}` : ''};`;
+    const fkSQL = `ALTER TABLE "${schema}"."${tableName}" ADD CONSTRAINT "${fkName}" FOREIGN KEY (${fk.columnsFrom.map((c: string) => `"${c}"`).join(", ")}) REFERENCES "${fk.schemaTo || "public"}"."${fk.tableTo}" (${fk.columnsTo.map((c: string) => `"${c}"`).join(", ")})${fk.onDelete ? ` ON DELETE ${fk.onDelete}` : ""}${fk.onUpdate ? ` ON UPDATE ${fk.onUpdate}` : ""};`;
     fkSQLs.push(fkSQL);
   }
 
@@ -504,13 +519,13 @@ function generateColumnDefinition(name: string, def: any): string {
   let sql = `"${name}" ${def.type}`;
 
   // Handle primary key that's not part of composite
-  if (def.primaryKey && !def.type.includes('SERIAL')) {
-    sql += ' PRIMARY KEY';
+  if (def.primaryKey && !def.type.includes("SERIAL")) {
+    sql += " PRIMARY KEY";
   }
 
   // Add NOT NULL constraint
   if (def.notNull) {
-    sql += ' NOT NULL';
+    sql += " NOT NULL";
   }
 
   // Add DEFAULT value - properly formatted
@@ -526,8 +541,14 @@ function generateColumnDefinition(name: string, def: any): string {
  * Generate ALTER TABLE ADD COLUMN SQL
  * Based on Drizzle's PgAlterTableAddColumnConvertor
  */
-function generateAddColumnSQL(table: string, column: string, definition: any): string {
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+function generateAddColumnSQL(
+  table: string,
+  column: string,
+  definition: any,
+): string {
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
   const tableNameWithSchema = `"${schema}"."${tableName}"`;
 
   // Build column definition parts in the correct order (like Drizzle)
@@ -538,12 +559,15 @@ function generateAddColumnSQL(table: string, column: string, definition: any): s
 
   // Primary key
   if (definition.primaryKey) {
-    parts.push('PRIMARY KEY');
+    parts.push("PRIMARY KEY");
   }
 
   // Default value - needs proper formatting based on type
   if (definition.default !== undefined) {
-    const defaultValue = formatDefaultValue(definition.default, definition.type);
+    const defaultValue = formatDefaultValue(
+      definition.default,
+      definition.type,
+    );
     if (defaultValue) {
       parts.push(`DEFAULT ${defaultValue}`);
     }
@@ -556,10 +580,10 @@ function generateAddColumnSQL(table: string, column: string, definition: any): s
 
   // NOT NULL constraint - comes after DEFAULT
   if (definition.notNull) {
-    parts.push('NOT NULL');
+    parts.push("NOT NULL");
   }
 
-  return `ALTER TABLE ${tableNameWithSchema} ADD COLUMN ${parts.join(' ')};`;
+  return `ALTER TABLE ${tableNameWithSchema} ADD COLUMN ${parts.join(" ")};`;
 }
 
 /**
@@ -567,7 +591,9 @@ function generateAddColumnSQL(table: string, column: string, definition: any): s
  * Based on Drizzle's approach with CASCADE
  */
 function generateDropColumnSQL(table: string, column: string): string {
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
   const tableNameWithSchema = `"${schema}"."${tableName}"`;
   // Use CASCADE to handle dependent objects
   return `ALTER TABLE ${tableNameWithSchema} DROP COLUMN "${column}" CASCADE;`;
@@ -577,14 +603,20 @@ function generateDropColumnSQL(table: string, column: string): string {
  * Generate ALTER TABLE ALTER COLUMN SQL
  * Based on Drizzle's approach with proper type casting and handling
  */
-function generateAlterColumnSQL(table: string, column: string, changes: any): string[] {
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+function generateAlterColumnSQL(
+  table: string,
+  column: string,
+  changes: any,
+): string[] {
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
   const tableNameWithSchema = `"${schema}"."${tableName}"`;
   const statements: string[] = [];
 
   // Handle type changes - need to handle enums and complex types
   if (changes.to?.type !== changes.from?.type) {
-    const newType = changes.to?.type || 'TEXT';
+    const newType = changes.to?.type || "TEXT";
 
     // Check if we need a USING clause for type conversion
     const needsUsing = checkIfNeedsUsingClause(changes.from?.type, newType);
@@ -592,11 +624,11 @@ function generateAlterColumnSQL(table: string, column: string, changes: any): st
     if (needsUsing) {
       // For complex type changes, use USING clause like Drizzle
       statements.push(
-        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING "${column}"::text::${newType};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING "${column}"::text::${newType};`,
       );
     } else {
       statements.push(
-        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DATA TYPE ${newType};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DATA TYPE ${newType};`,
       );
     }
   }
@@ -605,21 +637,30 @@ function generateAlterColumnSQL(table: string, column: string, changes: any): st
   if (changes.to?.notNull !== changes.from?.notNull) {
     if (changes.to?.notNull) {
       // When adding NOT NULL, might need to set defaults for existing NULL values
-      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET NOT NULL;`);
+      statements.push(
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET NOT NULL;`,
+      );
     } else {
-      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP NOT NULL;`);
+      statements.push(
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP NOT NULL;`,
+      );
     }
   }
 
   // Handle default value changes
   if (changes.to?.default !== changes.from?.default) {
     if (changes.to?.default !== undefined) {
-      const defaultValue = formatDefaultValue(changes.to.default, changes.to?.type);
+      const defaultValue = formatDefaultValue(
+        changes.to.default,
+        changes.to?.type,
+      );
       statements.push(
-        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DEFAULT ${defaultValue};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" SET DEFAULT ${defaultValue};`,
       );
     } else {
-      statements.push(`ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP DEFAULT;`);
+      statements.push(
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" DROP DEFAULT;`,
+      );
     }
   }
 
@@ -634,44 +675,49 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
   if (!fromType || !toType) return false;
 
   // Enum changes always need USING
-  if (fromType.includes('enum') || toType.includes('enum')) {
+  if (fromType.includes("enum") || toType.includes("enum")) {
     return true;
   }
 
-  const fromBase = fromType.split('(')[0].toLowerCase();
-  const toBase = toType.split('(')[0].toLowerCase();
+  const fromBase = fromType.split("(")[0].toLowerCase();
+  const toBase = toType.split("(")[0].toLowerCase();
 
   // Text/varchar to JSONB always needs USING
   if (
-    (fromBase === 'text' || fromBase === 'varchar' || fromBase === 'character varying') &&
-    (toBase === 'jsonb' || toBase === 'json')
+    (fromBase === "text" ||
+      fromBase === "varchar" ||
+      fromBase === "character varying") &&
+    (toBase === "jsonb" || toBase === "json")
   ) {
     return true;
   }
 
   // Some specific type conversions need USING
   const needsUsingPairs = [
-    ['integer', 'boolean'],
-    ['boolean', 'integer'],
-    ['text', 'integer'],
-    ['text', 'numeric'],
-    ['text', 'boolean'],
-    ['text', 'uuid'],
-    ['text', 'jsonb'],
-    ['text', 'json'],
-    ['varchar', 'integer'],
-    ['varchar', 'numeric'],
-    ['varchar', 'boolean'],
-    ['varchar', 'uuid'],
-    ['varchar', 'jsonb'],
-    ['varchar', 'json'],
-    ['character varying', 'jsonb'],
-    ['character varying', 'json'],
+    ["integer", "boolean"],
+    ["boolean", "integer"],
+    ["text", "integer"],
+    ["text", "numeric"],
+    ["text", "boolean"],
+    ["text", "uuid"],
+    ["text", "jsonb"],
+    ["text", "json"],
+    ["varchar", "integer"],
+    ["varchar", "numeric"],
+    ["varchar", "boolean"],
+    ["varchar", "uuid"],
+    ["varchar", "jsonb"],
+    ["varchar", "json"],
+    ["character varying", "jsonb"],
+    ["character varying", "json"],
     // Add more as needed based on PostgreSQL casting rules
   ];
 
   for (const [from, to] of needsUsingPairs) {
-    if ((fromBase === from && toBase === to) || (fromBase === to && toBase === from)) {
+    if (
+      (fromBase === from && toBase === to) ||
+      (fromBase === to && toBase === from)
+    ) {
       return true;
     }
   }
@@ -685,30 +731,33 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
  */
 function formatDefaultValue(value: any, type: string): string {
   // Handle NULL
-  if (value === null || value === 'NULL') {
-    return 'NULL';
+  if (value === null || value === "NULL") {
+    return "NULL";
   }
 
   // Handle boolean
-  if (type && (type.toLowerCase().includes('boolean') || type.toLowerCase() === 'bool')) {
-    if (value === true || value === 'true' || value === 't' || value === 1) {
-      return 'true';
+  if (
+    type &&
+    (type.toLowerCase().includes("boolean") || type.toLowerCase() === "bool")
+  ) {
+    if (value === true || value === "true" || value === "t" || value === 1) {
+      return "true";
     }
-    if (value === false || value === 'false' || value === 'f' || value === 0) {
-      return 'false';
+    if (value === false || value === "false" || value === "f" || value === 0) {
+      return "false";
     }
   }
 
   // Handle numeric types
-  if (type && type.match(/^(integer|bigint|smallint|numeric|decimal|real|double)/i)) {
+  if (type?.match(/^(integer|bigint|smallint|numeric|decimal|real|double)/i)) {
     return String(value);
   }
 
   // Handle SQL expressions and pre-formatted defaults
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     // Already formatted with type cast (e.g., '[]'::jsonb, '{}'::jsonb)
     // These come from the snapshot and are already properly formatted
-    if (value.includes('::')) {
+    if (value.includes("::")) {
       return value;
     }
 
@@ -719,12 +768,15 @@ function formatDefaultValue(value: any, type: string): string {
     }
 
     // SQL functions like now(), gen_random_uuid(), etc.
-    if (value.match(/^\w+\(\)/i) || (value.includes('(') && value.includes(')'))) {
+    if (
+      value.match(/^\w+\(\)/i) ||
+      (value.includes("(") && value.includes(")"))
+    ) {
       return value;
     }
 
     // SQL expressions starting with CURRENT_
-    if (value.toUpperCase().startsWith('CURRENT_')) {
+    if (value.toUpperCase().startsWith("CURRENT_")) {
       return value;
     }
 
@@ -740,28 +792,30 @@ function formatDefaultValue(value: any, type: string): string {
  * Generate CREATE INDEX SQL
  */
 function generateCreateIndexSQL(index: any): string {
-  const unique = index.isUnique ? 'UNIQUE ' : '';
-  const method = index.method || 'btree';
+  const unique = index.isUnique ? "UNIQUE " : "";
+  const method = index.method || "btree";
   const columns = index.columns
     .map((c: any) => {
       if (c.isExpression) {
         return c.expression;
       }
       // Only add DESC if explicitly set to false, no NULLS clause by default
-      return `"${c.expression}"${c.asc === false ? ' DESC' : ''}`;
+      return `"${c.expression}"${c.asc === false ? " DESC" : ""}`;
     })
-    .join(', ');
+    .join(", ");
 
   // Extract index name and table with proper schema handling
-  const indexName = index.name.includes('.') ? index.name.split('.')[1] : index.name;
+  const indexName = index.name.includes(".")
+    ? index.name.split(".")[1]
+    : index.name;
 
   // Keep the full table name with schema if present
   let tableRef: string;
-  if (index.table && index.table.includes('.')) {
-    const [schema, table] = index.table.split('.');
+  if (index.table?.includes(".")) {
+    const [schema, table] = index.table.split(".");
     tableRef = `"${schema}"."${table}"`;
   } else {
-    tableRef = `"${index.table || ''}"`;
+    tableRef = `"${index.table || ""}"`;
   }
 
   // Include schema in table reference for correct index creation
@@ -774,8 +828,8 @@ function generateCreateIndexSQL(index: any): string {
 function generateDropIndexSQL(index: any): string {
   // Extract just the index name without schema
   const indexName = index.name
-    ? index.name.includes('.')
-      ? index.name.split('.')[1]
+    ? index.name.includes(".")
+      ? index.name.split(".")[1]
       : index.name
     : index;
   // Match Drizzle's format - no schema qualification
@@ -786,11 +840,11 @@ function generateDropIndexSQL(index: any): string {
  * Generate CREATE FOREIGN KEY SQL (for existing tables)
  */
 function generateCreateForeignKeySQL(fk: any): string {
-  const schemaFrom = fk.schemaFrom || 'public';
-  const schemaTo = fk.schemaTo || 'public';
+  const schemaFrom = fk.schemaFrom || "public";
+  const schemaTo = fk.schemaTo || "public";
   const tableFrom = fk.tableFrom;
-  const columnsFrom = fk.columnsFrom.map((c: string) => `"${c}"`).join(', ');
-  const columnsTo = fk.columnsTo.map((c: string) => `"${c}"`).join(', ');
+  const columnsFrom = fk.columnsFrom.map((c: string) => `"${c}"`).join(", ");
+  const columnsTo = fk.columnsTo.map((c: string) => `"${c}"`).join(", ");
 
   let sql = `ALTER TABLE "${schemaFrom}"."${tableFrom}" ADD CONSTRAINT "${fk.name}" FOREIGN KEY (${columnsFrom}) REFERENCES "${schemaTo}"."${fk.tableTo}" (${columnsTo})`;
 
@@ -802,7 +856,7 @@ function generateCreateForeignKeySQL(fk: any): string {
     sql += ` ON UPDATE ${fk.onUpdate}`;
   }
 
-  return sql + ';';
+  return `${sql};`;
 }
 
 /**
@@ -810,27 +864,40 @@ function generateCreateForeignKeySQL(fk: any): string {
  */
 function generateDropForeignKeySQL(fk: any): string {
   const [schema, tableName] = fk.tableFrom
-    ? fk.tableFrom.includes('.')
-      ? fk.tableFrom.split('.')
-      : ['public', fk.tableFrom]
-    : ['public', ''];
+    ? fk.tableFrom.includes(".")
+      ? fk.tableFrom.split(".")
+      : ["public", fk.tableFrom]
+    : ["public", ""];
   return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${fk.name}";`;
 }
 
 /**
  * Generate SQL for renaming a table
  */
-export function generateRenameTableSQL(oldName: string, newName: string): string {
-  const [oldSchema, oldTable] = oldName.includes('.') ? oldName.split('.') : ['public', oldName];
-  const [, newTable] = newName.includes('.') ? newName.split('.') : ['public', newName];
+export function generateRenameTableSQL(
+  oldName: string,
+  newName: string,
+): string {
+  const [oldSchema, oldTable] = oldName.includes(".")
+    ? oldName.split(".")
+    : ["public", oldName];
+  const [, newTable] = newName.includes(".")
+    ? newName.split(".")
+    : ["public", newName];
   return `ALTER TABLE "${oldSchema}"."${oldTable}" RENAME TO "${newTable}";`;
 }
 
 /**
  * Generate SQL for renaming a column
  */
-export function generateRenameColumnSQL(table: string, oldName: string, newName: string): string {
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+export function generateRenameColumnSQL(
+  table: string,
+  oldName: string,
+  newName: string,
+): string {
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
   return `ALTER TABLE "${schema}"."${tableName}" RENAME COLUMN "${oldName}" TO "${newName}";`;
 }
 
@@ -838,11 +905,13 @@ export function generateRenameColumnSQL(table: string, oldName: string, newName:
  * Generate CREATE UNIQUE CONSTRAINT SQL
  */
 function generateCreateUniqueConstraintSQL(constraint: any): string {
-  const table = constraint.table || '';
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const table = constraint.table || "";
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
 
   const name = constraint.name;
-  const columns = constraint.columns.map((c: string) => `"${c}"`).join(', ');
+  const columns = constraint.columns.map((c: string) => `"${c}"`).join(", ");
 
   let sql = `ALTER TABLE "${schema}"."${tableName}" ADD CONSTRAINT "${name}" UNIQUE`;
 
@@ -860,8 +929,10 @@ function generateCreateUniqueConstraintSQL(constraint: any): string {
  * Generate DROP UNIQUE CONSTRAINT SQL
  */
 function generateDropUniqueConstraintSQL(constraint: any): string {
-  const table = constraint.table || '';
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const table = constraint.table || "";
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
 
   return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${constraint.name}";`;
 }
@@ -870,8 +941,10 @@ function generateDropUniqueConstraintSQL(constraint: any): string {
  * Generate CREATE CHECK CONSTRAINT SQL
  */
 function generateCreateCheckConstraintSQL(constraint: any): string {
-  const table = constraint.table || '';
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const table = constraint.table || "";
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
 
   const name = constraint.name;
   const value = constraint.value;
@@ -883,8 +956,10 @@ function generateCreateCheckConstraintSQL(constraint: any): string {
  * Generate DROP CHECK CONSTRAINT SQL
  */
 function generateDropCheckConstraintSQL(constraint: any): string {
-  const table = constraint.table || '';
-  const [schema, tableName] = table.includes('.') ? table.split('.') : ['public', table];
+  const table = constraint.table || "";
+  const [schema, tableName] = table.includes(".")
+    ? table.split(".")
+    : ["public", table];
 
   return `ALTER TABLE "${schema}"."${tableName}" DROP CONSTRAINT "${constraint.name}";`;
 }

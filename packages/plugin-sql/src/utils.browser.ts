@@ -18,7 +18,7 @@ export function expandTildePath(filepath: string): string {
  * No-op in browser; returns a placeholder string.
  */
 export function resolveEnvFile(_startDir?: string): string {
-  return '.env';
+  return ".env";
 }
 
 /**
@@ -26,5 +26,5 @@ export function resolveEnvFile(_startDir?: string): string {
  * In browser builds we default to in-memory PGlite; return a stable placeholder.
  */
 export function resolvePgliteDir(_dir?: string, _fallbackDir?: string): string {
-  return 'in-memory';
+  return "in-memory";
 }

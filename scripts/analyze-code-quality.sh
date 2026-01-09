@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ElizaOS Code Quality Analysis Script
+# elizaOS Code Quality Analysis Script
 # This script performs comprehensive code quality checks similar to the GitHub workflow
 # Runs the same analysis as the daily workflow (scheduled at 12:00 PM UTC)
 
@@ -43,7 +43,7 @@ command_exists() {
 # Create results directory
 mkdir -p "${RESULTS_DIR}"
 
-print_info "Starting ElizaOS Code Quality Analysis"
+print_info "Starting elizaOS Code Quality Analysis"
 print_info "Results will be saved to: ${REPORT_FILE}"
 echo ""
 
@@ -56,7 +56,7 @@ fi
 
 # Initialize report
 cat > "${REPORT_FILE}" << EOF
-# ElizaOS Code Quality Analysis Report
+# elizaOS Code Quality Analysis Report
 Generated on: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
 This automated analysis checks for:
@@ -444,7 +444,7 @@ print_info "Analyzing repository standards..."
 
     echo ""
     echo "### Non-Bun Test Framework Usage (Should use bun:test)"
-    echo "ElizaOS uses 'bun:test' exclusively. Found usage of other test frameworks:"
+    echo "elizaOS uses 'bun:test' exclusively. Found usage of other test frameworks:"
     grep -r -E "(from ['\"]vitest|from ['\"]jest|from ['\"]mocha|import.*vitest|import.*jest|require\(['\"]jest|require\(['\"]vitest)" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
     echo ""
     echo "Test syntax that should use bun:test instead:"

@@ -1,6 +1,6 @@
-import { sql } from 'drizzle-orm';
-import type { DrizzleDB, Journal, JournalEntry } from '../types';
-import { getRow } from '../../types';
+import { sql } from "drizzle-orm";
+import { getRow } from "../../types";
+import type { DrizzleDB, Journal, JournalEntry } from "../types";
 
 export class JournalStorage {
   constructor(private db: DrizzleDB) {}
@@ -9,7 +9,7 @@ export class JournalStorage {
     const result = await this.db.execute(
       sql`SELECT version, dialect, entries 
           FROM migrations._journal 
-          WHERE plugin_name = ${pluginName}`
+          WHERE plugin_name = ${pluginName}`,
     );
 
     if (result.rows.length === 0) {
@@ -37,7 +37,7 @@ export class JournalStorage {
           DO UPDATE SET 
             version = EXCLUDED.version,
             dialect = EXCLUDED.dialect,
-            entries = EXCLUDED.entries`
+            entries = EXCLUDED.entries`,
     );
   }
 
@@ -48,8 +48,8 @@ export class JournalStorage {
     // If no journal exists, create a new one
     if (!journal) {
       journal = {
-        version: '7', // Latest Drizzle version
-        dialect: 'postgresql',
+        version: "7", // Latest Drizzle version
+        dialect: "postgresql",
         entries: [],
       };
     }
@@ -76,11 +76,11 @@ export class JournalStorage {
     pluginName: string,
     idx: number,
     tag: string,
-    breakpoints: boolean = true
+    breakpoints: boolean = true,
   ): Promise<void> {
     const entry: JournalEntry = {
       idx,
-      version: '7',
+      version: "7",
       when: Date.now(),
       tag,
       breakpoints,

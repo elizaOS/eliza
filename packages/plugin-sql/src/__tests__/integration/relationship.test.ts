@@ -1,23 +1,30 @@
-import { type Entity, type UUID, AgentRuntime } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
-import { PgDatabaseAdapter } from '../../pg/adapter';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
-import { relationshipTable } from '../../schema';
-import { createIsolatedTestDatabase } from '../test-helpers';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
+import type { AgentRuntime, Entity, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { PgDatabaseAdapter } from "../../pg/adapter";
+import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { relationshipTable } from "../../schema";
+import { createIsolatedTestDatabase } from "../test-helpers";
 
-describe('Relationship Integration Tests', () => {
+describe("Relationship Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
-  let runtime: AgentRuntime;
+  let _runtime: AgentRuntime;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
   let testEntityId: UUID;
   let testTargetEntityId: UUID;
 
   beforeAll(async () => {
-    const setup = await createIsolatedTestDatabase('relationship-tests');
+    const setup = await createIsolatedTestDatabase("relationship-tests");
     adapter = setup.adapter;
-    runtime = setup.runtime;
+    _runtime = setup.runtime;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
 
@@ -27,8 +34,16 @@ describe('Relationship Integration Tests', () => {
 
     // Create test entities
     await adapter.createEntities([
-      { id: testEntityId, agentId: testAgentId, names: ['Test Entity'] } as Entity,
-      { id: testTargetEntityId, agentId: testAgentId, names: ['Target Entity'] } as Entity,
+      {
+        id: testEntityId,
+        agentId: testAgentId,
+        names: ["Test Entity"],
+      } as Entity,
+      {
+        id: testTargetEntityId,
+        agentId: testAgentId,
+        names: ["Target Entity"],
+      } as Entity,
     ]);
   });
 
@@ -38,16 +53,16 @@ describe('Relationship Integration Tests', () => {
     }
   });
 
-  describe('Relationship Tests', () => {
+  describe("Relationship Tests", () => {
     beforeEach(async () => {
       await adapter.getDatabase().delete(relationshipTable);
     });
 
-    it('should create and retrieve a relationship', async () => {
+    it("should create and retrieve a relationship", async () => {
       const relationshipData = {
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
-        tags: ['friend'],
+        tags: ["friend"],
       };
       const result = await adapter.createRelationship(relationshipData);
       expect(result).toBe(true);
@@ -57,14 +72,14 @@ describe('Relationship Integration Tests', () => {
         targetEntityId: testTargetEntityId,
       });
       expect(retrieved).toBeDefined();
-      expect(retrieved?.tags).toContain('friend');
+      expect(retrieved?.tags).toContain("friend");
     });
 
-    it('should update an existing relationship', async () => {
+    it("should update an existing relationship", async () => {
       const relationshipData = {
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
-        tags: ['friend'],
+        tags: ["friend"],
       };
       await adapter.createRelationship(relationshipData);
 
@@ -76,8 +91,8 @@ describe('Relationship Integration Tests', () => {
 
       const updatedRelationship = {
         ...retrieved!,
-        tags: ['best_friend'],
-        metadata: { since: '2023' },
+        tags: ["best_friend"],
+        metadata: { since: "2023" },
       };
       await adapter.updateRelationship(updatedRelationship);
 
@@ -85,28 +100,35 @@ describe('Relationship Integration Tests', () => {
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
       });
-      expect(updatedRetrieved?.tags).toContain('best_friend');
-      expect(updatedRetrieved?.metadata).toEqual({ since: '2023' });
+      expect(updatedRetrieved?.tags).toContain("best_friend");
+      expect(updatedRetrieved?.metadata).toEqual({ since: "2023" });
     });
 
-    it('should retrieve relationships by entity ID and tags', async () => {
+    it("should retrieve relationships by entity ID and tags", async () => {
       await adapter.createRelationship({
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
-        tags: ['friend', 'colleague'],
+        tags: ["friend", "colleague"],
       });
 
       const otherTargetId = uuidv4() as UUID;
       await adapter.createEntities([
-        { id: otherTargetId, agentId: testAgentId, names: ['Other Entity'] } as Entity,
+        {
+          id: otherTargetId,
+          agentId: testAgentId,
+          names: ["Other Entity"],
+        } as Entity,
       ]);
       await adapter.createRelationship({
         sourceEntityId: testEntityId,
         targetEntityId: otherTargetId,
-        tags: ['family'],
+        tags: ["family"],
       });
 
-      const results = await adapter.getRelationships({ entityId: testEntityId, tags: ['friend'] });
+      const results = await adapter.getRelationships({
+        entityId: testEntityId,
+        tags: ["friend"],
+      });
       expect(results).toHaveLength(1);
       expect(results[0].targetEntityId).toBe(testTargetEntityId);
     });

@@ -1,17 +1,24 @@
-import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'bun:test';
-import { createIsolatedTestDatabase } from '../test-helpers';
-import { v4 as uuidv4 } from 'uuid';
-import type { Entity, UUID, Metadata } from '@elizaos/core';
-import { PgDatabaseAdapter } from '../../pg/adapter';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "bun:test";
+import type { Entity, Metadata, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { PgDatabaseAdapter } from "../../pg/adapter";
+import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { createIsolatedTestDatabase } from "../test-helpers";
 
-describe('Entity CRUD Operations', () => {
+describe("Entity CRUD Operations", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
 
   beforeAll(async () => {
-    const setup = await createIsolatedTestDatabase('entity-crud');
+    const setup = await createIsolatedTestDatabase("entity-crud");
     adapter = setup.adapter;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
@@ -23,11 +30,11 @@ describe('Entity CRUD Operations', () => {
     }
   });
 
-  describe('Basic CRUD Operations', () => {
+  describe("Basic CRUD Operations", () => {
     beforeEach(async () => {
       // Clean up any existing entities
       const existingEntities = await adapter.searchEntitiesByName({
-        query: '',
+        query: "",
         agentId: testAgentId,
         limit: 100,
       });
@@ -38,12 +45,12 @@ describe('Entity CRUD Operations', () => {
       }
     });
 
-    it('should create and retrieve an entity', async () => {
+    it("should create and retrieve an entity", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Test Entity'],
-        metadata: { type: 'test' },
+        names: ["Test Entity"],
+        metadata: { type: "test" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -51,14 +58,14 @@ describe('Entity CRUD Operations', () => {
 
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
       expect(retrieved).toHaveLength(1);
-      expect(retrieved![0].id).toBe(entity.id as UUID);
+      expect(retrieved?.[0].id).toBe(entity.id as UUID);
     });
 
-    it('should update an entity', async () => {
+    it("should update an entity", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Original Name'],
+        names: ["Original Name"],
         metadata: { version: 1 },
       };
 
@@ -66,22 +73,22 @@ describe('Entity CRUD Operations', () => {
 
       const updatedEntity: Entity = {
         ...entity,
-        names: ['Updated Name'],
+        names: ["Updated Name"],
         metadata: { version: 2 },
       };
 
       await adapter.updateEntity(updatedEntity);
 
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
-      expect(retrieved![0].names).toContain('Updated Name');
-      expect(retrieved![0].metadata?.version).toBe(2);
+      expect(retrieved?.[0].names).toContain("Updated Name");
+      expect(retrieved?.[0].metadata?.version).toBe(2);
     });
 
-    it('should delete an entity', async () => {
+    it("should delete an entity", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['To Delete'],
+        names: ["To Delete"],
         metadata: {},
       };
 
@@ -100,26 +107,26 @@ describe('Entity CRUD Operations', () => {
     });
   });
 
-  describe('Advanced Entity Operations', () => {
-    it('should get entities by multiple names', async () => {
+  describe("Advanced Entity Operations", () => {
+    it("should get entities by multiple names", async () => {
       const entities = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['John Doe', 'JD'],
-          metadata: { type: 'person' },
+          names: ["John Doe", "JD"],
+          metadata: { type: "person" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Jane Doe', 'JD2'],
-          metadata: { type: 'person' },
+          names: ["Jane Doe", "JD2"],
+          metadata: { type: "person" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Bob Smith'],
-          metadata: { type: 'person' },
+          names: ["Bob Smith"],
+          metadata: { type: "person" },
         },
       ];
 
@@ -129,34 +136,34 @@ describe('Entity CRUD Operations', () => {
 
       // Search for Doe entities
       const doeEntities = await adapter.getEntitiesByNames({
-        names: ['John Doe', 'Jane Doe'],
+        names: ["John Doe", "Jane Doe"],
         agentId: testAgentId,
       });
 
       expect(doeEntities).toHaveLength(2);
       const names = doeEntities.flatMap((e) => e.names);
-      expect(names).toContain('John Doe');
-      expect(names).toContain('Jane Doe');
+      expect(names).toContain("John Doe");
+      expect(names).toContain("Jane Doe");
     });
 
-    it('should search entities with partial name matching', async () => {
+    it("should search entities with partial name matching", async () => {
       const entities = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Alexander Hamilton'],
+          names: ["Alexander Hamilton"],
           metadata: {},
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Alexandra Smith'],
+          names: ["Alexandra Smith"],
           metadata: {},
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Bob Johnson'],
+          names: ["Bob Johnson"],
           metadata: {},
         },
       ];
@@ -166,27 +173,29 @@ describe('Entity CRUD Operations', () => {
       }
 
       const results = await adapter.searchEntitiesByName({
-        query: 'Alex',
+        query: "Alex",
         agentId: testAgentId,
         limit: 10,
       });
 
       expect(results).toHaveLength(2);
       expect(
-        results.every((e) => e.names.some((name) => name.toLowerCase().includes('alex')))
+        results.every((e) =>
+          e.names.some((name) => name.toLowerCase().includes("alex")),
+        ),
       ).toBe(true);
     });
 
-    it('should handle entity metadata operations', async () => {
+    it("should handle entity metadata operations", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Metadata Test'],
+        names: ["Metadata Test"],
         metadata: {
           level: 1,
-          tags: ['test', 'metadata'],
+          tags: ["test", "metadata"],
           nested: {
-            property: 'value',
+            property: "value",
             array: [1, 2, 3],
           },
         },
@@ -195,15 +204,17 @@ describe('Entity CRUD Operations', () => {
       await adapter.createEntities([entity]);
 
       const retrieved = await adapter.getEntitiesByIds([entity.id!]);
-      expect(retrieved![0].metadata).toEqual(entity.metadata as Metadata);
-      expect((retrieved![0].metadata?.nested as any)?.array).toEqual([1, 2, 3]);
+      expect(retrieved?.[0].metadata).toEqual(entity.metadata as Metadata);
+      expect(
+        (retrieved?.[0].metadata?.nested as Record<string, unknown>)?.array,
+      ).toEqual([1, 2, 3]);
     });
 
-    it('should handle duplicate entity creation', async () => {
+    it("should handle duplicate entity creation", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Duplicate Test'],
+        names: ["Duplicate Test"],
         metadata: {},
       };
 
@@ -216,7 +227,7 @@ describe('Entity CRUD Operations', () => {
       expect(secondResult).toBe(false);
     });
 
-    it('should handle batch entity operations', async () => {
+    it("should handle batch entity operations", async () => {
       const entities: Entity[] = [];
       for (let i = 0; i < 5; i++) {
         entities.push({
@@ -247,8 +258,8 @@ describe('Entity CRUD Operations', () => {
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle empty search query', async () => {
+  describe("Edge Cases", () => {
+    it("should handle empty search query", async () => {
       // Create a few entities
       for (let i = 0; i < 3; i++) {
         await adapter.createEntities([
@@ -262,7 +273,7 @@ describe('Entity CRUD Operations', () => {
       }
 
       const results = await adapter.searchEntitiesByName({
-        query: '',
+        query: "",
         agentId: testAgentId,
         limit: 10,
       });
@@ -270,11 +281,11 @@ describe('Entity CRUD Operations', () => {
       expect(results.length).toBeGreaterThanOrEqual(3);
     });
 
-    it('should handle update of non-existent entity', async () => {
+    it("should handle update of non-existent entity", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Non-existent'],
+        names: ["Non-existent"],
         metadata: {},
       };
 
@@ -286,18 +297,18 @@ describe('Entity CRUD Operations', () => {
       expect(retrieved).toHaveLength(0);
     });
 
-    it('should handle deletion of non-existent entity', async () => {
+    it("should handle deletion of non-existent entity", async () => {
       const nonExistentId = uuidv4() as UUID;
 
       // Should not throw - deleteEntity should handle non-existent entities gracefully
       await adapter.deleteEntity(nonExistentId);
     });
 
-    it('should handle entities with multiple names in search', async () => {
+    it("should handle entities with multiple names in search", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Primary Name', 'Alias One', 'Alias Two'],
+        names: ["Primary Name", "Alias One", "Alias Two"],
         metadata: {},
       };
 
@@ -305,30 +316,30 @@ describe('Entity CRUD Operations', () => {
 
       // Should find by any name
       const result1 = await adapter.searchEntitiesByName({
-        query: 'Primary',
+        query: "Primary",
         agentId: testAgentId,
       });
       expect(result1).toHaveLength(1);
 
       const result2 = await adapter.searchEntitiesByName({
-        query: 'Alias',
+        query: "Alias",
         agentId: testAgentId,
       });
       expect(result2).toHaveLength(1);
     });
 
-    it('should handle case-insensitive name search', async () => {
+    it("should handle case-insensitive name search", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['CaseSensitive Name'],
+        names: ["CaseSensitive Name"],
         metadata: {},
       };
 
       await adapter.createEntities([entity]);
 
       const results = await adapter.searchEntitiesByName({
-        query: 'CASESENSITIVE',
+        query: "CASESENSITIVE",
         agentId: testAgentId,
       });
 

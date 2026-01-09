@@ -1,6 +1,6 @@
-import { sql } from 'drizzle-orm';
-import { jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { agentTable } from './agent';
+import { sql } from "drizzle-orm";
+import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { agentTable } from "./agent";
 
 /**
  * Defines a table schema for 'rooms' in the database.
@@ -17,25 +17,20 @@ import { agentTable } from './agent';
  * @property {string} channelId - The channel ID of the room.
  * @property {number} createdAt - The timestamp of when the room was created.
  */
-export const roomTable = pgTable('rooms', {
-  id: uuid('id')
-    .notNull()
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  agentId: uuid('agent_id').references(() => agentTable.id, {
-    onDelete: 'cascade',
+export const roomTable = pgTable("rooms", {
+  id: uuid("id").notNull().primaryKey().default(sql`gen_random_uuid()`),
+  agentId: uuid("agent_id").references(() => agentTable.id, {
+    onDelete: "cascade",
   }),
-  source: text('source').notNull(),
-  type: text('type').notNull(),
-  messageServerId: uuid('message_server_id'),
-  worldId: uuid('world_id'), // no guarantee that world exists, it is optional for now
+  source: text("source").notNull(),
+  type: text("type").notNull(),
+  messageServerId: uuid("message_server_id"),
+  worldId: uuid("world_id"), // no guarantee that world exists, it is optional for now
   // .references(() => worldTable.id, {
   //   onDelete: 'cascade',
   // }),
-  name: text('name'),
-  metadata: jsonb('metadata'),
-  channelId: text('channel_id'),
-  createdAt: timestamp('created_at')
-    .default(sql`now()`)
-    .notNull(),
+  name: text("name"),
+  metadata: jsonb("metadata"),
+  channelId: text("channel_id"),
+  createdAt: timestamp("created_at").default(sql`now()`).notNull(),
 });

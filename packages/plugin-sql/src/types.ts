@@ -1,6 +1,6 @@
-import type { IDatabaseAdapter } from '@elizaos/core';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import type { PgliteDatabase } from 'drizzle-orm/pglite';
+import type { IDatabaseAdapter } from "@elizaos/core";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { PgliteDatabase } from "drizzle-orm/pglite";
 
 /**
  * Represents a type that can be either a NodePgDatabase or a PgliteDatabase.
@@ -29,6 +29,9 @@ export function getDb(adapter: IDatabaseAdapter): DrizzleDatabase {
  * Type-safe row extraction from query results.
  * Avoids verbose `as unknown as T` casts.
  */
-export function getRow<T>(result: { rows: unknown[] }, index = 0): T | undefined {
+export function getRow<T>(
+  result: { rows: unknown[] },
+  index = 0,
+): T | undefined {
   return result.rows[index] as T | undefined;
 }

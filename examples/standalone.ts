@@ -38,56 +38,58 @@
  */
 
 // MUST be set before any imports to suppress ElizaOS logs
-process.env.LOG_LEVEL = 'silent';
+process.env.LOG_LEVEL = "silent";
 
 import {
   AgentRuntime,
   ChannelType,
-  createMessageMemory,
-  stringToUuid,
   type Character,
-  type Content,
+  createMessageMemory,
   type Memory,
+  stringToUuid,
   type UUID,
-} from '@elizaos/core';
-import bootstrapPlugin from '@elizaos/plugin-bootstrap';
-import openaiPlugin from '@elizaos/plugin-openai';
-import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
-import 'node:crypto';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import bootstrapPlugin from "@elizaos/plugin-bootstrap";
+import openaiPlugin from "@elizaos/plugin-openai";
+import sqlPlugin, {
+  createDatabaseAdapter,
+  DatabaseMigrationService,
+} from "@elizaos/plugin-sql";
+import "node:crypto";
+import { v4 as uuidv4 } from "uuid";
 
 async function main(): Promise<void> {
   // Basic env checks
-  const openaiKey = process.env.OPENAI_API_KEY || '';
+  const openaiKey = process.env.OPENAI_API_KEY || "";
   if (!openaiKey) {
     console.error(
-      'OPENAI_API_KEY is not set; set it in your environment to use @elizaos/plugin-openai.'
+      "OPENAI_API_KEY is not set; set it in your environment to use @elizaos/plugin-openai.",
     );
     process.exit(1);
   }
 
   // Database selection: prefer POSTGRES_URL if set, else in-memory PGLite
-  const postgresUrl = process.env.POSTGRES_URL || '';
-  const pgliteDir = process.env.PGLITE_PATH || 'memory://';
+  const postgresUrl = process.env.POSTGRES_URL || "";
+  const pgliteDir = process.env.PGLITE_PATH || "memory://";
 
   // Character definition
   const character: Character = {
-    name: 'StandaloneAgent',
-    username: 'standalone',
-    bio: 'An ElizaOS agent running without the HTTP server.',
-    adjectives: ['helpful', 'concise'],
+    name: "StandaloneAgent",
+    username: "standalone",
+    bio: "An ElizaOS agent running without the HTTP server.",
+    adjectives: ["helpful", "concise"],
   };
 
   // Pre-create DB adapter and run migrations (server usually does this)
   const agentId = stringToUuid(character.name);
   const adapter = createDatabaseAdapter(
     { dataDir: pgliteDir, postgresUrl: postgresUrl || undefined },
-    agentId
+    agentId,
   );
   await adapter.init();
 
   const migrator = new DatabaseMigrationService();
-  // @ts-ignore getDatabase is available on the adapter base class
+  // @ts-expect-error getDatabase is available on the adapter base class
   await migrator.initializeWithDatabase(adapter.getDatabase());
   migrator.discoverAndRegisterPluginSchemas([sqlPlugin]);
   await migrator.runAllPluginMigrations();
@@ -109,17 +111,17 @@ async function main(): Promise<void> {
 
   // Ensure a basic DM world/room mapping exists for this conversation
   const userId = uuidv4() as UUID;
-  const worldId = stringToUuid('standalone-world');
-  const roomId = stringToUuid('standalone-room');
+  const worldId = stringToUuid("standalone-world");
+  const roomId = stringToUuid("standalone-room");
 
   await runtime.ensureConnection({
     entityId: userId,
     roomId,
     worldId,
-    name: 'LocalUser',
-    source: 'cli',
-    channelId: 'standalone-channel',
-    messageServerId: stringToUuid('standalone-server'),
+    name: "LocalUser",
+    source: "cli",
+    channelId: "standalone-channel",
+    messageServerId: stringToUuid("standalone-server"),
     type: ChannelType.DM,
   });
 
@@ -129,24 +131,24 @@ async function main(): Promise<void> {
     entityId: userId,
     roomId,
     content: {
-      text: 'Hello! Who are you?',
-      source: 'cli',
+      text: "Hello! Who are you?",
+      source: "cli",
       channelType: ChannelType.DM,
     },
   });
 
-  console.log('User:', message.content.text);
+  console.log("User:", message.content.text);
 
   // Send the message through the messageService and print the response
   if (!runtime.messageService) {
-    console.error('MessageService not initialized');
+    console.error("MessageService not initialized");
     process.exit(1);
   }
 
   const result = await runtime.messageService.handleMessage(runtime, message);
 
   // Print the agent's response
-  if (result.responseContent?.text) {
+  if (result.responseContent && result.responseContent.text) {
     console.log(`${character.name}:`, result.responseContent.text);
   }
 
@@ -154,6 +156,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('Fatal error in standalone runtime:', err);
+  console.error("Fatal error in standalone runtime:", err);
   process.exit(1);
 });

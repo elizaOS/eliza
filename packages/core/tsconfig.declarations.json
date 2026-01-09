@@ -2,13 +2,23 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "./typescript/src",
     "types": ["node", "bun"],
     "noEmit": false,
     "emitDeclarationOnly": true,
     "composite": false,
-    "incremental": false
+    "incremental": false,
+    "skipLibCheck": true
   },
-  "include": ["src/index.ts", "src/index.node.ts", "src/index.browser.ts"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]
+  "include": [
+    "typescript/src/index.ts",
+    "typescript/src/index.node.ts",
+    "typescript/src/index.browser.ts"
+  ],
+  "exclude": [
+    "typescript/src/**/*.test.ts",
+    "typescript/src/**/*.spec.ts",
+    "typescript/src/__tests__/**/*",
+    "typescript/src/testing/**/*"
+  ]
 }

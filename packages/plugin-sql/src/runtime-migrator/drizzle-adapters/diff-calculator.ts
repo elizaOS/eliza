@@ -1,49 +1,52 @@
-import type { SchemaSnapshot } from '../types';
+import type { SchemaSnapshot } from "../types";
 
 /**
  * Normalize SQL types for comparison
  * Handles equivalent type variations between introspected DB and schema definitions
  */
 function normalizeType(type: string | undefined): string {
-  if (!type) return '';
+  if (!type) return "";
 
   const normalized = type.toLowerCase().trim();
 
   // Handle timestamp variations
-  if (normalized === 'timestamp without time zone' || normalized === 'timestamp with time zone') {
-    return 'timestamp';
+  if (
+    normalized === "timestamp without time zone" ||
+    normalized === "timestamp with time zone"
+  ) {
+    return "timestamp";
   }
 
   // Handle serial vs integer with identity
   // serial is essentially integer with auto-increment
-  if (normalized === 'serial') {
-    return 'integer';
+  if (normalized === "serial") {
+    return "integer";
   }
-  if (normalized === 'bigserial') {
-    return 'bigint';
+  if (normalized === "bigserial") {
+    return "bigint";
   }
-  if (normalized === 'smallserial') {
-    return 'smallint';
+  if (normalized === "smallserial") {
+    return "smallint";
   }
 
   // Handle numeric/decimal equivalence
-  if (normalized.startsWith('numeric') || normalized.startsWith('decimal')) {
+  if (normalized.startsWith("numeric") || normalized.startsWith("decimal")) {
     // Extract precision and scale if present
     const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
     if (match) {
-      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ''})`;
+      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ""})`;
     }
-    return 'numeric';
+    return "numeric";
   }
 
   // Handle varchar/character varying
-  if (normalized.startsWith('character varying')) {
-    return normalized.replace('character varying', 'varchar');
+  if (normalized.startsWith("character varying")) {
+    return normalized.replace("character varying", "varchar");
   }
 
   // Handle text array variations
-  if (normalized === 'text[]' || normalized === '_text') {
-    return 'text[]';
+  if (normalized === "text[]" || normalized === "_text") {
+    return "text[]";
   }
 
   return normalized;
@@ -71,9 +74,9 @@ function isIndexChanged(prevIndex: any, currIndex: any): boolean {
     const currCol = currColumns[i];
 
     // Handle both string columns and expression columns
-    if (typeof prevCol === 'string' && typeof currCol === 'string') {
+    if (typeof prevCol === "string" && typeof currCol === "string") {
       if (prevCol !== currCol) return true;
-    } else if (typeof prevCol === 'object' && typeof currCol === 'object') {
+    } else if (typeof prevCol === "object" && typeof currCol === "object") {
       // Compare expression columns
       if (prevCol.expression !== currCol.expression) return true;
       if (prevCol.isExpression !== currCol.isExpression) return true;
@@ -146,7 +149,7 @@ export interface SchemaDiff {
  */
 export async function calculateDiff(
   previousSnapshot: SchemaSnapshot | null,
-  currentSnapshot: SchemaSnapshot
+  currentSnapshot: SchemaSnapshot,
 ): Promise<SchemaDiff> {
   const diff: SchemaDiff = {
     tables: {
@@ -326,7 +329,8 @@ export async function calculateDiff(
 
           // Check for changes in column properties
           // Use normalized type comparison
-          const typeChanged = normalizeType(prevCol.type) !== normalizeType(currCol.type);
+          const typeChanged =
+            normalizeType(prevCol.type) !== normalizeType(currCol.type);
           const hasChanges =
             typeChanged ||
             prevCol.notNull !== currCol.notNull ||
@@ -457,10 +461,10 @@ export async function calculateDiff(
           const currFK = currFKs[fkName];
 
           // Compare FK properties
-          const prevOnDelete = prevFK.onDelete || 'no action';
-          const currOnDelete = currFK.onDelete || 'no action';
-          const prevOnUpdate = prevFK.onUpdate || 'no action';
-          const currOnUpdate = currFK.onUpdate || 'no action';
+          const prevOnDelete = prevFK.onDelete || "no action";
+          const currOnDelete = currFK.onDelete || "no action";
+          const prevOnUpdate = prevFK.onUpdate || "no action";
+          const currOnUpdate = currFK.onUpdate || "no action";
 
           if (prevOnDelete !== currOnDelete || prevOnUpdate !== currOnUpdate) {
             // FK CASCADE behavior changed - need to drop and recreate

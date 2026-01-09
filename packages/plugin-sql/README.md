@@ -1,6 +1,6 @@
 # DrizzleDatabaseAdapter
 
-A PostgreSQL database adapter built with Drizzle ORM for the ElizaOS ecosystem.
+A PostgreSQL database adapter built with Drizzle ORM for the elizaOS ecosystem.
 
 ## Installation
 
@@ -56,11 +56,11 @@ The plugin uses a structured schema with the following main tables:
 - **Cache**: Provides a caching mechanism for frequently accessed data
 - **World**: Manages world settings and configurations
 
-Each table is defined using Drizzle ORM schema definitions in the `src/schema` directory. The schema is designed to support the ElizaOS ecosystem's requirements for agent-based systems.
+Each table is defined using Drizzle ORM schema definitions in the `src/schema` directory. The schema is designed to support the elizaOS ecosystem's requirements for agent-based systems.
 
 ## Usage
 
-The adapter is typically used as part of the ElizaOS runtime:
+The adapter is typically used as part of the elizaOS runtime:
 
 ```typescript
 async function findDatabaseAdapter(runtime: IAgentRuntime) {
@@ -130,7 +130,7 @@ Default pool configuration:
 
 ## Migration Support
 
-ElizaOS v1.0.0 introduces **dynamic runtime migrations** - automatic schema management that runs at startup without manual intervention. Plugins can define their schemas and the system handles all migrations automatically.
+elizaOS v1.0.0 introduces **dynamic runtime migrations** - automatic schema management that runs at startup without manual intervention. Plugins can define their schemas and the system handles all migrations automatically.
 
 ### TLDR: What Changed?
 

@@ -1,17 +1,26 @@
-import pluginConfig from '@elizaos/config/eslint/eslint.config.plugin.js';
+import js from "@eslint/js";
+import tseslint from "typescript-eslint";
 
 /**
  * ESLint config for plugin-sql
- * Extends the shared plugin config with package-specific overrides
+ * Standalone config without @elizaos/config dependency
  */
 export default [
-  ...pluginConfig,
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    files: ['**/*.{js,mjs,cjs,ts}'],
+    files: ["**/*.{js,mjs,cjs,ts}"],
+    languageOptions: {
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: "module",
+      },
+    },
     rules: {
       // plugin-sql specific overrides
-      '@typescript-eslint/no-unused-vars': 'off',
-      'no-control-regex': 'off',
+      "@typescript-eslint/no-unused-vars": "off",
+      "no-control-regex": "off",
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];

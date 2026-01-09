@@ -43,7 +43,7 @@ jobs:
             5. Verify README.md examples and docs are up to date
             6. Check for any failing or skipped tests
 
-            **Important:** This is an ElizaOS project - use `bun` for all package operations, never npm/yarn/pnpm.
+            **Important:** This is an elizaOS project - use `bun` for all package operations, never npm/yarn/pnpm.
 
             Create a single issue summarizing any findings with sections:
             - 🔒 Security Issues (if any)

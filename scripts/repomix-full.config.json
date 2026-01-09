@@ -10,7 +10,7 @@
     "showLineNumbers": false,
     "includeEmptyDirectories": false,
     "topFilesLength": 10,
-    "headerText": "ElizaOS Developer Context - Core technical components and implementation details",
+    "headerText": "elizaOS Developer Context - Core technical components and implementation details",
     "instructionFilePath": "scripts/dev-instructions.md"
   },
   "include": [

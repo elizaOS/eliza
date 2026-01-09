@@ -1,0 +1,854 @@
+---
+title: "Testing Guide"
+description: "Testing strategies, patterns, and best practices for the Telegram plugin package."
+---
+
+## Test Environment Setup
+
+### Prerequisites
+
+1. **Test Bot Setup**
+   - Create a dedicated test bot via @BotFather
+   - Get test bot token
+   - Configure test bot settings
+
+2. **Test Infrastructure**
+   - Create a test group/channel
+   - Add test bot as admin (for group tests)
+   - Set up test user accounts
+
+3. **Environment Configuration**
+
+```bash
+# .env.test
+TELEGRAM_BOT_TOKEN=test_bot_token_here
+TELEGRAM_TEST_CHAT_ID=-1001234567890  # Test group ID
+TELEGRAM_TEST_USER_ID=123456789        # Test user ID
+TELEGRAM_TEST_CHANNEL_ID=@testchannel  # Test channel
+
+# Optional test settings
+TELEGRAM_API_ROOT=https://api.telegram.org  # Or test server
+TELEGRAM_TEST_TIMEOUT=30000             # Test timeout in ms
+```
+
+## Unit Testing
+
+### Testing Message Manager
+
+```typescript
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { MessageManager } from '@elizaos/plugin-telegram';
+import { Telegraf, Context } from 'telegraf';
+
+describe('MessageManager', () => {
+  let messageManager: MessageManager;
+  let mockBot: Telegraf;
+  let mockRuntime: any;
+  
+  beforeEach(() => {
+    // Mock Telegraf bot
+    mockBot = {
+      telegram: {
+        sendMessage: vi.fn(),
+        editMessageText: vi.fn(),
+        answerCallbackQuery: vi.fn()
+      }
+    } as any;
+    
+    // Mock runtime
+    mockRuntime = {
+      processMessage: vi.fn(),
+      character: { name: 'TestBot' },
+      logger: { info: vi.fn(), error: vi.fn() },
+      getSetting: vi.fn()
+    };
+    
+    messageManager = new MessageManager(mockBot, mockRuntime);
+  });
+  
+  describe('handleMessage', () => {
+    it('should process text messages', async () => {
+      const mockContext = createMockContext({
+        message: {
+          text: 'Hello bot',
+          from: { id: 123, username: 'testuser' },
+          chat: { id: -456, type: 'group' }
+        }
+      });
+      
+      mockRuntime.processMessage.mockResolvedValue({
+        text: 'Hello user!'
+      });
+      
+      await messageManager.handleMessage(mockContext);
+      
+      expect(mockRuntime.processMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: { text: 'Hello bot' },
+          userId: expect.any(String),
+          channelId: '-456'
+        })
+      );
+    });
+    
+    it('should handle photo messages', async () => {
+      const mockContext = createMockContext({
+        message: {
+          photo: [
+            { file_id: 'photo_123', width: 100, height: 100 },
+            { file_id: 'photo_456', width: 200, height: 200 }
+          ],
+          caption: 'Check this out',
+          from: { id: 123 },
+          chat: { id: 456 }
+        }
+      });
+      
+      mockBot.telegram.getFile = vi.fn().mockResolvedValue({
+        file_path: 'photos/test.jpg'
+      });
+      
+      await messageManager.handleMessage(mockContext);
+      
+      expect(mockBot.telegram.getFile).toHaveBeenCalledWith('photo_456');
+      expect(mockRuntime.processMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.objectContaining({
+            text: 'Check this out',
+            attachments: expect.arrayContaining([
+              expect.objectContaining({
+                type: 'image'
+              })
+            ])
+          })
+        })
+      );
+    });
+    
+    it('should handle voice messages', async () => {
+      const mockContext = createMockContext({
+        message: {
+          voice: {
+            file_id: 'voice_123',
+            duration: 5,
+            mime_type: 'audio/ogg'
+          },
+          from: { id: 123 },
+          chat: { id: 456 }
+        }
+      });
+      
+      // Mock transcription
+      mockRuntime.transcribe = vi.fn().mockResolvedValue('Hello world');
+      
+      await messageManager.handleMessage(mockContext);
+      
+      expect(mockRuntime.processMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.objectContaining({
+            text: 'Hello world'
+          })
+        })
+      );
+    });
+  });
+  
+  describe('sendMessageToTelegram', () => {
+    it('should send text messages', async () => {
+      await messageManager.sendMessageToTelegram(
+        123,
+        { text: 'Test message' }
+      );
+      
+      expect(mockBot.telegram.sendMessage).toHaveBeenCalledWith(
+        123,
+        'Test message',
+        expect.any(Object)
+      );
+    });
+    
+    it('should send messages with buttons', async () => {
+      await messageManager.sendMessageToTelegram(
+        123,
+        {
+          text: 'Choose an option',
+          buttons: [
+            { text: 'Option 1', callback_data: 'opt1' },
+            { text: 'Option 2', callback_data: 'opt2' }
+          ]
+        }
+      );
+      
+      expect(mockBot.telegram.sendMessage).toHaveBeenCalledWith(
+        123,
+        'Choose an option',
+        expect.objectContaining({
+          reply_markup: expect.objectContaining({
+            inline_keyboard: expect.any(Array)
+          })
+        })
+      );
+    });
+  });
+});
+```
+
+### Testing Telegram Service
+
+```typescript
+import { TelegramService } from '@elizaos/plugin-telegram';
+import { AgentRuntime } from '@elizaos/core';
+
+describe('TelegramService', () => {
+  let service: TelegramService;
+  let runtime: AgentRuntime;
+  
+  beforeEach(() => {
+    runtime = createMockRuntime();
+    service = new TelegramService(runtime);
+  });
+  
+  describe('initialization', () => {
+    it('should initialize with valid token', () => {
+      runtime.getSetting.mockReturnValue('valid_token');
+      
+      const service = new TelegramService(runtime);
+      
+      expect(service.bot).toBeDefined();
+      expect(service.messageManager).toBeDefined();
+    });
+    
+    it('should handle missing token gracefully', () => {
+      runtime.getSetting.mockReturnValue('');
+      
+      const service = new TelegramService(runtime);
+      
+      expect(service.bot).toBeNull();
+      expect(service.messageManager).toBeNull();
+    });
+  });
+  
+  describe('chat synchronization', () => {
+    it('should sync new chats', async () => {
+      const mockContext = createMockContext({
+        chat: {
+          id: 123,
+          type: 'group',
+          title: 'Test Group'
+        }
+      });
+      
+      await service.syncChat(mockContext);
+      
+      expect(service.knownChats.has('123')).toBe(true);
+      expect(runtime.emitEvent).toHaveBeenCalledWith(
+        expect.arrayContaining(['WORLD_JOINED']),
+        expect.any(Object)
+      );
+    });
+  });
+});
+```
+
+### Testing Utilities
+
+```typescript
+import { processMediaAttachments, createInlineKeyboard } from '@elizaos/plugin-telegram/utils';
+
+describe('Utilities', () => {
+  describe('processMediaAttachments', () => {
+    it('should process photo attachments', async () => {
+      const mockContext = createMockContext({
+        message: {
+          photo: [{ file_id: 'photo_123' }]
+        }
+      });
+      
+      const attachments = await processMediaAttachments(
+        mockContext,
+        mockBot,
+        mockRuntime
+      );
+      
+      expect(attachments).toHaveLength(1);
+      expect(attachments[0].type).toBe('image');
+    });
+  });
+  
+  describe('createInlineKeyboard', () => {
+    it('should create inline keyboard markup', () => {
+      const buttons = [
+        { text: 'Button 1', callback_data: 'btn1' },
+        { text: 'Button 2', url: 'https://example.com' }
+      ];
+      
+      const keyboard = createInlineKeyboard(buttons);
+      
+      expect(keyboard.inline_keyboard).toHaveLength(2);
+      expect(keyboard.inline_keyboard[0][0]).toHaveProperty('callback_data');
+      expect(keyboard.inline_keyboard[1][0]).toHaveProperty('url');
+    });
+  });
+});
+```
+
+## Integration Testing
+
+### Testing Bot Lifecycle
+
+```typescript
+describe('Bot Lifecycle Integration', () => {
+  let service: TelegramService;
+  let runtime: AgentRuntime;
+  
+  beforeAll(async () => {
+    runtime = new AgentRuntime({
+      character: {
+        name: 'TestBot',
+        clients: ['telegram']
+      },
+      settings: {
+        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_TEST_TOKEN
+      }
+    });
+    
+    service = await TelegramService.start(runtime);
+  });
+  
+  afterAll(async () => {
+    await service.stop();
+  });
+  
+  it('should connect to Telegram', async () => {
+    expect(service.bot).toBeDefined();
+    const botInfo = await service.bot.telegram.getMe();
+    expect(botInfo.is_bot).toBe(true);
+  });
+  
+  it('should handle incoming messages', async () => {
+    // Send test message
+    const testMessage = await sendTestMessage(
+      'Test message',
+      process.env.TELEGRAM_TEST_CHAT_ID
+    );
+    
+    // Wait for processing
+    await waitForProcessing(1000);
+    
+    // Verify message was processed
+    expect(runtime.processMessage).toHaveBeenCalled();
+  });
+});
+```
+
+### Testing Message Flow
+
+```typescript
+describe('Message Flow Integration', () => {
+  it('should process message end-to-end', async () => {
+    // Send message to test chat
+    const response = await fetch(
+      `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TEST_CHAT_ID,
+          text: 'Hello bot!'
+        })
+      }
+    );
+    
+    const result = await response.json();
+    expect(result.ok).toBe(true);
+    
+    // Wait for bot response
+    const botResponse = await waitForBotResponse(TEST_CHAT_ID, 5000);
+    expect(botResponse).toBeDefined();
+    expect(botResponse.text).toContain('Hello');
+  });
+  
+  it('should handle button interactions', async () => {
+    // Send message with buttons
+    const message = await sendMessageWithButtons(
+      'Choose:',
+      [
+        { text: 'Option 1', callback_data: 'opt1' },
+        { text: 'Option 2', callback_data: 'opt2' }
+      ]
+    );
+    
+    // Simulate button click
+    await simulateCallbackQuery(message.message_id, 'opt1');
+    
+    // Verify callback was processed
+    const response = await waitForCallbackResponse();
+    expect(response).toBeDefined();
+  });
+});
+```
+
+## E2E Testing
+
+### Complete Test Suite
+
+```typescript
+import { TelegramTestSuite } from '@elizaos/plugin-telegram/tests';
+
+describe('Telegram Bot E2E Tests', () => {
+  const suite = new TelegramTestSuite({
+    botToken: process.env.TELEGRAM_TEST_TOKEN,
+    testChatId: process.env.TELEGRAM_TEST_CHAT_ID,
+    testUserId: process.env.TELEGRAM_TEST_USER_ID
+  });
+  
+  beforeAll(async () => {
+    await suite.setup();
+  });
+  
+  afterAll(async () => {
+    await suite.cleanup();
+  });
+  
+  describe('Text Messages', () => {
+    it('should respond to text messages', async () => {
+      const result = await suite.testTextMessage({
+        text: 'Hello!',
+        expectedPattern: /hello|hi|hey/i
+      });
+      
+      expect(result.success).toBe(true);
+      expect(result.response).toMatch(/hello/i);
+    });
+    
+    it('should handle mentions', async () => {
+      const result = await suite.testMention({
+        text: '@testbot how are you?',
+        shouldRespond: true
+      });
+      
+      expect(result.responded).toBe(true);
+    });
+  });
+  
+  describe('Media Handling', () => {
+    it('should process images', async () => {
+      const result = await suite.testImageMessage({
+        imagePath: './test-assets/test-image.jpg',
+        caption: 'What is this?'
+      });
+      
+      expect(result.processed).toBe(true);
+      expect(result.response).toContain('image');
+    });
+    
+    it('should transcribe voice messages', async () => {
+      const result = await suite.testVoiceMessage({
+        audioPath: './test-assets/test-audio.ogg',
+        expectedTranscript: 'hello world'
+      });
+      
+      expect(result.transcribed).toBe(true);
+      expect(result.transcript).toContain('hello');
+    });
+  });
+  
+  describe('Interactive Elements', () => {
+    it('should handle button clicks', async () => {
+      const result = await suite.testButtonInteraction({
+        message: 'Choose:',
+        buttons: [
+          { text: 'Yes', callback_data: 'yes' },
+          { text: 'No', callback_data: 'no' }
+        ],
+        clickButton: 'yes'
+      });
+      
+      expect(result.callbackProcessed).toBe(true);
+    });
+  });
+  
+  describe('Group Features', () => {
+    it('should work in groups', async () => {
+      const result = await suite.testGroupMessage({
+        groupId: process.env.TELEGRAM_TEST_GROUP_ID,
+        message: 'Bot, help!',
+        shouldRespond: true
+      });
+      
+      expect(result.responded).toBe(true);
+    });
+  });
+});
+```
+
+## Performance Testing
+
+### Load Testing
+
+```typescript
+describe('Performance Tests', () => {
+  it('should handle concurrent messages', async () => {
+    const messageCount = 50;
+    const startTime = Date.now();
+    
+    const promises = Array(messageCount).fill(0).map((_, i) =>
+      sendTestMessage(`Test message ${i}`, TEST_CHAT_ID)
+    );
+    
+    const results = await Promise.all(promises);
+    const endTime = Date.now();
+    
+    const totalTime = endTime - startTime;
+    const avgTime = totalTime / messageCount;
+    
+    expect(results.every(r => r.ok)).toBe(true);
+    expect(avgTime).toBeLessThan(500); // Less than 500ms per message
+  });
+  
+  it('should maintain stable memory usage', async () => {
+    const iterations = 100;
+    const measurements = [];
+    
+    for (let i = 0; i < iterations; i++) {
+      await processTestMessage(`Message ${i}`);
+      
+      if (i % 10 === 0) {
+        global.gc(); // Force garbage collection
+        measurements.push(process.memoryUsage().heapUsed);
+      }
+    }
+    
+    // Check memory growth
+    const firstMeasurement = measurements[0];
+    const lastMeasurement = measurements[measurements.length - 1];
+    const growth = lastMeasurement - firstMeasurement;
+    
+    expect(growth).toBeLessThan(10 * 1024 * 1024); // Less than 10MB growth
+  });
+});
+```
+
+### Rate Limit Testing
+
+```typescript
+describe('Rate Limit Handling', () => {
+  it('should handle rate limits gracefully', async () => {
+    // Send many messages quickly
+    const promises = Array(100).fill(0).map(() =>
+      sendTestMessage('Spam test', TEST_CHAT_ID)
+    );
+    
+    const results = await Promise.allSettled(promises);
+    
+    // Some should succeed, some might be rate limited
+    const succeeded = results.filter(r => r.status === 'fulfilled');
+    const failed = results.filter(r => r.status === 'rejected');
+    
+    // Should handle failures gracefully
+    if (failed.length > 0) {
+      expect(failed[0].reason).toMatch(/429|rate/i);
+    }
+    
+    expect(succeeded.length).toBeGreaterThan(0);
+  });
+});
+```
+
+## Mock Utilities
+
+### Telegram API Mocks
+
+```typescript
+export function createMockContext(options: any = {}): Context {
+  return {
+    message: options.message || createMockMessage(),
+    chat: options.chat || { id: 123, type: 'private' },
+    from: options.from || { id: 456, username: 'testuser' },
+    telegram: createMockTelegram(),
+    reply: vi.fn(),
+    replyWithHTML: vi.fn(),
+    answerCbQuery: vi.fn(),
+    editMessageText: vi.fn(),
+    deleteMessage: vi.fn(),
+    ...options
+  } as any;
+}
+
+export function createMockMessage(options: any = {}) {
+  return {
+    message_id: options.message_id || 789,
+    from: options.from || { id: 456, username: 'testuser' },
+    chat: options.chat || { id: 123, type: 'private' },
+    date: options.date || Date.now() / 1000,
+    text: options.text,
+    photo: options.photo,
+    voice: options.voice,
+    document: options.document,
+    ...options
+  };
+}
+
+export function createMockTelegram() {
+  return {
+    sendMessage: vi.fn().mockResolvedValue({ message_id: 999 }),
+    editMessageText: vi.fn().mockResolvedValue(true),
+    deleteMessage: vi.fn().mockResolvedValue(true),
+    answerCallbackQuery: vi.fn().mockResolvedValue(true),
+    getFile: vi.fn().mockResolvedValue({ file_path: 'test/path' }),
+    getFileLink: vi.fn().mockResolvedValue('https://example.com/file'),
+    setWebhook: vi.fn().mockResolvedValue(true),
+    deleteWebhook: vi.fn().mockResolvedValue(true)
+  };
+}
+```
+
+### Test Helpers
+
+```typescript
+export async function sendTestMessage(
+  text: string,
+  chatId: string | number
+): Promise<any> {
+  const response = await fetch(
+    `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text })
+    }
+  );
+  
+  return response.json();
+}
+
+export async function waitForBotResponse(
+  chatId: string | number,
+  timeout = 5000
+): Promise<any> {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < timeout) {
+    const updates = await getUpdates();
+    const botMessage = updates.find(u => 
+      u.message?.from?.is_bot && 
+      u.message?.chat?.id === chatId
+    );
+    
+    if (botMessage) return botMessage.message;
+    
+    await sleep(100);
+  }
+  
+  return null;
+}
+
+export async function simulateCallbackQuery(
+  messageId: number,
+  callbackData: string
+): Promise<void> {
+  // Simulate callback query update
+  const update = {
+    update_id: Date.now(),
+    callback_query: {
+      id: 'test_callback_' + Date.now(),
+      from: { id: TEST_USER_ID, username: 'testuser' },
+      message: { message_id: messageId },
+      data: callbackData
+    }
+  };
+  
+  // Process through bot
+  await bot.handleUpdate(update);
+}
+```
+
+## Debug Utilities
+
+### Enable Debug Logging
+
+```typescript
+// Enable debug logging for tests
+process.env.DEBUG = 'eliza:telegram:*';
+
+// Custom test logger
+export class TestLogger {
+  private logs: Array<{
+    level: string;
+    message: string;
+    data?: any;
+    timestamp: Date;
+  }> = [];
+  
+  log(level: string, message: string, data?: any) {
+    this.logs.push({
+      level,
+      message,
+      data,
+      timestamp: new Date()
+    });
+    
+    if (process.env.VERBOSE_TESTS) {
+      console.log(`[${level}] ${message}`, data || '');
+    }
+  }
+  
+  getLogs(filter?: { level?: string; pattern?: RegExp }) {
+    return this.logs.filter(log => {
+      if (filter?.level && log.level !== filter.level) return false;
+      if (filter?.pattern && !filter.pattern.test(log.message)) return false;
+      return true;
+    });
+  }
+  
+  clear() {
+    this.logs = [];
+  }
+}
+```
+
+## Test Configuration
+
+### vitest.config.ts
+
+```typescript
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
+    testTimeout: 30000,
+    hookTimeout: 30000,
+    pool: 'forks', // Isolate tests
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules',
+        'tests',
+        '**/*.test.ts',
+        '**/types.ts'
+      ]
+    }
+  }
+});
+```
+
+### Test Setup
+
+```typescript
+// tests/setup.ts
+import { config } from 'dotenv';
+import { vi } from 'vitest';
+
+// Load test environment
+config({ path: '.env.test' });
+
+// Validate test environment
+if (!process.env.TELEGRAM_TEST_TOKEN) {
+  throw new Error('TELEGRAM_TEST_TOKEN not set in .env.test');
+}
+
+// Global test utilities
+global.createMockRuntime = () => ({
+  processMessage: vi.fn(),
+  character: { 
+    name: 'TestBot',
+    allowDirectMessages: true
+  },
+  logger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn()
+  },
+  getSetting: vi.fn((key) => process.env[key]),
+  getService: vi.fn(),
+  emitEvent: vi.fn()
+});
+
+// Cleanup after all tests
+afterAll(async () => {
+  // Clean up test messages
+  await cleanupTestChat();
+});
+```
+
+## CI/CD Integration
+
+### GitHub Actions Workflow
+
+```yaml
+name: Telegram Plugin Tests
+
+on:
+  push:
+    paths:
+      - 'packages/plugin-telegram/**'
+  pull_request:
+    paths:
+      - 'packages/plugin-telegram/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: 20
+        
+    - name: Install dependencies
+      run: bun install
+      
+    - name: Run unit tests
+      run: bun test packages/plugin-telegram --run
+      env:
+        TELEGRAM_TEST_TOKEN: ${{ secrets.TELEGRAM_TEST_TOKEN }}
+        TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+        
+    - name: Run integration tests
+      if: github.event_name == 'push'
+      run: bun test:integration packages/plugin-telegram
+      env:
+        TELEGRAM_TEST_TOKEN: ${{ secrets.TELEGRAM_TEST_TOKEN }}
+        TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+        
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/coverage-final.json
+        flags: telegram-plugin
+```
+
+## Best Practices
+
+1. **Test Isolation**
+   - Use separate test bots and chats
+   - Clean up test data after tests
+   - Don't interfere with production
+
+2. **Mock External Services**
+   - Mock Telegram API for unit tests
+   - Use real API only for integration tests
+   - Mock file downloads and processing
+
+3. **Error Testing**
+   - Test network failures
+   - Test API errors (rate limits, etc.)
+   - Test malformed data
+
+4. **Performance Monitoring**
+   - Track message processing time
+   - Monitor memory usage
+   - Check for memory leaks
+
+5. **Security Testing**
+   - Test input validation
+   - Test access control
+   - Test token handling

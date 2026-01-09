@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>ElizaOS</h1>
+  <h1>elizaOS</h1>
   <p><strong>The Open-Source Framework for Multi-Agent AI Development</strong></p>
   <p>Build, deploy, and manage autonomous AI agents with a modern, extensible, and full-featured platform.</p>
 </div>
@@ -16,7 +16,7 @@
 
 ## ✨ What is Eliza?
 
-ElizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
+elizaOS is an all-in-one, extensible platform for building and deploying AI-powered applications. Whether you're creating sophisticated chatbots, autonomous agents for business process automation, or intelligent game NPCs, Eliza provides the tools you need to get started quickly and scale effectively.
 
 It combines a modular architecture, a powerful CLI, and a rich web interface to give you full control over your agents' development, deployment, and management lifecycle.
 
@@ -54,7 +54,7 @@ Get your first AI agent running in just a few commands.
 ### 1. Install the CLI
 
 ```bash
-# Install the ElizaOS CLI globally
+# Install the elizaOS CLI globally
 bun install -g @elizaos/cli
 
 # Verify installation
@@ -147,9 +147,9 @@ For a full command reference, run `elizaos --help` or `elizaos <command> --help`
 
 ---
 
-## 🔧 Running ElizaOS Core Standalone
+## 🔧 Running elizaOS Core Standalone
 
-Use ElizaOS agents directly in your applications without the CLI or web interface.
+Use elizaOS agents directly in your applications without the CLI or web interface.
 
 ```bash
 git clone https://github.com/elizaos/eliza.git

@@ -1,0 +1,30 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Cargo lock file (for libraries)
+Cargo.lock
+
+# Python cache (for Python tests)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+

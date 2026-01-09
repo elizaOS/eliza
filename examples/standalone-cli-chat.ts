@@ -1,33 +1,36 @@
 /**
- * ElizaOS Interactive Chat Interface
+ * elizaOS Interactive Chat Interface
  *
- * An interactive command-line chat interface using ElizaOS agents.
- * Similar to AI SDK's streamText but using ElizaOS runtime and plugins.
+ * An interactive command-line chat interface using elizaOS agents.
+ * Similar to AI SDK's streamText but using elizaOS runtime and plugins.
  *
  * Usage:
  *   LOG_LEVEL=fatal OPENAI_API_KEY=your_key bun run standalone.ts
  */
 
-// MUST be set before any imports to suppress ElizaOS logs
-process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'fatal';
+// MUST be set before any imports to suppress elizaOS logs
+process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 
+import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
   ChannelType,
-  createMessageMemory,
-  stringToUuid,
   type Character,
   type Content,
+  createMessageMemory,
   type IDatabaseAdapter,
   type Memory,
+  stringToUuid,
   type UUID,
-} from '@elizaos/core';
-import bootstrapPlugin from '@elizaos/plugin-bootstrap';
-import openaiPlugin from '@elizaos/plugin-openai';
-import sqlPlugin, { DatabaseMigrationService, createDatabaseAdapter } from '@elizaos/plugin-sql';
-import * as clack from '@clack/prompts';
-import 'node:crypto';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import bootstrapPlugin from "@elizaos/plugin-bootstrap";
+import openaiPlugin from "@elizaos/plugin-openai";
+import sqlPlugin, {
+  createDatabaseAdapter,
+  DatabaseMigrationService,
+} from "@elizaos/plugin-sql";
+import "node:crypto";
+import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
 // CONSTANTS & CONFIGURATION
@@ -35,16 +38,16 @@ import { v4 as uuidv4 } from 'uuid';
 
 const CONSTANTS = {
   TEXT_WRAP_WIDTH: 80,
-  LOG_LEVEL: 'fatal',
-  DEFAULT_PGLITE_DATA_DIR: 'memory://',
+  LOG_LEVEL: "fatal",
+  DEFAULT_PGLITE_DATA_DIR: "memory://",
   CHAT_IDENTIFIERS: {
-    WORLD: 'chat-world',
-    ROOM: 'chat-room',
-    CHANNEL: 'chat-channel',
-    SERVER: 'chat-server',
-    SOURCE: 'cli',
+    WORLD: "chat-world",
+    ROOM: "chat-room",
+    CHANNEL: "chat-channel",
+    SERVER: "chat-server",
+    SOURCE: "cli",
   },
-  EXIT_COMMANDS: ['quit', 'exit'],
+  EXIT_COMMANDS: ["quit", "exit"],
 } as const;
 
 interface AppConfiguration {
@@ -73,18 +76,19 @@ interface MessageProcessingResult {
 class Configuration {
   private static validateEnvironment(): void {
     const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey?.trim()) {
-      throw new Error('OPENAI_API_KEY environment variable is required');
+    if (!openaiKey || !openaiKey.trim()) {
+      throw new Error("OPENAI_API_KEY environment variable is required");
     }
   }
 
   static load(): AppConfiguration {
-    this.validateEnvironment();
+    Configuration.validateEnvironment();
 
     return {
       openaiApiKey: process.env.OPENAI_API_KEY!,
-      postgresUrl: process.env.POSTGRES_URL || '',
-      pgliteDataDir: process.env.PGLITE_DATA_DIR || CONSTANTS.DEFAULT_PGLITE_DATA_DIR,
+      postgresUrl: process.env.POSTGRES_URL || "",
+      pgliteDataDir:
+        process.env.PGLITE_DATA_DIR || CONSTANTS.DEFAULT_PGLITE_DATA_DIR,
     };
   }
 }
@@ -94,10 +98,13 @@ class Configuration {
 // ============================================================================
 
 class TextUtils {
-  static wrapText(text: string, maxWidth: number = CONSTANTS.TEXT_WRAP_WIDTH): string {
-    const words = text.split(' ');
+  static wrapText(
+    text: string,
+    maxWidth: number = CONSTANTS.TEXT_WRAP_WIDTH,
+  ): string {
+    const words = text.split(" ");
     const lines: string[] = [];
-    let currentLine = '';
+    let currentLine = "";
 
     for (const word of words) {
       if (currentLine.length === 0) {
@@ -114,7 +121,7 @@ class TextUtils {
       lines.push(currentLine);
     }
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 }
 
@@ -132,26 +139,29 @@ class TimeUtils {
 class AgentInitializer {
   private static createCharacter(): Character {
     return {
-      name: 'Eliza',
-      username: 'eliza',
-      bio: 'A helpful AI assistant powered by ElizaOS.',
-      adjectives: ['helpful', 'friendly', 'knowledgeable'],
+      name: "Eliza",
+      username: "eliza",
+      bio: "A helpful AI assistant powered by elizaOS.",
+      adjectives: ["helpful", "friendly", "knowledgeable"],
     };
   }
 
-  private static async setupDatabase(config: AppConfiguration, agentId: UUID): Promise<IDatabaseAdapter> {
+  private static async setupDatabase(
+    config: AppConfiguration,
+    agentId: UUID,
+  ): Promise<IDatabaseAdapter> {
     const adapter = createDatabaseAdapter(
       {
         dataDir: config.pgliteDataDir,
         postgresUrl: config.postgresUrl || undefined,
       },
-      agentId
+      agentId,
     );
 
     await adapter.init();
 
     const migrator = new DatabaseMigrationService();
-    // @ts-ignore getDatabase is available on the adapter base class
+    // @ts-expect-error getDatabase is available on the adapter base class
     await migrator.initializeWithDatabase(adapter.getDatabase());
     migrator.discoverAndRegisterPluginSchemas([sqlPlugin]);
     await migrator.runAllPluginMigrations();
@@ -159,7 +169,10 @@ class AgentInitializer {
     return adapter;
   }
 
-  private static createRuntime(character: Character, config: AppConfiguration): AgentRuntime {
+  private static createRuntime(
+    character: Character,
+    config: AppConfiguration,
+  ): AgentRuntime {
     return new AgentRuntime({
       character,
       plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
@@ -171,7 +184,9 @@ class AgentInitializer {
     });
   }
 
-  private static async setupConversationContext(runtime: AgentRuntime): Promise<{
+  private static async setupConversationContext(
+    runtime: AgentRuntime,
+  ): Promise<{
     userId: UUID;
     roomId: UUID;
     worldId: UUID;
@@ -185,7 +200,7 @@ class AgentInitializer {
       entityId: userId,
       roomId,
       worldId,
-      name: 'User',
+      name: "User",
       source: CONSTANTS.CHAT_IDENTIFIERS.SOURCE,
       channelId: CONSTANTS.CHAT_IDENTIFIERS.CHANNEL,
       messageServerId,
@@ -199,24 +214,25 @@ class AgentInitializer {
     const task = clack.spinner();
 
     try {
-      task.start('Initializing ElizaOS...');
+      task.start("Initializing elizaOS...");
 
       const config = Configuration.load();
-      const character = this.createCharacter();
+      const character = AgentInitializer.createCharacter();
 
-      task.message('Setting up database...');
+      task.message("Setting up database...");
       const agentId = stringToUuid(character.name);
-      const adapter = await this.setupDatabase(config, agentId);
+      const adapter = await AgentInitializer.setupDatabase(config, agentId);
 
-      task.message('Creating agent runtime...');
-      const runtime = this.createRuntime(character, config);
+      task.message("Creating agent runtime...");
+      const runtime = AgentInitializer.createRuntime(character, config);
       runtime.registerDatabaseAdapter(adapter);
       await runtime.initialize();
 
-      task.message('Setting up conversation...');
-      const { userId, roomId, worldId } = await this.setupConversationContext(runtime);
+      task.message("Setting up conversation...");
+      const { userId, roomId, worldId } =
+        await AgentInitializer.setupConversationContext(runtime);
 
-      task.stop('✅ ElizaOS initialized successfully');
+      task.stop("✅ elizaOS initialized successfully");
 
       return {
         runtime,
@@ -237,7 +253,7 @@ class AgentInitializer {
 // ============================================================================
 
 class MessageProcessor {
-  constructor(private session: ChatSession) { }
+  constructor(private session: ChatSession) {}
 
   private createMessageMemory(userInput: string): Memory {
     return createMessageMemory({
@@ -258,27 +274,34 @@ class MessageProcessor {
 
     // Verify messageService is initialized
     if (!this.session.runtime.messageService) {
-      throw new Error('MessageService not initialized - runtime may not be fully configured');
+      throw new Error(
+        "MessageService not initialized - runtime may not be fully configured",
+      );
     }
 
-    let response = '';
+    let response = "";
 
     // Use the messageService.handleMessage() API instead of deprecated MESSAGE_RECEIVED event
     const result = await this.session.runtime.messageService.handleMessage(
       this.session.runtime,
       message,
       async (content: Content): Promise<Memory[]> => {
-        if (content?.text) {
+        if (content && content.text) {
           response += content.text;
         }
         return []; // Return empty array as we're only capturing text for display
-      }
+      },
     );
 
     const thinkingTimeMs = Date.now() - startTime;
 
     return {
-      response: response || result.responseContent?.text || '',
+      response:
+        response ||
+        (result.responseContent && result.responseContent.text
+          ? result.responseContent.text
+          : "") ||
+        "",
       thinkingTimeMs,
     };
   }
@@ -291,33 +314,35 @@ class MessageProcessor {
 class ChatInterface {
   constructor(
     private messageProcessor: MessageProcessor,
-    private character: Character
-  ) { }
+    private character: Character,
+  ) {}
 
   private displayWelcome(): void {
-    clack.intro('🤖 ElizaOS Interactive Chat');
+    clack.intro("🤖 elizaOS Interactive Chat");
     clack.note(
       `Ready to chat with ${this.character.name}!`,
-      'Type your messages below. Use Ctrl+C or type "quit"/"exit" to end.'
+      'Type your messages below. Use Ctrl+C or type "quit"/"exit" to end.',
     );
   }
 
   private async getUserInput(): Promise<string | symbol> {
     return clack.text({
-      message: 'You:',
-      placeholder: 'Type your message here...',
+      message: "You:",
+      placeholder: "Type your message here...",
     });
   }
 
   private isExitCommand(input: string | symbol): boolean {
     if (clack.isCancel(input)) return true;
-    if (typeof input === 'string') {
+    if (typeof input === "string") {
       return CONSTANTS.EXIT_COMMANDS.includes(input.toLowerCase());
     }
     return false;
   }
 
-  private async displayThinkingAndProcess(userInput: string): Promise<MessageProcessingResult> {
+  private async displayThinkingAndProcess(
+    userInput: string,
+  ): Promise<MessageProcessingResult> {
     const spinner = clack.spinner();
     spinner.start(`${this.character.name} is thinking...`);
 
@@ -327,7 +352,7 @@ class ChatInterface {
       spinner.stop(`Thought for ${thinkingTime}`);
       return result;
     } catch (error) {
-      spinner.stop('❌ Error processing message');
+      spinner.stop("❌ Error processing message");
       throw error;
     }
   }
@@ -347,17 +372,17 @@ class ChatInterface {
         const userInput = await this.getUserInput();
 
         if (this.isExitCommand(userInput)) {
-          clack.outro('Thanks for chatting! 👋');
+          clack.outro("Thanks for chatting! 👋");
           break;
         }
 
-        if (typeof userInput === 'string' && userInput.trim()) {
+        if (typeof userInput === "string" && userInput.trim()) {
           const result = await this.displayThinkingAndProcess(userInput);
           this.displayResponse(result.response);
         }
       } catch (error) {
-        console.error('Error in chat loop:', error);
-        clack.note('An error occurred. Please try again.', '❌ Error');
+        console.error("Error in chat loop:", error);
+        clack.note("An error occurred. Please try again.", "❌ Error");
       }
     }
   }
@@ -372,12 +397,15 @@ class StandaloneChatApp {
     try {
       const session = await AgentInitializer.initialize();
       const messageProcessor = new MessageProcessor(session);
-      const chatInterface = new ChatInterface(messageProcessor, session.character);
+      const chatInterface = new ChatInterface(
+        messageProcessor,
+        session.character,
+      );
 
       await chatInterface.startChatLoop();
       await session.runtime.stop();
     } catch (error) {
-      console.error('Fatal error:', error);
+      console.error("Fatal error:", error);
       process.exit(1);
     }
   }
@@ -389,7 +417,7 @@ class StandaloneChatApp {
 
 if (import.meta.main) {
   StandaloneChatApp.run().catch((error) => {
-    console.error('Unhandled error:', error);
+    console.error("Unhandled error:", error);
     process.exit(1);
   });
 }

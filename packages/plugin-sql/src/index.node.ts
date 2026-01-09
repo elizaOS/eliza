@@ -1,14 +1,19 @@
-import type { IDatabaseAdapter, UUID } from '@elizaos/core';
-import { type IAgentRuntime, type Plugin, logger, stringToUuid } from '@elizaos/core';
-import { mkdirSync } from 'node:fs';
-import { PgliteDatabaseAdapter } from './pglite/adapter';
-import { PGliteClientManager } from './pglite/manager';
-import { PgDatabaseAdapter } from './pg/adapter';
-import { PostgresConnectionManager } from './pg/manager';
-import { resolvePgliteDir } from './utils.node';
-import * as schema from './schema';
+import { mkdirSync } from "node:fs";
+import type { IDatabaseAdapter, UUID } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  type Plugin,
+  stringToUuid,
+} from "@elizaos/core";
+import { PgDatabaseAdapter } from "./pg/adapter";
+import { PostgresConnectionManager } from "./pg/manager";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { PGliteClientManager } from "./pglite/manager";
+import * as schema from "./schema";
+import { resolvePgliteDir } from "./utils.node";
 
-const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
@@ -18,7 +23,8 @@ interface GlobalSingletons {
 }
 
 // Type assertion needed because globalThis doesn't include symbol keys in its type definition
-const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
+const globalSymbols = globalThis as typeof globalThis &
+  Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
@@ -29,30 +35,30 @@ export function createDatabaseAdapter(
     dataDir?: string;
     postgresUrl?: string;
   },
-  agentId: UUID
+  agentId: UUID,
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
     // Determine RLS server_id if data isolation is enabled
-    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
     let rlsServerId: string | undefined;
-    let managerKey = 'default'; // Key for connection manager map
+    let managerKey = "default"; // Key for connection manager map
 
     if (dataIsolationEnabled) {
       const rlsServerIdString = process.env.ELIZA_SERVER_ID;
       if (!rlsServerIdString) {
         throw new Error(
-          '[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable'
+          "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable",
         );
       }
       rlsServerId = stringToUuid(rlsServerIdString);
       managerKey = rlsServerId; // Use server_id as key for multi-tenancy
       logger.debug(
         {
-          src: 'plugin:sql',
+          src: "plugin:sql",
           rlsServerId: rlsServerId.slice(0, 8),
           serverIdString: rlsServerIdString,
         },
-        'Using connection pool for RLS server'
+        "Using connection pool for RLS server",
       );
     }
 
@@ -65,8 +71,8 @@ export function createDatabaseAdapter(
     let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
     if (!manager) {
       logger.debug(
-        { src: 'plugin:sql', managerKey: managerKey.slice(0, 8) },
-        'Creating new connection pool'
+        { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
+        "Creating new connection pool",
       );
       manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
       globalSingletons.postgresConnectionManagers.set(managerKey, manager);
@@ -78,25 +84,29 @@ export function createDatabaseAdapter(
   const dataDir = resolvePgliteDir(config.dataDir);
 
   // Ensure the directory exists for PGLite unless it's a special URI (memory://, idb://, etc.)
-  if (dataDir && !dataDir.includes('://')) {
+  if (dataDir && !dataDir.includes("://")) {
     mkdirSync(dataDir, { recursive: true });
   }
 
   if (!globalSingletons.pgLiteClientManager) {
     globalSingletons.pgLiteClientManager = new PGliteClientManager({ dataDir });
   }
-  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
+  return new PgliteDatabaseAdapter(
+    agentId,
+    globalSingletons.pgLiteClientManager,
+  );
 }
 
 export const plugin: Plugin = {
-  name: '@elizaos/plugin-sql',
-  description: 'A plugin for SQL database access with dynamic schema migrations',
+  name: "@elizaos/plugin-sql",
+  description:
+    "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
     runtime.logger.info(
-      { src: 'plugin:sql', agentId: runtime.agentId },
-      'plugin-sql (node) init starting'
+      { src: "plugin:sql", agentId: runtime.agentId },
+      "plugin-sql (node) init starting",
     );
 
     const adapterRegistered = await runtime
@@ -104,57 +114,57 @@ export const plugin: Plugin = {
       .then(() => true)
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        if (message.includes('Database adapter not registered')) {
+        if (message.includes("Database adapter not registered")) {
           // Expected on first load before the adapter is created; not a warning condition
           runtime.logger.info(
-            { src: 'plugin:sql', agentId: runtime.agentId },
-            'No pre-registered database adapter detected; registering adapter'
+            { src: "plugin:sql", agentId: runtime.agentId },
+            "No pre-registered database adapter detected; registering adapter",
           );
         } else {
           // Unexpected readiness error - keep as a warning with details
           runtime.logger.warn(
-            { src: 'plugin:sql', agentId: runtime.agentId, error: message },
-            'Database adapter readiness check error; proceeding to register adapter'
+            { src: "plugin:sql", agentId: runtime.agentId, error: message },
+            "Database adapter readiness check error; proceeding to register adapter",
           );
         }
         return false;
       });
     if (adapterRegistered) {
       runtime.logger.info(
-        { src: 'plugin:sql', agentId: runtime.agentId },
-        'Database adapter already registered, skipping creation'
+        { src: "plugin:sql", agentId: runtime.agentId },
+        "Database adapter already registered, skipping creation",
       );
       return;
     }
 
-    const postgresUrl = runtime.getSetting('POSTGRES_URL');
+    const postgresUrl = runtime.getSetting("POSTGRES_URL");
     // Only support PGLITE_DATA_DIR going forward
-    const dataDir = runtime.getSetting('PGLITE_DATA_DIR');
+    const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
 
     const dbAdapter = createDatabaseAdapter(
       {
-        dataDir: typeof dataDir === 'string' ? dataDir : undefined,
-        postgresUrl: typeof postgresUrl === 'string' ? postgresUrl : undefined,
+        dataDir: typeof dataDir === "string" ? dataDir : undefined,
+        postgresUrl: typeof postgresUrl === "string" ? postgresUrl : undefined,
       },
-      runtime.agentId
+      runtime.agentId,
     );
 
     runtime.registerDatabaseAdapter(dbAdapter);
     runtime.logger.info(
-      { src: 'plugin:sql', agentId: runtime.agentId },
-      'Database adapter created and registered'
+      { src: "plugin:sql", agentId: runtime.agentId },
+      "Database adapter created and registered",
     );
   },
 };
 
 export default plugin;
 
-export { DatabaseMigrationService } from './migration-service';
+export { DatabaseMigrationService } from "./migration-service";
 export {
-  installRLSFunctions,
-  getOrCreateRlsServer,
-  setServerContext,
-  assignAgentToServer,
   applyRLSToNewTables,
+  assignAgentToServer,
+  getOrCreateRlsServer,
+  installRLSFunctions,
+  setServerContext,
   uninstallRLS,
-} from './rls';
+} from "./rls";

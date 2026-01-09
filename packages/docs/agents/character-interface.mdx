@@ -1,0 +1,554 @@
+---
+title: 'Character Interface'
+description: 'Define your agent personality, knowledge, and behavior in one file'
+---
+
+## Your First Character (2 minutes)
+
+A character file is all you need to create a unique agent. Here's the minimum:
+
+```typescript
+export const character: Character = {
+  name: "Chef Mario",
+  bio: "A passionate Italian chef who loves sharing recipes and cooking tips.",
+  plugins: ["@elizaos/plugin-openai"],
+};
+```
+
+That's it. Your agent now has a name, personality, and can chat. Everything else is optional.
+
+<Tip>
+**Start minimal, add complexity later.** Most fields have sensible defaults. Only add what you need.
+</Tip>
+
+---
+
+## Overview
+
+In elizaOS, the distinction between a **Character** and an **Agent** is fundamental:
+
+- **Character**: A configuration object that defines an agent's personality, capabilities, and settings
+- **Agent**: A runtime instance created from a Character, with additional status tracking and lifecycle management
+
+Think of a Character as a blueprint and an Agent as the living instance built from that blueprint. For hands-on implementation, see [Customize an Agent](/guides/customize-an-agent). For runtime details, see [Runtime and Lifecycle](/agents/runtime-and-lifecycle).
+
+## Character vs Agent
+
+The transformation from Character to Agent happens at runtime:
+
+```typescript
+// Character: Static configuration
+interface Character {
+  name: string;
+  bio: string | string[];
+  // ... configuration properties
+}
+
+// Agent: Runtime instance with status
+interface Agent extends Character {
+  enabled?: boolean;
+  status?: 'active' | 'inactive';
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+## Character Interface Reference
+
+The complete TypeScript interface for agents:
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `name` | string | ✅ | Agent's display name |
+| `bio` | string \| string[] | ✅ | Background/personality description |
+| `id` | UUID | ❌ | Unique identifier (auto-generated if not provided) |
+| `username` | string | ❌ | Social media username |
+| `system` | string | ❌ | System prompt override |
+| `templates` | object | ❌ | Custom prompt templates |
+| `adjectives` | string[] | ❌ | Character traits (e.g., "helpful", "creative") |
+| `topics` | string[] | ❌ | Conversation topics the agent knows |
+| `knowledge` | array | ❌ | Facts, files, or directories of knowledge |
+| `messageExamples` | array[][] | ❌ | Example conversations (2D array) |
+| `postExamples` | string[] | ❌ | Example social media posts |
+| `style` | object | ❌ | Writing style for different contexts |
+| `plugins` | string[] | ❌ | Enabled plugin packages |
+| `settings` | object | ❌ | Configuration values |
+| `secrets` | object | ❌ | Sensitive configuration |
+
+## Core Properties
+
+### Identity Configuration
+
+The fundamental properties that define who your agent is:
+
+```typescript
+export const character: Character = {
+  // Required: The agent's display name
+  name: "TechHelper",
+  
+  // Optional: Username for social platforms
+  username: "tech_helper_bot",
+  
+  // Optional: Unique ID (auto-generated from name if not provided)
+  id: "550e8400-e29b-41d4-a716-446655440000",
+}
+```
+
+### Bio and Description
+
+The bio can be a single string or an array of strings for better organization:
+
+```typescript
+// Single string format
+bio: "A helpful AI assistant specializing in technical support and programming guidance."
+
+// Array format (recommended for complex bios)
+bio: [
+  "Expert in web development and open source technologies",
+  "Specializes in TypeScript, React, and Node.js",
+  "Helps developers debug issues and learn best practices",
+  "Friendly and patient teaching style"
+]
+```
+
+### System Prompt Configuration
+
+Override the default system prompt to fine-tune agent behavior:
+
+```typescript
+system: `You are a technical support specialist. 
+Always:
+- Provide code examples when relevant
+- Explain technical concepts clearly
+- Be encouraging to learners
+- Admit when you don't know something
+Never:
+- Be condescending or dismissive
+- Assume prior knowledge without checking
+- Provide outdated or deprecated solutions`
+```
+
+### Templates Object Structure
+
+Custom prompt templates for various agent operations:
+
+```typescript
+templates?: {
+  // Define custom templates for different contexts
+  messageTemplate?: string | ((params: any) => string);
+  thoughtTemplate?: string | ((params: any) => string);
+  actionTemplate?: string | ((params: any) => string);
+  // Add any custom template keys your plugins need
+  [key: string]: string | ((params: any) => string);
+}
+```
+
+## Conversation Training
+
+### Message Examples Structure
+
+Message examples train the agent's conversational style using a 2D array format:
+
+```typescript
+messageExamples: [
+  // Each sub-array is a complete conversation
+  [
+    {
+      name: "{{user}}",
+      content: { text: "Can you help me debug this React error?" }
+    },
+    {
+      name: "TechHelper",
+      content: { 
+        text: "I'd be happy to help! Can you share the error message and the relevant code?"
+      }
+    },
+    {
+      name: "{{user}}",
+      content: { text: "It says 'Cannot read property of undefined'" }
+    },
+    {
+      name: "TechHelper",
+      content: { 
+        text: "This error typically occurs when trying to access a property on a null or undefined object. Let's trace through your code to find where this might be happening. Can you show me the component where this error occurs?"
+      }
+    }
+  ],
+  // Another conversation example
+  [
+    {
+      name: "{{user}}",
+      content: { text: "What's the difference between let and const?" }
+    },
+    {
+      name: "TechHelper",
+      content: { 
+        text: "`const` declares a variable that cannot be reassigned, while `let` allows reassignment. For example:\n```js\nconst x = 1;\nx = 2; // Error!\n\nlet y = 1;\ny = 2; // Works fine\n```\nNote that `const` objects can still have their properties modified."
+      }
+    }
+  ]
+]
+```
+
+### Style Configuration
+
+Define writing styles for different contexts:
+
+```typescript
+style: {
+  // General style rules applied everywhere
+  all: [
+    "Be concise and clear",
+    "Use technical terms accurately",
+    "Provide examples when helpful"
+  ],
+  
+  // Chat-specific style
+  chat: [
+    "Be conversational and friendly",
+    "Ask clarifying questions",
+    "Break down complex topics"
+  ],
+  
+  // Social media post style
+  post: [
+    "Keep it under 280 characters when possible",
+    "Use relevant hashtags",
+    "Be engaging and informative"
+  ]
+}
+```
+
+## Knowledge Configuration
+
+Configure the agent's knowledge base:
+
+```typescript
+knowledge: [
+  // Simple string facts
+  "I specialize in TypeScript and React",
+  "I can help with debugging and code reviews",
+  
+  // File reference
+  {
+    path: "./knowledge/react-best-practices.md",
+    shared: true  // Available to all agents
+  },
+  
+  // Directory of knowledge files
+  {
+    directory: "./knowledge/tutorials",
+    shared: false  // Only for this agent
+  }
+]
+```
+
+## Plugin Management
+
+### Basic Plugin Configuration
+
+```typescript
+plugins: [
+  "@elizaos/plugin-bootstrap",  // Core functionality
+  "@elizaos/plugin-discord",     // Discord integration
+  "@elizaos/plugin-openai",      // OpenAI models
+  "./custom-plugins/my-plugin"   // Local plugin
+]
+```
+
+### Environment-Based Plugin Loading
+
+Load plugins conditionally based on environment variables:
+
+```typescript
+plugins: [
+  // Always loaded
+  "@elizaos/plugin-bootstrap",
+  "@elizaos/plugin-sql",
+  
+  // Conditionally loaded based on API keys
+  ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
+  ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
+  
+  // Platform plugins
+  ...(process.env.DISCORD_API_TOKEN ? ["@elizaos/plugin-discord"] : []),
+  ...(process.env.TELEGRAM_BOT_TOKEN ? ["@elizaos/plugin-telegram"] : []),
+  
+  // Feature flags
+  ...(process.env.ENABLE_VOICE ? ["@elizaos/plugin-voice"] : []),
+]
+```
+
+## Settings and Secrets
+
+### Settings Object
+
+General configuration values:
+
+```typescript
+settings: {
+  // Model configuration
+  model: "gpt-4",
+  temperature: 0.7,
+  maxTokens: 2000,
+  
+  // Behavior settings
+  responseTimeout: 30000,
+  maxMemorySize: 1000,
+  
+  // Custom settings for plugins
+  voiceEnabled: true,
+  avatar: "https://example.com/avatar.png"
+}
+```
+
+### Secrets Management
+
+Sensitive data that should never be committed:
+
+```typescript
+secrets: {
+  // API keys
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  DATABASE_URL: process.env.DATABASE_URL,
+  
+  // OAuth tokens
+  DISCORD_TOKEN: process.env.DISCORD_TOKEN,
+  
+  // Encryption keys
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY
+}
+```
+
+## Complete Production Example
+
+Here's a comprehensive character configuration for production use:
+
+```typescript
+import { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: 'Eliza',
+  username: 'eliza_ai',
+  
+  bio: [
+    "An advanced AI assistant powered by elizaOS",
+    "Specializes in technical support and creative problem-solving",
+    "Continuously learning and adapting to user needs",
+    "Built with privacy and security in mind"
+  ],
+  
+  system: `You are Eliza, a helpful and knowledgeable AI assistant.
+Core principles:
+- Be helpful, harmless, and honest
+- Provide accurate, well-researched information
+- Admit uncertainty when appropriate
+- Respect user privacy and boundaries
+- Adapt your communication style to the user's needs`,
+  
+  adjectives: [
+    "helpful",
+    "knowledgeable", 
+    "patient",
+    "creative",
+    "professional"
+  ],
+  
+  topics: [
+    "programming",
+    "web development",
+    "artificial intelligence",
+    "problem solving",
+    "technology trends"
+  ],
+  
+  messageExamples: [
+    [
+      {
+        name: "{{user}}",
+        content: { text: "Hello!" }
+      },
+      {
+        name: "Eliza",
+        content: { 
+          text: "Hello! I'm Eliza, your AI assistant. How can I help you today?"
+        }
+      }
+    ],
+    [
+      {
+        name: "{{user}}",
+        content: { text: "Can you help me with a coding problem?" }
+      },
+      {
+        name: "Eliza",
+        content: { 
+          text: "Of course! I'd be happy to help with your coding problem. Please share the details - what language are you using, what are you trying to achieve, and what specific issue are you encountering?"
+        }
+      }
+    ]
+  ],
+  
+  postExamples: [
+    "🚀 Just discovered an elegant solution to the N+1 query problem in GraphQL. DataLoader is a game-changer! #GraphQL #WebDev",
+    "Reminder: Clean code is not about being clever, it's about being clear. Your future self will thank you. 📝 #CodingBestPractices",
+    "The best error message is the one that tells you exactly what went wrong AND how to fix it. 🔧 #DeveloperExperience"
+  ],
+  
+  style: {
+    all: [
+      "Be concise but comprehensive",
+      "Use emoji sparingly and appropriately",
+      "Maintain a professional yet approachable tone"
+    ],
+    chat: [
+      "Be conversational and engaging",
+      "Show genuine interest in helping",
+      "Use markdown for code and formatting"
+    ],
+    post: [
+      "Be informative and thought-provoking",
+      "Include relevant hashtags",
+      "Keep within platform character limits"
+    ]
+  },
+  
+  knowledge: [
+    "I'm built on the elizaOS framework",
+    "I can integrate with multiple platforms simultaneously",
+    "I maintain context across conversations",
+    {
+      path: "./knowledge/technical-docs",
+      shared: true
+    }
+  ],
+  
+  plugins: [
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-bootstrap',
+    ...(process.env.ANTHROPIC_API_KEY ? ['@elizaos/plugin-anthropic'] : []),
+    ...(process.env.OPENAI_API_KEY ? ['@elizaos/plugin-openai'] : []),
+    ...(process.env.DISCORD_API_TOKEN ? ['@elizaos/plugin-discord'] : []),
+    ...(process.env.TELEGRAM_BOT_TOKEN ? ['@elizaos/plugin-telegram'] : []),
+  ],
+  
+  settings: {
+    secrets: {},  // Populated from environment
+    avatar: 'https://elizaos.github.io/eliza-avatars/eliza.png',
+    model: 'gpt-4',
+    temperature: 0.7,
+    maxTokens: 2000,
+    memoryLimit: 1000,
+    conversationLength: 32
+  }
+};
+```
+
+## Validation and Testing
+
+### Character Validation
+
+Use the built-in validation to ensure your character is properly configured:
+
+```typescript
+import { validateCharacter } from '@elizaos/core';
+
+const validation = validateCharacter(character);
+if (!validation.valid) {
+  console.error('Character validation failed:', validation.errors);
+}
+```
+
+### Testing Character Configurations
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { character } from './character';
+
+describe('Character Configuration', () => {
+  it('should have required fields', () => {
+    expect(character.name).toBeDefined();
+    expect(character.bio).toBeDefined();
+  });
+  
+  it('should have valid message examples', () => {
+    expect(character.messageExamples).toBeInstanceOf(Array);
+    character.messageExamples?.forEach(conversation => {
+      expect(conversation).toBeInstanceOf(Array);
+      conversation.forEach(message => {
+        expect(message).toHaveProperty('name');
+        expect(message).toHaveProperty('content');
+      });
+    });
+  });
+  
+  it('should have environment-appropriate plugins', () => {
+    if (process.env.OPENAI_API_KEY) {
+      expect(character.plugins).toContain('@elizaos/plugin-openai');
+    }
+  });
+});
+```
+
+## Best Practices
+
+1. **Keep personality traits consistent**: Ensure bio, adjectives, and style align
+2. **Provide diverse message examples**: Cover various interaction patterns
+3. **Use TypeScript for type safety**: Leverage type checking for configuration
+4. **Load plugins conditionally**: Check for API keys before loading
+5. **Order plugins by dependency**: Load core plugins before dependent ones
+6. **Use environment variables for secrets**: Never hardcode sensitive data
+7. **Validate before deployment**: Always validate character configuration
+8. **Test conversation flows**: Ensure message examples produce desired behavior
+9. **Document custom settings**: Clearly explain any custom configuration
+10. **Version your characters**: Track changes to character configurations
+
+## Migration Guide
+
+### From JSON to TypeScript
+
+Converting a JSON character to TypeScript:
+
+```typescript
+// Before: character.json
+{
+  "name": "MyAgent",
+  "bio": "An AI assistant"
+}
+
+// After: character.ts
+import { Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: "MyAgent",
+  bio: "An AI assistant"
+};
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Personality & Behavior" icon="user" href="/agents/personality-and-behavior">
+    Learn to craft unique agent personalities
+  </Card>
+
+  <Card title="Memory & State" icon="brain" href="/agents/memory-and-state">
+    Understand how agents remember and learn
+  </Card>
+
+  <Card title="Runtime & Lifecycle" icon="play" href="/agents/runtime-and-lifecycle">
+    See how characters become live agents
+  </Card>
+
+  <Card title="Plugin Development" icon="puzzle" href="/plugins/development">
+    Extend your agent with custom plugins
+  </Card>
+
+  <Card title="Core Runtime" icon="microchip" href="/runtime/core">
+    How the runtime orchestrates your agent
+  </Card>
+
+  <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+    Ship your agent to production in minutes
+  </Card>
+</CardGroup>

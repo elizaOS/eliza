@@ -1,0 +1,561 @@
+---
+title: "Developer Guide"
+description: "Comprehensive technical reference for the @elizaos/plugin-farcaster package"
+---
+
+# Farcaster Plugin Developer Guide
+
+## Overview
+
+The @elizaos/plugin-farcaster plugin enables elizaOS agents to interact with the Farcaster protocol through the Neynar API. This plugin provides comprehensive functionality for casting, replying, and engaging with the Farcaster ecosystem.
+
+## Core Features
+
+### 1. Casting Capabilities
+- **Autonomous Casting**: Post original casts based on agent personality
+- **Threaded Conversations**: Support for reply chains and threads
+- **Media Support**: Embed images, links, and frames in casts
+- **Scheduled Posting**: Time-based cast scheduling
+
+### 2. Engagement Features
+- **Reply Detection**: Monitor and respond to mentions and replies
+- **Like/Recast**: Programmatic engagement with other casts
+- **Follow Management**: Automatic follow/unfollow based on criteria
+- **Channel Support**: Post to specific channels (e.g., /elizaos)
+
+### 3. Hub Integration
+- **Hub API**: Direct integration with Farcaster hubs
+- **Message Validation**: Cryptographic message signing
+- **Protocol Compliance**: Full Farcaster protocol v2 support
+
+## Installation
+
+```bash
+# Using bun
+bun add @elizaos/plugin-farcaster
+
+# Using npm
+npm install @elizaos/plugin-farcaster
+
+# Using pnpm
+pnpm add @elizaos/plugin-farcaster
+```
+
+## Configuration
+
+### Environment Variables
+
+```env
+# Required
+FARCASTER_NEYNAR_API_KEY=your-neynar-api-key
+FARCASTER_SIGNER_UUID=your-signer-uuid
+FARCASTER_FID=12345
+
+# Feature Toggles
+ENABLE_CAST=true
+ENABLE_ACTION_PROCESSING=false
+FARCASTER_DRY_RUN=false
+
+# Timing Configuration (in minutes)
+CAST_INTERVAL_MIN=90
+CAST_INTERVAL_MAX=180
+FARCASTER_POLL_INTERVAL=2
+ACTION_INTERVAL=5
+
+# Other Options
+CAST_IMMEDIATELY=false
+ACTION_TIMELINE_TYPE=ForYou
+MAX_ACTIONS_PROCESSING=1
+MAX_CAST_LENGTH=320
+```
+
+### Character Configuration
+
+```typescript
+import { Character } from "@elizaos/core";
+import { farcasterPlugin } from "@elizaos/plugin-farcaster";
+
+export const character: Character = {
+  name: "FarcasterAgent",
+  plugins: [farcasterPlugin],
+  settings: {
+    farcaster: {
+      channels: ["/elizaos", "/ai16z"],
+      replyProbability: 0.7,
+      castStyle: "conversational",
+      maxCastLength: 320
+    }
+  }
+};
+```
+
+## Actions
+
+### SEND_CAST
+
+Posts a new cast to Farcaster.
+
+```typescript
+{
+  name: "SEND_CAST",
+  description: "Posts a cast (message) on Farcaster",
+  examples: [
+    "Can you post about the new ElizaOS features on Farcaster?",
+    "Share on Farcaster that we just launched version 2.0!"
+  ]
+}
+```
+
+### REPLY_TO_CAST
+
+Reply to an existing cast.
+
+```typescript
+{
+  name: "REPLY_TO_CAST",
+  description: "Replies to a cast on Farcaster",
+  examples: [
+    "Someone asked about ElizaOS on Farcaster, can you reply?",
+    "Reply to that cast and thank them for the feedback"
+  ]
+}
+```
+
+## Providers
+
+### farcasterProfile
+
+Provides the agent's Farcaster profile information.
+
+```typescript
+// Provider name: 'farcasterProfile'
+const profile = await runtime.providers.farcasterProfile.get(runtime, message, state);
+// Returns profile data including FID, username, bio, etc.
+```
+
+### farcasterTimeline
+
+Supplies recent timeline casts for context.
+
+```typescript
+// Provider name: 'farcasterTimeline'
+const timeline = await runtime.providers.farcasterTimeline.get(runtime, message, state);
+// Returns recent casts from the agent's timeline
+```
+
+## Events
+
+### handleCastSent
+
+Triggered when a cast is successfully sent. Stores metadata for tracking:
+
+```typescript
+// Automatically handled when casting
+// Stores cast hash, thread ID, and message metadata
+EventType: 'cast:sent'
+Payload: {
+  castHash: string,
+  threadId: string,
+  messageId: UUID,
+  platform: 'farcaster'
+}
+```
+
+### handleMessageReceived
+
+Processes incoming Farcaster messages and creates memories:
+
+```typescript
+// Automatically triggered for incoming messages
+EventType: 'message:received'
+Payload: {
+  cast: Cast,
+  profile: Profile,
+  threadId: string
+}
+```
+
+## Managers
+
+### FarcasterAgentManager
+
+Orchestrates all Farcaster operations for an agent:
+
+```typescript
+class FarcasterAgentManager {
+  client: FarcasterClient       // Neynar API client
+  casts: FarcasterCastManager   // Autonomous posting
+  interactions: FarcasterInteractionManager  // Mentions/replies
+  
+  async start()  // Start all managers
+  async stop()   // Stop all managers
+}
+```
+
+### FarcasterCastManager
+
+Handles autonomous casting based on configuration:
+
+```typescript
+class FarcasterCastManager {
+  // Manages periodic autonomous posts
+  // Respects CAST_INTERVAL_MIN/MAX settings
+  // Handles CAST_IMMEDIATELY flag
+  
+  async start()  // Begin autonomous casting
+  async stop()   // Stop casting
+  async publishCast(text: string)  // Manually publish
+}
+```
+
+### FarcasterInteractionManager
+
+Processes mentions, replies, and interactions:
+
+```typescript
+class FarcasterInteractionManager {
+  // Polls for mentions at FARCASTER_POLL_INTERVAL
+  // Processes up to MAX_ACTIONS_PROCESSING per cycle
+  // Uses AI to determine appropriate responses
+  
+  async start()  // Start monitoring
+  async stop()   // Stop monitoring
+  async processInteractions()  // Process pending interactions
+}
+```
+
+## Services
+
+### FarcasterService
+
+Main service coordinating all Farcaster operations:
+
+```typescript
+class FarcasterService extends Service {
+  static serviceType = 'farcaster'
+  
+  // Service lifecycle
+  async initialize(runtime: IAgentRuntime): Promise<void>
+  static async start(runtime: IAgentRuntime): Promise<Service>
+  static async stop(runtime: IAgentRuntime): Promise<void>
+  
+  // Get service instances
+  getMessageService(agentId: UUID): FarcasterMessageService
+  getCastService(agentId: UUID): FarcasterCastService
+  getActiveManagers(): Map<UUID, FarcasterAgentManager>
+  
+  // Health check
+  async healthCheck(): Promise<boolean>
+}
+```
+
+### MessageService
+
+Implements IMessageService for message operations:
+
+```typescript
+class FarcasterMessageService implements IMessageService {
+  // Message retrieval
+  async getMessages(options: GetMessagesOptions): Promise<Message[]>
+  async getMessage(messageId: string): Promise<Message | null>
+  
+  // Message sending
+  async sendMessage(options: {
+    text: string,
+    type: FarcasterMessageType,
+    replyToId?: string
+  }): Promise<Message>
+}
+```
+
+### CastService
+
+Implements IPostService with full CRUD operations:
+
+```typescript
+class FarcasterCastService implements IPostService {
+  // Cast operations
+  async getCasts(params: {
+    agentId: UUID,
+    limit?: number,
+    cursor?: string
+  }): Promise<FarcasterCast[]>
+  
+  async createCast(params: {
+    text: string,
+    media?: string[],
+    replyTo?: { hash: string, fid: number }
+  }): Promise<FarcasterCast>
+  
+  async deleteCast(castHash: string): Promise<void>
+  
+  // Engagement operations
+  async likeCast(castHash: string): Promise<void>
+  async unlikeCast(castHash: string): Promise<void>
+  async recast(castHash: string): Promise<void>
+  async unrecast(castHash: string): Promise<void>
+  
+  // Utility methods
+  async publishCast(text: string): Promise<FarcasterCast>
+  async getCastByHash(hash: string): Promise<Cast>
+  async getProfile(fid: number): Promise<Profile>
+}
+```
+
+## Client Architecture
+
+### FarcasterClient
+
+Core client wrapping Neynar API operations:
+
+```typescript
+class FarcasterClient {
+  private neynar: NeynarAPIClient;
+  private signerUuid: string;
+  
+  constructor(params: {
+    neynar: NeynarAPIClient,
+    signerUuid: string
+  })
+  
+  // Casting operations
+  async publishCast(text: string, options?: {
+    embeds?: Array<{ url: string }>,
+    replyTo?: string,
+    channelId?: string
+  }): Promise<Cast>
+  
+  async reply(params: {
+    text: string,
+    replyTo: { hash: string, fid: number }
+  }): Promise<Cast>
+  
+  async deleteCast(targetHash: string): Promise<void>
+  
+  // User operations
+  async getUser(): Promise<User>
+  async getUserByFid(fid: number): Promise<User>
+  async getUserByUsername(username: string): Promise<User>
+  
+  // Timeline operations
+  async getMentions(fid: number, cursor?: string): Promise<Cast[]>
+  async getTimeline(type: 'ForYou' | 'Following', cursor?: string): Promise<Cast[]>
+  async getCast(hash: string): Promise<Cast>
+  
+  // Engagement operations
+  async likeCast(targetHash: string): Promise<void>
+  async unlikeCast(targetHash: string): Promise<void>
+  async recast(targetHash: string): Promise<void>
+  async unrecast(targetHash: string): Promise<void>
+  async followUser(targetFid: number): Promise<void>
+  async unfollowUser(targetFid: number): Promise<void>
+}
+```
+
+### Common Utilities
+
+#### AsyncQueue
+Manages asynchronous operations with concurrency control:
+
+```typescript
+class AsyncQueue {
+  constructor(concurrency: number)
+  push<T>(fn: () => Promise<T>): Promise<T>
+}
+```
+
+#### Helper Functions
+
+```typescript
+// Cast utilities
+castUuid(cast: Cast): UUID  // Generate unique ID for cast
+neynarCastToCast(cast: NeynarCast): Cast  // Convert Neynar format
+formatCastTimestamp(timestamp: number): string  // Format timestamps
+
+// Prompt formatting
+formatCast(cast: Cast): string  // Format cast for AI processing
+formatTimeline(casts: Cast[]): string  // Format timeline for context
+
+// Cache management
+lastCastCacheKey(agentId: UUID): string  // Generate cache keys
+```
+
+## Event System
+
+### Cast Events
+
+```typescript
+runtime.on("cast:new", (cast: Cast) => {
+  // Handle new cast
+});
+
+runtime.on("cast:reply", (reply: CastReply) => {
+  // Handle reply
+});
+
+runtime.on("cast:like", (like: CastLike) => {
+  // Handle like
+});
+```
+
+### Error Events
+
+```typescript
+runtime.on("farcaster:error", (error: FarcasterError) => {
+  // Handle error
+});
+```
+
+## Memory & Storage
+
+### Memory System
+
+The plugin uses elizaOS's memory system for persistence rather than direct database tables:
+
+```typescript
+// Cast metadata stored when sending
+await runtime.createMemory({
+  type: 'metadata',
+  content: {
+    castHash: string,
+    threadId: string,
+    platform: 'farcaster',
+    messageId: UUID,
+    sentAt: number
+  }
+});
+
+// Message memory for each cast
+await runtime.createMemory({
+  type: 'message',
+  content: {
+    text: string,
+    source: 'farcaster',
+    hash: string,
+    fid: number,
+    timestamp: number,
+    inReplyTo?: string
+  }
+});
+```
+
+### Caching Strategy
+
+LRU cache for performance optimization:
+- **Cast Cache**: TTL 30 minutes, 9000 entries max
+- **Profile Cache**: User profile data
+- **Timeline Cache**: Recent timeline casts
+- **Last Cast Tracking**: Per-agent last cast timestamps
+
+## Security Considerations
+
+### Key Management
+- Store API keys and signer UUIDs securely using environment variables
+- Never commit credentials to version control
+- Use separate Neynar API keys for development and production
+- Create separate signers for different environments
+
+### Rate Limiting
+- Implement exponential backoff for API requests
+- Respect hub rate limits (typically 100 req/min)
+- Cache frequently accessed data
+
+### Content Validation
+- Validate cast length (max 320 characters)
+- Sanitize user inputs
+- Verify message signatures
+
+## Performance Optimization
+
+### AsyncQueue Implementation
+The plugin uses an async queue to prevent rate limiting:
+```typescript
+// Queue processes operations with concurrency control
+const asyncQueue = new AsyncQueue(1); // Single concurrency
+await asyncQueue.push(() => processInteraction(cast));
+```
+
+### Polling Optimization
+```typescript
+// Configurable polling intervals to balance responsiveness
+FARCASTER_POLL_INTERVAL=2  // Minutes between polls
+ACTION_INTERVAL=5           // Minutes between action processing
+MAX_ACTIONS_PROCESSING=1    // Actions per cycle
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Errors**
+   - Verify mnemonic is correct
+   - Ensure FID matches the mnemonic
+   - Check hub connectivity
+
+2. **Rate Limiting**
+   - Implement retry logic with backoff
+   - Use caching to reduce API calls
+   - Monitor rate limit headers
+
+3. **Message Validation Failures**
+   - Verify timestamp is within valid range
+   - Ensure proper message formatting
+   - Check signature validity
+
+### Debug Mode
+
+Enable debug logging:
+
+```env
+FARCASTER_DEBUG=true
+LOG_LEVEL=debug
+```
+
+## Best Practices
+
+1. **Content Strategy**
+   - Keep casts concise and engaging
+   - Use channels appropriately
+   - Maintain consistent voice
+
+2. **Engagement Guidelines**
+   - Don't spam or over-engage
+   - Respect community norms
+   - Build genuine connections
+
+3. **Technical Implementation**
+   - Handle errors gracefully
+   - Implement proper retry logic
+   - Monitor performance metrics
+
+## Migration Guide
+
+### From v1 to v2
+
+```typescript
+// v1
+import { FarcasterPlugin } from "@elizaos/plugin-farcaster";
+
+// v2
+import { farcasterPlugin } from "@elizaos/plugin-farcaster";
+
+// Configuration changes
+// v1: Plugin initialized with options
+const plugin = new FarcasterPlugin(options);
+
+// v2: Configuration via environment and character
+const character = {
+  plugins: [farcasterPlugin],
+  settings: { farcaster: options }
+};
+```
+
+## Support
+
+- **GitHub**: [elizaos-plugins/plugin-farcaster](https://github.com/elizaos-plugins/plugin-farcaster)
+- **Discord**: Join the elizaOS community
+- **Documentation**: [elizaos.ai/docs](https://elizaos.ai/docs)
+
+## License
+
+MIT License - see LICENSE file for details

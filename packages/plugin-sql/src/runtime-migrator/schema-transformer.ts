@@ -1,6 +1,5 @@
-import { pgSchema } from 'drizzle-orm/pg-core';
-import { getTableConfig } from 'drizzle-orm/pg-core';
-import { logger } from '@elizaos/core';
+import { logger } from "@elizaos/core";
+import { getTableConfig, pgSchema } from "drizzle-orm/pg-core";
 
 /**
  * Transform a plugin's schema to use the appropriate namespace
@@ -10,7 +9,7 @@ import { logger } from '@elizaos/core';
  */
 export function transformPluginSchema(pluginName: string, schema: any): any {
   // Core plugin uses public schema - no transformation needed
-  if (pluginName === '@elizaos/plugin-sql') {
+  if (pluginName === "@elizaos/plugin-sql") {
     return schema;
   }
 
@@ -20,13 +19,16 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
   // If schema is already using pgSchema, return as-is
   if (isAlreadyNamespaced(schema, schemaName)) {
     logger.debug(
-      { src: 'plugin:sql', pluginName, schemaName },
-      'Plugin already uses expected schema'
+      { src: "plugin:sql", pluginName, schemaName },
+      "Plugin already uses expected schema",
     );
     return schema;
   }
 
-  logger.info({ src: 'plugin:sql', pluginName, schemaName }, 'Transforming plugin to use schema');
+  logger.info(
+    { src: "plugin:sql", pluginName, schemaName },
+    "Transforming plugin to use schema",
+  );
 
   // Transform the schema object
   const transformed: any = {};
@@ -37,20 +39,25 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
       const config = getTableConfig(value as any);
 
       // If the table doesn't have a schema or is in public, warn about it
-      if (!config.schema || config.schema === 'public') {
+      if (!config.schema || config.schema === "public") {
         // Note: We can't easily transform existing tables to use a different schema
         // as it would require reconstructing all column definitions, constraints, etc.
         // For now, we'll log a warning and return the original
         logger.warn(
-          { src: 'plugin:sql', tableName: config.name, pluginName, expectedSchema: schemaName },
-          'Table should use pgSchema for proper isolation - manual migration may be required'
+          {
+            src: "plugin:sql",
+            tableName: config.name,
+            pluginName,
+            expectedSchema: schemaName,
+          },
+          "Table should use pgSchema for proper isolation - manual migration may be required",
         );
         transformed[key] = value;
       } else {
         // Table already has a schema, keep it as-is
         transformed[key] = value;
       }
-    } else if (typeof value === 'object' && value !== null) {
+    } else if (typeof value === "object" && value !== null) {
       // Check if this is a schema object (created with pgSchema)
       // Cast to any to access properties since we're doing runtime checks
       const obj = value as any;
@@ -76,23 +83,23 @@ export function transformPluginSchema(pluginName: string, schema: any): any {
 export function deriveSchemaName(pluginName: string): string {
   // Remove common prefixes and convert to lowercase with underscores
   let schemaName = pluginName
-    .replace(/^@[^/]+\//, '') // Remove npm scope like @elizaos/
-    .replace(/^plugin-/, '') // Remove plugin- prefix
+    .replace(/^@[^/]+\//, "") // Remove npm scope like @elizaos/
+    .replace(/^plugin-/, "") // Remove plugin- prefix
     .toLowerCase();
 
   // Replace non-alphanumeric characters with underscores (avoid polynomial regex)
   schemaName = normalizeSchemaName(schemaName);
 
   // Ensure schema name is valid (not empty, not a reserved word)
-  const reserved = ['public', 'pg_catalog', 'information_schema', 'migrations'];
+  const reserved = ["public", "pg_catalog", "information_schema", "migrations"];
   if (!schemaName || reserved.includes(schemaName)) {
     // Fallback to using the full plugin name with safe characters
-    schemaName = 'plugin_' + normalizeSchemaName(pluginName.toLowerCase());
+    schemaName = `plugin_${normalizeSchemaName(pluginName.toLowerCase())}`;
   }
 
   // Ensure it starts with a letter (PostgreSQL requirement)
   if (!/^[a-z]/.test(schemaName)) {
-    schemaName = 'p_' + schemaName;
+    schemaName = `p_${schemaName}`;
   }
 
   // Truncate if too long (PostgreSQL identifier limit is 63 chars)
@@ -119,24 +126,24 @@ function normalizeSchemaName(input: string): string {
       prevWasUnderscore = false;
     } else if (!prevWasUnderscore) {
       // Only add underscore if previous char wasn't already an underscore
-      chars.push('_');
+      chars.push("_");
       prevWasUnderscore = true;
     }
     // Skip consecutive non-alphanumeric characters
   }
 
   // Remove leading and trailing underscores
-  const result = chars.join('');
+  const result = chars.join("");
 
   // Trim underscores from start and end efficiently
   let start = 0;
   let end = result.length;
 
-  while (start < end && result[start] === '_') {
+  while (start < end && result[start] === "_") {
     start++;
   }
 
-  while (end > start && result[end - 1] === '_') {
+  while (end > start && result[end - 1] === "_") {
     end--;
   }
 
@@ -147,7 +154,7 @@ function normalizeSchemaName(input: string): string {
  * Check if a value is a PgTable
  */
 function isPgTable(value: any): boolean {
-  if (!value || typeof value !== 'object') {
+  if (!value || typeof value !== "object") {
     return false;
   }
 
@@ -155,7 +162,7 @@ function isPgTable(value: any): boolean {
   // This is a heuristic since we can't use instanceof across module boundaries
   try {
     const config = getTableConfig(value);
-    return config && typeof config.name === 'string';
+    return config && typeof config.name === "string";
   } catch {
     return false;
   }

@@ -1,22 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { sql } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/pglite';
-import { PGlite } from '@electric-sql/pglite';
-import { vector } from '@electric-sql/pglite/vector';
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { PGlite } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
+import { sql } from "drizzle-orm";
 import {
-  pgTable,
-  text,
-  integer,
   boolean,
-  timestamp,
-  uuid,
+  integer,
   jsonb,
   numeric,
-} from 'drizzle-orm/pg-core';
-import { RuntimeMigrator } from '../../runtime-migrator/runtime-migrator';
-import { DatabaseIntrospector } from '../../runtime-migrator/drizzle-adapters/database-introspector';
-import * as coreSchema from '../../schema';
-import type { DrizzleDB } from '../../runtime-migrator/types';
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { drizzle } from "drizzle-orm/pglite";
+import { DatabaseIntrospector } from "../../runtime-migrator/drizzle-adapters/database-introspector";
+import { RuntimeMigrator } from "../../runtime-migrator/runtime-migrator";
+import type { DrizzleDB } from "../../runtime-migrator/types";
+import * as coreSchema from "../../schema";
 
 /**
  * These tests simulate real production scenarios where:
@@ -24,7 +24,7 @@ import type { DrizzleDB } from '../../runtime-migrator/types';
  * 2. The migration system is introduced later
  * 3. We need to handle existing data and schema gracefully
  */
-describe('Production Migration Scenarios', () => {
+describe("Production Migration Scenarios", () => {
   let pgClient: PGlite;
   let db: DrizzleDB;
   let migrator: RuntimeMigrator;
@@ -42,8 +42,8 @@ describe('Production Migration Scenarios', () => {
     await pgClient.close();
   });
 
-  describe('Scenario 1: Existing ElizaOS Core Tables', () => {
-    it('should block destructive migrations when camelCase columns need renaming to snake_case', async () => {
+  describe("Scenario 1: Existing elizaOS Core Tables", () => {
+    it("should block destructive migrations when camelCase columns need renaming to snake_case", async () => {
       // Simulate existing production database with OLD camelCase columns
       // In production, migrations.ts handles RENAME operations BEFORE RuntimeMigrator runs.
       // RuntimeMigrator alone cannot detect renames - it sees them as DROP + ADD (destructive).
@@ -101,8 +101,8 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // Insert some production data
-      const agentId = '123e4567-e89b-12d3-a456-426614174000';
-      const roomId = '223e4567-e89b-12d3-a456-426614174000';
+      const agentId = "123e4567-e89b-12d3-a456-426614174000";
+      const roomId = "223e4567-e89b-12d3-a456-426614174000";
 
       await db.execute(sql`
         INSERT INTO agents (id, name, settings)
@@ -125,7 +125,10 @@ describe('Production Migration Scenarios', () => {
       // - Schema expects snake_case (agent_id, room_id, etc.)
       // - This is detected as DROP + ADD = destructive change
       try {
-        await migrator.migrate('@elizaos/plugin-sql', coreSchema, { verbose: false, force: false });
+        await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
+          verbose: false,
+          force: false,
+        });
         // If we get here, the migration wasn't blocked - that's unexpected
         // Check if there were actually destructive changes detected
         const memoryColumns = await db.execute(sql`
@@ -133,22 +136,26 @@ describe('Production Migration Scenarios', () => {
         `);
         const columnNames = memoryColumns.rows.map((row) => row.column_name);
         // If camelCase columns still exist, migration was correctly blocked or skipped
-        if (columnNames.includes('agentId')) {
+        if (columnNames.includes("agentId")) {
           // Migration was blocked/skipped - correct behavior
           expect(true).toBe(true);
         }
       } catch (error) {
         // Expected: Destructive migration should be blocked
-        expect((error as Error).message).toContain('Destructive migration blocked');
+        expect((error as Error).message).toContain(
+          "Destructive migration blocked",
+        );
       }
 
       // Verify data is preserved (migration was blocked, not executed)
-      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
+      const agents = await db.execute(
+        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
+      );
       expect(agents.rows[0]).toBeDefined();
-      expect(agents.rows[0].name).toBe('Production Agent');
+      expect(agents.rows[0].name).toBe("Production Agent");
     });
 
-    it('should work with tables that already have snake_case columns (post-migration)', async () => {
+    it("should work with tables that already have snake_case columns (post-migration)", async () => {
       // This test simulates a database that has ALREADY been migrated
       // (migrations.ts already ran and renamed columns to snake_case)
       // RuntimeMigrator should handle this gracefully
@@ -205,8 +212,8 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // Insert some production data
-      const agentId = '123e4567-e89b-12d3-a456-426614174000';
-      const roomId = '223e4567-e89b-12d3-a456-426614174000';
+      const agentId = "123e4567-e89b-12d3-a456-426614174000";
+      const roomId = "223e4567-e89b-12d3-a456-426614174000";
 
       await db.execute(sql`
         INSERT INTO agents (id, name, settings)
@@ -227,15 +234,21 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // RuntimeMigrator should work fine - schema already matches
-      await migrator.migrate('@elizaos/plugin-sql', coreSchema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", coreSchema, {
+        verbose: false,
+      });
 
       // Verify data is preserved
-      const agents = await db.execute(sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`);
+      const agents = await db.execute(
+        sql`SELECT * FROM agents WHERE id = ${agentId}::uuid`,
+      );
       expect(agents.rows[0]).toBeDefined();
-      expect(agents.rows[0].name).toBe('Production Agent');
+      expect(agents.rows[0].name).toBe("Production Agent");
 
       // Verify memories data is preserved
-      const memories = await db.execute(sql`SELECT COUNT(*) as count FROM memories`);
+      const memories = await db.execute(
+        sql`SELECT COUNT(*) as count FROM memories`,
+      );
       expect(Number(memories.rows[0].count)).toBe(3);
 
       // Check that columns are snake_case
@@ -247,13 +260,13 @@ describe('Production Migration Scenarios', () => {
       `);
 
       const columnNames = memoryColumns.rows.map((row) => row.column_name);
-      expect(columnNames).toContain('agent_id');
-      expect(columnNames).toContain('room_id');
-      expect(columnNames).toContain('content');
-      expect(columnNames).toContain('type');
+      expect(columnNames).toContain("agent_id");
+      expect(columnNames).toContain("room_id");
+      expect(columnNames).toContain("content");
+      expect(columnNames).toContain("type");
     });
 
-    it('should handle version mismatch between DB and code schema', async () => {
+    it("should handle version mismatch between DB and code schema", async () => {
       // Create an older version of a table structure
       await db.execute(sql`
         CREATE TABLE participants (
@@ -266,8 +279,8 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // Add some data
-      const agentId = '323e4567-e89b-12d3-a456-426614174000';
-      const roomId = '423e4567-e89b-12d3-a456-426614174000';
+      const agentId = "323e4567-e89b-12d3-a456-426614174000";
+      const roomId = "423e4567-e89b-12d3-a456-426614174000";
 
       await db.execute(sql`
         INSERT INTO participants (agent_id, room_id, user_name) 
@@ -277,28 +290,30 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // The new schema might have additional fields
-      const participantTable = pgTable('participants', {
-        id: uuid('id').primaryKey().defaultRandom(),
-        agent_id: uuid('agent_id').notNull(),
-        room_id: uuid('room_id').notNull(),
-        user_name: text('user_name').notNull(),
-        created_at: timestamp('created_at').defaultNow(),
+      const participantTable = pgTable("participants", {
+        id: uuid("id").primaryKey().defaultRandom(),
+        agent_id: uuid("agent_id").notNull(),
+        room_id: uuid("room_id").notNull(),
+        user_name: text("user_name").notNull(),
+        created_at: timestamp("created_at").defaultNow(),
         // New fields not in the old schema
-        updated_at: timestamp('updated_at').defaultNow(),
-        is_active: boolean('is_active').default(true),
-        metadata: jsonb('metadata'),
+        updated_at: timestamp("updated_at").defaultNow(),
+        is_active: boolean("is_active").default(true),
+        metadata: jsonb("metadata"),
       });
 
       const schema = { participants: participantTable };
 
       // Run migration
-      await migrator.migrate('@elizaos/plugin-sql', schema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
       // Verify data is preserved
-      const result = await db.execute(sql`SELECT * FROM participants ORDER BY user_name`);
+      const result = await db.execute(
+        sql`SELECT * FROM participants ORDER BY user_name`,
+      );
       expect(result.rows).toHaveLength(2);
-      expect(result.rows[0].user_name).toBe('Alice');
-      expect(result.rows[1].user_name).toBe('Bob');
+      expect(result.rows[0].user_name).toBe("Alice");
+      expect(result.rows[1].user_name).toBe("Bob");
 
       // Verify new columns exist
       const columns = await db.execute(sql`
@@ -309,14 +324,14 @@ describe('Production Migration Scenarios', () => {
       `);
 
       const columnNames = columns.rows.map((row) => row.column_name);
-      expect(columnNames).toContain('updated_at');
-      expect(columnNames).toContain('is_active');
-      expect(columnNames).toContain('metadata');
+      expect(columnNames).toContain("updated_at");
+      expect(columnNames).toContain("is_active");
+      expect(columnNames).toContain("metadata");
     });
   });
 
-  describe('Scenario 2: Multiple Plugin Tables in Production', () => {
-    it('should handle multiple plugins with existing tables', async () => {
+  describe("Scenario 2: Multiple Plugin Tables in Production", () => {
+    it("should handle multiple plugins with existing tables", async () => {
       // Simulate a production environment with multiple plugins already deployed
 
       // Plugin 1: Analytics plugin with its own schema
@@ -358,14 +373,15 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // Check if tables exist
-      const hasExisting = await introspector.hasExistingTables('@elizaos/analytics');
+      const hasExisting =
+        await introspector.hasExistingTables("@elizaos/analytics");
       expect(hasExisting).toBe(true);
 
       // Introspect to verify structure
-      const snapshot = await introspector.introspectSchema('elizaos_analytics');
+      const snapshot = await introspector.introspectSchema("elizaos_analytics");
       expect(Object.keys(snapshot.tables)).toHaveLength(2);
-      expect(snapshot.tables['elizaos_analytics.events']).toBeDefined();
-      expect(snapshot.tables['elizaos_analytics.metrics']).toBeDefined();
+      expect(snapshot.tables["elizaos_analytics.events"]).toBeDefined();
+      expect(snapshot.tables["elizaos_analytics.metrics"]).toBeDefined();
 
       // Verify data is there
       const events = await db.execute(sql`
@@ -379,7 +395,7 @@ describe('Production Migration Scenarios', () => {
       expect(Number(metrics.rows[0].count)).toBe(2);
     });
 
-    it('should handle schema conflicts gracefully', async () => {
+    it("should handle schema conflicts gracefully", async () => {
       // Create a table that conflicts with what a plugin expects
       await db.execute(sql`
         CREATE TABLE tasks (
@@ -390,19 +406,19 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // The plugin expects a different structure
-      const tasksTable = pgTable('tasks', {
-        id: uuid('id').primaryKey().defaultRandom(), // Different type!
-        description: text('description').notNull(),
-        completed: boolean('completed').default(false),
-        agent_id: uuid('agent_id').notNull(), // New required field
-        created_at: timestamp('created_at').defaultNow(),
+      const tasksTable = pgTable("tasks", {
+        id: uuid("id").primaryKey().defaultRandom(), // Different type!
+        description: text("description").notNull(),
+        completed: boolean("completed").default(false),
+        agent_id: uuid("agent_id").notNull(), // New required field
+        created_at: timestamp("created_at").defaultNow(),
       });
 
       const schema = { tasks: tasksTable };
 
       // This should detect the type conflict
       try {
-        await migrator.migrate('@elizaos/plugin-sql', schema, {
+        await migrator.migrate("@elizaos/plugin-sql", schema, {
           verbose: false,
           force: false, // Don't allow destructive changes
         });
@@ -419,13 +435,15 @@ describe('Production Migration Scenarios', () => {
         expect(columns.rows).toBeDefined();
       } catch (error) {
         // Expected: Destructive migration should be blocked
-        expect((error as Error).message).toContain('Destructive migration blocked');
+        expect((error as Error).message).toContain(
+          "Destructive migration blocked",
+        );
       }
     });
   });
 
-  describe('Scenario 3: Recovery from Failed Migrations', () => {
-    it('should handle partial migration state gracefully', async () => {
+  describe("Scenario 3: Recovery from Failed Migrations", () => {
+    it("should handle partial migration state gracefully", async () => {
       // Simulate a partial migration where some tables were created but not all
       await db.execute(sql`
         CREATE TABLE users (
@@ -437,29 +455,29 @@ describe('Production Migration Scenarios', () => {
 
       // But the related tables were not created (simulating a failed migration)
       // Now define the complete schema
-      const usersTable = pgTable('users', {
-        id: uuid('id').primaryKey().defaultRandom(),
-        name: text('name').notNull(),
-        email: text('email').notNull().unique(),
-        created_at: timestamp('created_at').defaultNow(), // New field
+      const usersTable = pgTable("users", {
+        id: uuid("id").primaryKey().defaultRandom(),
+        name: text("name").notNull(),
+        email: text("email").notNull().unique(),
+        created_at: timestamp("created_at").defaultNow(), // New field
       });
 
-      const profilesTable = pgTable('profiles', {
-        id: uuid('id').primaryKey().defaultRandom(),
-        user_id: uuid('user_id')
+      const profilesTable = pgTable("profiles", {
+        id: uuid("id").primaryKey().defaultRandom(),
+        user_id: uuid("user_id")
           .notNull()
           .references(() => usersTable.id),
-        bio: text('bio'),
-        avatar_url: text('avatar_url'),
+        bio: text("bio"),
+        avatar_url: text("avatar_url"),
       });
 
-      const sessionsTable = pgTable('sessions', {
-        id: uuid('id').primaryKey().defaultRandom(),
-        user_id: uuid('user_id')
+      const sessionsTable = pgTable("sessions", {
+        id: uuid("id").primaryKey().defaultRandom(),
+        user_id: uuid("user_id")
           .notNull()
           .references(() => usersTable.id),
-        token: text('token').notNull().unique(),
-        expires_at: timestamp('expires_at').notNull(),
+        token: text("token").notNull().unique(),
+        expires_at: timestamp("expires_at").notNull(),
       });
 
       const schema = {
@@ -469,7 +487,7 @@ describe('Production Migration Scenarios', () => {
       };
 
       // Run migration - should complete the partial migration
-      await migrator.migrate('@elizaos/plugin-sql', schema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
       // Verify all tables exist
       const tables = await db.execute(sql`
@@ -481,9 +499,9 @@ describe('Production Migration Scenarios', () => {
       `);
 
       const tableNames = tables.rows.map((row) => row.table_name);
-      expect(tableNames).toContain('users');
-      expect(tableNames).toContain('profiles');
-      expect(tableNames).toContain('sessions');
+      expect(tableNames).toContain("users");
+      expect(tableNames).toContain("profiles");
+      expect(tableNames).toContain("sessions");
 
       // Verify the users table was updated with new field
       const userColumns = await db.execute(sql`
@@ -494,10 +512,10 @@ describe('Production Migration Scenarios', () => {
       `);
 
       const columnNames = userColumns.rows.map((row) => row.column_name);
-      expect(columnNames).toContain('created_at');
+      expect(columnNames).toContain("created_at");
     });
 
-    it('should be idempotent when run multiple times', async () => {
+    it("should be idempotent when run multiple times", async () => {
       // Create initial state
       await db.execute(sql`
         CREATE TABLE products (
@@ -514,27 +532,27 @@ describe('Production Migration Scenarios', () => {
       `);
 
       // Define schema
-      const productsTable = pgTable('products', {
-        id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
-        name: text('name').notNull(),
-        price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-        category: text('category').default('general'), // New field
+      const productsTable = pgTable("products", {
+        id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+        name: text("name").notNull(),
+        price: numeric("price", { precision: 10, scale: 2 }).notNull(),
+        category: text("category").default("general"), // New field
       });
 
       const schema = { products: productsTable };
 
       // Run migration multiple times
-      await migrator.migrate('@elizaos/plugin-sql', schema, { verbose: false });
-      await migrator.migrate('@elizaos/plugin-sql', schema, { verbose: false });
-      await migrator.migrate('@elizaos/plugin-sql', schema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
+      await migrator.migrate("@elizaos/plugin-sql", schema, { verbose: false });
 
       // Verify data is still intact
       const products = await db.execute(sql`
         SELECT * FROM products ORDER BY id
       `);
       expect(products.rows).toHaveLength(2);
-      expect(products.rows[0].name).toBe('Product A');
-      expect(products.rows[1].name).toBe('Product B');
+      expect(products.rows[0].name).toBe("Product A");
+      expect(products.rows[1].name).toBe("Product B");
 
       // Verify structure is correct (not duplicated)
       const columns = await db.execute(sql`
@@ -546,12 +564,12 @@ describe('Production Migration Scenarios', () => {
 
       const columnNames = columns.rows.map((row) => row.column_name);
       expect(columnNames).toHaveLength(4); // id, name, price, category
-      expect(columnNames).toContain('category');
+      expect(columnNames).toContain("category");
     });
   });
 
-  describe('Scenario 4: Large Production Database', () => {
-    it('should handle introspection of many tables efficiently', async () => {
+  describe("Scenario 4: Large Production Database", () => {
+    it("should handle introspection of many tables efficiently", async () => {
       // Create multiple tables to simulate a large production database
       const tableCount = 20;
 
@@ -563,14 +581,14 @@ describe('Production Migration Scenarios', () => {
             data TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT NOW()
           )
-        `)
+        `),
         );
 
         // Add some data
         await db.execute(
           sql.raw(`
           INSERT INTO table_${i} (data) VALUES ('Data for table ${i}')
-        `)
+        `),
         );
       }
 
@@ -579,19 +597,21 @@ describe('Production Migration Scenarios', () => {
         await db.execute(
           sql.raw(`
           CREATE INDEX idx_table_${i}_created_at ON table_${i}(created_at)
-        `)
+        `),
         );
       }
 
       // Introspect the database
-      const snapshot = await introspector.introspectSchema('public');
+      const snapshot = await introspector.introspectSchema("public");
 
       // Verify all tables were captured
       expect(Object.keys(snapshot.tables)).toHaveLength(tableCount);
 
       // Verify data exists
       for (let i = 0; i < tableCount; i++) {
-        const result = await db.execute(sql.raw(`SELECT COUNT(*) as count FROM table_${i}`));
+        const result = await db.execute(
+          sql.raw(`SELECT COUNT(*) as count FROM table_${i}`),
+        );
         expect(Number(result.rows[0].count)).toBe(1);
       }
     });

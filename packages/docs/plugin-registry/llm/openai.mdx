@@ -1,0 +1,94 @@
+---
+title: "OpenAI Plugin"
+description: "OpenAI GPT models integration for elizaOS"
+---
+
+
+The OpenAI plugin provides access to GPT models and supports all model types: text generation, embeddings, and object generation.
+
+## Features
+
+- **Full model support** - Text, embeddings, and objects
+- **Multiple models** - GPT-4, GPT-3.5, and embedding models
+- **Streaming support** - Real-time response generation
+- **Function calling** - Structured output generation
+
+## Installation
+
+```bash
+elizaos plugins add @elizaos/plugin-openai
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Optional model configuration
+# You can use any available OpenAI model
+OPENAI_SMALL_MODEL=gpt-4o-mini        # Default: gpt-4o-mini
+OPENAI_LARGE_MODEL=gpt-4o             # Default: gpt-4o
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small  # Default: text-embedding-3-small
+
+# Examples of other available models:
+# OPENAI_SMALL_MODEL=gpt-3.5-turbo
+# OPENAI_LARGE_MODEL=gpt-4-turbo
+# OPENAI_LARGE_MODEL=gpt-4o-2024-11-20
+# OPENAI_EMBEDDING_MODEL=text-embedding-3-large
+# OPENAI_EMBEDDING_MODEL=text-embedding-ada-002
+```
+
+### Character Configuration
+
+```json
+{
+  "name": "MyAgent",
+  "plugins": ["@elizaos/plugin-openai"],
+  "settings": {
+    "secrets": {
+      "OPENAI_API_KEY": "sk-..."
+    }
+  }
+}
+```
+
+## Supported Operations
+
+| Operation | Models | Notes |
+|-----------|--------|-------|
+| TEXT_GENERATION | Any GPT model (gpt-4o, gpt-4, gpt-3.5-turbo, etc.) | Conversational AI |
+| EMBEDDING | Any embedding model (text-embedding-3-small/large, ada-002) | Vector embeddings |
+| OBJECT_GENERATION | All GPT models | JSON/structured output |
+
+## Model Configuration
+
+The plugin uses two model categories:
+
+- **SMALL_MODEL**: Used for simpler tasks, faster responses
+- **LARGE_MODEL**: Used for complex reasoning, better quality
+
+You can configure any available OpenAI model in these slots based on your needs and budget.
+
+## Usage Example
+
+The plugin automatically registers with the runtime:
+
+```typescript
+// No manual initialization needed
+// Just include in plugins array
+```
+
+## Cost Considerations
+
+- GPT-4 is more expensive than GPT-3.5
+- Use `text-embedding-3-small` for cheaper embeddings
+- Monitor usage via OpenAI dashboard
+
+## External Resources
+
+- [Plugin Source](https://github.com/elizaos/eliza/tree/main/packages/plugin-openai)
+- [OpenAI API Documentation](https://platform.openai.com/docs)
+- [Pricing](https://openai.com/pricing)
