@@ -1,5 +1,12 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Entity, Room, Agent, World, UUID, ChannelType } from '@elizaos/core';
+import {
+  type Agent,
+  ChannelType,
+  type Entity,
+  type Room,
+  type UUID,
+  type World,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 // Test IDs
 export const participantTestAgentId = uuidv4() as UUID;
@@ -10,24 +17,24 @@ export const participantTestWorldId = uuidv4() as UUID;
 // Test data for participant integration tests
 export const participantTestAgent: Agent = {
   id: participantTestAgentId,
-  name: 'Participant Test Agent',
-  bio: 'Test agent for participant integration tests',
+  name: "Participant Test Agent",
+  bio: "Test agent for participant integration tests",
   settings: {
     profile: {
-      short_description: 'Test agent for participant integration tests',
+      short_description: "Test agent for participant integration tests",
     },
   },
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 };
 
 export const participantTestEntity: Entity = {
   id: participantTestEntityId,
-  names: ['Participant Test Entity'],
+  names: ["Participant Test Entity"],
   agentId: participantTestAgentId,
   components: [],
   metadata: {
-    type: 'user',
+    type: "user",
     worldId: participantTestWorldId,
   },
 };
@@ -35,16 +42,16 @@ export const participantTestEntity: Entity = {
 export const participantTestWorld: World = {
   id: participantTestWorldId,
   agentId: participantTestAgentId,
-  name: 'Participant Test World',
-  serverId: 'test-server',
+  name: "Participant Test World",
+  serverId: "test-server",
   metadata: {},
 };
 
 export const participantTestRoom: Room = {
   id: participantTestRoomId,
-  name: 'Participant Test Room',
+  name: "Participant Test Room",
   agentId: participantTestAgentId,
-  source: 'test',
+  source: "test",
   type: ChannelType.GROUP,
   worldId: participantTestWorldId,
   metadata: {},

@@ -1,0 +1,147 @@
+---
+title: "Examples"
+description: "Practical examples for configuring and using the EVM plugin"
+---
+
+## Configuration
+
+### Character Configuration
+
+Add the EVM plugin to your character file:
+
+```typescript
+// character.ts
+import { type Character } from '@elizaos/core';
+
+export const character: Character = {
+  name: 'DeFiAgent',
+  plugins: [
+    // Core plugins
+    '@elizaos/plugin-sql',
+    '@elizaos/plugin-bootstrap',
+    
+    // DeFi plugin
+    ...(process.env.EVM_PRIVATE_KEY?.trim() ? ['@elizaos/plugin-evm'] : []),
+    
+    // Platform plugins
+    ...(process.env.DISCORD_API_TOKEN?.trim() ? ['@elizaos/plugin-discord'] : []),
+  ],
+  settings: {
+    secrets: {},
+  },
+  // ... rest of character configuration
+};
+```
+
+### Environment Variables
+
+```env
+# Required
+EVM_PRIVATE_KEY=your_private_key_here
+
+# Optional - Custom RPC endpoints
+ETHEREUM_PROVIDER_ETHEREUM=https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY
+ETHEREUM_PROVIDER_BASE=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY
+ETHEREUM_PROVIDER_ARBITRUM=https://arb-mainnet.g.alchemy.com/v2/YOUR_KEY
+
+# Optional - TEE Mode
+TEE_MODE=true
+WALLET_SECRET_SALT=your_salt_here
+```
+
+## Usage Examples
+
+### Transfer Operations
+
+The agent understands natural language for transfers:
+
+```
+User: Send 0.1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+Agent: I'll send 0.1 ETH to that address right away.
+
+User: Transfer 100 USDC to vitalik.eth on Base
+Agent: Transferring 100 USDC to vitalik.eth on Base network.
+
+User: Pay alice.eth 50 DAI on Arbitrum
+Agent: Sending 50 DAI to alice.eth on Arbitrum.
+```
+
+### Swap Operations
+
+```
+User: Swap 1 ETH for USDC
+Agent: I'll swap 1 ETH for USDC using the best available route.
+
+User: Exchange 100 USDC for DAI with 0.5% slippage
+Agent: Swapping 100 USDC for DAI with 0.5% slippage tolerance.
+```
+
+### Bridge Operations
+
+```
+User: Bridge 100 USDC from Ethereum to Base
+Agent: I'll bridge 100 USDC from Ethereum to Base network.
+
+User: Move 0.5 ETH from Arbitrum to Optimism
+Agent: Bridging 0.5 ETH from Arbitrum to Optimism.
+```
+
+### Governance Operations
+
+```
+User: Create a proposal to increase the treasury allocation to 10%
+Agent: I'll create a governance proposal for increasing treasury allocation.
+
+User: Vote FOR on proposal 42
+Agent: Casting your vote FOR proposal #42.
+
+User: Execute proposal 35
+Agent: Executing proposal #35 after the timelock period.
+```
+
+## Custom Plugin Integration
+
+If you need to import the plugin directly in a ProjectAgent:
+
+```typescript
+// index.ts
+import { type ProjectAgent } from '@elizaos/core';
+import evmPlugin from '@elizaos/plugin-evm';
+import { character } from './character';
+
+export const projectAgent: ProjectAgent = {
+  character,
+  plugins: [evmPlugin], // Import custom plugins here
+  init: async (runtime) => {
+    // Custom initialization if needed
+  }
+};
+```
+
+## Common Patterns
+
+### Checking Wallet Balance
+
+```
+User: What's my wallet balance?
+Agent: [Agent will use the wallet provider to show balances across all configured chains]
+```
+
+### Gas Price Awareness
+
+```
+User: Send 0.1 ETH to alice.eth when gas is low
+Agent: I'll monitor gas prices and execute when they're favorable.
+```
+
+### Multi-Chain Operations
+
+The plugin automatically detects the chain from context:
+
+```
+User: Send 100 USDC on Base
+Agent: Sending 100 USDC on Base network.
+
+User: Swap MATIC for USDC on Polygon
+Agent: Swapping MATIC for USDC on Polygon network.
+```

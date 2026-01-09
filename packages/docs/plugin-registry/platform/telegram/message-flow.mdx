@@ -1,0 +1,569 @@
+---
+title: "Message Flow"
+description: "This document provides a comprehensive breakdown of how messages flow through the Telegram plugin system."
+---
+
+# Telegram Plugin Message Flow - Detailed Breakdown
+
+This document provides a comprehensive breakdown of how messages flow through the Telegram plugin system.
+
+## Complete Message Flow Diagram
+
+```mermaid
+flowchart TD
+    Start([Telegram Update]) --> A[Telegram Bot API]
+    
+    A --> B{Update Type}
+    B -->|Message| C[Message Update]
+    B -->|Callback Query| D[Callback Update]
+    B -->|Edited Message| E[Edited Update]
+    B -->|Channel Post| F[Channel Update]
+    
+    %% Message Flow
+    C --> G[Telegraf Middleware]
+    G --> H{From Bot?}
+    H -->|Yes| End1[Ignore]
+    H -->|No| I[Sync Chat/User]
+    
+    I --> J[Create/Update Entities]
+    J --> K{Chat Type}
+    K -->|Private| L[Direct Message Flow]
+    K -->|Group| M[Group Message Flow]
+    K -->|Channel| N[Channel Post Flow]
+    
+    L --> O{Allow DMs?}
+    O -->|No| End2[Ignore]
+    O -->|Yes| P[Process Message]
+    
+    M --> Q{Allowed Group?}
+    Q -->|No| End3[Ignore]
+    Q -->|Yes| R{Forum Topic?}
+    R -->|Yes| S[Get Topic Context]
+    R -->|No| T[Get Chat Context]
+    S --> P
+    T --> P
+    
+    P --> U[Message Manager]
+    U --> V{Has Media?}
+    V -->|Yes| W[Process Media]
+    V -->|No| X[Convert Format]
+    W --> X
+    
+    X --> Y[Add Telegram Context]
+    Y --> Z[Send to Bootstrap]
+    
+    Z --> AA[Bootstrap Plugin]
+    AA --> AB[Generate Response]
+    
+    AB --> AC{Has Callback?}
+    AC -->|No| End4[No Response]
+    AC -->|Yes| AD[Format Response]
+    
+    AD --> AE{Response Type}
+    AE -->|Text| AF[Send Text]
+    AE -->|Buttons| AG[Send with Keyboard]
+    AE -->|Media| AH[Send Media]
+    
+    AF --> AI[Message Sent]
+    AG --> AI
+    AH --> AI
+    
+    %% Callback Flow
+    D --> AJ[Parse Callback Data]
+    AJ --> AK[Answer Callback Query]
+    AK --> AL{Update Message?}
+    AL -->|Yes| AM[Edit Original Message]
+    AL -->|No| AN[Send New Message]
+    
+    %% Edited Message Flow
+    E --> AO[Find Original]
+    AO --> AP{Found?}
+    AP -->|Yes| AQ[Update Context]
+    AP -->|No| AR[Process as New]
+```
+
+## Detailed Event Flows
+
+### 1. Initial Update Processing
+
+```mermaid
+sequenceDiagram
+    participant T as Telegram API
+    participant B as Telegraf Bot
+    participant M as Middleware
+    participant S as TelegramService
+    
+    T->>B: Incoming Update
+    B->>M: Process Middleware Chain
+    M->>M: Log Update
+    M->>M: Check Update Type
+    M->>S: Route to Handler
+    
+    alt Is Message
+        S->>S: Process Message Update
+    else Is Callback Query
+        S->>S: Process Callback
+    else Is Edited Message
+        S->>S: Process Edit
+    end
+```
+
+### 2. Chat/User Synchronization
+
+```mermaid
+sequenceDiagram
+    participant M as Middleware
+    participant S as Service
+    participant D as Database
+    participant R as Runtime
+    
+    M->>S: Update Received
+    S->>S: Extract Chat Info
+    
+    alt New Chat
+        S->>D: Create Chat Entity
+        S->>R: Emit WORLD_JOINED
+    else Known Chat
+        S->>S: Update Last Seen
+    end
+    
+    S->>S: Extract User Info
+    alt New User
+        S->>D: Create User Entity
+        S->>S: Track User ID
+    else Known User
+        S->>D: Update User Info
+    end
+```
+
+### 3. Message Processing Pipeline
+
+```mermaid
+flowchart TD
+    A[Raw Message] --> B[Extract Content]
+    
+    B --> C{Message Type}
+    C -->|Text| D[Plain Text]
+    C -->|Photo| E[Photo + Caption]
+    C -->|Voice| F[Voice Message]
+    C -->|Document| G[Document]
+    C -->|Video| H[Video]
+    
+    E --> I[Download Photo]
+    I --> J[Get File URL]
+    J --> K[Analyze Image]
+    K --> L[Add Description]
+    
+    F --> M[Download Voice]
+    M --> N[Transcribe Audio]
+    N --> O[Add Transcript]
+    
+    G --> P[Check MIME Type]
+    P --> Q{Document Type}
+    Q -->|Image| K
+    Q -->|Text| R[Extract Text]
+    Q -->|Other| S[Store Reference]
+    
+    D --> T[Create Message Object]
+    L --> T
+    O --> T
+    R --> T
+    S --> T
+    
+    T --> U[Add Metadata]
+    U --> V[Message Ready]
+```
+
+### 4. Media Processing Flow
+
+```mermaid
+sequenceDiagram
+    participant M as Message
+    participant H as Handler
+    participant T as Telegram API
+    participant P as Processor
+    participant R as Runtime
+    
+    M->>H: Media Message
+    H->>H: Identify Media Type
+    
+    alt Photo
+        H->>T: Get File Info
+        T->>H: File Details
+        H->>T: Construct Download URL
+        H->>P: Download & Process
+        P->>R: Analyze with Vision
+        R->>P: Description
+        P->>H: Processed Photo
+    else Voice
+        H->>T: Get Voice File
+        T->>H: Voice Details
+        H->>P: Download Audio
+        P->>R: Transcribe
+        R->>P: Transcript
+        P->>H: Text Content
+    else Document
+        H->>T: Get Document
+        T->>H: Document Info
+        H->>P: Process by Type
+        P->>H: Processed Content
+    end
+    
+    H->>H: Attach to Message
+```
+
+### 5. Response Generation Flow
+
+```mermaid
+flowchart TD
+    A[Bootstrap Response] --> B{Response Content}
+    
+    B --> C{Has Text?}
+    C -->|Yes| D[Format Text]
+    C -->|No| E[Skip Text]
+    
+    B --> F{Has Buttons?}
+    F -->|Yes| G[Create Keyboard]
+    F -->|No| H[No Keyboard]
+    
+    B --> I{Has Media?}
+    I -->|Yes| J[Prepare Media]
+    I -->|No| K[No Media]
+    
+    D --> L[Apply Formatting]
+    L --> M{Length Check}
+    M -->|Too Long| N[Split Message]
+    M -->|OK| O[Single Message]
+    
+    G --> P[Inline Keyboard]
+    P --> Q{Button Type}
+    Q -->|Callback| R[Add Callback Data]
+    Q -->|URL| S[Add URL]
+    
+    J --> T{Media Type}
+    T -->|Photo| U[Send Photo]
+    T -->|Document| V[Send Document]
+    T -->|Audio| W[Send Audio]
+    
+    O --> X[Compose Final]
+    N --> X
+    R --> X
+    S --> X
+    U --> X
+    V --> X
+    W --> X
+    
+    X --> Y[Send to Telegram]
+```
+
+### 6. Forum Topic Handling
+
+```mermaid
+flowchart TD
+    A[Group Message] --> B{Has Thread ID?}
+    
+    B -->|Yes| C[Forum Message]
+    B -->|No| D[Regular Group]
+    
+    C --> E[Extract Topic ID]
+    E --> F[Create Room ID]
+    F --> G[Format: chatId-topic-topicId]
+    
+    D --> H[Use Chat ID]
+    H --> I[Format: chatId]
+    
+    G --> J[Get Topic Context]
+    I --> K[Get Chat Context]
+    
+    J --> L{Topic Exists?}
+    L -->|No| M[Create Topic Context]
+    L -->|Yes| N[Load Topic History]
+    
+    M --> O[Initialize History]
+    N --> O
+    
+    O --> P[Process in Context]
+    K --> P
+    
+    P --> Q[Generate Response]
+    Q --> R{Reply to Topic?}
+    R -->|Yes| S[Set Thread ID]
+    R -->|No| T[Regular Reply]
+```
+
+## State Management
+
+### Message State
+
+```typescript
+interface TelegramMessageState {
+  // Core message data
+  messageId: number;
+  chatId: string;
+  userId: string;
+  timestamp: Date;
+  
+  // Content
+  text?: string;
+  media?: MediaAttachment[];
+  
+  // Context
+  replyToMessageId?: number;
+  threadId?: number;
+  editedAt?: Date;
+  
+  // Metadata
+  entities?: MessageEntity[];
+  buttons?: InlineKeyboardButton[][];
+}
+```
+
+### Chat State
+
+```typescript
+interface TelegramChatState {
+  chatId: string;
+  chatType: 'private' | 'group' | 'supergroup' | 'channel';
+  title?: string;
+  username?: string;
+  
+  // Settings
+  allowedUsers?: string[];
+  messageLimit: number;
+  
+  // Forum support
+  isForumChat: boolean;
+  topics: Map<number, TopicState>;
+  
+  // History
+  messages: TelegramMessage[];
+  lastActivity: Date;
+}
+```
+
+### Callback State
+
+```typescript
+interface CallbackState {
+  messageId: number;
+  chatId: string;
+  callbackData: string;
+  userId: string;
+  timestamp: Date;
+  
+  // For maintaining state
+  originalMessage?: TelegramMessage;
+  context?: any;
+}
+```
+
+## Error Handling Flow
+
+```mermaid
+flowchart TD
+    A[Error Occurs] --> B{Error Type}
+    
+    B -->|API Error| C[Check Error Code]
+    B -->|Network Error| D[Network Handler]
+    B -->|Processing Error| E[App Error Handler]
+    
+    C --> F{Error Code}
+    F -->|429| G[Rate Limited]
+    F -->|400| H[Bad Request]
+    F -->|403| I[Forbidden]
+    F -->|409| J[Conflict]
+    
+    G --> K[Extract Retry After]
+    K --> L[Wait & Retry]
+    
+    H --> M[Log Error]
+    M --> N[Skip Message]
+    
+    I --> O[Check Permissions]
+    O --> P[Notify Admin]
+    
+    J --> Q[Token Conflict]
+    Q --> R[Single Instance Check]
+    
+    D --> S{Retry Count}
+    S -->|< Max| T[Exponential Backoff]
+    S -->|>= Max| U[Give Up]
+    T --> V[Retry Request]
+    
+    E --> W[Log Stack Trace]
+    W --> X[Send Error Response]
+    X --> Y[Continue Processing]
+```
+
+## Performance Optimization
+
+### Message Batching
+
+```mermaid
+sequenceDiagram
+    participant T as Telegram
+    participant B as Bot
+    participant Q as Queue
+    participant P as Processor
+    
+    loop Receive Updates
+        T->>B: Update 1
+        B->>Q: Queue Update
+        T->>B: Update 2
+        B->>Q: Queue Update
+        T->>B: Update 3
+        B->>Q: Queue Update
+    end
+    
+    Note over Q: Batch Window (100ms)
+    
+    Q->>P: Process Batch [1,2,3]
+    
+    par Process in Parallel
+        P->>P: Handle Update 1
+        P->>P: Handle Update 2
+        P->>P: Handle Update 3
+    end
+    
+    P->>B: Batch Complete
+```
+
+### Caching Strategy
+
+```mermaid
+flowchart TD
+    A[Request] --> B{In Cache?}
+    
+    B -->|Yes| C[Check TTL]
+    B -->|No| D[Fetch Data]
+    
+    C --> E{Valid?}
+    E -->|Yes| F[Return Cached]
+    E -->|No| G[Invalidate]
+    G --> D
+    
+    D --> H[Process Request]
+    H --> I[Store in Cache]
+    I --> J[Set TTL]
+    J --> K[Return Data]
+    
+    F --> K
+    
+    L[Cache Types] --> M[User Cache]
+    L --> N[Chat Cache]
+    L --> O[Media Cache]
+    L --> P[Response Cache]
+```
+
+## Webhook vs Polling
+
+### Polling Flow
+
+```mermaid
+sequenceDiagram
+    participant B as Bot
+    participant T as Telegram API
+    
+    loop Every Interval
+        B->>T: getUpdates(offset)
+        T->>B: Updates[]
+        B->>B: Process Updates
+        B->>B: Update Offset
+    end
+```
+
+### Webhook Flow
+
+```mermaid
+sequenceDiagram
+    participant T as Telegram API
+    participant W as Web Server
+    participant B as Bot Handler
+    
+    T->>W: POST /webhook
+    W->>W: Verify Token
+    W->>B: Handle Update
+    B->>B: Process Update
+    B->>W: Response
+    W->>T: 200 OK
+```
+
+## Multi-Language Support
+
+```mermaid
+flowchart TD
+    A[Message Received] --> B[Detect Language]
+    
+    B --> C{Detection Method}
+    C -->|User Setting| D[Load User Language]
+    C -->|Auto Detect| E[Analyze Message]
+    C -->|Chat Setting| F[Load Chat Language]
+    
+    E --> G[Language Code]
+    D --> G
+    F --> G
+    
+    G --> H[Set Context Language]
+    H --> I[Process Message]
+    I --> J[Generate Response]
+    
+    J --> K[Apply Language Template]
+    K --> L[Localize Response]
+    L --> M[Send Message]
+```
+
+## Security Flow
+
+```mermaid
+flowchart TD
+    A[Incoming Update] --> B[Verify Source]
+    
+    B --> C{Valid Token?}
+    C -->|No| D[Reject]
+    C -->|Yes| E[Check Permissions]
+    
+    E --> F{User Allowed?}
+    F -->|No| G[Check Restrictions]
+    F -->|Yes| H[Process]
+    
+    G --> I{Chat Allowed?}
+    I -->|No| J[Ignore]
+    I -->|Yes| H
+    
+    H --> K[Sanitize Input]
+    K --> L[Validate Format]
+    L --> M[Process Safely]
+    
+    M --> N[Check Output]
+    N --> O{Safe Response?}
+    O -->|No| P[Filter Content]
+    O -->|Yes| Q[Send Response]
+    P --> Q
+```
+
+## Best Practices
+
+1. **Update Handling**
+   - Process updates asynchronously
+   - Implement proper error boundaries
+   - Log all update types
+
+2. **State Management**
+   - Maintain minimal state
+   - Use TTL for cached data
+   - Clean up old conversations
+
+3. **Performance**
+   - Batch similar operations
+   - Use webhooks in production
+   - Implement connection pooling
+
+4. **Error Recovery**
+   - Implement exponential backoff
+   - Log errors with context
+   - Provide fallback responses
+
+5. **Security**
+   - Validate all inputs
+   - Sanitize user content
+   - Implement rate limiting

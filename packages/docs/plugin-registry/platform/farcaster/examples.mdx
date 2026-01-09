@@ -1,0 +1,525 @@
+---
+title: "Examples"
+description: "Practical implementation examples for the @elizaos/plugin-farcaster package"
+---
+
+# Farcaster Plugin Examples
+
+## Basic Setup
+
+### Minimal Configuration
+
+```typescript
+// character.ts
+import { Character } from "@elizaos/core";
+import { farcasterPlugin } from "@elizaos/plugin-farcaster";
+
+export const character: Character = {
+  name: "MyFarcasterAgent",
+  plugins: [farcasterPlugin],
+  bio: "An AI agent exploring the Farcaster ecosystem",
+  description: "I engage thoughtfully with the Farcaster community"
+};
+```
+
+### Environment Configuration
+
+```env
+# .env file
+FARCASTER_NEYNAR_API_KEY=your-neynar-api-key
+FARCASTER_SIGNER_UUID=your-signer-uuid
+FARCASTER_FID=12345
+ENABLE_CAST=true
+ENABLE_ACTION_PROCESSING=false
+FARCASTER_DRY_RUN=false
+```
+
+## Casting Examples
+
+### Simple Cast
+
+```typescript
+// Post a simple cast
+import { runtime } from "@elizaos/core";
+
+async function postSimpleCast() {
+  const action = runtime.getAction("SEND_CAST");
+  
+  await action.handler(runtime, {
+    text: "Hello Farcaster! Excited to be here 🎉"
+  });
+}
+```
+
+### Cast with Channel
+
+```typescript
+// Post to a specific channel
+async function postToChannel() {
+  const action = runtime.getAction("SEND_CAST");
+  
+  await action.handler(runtime, {
+    text: "Building with elizaOS is amazing!",
+    channel: "/elizaos"
+  });
+}
+```
+
+### Cast with Embeds
+
+```typescript
+// Post with embedded content
+async function postWithEmbed() {
+  const action = runtime.getAction("SEND_CAST");
+  
+  await action.handler(runtime, {
+    text: "Check out this awesome project!",
+    embeds: [
+      { url: "https://github.com/elizaos/elizaos" }
+    ]
+  });
+}
+```
+
+### Thread Creation
+
+```typescript
+// Create a thread of casts
+async function createThread() {
+  const action = runtime.getAction("SEND_CAST");
+  
+  // First cast
+  const firstCast = await action.handler(runtime, {
+    text: "Let me explain how elizaOS agents work 🧵"
+  });
+  
+  // Reply to create thread
+  const replyAction = runtime.getAction("REPLY_TO_CAST");
+  
+  await replyAction.handler(runtime, {
+    text: "1/ Agents are autonomous entities that can interact across platforms",
+    targetCastHash: firstCast.hash,
+    targetFid: firstCast.fid
+  });
+  
+  await replyAction.handler(runtime, {
+    text: "2/ They use LLMs for natural language understanding and generation",
+    targetCastHash: firstCast.hash,
+    targetFid: firstCast.fid
+  });
+}
+```
+
+## Reply Examples
+
+### Simple Reply
+
+```typescript
+// Reply to a cast
+async function replyToCast(castHash: string, authorFid: number) {
+  const action = runtime.getAction("REPLY_TO_CAST");
+  
+  await action.handler(runtime, {
+    text: "Great point! I completely agree with this perspective.",
+    targetCastHash: castHash,
+    targetFid: authorFid
+  });
+}
+```
+
+### Contextual Reply
+
+```typescript
+// Reply with context awareness
+async function contextualReply(cast: Cast) {
+  const context = await buildContext(cast);
+  const response = await generateResponse(context);
+  
+  const action = runtime.getAction("REPLY_TO_CAST");
+  
+  await action.handler(runtime, {
+    text: response,
+    targetCastHash: cast.hash,
+    targetFid: cast.author.fid
+  });
+}
+
+async function buildContext(cast: Cast) {
+  // Get thread history
+  const thread = await getThreadHistory(cast);
+  
+  // Get author profile
+  const author = await getProfile(cast.author.fid);
+  
+  return {
+    originalCast: cast,
+    thread: thread,
+    author: author,
+    topics: extractTopics(cast.text)
+  };
+}
+```
+
+## Engagement Examples
+
+### Engagement Note
+
+```typescript
+// Note: Like, recast, and follow functionality are managed internally
+// by the FarcasterService and MessageService based on agent behavior
+// and are not exposed as direct actions at this time.
+```
+
+## Service Integration Examples
+
+### Custom Service Implementation
+
+```typescript
+import { Service, IAgentRuntime } from "@elizaos/core";
+import { NeynarAPIClient } from "@neynar/nodejs-sdk";
+
+class CustomFarcasterService implements Service {
+  private client: NeynarAPIClient;
+  private runtime: IAgentRuntime;
+  
+  async start(runtime: IAgentRuntime): Promise<void> {
+    this.runtime = runtime;
+    this.client = new NeynarAPIClient({
+      apiKey: process.env.FARCASTER_NEYNAR_API_KEY!
+    });
+    
+    // Start monitoring
+    this.startMonitoring();
+  }
+  
+  private async startMonitoring() {
+    // Monitor mentions
+    setInterval(async () => {
+      const mentions = await this.client.getMentions();
+      
+      for (const mention of mentions) {
+        await this.handleMention(mention);
+      }
+    }, 30000); // Check every 30 seconds
+  }
+  
+  private async handleMention(mention: Cast) {
+    // Generate response
+    const response = await this.generateResponse(mention);
+    
+    // Reply
+    await this.client.reply(mention.hash, mention.author.fid, response);
+  }
+  
+  async stop(): Promise<void> {
+    // Cleanup
+    await this.client.disconnect();
+  }
+}
+```
+
+### Event-Driven Responses
+
+```typescript
+// Set up event listeners for Farcaster events
+runtime.on("farcaster:mention", async (event) => {
+  const { cast, author } = event;
+  
+  // Check if we should respond
+  if (shouldRespond(cast)) {
+    const response = await generateResponse(cast);
+    
+    await replyToCast(cast.hash, author.fid, response);
+  }
+});
+
+runtime.on("farcaster:followed", async (event) => {
+  const { follower } = event;
+  
+  // Auto-follow back
+  await followUser(follower.fid);
+  
+  // Send welcome message
+  await postCast(`Welcome @${follower.username}! Looking forward to our interactions.`);
+});
+```
+
+## Advanced Patterns
+
+### Scheduled Casting
+
+```typescript
+// Schedule regular casts
+class ScheduledCaster {
+  private runtime: IAgentRuntime;
+  
+  constructor(runtime: IAgentRuntime) {
+    this.runtime = runtime;
+  }
+  
+  start() {
+    // Morning update
+    this.scheduleDaily("09:00", async () => {
+      await this.postMorningUpdate();
+    });
+    
+    // Evening reflection
+    this.scheduleDaily("21:00", async () => {
+      await this.postEveningReflection();
+    });
+  }
+  
+  private async postMorningUpdate() {
+    const insights = await this.generateDailyInsights();
+    
+    await postCast({
+      text: `Good morning! Today's insight: ${insights}`,
+      channel: "/elizaos"
+    });
+  }
+  
+  private async postEveningReflection() {
+    const reflection = await this.generateReflection();
+    
+    await postCast({
+      text: `Evening thoughts: ${reflection}`,
+      channel: "/elizaos"
+    });
+  }
+}
+```
+
+### Channel-Specific Behavior
+
+```typescript
+// Different behavior for different channels
+class ChannelManager {
+  private channelConfigs = {
+    "/elizaos": {
+      style: "technical",
+      replyProbability: 0.8,
+      topics: ["AI", "agents", "development"]
+    },
+    "/ai16z": {
+      style: "philosophical",
+      replyProbability: 0.6,
+      topics: ["AI", "future", "technology"]
+    },
+    "/base": {
+      style: "friendly",
+      replyProbability: 0.5,
+      topics: ["community", "building", "web3"]
+    }
+  };
+  
+  async handleChannelCast(cast: Cast, channel: string) {
+    const config = this.channelConfigs[channel];
+    
+    if (!config) return;
+    
+    // Check if topic matches
+    const relevantTopic = config.topics.some(topic => 
+      cast.text.toLowerCase().includes(topic)
+    );
+    
+    if (relevantTopic && Math.random() < config.replyProbability) {
+      const response = await this.generateResponse(cast, config.style);
+      await this.reply(cast, response);
+    }
+  }
+}
+```
+
+### Conversation Memory
+
+```typescript
+// Track conversation history
+class ConversationTracker {
+  private conversations = new Map<string, Conversation>();
+  
+  async handleCast(cast: Cast) {
+    const threadId = cast.threadHash || cast.hash;
+    
+    // Get or create conversation
+    let conversation = this.conversations.get(threadId);
+    
+    if (!conversation) {
+      conversation = {
+        id: threadId,
+        participants: new Set([cast.author.fid]),
+        messages: [],
+        startTime: Date.now()
+      };
+      this.conversations.set(threadId, conversation);
+    }
+    
+    // Add message to conversation
+    conversation.messages.push({
+      author: cast.author.fid,
+      text: cast.text,
+      timestamp: cast.timestamp
+    });
+    
+    // Generate contextual response
+    const response = await this.generateContextualResponse(conversation);
+    
+    if (response) {
+      await this.reply(cast, response);
+    }
+  }
+}
+```
+
+### Multi-Platform Coordination
+
+```typescript
+// Coordinate between Farcaster and other platforms
+class MultiPlatformAgent {
+  async crossPost(content: string) {
+    // Post to Farcaster
+    await this.postToFarcaster(content);
+    
+    // Post to Twitter
+    if (this.runtime.hasPlugin("twitter")) {
+      await this.postToTwitter(content);
+    }
+    
+    // Post to Discord
+    if (this.runtime.hasPlugin("discord")) {
+      await this.postToDiscord(content);
+    }
+  }
+  
+  async syncEngagement() {
+    // Get Farcaster engagement
+    const farcasterLikes = await this.getFarcasterLikes();
+    
+    // Mirror high-engagement content to other platforms
+    for (const cast of farcasterLikes) {
+      if (cast.reactions.count > 10) {
+        await this.crossPost(cast.text);
+      }
+    }
+  }
+}
+```
+
+## Error Handling Examples
+
+### Robust Cast Posting
+
+```typescript
+async function robustCastPost(text: string, maxRetries = 3) {
+  let attempt = 0;
+  let lastError;
+  
+  while (attempt < maxRetries) {
+    try {
+      const result = await postCast({ text });
+      return result;
+    } catch (error) {
+      lastError = error;
+      attempt++;
+      
+      if (error.code === 'RATE_LIMIT') {
+        // Wait with exponential backoff
+        await wait(Math.pow(2, attempt) * 1000);
+      } else if (error.code === 'NETWORK_ERROR') {
+        // Retry immediately for network errors
+        continue;
+      } else {
+        // Unknown error, throw immediately
+        throw error;
+      }
+    }
+  }
+  
+  throw new Error(`Failed after ${maxRetries} attempts: ${lastError}`);
+}
+```
+
+### Validation and Sanitization
+
+```typescript
+function validateCast(text: string): boolean {
+  // Check length
+  if (text.length > 320) {
+    throw new Error("Cast exceeds maximum length of 320 characters");
+  }
+  
+  // Check for required content
+  if (text.trim().length === 0) {
+    throw new Error("Cast cannot be empty");
+  }
+  
+  // Check for spam patterns
+  if (isSpam(text)) {
+    throw new Error("Cast appears to be spam");
+  }
+  
+  return true;
+}
+
+function sanitizeCast(text: string): string {
+  // Remove excessive whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  // Remove invalid characters
+  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  
+  // Truncate if needed
+  if (text.length > 320) {
+    text = text.substring(0, 317) + "...";
+  }
+  
+  return text;
+}
+```
+
+## Testing Examples
+
+```typescript
+// Mock testing setup
+import { describe, it, expect, beforeEach } from "bun:test";
+import { MockFarcasterClient } from "@elizaos/plugin-farcaster/test";
+
+describe("Farcaster Plugin", () => {
+  let client: MockFarcasterClient;
+  
+  beforeEach(() => {
+    client = new MockFarcasterClient();
+  });
+  
+  it("should post a cast", async () => {
+    const result = await client.postCast("Test cast");
+    
+    expect(result.hash).toBeDefined();
+    expect(result.text).toBe("Test cast");
+  });
+  
+  it("should handle replies", async () => {
+    const original = await client.postCast("Original");
+    const reply = await client.reply(
+      original.hash,
+      original.fid,
+      "Reply text"
+    );
+    
+    expect(reply.parentHash).toBe(original.hash);
+  });
+});
+```
+
+## Summary
+
+These examples demonstrate the flexibility and power of the Farcaster plugin. Key patterns include:
+- Simple and complex casting scenarios using SEND_CAST
+- Intelligent reply systems using REPLY_TO_CAST
+- Channel-specific behaviors
+- Cross-platform coordination
+- Robust error handling
+- Testing strategies
+
+The plugin uses the Neynar API for all Farcaster interactions, requiring proper API key and signer configuration.
+
+For more advanced use cases, combine these patterns with the elizaOS agent framework's other capabilities.

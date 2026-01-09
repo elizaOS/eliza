@@ -1,0 +1,137 @@
+---
+title: 'Quickstart'
+description: 'Create and run your first elizaOS agent in 3 minutes'
+---
+
+**3 minutes.** That's all it takes to go from zero to a running AI agent with memory, actions, and a web interface.
+
+No Docker. No complex configuration. Just one command to start.
+
+<Tip>
+  **Prefer video?** Watch the [**3-minute tutorial**](https://www.youtube.com/watch?v=MP4ldEqmTiE&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=2)
+</Tip>
+
+## Create Your First Agent
+
+Let's create a project with our default Eliza character that can chat and take actions.
+
+<Steps>
+  <Step title="Create Your Project">
+    Create a new elizaOS project using the interactive CLI:
+    ```bash Terminal
+    elizaos create
+    ```
+    
+    <Note>
+      The CLI is for building agents and projects. The monorepo is only for contributing to elizaOS core. See [CLI vs Monorepo](https://www.youtube.com/watch?v=tSO4wpQs2OA&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS).
+    </Note>
+  </Step>
+
+  <Step title="Configure Your Project">
+    During the interactive setup, you'll be prompted to make the following selections:
+
+    1. **Project Name**: Enter your desired project name
+    2. **Database**: Select `pglite` for a lightweight, local PostgreSQL option
+    3. **Model Provider**: Select `OpenAI` for this quickstart guide
+    4. **API Key**: You'll be prompted to enter your OpenAI API key
+
+    <Note>
+      You can get an OpenAI API key from the [OpenAI Platform](https://platform.openai.com/).
+    </Note>
+    
+    Both database and model provider choices can be reconfigured later.
+  </Step>
+
+  <Step title="Navigate to Your Project">
+    Change directory to your newly created project (replace with your project name):
+    ```bash Terminal
+    cd my-eliza-project
+    ```
+  </Step>
+
+  <Step title="Start Your Agent">
+    Launch your elizaOS project:
+    ```bash Terminal
+    elizaos start
+    ```
+    Wait a few seconds for the server to start up.
+  </Step>
+
+  <Step title="Chat with Your Agent">
+    Open your browser and navigate to:
+    ```
+    http://localhost:3000
+    ```
+    Start chatting with Eliza through the web interface!
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="key" title="API key issues">
+    If you're getting authentication or configuration errors:
+    
+    Open your project in Cursor (or any IDE) and look at the `.env` file in your project root. Make sure these are set correctly:
+    ```
+    OPENAI_API_KEY=your-actual-api-key-here
+    ```
+    
+    ```
+    PGLITE_DATA_DIR=/path/to/your/project/.eliza/.elizadb
+    ```
+    
+    **Common issues:**
+    - OpenAI API key is missing, invalid, or has extra spaces/quotes
+    - Wrong OpenAI API key format (should start with `sk-`)
+    - OpenAI account has no credits remaining
+    
+    **Note:** You can also configure environment variables in the terminal with `elizaos env`
+  </Accordion>
+
+  <Accordion icon="database" title="Database connection issues">
+    If you're having database issues, check your `.env` file for the database path:
+    ```
+    PGLITE_DATA_DIR=/path/to/your/project/.eliza/.elizadb
+    ```
+    
+    **Common issues:**
+    - Database path is incorrect in `.env` file
+    - `.eliza/.elizadb` directory doesn't exist or has wrong permissions
+    - Database corruption (recreate the project if this happens)
+  </Accordion>
+
+  <Accordion icon="wrench" title="Other Common Issues">
+    **When in doubt, turn it off and on again:**
+    - Stop the server with `Ctrl+C`, then start it again with `elizaos start`
+    - Check the [installation guide](/installation) to confirm you installed everything correctly
+    
+    **Still can't access the frontend after 10 seconds?**
+    - If you can't reach `http://localhost:3000`, delete your project and start fresh
+    - Navigate to the folder containing your project, then run:
+    ```bash Terminal
+    rm -rf my-eliza-project && elizaos create
+    ```
+    - Follow the Quickstart steps again carefully
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Your Agent" icon="sliders" href="/guides/customize-an-agent">
+    Change personality, add knowledge, configure behavior
+  </Card>
+
+  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+    Add custom actions, providers, and services
+  </Card>
+
+  <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+    Ship your agent to production in minutes
+  </Card>
+
+  <Card title="Plugin Registry" icon="grid-2" href="/plugin-registry/overview">
+    Browse 90+ plugins for Discord, Twitter, Solana, and more
+  </Card>
+</CardGroup>

@@ -1,8 +1,17 @@
-import { type UUID, logger, type Agent, type Entity, type Memory } from '@elizaos/core';
-import { drizzle, type PgliteDatabase } from 'drizzle-orm/pglite';
-import { BaseDrizzleAdapter } from '../base';
-import { DIMENSION_MAP, type EmbeddingDimensionColumn } from '../schema/embedding';
-import type { PGliteClientManager } from './manager';
+import {
+  type Agent,
+  type Entity,
+  logger,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
+import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
+import { BaseDrizzleAdapter } from "../base";
+import {
+  DIMENSION_MAP,
+  type EmbeddingDimensionColumn,
+} from "../schema/embedding";
+import type { PGliteClientManager } from "./manager";
 
 /**
  * PgliteDatabaseAdapter class represents an adapter for interacting with a PgliteDatabase.
@@ -47,7 +56,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   public async withEntityContext<T>(
     _entityId: UUID | null,
-    callback: (tx: PgliteDatabase) => Promise<T>
+    callback: (tx: PgliteDatabase) => Promise<T>,
   ): Promise<T> {
     // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
     // The entityId parameter is ignored since PGLite doesn't support RLS
@@ -60,10 +69,16 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     return this.getEntitiesByIds(entityIds);
   }
 
-  async getMemoriesByServerId(_params: { serverId: UUID; count?: number }): Promise<Memory[]> {
+  async getMemoriesByServerId(_params: {
+    serverId: UUID;
+    count?: number;
+  }): Promise<Memory[]> {
     // This method doesn't seem to exist in the base implementation
     // Provide a basic implementation that returns empty array
-    logger.warn({ src: 'plugin:sql' }, 'getMemoriesByServerId called but not implemented');
+    logger.warn(
+      { src: "plugin:sql" },
+      "getMemoriesByServerId called but not implemented",
+    );
     return [];
   }
 
@@ -77,9 +92,9 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     // Create the agent with required fields
     const newAgent: Agent = {
       id: this.agentId,
-      name: agent.name || 'Unknown Agent',
+      name: agent.name || "Unknown Agent",
       username: agent.username,
-      bio: agent.bio || 'An AI agent',
+      bio: agent.bio || "An AI agent",
       createdAt: agent.createdAt || Date.now(),
       updatedAt: agent.updatedAt || Date.now(),
     };
@@ -87,7 +102,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     await this.createAgent(newAgent);
     const createdAgent = await this.getAgent(this.agentId);
     if (!createdAgent) {
-      throw new Error('Failed to create agent');
+      throw new Error("Failed to create agent");
     }
     return createdAgent;
   }
@@ -102,8 +117,11 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    */
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
-      const error = new Error('Database is shutting down - operation rejected');
-      logger.warn({ src: 'plugin:sql', error: error.message }, 'Database operation rejected during shutdown');
+      const error = new Error("Database is shutting down - operation rejected");
+      logger.warn(
+        { src: "plugin:sql", error: error.message },
+        "Database operation rejected during shutdown",
+      );
       throw error;
     }
     return operation();
@@ -115,7 +133,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
    * @returns {Promise<void>} A Promise that resolves when the database initialization is complete.
    */
   async init(): Promise<void> {
-    logger.debug({ src: 'plugin:sql' }, 'PGliteDatabaseAdapter initialized');
+    logger.debug({ src: "plugin:sql" }, "PGliteDatabaseAdapter initialized");
   }
 
   /**

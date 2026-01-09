@@ -1,0 +1,629 @@
+---
+title: "Testing Guide"
+description: "Comprehensive testing strategies and patterns for the @elizaos/plugin-farcaster package"
+---
+
+# Farcaster Plugin Testing Guide
+
+## Overview
+
+This guide provides comprehensive testing strategies for the Farcaster plugin, covering unit tests, integration tests, and end-to-end testing scenarios.
+
+## Test Environment Setup
+
+### Configuration
+
+```typescript
+// test/setup.ts
+import { beforeAll, afterAll } from "bun:test";
+import { TestEnvironment } from "@elizaos/test-utils";
+
+let testEnv: TestEnvironment;
+
+beforeAll(async () => {
+  testEnv = new TestEnvironment({
+    plugins: ["@elizaos/plugin-farcaster"],
+    mockServices: true
+  });
+  
+  // Set test environment variables
+  process.env.FARCASTER_DRY_RUN = "true";
+  process.env.FARCASTER_HUB_URL = "http://localhost:8080";
+  process.env.NODE_ENV = "test";
+  
+  await testEnv.start();
+});
+
+afterAll(async () => {
+  await testEnv.cleanup();
+});
+```
+
+### Mock Hub Server
+
+```typescript
+// test/mocks/hub-server.ts
+import { createServer } from "http";
+
+export class MockHubServer {
+  private server: any;
+  private responses: Map<string, any> = new Map();
+  
+  async start(port = 8080) {
+    this.server = createServer((req, res) => {
+      const response = this.responses.get(req.url!) || {
+        error: "Not found"
+      };
+      
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(response));
+    });
+    
+    await new Promise(resolve => {
+      this.server.listen(port, resolve);
+    });
+  }
+  
+  setResponse(path: string, response: any) {
+    this.responses.set(path, response);
+  }
+  
+  async stop() {
+    await new Promise(resolve => this.server.close(resolve));
+  }
+}
+```
+
+## Unit Tests
+
+### Action Tests
+
+```typescript
+// test/actions/post-cast.test.ts
+import { describe, it, expect, beforeEach } from "bun:test";
+import { postCastAction } from "@elizaos/plugin-farcaster";
+import { createMockRuntime } from "@elizaos/test-utils";
+
+describe("POST_CAST Action", () => {
+  let runtime: any;
+  
+  beforeEach(() => {
+    runtime = createMockRuntime();
+  });
+  
+  it("should validate cast text length", async () => {
+    const longText = "a".repeat(321);
+    
+    await expect(
+      postCastAction.handler(runtime, { text: longText })
+    ).rejects.toThrow("Cast exceeds maximum length");
+  });
+  
+  it("should post a simple cast", async () => {
+    const result = await postCastAction.handler(runtime, {
+      text: "Test cast"
+    });
+    
+    expect(result.success).toBe(true);
+    expect(result.cast).toBeDefined();
+    expect(result.cast.text).toBe("Test cast");
+  });
+  
+  it("should handle channel posts", async () => {
+    const result = await postCastAction.handler(runtime, {
+      text: "Channel test",
+      channel: "/elizaos"
+    });
+    
+    expect(result.cast.channel).toBe("/elizaos");
+  });
+  
+  it("should support embeds", async () => {
+    const result = await postCastAction.handler(runtime, {
+      text: "Cast with embed",
+      embeds: [{ url: "https://example.com" }]
+    });
+    
+    expect(result.cast.embeds).toHaveLength(1);
+    expect(result.cast.embeds[0].url).toBe("https://example.com");
+  });
+});
+```
+
+### Provider Tests
+
+```typescript
+// test/providers/cast-provider.test.ts
+import { describe, it, expect } from "bun:test";
+import { castProvider } from "@elizaos/plugin-farcaster";
+import { createMockRuntime } from "@elizaos/test-utils";
+
+describe("Cast Provider", () => {
+  it("should fetch recent casts", async () => {
+    const runtime = createMockRuntime();
+    const casts = await castProvider.getCasts(runtime, {
+      limit: 10
+    });
+    
+    expect(Array.isArray(casts)).toBe(true);
+    expect(casts.length).toBeLessThanOrEqual(10);
+  });
+  
+  it("should filter by channel", async () => {
+    const runtime = createMockRuntime();
+    const casts = await castProvider.getCasts(runtime, {
+      channel: "/elizaos",
+      limit: 5
+    });
+    
+    casts.forEach(cast => {
+      expect(cast.channel).toBe("/elizaos");
+    });
+  });
+  
+  it("should include replies when requested", async () => {
+    const runtime = createMockRuntime();
+    const casts = await castProvider.getCasts(runtime, {
+      includeReplies: true
+    });
+    
+    const replies = casts.filter(c => c.parentHash);
+    expect(replies.length).toBeGreaterThan(0);
+  });
+});
+```
+
+### Evaluator Tests
+
+```typescript
+// test/evaluators/engagement.test.ts
+import { describe, it, expect } from "bun:test";
+import { engagementEvaluator } from "@elizaos/plugin-farcaster";
+
+describe("Engagement Evaluator", () => {
+  it("should evaluate high-quality casts positively", async () => {
+    const cast = {
+      text: "Just deployed a new feature for elizaOS agents!",
+      author: { fid: 123, username: "dev" },
+      reactions: { count: 15 },
+      recasts: { count: 5 }
+    };
+    
+    const score = await engagementEvaluator.evaluate(cast);
+    expect(score).toBeGreaterThan(0.7);
+  });
+  
+  it("should evaluate spam negatively", async () => {
+    const cast = {
+      text: "Buy now! Click here! Limited offer!",
+      author: { fid: 456, username: "spammer" },
+      reactions: { count: 0 },
+      recasts: { count: 0 }
+    };
+    
+    const score = await engagementEvaluator.evaluate(cast);
+    expect(score).toBeLessThan(0.3);
+  });
+  
+  it("should consider author reputation", async () => {
+    const cast = {
+      text: "Interesting thought",
+      author: { 
+        fid: 789, 
+        username: "trusted",
+        followerCount: 1000
+      }
+    };
+    
+    const score = await engagementEvaluator.evaluate(cast);
+    expect(score).toBeGreaterThan(0.5);
+  });
+});
+```
+
+## Integration Tests
+
+### Service Integration
+
+```typescript
+// test/integration/service.test.ts
+import { describe, it, expect, beforeAll, afterAll } from "bun:test";
+import { FarcasterService } from "@elizaos/plugin-farcaster";
+import { createTestRuntime } from "@elizaos/test-utils";
+import { MockHubServer } from "../mocks/hub-server";
+
+describe("Farcaster Service Integration", () => {
+  let service: FarcasterService;
+  let runtime: any;
+  let hubServer: MockHubServer;
+  
+  beforeAll(async () => {
+    hubServer = new MockHubServer();
+    await hubServer.start();
+    
+    runtime = await createTestRuntime();
+    service = new FarcasterService();
+    await service.start(runtime);
+  });
+  
+  afterAll(async () => {
+    await service.stop();
+    await hubServer.stop();
+  });
+  
+  it("should connect to hub", async () => {
+    expect(service.isConnected()).toBe(true);
+  });
+  
+  it("should post and retrieve casts", async () => {
+    const cast = await service.postCast("Integration test");
+    expect(cast.hash).toBeDefined();
+    
+    const retrieved = await service.getCast(cast.hash);
+    expect(retrieved.text).toBe("Integration test");
+  });
+  
+  it("should handle reply chains", async () => {
+    const original = await service.postCast("Original cast");
+    const reply = await service.replyCast(
+      "Reply to original",
+      original.hash,
+      original.fid
+    );
+    
+    expect(reply.parentHash).toBe(original.hash);
+    
+    const thread = await service.getThread(original.hash);
+    expect(thread).toHaveLength(2);
+  });
+});
+```
+
+### Event System Tests
+
+```typescript
+// test/integration/events.test.ts
+import { describe, it, expect } from "bun:test";
+import { createTestRuntime } from "@elizaos/test-utils";
+import { farcasterPlugin } from "@elizaos/plugin-farcaster";
+
+describe("Farcaster Event System", () => {
+  it("should emit cast events", async () => {
+    const runtime = await createTestRuntime({
+      plugins: [farcasterPlugin]
+    });
+    
+    let eventFired = false;
+    runtime.on("farcaster:cast:new", () => {
+      eventFired = true;
+    });
+    
+    await runtime.action("POST_CAST", {
+      text: "Event test"
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 100));
+    expect(eventFired).toBe(true);
+  });
+  
+  it("should handle mention events", async () => {
+    const runtime = await createTestRuntime({
+      plugins: [farcasterPlugin]
+    });
+    
+    const mentions: any[] = [];
+    runtime.on("farcaster:mention", (event) => {
+      mentions.push(event);
+    });
+    
+    // Simulate incoming mention
+    await runtime.simulateEvent("farcaster:mention", {
+      cast: {
+        text: "@agent hello!",
+        author: { fid: 123 }
+      }
+    });
+    
+    expect(mentions).toHaveLength(1);
+    expect(mentions[0].cast.text).toContain("@agent");
+  });
+});
+```
+
+## End-to-End Tests
+
+### Full Flow Test
+
+```typescript
+// test/e2e/full-flow.test.ts
+import { describe, it, expect } from "bun:test";
+import { createAgent } from "@elizaos/core";
+import { farcasterPlugin } from "@elizaos/plugin-farcaster";
+
+describe("E2E: Farcaster Agent Flow", () => {
+  it("should perform complete interaction flow", async () => {
+    // Create agent with Farcaster plugin
+    const agent = await createAgent({
+      name: "TestAgent",
+      plugins: [farcasterPlugin],
+      env: {
+        FARCASTER_MNEMONIC: "test mnemonic ...",
+        FARCASTER_FID: "99999",
+        FARCASTER_DRY_RUN: "true"
+      }
+    });
+    
+    // Start agent
+    await agent.start();
+    
+    // Post initial cast
+    const cast = await agent.execute("POST_CAST", {
+      text: "Hello from test agent!"
+    });
+    
+    expect(cast.success).toBe(true);
+    
+    // Simulate incoming reply
+    await agent.handleEvent({
+      type: "farcaster:reply",
+      data: {
+        cast: {
+          text: "Welcome to Farcaster!",
+          parentHash: cast.hash,
+          author: { fid: 123 }
+        }
+      }
+    });
+    
+    // Check if agent responded
+    const responses = await agent.getResponses();
+    expect(responses).toHaveLength(1);
+    expect(responses[0].type).toBe("REPLY_CAST");
+    
+    // Stop agent
+    await agent.stop();
+  });
+});
+```
+
+### Load Testing
+
+```typescript
+// test/load/cast-load.test.ts
+import { describe, it, expect } from "bun:test";
+import { FarcasterService } from "@elizaos/plugin-farcaster";
+import { createTestRuntime } from "@elizaos/test-utils";
+
+describe("Load Testing", () => {
+  it("should handle rapid casting via actions", async () => {
+    const runtime = await createTestRuntime();
+    const service = new FarcasterService();
+    await service.start(runtime);
+    
+    const castService = service.getCastService(runtime.agentId);
+    const promises = [];
+    
+    // Send 50 casts rapidly
+    for (let i = 0; i < 50; i++) {
+      promises.push(
+        castService.publishCast(`Load test cast ${i}`)
+          .catch(err => ({ error: err }))
+      );
+    }
+    
+    const results = await Promise.all(promises);
+    
+    // Check success rate
+    const successful = results.filter(r => !r.error);
+    const successRate = successful.length / results.length;
+    
+    expect(successRate).toBeGreaterThan(0.8); // 80% success rate
+  });
+  
+  it("should handle concurrent message operations", async () => {
+    const runtime = await createTestRuntime();
+    const service = new FarcasterService();
+    await service.start(runtime);
+    
+    const messageService = service.getMessageService(runtime.agentId);
+    
+    // Perform multiple operations concurrently
+    const operations = await Promise.all([
+      messageService.sendMessage({ text: "Concurrent 1" }),
+      messageService.sendMessage({ text: "Concurrent 2" }),
+      messageService.sendMessage({ text: "Concurrent 3" })
+    ]);
+    
+    expect(operations).toHaveLength(3);
+    operations.forEach(op => {
+      expect(op.error).toBeUndefined();
+    });
+  });
+});
+```
+
+## Mock Data Generators
+
+```typescript
+// test/utils/generators.ts
+export function generateMockCast(overrides = {}) {
+  return {
+    hash: `0x${Math.random().toString(16).slice(2)}`,
+    fid: Math.floor(Math.random() * 10000),
+    text: "Mock cast text",
+    timestamp: Date.now(),
+    author: {
+      fid: Math.floor(Math.random() * 10000),
+      username: `user${Math.floor(Math.random() * 1000)}`,
+      displayName: "Mock User",
+      pfp: "https://example.com/pfp.jpg"
+    },
+    reactions: {
+      count: Math.floor(Math.random() * 100)
+    },
+    recasts: {
+      count: Math.floor(Math.random() * 20)
+    },
+    replies: {
+      count: Math.floor(Math.random() * 50)
+    },
+    ...overrides
+  };
+}
+
+export function generateMockThread(depth = 3) {
+  const thread = [];
+  let parentHash = null;
+  
+  for (let i = 0; i < depth; i++) {
+    const cast = generateMockCast({
+      text: `Thread message ${i + 1}`,
+      parentHash: parentHash
+    });
+    thread.push(cast);
+    parentHash = cast.hash;
+  }
+  
+  return thread;
+}
+```
+
+## Test Coverage
+
+### Coverage Configuration
+
+```json
+// package.json
+{
+  "scripts": {
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "test:watch": "bun test --watch"
+  }
+}
+```
+
+### Coverage Report Example
+
+```bash
+# Run tests with coverage
+bun test --coverage
+
+# Output
+-------------------|---------|----------|---------|---------|
+File               | % Stmts | % Branch | % Funcs | % Lines |
+-------------------|---------|----------|---------|---------|
+All files          |   89.5  |   82.3   |   91.2  |   88.7  |
+ actions/          |   92.1  |   85.6   |   94.3  |   91.8  |
+  sendCast.ts      |   93.5  |   87.2   |   95.0  |   93.1  |
+  replyCast.ts     |   91.2  |   84.5   |   93.8  |   90.9  |
+ providers/        |   87.3  |   79.8   |   88.5  |   86.4  |
+  profileProvider  |   88.1  |   81.2   |   89.3  |   87.5  |
+  timelineProvider |   87.0  |   80.1   |   88.0  |   86.2  |
+ services/         |   88.9  |   81.4   |   90.7  |   87.9  |
+  MessageService   |   89.2  |   82.1   |   91.0  |   88.3  |
+  CastService      |   88.5  |   80.7   |   90.4  |   87.5  |
+-------------------|---------|----------|---------|---------|
+```
+
+## Debugging Tests
+
+### Debug Configuration
+
+```typescript
+// test/debug.ts
+export function enableDebugMode() {
+  process.env.DEBUG = "farcaster:*";
+  process.env.LOG_LEVEL = "debug";
+  process.env.FARCASTER_DEBUG = "true";
+}
+
+export function logTestContext(test: string, data: any) {
+  console.log(`[TEST: ${test}]`, JSON.stringify(data, null, 2));
+}
+```
+
+### Visual Test Output
+
+```typescript
+// test/utils/visual.ts
+export function visualizeCastThread(thread: Cast[]) {
+  console.log("\n📝 Cast Thread Visualization:");
+  thread.forEach((cast, index) => {
+    const indent = "  ".repeat(index);
+    console.log(`${indent}└─ ${cast.author.username}: ${cast.text}`);
+  });
+  console.log("\n");
+}
+
+export function visualizeEngagement(cast: Cast) {
+  console.log("\n📊 Engagement Metrics:");
+  console.log(`  ❤️  Likes: ${cast.reactions.count}`);
+  console.log(`  🔄 Recasts: ${cast.recasts.count}`);
+  console.log(`  💬 Replies: ${cast.replies.count}`);
+  console.log("\n");
+}
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/test-farcaster.yml
+name: Farcaster Plugin Tests
+
+on:
+  push:
+    paths:
+      - 'packages/plugin-farcaster/**'
+  pull_request:
+    paths:
+      - 'packages/plugin-farcaster/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Run tests
+        run: bun test packages/plugin-farcaster
+        env:
+          FARCASTER_DRY_RUN: true
+      
+      - name: Generate coverage
+        run: bun test --coverage packages/plugin-farcaster
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+```
+
+## Best Practices
+
+1. **Test Isolation**: Each test should be independent
+2. **Mock External Services**: Never hit real Farcaster APIs in tests
+3. **Use Test Fixtures**: Maintain consistent test data
+4. **Test Edge Cases**: Include error scenarios and boundary conditions
+5. **Performance Testing**: Include load and stress tests
+6. **Documentation**: Keep tests as living documentation
+
+## Summary
+
+This testing guide provides comprehensive strategies for testing the Farcaster plugin:
+- Unit tests for individual components
+- Integration tests for service interactions
+- End-to-end tests for complete flows
+- Load testing for performance validation
+- Mock utilities for consistent testing
+- CI/CD integration for automated testing
+
+Following these patterns ensures robust and reliable Farcaster integration.

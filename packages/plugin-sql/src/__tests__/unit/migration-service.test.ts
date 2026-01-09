@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import { DatabaseMigrationService } from '../../migration-service';
-import { type Plugin } from '@elizaos/core';
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { Plugin } from "@elizaos/core";
+import { DatabaseMigrationService } from "../../migration-service";
 
 // Mock the logger to avoid console output during tests
 const mockLogger = {
@@ -16,7 +16,7 @@ const mockRunPluginMigrations = mock(() => Promise.resolve());
 
 // For this test, we'll spy on the actual logger rather than mock the entire module
 
-describe('DatabaseMigrationService', () => {
+describe("DatabaseMigrationService", () => {
   let migrationService: DatabaseMigrationService;
   let mockDb: any;
 
@@ -41,57 +41,59 @@ describe('DatabaseMigrationService', () => {
     migrationService = new DatabaseMigrationService();
   });
 
-  describe('constructor', () => {
-    it('should create an instance', () => {
+  describe("constructor", () => {
+    it("should create an instance", () => {
       expect(migrationService).toBeDefined();
       expect(migrationService).toBeInstanceOf(DatabaseMigrationService);
     });
   });
 
-  describe('initializeWithDatabase', () => {
-    it('should initialize with database', async () => {
+  describe("initializeWithDatabase", () => {
+    it("should initialize with database", async () => {
       await migrationService.initializeWithDatabase(mockDb);
 
       // In bun:test we focus on state rather than log assertions
-      expect((migrationService as any).db).toBe(mockDb);
+      // Access private db property for testing
+      const testService = migrationService as unknown as { db: typeof mockDb };
+      expect(testService.db).toBe(mockDb);
     });
   });
 
-  describe('discoverAndRegisterPluginSchemas', () => {
-    it('should register plugins with schemas', () => {
+  describe("discoverAndRegisterPluginSchemas", () => {
+    it("should register plugins with schemas", () => {
       const plugins: Plugin[] = [
         {
-          name: 'plugin1',
-          description: 'Test plugin 1',
+          name: "plugin1",
+          description: "Test plugin 1",
           schema: { table1: {} },
         },
         {
-          name: 'plugin2',
-          description: 'Test plugin 2',
+          name: "plugin2",
+          description: "Test plugin 2",
           schema: { table2: {} },
         },
         {
-          name: 'plugin3',
-          description: 'Plugin without schema',
+          name: "plugin3",
+          description: "Plugin without schema",
         },
       ];
 
       migrationService.discoverAndRegisterPluginSchemas(plugins);
     });
 
-    it('should handle empty plugin array', () => {
+    it("should handle empty plugin array", () => {
       migrationService.discoverAndRegisterPluginSchemas([]);
     });
 
-    it('should handle plugins without schemas', () => {
+    it("should handle plugins without schemas", () => {
       const plugins: Plugin[] = [
         {
-          name: 'plugin1',
-          description: 'Plugin without schema',
+          name: "plugin1",
+          description: "Plugin without schema",
         },
         {
-          name: 'plugin2',
-          description: 'Another plugin without schema',
+          name: "plugin2",
+          description: "Another plugin without schema",
         },
       ];
 
@@ -99,27 +101,27 @@ describe('DatabaseMigrationService', () => {
     });
   });
 
-  describe('runAllPluginMigrations', () => {
-    it('should throw if database not initialized', async () => {
+  describe("runAllPluginMigrations", () => {
+    it("should throw if database not initialized", async () => {
       await expect(migrationService.runAllPluginMigrations()).rejects.toThrow(
-        'Database or migrator not initialized in DatabaseMigrationService'
+        "Database or migrator not initialized in DatabaseMigrationService",
       );
     });
 
-    it('should run migrations for registered plugins', async () => {
+    it("should run migrations for registered plugins", async () => {
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
 
       // Register plugins
       const plugins: Plugin[] = [
         {
-          name: 'plugin1',
-          description: 'Test plugin 1',
+          name: "plugin1",
+          description: "Test plugin 1",
           schema: { table1: {} },
         },
         {
-          name: 'plugin2',
-          description: 'Test plugin 2',
+          name: "plugin2",
+          description: "Test plugin 2",
           schema: { table2: {} },
         },
       ];
@@ -130,15 +132,15 @@ describe('DatabaseMigrationService', () => {
       await migrationService.runAllPluginMigrations();
     });
 
-    it('should handle migration errors', async () => {
+    it("should handle migration errors", async () => {
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
 
       // Register a plugin
       migrationService.discoverAndRegisterPluginSchemas([
         {
-          name: 'error-plugin',
-          description: 'Test plugin',
+          name: "error-plugin",
+          description: "Test plugin",
           schema: { tables: {} },
         },
       ]);
@@ -147,7 +149,7 @@ describe('DatabaseMigrationService', () => {
       await migrationService.runAllPluginMigrations();
     });
 
-    it('should run migrations even with no plugins', async () => {
+    it("should run migrations even with no plugins", async () => {
       // Initialize database
       await migrationService.initializeWithDatabase(mockDb);
 

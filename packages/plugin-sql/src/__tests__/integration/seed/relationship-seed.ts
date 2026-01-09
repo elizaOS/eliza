@@ -1,5 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Relationship, Entity, Agent, UUID } from '@elizaos/core';
+import type { Agent, Entity, Relationship, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 // Test IDs for relationship tests
 export const relationshipTestAgentId = uuidv4() as UUID;
@@ -9,34 +9,34 @@ export const relationshipTestTargetEntityId = uuidv4() as UUID;
 // Test data for relationship integration tests
 export const relationshipTestAgent: Agent = {
   id: relationshipTestAgentId,
-  name: 'Relationship Test Agent',
-  bio: 'Test agent for relationship integration tests',
+  name: "Relationship Test Agent",
+  bio: "Test agent for relationship integration tests",
   settings: {
     profile: {
-      short_description: 'Test agent for relationship integration tests',
+      short_description: "Test agent for relationship integration tests",
     },
   },
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 };
 
 export const relationshipTestSourceEntity: Entity = {
   id: relationshipTestSourceEntityId,
-  names: ['Source Entity'],
+  names: ["Source Entity"],
   agentId: relationshipTestAgentId,
   components: [],
   metadata: {
-    type: 'user',
+    type: "user",
   },
 };
 
 export const relationshipTestTargetEntity: Entity = {
   id: relationshipTestTargetEntityId,
-  names: ['Target Entity'],
+  names: ["Target Entity"],
   agentId: relationshipTestAgentId,
   components: [],
   metadata: {
-    type: 'user',
+    type: "user",
   },
 };
 
@@ -47,24 +47,24 @@ export const relationshipTestRelationships: Relationship[] = [
     sourceEntityId: relationshipTestSourceEntityId,
     targetEntityId: relationshipTestTargetEntityId,
     agentId: relationshipTestAgentId,
-    tags: ['friend'],
+    tags: ["friend"],
     metadata: {
-      type: 'social',
-      strength: 'high',
+      type: "social",
+      strength: "high",
     },
-    createdAt: new Date().getTime().toString(),
+    createdAt: Date.now().toString(),
   },
   {
     id: uuidv4() as UUID,
     sourceEntityId: relationshipTestTargetEntityId,
     targetEntityId: relationshipTestSourceEntityId,
     agentId: relationshipTestAgentId,
-    tags: ['colleague'],
+    tags: ["colleague"],
     metadata: {
-      type: 'professional',
-      strength: 'medium',
+      type: "professional",
+      strength: "medium",
     },
-    createdAt: new Date().getTime().toString(),
+    createdAt: Date.now().toString(),
   },
 ];
 
@@ -73,7 +73,7 @@ export const createTestRelationship = (
   sourceId: UUID,
   targetId: UUID,
   tags: string[] = [],
-  metadata: Record<string, any> = {}
+  metadata: Record<string, any> = {},
 ): Relationship => {
   return {
     id: uuidv4() as UUID,
@@ -82,6 +82,6 @@ export const createTestRelationship = (
     agentId: relationshipTestAgentId,
     tags,
     metadata,
-    createdAt: new Date().getTime().toString(),
+    createdAt: Date.now().toString(),
   };
 };

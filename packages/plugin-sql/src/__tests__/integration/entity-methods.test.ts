@@ -1,17 +1,17 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { createIsolatedTestDatabase } from '../test-helpers';
-import { v4 as uuidv4 } from 'uuid';
-import type { Entity, UUID } from '@elizaos/core';
-import { PgDatabaseAdapter } from '../../pg/adapter';
-import { PgliteDatabaseAdapter } from '../../pglite/adapter';
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import type { Entity, UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import type { PgDatabaseAdapter } from "../../pg/adapter";
+import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
+import { createIsolatedTestDatabase } from "../test-helpers";
 
-describe('Entity Methods Integration Tests', () => {
+describe("Entity Methods Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
   let cleanup: () => Promise<void>;
   let testAgentId: UUID;
 
   beforeAll(async () => {
-    const setup = await createIsolatedTestDatabase('entity-methods');
+    const setup = await createIsolatedTestDatabase("entity-methods");
     adapter = setup.adapter;
     cleanup = setup.cleanup;
     testAgentId = setup.testAgentId;
@@ -47,7 +47,7 @@ describe('Entity Methods Integration Tests', () => {
    * - Non-iterables: Convert to string and wrap in array
    * - null/undefined: Return empty array
    */
-  describe('Entity Names Normalization', () => {
+  describe("Entity Names Normalization", () => {
     /**
      * Test: String values should NOT be split into individual characters
      *
@@ -57,15 +57,15 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that a single string is wrapped in an array, not character-split.
      */
-    it('should NOT split a string name into individual characters', async () => {
+    it("should NOT split a string name into individual characters", async () => {
       const entityId = uuidv4() as UUID;
 
       // Simulate a case where names might accidentally be a string
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
-        names: 'username123', // String instead of array
-        metadata: { web: { userName: 'username123' } },
+        names: "username123", // String instead of array
+        metadata: { web: { userName: "username123" } },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -76,7 +76,7 @@ describe('Entity Methods Integration Tests', () => {
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
 
       // Should be ["username123"], NOT ["u","s","e","r","n","a","m","e","1","2","3"]
-      expect(retrieved?.[0]?.names).toEqual(['username123']);
+      expect(retrieved?.[0]?.names).toEqual(["username123"]);
       expect(retrieved?.[0]?.names.length).toBe(1);
     });
 
@@ -87,14 +87,14 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that updating an entity with a string name doesn't split it.
      */
-    it('should handle string name in update without splitting into characters', async () => {
+    it("should handle string name in update without splitting into characters", async () => {
       const entityId = uuidv4() as UUID;
 
       // Create initial entity with proper array
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name'],
+        names: ["original-name"],
         metadata: {},
       };
 
@@ -104,7 +104,7 @@ describe('Entity Methods Integration Tests', () => {
       const updatedEntity: any = {
         id: entityId,
         agentId: testAgentId,
-        names: 'updated-username', // String instead of array
+        names: "updated-username", // String instead of array
         metadata: { updated: true },
       };
 
@@ -115,7 +115,7 @@ describe('Entity Methods Integration Tests', () => {
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
 
       // Should be ["updated-username"], NOT character array
-      expect(retrieved?.[0]?.names).toEqual(['updated-username']);
+      expect(retrieved?.[0]?.names).toEqual(["updated-username"]);
       expect(retrieved?.[0]?.names.length).toBe(1);
     });
 
@@ -128,25 +128,25 @@ describe('Entity Methods Integration Tests', () => {
      * WHAT: Test Set, string, and array inputs all in one batch to ensure
      * consistent behavior across different input types.
      */
-    it('should properly handle Set, string, and array types in batch', async () => {
+    it("should properly handle Set, string, and array types in batch", async () => {
       const entities: any[] = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: new Set(['name1', 'name2']), // Set should convert to array
-          metadata: { type: 'set' },
+          names: new Set(["name1", "name2"]), // Set should convert to array
+          metadata: { type: "set" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: 'singlename', // String should wrap in array
-          metadata: { type: 'string' },
+          names: "singlename", // String should wrap in array
+          metadata: { type: "string" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['proper', 'array'], // Array should stay as is
-          metadata: { type: 'array' },
+          names: ["proper", "array"], // Array should stay as is
+          metadata: { type: "array" },
         },
       ];
 
@@ -160,24 +160,26 @@ describe('Entity Methods Integration Tests', () => {
       expect(retrieved?.length).toBe(3);
 
       // Find each entity by metadata type
-      const setEntity = retrieved?.find((e) => e.metadata?.type === 'set');
-      const stringEntity = retrieved?.find((e) => e.metadata?.type === 'string');
-      const arrayEntity = retrieved?.find((e) => e.metadata?.type === 'array');
+      const setEntity = retrieved?.find((e) => e.metadata?.type === "set");
+      const stringEntity = retrieved?.find(
+        (e) => e.metadata?.type === "string",
+      );
+      const arrayEntity = retrieved?.find((e) => e.metadata?.type === "array");
 
       // Set should be converted to array
       expect(Array.isArray(setEntity?.names)).toBe(true);
       expect(setEntity?.names.length).toBe(2);
-      expect(setEntity?.names).toContain('name1');
-      expect(setEntity?.names).toContain('name2');
+      expect(setEntity?.names).toContain("name1");
+      expect(setEntity?.names).toContain("name2");
 
       // String should be wrapped in array, NOT split into characters
       expect(Array.isArray(stringEntity?.names)).toBe(true);
-      expect(stringEntity?.names).toEqual(['singlename']);
+      expect(stringEntity?.names).toEqual(["singlename"]);
       expect(stringEntity?.names.length).toBe(1);
 
       // Array should remain unchanged
       expect(Array.isArray(arrayEntity?.names)).toBe(true);
-      expect(arrayEntity?.names).toEqual(['proper', 'array']);
+      expect(arrayEntity?.names).toEqual(["proper", "array"]);
     });
 
     /**
@@ -188,14 +190,14 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that numbers are safely converted to string format ["42"].
      */
-    it('should handle number as names by converting to string array', async () => {
+    it("should handle number as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
         names: 42, // Number (non-iterable)
-        metadata: { type: 'number' },
+        metadata: { type: "number" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -204,7 +206,7 @@ describe('Entity Methods Integration Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['42']);
+      expect(retrieved?.[0]?.names).toEqual(["42"]);
     });
 
     /**
@@ -215,14 +217,14 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that booleans are safely converted to string format ["true"].
      */
-    it('should handle boolean as names by converting to string array', async () => {
+    it("should handle boolean as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
         names: true, // Boolean (non-iterable)
-        metadata: { type: 'boolean' },
+        metadata: { type: "boolean" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -231,7 +233,7 @@ describe('Entity Methods Integration Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['true']);
+      expect(retrieved?.[0]?.names).toEqual(["true"]);
     });
 
     /**
@@ -243,14 +245,14 @@ describe('Entity Methods Integration Tests', () => {
      * WHAT: Verify that plain objects are safely converted to their string
      * representation and wrapped in an array.
      */
-    it('should handle plain object as names by converting to string array', async () => {
+    it("should handle plain object as names by converting to string array", async () => {
       const entityId = uuidv4() as UUID;
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
-        names: { foo: 'bar' }, // Plain object (non-iterable)
-        metadata: { type: 'object' },
+        names: { foo: "bar" }, // Plain object (non-iterable)
+        metadata: { type: "object" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -261,7 +263,7 @@ describe('Entity Methods Integration Tests', () => {
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
       // Should convert object to string representation
       expect(retrieved?.[0]?.names.length).toBe(1);
-      expect(typeof retrieved?.[0]?.names[0]).toBe('string');
+      expect(typeof retrieved?.[0]?.names[0]).toBe("string");
     });
 
     /**
@@ -273,19 +275,19 @@ describe('Entity Methods Integration Tests', () => {
      * WHAT: Verify that both null and undefined values are safely converted
      * to empty arrays [].
      */
-    it('should handle null and undefined names gracefully', async () => {
+    it("should handle null and undefined names gracefully", async () => {
       const entities: any[] = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
           names: null,
-          metadata: { type: 'null' },
+          metadata: { type: "null" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
           names: undefined,
-          metadata: { type: 'undefined' },
+          metadata: { type: "undefined" },
         },
       ];
 
@@ -314,14 +316,14 @@ describe('Entity Methods Integration Tests', () => {
      * WHAT: Verify that updating an entity with a non-iterable value (number)
      * doesn't crash and produces the expected string array.
      */
-    it('should handle non-iterable values in update', async () => {
+    it("should handle non-iterable values in update", async () => {
       const entityId = uuidv4() as UUID;
 
       // Create initial entity
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name'],
+        names: ["original-name"],
         metadata: {},
       };
 
@@ -340,7 +342,7 @@ describe('Entity Methods Integration Tests', () => {
       const retrieved = await adapter.getEntitiesByIds([entityId]);
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
-      expect(retrieved?.[0]?.names).toEqual(['999']);
+      expect(retrieved?.[0]?.names).toEqual(["999"]);
     });
 
     /**
@@ -353,20 +355,20 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that Map inputs are converted to proper string arrays.
      */
-    it('should handle Map as names by converting entries to strings', async () => {
+    it("should handle Map as names by converting entries to strings", async () => {
       const entityId = uuidv4() as UUID;
 
       // Create a Map (common in some APIs or data structures)
       const namesMap = new Map([
-        ['key1', 'value1'],
-        ['key2', 'value2'],
+        ["key1", "value1"],
+        ["key2", "value2"],
       ]);
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
         names: namesMap, // Map (iterable that yields tuples)
-        metadata: { type: 'map' },
+        metadata: { type: "map" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -379,8 +381,8 @@ describe('Entity Methods Integration Tests', () => {
       // Each entry should be converted to a string
       // Map entries become "key1,value1", "key2,value2" when stringified
       expect(retrieved?.[0]?.names.length).toBe(2);
-      expect(retrieved?.[0]?.names).toContain('key1,value1');
-      expect(retrieved?.[0]?.names).toContain('key2,value2');
+      expect(retrieved?.[0]?.names).toContain("key1,value1");
+      expect(retrieved?.[0]?.names).toContain("key2,value2");
     });
 
     /**
@@ -392,14 +394,14 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that arrays with non-string elements are properly converted.
      */
-    it('should convert all array elements to strings, even if non-string', async () => {
+    it("should convert all array elements to strings, even if non-string", async () => {
       const entityId = uuidv4() as UUID;
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
-        names: ['string', 123, true, { foo: 'bar' }, null], // Mixed types
-        metadata: { type: 'mixed-array' },
+        names: ["string", 123, true, { foo: "bar" }, null], // Mixed types
+        metadata: { type: "mixed-array" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -411,15 +413,15 @@ describe('Entity Methods Integration Tests', () => {
 
       // All elements should be strings now
       expect(retrieved?.[0]?.names.length).toBe(5);
-      expect(retrieved?.[0]?.names[0]).toBe('string');
-      expect(retrieved?.[0]?.names[1]).toBe('123');
-      expect(retrieved?.[0]?.names[2]).toBe('true');
-      expect(typeof retrieved?.[0]?.names[3]).toBe('string'); // Object stringified
-      expect(retrieved?.[0]?.names[4]).toBe('null');
+      expect(retrieved?.[0]?.names[0]).toBe("string");
+      expect(retrieved?.[0]?.names[1]).toBe("123");
+      expect(retrieved?.[0]?.names[2]).toBe("true");
+      expect(typeof retrieved?.[0]?.names[3]).toBe("string"); // Object stringified
+      expect(retrieved?.[0]?.names[4]).toBe("null");
 
       // Verify all are strings
       retrieved?.[0]?.names.forEach((name) => {
-        expect(typeof name).toBe('string');
+        expect(typeof name).toBe("string");
       });
     });
 
@@ -431,16 +433,16 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that Sets with mixed types are properly converted.
      */
-    it('should convert Set elements to strings, even if non-string', async () => {
+    it("should convert Set elements to strings, even if non-string", async () => {
       const entityId = uuidv4() as UUID;
 
-      const namesSet = new Set([123, 'test', true, 456]);
+      const namesSet = new Set([123, "test", true, 456]);
 
       const entity: any = {
         id: entityId,
         agentId: testAgentId,
         names: namesSet, // Set with mixed types
-        metadata: { type: 'mixed-set' },
+        metadata: { type: "mixed-set" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -452,14 +454,14 @@ describe('Entity Methods Integration Tests', () => {
 
       // All elements should be strings now
       expect(retrieved?.[0]?.names.length).toBe(4);
-      expect(retrieved?.[0]?.names).toContain('123');
-      expect(retrieved?.[0]?.names).toContain('test');
-      expect(retrieved?.[0]?.names).toContain('true');
-      expect(retrieved?.[0]?.names).toContain('456');
+      expect(retrieved?.[0]?.names).toContain("123");
+      expect(retrieved?.[0]?.names).toContain("test");
+      expect(retrieved?.[0]?.names).toContain("true");
+      expect(retrieved?.[0]?.names).toContain("456");
 
       // Verify all are strings
       retrieved?.[0]?.names.forEach((name) => {
-        expect(typeof name).toBe('string');
+        expect(typeof name).toBe("string");
       });
     });
 
@@ -471,7 +473,7 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that custom iterables are converted to string arrays.
      */
-    it('should handle custom iterable with non-string values', async () => {
+    it("should handle custom iterable with non-string values", async () => {
       const entityId = uuidv4() as UUID;
 
       // Create a custom iterable
@@ -487,7 +489,7 @@ describe('Entity Methods Integration Tests', () => {
         id: entityId,
         agentId: testAgentId,
         names: customIterable, // Custom iterable yielding numbers
-        metadata: { type: 'custom-iterable' },
+        metadata: { type: "custom-iterable" },
       };
 
       const result = await adapter.createEntities([entity]);
@@ -498,9 +500,9 @@ describe('Entity Methods Integration Tests', () => {
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
 
       // All elements should be converted to strings
-      expect(retrieved?.[0]?.names).toEqual(['1', '2', '3']);
+      expect(retrieved?.[0]?.names).toEqual(["1", "2", "3"]);
       retrieved?.[0]?.names.forEach((name) => {
-        expect(typeof name).toBe('string');
+        expect(typeof name).toBe("string");
       });
     });
 
@@ -511,14 +513,14 @@ describe('Entity Methods Integration Tests', () => {
      *
      * WHAT: Verify that updating an entity with a Map doesn't cause issues.
      */
-    it('should handle Map in update by converting entries to strings', async () => {
+    it("should handle Map in update by converting entries to strings", async () => {
       const entityId = uuidv4() as UUID;
 
       // Create initial entity
       const entity: Entity = {
         id: entityId,
         agentId: testAgentId,
-        names: ['original-name'],
+        names: ["original-name"],
         metadata: {},
       };
 
@@ -526,8 +528,8 @@ describe('Entity Methods Integration Tests', () => {
 
       // Update with Map
       const namesMap = new Map([
-        ['updated', 'name1'],
-        ['another', 'name2'],
+        ["updated", "name1"],
+        ["another", "name2"],
       ]);
 
       const updatedEntity: any = {
@@ -543,18 +545,18 @@ describe('Entity Methods Integration Tests', () => {
       expect(retrieved).not.toBeNull();
       expect(Array.isArray(retrieved?.[0]?.names)).toBe(true);
       expect(retrieved?.[0]?.names.length).toBe(2);
-      expect(retrieved?.[0]?.names).toContain('updated,name1');
-      expect(retrieved?.[0]?.names).toContain('another,name2');
+      expect(retrieved?.[0]?.names).toContain("updated,name1");
+      expect(retrieved?.[0]?.names).toContain("another,name2");
     });
   });
 
-  describe('deleteEntity', () => {
-    it('should delete an entity by ID', async () => {
+  describe("deleteEntity", () => {
+    it("should delete an entity by ID", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Entity to Delete'],
-        metadata: { type: 'test' },
+        names: ["Entity to Delete"],
+        metadata: { type: "test" },
       };
 
       // Create entity
@@ -572,34 +574,34 @@ describe('Entity Methods Integration Tests', () => {
       expect(retrieved).toHaveLength(0);
     });
 
-    it('should not throw when deleting non-existent entity', async () => {
+    it("should not throw when deleting non-existent entity", async () => {
       const nonExistentId = uuidv4() as UUID;
       // Should not throw - deleteEntity should handle non-existent entities gracefully
       await adapter.deleteEntity(nonExistentId);
     });
   });
 
-  describe('getEntitiesByNames', () => {
-    it('should retrieve entities by names', async () => {
+  describe("getEntitiesByNames", () => {
+    it("should retrieve entities by names", async () => {
       const entity1: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['John Doe', 'Johnny'],
-        metadata: { type: 'person' },
+        names: ["John Doe", "Johnny"],
+        metadata: { type: "person" },
       };
 
       const entity2: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Jane Doe', 'Janet'],
-        metadata: { type: 'person' },
+        names: ["Jane Doe", "Janet"],
+        metadata: { type: "person" },
       };
 
       const entity3: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['Bob Smith'],
-        metadata: { type: 'person' },
+        names: ["Bob Smith"],
+        metadata: { type: "person" },
       };
 
       // Create entities
@@ -607,7 +609,7 @@ describe('Entity Methods Integration Tests', () => {
 
       // Search for entities with Doe names
       const doeEntities = await adapter.getEntitiesByNames({
-        names: ['John Doe', 'Jane Doe'],
+        names: ["John Doe", "Jane Doe"],
         agentId: testAgentId,
       });
 
@@ -616,9 +618,9 @@ describe('Entity Methods Integration Tests', () => {
       expect(doeEntities.map((e) => e.id)).toContain(entity2.id);
     });
 
-    it('should return empty array when no entities match', async () => {
+    it("should return empty array when no entities match", async () => {
       const result = await adapter.getEntitiesByNames({
-        names: ['Non Existent Name'],
+        names: ["Non Existent Name"],
         agentId: testAgentId,
       });
 
@@ -626,26 +628,26 @@ describe('Entity Methods Integration Tests', () => {
     });
   });
 
-  describe('searchEntitiesByName', () => {
-    it('should search entities by partial name match', async () => {
+  describe("searchEntitiesByName", () => {
+    it("should search entities by partial name match", async () => {
       const entities: Entity[] = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Alice Smith', 'Alicia'],
-          metadata: { type: 'person' },
+          names: ["Alice Smith", "Alicia"],
+          metadata: { type: "person" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Bob Johnson'],
-          metadata: { type: 'person' },
+          names: ["Bob Johnson"],
+          metadata: { type: "person" },
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Alice Cooper', 'Al Cooper'],
-          metadata: { type: 'person' },
+          names: ["Alice Cooper", "Al Cooper"],
+          metadata: { type: "person" },
         },
       ];
 
@@ -656,18 +658,20 @@ describe('Entity Methods Integration Tests', () => {
 
       // Search for entities with 'Alice' in name
       const searchResults = await adapter.searchEntitiesByName({
-        query: 'Alice',
+        query: "Alice",
         agentId: testAgentId,
         limit: 10,
       });
 
       expect(searchResults).toHaveLength(2);
       expect(
-        searchResults.every((e) => e.names.some((name) => name.toLowerCase().includes('alice')))
+        searchResults.every((e) =>
+          e.names.some((name) => name.toLowerCase().includes("alice")),
+        ),
       ).toBe(true);
     });
 
-    it('should respect the limit parameter', async () => {
+    it("should respect the limit parameter", async () => {
       const entities: Entity[] = [];
       for (let i = 0; i < 5; i++) {
         entities.push({
@@ -683,7 +687,7 @@ describe('Entity Methods Integration Tests', () => {
 
       // Search with limit
       const results = await adapter.searchEntitiesByName({
-        query: 'Test',
+        query: "Test",
         agentId: testAgentId,
         limit: 2,
       });
@@ -691,18 +695,18 @@ describe('Entity Methods Integration Tests', () => {
       expect(results).toHaveLength(2);
     });
 
-    it('should return all entities when query is empty', async () => {
+    it("should return all entities when query is empty", async () => {
       const entities: Entity[] = [
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Entity 1'],
+          names: ["Entity 1"],
           metadata: {},
         },
         {
           id: uuidv4() as UUID,
           agentId: testAgentId,
-          names: ['Entity 2'],
+          names: ["Entity 2"],
           metadata: {},
         },
       ];
@@ -710,7 +714,7 @@ describe('Entity Methods Integration Tests', () => {
       await adapter.createEntities(entities);
 
       const results = await adapter.searchEntitiesByName({
-        query: '',
+        query: "",
         agentId: testAgentId,
         limit: 10,
       });
@@ -718,11 +722,11 @@ describe('Entity Methods Integration Tests', () => {
       expect(results.length).toBeGreaterThanOrEqual(2);
     });
 
-    it('should perform case-insensitive search', async () => {
+    it("should perform case-insensitive search", async () => {
       const entity: Entity = {
         id: uuidv4() as UUID,
         agentId: testAgentId,
-        names: ['UPPERCASE NAME', 'MixedCase Name'],
+        names: ["UPPERCASE NAME", "MixedCase Name"],
         metadata: {},
       };
 
@@ -730,14 +734,14 @@ describe('Entity Methods Integration Tests', () => {
 
       // Search with lowercase
       let results = await adapter.searchEntitiesByName({
-        query: 'uppercase',
+        query: "uppercase",
         agentId: testAgentId,
       });
       expect(results).toHaveLength(1);
 
       // Search with different case
       results = await adapter.searchEntitiesByName({
-        query: 'MIXEDCASE',
+        query: "MIXEDCASE",
         agentId: testAgentId,
       });
       expect(results).toHaveLength(1);

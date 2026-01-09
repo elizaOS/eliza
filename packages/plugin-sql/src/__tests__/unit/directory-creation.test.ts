@@ -1,12 +1,48 @@
 /**
  * Test that the .eliza directory is automatically created when using PGLite with a file path
  */
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { stringToUuid } from '@elizaos/core';
-import { createDatabaseAdapter } from '../../index';
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { stringToUuid } from "@elizaos/core";
+import { createDatabaseAdapter } from "../../index";
+
+/**
+ * Type for PGLite client manager singleton
+ */
+interface PGLiteClientManager {
+  getConnection?: () => { close?: () => Promise<void> } | undefined;
+}
+
+/**
+ * Type for Postgres connection manager singleton
+ */
+interface PostgresConnectionManager {
+  close?: () => Promise<void>;
+}
+
+/**
+ * Type for the global singletons registry
+ */
+interface GlobalSingletons {
+  pgLiteClientManager?: PGLiteClientManager;
+  postgresConnectionManager?: PostgresConnectionManager;
+}
+
+/**
+ * Symbol key for accessing global singletons
+ */
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
+
+/**
+ * Type-safe access to global singleton storage
+ */
+function getGlobalSingletons(): GlobalSingletons | undefined {
+  return (globalThis as Record<symbol, GlobalSingletons | undefined>)[
+    GLOBAL_SINGLETONS
+  ];
+}
 
 /**
  * Helper to clean up global singletons between tests.
@@ -14,9 +50,7 @@ import { createDatabaseAdapter } from '../../index';
  * to share database connections, but tests use different temp directories.
  */
 async function cleanupGlobalSingletons() {
-  const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
-  const globalSymbols = globalThis as unknown as Record<symbol, any>;
-  const singletons = globalSymbols[GLOBAL_SINGLETONS];
+  const singletons = getGlobalSingletons();
 
   if (singletons?.pgLiteClientManager) {
     try {
@@ -41,13 +75,13 @@ async function cleanupGlobalSingletons() {
   }
 }
 
-describe('Directory Creation', () => {
+describe("Directory Creation", () => {
   let tempDir: string;
 
   beforeEach(async () => {
     // Clean up any existing singletons from previous tests
     await cleanupGlobalSingletons();
-    tempDir = mkdtempSync(path.join(tmpdir(), 'eliza-test-'));
+    tempDir = mkdtempSync(path.join(tmpdir(), "eliza-test-"));
   });
 
   afterEach(async () => {
@@ -59,9 +93,9 @@ describe('Directory Creation', () => {
     }
   });
 
-  it('should automatically create directory for PGLite when it does not exist', () => {
-    const dataDir = path.join(tempDir, '.eliza', '.elizadb');
-    const agentId = stringToUuid('test-agent');
+  it("should automatically create directory for PGLite when it does not exist", () => {
+    const dataDir = path.join(tempDir, ".eliza", ".elizadb");
+    const agentId = stringToUuid("test-agent");
 
     // Directory should not exist yet
     expect(existsSync(dataDir)).toBe(false);
@@ -74,12 +108,12 @@ describe('Directory Creation', () => {
     expect(adapter).toBeDefined();
   });
 
-  it('should not fail if directory already exists', () => {
-    const dataDir = path.join(tempDir, '.eliza', '.elizadb');
-    const agentId = stringToUuid('test-agent');
+  it("should not fail if directory already exists", () => {
+    const dataDir = path.join(tempDir, ".eliza", ".elizadb");
+    const agentId = stringToUuid("test-agent");
 
     // Create directory first
-    const { mkdirSync } = require('node:fs');
+    const { mkdirSync } = require("node:fs");
     mkdirSync(dataDir, { recursive: true });
     expect(existsSync(dataDir)).toBe(true);
 
@@ -91,31 +125,34 @@ describe('Directory Creation', () => {
     expect(adapter).toBeDefined();
   });
 
-  it('should not create directory for memory:// URIs', () => {
-    const agentId = stringToUuid('test-agent');
+  it("should not create directory for memory:// URIs", () => {
+    const agentId = stringToUuid("test-agent");
 
     // This should not try to create a directory
-    const adapter = createDatabaseAdapter({ dataDir: 'memory://' }, agentId);
+    const adapter = createDatabaseAdapter({ dataDir: "memory://" }, agentId);
 
     // No directory should be created
-    expect(existsSync('memory://')).toBe(false);
+    expect(existsSync("memory://")).toBe(false);
     expect(adapter).toBeDefined();
   });
 
-  it('should not create directory for idb:// URIs', () => {
-    const agentId = stringToUuid('test-agent');
+  it("should not create directory for idb:// URIs", () => {
+    const agentId = stringToUuid("test-agent");
 
     // This should not try to create a directory
-    const adapter = createDatabaseAdapter({ dataDir: 'idb://test-db' }, agentId);
+    const adapter = createDatabaseAdapter(
+      { dataDir: "idb://test-db" },
+      agentId,
+    );
 
     // No directory should be created
-    expect(existsSync('idb://test-db')).toBe(false);
+    expect(existsSync("idb://test-db")).toBe(false);
     expect(adapter).toBeDefined();
   });
 
-  it('should not create directory when using PostgreSQL', () => {
-    const dataDir = path.join(tempDir, '.eliza', '.elizadb');
-    const agentId = stringToUuid('test-agent');
+  it("should not create directory when using PostgreSQL", () => {
+    const dataDir = path.join(tempDir, ".eliza", ".elizadb");
+    const agentId = stringToUuid("test-agent");
 
     // Directory should not exist yet
     expect(existsSync(dataDir)).toBe(false);
@@ -124,9 +161,9 @@ describe('Directory Creation', () => {
     const adapter = createDatabaseAdapter(
       {
         dataDir,
-        postgresUrl: 'postgresql://user:pass@localhost:5432/testdb',
+        postgresUrl: "postgresql://user:pass@localhost:5432/testdb",
       },
-      agentId
+      agentId,
     );
 
     // Directory should NOT be created when using PostgreSQL

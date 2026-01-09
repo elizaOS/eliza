@@ -1,22 +1,22 @@
 /**
  * Seed data for entity integration tests
  */
-import { type UUID, AgentStatus, type Agent } from '@elizaos/core';
-import { v4 } from 'uuid';
+import { type Agent, AgentStatus, type UUID } from "@elizaos/core";
+import { v4 } from "uuid";
 
 /**
  * Default test agent settings for entity tests
  */
 export const entityTestAgentSettings = {
   id: v4() as UUID,
-  name: 'Entity Test Agent',
-  username: 'entity_test_agent',
-  system: 'Test agent system prompt',
-  bio: 'An agent for testing entity operations',
+  name: "Entity Test Agent",
+  username: "entity_test_agent",
+  system: "Test agent system prompt",
+  bio: "An agent for testing entity operations",
   enabled: true,
   status: AgentStatus.ACTIVE,
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
   messageExamples: [],
   postExamples: [],
   topics: [],
@@ -24,7 +24,7 @@ export const entityTestAgentSettings = {
   knowledge: [],
   plugins: [],
   settings: {
-    entityTestSetting: 'entity test value',
+    entityTestSetting: "entity test value",
   },
   style: {
     all: [],
@@ -39,42 +39,42 @@ export const entityTestAgentSettings = {
 export const testEntities = {
   basicEntity: {
     id: v4() as UUID,
-    names: ['Basic Entity'],
+    names: ["Basic Entity"],
     metadata: {
-      type: 'basic',
-      description: 'A basic entity for testing',
+      type: "basic",
+      description: "A basic entity for testing",
     },
     agentId: entityTestAgentSettings.id as UUID,
   },
   complexEntity: {
     id: v4() as UUID,
-    names: ['Complex Entity', 'Alternative Name'],
+    names: ["Complex Entity", "Alternative Name"],
     metadata: {
-      type: 'complex',
-      description: 'A complex entity for testing',
+      type: "complex",
+      description: "A complex entity for testing",
       properties: {
         strength: 10,
         intelligence: 15,
         isSpecial: true,
       },
-      tags: ['test', 'entity', 'complex'],
+      tags: ["test", "entity", "complex"],
     },
     agentId: entityTestAgentSettings.id as UUID,
   },
   entityToUpdate: {
     id: v4() as UUID,
-    names: ['Entity to Update'],
+    names: ["Entity to Update"],
     metadata: {
-      type: 'updatable',
+      type: "updatable",
       version: 1,
     },
     agentId: entityTestAgentSettings.id as UUID,
   },
   entityWithComponent: {
     id: v4() as UUID,
-    names: ['Entity with Component'],
+    names: ["Entity with Component"],
     metadata: {
-      type: 'component-holder',
+      type: "component-holder",
     },
     agentId: entityTestAgentSettings.id as UUID,
   },

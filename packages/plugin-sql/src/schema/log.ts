@@ -1,7 +1,14 @@
-import { sql } from 'drizzle-orm';
-import { foreignKey, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { entityTable } from './entity';
-import { roomTable } from './room';
+import { sql } from "drizzle-orm";
+import {
+  foreignKey,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { entityTable } from "./entity";
+import { roomTable } from "./room";
 
 /**
  * Represents a PostgreSQL table for storing logs.
@@ -10,31 +17,31 @@ import { roomTable } from './room';
  */
 
 export const logTable = pgTable(
-  'logs',
+  "logs",
   {
-    id: uuid('id').defaultRandom().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true })
+    id: uuid("id").defaultRandom().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
-    entityId: uuid('entity_id')
+    entityId: uuid("entity_id")
       .notNull()
-      .references(() => entityTable.id, { onDelete: 'cascade' }),
-    body: jsonb('body').notNull(),
-    type: text('type').notNull(),
-    roomId: uuid('room_id')
+      .references(() => entityTable.id, { onDelete: "cascade" }),
+    body: jsonb("body").notNull(),
+    type: text("type").notNull(),
+    roomId: uuid("room_id")
       .notNull()
-      .references(() => roomTable.id, { onDelete: 'cascade' }),
+      .references(() => roomTable.id, { onDelete: "cascade" }),
   },
   (table) => [
     foreignKey({
-      name: 'fk_room',
+      name: "fk_room",
       columns: [table.roomId],
       foreignColumns: [roomTable.id],
-    }).onDelete('cascade'),
+    }).onDelete("cascade"),
     foreignKey({
-      name: 'fk_user',
+      name: "fk_user",
       columns: [table.entityId],
       foreignColumns: [entityTable.id],
-    }).onDelete('cascade'),
-  ]
+    }).onDelete("cascade"),
+  ],
 );

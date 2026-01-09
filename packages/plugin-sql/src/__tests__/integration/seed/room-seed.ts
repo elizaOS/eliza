@@ -1,5 +1,12 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Room, Entity, Agent, World, UUID, ChannelType } from '@elizaos/core';
+import {
+  type Agent,
+  ChannelType,
+  type Entity,
+  type Room,
+  type UUID,
+  type World,
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 // Test IDs
 export const roomTestAgentId = uuidv4() as UUID;
@@ -11,24 +18,24 @@ export const roomTestRoom2Id = uuidv4() as UUID;
 // Test data for room integration tests
 export const roomTestAgent: Agent = {
   id: roomTestAgentId,
-  name: 'Room Test Agent',
-  bio: 'Test agent for room integration tests',
+  name: "Room Test Agent",
+  bio: "Test agent for room integration tests",
   settings: {
     profile: {
-      short_description: 'Test agent for room integration tests',
+      short_description: "Test agent for room integration tests",
     },
   },
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 };
 
 export const roomTestEntity: Entity = {
   id: roomTestEntityId,
-  names: ['Room Test Entity'],
+  names: ["Room Test Entity"],
   agentId: roomTestAgentId,
   components: [],
   metadata: {
-    type: 'user',
+    type: "user",
     worldId: roomTestWorldId,
   },
 };
@@ -36,8 +43,8 @@ export const roomTestEntity: Entity = {
 export const roomTestWorld: World = {
   id: roomTestWorldId,
   agentId: roomTestAgentId,
-  name: 'Room Test World',
-  serverId: 'test-server',
+  name: "Room Test World",
+  serverId: "test-server",
   metadata: {},
 };
 
@@ -45,39 +52,39 @@ export const roomTestWorld: World = {
 export const roomTestRooms: Room[] = [
   {
     id: roomTestRoomId,
-    name: 'Room Test Room 1',
+    name: "Room Test Room 1",
     agentId: roomTestAgentId,
-    source: 'test',
+    source: "test",
     type: ChannelType.GROUP,
     worldId: roomTestWorldId,
     metadata: {
-      description: 'Test description for room 1',
-      tags: ['test', 'integration'],
+      description: "Test description for room 1",
+      tags: ["test", "integration"],
     },
   },
   {
     id: roomTestRoom2Id,
-    name: 'Room Test Room 2',
+    name: "Room Test Room 2",
     agentId: roomTestAgentId,
-    source: 'test',
+    source: "test",
     type: ChannelType.DM,
     worldId: roomTestWorldId,
-    channelId: 'test-channel-id',
-    serverId: 'test-server-id',
+    channelId: "test-channel-id",
+    serverId: "test-server-id",
     metadata: {
-      description: 'Test description for room 2',
-      tags: ['integration'],
+      description: "Test description for room 2",
+      tags: ["integration"],
     },
   },
   {
     id: uuidv4() as UUID,
-    name: 'Room Test Room 3',
+    name: "Room Test Room 3",
     agentId: roomTestAgentId,
-    source: 'discord',
+    source: "discord",
     type: ChannelType.GROUP,
     worldId: roomTestWorldId,
     metadata: {
-      description: 'Test description for room 3',
+      description: "Test description for room 3",
       isPrivate: true,
     },
   },

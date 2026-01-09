@@ -10,7 +10,7 @@
     "showLineNumbers": false,
     "includeEmptyDirectories": false,
     "topFilesLength": 20,
-    "headerText": "ElizaOS Community Context",
+    "headerText": "elizaOS Community Context",
     "instructionFilePath": "scripts/dev-instructions.md"
   },
   "include": [

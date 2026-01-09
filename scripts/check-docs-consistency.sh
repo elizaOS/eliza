@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# ElizaOS Documentation Consistency Checker
+# elizaOS Documentation Consistency Checker
 # This script checks if documentation is accurate and up-to-date with the codebase
 
 set -euo pipefail
@@ -45,7 +45,7 @@ mkdir -p "${RESULTS_DIR}"
 
 # Initialize report
 cat > "${REPORT_FILE}" << EOF
-# ElizaOS Documentation Consistency Report
+# elizaOS Documentation Consistency Report
 Generated on: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 
 This report checks if documentation accurately reflects the current codebase.
@@ -54,7 +54,7 @@ This report checks if documentation accurately reflects the current codebase.
 
 EOF
 
-print_info "Starting ElizaOS Documentation Consistency Check"
+print_info "Starting elizaOS Documentation Consistency Check"
 print_info "Results will be saved to: ${REPORT_FILE}"
 echo ""
 

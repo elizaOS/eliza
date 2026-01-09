@@ -1,22 +1,28 @@
 /**
  * Seed data for log integration tests
  */
-import { type UUID, type Log, ChannelType, AgentStatus, type Agent } from '@elizaos/core';
-import { v4 } from 'uuid';
+import {
+  type Agent,
+  AgentStatus,
+  ChannelType,
+  type Log,
+  type UUID,
+} from "@elizaos/core";
+import { v4 } from "uuid";
 
 /**
  * Default test agent settings for log tests
  */
 export const logTestAgentSettings = {
   id: v4() as UUID,
-  name: 'Log Test Agent',
-  username: 'log_test_agent',
-  system: 'Test agent system prompt',
-  bio: 'An agent for testing log operations',
+  name: "Log Test Agent",
+  username: "log_test_agent",
+  system: "Test agent system prompt",
+  bio: "An agent for testing log operations",
   enabled: true,
   status: AgentStatus.ACTIVE,
-  createdAt: new Date().getTime(),
-  updatedAt: new Date().getTime(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
   messageExamples: [],
   postExamples: [],
   topics: [],
@@ -24,7 +30,7 @@ export const logTestAgentSettings = {
   knowledge: [],
   plugins: [],
   settings: {
-    logTestSetting: 'log test value',
+    logTestSetting: "log test value",
   },
   style: {
     all: [],
@@ -40,8 +46,8 @@ export const logTestWorld = {
   id: v4() as UUID,
   agentId: logTestAgentSettings.id,
   serverId: v4() as UUID,
-  name: 'Log Test World',
-  description: 'A world for log integration tests',
+  name: "Log Test World",
+  description: "A world for log integration tests",
   metadata: {},
 };
 
@@ -50,7 +56,7 @@ export const logTestWorld = {
  */
 export const logTestEntity = {
   id: v4() as UUID,
-  names: ['Log Test Entity'],
+  names: ["Log Test Entity"],
   agentId: logTestAgentSettings.id,
   metadata: {},
 };
@@ -60,11 +66,11 @@ export const logTestEntity = {
  */
 export const logTestRoom = {
   id: v4() as UUID,
-  name: 'Log Test Room',
+  name: "Log Test Room",
   type: ChannelType.DM,
   agentId: logTestAgentSettings.id,
   worldId: logTestWorld.id,
-  source: 'log-test',
+  source: "log-test",
   metadata: {},
 };
 
@@ -76,8 +82,8 @@ export const logTestLogs = {
     id: v4() as UUID,
     entityId: logTestEntity.id,
     roomId: logTestRoom.id,
-    body: { message: 'Test log message', data: { key: 'value' } },
-    type: 'test_log',
+    body: { message: "Test log message", data: { key: "value" } },
+    type: "test_log",
     createdAt: new Date(),
   } as Log,
   withMetadata: {
@@ -85,13 +91,13 @@ export const logTestLogs = {
     entityId: logTestEntity.id,
     roomId: logTestRoom.id,
     body: {
-      message: 'Log with extra metadata',
+      message: "Log with extra metadata",
       metadata: {
-        priority: 'high',
-        source: 'test_suite',
+        priority: "high",
+        source: "test_suite",
       },
     },
-    type: 'metadata_log',
+    type: "metadata_log",
     createdAt: new Date(),
   } as Log,
 };

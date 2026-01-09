@@ -1,0 +1,1028 @@
+"""
+AgentRuntime implementation for elizaOS.
+
+This module provides the main runtime for elizaOS agents.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from elizaos.logger import create_logger
+from elizaos.types.agent import Character
+from elizaos.types.components import (
+    Action,
+    ActionResult,
+    Evaluator,
+    HandlerCallback,
+    HandlerOptions,
+    Provider,
+)
+from elizaos.types.database import AgentRunSummaryResult, IDatabaseAdapter, Log
+from elizaos.types.environment import Entity, Room, World
+from elizaos.types.events import EventType
+from elizaos.types.memory import Memory
+from elizaos.types.model import GenerateTextOptions, GenerateTextResult, ModelType
+from elizaos.types.plugin import Plugin, Route
+from elizaos.types.primitives import UUID, Content, as_uuid
+from elizaos.types.runtime import IAgentRuntime, RuntimeSettings, SendHandlerFunction, TargetInfo
+from elizaos.types.service import Service
+from elizaos.types.state import State, StateData
+from elizaos.types.task import TaskWorker
+
+
+class ModelHandler:
+    """Represents a registered model handler."""
+
+    def __init__(
+        self,
+        handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        self.handler = handler
+        self.provider = provider
+        self.priority = priority
+
+
+class AgentRuntime(IAgentRuntime):
+    """
+    Main runtime for elizaOS agents.
+
+    This class implements the IAgentRuntime interface and provides
+    the core functionality for running AI agents.
+    """
+
+    def __init__(
+        self,
+        character: Character,
+        agent_id: UUID | None = None,
+        adapter: IDatabaseAdapter | None = None,
+        plugins: list[Plugin] | None = None,
+        settings: RuntimeSettings | None = None,
+        conversation_length: int = 32,
+    ) -> None:
+        """
+        Initialize the AgentRuntime.
+
+        Args:
+            character: The agent's character configuration
+            agent_id: Optional agent ID (generated if not provided)
+            adapter: Optional database adapter
+            plugins: Optional list of plugins to register
+            settings: Optional runtime settings
+            conversation_length: Number of messages to keep in context
+        """
+        # Generate agent ID from character name or random UUID
+        self._agent_id = agent_id or as_uuid(str(uuid.uuid5(uuid.NAMESPACE_DNS, character.name)))
+        self._character = character
+        self._adapter = adapter
+        self._conversation_length = conversation_length
+        self._settings: RuntimeSettings = settings or {}
+
+        # Initialize collections
+        self._providers: list[Provider] = []
+        self._actions: list[Action] = []
+        self._evaluators: list[Evaluator] = []
+        self._plugins: list[Plugin] = []
+        self._services: dict[str, list[Service]] = {}
+        self._routes: list[Route] = []
+        self._events: dict[str, list[Callable[[Any], Awaitable[None]]]] = {}
+        self._models: dict[str, list[ModelHandler]] = {}
+        self._task_workers: dict[str, TaskWorker] = {}
+        self._send_handlers: dict[str, SendHandlerFunction] = {}
+        self._state_cache: dict[str, State] = {}
+
+        # Run tracking
+        self._current_run_id: UUID | None = None
+        self._current_room_id: UUID | None = None
+
+        # Action results cache
+        self._action_results: dict[str, list[ActionResult]] = {}
+
+        # Logger
+        self.logger = create_logger(namespace=character.name)
+
+        # Store initial plugins for later registration
+        self._initial_plugins = plugins or []
+
+        # Initialization promise tracking
+        self._init_complete = False
+        self._init_event = asyncio.Event()
+
+    # Properties
+    @property
+    def agent_id(self) -> UUID:
+        return self._agent_id
+
+    @property
+    def character(self) -> Character:
+        return self._character
+
+    @property
+    def providers(self) -> list[Provider]:
+        return self._providers
+
+    @property
+    def actions(self) -> list[Action]:
+        return self._actions
+
+    @property
+    def evaluators(self) -> list[Evaluator]:
+        return self._evaluators
+
+    @property
+    def plugins(self) -> list[Plugin]:
+        return self._plugins
+
+    @property
+    def services(self) -> dict[str, list[Service]]:
+        return self._services
+
+    @property
+    def routes(self) -> list[Route]:
+        return self._routes
+
+    @property
+    def db(self) -> Any:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return self._adapter.db
+
+    # Initialization
+    async def initialize(self, config: dict[str, str | int | bool | None] | None = None) -> None:
+        """Initialize the runtime."""
+        _ = config  # Config handled during construction
+        self.logger.info("Initializing AgentRuntime...")
+
+        # Initialize database adapter if present
+        if self._adapter:
+            await self._adapter.initialize()
+            self.logger.debug("Database adapter initialized")
+
+        # Register initial plugins
+        for plugin in self._initial_plugins:
+            await self.register_plugin(plugin)
+
+        self._init_complete = True
+        self._init_event.set()
+        self.logger.info("AgentRuntime initialized successfully")
+
+    async def register_plugin(self, plugin: Plugin) -> None:
+        """Register a plugin with the runtime."""
+        from elizaos.plugin import register_plugin
+
+        await register_plugin(self, plugin)
+        self._plugins.append(plugin)
+
+    # Service management
+    def get_service(self, service: str) -> Service | None:
+        services = self._services.get(service)
+        return services[0] if services else None
+
+    def get_services_by_type(self, service: str) -> list[Service]:
+        return self._services.get(service, [])
+
+    def get_all_services(self) -> dict[str, list[Service]]:
+        return self._services
+
+    async def register_service(self, service_class: type[Service]) -> None:
+        service_type = service_class.service_type
+        service = await service_class.start(self)
+
+        if service_type not in self._services:
+            self._services[service_type] = []
+        self._services[service_type].append(service)
+
+        self.logger.debug(f"Service registered: {service_type}")
+
+    async def get_service_load_promise(self, service_type: str) -> Service:
+        # Wait for initialization if not complete
+        if not self._init_complete:
+            await self._init_event.wait()
+
+        service = self.get_service(service_type)
+        if not service:
+            raise RuntimeError(f"Service not found: {service_type}")
+        return service
+
+    def get_registered_service_types(self) -> list[str]:
+        return list(self._services.keys())
+
+    def has_service(self, service_type: str) -> bool:
+        return service_type in self._services and len(self._services[service_type]) > 0
+
+    # Settings
+    def set_setting(self, key: str, value: str | bool | None, _secret: bool = False) -> None:
+        self._settings[key] = value
+
+    def get_setting(self, key: str) -> str | bool | int | float | None:
+        # Check runtime settings first
+        if key in self._settings:
+            return self._settings[key]
+
+        # Check character settings
+        if self._character.settings and key in self._character.settings:
+            setting = self._character.settings[key]
+            if isinstance(setting, (str, bool, int)):
+                return setting
+
+        # Check character secrets
+        if self._character.secrets and key in self._character.secrets:
+            return self._character.secrets[key]
+
+        return None
+
+    def get_conversation_length(self) -> int:
+        return self._conversation_length
+
+    # Component registration
+    def register_provider(self, provider: Provider) -> None:
+        self._providers.append(provider)
+
+    def register_action(self, action: Action) -> None:
+        self._actions.append(action)
+
+    def register_evaluator(self, evaluator: Evaluator) -> None:
+        self._evaluators.append(evaluator)
+
+    # Action processing
+    async def process_actions(
+        self,
+        message: Memory,
+        responses: list[Memory],
+        state: State | None = None,
+        callback: HandlerCallback | None = None,
+        _options: dict[str, Any] | None = None,
+    ) -> None:
+        """Process actions for a message."""
+        if not message.content.actions:
+            return
+
+        for action_name in message.content.actions:
+            action = self._get_action_by_name(action_name)
+            if action:
+                try:
+                    result = await action.handler(
+                        self,
+                        message,
+                        state,
+                        HandlerOptions(),
+                        callback,
+                        responses,
+                    )
+
+                    # Store result
+                    if message.id:
+                        message_id = str(message.id)
+                        if message_id not in self._action_results:
+                            self._action_results[message_id] = []
+                        if result:
+                            self._action_results[message_id].append(result)
+
+                except Exception as e:
+                    self.logger.error(f"Action {action_name} failed: {e}")
+
+    def _get_action_by_name(self, name: str) -> Action | None:
+        for action in self._actions:
+            if action.name == name:
+                return action
+        return None
+
+    def get_action_results(self, message_id: UUID) -> list[ActionResult]:
+        return self._action_results.get(str(message_id), [])
+
+    # Evaluation
+    async def evaluate(
+        self,
+        message: Memory,
+        state: State | None = None,
+        did_respond: bool = False,
+        callback: HandlerCallback | None = None,
+        responses: list[Memory] | None = None,
+    ) -> list[Evaluator] | None:
+        """Run evaluators on a message."""
+        ran_evaluators: list[Evaluator] = []
+
+        for evaluator in self._evaluators:
+            should_run = evaluator.always_run or did_respond
+
+            if should_run:
+                try:
+                    is_valid = await evaluator.validate_fn(self, message, state)
+                    if is_valid:
+                        await evaluator.handler(
+                            self,
+                            message,
+                            state,
+                            HandlerOptions(),
+                            callback,
+                            responses,
+                        )
+                        ran_evaluators.append(evaluator)
+                except Exception as e:
+                    self.logger.error(f"Evaluator {evaluator.name} failed: {e}")
+
+        return ran_evaluators if ran_evaluators else None
+
+    # Connection management
+    async def ensure_connections(
+        self,
+        entities: list[Entity],
+        rooms: list[Room],
+        _source: str,
+        world: World,
+    ) -> None:
+        """Ensure connections are set up."""
+        # Ensure world exists
+        await self.ensure_world_exists(world)
+
+        # Ensure rooms exist
+        for room in rooms:
+            await self.ensure_room_exists(room)
+
+        # Ensure entities exist and are participants
+        for entity in entities:
+            if entity.id:
+                await self.create_entities([entity])
+                for room in rooms:
+                    await self.ensure_participant_in_room(entity.id, room.id)
+
+    async def ensure_connection(
+        self,
+        entity_id: UUID,
+        room_id: UUID,
+        world_id: UUID,
+        user_name: str | None = None,
+        name: str | None = None,
+        world_name: str | None = None,
+        source: str | None = None,
+        channel_id: str | None = None,
+        message_server_id: UUID | None = None,
+        channel_type: str | None = None,
+        user_id: UUID | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Ensure a connection is set up."""
+        # Implementation depends on database adapter
+        pass
+
+    async def ensure_participant_in_room(self, entity_id: UUID, room_id: UUID) -> None:
+        """Ensure an entity is a participant in a room."""
+        if self._adapter:
+            is_participant = await self._adapter.is_room_participant(room_id, entity_id)
+            if not is_participant:
+                await self._adapter.add_participants_room([entity_id], room_id)
+
+    async def ensure_world_exists(self, world: World) -> None:
+        """Ensure a world exists."""
+        if self._adapter:
+            existing = await self._adapter.get_world(world.id)
+            if not existing:
+                await self._adapter.create_world(world)
+
+    async def ensure_room_exists(self, room: Room) -> None:
+        """Ensure a room exists."""
+        if self._adapter:
+            rooms = await self._adapter.get_rooms_by_ids([room.id])
+            if not rooms or len(rooms) == 0:
+                await self._adapter.create_rooms([room])
+
+    # State composition
+    async def compose_state(
+        self,
+        message: Memory,
+        include_list: list[str] | None = None,
+        only_include: bool = False,
+        skip_cache: bool = False,
+    ) -> State:
+        """Compose state for a message."""
+        cache_key = str(message.room_id)
+
+        # Check cache
+        if not skip_cache and cache_key in self._state_cache:
+            return self._state_cache[cache_key]
+
+        # Create new state
+        state = State(
+            values={},
+            data=StateData(),
+            text="",
+        )
+
+        # Run providers
+        providers_to_run = self._providers
+        if include_list and only_include:
+            providers_to_run = [p for p in self._providers if p.name in include_list]
+        elif include_list:
+            providers_to_run = [
+                p for p in self._providers if p.name not in include_list or p.name in include_list
+            ]
+
+        # Sort by position
+        providers_to_run.sort(key=lambda p: p.position or 0)
+
+        text_parts: list[str] = []
+        for provider in providers_to_run:
+            if provider.private:
+                continue
+
+            try:
+                result = await provider.get(self, message, state)
+                if result.text:
+                    text_parts.append(result.text)
+                if result.values:
+                    state.values.update(result.values)
+                if result.data:
+                    if not state.data.providers:
+                        state.data.providers = {}
+                    state.data.providers[provider.name] = result.data
+            except Exception as e:
+                self.logger.error(f"Provider {provider.name} failed: {e}")
+
+        state.text = "\n".join(text_parts)
+
+        # Cache state
+        if not skip_cache:
+            self._state_cache[cache_key] = state
+
+        return state
+
+    # Model usage
+    async def use_model(
+        self,
+        model_type: str,
+        params: dict[str, Any],
+        provider: str | None = None,
+    ) -> Any:
+        """Use a model for inference."""
+        handlers = self._models.get(model_type, [])
+
+        if not handlers:
+            raise RuntimeError(f"No model handler registered for: {model_type}")
+
+        # Sort by priority and get highest
+        handlers.sort(key=lambda h: h.priority, reverse=True)
+
+        # Filter by provider if specified
+        if provider:
+            handlers = [h for h in handlers if h.provider == provider]
+            if not handlers:
+                raise RuntimeError(f"No model handler for provider: {provider}")
+
+        handler = handlers[0]
+        return await handler.handler(self, params)
+
+    async def generate_text(
+        self,
+        input_text: str,
+        options: GenerateTextOptions | None = None,
+    ) -> GenerateTextResult:
+        """Generate text using an LLM."""
+        model_type = options.model_type if options else ModelType.TEXT_LARGE
+
+        params: dict[str, str | int | float] = {
+            "prompt": input_text,
+        }
+        if options:
+            if options.temperature is not None:
+                params["temperature"] = options.temperature
+            if options.max_tokens is not None:
+                params["maxTokens"] = options.max_tokens
+            if options.system:
+                params["system"] = options.system
+
+        result = await self.use_model(str(model_type), params)
+        return GenerateTextResult(text=str(result))
+
+    def register_model(
+        self,
+        model_type: str,
+        handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
+        provider: str,
+        priority: int = 0,
+    ) -> None:
+        """Register a model handler."""
+        if model_type not in self._models:
+            self._models[model_type] = []
+
+        self._models[model_type].append(
+            ModelHandler(handler=handler, provider=provider, priority=priority)
+        )
+
+    def get_model(
+        self, model_type: str
+    ) -> Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]] | None:
+        """Get a model handler."""
+        handlers = self._models.get(model_type, [])
+        if handlers:
+            handlers.sort(key=lambda h: h.priority, reverse=True)
+            return handlers[0].handler
+        return None
+
+    # Event handling
+    def register_event(
+        self,
+        event: str,
+        handler: Callable[[Any], Awaitable[None]],
+    ) -> None:
+        """Register an event handler."""
+        if event not in self._events:
+            self._events[event] = []
+        self._events[event].append(handler)
+
+    def get_event(self, event: str) -> list[Callable[[Any], Awaitable[None]]] | None:
+        """Get event handlers for an event type."""
+        return self._events.get(event)
+
+    async def emit_event(
+        self,
+        event: str | list[str],
+        params: Any,
+    ) -> None:
+        """Emit an event."""
+        events = [event] if isinstance(event, str) else event
+
+        for evt in events:
+            handlers = self._events.get(evt, [])
+            for handler in handlers:
+                try:
+                    await handler(params)
+                except Exception as e:
+                    self.logger.error(f"Event handler failed for {evt}: {e}")
+
+    # Task management
+    def register_task_worker(self, task_handler: TaskWorker) -> None:
+        """Register a task worker."""
+        self._task_workers[task_handler.name] = task_handler
+
+    def get_task_worker(self, name: str) -> TaskWorker | None:
+        """Get a task worker by name."""
+        return self._task_workers.get(name)
+
+    # Lifecycle
+    async def stop(self) -> None:
+        """Stop the runtime."""
+        self.logger.info("Stopping AgentRuntime...")
+
+        # Stop all services
+        for service_type, services in self._services.items():
+            for service in services:
+                try:
+                    await service.stop()
+                except Exception as e:
+                    self.logger.error(f"Failed to stop service {service_type}: {e}")
+
+        # Close database adapter
+        if self._adapter:
+            await self._adapter.close()
+
+        self.logger.info("AgentRuntime stopped")
+
+    # Memory/embedding helpers
+    async def add_embedding_to_memory(self, memory: Memory) -> Memory:
+        """Add embedding to a memory."""
+        # This would use an embedding model
+        # For now, return the memory as-is
+        return memory
+
+    async def queue_embedding_generation(self, memory: Memory, priority: str = "normal") -> None:
+        """Queue a memory for async embedding generation."""
+        await self.emit_event(
+            EventType.EMBEDDING_GENERATION_REQUESTED.value,
+            {"runtime": self, "memory": memory, "priority": priority, "source": "runtime"},
+        )
+
+    async def get_all_memories(self) -> list[Memory]:
+        """Get all memories."""
+        if not self._adapter:
+            return []
+        return await self._adapter.get_memories(
+            {"agentId": str(self._agent_id), "tableName": "memories"}
+        )
+
+    async def clear_all_agent_memories(self) -> None:
+        """Clear all agent memories."""
+        # Implementation depends on database adapter
+        pass
+
+    # Run tracking
+    def create_run_id(self) -> UUID:
+        """Create a new run ID."""
+        return as_uuid(str(uuid.uuid4()))
+
+    def start_run(self, room_id: UUID | None = None) -> UUID:
+        """Start a new run."""
+        self._current_run_id = self.create_run_id()
+        self._current_room_id = room_id
+        return self._current_run_id
+
+    def end_run(self) -> None:
+        """End the current run."""
+        self._current_run_id = None
+        self._current_room_id = None
+
+    def get_current_run_id(self) -> UUID:
+        """Get the current run ID."""
+        if not self._current_run_id:
+            return self.start_run()
+        return self._current_run_id
+
+    # Convenience wrappers
+    async def get_entity_by_id(self, entity_id: UUID) -> Entity | None:
+        """Get entity by ID."""
+        if not self._adapter:
+            return None
+        entities = await self._adapter.get_entities_by_ids([entity_id])
+        return entities[0] if entities else None
+
+    async def get_room(self, room_id: UUID) -> Room | None:
+        """Get room by ID."""
+        if not self._adapter:
+            return None
+        rooms = await self._adapter.get_rooms_by_ids([room_id])
+        return rooms[0] if rooms else None
+
+    async def create_entity(self, entity: Entity) -> bool:
+        """Create an entity."""
+        if not self._adapter:
+            return False
+        return await self._adapter.create_entities([entity])
+
+    async def create_room(self, room: Room) -> UUID:
+        """Create a room."""
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        ids = await self._adapter.create_rooms([room])
+        return ids[0]
+
+    async def add_participant(self, entity_id: UUID, room_id: UUID) -> bool:
+        """Add a participant to a room."""
+        if not self._adapter:
+            return False
+        return await self._adapter.add_participants_room([entity_id], room_id)
+
+    async def get_rooms(self, world_id: UUID) -> list[Room]:
+        """Get rooms for a world."""
+        if not self._adapter:
+            return []
+        return await self._adapter.get_rooms_by_world(world_id)
+
+    def register_send_handler(self, source: str, handler: SendHandlerFunction) -> None:
+        """Register a send handler."""
+        self._send_handlers[source] = handler
+
+    async def send_message_to_target(self, target: TargetInfo, content: Content) -> None:
+        """Send a message to a target."""
+        if target.source and target.source in self._send_handlers:
+            await self._send_handlers[target.source](target, content)
+
+    # Database adapter delegation methods
+    async def init(self) -> None:
+        if self._adapter:
+            await self._adapter.init()
+
+    async def is_ready(self) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.is_ready()
+
+    async def close(self) -> None:
+        if self._adapter:
+            await self._adapter.close()
+
+    async def get_connection(self) -> Any:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.get_connection()
+
+    async def get_agent(self, agent_id: UUID) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_agent(agent_id)
+
+    async def get_agents(self) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_agents()
+
+    async def create_agent(self, agent: Any) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.create_agent(agent)
+
+    async def update_agent(self, agent_id: UUID, agent: Any) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.update_agent(agent_id, agent)
+
+    async def delete_agent(self, agent_id: UUID) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.delete_agent(agent_id)
+
+    async def ensure_embedding_dimension(self, dimension: int) -> None:
+        if self._adapter:
+            await self._adapter.ensure_embedding_dimension(dimension)
+
+    async def get_entities_by_ids(self, entity_ids: list[UUID]) -> list[Any] | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_entities_by_ids(entity_ids)
+
+    async def get_entities_for_room(
+        self, room_id: UUID, include_components: bool = False
+    ) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_entities_for_room(room_id, include_components)
+
+    async def create_entities(self, entities: list[Any]) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.create_entities(entities)
+
+    async def update_entity(self, entity: Any) -> None:
+        if self._adapter:
+            await self._adapter.update_entity(entity)
+
+    async def get_component(
+        self,
+        entity_id: UUID,
+        component_type: str,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_component(
+            entity_id, component_type, world_id, source_entity_id
+        )
+
+    async def get_components(
+        self,
+        entity_id: UUID,
+        world_id: UUID | None = None,
+        source_entity_id: UUID | None = None,
+    ) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_components(entity_id, world_id, source_entity_id)
+
+    async def create_component(self, component: Any) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.create_component(component)
+
+    async def update_component(self, component: Any) -> None:
+        if self._adapter:
+            await self._adapter.update_component(component)
+
+    async def delete_component(self, component_id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_component(component_id)
+
+    async def get_memories(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_memories(params)
+
+    async def get_memory_by_id(self, id: UUID) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_memory_by_id(id)
+
+    async def get_memories_by_ids(
+        self, ids: list[UUID], table_name: str | None = None
+    ) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_memories_by_ids(ids, table_name)
+
+    async def get_memories_by_room_ids(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_memories_by_room_ids(params)
+
+    async def get_cached_embeddings(self, params: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_cached_embeddings(params)
+
+    async def log(self, params: dict[str, Any]) -> None:
+        if self._adapter:
+            await self._adapter.log(params)
+
+    async def get_logs(self, params: dict[str, Any]) -> list[Log]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_logs(params)
+
+    async def delete_log(self, log_id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_log(log_id)
+
+    async def get_agent_run_summaries(self, params: dict[str, Any]) -> AgentRunSummaryResult:
+        if not self._adapter:
+            return AgentRunSummaryResult(runs=[], total=0, hasMore=False)
+        return await self._adapter.get_agent_run_summaries(params)
+
+    async def search_memories(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.search_memories(params)
+
+    async def create_memory(self, memory: Any, table_name: str, unique: bool = False) -> UUID:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.create_memory(memory, table_name, unique)
+
+    async def update_memory(self, memory: dict[str, Any]) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.update_memory(memory)
+
+    async def delete_memory(self, memory_id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_memory(memory_id)
+
+    async def delete_many_memories(self, memory_ids: list[UUID]) -> None:
+        if self._adapter:
+            await self._adapter.delete_many_memories(memory_ids)
+
+    async def delete_all_memories(self, room_id: UUID, table_name: str) -> None:
+        if self._adapter:
+            await self._adapter.delete_all_memories(room_id, table_name)
+
+    async def count_memories(
+        self, room_id: UUID, unique: bool = False, table_name: str | None = None
+    ) -> int:
+        if not self._adapter:
+            return 0
+        return await self._adapter.count_memories(room_id, unique, table_name)
+
+    async def create_world(self, world: Any) -> UUID:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.create_world(world)
+
+    async def get_world(self, id: UUID) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_world(id)
+
+    async def remove_world(self, id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.remove_world(id)
+
+    async def get_all_worlds(self) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_all_worlds()
+
+    async def update_world(self, world: Any) -> None:
+        if self._adapter:
+            await self._adapter.update_world(world)
+
+    async def get_rooms_by_ids(self, room_ids: list[UUID]) -> list[Any] | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_rooms_by_ids(room_ids)
+
+    async def create_rooms(self, rooms: list[Any]) -> list[UUID]:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.create_rooms(rooms)
+
+    async def delete_room(self, room_id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_room(room_id)
+
+    async def delete_rooms_by_world_id(self, world_id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_rooms_by_world_id(world_id)
+
+    async def update_room(self, room: Any) -> None:
+        if self._adapter:
+            await self._adapter.update_room(room)
+
+    async def get_rooms_for_participant(self, entity_id: UUID) -> list[UUID]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_rooms_for_participant(entity_id)
+
+    async def get_rooms_for_participants(self, user_ids: list[UUID]) -> list[UUID]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_rooms_for_participants(user_ids)
+
+    async def get_rooms_by_world(self, world_id: UUID) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_rooms_by_world(world_id)
+
+    async def remove_participant(self, entity_id: UUID, room_id: UUID) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.remove_participant(entity_id, room_id)
+
+    async def get_participants_for_entity(self, entity_id: UUID) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_participants_for_entity(entity_id)
+
+    async def get_participants_for_room(self, room_id: UUID) -> list[UUID]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_participants_for_room(room_id)
+
+    async def is_room_participant(self, room_id: UUID, entity_id: UUID) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.is_room_participant(room_id, entity_id)
+
+    async def add_participants_room(self, entity_ids: list[UUID], room_id: UUID) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.add_participants_room(entity_ids, room_id)
+
+    async def get_participant_user_state(self, room_id: UUID, entity_id: UUID) -> str | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_participant_user_state(room_id, entity_id)
+
+    async def set_participant_user_state(
+        self, room_id: UUID, entity_id: UUID, state: str | None
+    ) -> None:
+        if self._adapter:
+            await self._adapter.set_participant_user_state(room_id, entity_id, state)
+
+    async def create_relationship(self, params: dict[str, Any]) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.create_relationship(params)
+
+    async def update_relationship(self, relationship: Any) -> None:
+        if self._adapter:
+            await self._adapter.update_relationship(relationship)
+
+    async def get_relationship(self, params: dict[str, Any]) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_relationship(params)
+
+    async def get_relationships(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_relationships(params)
+
+    async def get_cache(self, key: str) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_cache(key)
+
+    async def set_cache(self, key: str, value: Any) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.set_cache(key, value)
+
+    async def delete_cache(self, key: str) -> bool:
+        if not self._adapter:
+            return False
+        return await self._adapter.delete_cache(key)
+
+    async def create_task(self, task: Any) -> UUID:
+        if not self._adapter:
+            raise RuntimeError("Database adapter not set")
+        return await self._adapter.create_task(task)
+
+    async def get_tasks(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_tasks(params)
+
+    async def get_task(self, id: UUID) -> Any | None:
+        if not self._adapter:
+            return None
+        return await self._adapter.get_task(id)
+
+    async def get_tasks_by_name(self, name: str) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_tasks_by_name(name)
+
+    async def update_task(self, id: UUID, task: dict[str, Any]) -> None:
+        if self._adapter:
+            await self._adapter.update_task(id, task)
+
+    async def delete_task(self, id: UUID) -> None:
+        if self._adapter:
+            await self._adapter.delete_task(id)
+
+    async def get_memories_by_world_id(self, params: dict[str, Any]) -> list[Any]:
+        if not self._adapter:
+            return []
+        return await self._adapter.get_memories_by_world_id(params)

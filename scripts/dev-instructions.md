@@ -1,10 +1,10 @@
-# ElizaOS Developer Context
+# elizaOS Developer Context
 
-This file contains the core technical aspects of ElizaOS, focusing on its architecture, implementation, and developer-facing components. The codebase is organized as a monorepo with several key packages:
+This file contains the core technical aspects of elizaOS, focusing on its architecture, implementation, and developer-facing components. The codebase is organized as a monorepo with several key packages:
 
 ## Key Components
 
-1. **Core Package**: The foundation of ElizaOS with the agent runtime, entity management, actions, and database interactions
+1. **Core Package**: The foundation of elizaOS with the agent runtime, entity management, actions, and database interactions
 2. **CLI Package**: Command-line interface for managing agents, projects, and development tasks
 3. **Client Package**: Frontend interface components and API interactions
 4. **SQL/Database**: Database adapters and schema management

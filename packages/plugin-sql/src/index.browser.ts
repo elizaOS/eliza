@@ -1,13 +1,13 @@
 import {
   type IAgentRuntime,
   type IDatabaseAdapter,
-  type UUID,
-  type Plugin,
   logger,
-} from '@elizaos/core/browser';
-import { PgliteDatabaseAdapter } from './pglite/adapter';
-import { PGliteClientManager } from './pglite/manager';
-import * as schema from './schema';
+  type Plugin,
+  type UUID,
+} from "@elizaos/core/browser";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { PGliteClientManager } from "./pglite/manager";
+import * as schema from "./schema";
 
 /**
  * Browser-safe entrypoint for @elizaos/plugin-sql
@@ -17,14 +17,15 @@ import * as schema from './schema';
  */
 
 // Global singletons (browser-safe)
-const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
+const GLOBAL_SINGLETONS = Symbol.for("@elizaos/plugin-sql/global-singletons");
 
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
 }
 
 // Type assertion needed because globalThis doesn't include symbol keys in its type definition
-const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
+const globalSymbols = globalThis as typeof globalThis &
+  Record<symbol, GlobalSingletons>;
 if (!globalSymbols[GLOBAL_SINGLETONS]) {
   globalSymbols[GLOBAL_SINGLETONS] = {};
 }
@@ -36,22 +37,25 @@ const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
  */
 export function createDatabaseAdapter(
   _config: { dataDir?: string },
-  agentId: UUID
+  agentId: UUID,
 ): IDatabaseAdapter {
   if (!globalSingletons.pgLiteClientManager) {
     // Use in-memory PGlite by default in the browser.
     globalSingletons.pgLiteClientManager = new PGliteClientManager({});
   }
-  return new PgliteDatabaseAdapter(agentId, globalSingletons.pgLiteClientManager);
+  return new PgliteDatabaseAdapter(
+    agentId,
+    globalSingletons.pgLiteClientManager,
+  );
 }
 
 export const plugin: Plugin = {
-  name: '@elizaos/plugin-sql',
-  description: 'A plugin for SQL database access (PGlite WASM in browser).',
+  name: "@elizaos/plugin-sql",
+  description: "A plugin for SQL database access (PGlite WASM in browser).",
   priority: 0,
   schema: schema,
   init: async (_config, runtime: IAgentRuntime) => {
-    logger.info({ src: 'plugin:sql' }, 'plugin-sql (browser) init starting');
+    logger.info({ src: "plugin:sql" }, "plugin-sql (browser) init starting");
 
     // Check if a database adapter is already registered
     try {
@@ -59,22 +63,25 @@ export const plugin: Plugin = {
       const isReady = await runtime.isReady();
       if (isReady) {
         logger.info(
-          { src: 'plugin:sql' },
-          'Database adapter already registered, skipping creation'
+          { src: "plugin:sql" },
+          "Database adapter already registered, skipping creation",
         );
         return;
       }
-    } catch (error) {
+    } catch (_error) {
       // No adapter exists or isReady failed, continue with creation
     }
 
     // In browser builds, always use PGlite (in-memory unless configured elsewhere in runtime)
     const dbAdapter = createDatabaseAdapter({}, runtime.agentId);
     runtime.registerDatabaseAdapter(dbAdapter);
-    logger.info({ src: 'plugin:sql' }, 'Browser database adapter (PGlite) created and registered');
+    logger.info(
+      { src: "plugin:sql" },
+      "Browser database adapter (PGlite) created and registered",
+    );
   },
 };
 
 export default plugin;
 
-export { DatabaseMigrationService } from './migration-service';
+export { DatabaseMigrationService } from "./migration-service";

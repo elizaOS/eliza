@@ -1,7 +1,7 @@
-import { PGlite, type PGliteOptions } from '@electric-sql/pglite';
-import { fuzzystrmatch } from '@electric-sql/pglite/contrib/fuzzystrmatch';
-import { vector } from '@electric-sql/pglite/vector';
-import type { IDatabaseClientManager } from '../types';
+import { PGlite, type PGliteOptions } from "@electric-sql/pglite";
+import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
+import { vector } from "@electric-sql/pglite/vector";
+import type { IDatabaseClientManager } from "../types";
 
 /**
  * Class representing a database client manager for PGlite.

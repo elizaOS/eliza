@@ -1,6 +1,6 @@
-import { sql } from 'drizzle-orm';
-import { logger } from '@elizaos/core';
-import type { DrizzleDB, SchemaSnapshot } from '../types';
+import { logger } from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import type { DrizzleDB, SchemaSnapshot } from "../types";
 
 /**
  * Introspect the current database state and generate a snapshot
@@ -15,8 +15,13 @@ export class DatabaseIntrospector {
    * @param schemaName - Schema to introspect (default: 'public')
    * @returns Schema snapshot of current database state
    */
-  async introspectSchema(schemaName: string = 'public'): Promise<SchemaSnapshot> {
-    logger.info({ src: 'plugin:sql', schemaName }, 'Starting database introspection');
+  async introspectSchema(
+    schemaName: string = "public",
+  ): Promise<SchemaSnapshot> {
+    logger.info(
+      { src: "plugin:sql", schemaName },
+      "Starting database introspection",
+    );
 
     const tables: any = {};
     const schemas: any = {};
@@ -27,9 +32,12 @@ export class DatabaseIntrospector {
 
     for (const tableInfo of allTables) {
       const tableName = tableInfo.table_name;
-      const tableSchema = tableInfo.table_schema || 'public';
+      const tableSchema = tableInfo.table_schema || "public";
 
-      logger.debug({ src: 'plugin:sql', tableSchema, tableName }, 'Introspecting table');
+      logger.debug(
+        { src: "plugin:sql", tableSchema, tableName },
+        "Introspecting table",
+      );
 
       // Get columns for this table
       const columns = await this.getColumns(tableSchema, tableName);
@@ -41,7 +49,7 @@ export class DatabaseIntrospector {
           name: col.column_name,
           type: col.data_type,
           primaryKey: col.is_primary || false,
-          notNull: col.is_nullable === 'NO',
+          notNull: col.is_nullable === "NO",
           default: col.column_default
             ? this.parseDefault(col.column_default, col.data_type)
             : undefined,
@@ -56,7 +64,11 @@ export class DatabaseIntrospector {
         if (!idx.is_primary && !idx.is_unique_constraint) {
           // Skip primary keys and unique constraints
           // Also skip indexes with no columns (partial indexes, expression indexes, etc.)
-          if (idx.columns && Array.isArray(idx.columns) && idx.columns.length > 0) {
+          if (
+            idx.columns &&
+            Array.isArray(idx.columns) &&
+            idx.columns.length > 0
+          ) {
             indexesObject[idx.name] = {
               name: idx.name,
               columns: idx.columns.map((col) => ({
@@ -64,7 +76,7 @@ export class DatabaseIntrospector {
                 isExpression: false,
               })),
               isUnique: idx.is_unique,
-              method: idx.method || 'btree',
+              method: idx.method || "btree",
             };
           }
         }
@@ -80,11 +92,11 @@ export class DatabaseIntrospector {
           tableFrom: tableName,
           schemaFrom: tableSchema,
           tableTo: fk.foreign_table_name,
-          schemaTo: fk.foreign_table_schema || 'public',
+          schemaTo: fk.foreign_table_schema || "public",
           columnsFrom: [fk.column_name],
           columnsTo: [fk.foreign_column_name],
-          onDelete: fk.delete_rule?.toLowerCase() || 'no action',
-          onUpdate: fk.update_rule?.toLowerCase() || 'no action',
+          onDelete: fk.delete_rule?.toLowerCase() || "no action",
+          onUpdate: fk.update_rule?.toLowerCase() || "no action",
         };
       }
 
@@ -100,7 +112,10 @@ export class DatabaseIntrospector {
       }
 
       // Get unique constraints
-      const uniqueConstraints = await this.getUniqueConstraints(tableSchema, tableName);
+      const uniqueConstraints = await this.getUniqueConstraints(
+        tableSchema,
+        tableName,
+      );
 
       for (const unq of uniqueConstraints) {
         uniqueConstraintObject[unq.name] = {
@@ -111,7 +126,10 @@ export class DatabaseIntrospector {
       }
 
       // Get check constraints
-      const checkConstraints = await this.getCheckConstraints(tableSchema, tableName);
+      const checkConstraints = await this.getCheckConstraints(
+        tableSchema,
+        tableName,
+      );
       const checksObject: any = {};
 
       for (const check of checkConstraints) {
@@ -134,7 +152,7 @@ export class DatabaseIntrospector {
       };
 
       // Track schemas
-      if (tableSchema && tableSchema !== 'public') {
+      if (tableSchema && tableSchema !== "public") {
         schemas[tableSchema] = tableSchema;
       }
     }
@@ -154,13 +172,13 @@ export class DatabaseIntrospector {
     }
 
     logger.info(
-      { src: 'plugin:sql', tableCount: Object.keys(tables).length },
-      'Database introspection complete'
+      { src: "plugin:sql", tableCount: Object.keys(tables).length },
+      "Database introspection complete",
     );
 
     return {
-      version: '7',
-      dialect: 'postgresql',
+      version: "7",
+      dialect: "postgresql",
       tables,
       schemas,
       enums,
@@ -183,7 +201,7 @@ export class DatabaseIntrospector {
           FROM information_schema.tables
           WHERE table_schema = ${schemaName}
             AND table_type = 'BASE TABLE'
-          ORDER BY table_name`
+          ORDER BY table_name`,
     );
     return result.rows;
   }
@@ -191,7 +209,10 @@ export class DatabaseIntrospector {
   /**
    * Get columns for a table
    */
-  private async getColumns(schemaName: string, tableName: string): Promise<any[]> {
+  private async getColumns(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT 
             a.attname AS column_name,
@@ -232,7 +253,7 @@ export class DatabaseIntrospector {
             AND NOT a.attisdropped
             AND ns.nspname = ${schemaName}
             AND cls.relname = ${tableName}
-          ORDER BY a.attnum`
+          ORDER BY a.attnum`,
     );
     return result.rows;
   }
@@ -240,7 +261,10 @@ export class DatabaseIntrospector {
   /**
    * Get indexes for a table
    */
-  private async getIndexes(schemaName: string, tableName: string): Promise<any[]> {
+  private async getIndexes(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT 
             i.relname AS name,
@@ -262,7 +286,7 @@ export class DatabaseIntrospector {
           JOIN pg_am am ON am.oid = i.relam
           LEFT JOIN pg_constraint con ON con.conindid = idx.indexrelid
           WHERE n.nspname = ${schemaName}
-            AND c.relname = ${tableName}`
+            AND c.relname = ${tableName}`,
     );
     return result.rows;
   }
@@ -270,7 +294,10 @@ export class DatabaseIntrospector {
   /**
    * Get foreign keys for a table
    */
-  private async getForeignKeys(schemaName: string, tableName: string): Promise<any[]> {
+  private async getForeignKeys(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT
             con.conname AS name,
@@ -303,7 +330,7 @@ export class DatabaseIntrospector {
             AND fatt.attrelid = con.confrelid
           WHERE con.contype = 'f'
             AND nsp.nspname = ${schemaName}
-            AND rel.relname = ${tableName}`
+            AND rel.relname = ${tableName}`,
     );
     return result.rows;
   }
@@ -311,7 +338,10 @@ export class DatabaseIntrospector {
   /**
    * Get primary keys for a table
    */
-  private async getPrimaryKeys(schemaName: string, tableName: string): Promise<any[]> {
+  private async getPrimaryKeys(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT 
             con.conname AS name,
@@ -327,7 +357,7 @@ export class DatabaseIntrospector {
           JOIN pg_namespace nsp ON nsp.oid = con.connamespace
           WHERE con.contype = 'p'
             AND nsp.nspname = ${schemaName}
-            AND rel.relname = ${tableName}`
+            AND rel.relname = ${tableName}`,
     );
     return result.rows;
   }
@@ -335,7 +365,10 @@ export class DatabaseIntrospector {
   /**
    * Get unique constraints for a table
    */
-  private async getUniqueConstraints(schemaName: string, tableName: string): Promise<any[]> {
+  private async getUniqueConstraints(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT 
             con.conname AS name,
@@ -351,7 +384,7 @@ export class DatabaseIntrospector {
           JOIN pg_namespace nsp ON nsp.oid = con.connamespace
           WHERE con.contype = 'u'
             AND nsp.nspname = ${schemaName}
-            AND rel.relname = ${tableName}`
+            AND rel.relname = ${tableName}`,
     );
     return result.rows;
   }
@@ -359,7 +392,10 @@ export class DatabaseIntrospector {
   /**
    * Get check constraints for a table
    */
-  private async getCheckConstraints(schemaName: string, tableName: string): Promise<any[]> {
+  private async getCheckConstraints(
+    schemaName: string,
+    tableName: string,
+  ): Promise<any[]> {
     const result = await this.db.execute(
       sql`SELECT 
             con.conname AS name,
@@ -369,7 +405,7 @@ export class DatabaseIntrospector {
           JOIN pg_namespace nsp ON nsp.oid = con.connamespace
           WHERE con.contype = 'c'
             AND nsp.nspname = ${schemaName}
-            AND rel.relname = ${tableName}`
+            AND rel.relname = ${tableName}`,
     );
     return result.rows;
   }
@@ -388,7 +424,7 @@ export class DatabaseIntrospector {
           JOIN pg_enum e ON t.oid = e.enumtypid
           JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
           WHERE n.nspname = ${schemaName}
-          ORDER BY schema, name, sort_order`
+          ORDER BY schema, name, sort_order`,
     );
     return result.rows;
   }
@@ -396,7 +432,10 @@ export class DatabaseIntrospector {
   /**
    * Parse default value for a column
    */
-  private parseDefault(defaultValue: string, dataType: string): string | undefined {
+  private parseDefault(
+    defaultValue: string,
+    dataType: string,
+  ): string | undefined {
     if (!defaultValue) return undefined;
 
     // Remove the type cast if present (e.g., "'value'::text" -> "'value'")
@@ -406,14 +445,14 @@ export class DatabaseIntrospector {
     }
 
     // Handle nextval for sequences
-    if (defaultValue.includes('nextval(')) {
+    if (defaultValue.includes("nextval(")) {
       return undefined; // Serial types handle this automatically
     }
 
     // Handle boolean defaults
-    if (dataType === 'boolean') {
-      if (defaultValue === 'true') return 'true';
-      if (defaultValue === 'false') return 'false';
+    if (dataType === "boolean") {
+      if (defaultValue === "true") return "true";
+      if (defaultValue === "false") return "false";
     }
 
     // Return as-is for other cases
@@ -427,16 +466,18 @@ export class DatabaseIntrospector {
    */
   async hasExistingTables(pluginName: string): Promise<boolean> {
     const schemaName =
-      pluginName === '@elizaos/plugin-sql' ? 'public' : this.deriveSchemaName(pluginName);
+      pluginName === "@elizaos/plugin-sql"
+        ? "public"
+        : this.deriveSchemaName(pluginName);
 
     const result = await this.db.execute(
       sql`SELECT COUNT(*) AS count
           FROM information_schema.tables
           WHERE table_schema = ${schemaName}
-            AND table_type = 'BASE TABLE'`
+            AND table_type = 'BASE TABLE'`,
     );
 
-    const count = parseInt((result.rows[0]?.count as string) || '0', 10);
+    const count = parseInt((result.rows[0]?.count as string) || "0", 10);
     return count > 0;
   }
 
@@ -445,6 +486,10 @@ export class DatabaseIntrospector {
    */
   private deriveSchemaName(pluginName: string): string {
     // Same logic as in schema-transformer.ts
-    return pluginName.replace('@', '').replace('/', '_').replace(/-/g, '_').toLowerCase();
+    return pluginName
+      .replace("@", "")
+      .replace("/", "_")
+      .replace(/-/g, "_")
+      .toLowerCase();
   }
 }

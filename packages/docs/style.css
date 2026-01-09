@@ -1,0 +1,256 @@
+/* Left sidebar vertical navigation - more compact */
+
+/* Reduce font size for sidebar like before */
+#sidebar * {
+  font-size: 12px;
+}
+
+/* Reduce vertical padding for sidebar navigation items */
+#sidebar .sidebar-title,
+#sidebar a,
+#sidebar-content a,
+.sidebar-title {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+}
+
+/* Reduce spacing for sidebar group sections */
+#sidebar .sidebar-group-header,
+.sidebar-group-header {
+  padding-top: 0.3rem;
+  padding-bottom: 0.1rem; /* Reduce bottom padding for tighter hierarchy */
+}
+
+/* Target the margin below headers to tighten hierarchy */
+#sidebar .mb-3\.5 {
+  margin-bottom: 0.15rem; /* Much smaller gap between header and first item */
+}
+
+#sidebar [class*="mb-2.5"] {
+  margin-bottom: 0.1rem; /* Even tighter on large screens */
+}
+
+/* Eliminate ALL top padding/margin */
+#sidebar,
+#sidebar-content {
+  line-height: 1.3;
+  padding-top: 0; /* Complete elimination */
+  margin-top: 0;
+}
+
+/* Target the section containers directly - reduce spacing between sections */
+#sidebar .mt-6 {
+  margin-top: 0.75rem; /* Reduce from 1.5rem to 0.75rem */
+}
+
+#sidebar .lg\\:mt-8 {
+  margin-top: 1rem; /* Reduce from 2rem to 1rem on large screens */
+}
+
+/* Alternative approach - target div containers within sidebar */
+#sidebar > div > div.mt-6,
+#sidebar-content > div > div.mt-6 {
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 1024px) {
+  #sidebar .lg\\:mt-8 {
+    margin-top: 1rem; /* Even more compact on large screens */
+  }
+}
+
+/* Nuclear approach - eliminate ALL top spacing */
+#sidebar > *:first-child,
+#sidebar-content > *:first-child,
+#sidebar *:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Target any potential containers */
+#sidebar nav,
+#sidebar div,
+#sidebar ul,
+#sidebar li:first-child {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+#sidebar * {
+  line-height: 1.3;
+}
+
+/* Fix vertical centering of navigation items and hover states */
+#sidebar ul li a.group {
+  display: flex;
+  align-items: center;
+  line-height: 1; /* Override line-height for perfect centering */
+  padding-top: 0.125rem; /* Half the original padding */
+  padding-bottom: 0.125rem;
+}
+
+/* Specifically target the inner content div for alignment */
+#sidebar a.group > div.flex-1 {
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* Ensure selected/hover state background is perfectly centered */
+#sidebar [class*="bg-primary"] {
+  align-items: center;
+  line-height: 1;
+}
+
+/* Fix method pill spacing and text centering */
+#sidebar .method-nav-pill {
+  margin-right: 0.5rem; /* Add space between pill and text */
+  min-width: 2.5rem; /* Ensure wider pills don't overlap */
+}
+
+/* Fix vertical centering of text inside pills - use height and line-height trick */
+#sidebar .method-nav-pill span[class*="px-1"] {
+  height: 1.25rem; /* Set explicit height */
+  line-height: 1.25rem; /* Match line-height to height for perfect centering */
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Fix expandable items - equal top and bottom spacing */
+#sidebar div.group.flex.items-center {
+  padding-top: 0.125rem; /* Match reduced padding of other nav items */
+  padding-bottom: 0.125rem; /* Equal top and bottom */
+}
+
+/* Fix centering of robot icon SVG within its container */
+div.mr-4.p-1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Alternative selector for the robot icon container */
+a[href*="llms-full.txt"] div.rounded-md.p-1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Adjust the SVG mask position to center it properly */
+a[href*="llms-full.txt"] svg[style*="robot.svg"] {
+  -webkit-mask-position: center center;
+  mask-position: center center;
+  transform: translateY(1px); /* Fine-tune vertical position */
+}
+
+/* Fix agent card image spacing */
+[data-component-part="card-title"] [data-rmiz] {
+  margin-right: 12px;
+  display: inline-block;
+  vertical-align: middle;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+/* Ensure images maintain exact size */
+[data-component-part="card-title"] [data-rmiz] img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+}
+
+/* Keep agent card titles on one line */
+[data-component-part="card-title"] > span[style*="display: flex"] {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+/* Reduce text sizes for better fit */
+[data-component-part="card-title"] {
+  font-size: 14px;
+}
+
+[data-component-part="card-content"] {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Agent card plugin pill styling */
+.agent-plugin-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid rgba(156, 163, 175, 0.3);
+  border-radius: 14px;
+  font-size: 11px;
+  color: #6b7280;
+  margin-left: 8px;
+  vertical-align: middle;
+  height: 24px;
+  line-height: 18px;
+  white-space: nowrap;
+  width: auto;
+  min-width: fit-content;
+}
+
+/* Stacked circles for plugin count */
+.agent-plugin-stack {
+  display: inline-block;
+  position: relative;
+  margin-left: 12px;
+  width: 43px;
+  height: 24px;
+  vertical-align: middle;
+}
+
+.agent-plugin-circle {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.agent-plugin-circle:nth-child(1) {
+  z-index: 3;
+  left: -4px;
+}
+
+.agent-plugin-circle:nth-child(2),
+.agent-plugin-circle:nth-child(3) {
+  display: none;
+}
+
+/* SVG background for stacked circles outline */
+.agent-plugin-stack::before {
+  content: "";
+  position: absolute;
+  width: 50px;
+  height: 24px;
+  left: -7px;
+  top: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='50' height='24' viewBox='0 0 50 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3CclipPath id='clip'%3E%3Crect x='0' y='0' width='50' height='24'/%3E%3C/clipPath%3E%3Cmask id='mask'%3E%3Crect x='0' y='0' width='50' height='24' fill='white'/%3E%3Ccircle cx='15' cy='12' r='10.5' fill='black'/%3E%3Ccircle cx='18.5' cy='12' r='10.5' fill='black'/%3E%3C/mask%3E%3C/defs%3E%3Cg fill='none' stroke='%239CA3AF' stroke-width='1' opacity='0.5'%3E%3Ccircle cx='15' cy='12' r='11'/%3E%3Ccircle cx='18.5' cy='12' r='11' mask='url(%23mask)'/%3E%3Ccircle cx='22' cy='12' r='11' mask='url(%23mask)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Navbar "Join Community" button hover - match GitHub button blue text */
+a[href*="discord.gg"]:hover {
+  color: #0b35f1;
+}
+
+/* Make Discord icon turn blue on hover (Mintlify uses mask-based icons) */
+a[href*="discord.gg"]:hover * {
+  color: #0b35f1;
+  background-color: currentColor;
+}

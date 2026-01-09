@@ -1,29 +1,38 @@
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import fs from 'node:fs';
-import { existsSync, promises as fsPromises } from 'node:fs';
-import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
-import { default as generate } from '@babel/generator';
-import * as t from '@babel/types';
-import crypto from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
-import minimist from 'minimist';
+import crypto from "node:crypto";
+import fs, { existsSync, promises as fsPromises } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import Anthropic from "@anthropic-ai/sdk";
+import { default as generate } from "@babel/generator";
+import { parse } from "@babel/parser";
+import dotenv from "dotenv";
+import minimist from "minimist";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const args = process.argv.slice(2);
-const shouldApply = args.includes('--apply');
-const shouldAnalyze = args.includes('--analyze') || shouldApply;
+const shouldApply = args.includes("--apply");
+const _shouldAnalyze = args.includes("--analyze") || shouldApply;
 
 // Global configuration
 let VERBOSE = false;
-const PARSE_CACHE_PATH = path.join(process.cwd(), 'scripts', 'async-analysis-parse.json');
-const AI_CACHE_PATH = path.join(process.cwd(), 'scripts', 'async-analysis-ai.json');
-const FINAL_CACHE_PATH = path.join(process.cwd(), 'scripts', 'async-analysis-final.json');
-const CACHE_DIR = path.join(process.cwd(), 'scripts', 'cache');
-const CACHE_PATH = path.join(CACHE_DIR, 'analysis-cache.json');
+const PARSE_CACHE_PATH = path.join(
+  process.cwd(),
+  "scripts",
+  "async-analysis-parse.json",
+);
+const AI_CACHE_PATH = path.join(
+  process.cwd(),
+  "scripts",
+  "async-analysis-ai.json",
+);
+const FINAL_CACHE_PATH = path.join(
+  process.cwd(),
+  "scripts",
+  "async-analysis-final.json",
+);
+const CACHE_DIR = path.join(process.cwd(), "scripts", "cache");
+const _CACHE_PATH = path.join(CACHE_DIR, "analysis-cache.json");
 
 // Configuration
 const VERBOSE_LOGGING = false; // Set to true for detailed logs
@@ -31,7 +40,7 @@ const VERBOSE_LOGGING = false; // Set to true for detailed logs
 // Utility for conditional logging
 function logVerbose(...args) {
   if (VERBOSE) {
-    console.log('[VERBOSE]', ...args);
+    console.log("[VERBOSE]", ...args);
   }
 }
 
@@ -42,28 +51,31 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const CACHE_VERSION = '1.0.0';
-const CACHE_FILE = path.join(__dirname, 'cache', 'analysis-cache.json');
-const RESULTS_FILE = path.join(__dirname, 'optimization-results.json');
-const OPTIMIZED_FILE = path.join(__dirname, 'async-optimization-test.optimized.js');
-const STAGE_FILES = {
-  PARSE: path.join(__dirname, 'async-analysis-parse.json'),
-  ANALYSIS: path.join(__dirname, 'async-analysis-ai.json'),
-  FINAL: path.join(__dirname, 'async-analysis-final.json'),
+const CACHE_VERSION = "1.0.0";
+const CACHE_FILE = path.join(__dirname, "cache", "analysis-cache.json");
+const _RESULTS_FILE = path.join(__dirname, "optimization-results.json");
+const _OPTIMIZED_FILE = path.join(
+  __dirname,
+  "async-optimization-test.optimized.js",
+);
+const _STAGE_FILES = {
+  PARSE: path.join(__dirname, "async-analysis-parse.json"),
+  ANALYSIS: path.join(__dirname, "async-analysis-ai.json"),
+  FINAL: path.join(__dirname, "async-analysis-final.json"),
 };
 
 // Add skip packages configuration
 const SKIP_PACKAGES = new Set([
-  'cli', // Skip auto doc client CLI
-  'create-eliza', // Skip Eliza projects
-  'project-starter',
-  'plugin-starter',
-  'plugin-example',
+  "cli", // Skip auto doc client CLI
+  "create-eliza", // Skip Eliza projects
+  "project-starter",
+  "plugin-starter",
+  "plugin-example",
 ]);
 
 const TRACKING_FILES = {
-  CANDIDATES: path.join(__dirname, 'candidates.json'),
-  RESULTS: path.join(__dirname, 'results.json'),
+  CANDIDATES: path.join(__dirname, "candidates.json"),
+  RESULTS: path.join(__dirname, "results.json"),
 };
 
 // Add cache initialization at the top level
@@ -78,15 +90,15 @@ let analysisCache = {
   functions: {},
 };
 
-async function loadCache() {
+async function _loadCache() {
   try {
     await fsPromises.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-    const content = await fsPromises.readFile(CACHE_FILE, 'utf8');
+    const content = await fsPromises.readFile(CACHE_FILE, "utf8");
     const cache = JSON.parse(content);
     if (cache.version === CACHE_VERSION) {
       return cache;
     }
-  } catch (error) {
+  } catch (_error) {
     // If cache doesn't exist or is invalid, return empty cache
     return {
       version: CACHE_VERSION,
@@ -104,20 +116,22 @@ async function loadCache() {
 async function initializeCache() {
   try {
     await fsPromises.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-    const content = await fsPromises.readFile(CACHE_FILE, 'utf8');
+    const content = await fsPromises.readFile(CACHE_FILE, "utf8");
     const cache = JSON.parse(content);
     if (cache.version === CACHE_VERSION) {
       analysisCache = cache;
-      logVerbose('\n=== Cache Status ===');
-      logVerbose(`Last run: ${cache.lastRun || 'Never'}`);
+      logVerbose("\n=== Cache Status ===");
+      logVerbose(`Last run: ${cache.lastRun || "Never"}`);
       logVerbose(
-        `Previously analyzed: ${cache.metadata.analyzedFunctions}/${cache.metadata.totalFunctions} functions`
+        `Previously analyzed: ${cache.metadata.analyzedFunctions}/${cache.metadata.totalFunctions} functions`,
       );
-      logVerbose(`Found ${cache.metadata.parallelizableFunctions} parallelizable functions\n`);
+      logVerbose(
+        `Found ${cache.metadata.parallelizableFunctions} parallelizable functions\n`,
+      );
     }
-  } catch (error) {
+  } catch (_error) {
     // If cache doesn't exist or is invalid, we'll use the default empty cache
-    logVerbose('\nNo valid cache found, starting fresh analysis');
+    logVerbose("\nNo valid cache found, starting fresh analysis");
     analysisCache = {
       version: CACHE_VERSION,
       lastRun: null,
@@ -144,10 +158,12 @@ async function updateCache(functionInfo, analysis) {
 
   // Update metadata
   analysisCache.lastRun = new Date().toISOString();
-  analysisCache.metadata.analyzedFunctions = Object.keys(analysisCache.functions).length;
-  analysisCache.metadata.parallelizableFunctions = Object.values(analysisCache.functions).filter(
-    (f) => f.analysis?.isParallelizable
+  analysisCache.metadata.analyzedFunctions = Object.keys(
+    analysisCache.functions,
   ).length;
+  analysisCache.metadata.parallelizableFunctions = Object.values(
+    analysisCache.functions,
+  ).filter((f) => f.analysis && f.analysis.isParallelizable).length;
 
   // Save cache after each update
   await saveCache();
@@ -159,19 +175,19 @@ const getCircularReplacer = () => {
   return (key, value) => {
     // Skip properties that commonly cause circular references
     if (
-      key === 'parent' ||
-      key === 'range' ||
-      key === 'loc' ||
-      key === 'start' ||
-      key === 'end' ||
-      key === 'body' ||
-      key === 'sourceInfo'
+      key === "parent" ||
+      key === "range" ||
+      key === "loc" ||
+      key === "start" ||
+      key === "end" ||
+      key === "body" ||
+      key === "sourceInfo"
     ) {
       return undefined;
     }
-    if (typeof value === 'object' && value !== null) {
+    if (typeof value === "object" && value !== null) {
       if (seen.has(value)) {
-        return '[Circular]';
+        return "[Circular]";
       }
       seen.add(value);
     }
@@ -183,9 +199,12 @@ async function saveCache() {
   try {
     await fsPromises.mkdir(path.dirname(CACHE_FILE), { recursive: true });
 
-    await fsPromises.writeFile(CACHE_FILE, JSON.stringify(analysisCache, getCircularReplacer(), 2));
+    await fsPromises.writeFile(
+      CACHE_FILE,
+      JSON.stringify(analysisCache, getCircularReplacer(), 2),
+    );
   } catch (error) {
-    console.error('Error saving cache:', error);
+    console.error("Error saving cache:", error);
   }
 }
 
@@ -193,26 +212,26 @@ export async function fetchUserData(userId) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return {
     id: userId,
-    name: 'Test User',
-    email: 'test@example.com',
+    name: "Test User",
+    email: "test@example.com",
   };
 }
-export async function fetchUserProducts(userId) {
+export async function fetchUserProducts(_userId) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return [
     {
-      id: 'p1',
-      name: 'Product 1',
+      id: "p1",
+      name: "Product 1",
       price: 99.99,
     },
     {
-      id: 'p2',
-      name: 'Product 2',
+      id: "p2",
+      name: "Product 2",
       price: 149.99,
     },
   ];
 }
-export async function fetchUserAnalytics(userId) {
+export async function fetchUserAnalytics(_userId) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return {
     visits: 42,
@@ -224,29 +243,32 @@ export async function createUser(userData) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return {
     id: Math.random().toString(36).substring(7),
-    name: userData.name || 'New User',
-    email: userData.email || 'new@example.com',
+    name: userData.name || "New User",
+    email: userData.email || "new@example.com",
   };
 }
 export async function fetchDefaultPreferences() {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return {
-    theme: 'light',
+    theme: "light",
     notifications: true,
-    language: 'en-US',
+    language: "en-US",
   };
 }
 export async function fetchWelcomeTemplate() {
   await new Promise((resolve) => setTimeout(resolve, 1000));
   return "Welcome, {{name}}! We're glad to have you join us.";
 }
-export async function sendWelcomeEmail(email, template, preferences) {
+export async function sendWelcomeEmail(email, _template, preferences) {
   await new Promise((resolve) => setTimeout(resolve, 1000));
-  console.log(`Sending welcome email to ${email} with preferences:`, preferences);
+  console.log(
+    `Sending welcome email to ${email} with preferences:`,
+    preferences,
+  );
 }
 
 function generateFunctionHash(fnStr) {
-  return Buffer.from(fnStr).toString('base64');
+  return Buffer.from(fnStr).toString("base64");
 }
 
 class AsyncQueue {
@@ -269,7 +291,9 @@ class AsyncQueue {
     // Only update progress every 1000ms to avoid console spam
     if (now - this.lastProgressUpdate > 1000) {
       const percent = Math.round((this.completed / this.total) * 100);
-      process.stdout.write(`\rProgress: ${percent}% (${this.completed}/${this.total})`);
+      process.stdout.write(
+        `\rProgress: ${percent}% (${this.completed}/${this.total})`,
+      );
       this.lastProgressUpdate = now;
     }
   }
@@ -296,14 +320,17 @@ class AsyncQueue {
         next();
       } else if (this.running === 0) {
         // Clear the progress line when all tasks are done
-        process.stdout.write('\n');
+        process.stdout.write("\n");
       }
     }
   }
 }
 
 async function analyzeWithClaude(functionCode, functionName) {
-  const cacheKey = crypto.createHash('sha256').update(functionCode).digest('hex');
+  const cacheKey = crypto
+    .createHash("sha256")
+    .update(functionCode)
+    .digest("hex");
 
   // Check if the function is already in the cache
   if (analysisCache.functions[cacheKey]) {
@@ -311,18 +338,21 @@ async function analyzeWithClaude(functionCode, functionName) {
     return analysisCache.functions[cacheKey].analysis;
   }
 
-  const cleanedCode = functionCode.replace(/`/g, '\\`').trim();
+  const cleanedCode = functionCode.replace(/`/g, "\\`").trim();
 
   try {
     logVerbose(`[${functionName}] Sending request to Claude...`);
-    logVerbose('API Key:', process.env.ANTHROPIC_API_KEY ? 'Present' : 'Missing');
+    logVerbose(
+      "API Key:",
+      process.env.ANTHROPIC_API_KEY ? "Present" : "Missing",
+    );
 
     const requestPayload = {
-      model: 'claude-3-sonnet-20240229',
+      model: "claude-3-sonnet-20240229",
       max_tokens: 4096,
       messages: [
         {
-          role: 'user',
+          role: "user",
           content: `You are a code analysis tool that responds only with valid JSON. Your responses must:
 1. Start with { and end with }
 2. Use double quotes for all strings
@@ -357,68 +387,77 @@ ${cleanedCode}
       ],
     };
 
-    logVerbose('Request payload:', JSON.stringify(requestPayload, null, 2));
+    logVerbose("Request payload:", JSON.stringify(requestPayload, null, 2));
 
     const response = await anthropic.messages.create(requestPayload);
-    logVerbose('Response received:', response);
+    logVerbose("Response received:", response);
 
     let result = response.content[0].text;
-    logVerbose('Raw result:', result);
+    logVerbose("Raw result:", result);
 
     // Clean up the response
     result = result.trim();
-    if (!result.startsWith('{')) {
-      result = result.substring(result.indexOf('{'));
+    if (!result.startsWith("{")) {
+      result = result.substring(result.indexOf("{"));
     }
-    if (!result.endsWith('}')) {
-      result = result.substring(0, result.lastIndexOf('}') + 1);
+    if (!result.endsWith("}")) {
+      result = result.substring(0, result.lastIndexOf("}") + 1);
     }
 
-    logVerbose('Cleaned result:', result);
+    logVerbose("Cleaned result:", result);
 
     // Convert string booleans to actual booleans
-    result = result.replace(/"isParallelizable"\s*:\s*"(true|false)"/g, '"isParallelizable": $1');
+    result = result.replace(
+      /"isParallelizable"\s*:\s*"(true|false)"/g,
+      '"isParallelizable": $1',
+    );
 
     // Parse and validate
     const parsed = JSON.parse(result);
-    logVerbose('Parsed result:', parsed);
+    logVerbose("Parsed result:", parsed);
 
     // Validate required properties and types
-    if (typeof parsed.isParallelizable !== 'boolean') {
+    if (typeof parsed.isParallelizable !== "boolean") {
       throw new Error(
-        `Invalid type for isParallelizable: expected boolean, got ${typeof parsed.isParallelizable}`
+        `Invalid type for isParallelizable: expected boolean, got ${typeof parsed.isParallelizable}`,
       );
     }
     if (!Array.isArray(parsed.parallelizableOperations)) {
-      throw new Error('parallelizableOperations must be an array');
+      throw new Error("parallelizableOperations must be an array");
     }
 
     // Validate each operation in parallelizableOperations
     parsed.parallelizableOperations.forEach((op, index) => {
       if (!Array.isArray(op.operations)) {
-        throw new Error(`operations in parallelizableOperations[${index}] must be an array`);
+        throw new Error(
+          `operations in parallelizableOperations[${index}] must be an array`,
+        );
       }
       if (!Array.isArray(op.lines) || op.lines.length !== 2) {
-        throw new Error(`lines in parallelizableOperations[${index}] must be an array of length 2`);
+        throw new Error(
+          `lines in parallelizableOperations[${index}] must be an array of length 2`,
+        );
       }
-      if (typeof op.type !== 'string') {
-        throw new Error(`type in parallelizableOperations[${index}] must be a string`);
+      if (typeof op.type !== "string") {
+        throw new Error(
+          `type in parallelizableOperations[${index}] must be a string`,
+        );
       }
     });
 
     // Ensure optimizedCode is present if the function is parallelizable
     if (
       parsed.isParallelizable &&
-      (!parsed.optimizedCode || typeof parsed.optimizedCode !== 'string')
+      (!parsed.optimizedCode || typeof parsed.optimizedCode !== "string")
     ) {
       console.warn(
-        `[${functionName}] Warning: Function is parallelizable but no optimized code provided. Generating default optimization.`
+        `[${functionName}] Warning: Function is parallelizable but no optimized code provided. Generating default optimization.`,
       );
       // Generate a basic optimization if none is provided
       parsed.optimizedCode = generateDefaultOptimization(
         functionName,
         parsed.parallelizableOperations,
-        cleanedCode
+        cleanedCode,
       );
     }
 
@@ -426,18 +465,21 @@ ${cleanedCode}
   } catch (error) {
     console.error(`[${functionName}] Claude analysis failed:`, error);
     if (error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', JSON.stringify(error.response.data, null, 2));
-      console.error('Response headers:', error.response.headers);
+      console.error("Response status:", error.response.status);
+      console.error(
+        "Response data:",
+        JSON.stringify(error.response.data, null, 2),
+      );
+      console.error("Response headers:", error.response.headers);
     } else if (error.request) {
-      console.error('Request:', error.request);
+      console.error("Request:", error.request);
     }
-    console.error('Error stack:', error.stack);
+    console.error("Error stack:", error.stack);
     throw error;
   }
 }
 
-async function runTest(fn, ...args) {
+async function _runTest(fn, ...args) {
   const start = Date.now();
   const result = await fn(...args);
   const duration = Date.now() - start;
@@ -447,7 +489,7 @@ async function runTest(fn, ...args) {
   };
 }
 
-const original = {
+const _original = {
   async loadDashboardData(userId) {
     const [userData, userProducts, userAnalytics] = await Promise.all([
       fetchUserData(userId),
@@ -466,7 +508,7 @@ const original = {
       userIds.map(async (id) => {
         const userData = await fetchUserData(id);
         return userData;
-      })
+      }),
     );
     return results;
   },
@@ -482,13 +524,13 @@ const original = {
   },
 };
 
-async function applyOptimizations(analysisResults) {
-  console.log('\n=== Applying Optimizations ===\n');
+async function _applyOptimizations(analysisResults) {
+  console.log("\n=== Applying Optimizations ===\n");
   const sourceFile = new URL(import.meta.url).pathname;
-  const sourceCode = await fs.readFile(sourceFile, 'utf8');
+  const sourceCode = await fs.readFile(sourceFile, "utf8");
   const ast = parse(sourceCode, {
     ecmaVersion: 2022,
-    sourceType: 'module',
+    sourceType: "module",
     range: true,
     loc: true,
   });
@@ -506,12 +548,12 @@ async function applyOptimizations(analysisResults) {
     }
     try {
       const code = analysis.optimizedCode;
-      const bodyStart = code.indexOf('{') + 1;
-      const bodyEnd = code.lastIndexOf('}');
+      const bodyStart = code.indexOf("{") + 1;
+      const bodyEnd = code.lastIndexOf("}");
       const functionBody = code.slice(bodyStart, bodyEnd).trim();
       const tempAst = parse(`async function temp() { ${functionBody} }`, {
         ecmaVersion: 2022,
-        sourceType: 'module',
+        sourceType: "module",
       });
       functionNode.body = tempAst.body[0].body;
       hasChanges = true;
@@ -522,9 +564,9 @@ async function applyOptimizations(analysisResults) {
   if (hasChanges) {
     const optimizedCode = generate(ast);
     await fsPromises.writeFile(sourceFile, optimizedCode);
-    console.log('\nOptimizations applied successfully!');
+    console.log("\nOptimizations applied successfully!");
   } else {
-    console.log('\nNo optimizations were applied.');
+    console.log("\nNo optimizations were applied.");
   }
 }
 
@@ -532,15 +574,15 @@ function findFunctionNode(ast, functionName) {
   let result = null;
   function visit(node) {
     if (
-      node.type === 'Property' &&
+      node.type === "Property" &&
       node.key.name === functionName &&
-      node.value.type === 'FunctionExpression'
+      node.value.type === "FunctionExpression"
     ) {
       result = node.value;
       return;
     }
     for (const key in node) {
-      if (node[key] && typeof node[key] === 'object') {
+      if (node[key] && typeof node[key] === "object") {
         visit(node[key]);
       }
     }
@@ -560,15 +602,12 @@ async function findSourceFiles(packagesDir) {
       continue;
     }
 
-    const srcDir = path.join(packagesDir, pkg, 'src');
+    const srcDir = path.join(packagesDir, pkg, "src");
     try {
       await fsPromises.access(srcDir);
       const files = await findFiles(srcDir);
       sourceFiles.push(...files);
-    } catch (error) {
-      // Skip if src directory doesn't exist
-      continue;
-    }
+    } catch (_error) {}
   }
 
   return sourceFiles;
@@ -593,14 +632,14 @@ async function findFiles(dir) {
 
 async function extractAsyncFunctions(filePath) {
   try {
-    const sourceCode = await fsPromises.readFile(filePath, 'utf8');
+    const sourceCode = await fsPromises.readFile(filePath, "utf8");
     let ast;
 
     try {
       // Enhanced parsing configuration for TypeScript
       const parserOptions = {
         ecmaVersion: 2022,
-        sourceType: 'module',
+        sourceType: "module",
         allowImportExportEverywhere: true,
         allowReturnOutsideFunction: true,
         allowAwaitOutsideFunction: true,
@@ -610,13 +649,13 @@ async function extractAsyncFunctions(filePath) {
       };
 
       // Add appropriate plugins based on file extension
-      if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
-        parserOptions.plugins.push('typescript');
-        if (filePath.endsWith('.tsx')) {
-          parserOptions.plugins.push('jsx');
+      if (filePath.endsWith(".ts") || filePath.endsWith(".tsx")) {
+        parserOptions.plugins.push("typescript");
+        if (filePath.endsWith(".tsx")) {
+          parserOptions.plugins.push("jsx");
         }
-      } else if (filePath.endsWith('.jsx')) {
-        parserOptions.plugins.push('jsx');
+      } else if (filePath.endsWith(".jsx")) {
+        parserOptions.plugins.push("jsx");
       }
 
       ast = parse(sourceCode, parserOptions);
@@ -639,9 +678,9 @@ async function extractAsyncFunctions(filePath) {
 
       try {
         if (
-          (node.type === 'FunctionDeclaration' ||
-            node.type === 'FunctionExpression' ||
-            node.type === 'ArrowFunctionExpression') &&
+          (node.type === "FunctionDeclaration" ||
+            node.type === "FunctionExpression" ||
+            node.type === "ArrowFunctionExpression") &&
           node.async
         ) {
           // Skip if range information is invalid
@@ -651,15 +690,19 @@ async function extractAsyncFunctions(filePath) {
             node.range[0] === undefined ||
             node.range[1] === undefined
           ) {
-            console.warn(`Warning: Invalid range information for function in ${filePath}`);
+            console.warn(
+              `Warning: Invalid range information for function in ${filePath}`,
+            );
             return;
           }
 
           const code = sourceCode.slice(node.range[0], node.range[1]);
-          const name = node.id?.name || 'anonymous';
+          const name = (node.id && node.id.name) || "anonymous";
 
           // Analyze the function body for potential parallel operations
-          const parallelOps = node.body ? analyzeASTForParallelization(node.body, sourceCode) : [];
+          const parallelOps = node.body
+            ? analyzeASTForParallelization(node.body, sourceCode)
+            : [];
 
           asyncFunctions.push({
             name,
@@ -675,17 +718,21 @@ async function extractAsyncFunctions(filePath) {
         }
       } catch (error) {
         // If a specific node processing fails, log and continue
-        console.warn(`Warning: Error processing async function in ${filePath}: ${error.message}`);
+        console.warn(
+          `Warning: Error processing async function in ${filePath}: ${error.message}`,
+        );
       }
 
       // Traverse child nodes safely
       for (const key in node) {
-        if (node[key] && typeof node[key] === 'object' && key !== 'parent') {
+        if (node[key] && typeof node[key] === "object" && key !== "parent") {
           try {
             visit(node[key]);
           } catch (error) {
             // Skip problematic nodes
-            console.warn(`Warning: Error traversing node ${key} in ${filePath}: ${error.message}`);
+            console.warn(
+              `Warning: Error traversing node ${key} in ${filePath}: ${error.message}`,
+            );
           }
         }
       }
@@ -712,11 +759,13 @@ function analyzeASTForParallelization(node, sourceCode) {
   const visited = new WeakSet();
 
   // Refined blacklisted terms that prevent parallelization
-  const BLACKLISTED_TERMS = ['transaction', 'lock', 'mutex', 'semaphore'];
+  const BLACKLISTED_TERMS = ["transaction", "lock", "mutex", "semaphore"];
 
   // Helper to check if operation contains blacklisted terms
   function containsBlacklistedTerm(code) {
-    return BLACKLISTED_TERMS.some((term) => code.toLowerCase().includes(term.toLowerCase()));
+    return BLACKLISTED_TERMS.some((term) =>
+      code.toLowerCase().includes(term.toLowerCase()),
+    );
   }
 
   // Helper to check if nodes are in different branches
@@ -729,7 +778,7 @@ function analyzeASTForParallelization(node, sourceCode) {
 
     try {
       while (parent1) {
-        if (parent1.type === 'IfStatement' || parent1.type === 'SwitchCase') {
+        if (parent1.type === "IfStatement" || parent1.type === "SwitchCase") {
           const branch1Parent = parent1;
           let temp = parent2;
           while (temp) {
@@ -741,7 +790,7 @@ function analyzeASTForParallelization(node, sourceCode) {
         }
         parent1 = parent1.parent;
       }
-    } catch (error) {
+    } catch (_error) {
       // If any error occurs during branch analysis, assume they might be in different branches
       return true;
     }
@@ -754,13 +803,13 @@ function analyzeASTForParallelization(node, sourceCode) {
     visited.add(node);
 
     try {
-      if (node.type === 'AwaitExpression') {
+      if (node.type === "AwaitExpression") {
         // Ensure node has a range before proceeding
         if (
           node.range &&
           node.range.length === 2 &&
-          typeof node.range[0] === 'number' &&
-          typeof node.range[1] === 'number'
+          typeof node.range[0] === "number" &&
+          typeof node.range[1] === "number"
         ) {
           // Skip if the await expression contains blacklisted terms
           const awaitCode = sourceCode.slice(node.range[0], node.range[1]);
@@ -769,21 +818,21 @@ function analyzeASTForParallelization(node, sourceCode) {
           }
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Skip this node if there's an error
-      console.warn('Warning: Error analyzing await expression');
+      console.warn("Warning: Error analyzing await expression");
     }
 
     // Safely traverse children
     for (const key in node) {
-      if (node[key] && typeof node[key] === 'object' && key !== 'parent') {
+      if (node[key] && typeof node[key] === "object" && key !== "parent") {
         try {
           const child = node[key];
           if (child) {
             child.parent = node;
             collectNodes(child);
           }
-        } catch (error) {
+        } catch (_error) {
           // Skip problematic child nodes
         }
       }
@@ -792,8 +841,8 @@ function analyzeASTForParallelization(node, sourceCode) {
 
   try {
     collectNodes(node);
-  } catch (error) {
-    console.warn('Warning: Error collecting nodes for analysis');
+  } catch (_error) {
+    console.warn("Warning: Error collecting nodes for analysis");
     return [];
   }
 
@@ -814,9 +863,9 @@ function analyzeASTForParallelization(node, sourceCode) {
       let foundParent = false;
       while (parent && !foundParent) {
         if (
-          parent.type === 'VariableDeclaration' ||
-          parent.type === 'ExpressionStatement' ||
-          parent.type === 'ReturnStatement'
+          parent.type === "VariableDeclaration" ||
+          parent.type === "ExpressionStatement" ||
+          parent.type === "ReturnStatement"
         ) {
           foundParent = true;
         } else {
@@ -850,9 +899,12 @@ function analyzeASTForParallelization(node, sourceCode) {
         parent,
         lastExpr.await,
         awaitExpr,
-        sourceCode
+        sourceCode,
       );
-      const inDifferentBranches = areInDifferentBranches(lastExpr.await, awaitExpr);
+      const inDifferentBranches = areInDifferentBranches(
+        lastExpr.await,
+        awaitExpr,
+      );
 
       if (!hasComplexDeps && !inDifferentBranches) {
         currentGroup.push({ await: awaitExpr, parent });
@@ -865,7 +917,7 @@ function analyzeASTForParallelization(node, sourceCode) {
           if (item.await && item.await.argument && item.await.argument.range) {
             const operation = sourceCode.slice(
               item.await.argument.range[0],
-              item.await.argument.range[1]
+              item.await.argument.range[1],
             );
             operations.push(operation);
           }
@@ -882,13 +934,14 @@ function analyzeASTForParallelization(node, sourceCode) {
           // Only add if none of the operations contain blacklisted terms
           if (!operations.some(containsBlacklistedTerm)) {
             parallelOps.push({
-              type: 'sequential',
+              type: "sequential",
               lines: [
                 currentGroup[0].await.loc.start.line,
                 currentGroup[currentGroup.length - 1].await.loc.end.line,
               ],
               operations,
-              suggestion: 'These sequential operations can be parallelized with Promise.all',
+              suggestion:
+                "These sequential operations can be parallelized with Promise.all",
             });
           }
         }
@@ -898,8 +951,8 @@ function analyzeASTForParallelization(node, sourceCode) {
         currentGroup = [{ await: awaitExpr, parent }];
       }
     }
-  } catch (error) {
-    console.warn('Warning: Error analyzing parallel operations');
+  } catch (_error) {
+    console.warn("Warning: Error analyzing parallel operations");
   }
 
   // Handle any remaining group
@@ -912,7 +965,7 @@ function analyzeASTForParallelization(node, sourceCode) {
         if (item.await && item.await.argument && item.await.argument.range) {
           const operation = sourceCode.slice(
             item.await.argument.range[0],
-            item.await.argument.range[1]
+            item.await.argument.range[1],
           );
           operations.push(operation);
         }
@@ -929,37 +982,44 @@ function analyzeASTForParallelization(node, sourceCode) {
         // Only add if none of the operations contain blacklisted terms
         if (!operations.some(containsBlacklistedTerm)) {
           parallelOps.push({
-            type: 'sequential',
+            type: "sequential",
             lines: [
               currentGroup[0].await.loc.start.line,
               currentGroup[currentGroup.length - 1].await.loc.end.line,
             ],
             operations,
-            suggestion: 'These sequential operations can be parallelized with Promise.all',
+            suggestion:
+              "These sequential operations can be parallelized with Promise.all",
           });
         }
       }
     }
-  } catch (error) {
-    console.warn('Warning: Error handling remaining operations');
+  } catch (_error) {
+    console.warn("Warning: Error handling remaining operations");
   }
 
   return parallelOps;
 }
 
-function hasComplexDependencies(startNode, endNode, awaitExpr1, awaitExpr2, sourceCode) {
+function hasComplexDependencies(
+  startNode,
+  endNode,
+  _awaitExpr1,
+  awaitExpr2,
+  sourceCode,
+) {
   const inBetweenCode = sourceCode.slice(startNode.range[1], endNode.range[0]);
 
   // Get the variable names being assigned to
   const assignedVars = new Set();
-  if (startNode.type === 'VariableDeclaration') {
+  if (startNode.type === "VariableDeclaration") {
     startNode.declarations.forEach((decl) => {
-      if (decl.id.type === 'Identifier') {
+      if (decl.id.type === "Identifier") {
         assignedVars.add(decl.id.name);
-      } else if (decl.id.type === 'ObjectPattern') {
+      } else if (decl.id.type === "ObjectPattern") {
         // Handle destructuring assignments
         decl.id.properties.forEach((prop) => {
-          if (prop.value && prop.value.type === 'Identifier') {
+          if (prop.value && prop.value.type === "Identifier") {
             assignedVars.add(prop.value.name);
           }
         });
@@ -974,11 +1034,11 @@ function hasComplexDependencies(startNode, endNode, awaitExpr1, awaitExpr2, sour
     if (!node || identifierVisited.has(node)) return;
     identifierVisited.add(node);
 
-    if (node.type === 'Identifier') {
+    if (node.type === "Identifier") {
       usedVars.add(node.name);
     }
     for (const key in node) {
-      if (node[key] && typeof node[key] === 'object' && key !== 'parent') {
+      if (node[key] && typeof node[key] === "object" && key !== "parent") {
         collectIdentifiers(node[key]);
       }
     }
@@ -990,36 +1050,43 @@ function hasComplexDependencies(startNode, endNode, awaitExpr1, awaitExpr2, sour
 
   // Only consider assignments complex if they involve function calls that aren't simple
   const hasComplexAssignment =
-    startNode.type === 'VariableDeclaration' &&
+    startNode.type === "VariableDeclaration" &&
     startNode.declarations.some(
       (decl) =>
-        decl.init?.type === 'CallExpression' && decl.init?.callee?.type !== 'MemberExpression'
+        decl.init &&
+        decl.init.type === "CallExpression" &&
+        decl.init.callee &&
+        decl.init.callee.type !== "MemberExpression",
     );
 
   // Simplify control flow detection - only consider certain patterns as disruptive
-  const hasComplexControlFlow = /\b(if|for|while|switch)\s*\([^)]*\).*\{[^}]*await/.test(
-    inBetweenCode
-  );
+  const hasComplexControlFlow =
+    /\b(if|for|while|switch)\s*\([^)]*\).*\{[^}]*await/.test(inBetweenCode);
 
   // Only consider method calls that might have observable side effects
   const potentiallyUnsafePatterns = [
-    'write',
-    'delete',
-    'remove',
-    'update',
-    'create',
-    'insert',
-    'save',
-    'modify',
+    "write",
+    "delete",
+    "remove",
+    "update",
+    "create",
+    "insert",
+    "save",
+    "modify",
   ];
 
   const hasPotentiallyUnsafeCalls =
-    potentiallyUnsafePatterns.some((pattern) => inBetweenCode.toLowerCase().includes(pattern)) &&
-    inBetweenCode.includes('(') &&
-    !inBetweenCode.includes('Promise.all');
+    potentiallyUnsafePatterns.some((pattern) =>
+      inBetweenCode.toLowerCase().includes(pattern),
+    ) &&
+    inBetweenCode.includes("(") &&
+    !inBetweenCode.includes("Promise.all");
 
   return (
-    hasDependency || hasComplexAssignment || hasComplexControlFlow || hasPotentiallyUnsafeCalls
+    hasDependency ||
+    hasComplexAssignment ||
+    hasComplexControlFlow ||
+    hasPotentiallyUnsafeCalls
   );
 }
 
@@ -1027,15 +1094,17 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
   try {
     // Validate inputs
     if (!filePath || !functionInfo || !optimizedCode) {
-      throw new Error('Missing required parameters for optimization');
+      throw new Error("Missing required parameters for optimization");
     }
 
     // Read the source file
     let sourceCode;
     try {
-      sourceCode = await fsPromises.readFile(filePath, 'utf8');
+      sourceCode = await fsPromises.readFile(filePath, "utf8");
     } catch (error) {
-      throw new Error(`Failed to read source file ${filePath}: ${error.message}`);
+      throw new Error(
+        `Failed to read source file ${filePath}: ${error.message}`,
+      );
     }
 
     let start = 0;
@@ -1050,18 +1119,22 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
       const [rangeStart, rangeEnd] = functionInfo.range;
 
       // Validate range bounds
-      if (rangeStart >= 0 && rangeEnd <= sourceCode.length && rangeStart < rangeEnd) {
+      if (
+        rangeStart >= 0 &&
+        rangeEnd <= sourceCode.length &&
+        rangeStart < rangeEnd
+      ) {
         start = rangeStart;
         end = rangeEnd;
       } else {
         logVerbose(
-          `Warning: Range [${rangeStart}, ${rangeEnd}] is out of bounds for file of length ${sourceCode.length}`
+          `Warning: Range [${rangeStart}, ${rangeEnd}] is out of bounds for file of length ${sourceCode.length}`,
         );
         // We'll find the function by content below
       }
     } else {
       logVerbose(
-        `Range information missing or invalid for ${functionInfo.name}. Will attempt to find by content.`
+        `Range information missing or invalid for ${functionInfo.name}. Will attempt to find by content.`,
       );
     }
 
@@ -1072,28 +1145,30 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
     // If the range doesn't match the expected code, try to find the function in the file
     if (!matchFound) {
       logVerbose(
-        `Original code at range does not match function info for ${functionInfo.name}. Searching for function...`
+        `Original code at range does not match function info for ${functionInfo.name}. Searching for function...`,
       );
 
       // Escape special regex characters in function code
       const escapedFunctionCode = functionInfo.code
-        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/\s+/g, '\\s+'); // Allow for whitespace differences
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\s+/g, "\\s+"); // Allow for whitespace differences
 
       // Create a regex pattern that can match the function even with whitespace differences
-      const functionPattern = new RegExp(escapedFunctionCode, 'g');
+      const functionPattern = new RegExp(escapedFunctionCode, "g");
       const match = functionPattern.exec(sourceCode);
 
       if (match) {
         start = match.index;
         end = start + match[0].length;
         matchFound = true;
-        logVerbose(`Found function ${functionInfo.name} at position ${start}-${end}`);
+        logVerbose(
+          `Found function ${functionInfo.name} at position ${start}-${end}`,
+        );
       } else {
         // Try to find by function name if the exact code doesn't match
         const namePattern = new RegExp(
           `(async\\s+function\\s+${functionInfo.name}\\s*\\(|${functionInfo.name}\\s*:\\s*async\\s+function\\s*\\(|${functionInfo.name}\\s*=\\s*async\\s*\\()`,
-          'g'
+          "g",
         );
         const nameMatch = namePattern.exec(sourceCode);
 
@@ -1101,14 +1176,14 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
           // Found the function declaration, now try to find the matching closing brace
           let openBraces = 0;
           let inString = false;
-          let stringChar = '';
+          let stringChar = "";
           let pos = nameMatch.index;
 
           while (pos < sourceCode.length) {
             if (!inString) {
-              if (sourceCode[pos] === '{') {
+              if (sourceCode[pos] === "{") {
                 openBraces++;
-              } else if (sourceCode[pos] === '}') {
+              } else if (sourceCode[pos] === "}") {
                 openBraces--;
                 if (openBraces === 0) {
                   // We've found the end of the function
@@ -1116,20 +1191,23 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
                   start = nameMatch.index;
                   matchFound = true;
                   logVerbose(
-                    `Found function ${functionInfo.name} by name at position ${start}-${end}`
+                    `Found function ${functionInfo.name} by name at position ${start}-${end}`,
                   );
                   break;
                 }
               } else if (
                 sourceCode[pos] === '"' ||
                 sourceCode[pos] === "'" ||
-                sourceCode[pos] === '`'
+                sourceCode[pos] === "`"
               ) {
                 inString = true;
                 stringChar = sourceCode[pos];
               }
             } else {
-              if (sourceCode[pos] === stringChar && sourceCode[pos - 1] !== '\\') {
+              if (
+                sourceCode[pos] === stringChar &&
+                sourceCode[pos - 1] !== "\\"
+              ) {
                 inString = false;
               }
             }
@@ -1140,17 +1218,20 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
     }
 
     if (!matchFound) {
-      throw new Error(`Could not find function ${functionInfo.name} in source code`);
+      throw new Error(
+        `Could not find function ${functionInfo.name} in source code`,
+      );
     }
 
     // Clean up the optimized code
     const cleanedOptimizedCode = optimizedCode
-      .replace(/^\s*async\s+function\s+[^(]*/, '') // Remove function declaration if present
-      .replace(/^\s*\(/, '(') // Clean up leading whitespace
+      .replace(/^\s*async\s+function\s+[^(]*/, "") // Remove function declaration if present
+      .replace(/^\s*\(/, "(") // Clean up leading whitespace
       .trim();
 
     // Create the new code
-    const newCode = sourceCode.slice(0, start) + cleanedOptimizedCode + sourceCode.slice(end);
+    const newCode =
+      sourceCode.slice(0, start) + cleanedOptimizedCode + sourceCode.slice(end);
 
     // Skip validation for now
     /*
@@ -1193,19 +1274,21 @@ async function applyOptimizationToFile(filePath, functionInfo, optimizedCode) {
     } catch (error) {
       // Try to restore from backup if write fails
       console.error(`Failed to write optimized code: ${error.message}`);
-      logVerbose('Attempting to restore from backup...');
+      logVerbose("Attempting to restore from backup...");
       await fs.copyFile(backupPath, filePath);
       throw new Error(`Failed to write optimized code: ${error.message}`);
     }
   } catch (error) {
-    throw new Error(`Failed to apply optimization to ${filePath}: ${error.message}`);
+    throw new Error(
+      `Failed to apply optimization to ${filePath}: ${error.message}`,
+    );
   }
 }
 
 async function loadStageResults(stage) {
   const cachePath = getStageCachePath(stage);
   if (existsSync(cachePath)) {
-    const content = await fsPromises.readFile(cachePath, 'utf8');
+    const content = await fsPromises.readFile(cachePath, "utf8");
     return JSON.parse(content);
   }
   return null;
@@ -1214,15 +1297,23 @@ async function loadStageResults(stage) {
 async function saveStageResults(stage, results) {
   const cachePath = getStageCachePath(stage);
   await fsPromises.mkdir(path.dirname(cachePath), { recursive: true });
-  await fsPromises.writeFile(cachePath, JSON.stringify(results, getCircularReplacer(), 2));
+  await fsPromises.writeFile(
+    cachePath,
+    JSON.stringify(results, getCircularReplacer(), 2),
+  );
 }
 
 async function saveInitialCandidates(parseResults) {
   const candidates = [];
 
   // Ensure parseResults.asyncFunctions exists and is an array
-  if (!parseResults.asyncFunctions || !Array.isArray(parseResults.asyncFunctions)) {
-    console.warn('Warning: parseResults.asyncFunctions is missing or not an array');
+  if (
+    !parseResults.asyncFunctions ||
+    !Array.isArray(parseResults.asyncFunctions)
+  ) {
+    console.warn(
+      "Warning: parseResults.asyncFunctions is missing or not an array",
+    );
     return [];
   }
 
@@ -1238,7 +1329,7 @@ async function saveInitialCandidates(parseResults) {
 
     if (fn.astAnalysis.isParallelizable) {
       const parallelOps = fn.astAnalysis.parallelizableOperations
-        .filter((op) => op.type === 'independent')
+        .filter((op) => op.type === "independent")
         .map((op) => ({
           operations: op.operations,
           lines: `${op.lines[0]}-${op.lines[1]}`,
@@ -1270,10 +1361,15 @@ async function saveInitialCandidates(parseResults) {
   }
 
   // Create directory if it doesn't exist
-  await fsPromises.mkdir(path.dirname(TRACKING_FILES.CANDIDATES), { recursive: true });
-  await fsPromises.writeFile(TRACKING_FILES.CANDIDATES, JSON.stringify(candidates, null, 2));
+  await fsPromises.mkdir(path.dirname(TRACKING_FILES.CANDIDATES), {
+    recursive: true,
+  });
+  await fsPromises.writeFile(
+    TRACKING_FILES.CANDIDATES,
+    JSON.stringify(candidates, null, 2),
+  );
   console.log(
-    `\nSaved ${candidates.length} candidates (${candidates.filter((c) => c.ast_parallelizable).length} parallelizable from AST analysis)`
+    `\nSaved ${candidates.length} candidates (${candidates.filter((c) => c.ast_parallelizable).length} parallelizable from AST analysis)`,
   );
   return candidates;
 }
@@ -1286,8 +1382,10 @@ async function saveInitialResults(parseResults) {
       const originalOps = fn.astAnalysis.parallelizableOperations.map((op) => ({
         type: op.type,
         original_lines: `${op.lines[0]}-${op.lines[1]}`,
-        sequential_calls: op.operations.map((call) => call.replace(/\(.*\)/, '()')),
-        optimization: 'Potential candidate for Promise.all parallelization',
+        sequential_calls: op.operations.map((call) =>
+          call.replace(/\(.*\)/, "()"),
+        ),
+        optimization: "Potential candidate for Promise.all parallelization",
       }));
 
       results.push({
@@ -1299,10 +1397,10 @@ async function saveInitialResults(parseResults) {
         },
         optimized_implementation: {
           parallel_operations: originalOps
-            .filter((op) => op.type === 'independent')
+            .filter((op) => op.type === "independent")
             .map((op) => ({
               functions: op.sequential_calls,
-              optimization_applied: 'Candidate for Promise.all',
+              optimization_applied: "Candidate for Promise.all",
             })),
           remaining_sequential: [],
         },
@@ -1312,24 +1410,29 @@ async function saveInitialResults(parseResults) {
   }
 
   // Create directory if it doesn't exist
-  await fsPromises.mkdir(path.dirname(TRACKING_FILES.RESULTS), { recursive: true });
-  await fsPromises.writeFile(TRACKING_FILES.RESULTS, JSON.stringify(results, null, 2));
+  await fsPromises.mkdir(path.dirname(TRACKING_FILES.RESULTS), {
+    recursive: true,
+  });
+  await fsPromises.writeFile(
+    TRACKING_FILES.RESULTS,
+    JSON.stringify(results, null, 2),
+  );
   console.log(`\nSaved ${results.length} initial results from AST analysis`);
   return results;
 }
 
 async function parseAllPackages(packagesDir) {
-  const existingResults = await loadStageResults('PARSE');
+  const existingResults = await loadStageResults("PARSE");
   if (existingResults) {
-    console.log('\nFound existing parse results, skipping parse stage...');
+    console.log("\nFound existing parse results, skipping parse stage...");
     return existingResults;
   }
 
-  console.log('\n=== Finding Source Files ===\n');
+  console.log("\n=== Finding Source Files ===\n");
   const sourceFiles = await findSourceFiles(packagesDir);
   console.log(`Found ${sourceFiles.length} source files to process`);
 
-  console.log('\n=== Extracting and Analyzing Async Functions ===\n');
+  console.log("\n=== Extracting and Analyzing Async Functions ===\n");
   const parseResults = {
     timestamp: new Date().toISOString(),
     sourceFiles,
@@ -1360,7 +1463,9 @@ async function parseAllPackages(packagesDir) {
 
       parseResults.asyncFunctions.push(...functionsWithPath);
 
-      const parallelizableFns = functions.filter((fn) => fn.astAnalysis.isParallelizable);
+      const parallelizableFns = functions.filter(
+        (fn) => fn.astAnalysis.isParallelizable,
+      );
       totalAsyncFunctions += functions.length;
       totalParallelizable += parallelizableFns.length;
       totalProcessed++;
@@ -1368,7 +1473,7 @@ async function parseAllPackages(packagesDir) {
       if (functions.length > 0) {
         console.log(
           `${relativePath}: ${functions.length} async functions ` +
-            `(${parallelizableFns.length} potentially parallelizable)`
+            `(${parallelizableFns.length} potentially parallelizable)`,
         );
 
         // Only log details for parallelizable functions if verbose logging is enabled
@@ -1395,7 +1500,7 @@ async function parseAllPackages(packagesDir) {
   await saveInitialCandidates(parseResults);
   await saveInitialResults(parseResults);
 
-  console.log('\n=== AST Analysis Summary ===');
+  console.log("\n=== AST Analysis Summary ===");
   console.log(`Total source files: ${sourceFiles.length}`);
   console.log(`Files processed successfully: ${totalProcessed}`);
   console.log(`Files skipped/failed parsing: ${totalSkipped}`);
@@ -1403,7 +1508,7 @@ async function parseAllPackages(packagesDir) {
   console.log(`Potentially parallelizable: ${totalParallelizable}`);
   console.log(`Errors encountered: ${parseResults.errors.length}`);
 
-  await saveStageResults('PARSE', parseResults);
+  await saveStageResults("PARSE", parseResults);
   return parseResults;
 }
 
@@ -1414,7 +1519,7 @@ async function analyzeWithAI(parseResults) {
   // Update total functions in metadata
   analysisCache.metadata.totalFunctions = parseResults.asyncFunctions.length;
 
-  logVerbose('\n=== Analyzing Functions with Claude ===\n');
+  logVerbose("\n=== Analyzing Functions with Claude ===\n");
   const queue = new AsyncQueue(10);
 
   // Only analyze functions that aren't in cache
@@ -1465,7 +1570,7 @@ async function analyzeWithAI(parseResults) {
           analysisResults.errors.push({
             function: fn.name,
             file: fn.filePath,
-            error: 'Claude analysis failed',
+            error: "Claude analysis failed",
           });
           return;
         }
@@ -1478,7 +1583,11 @@ async function analyzeWithAI(parseResults) {
         analysisResults.results[key] = analysis;
 
         // Track parallelizable functions
-        if (analysis.isParallelizable && analysis.parallelizableOperations?.length > 0) {
+        if (
+          analysis.isParallelizable &&
+          analysis.parallelizableOperations &&
+          analysis.parallelizableOperations.length > 0
+        ) {
           analysisResults.parallelizableFunctions.add(key);
         }
 
@@ -1487,13 +1596,17 @@ async function analyzeWithAI(parseResults) {
         await updateResults(fn, analysis);
 
         // Log results for new analyses
-        if (analysis.isParallelizable && analysis.parallelizableOperations?.length > 0) {
+        if (
+          analysis.isParallelizable &&
+          analysis.parallelizableOperations &&
+          analysis.parallelizableOperations.length > 0
+        ) {
           logVerbose(`\n[${fn.name}] Analysis Results:`);
           logVerbose(`[${fn.name}] Parallelizable: true`);
           logVerbose(`[${fn.name}] Parallelizable Operations:`);
           analysis.parallelizableOperations.forEach((op) => {
             logVerbose(`[${fn.name}] - Type: ${op.type}`);
-            logVerbose(`[${fn.name}]   Lines: ${op.lines.join('-')}`);
+            logVerbose(`[${fn.name}]   Lines: ${op.lines.join("-")}`);
             logVerbose(`[${fn.name}]   Operations:`, op.operations);
             logVerbose(`[${fn.name}]   Suggestion: ${op.suggestion}`);
           });
@@ -1503,24 +1616,28 @@ async function analyzeWithAI(parseResults) {
         analysisResults.errors.push({
           function: fn.name,
           file: fn.filePath,
-          error: error.message || 'Unknown error',
+          error: error.message || "Unknown error",
         });
       }
-    })
+    }),
   );
 
   await Promise.all(analysisPromises);
 
   // Save results
-  await saveStageResults('ANALYSIS', analysisResults);
+  await saveStageResults("ANALYSIS", analysisResults);
 
-  console.log('\n=== Analysis Summary ===');
-  console.log(`Total functions analyzed: ${Object.keys(analysisResults.results).length}`);
-  console.log(`Parallelizable functions found: ${analysisResults.parallelizableFunctions.size}`);
+  console.log("\n=== Analysis Summary ===");
+  console.log(
+    `Total functions analyzed: ${Object.keys(analysisResults.results).length}`,
+  );
+  console.log(
+    `Parallelizable functions found: ${analysisResults.parallelizableFunctions.size}`,
+  );
   console.log(`Errors encountered: ${analysisResults.errors.length}`);
 
   if (analysisResults.parallelizableFunctions.size > 0) {
-    console.log('\nParallelizable Functions:');
+    console.log("\nParallelizable Functions:");
 
     // Display each parallelizable function
     for (const key of analysisResults.parallelizableFunctions) {
@@ -1528,8 +1645,8 @@ async function analyzeWithAI(parseResults) {
       console.log(`\n${key}:`);
       analysis.parallelizableOperations.forEach((op) => {
         console.log(`  - Type: ${op.type}`);
-        console.log(`    Lines: ${op.lines.join('-')}`);
-        console.log(`    Operations: ${op.operations.join(', ')}`);
+        console.log(`    Lines: ${op.lines.join("-")}`);
+        console.log(`    Operations: ${op.operations.join(", ")}`);
       });
     }
   }
@@ -1539,9 +1656,11 @@ async function analyzeWithAI(parseResults) {
 
 async function generateOptimizations(analysisResults) {
   // Try to load existing final results
-  const existingResults = await loadStageResults('FINAL');
+  const existingResults = await loadStageResults("FINAL");
   if (existingResults && !shouldApply) {
-    logVerbose('\nFound existing final results, skipping optimization stage...');
+    logVerbose(
+      "\nFound existing final results, skipping optimization stage...",
+    );
     return existingResults;
   }
 
@@ -1552,8 +1671,8 @@ async function generateOptimizations(analysisResults) {
     errors: [],
   };
 
-  logVerbose('\n=== Applying Optimizations ===\n');
-  console.log('\nApplying optimizations...');
+  logVerbose("\n=== Applying Optimizations ===\n");
+  console.log("\nApplying optimizations...");
 
   // Track statistics
   let successCount = 0;
@@ -1561,7 +1680,10 @@ async function generateOptimizations(analysisResults) {
   let skippedCount = 0;
 
   // Debug: Log the parallelizable functions
-  console.log('Parallelizable functions:', analysisResults.parallelizableFunctions);
+  console.log(
+    "Parallelizable functions:",
+    analysisResults.parallelizableFunctions,
+  );
 
   for (const [key, analysis] of Object.entries(analysisResults.results)) {
     // Check if the function is in the parallelizableFunctions set
@@ -1587,20 +1709,26 @@ async function generateOptimizations(analysisResults) {
       continue;
     }
 
-    logVerbose(`\nApplying optimizations for ${sourceInfo.name} in ${sourceInfo.relativePath}...`);
+    logVerbose(
+      `\nApplying optimizations for ${sourceInfo.name} in ${sourceInfo.relativePath}...`,
+    );
 
     // Ensure we have optimized code
-    if (!analysis.optimizedCode || typeof analysis.optimizedCode !== 'string') {
+    if (!analysis.optimizedCode || typeof analysis.optimizedCode !== "string") {
       logVerbose(`Generating default optimization for ${sourceInfo.name}`);
       analysis.optimizedCode = generateDefaultOptimization(
         sourceInfo.name,
         analysis.parallelizableOperations,
-        sourceInfo.code
+        sourceInfo.code,
       );
     }
 
     try {
-      await applyOptimizationToFile(sourceInfo.filePath, sourceInfo, analysis.optimizedCode);
+      await applyOptimizationToFile(
+        sourceInfo.filePath,
+        sourceInfo,
+        analysis.optimizedCode,
+      );
       finalResults.optimizations[key] = {
         timestamp: new Date().toISOString(),
         sourceInfo: {
@@ -1613,7 +1741,10 @@ async function generateOptimizations(analysisResults) {
       successCount++;
       logVerbose(`Successfully optimized ${sourceInfo.name}`);
     } catch (error) {
-      console.error(`Error applying optimization to ${sourceInfo.name}:`, error);
+      console.error(
+        `Error applying optimization to ${sourceInfo.name}:`,
+        error,
+      );
       finalResults.errors.push({
         key,
         error: error.message,
@@ -1623,9 +1754,9 @@ async function generateOptimizations(analysisResults) {
   }
 
   // Save final results
-  await saveStageResults('FINAL', finalResults);
+  await saveStageResults("FINAL", finalResults);
 
-  console.log('\n=== Optimization Summary ===');
+  console.log("\n=== Optimization Summary ===");
   console.log(`Optimized: ${successCount} functions`);
   console.log(`Errors: ${errorCount}`);
   console.log(`Skipped: ${skippedCount}`);
@@ -1638,23 +1769,27 @@ async function updateCandidates(fn, analysis) {
   try {
     let candidates = [];
     try {
-      const content = await fs.readFile(TRACKING_FILES.CANDIDATES, 'utf8');
+      const content = await fs.readFile(TRACKING_FILES.CANDIDATES, "utf8");
       candidates = JSON.parse(content);
-    } catch (error) {
+    } catch (_error) {
       // If file doesn't exist or is invalid, start with empty array
     }
 
     // Get line information safely
-    const lines = fn.loc ? `${fn.loc.start.line}-${fn.loc.end.line}` : 'unknown';
+    const lines = fn.loc
+      ? `${fn.loc.start.line}-${fn.loc.end.line}`
+      : "unknown";
 
     // Find the existing candidate or create a new one
-    let candidate = candidates.find((c) => c.name === fn.name && c.file === fn.relativePath);
+    let candidate = candidates.find(
+      (c) => c.name === fn.name && c.file === fn.relativePath,
+    );
     if (!candidate) {
       candidate = {
         name: fn.name,
         file: fn.relativePath,
         lines,
-        ast_parallelizable: fn.astAnalysis?.isParallelizable || false,
+        ast_parallelizable: (fn.astAnalysis && fn.astAnalysis.isParallelizable) || false,
         ai_parallelizable: false,
         parallelizable_functions: [],
         parallelizable_operations: [],
@@ -1666,15 +1801,16 @@ async function updateCandidates(fn, analysis) {
     if (analysis) {
       candidate.ai_parallelizable = analysis.isParallelizable;
       if (analysis.isParallelizable && analysis.parallelizableOperations) {
-        candidate.parallelizable_operations = analysis.parallelizableOperations.map((op) => ({
-          lines: op.lines ? `${op.lines[0]}-${op.lines[1]}` : 'unknown',
-          operations: op.operations || [],
-          suggestion: op.suggestion || '',
-          potential_parallel_calls: (op.operations || []).map((call) => {
-            const match = call.match(/([a-zA-Z_$][a-zA-Z0-9_$]*)\(/);
-            return match ? match[1] : call;
-          }),
-        }));
+        candidate.parallelizable_operations =
+          analysis.parallelizableOperations.map((op) => ({
+            lines: op.lines ? `${op.lines[0]}-${op.lines[1]}` : "unknown",
+            operations: op.operations || [],
+            suggestion: op.suggestion || "",
+            potential_parallel_calls: (op.operations || []).map((call) => {
+              const match = call.match(/([a-zA-Z_$][a-zA-Z0-9_$]*)\(/);
+              return match ? match[1] : call;
+            }),
+          }));
 
         // Extract unique function names from parallel operations
         const functionNames = new Set();
@@ -1689,10 +1825,15 @@ async function updateCandidates(fn, analysis) {
     }
 
     // Create directory if it doesn't exist
-    await fsPromises.mkdir(path.dirname(TRACKING_FILES.CANDIDATES), { recursive: true });
-    await fsPromises.writeFile(TRACKING_FILES.CANDIDATES, JSON.stringify(candidates, null, 2));
+    await fsPromises.mkdir(path.dirname(TRACKING_FILES.CANDIDATES), {
+      recursive: true,
+    });
+    await fsPromises.writeFile(
+      TRACKING_FILES.CANDIDATES,
+      JSON.stringify(candidates, null, 2),
+    );
   } catch (error) {
-    console.error('Error updating candidates:', error);
+    console.error("Error updating candidates:", error);
   }
 }
 
@@ -1701,17 +1842,21 @@ async function updateResults(fn, analysis) {
   try {
     let results = [];
     try {
-      const content = await fsPromises.readFile(TRACKING_FILES.RESULTS, 'utf8');
+      const content = await fsPromises.readFile(TRACKING_FILES.RESULTS, "utf8");
       results = JSON.parse(content);
-    } catch (error) {
+    } catch (_error) {
       // If file doesn't exist or is invalid, start with empty array
     }
 
     // Get line information safely
-    const lines = fn.loc ? `${fn.loc.start.line}-${fn.loc.end.line}` : 'unknown';
+    const lines = fn.loc
+      ? `${fn.loc.start.line}-${fn.loc.end.line}`
+      : "unknown";
 
     // Find the existing result or create a new one
-    let result = results.find((r) => r.name === fn.name && r.file === fn.relativePath);
+    let result = results.find(
+      (r) => r.name === fn.name && r.file === fn.relativePath,
+    );
     if (!result) {
       result = {
         name: fn.name,
@@ -1733,14 +1878,13 @@ async function updateResults(fn, analysis) {
     if (analysis) {
       result.ast_analysis_only = false;
       if (analysis.isParallelizable && analysis.parallelizableOperations) {
-        result.optimized_implementation.parallel_operations = analysis.parallelizableOperations.map(
-          (op) => ({
-            type: op.type || 'independent',
-            lines: op.lines ? `${op.lines[0]}-${op.lines[1]}` : 'unknown',
+        result.optimized_implementation.parallel_operations =
+          analysis.parallelizableOperations.map((op) => ({
+            type: op.type || "independent",
+            lines: op.lines ? `${op.lines[0]}-${op.lines[1]}` : "unknown",
             operations: op.operations || [],
-            suggestion: op.suggestion || '',
-          })
-        );
+            suggestion: op.suggestion || "",
+          }));
       }
       if (analysis.optimizedCode) {
         result.optimized_implementation.code = analysis.optimizedCode;
@@ -1748,10 +1892,15 @@ async function updateResults(fn, analysis) {
     }
 
     // Create directory if it doesn't exist
-    await fsPromises.mkdir(path.dirname(TRACKING_FILES.RESULTS), { recursive: true });
-    await fsPromises.writeFile(TRACKING_FILES.RESULTS, JSON.stringify(results, null, 2));
+    await fsPromises.mkdir(path.dirname(TRACKING_FILES.RESULTS), {
+      recursive: true,
+    });
+    await fsPromises.writeFile(
+      TRACKING_FILES.RESULTS,
+      JSON.stringify(results, null, 2),
+    );
   } catch (error) {
-    console.error('Error updating results:', error);
+    console.error("Error updating results:", error);
   }
 }
 
@@ -1760,11 +1909,13 @@ function generateDefaultOptimization(functionName, operations, originalCode) {
   try {
     // Extract the function declaration part (everything before the first '{')
     const functionDeclarationMatch = originalCode.match(/^(.*?)\{/s);
-    const functionDeclaration = functionDeclarationMatch ? functionDeclarationMatch[1] : '';
+    const functionDeclaration = functionDeclarationMatch
+      ? functionDeclarationMatch[1]
+      : "";
 
     // Extract the return statement
     const returnMatch = originalCode.match(/\s*(return\s+[\s\S]*?;)/);
-    const returnStatement = returnMatch ? returnMatch[1] : 'return;';
+    const returnStatement = returnMatch ? returnMatch[1] : "return;";
 
     // Group operations by their function name
     const groupedOperations = {};
@@ -1776,29 +1927,31 @@ function generateDefaultOptimization(functionName, operations, originalCode) {
     }
 
     // Generate Promise.all for each group of operations
-    let optimizedCode = '';
+    let optimizedCode = "";
 
-    for (const [funcName, ops] of Object.entries(groupedOperations)) {
+    for (const [_funcName, ops] of Object.entries(groupedOperations)) {
       if (ops.length > 1) {
         // Create variable names for the results
         const varNames = ops.map((op, i) => {
           // Use the original variable name if available, otherwise generate a new one
-          return op.variableName || `${op.variableName || 'result'}${i > 0 ? i : ''}`;
+          return (
+            op.variableName || `${op.variableName || "result"}${i > 0 ? i : ""}`
+          );
         });
 
         // Add a comment to indicate parallelized operations
-        optimizedCode += '  // Parallelized operations\n';
+        optimizedCode += "  // Parallelized operations\n";
 
         // Generate the Promise.all statement
-        optimizedCode += `  const [${varNames.join(', ')}] = await Promise.all([\n`;
+        optimizedCode += `  const [${varNames.join(", ")}] = await Promise.all([\n`;
         for (const op of ops) {
-          optimizedCode += `    ${op.functionName}(${op.args.join(', ')}),\n`;
+          optimizedCode += `    ${op.functionName}(${op.args.join(", ")}),\n`;
         }
-        optimizedCode += '  ]);\n\n';
+        optimizedCode += "  ]);\n\n";
       } else {
         // For single operations, keep them as is
         const op = ops[0];
-        optimizedCode += `  const ${op.variableName} = await ${op.functionName}(${op.args.join(', ')});\n`;
+        optimizedCode += `  const ${op.variableName} = await ${op.functionName}(${op.args.join(", ")});\n`;
       }
     }
 
@@ -1823,26 +1976,28 @@ async function generateMarkdownReport(analysisResults) {
   const reportParts = [];
 
   // Add report header
-  reportParts.push('# Parallelization Optimization Report\n');
+  reportParts.push("# Parallelization Optimization Report\n");
   reportParts.push(`Generated on: ${new Date().toLocaleString()}\n`);
 
   // Add summary
-  reportParts.push('## Summary\n');
-  reportParts.push(`- Total functions analyzed: ${Object.keys(analysisResults.results).length}`);
+  reportParts.push("## Summary\n");
   reportParts.push(
-    `- Parallelizable functions identified: ${analysisResults.parallelizableFunctions.size}`
+    `- Total functions analyzed: ${Object.keys(analysisResults.results).length}`,
+  );
+  reportParts.push(
+    `- Parallelizable functions identified: ${analysisResults.parallelizableFunctions.size}`,
   );
   reportParts.push(`- Errors encountered: ${analysisResults.errors.length}\n`);
 
   // If no parallelizable functions were found, note that
   if (analysisResults.parallelizableFunctions.size === 0) {
-    reportParts.push('> No parallelizable functions were identified.');
+    reportParts.push("> No parallelizable functions were identified.");
     // Return early if there's nothing to report
-    return reportParts.join('\n');
+    return reportParts.join("\n");
   }
 
   // Add detailed recommendations for each parallelizable function
-  reportParts.push('## Detailed Recommendations\n');
+  reportParts.push("## Detailed Recommendations\n");
 
   // Organize by files for a cleaner report
   const fileMap = {};
@@ -1868,7 +2023,7 @@ async function generateMarkdownReport(analysisResults) {
   for (const [filePath, functions] of Object.entries(fileMap)) {
     // Get relative path for cleaner display
     const relativePath = filePath.includes(process.cwd())
-      ? filePath.replace(process.cwd(), '').replace(/^\//, '')
+      ? filePath.replace(process.cwd(), "").replace(/^\//, "")
       : filePath;
 
     reportParts.push(`### File: \`${relativePath}\`\n`);
@@ -1878,49 +2033,53 @@ async function generateMarkdownReport(analysisResults) {
 
       // Add Claude's explanation
       if (analysis.dataFlow) {
-        reportParts.push('**Analysis:**');
+        reportParts.push("**Analysis:**");
         reportParts.push(analysis.dataFlow);
-        reportParts.push('');
+        reportParts.push("");
       }
 
       // Add the parallelizable operations
-      reportParts.push('**Parallelizable Operations:**\n');
+      reportParts.push("**Parallelizable Operations:**\n");
 
       analysis.parallelizableOperations.forEach((op, index) => {
         reportParts.push(`${index + 1}. **Type:** ${op.type}`);
         reportParts.push(
-          `   - **Lines:** ${op.lines && Array.isArray(op.lines) ? op.lines.join('-') : 'N/A'}`
+          `   - **Lines:** ${op.lines && Array.isArray(op.lines) ? op.lines.join("-") : "N/A"}`,
         );
         reportParts.push(
-          `   - **Operations:** ${op.operations && Array.isArray(op.operations) ? op.operations.join(', ') : 'N/A'}`
+          `   - **Operations:** ${op.operations && Array.isArray(op.operations) ? op.operations.join(", ") : "N/A"}`,
         );
 
         if (op.suggestion) {
           reportParts.push(`   - **Suggestion:** ${op.suggestion}`);
         }
-        reportParts.push('');
+        reportParts.push("");
       });
 
       // Add the optimized code section
-      reportParts.push('**Recommended Implementation:**');
-      reportParts.push('```javascript');
+      reportParts.push("**Recommended Implementation:**");
+      reportParts.push("```javascript");
       reportParts.push(analysis.optimizedCode);
-      reportParts.push('```\n');
+      reportParts.push("```\n");
     }
   }
 
   // Add error section if there were any errors
   if (analysisResults.errors.length > 0) {
-    reportParts.push('## Errors\n');
-    reportParts.push('The following errors were encountered during analysis:\n');
+    reportParts.push("## Errors\n");
+    reportParts.push(
+      "The following errors were encountered during analysis:\n",
+    );
 
     analysisResults.errors.forEach((error, index) => {
-      reportParts.push(`${index + 1}. Function: \`${error.function}\` in file \`${error.file}\``);
+      reportParts.push(
+        `${index + 1}. Function: \`${error.function}\` in file \`${error.file}\``,
+      );
       reportParts.push(`   Error: ${error.error}\n`);
     });
   }
 
-  return reportParts.join('\n');
+  return reportParts.join("\n");
 }
 
 /**
@@ -1932,7 +2091,7 @@ async function generateMarkdownReport(analysisResults) {
 async function analyzeWithRegex(filePath) {
   try {
     logVerbose(`Analyzing ${filePath} with regex-based approach`);
-    const code = await fsPromises.readFile(filePath, 'utf8');
+    const code = await fsPromises.readFile(filePath, "utf8");
     const relativeFilePath = path.relative(process.cwd(), filePath);
 
     // Find async functions
@@ -1953,16 +2112,17 @@ async function analyzeWithRegex(filePath) {
 
     // Simpler patterns as fallbacks
     const simpleAsyncFnPattern = /async\s+function\s+(\w+)[^{]*\{([\s\S]*?)\}/g;
-    const simpleExportAsyncFnPattern = /export\s+async\s+function\s+(\w+)[^{]*\{([\s\S]*?)\}/g;
+    const simpleExportAsyncFnPattern =
+      /export\s+async\s+function\s+(\w+)[^{]*\{([\s\S]*?)\}/g;
     const simpleArrowAsyncPattern = /(\w+)\s*=\s*async[^{]*\{([\s\S]*?)\}/g;
 
     let match;
 
     // Find standard async functions
     while ((match = asyncFnPattern.exec(code)) !== null) {
-      const fullMatch = match[0] + '}'; // Add closing brace
+      const fullMatch = `${match[0]}}`; // Add closing brace
       const fnBody = match[2];
-      const startLine = code.substring(0, match.index).split('\n').length;
+      const startLine = code.substring(0, match.index).split("\n").length;
 
       asyncFunctions.push({
         name: match[1],
@@ -1970,16 +2130,16 @@ async function analyzeWithRegex(filePath) {
         start: match.index,
         end: match.index + fullMatch.length,
         startLine,
-        type: 'standard',
+        type: "standard",
         fullMatch,
       });
     }
 
     // Find exported async functions
     while ((match = asyncExportPattern.exec(code)) !== null) {
-      const fullMatch = match[0] + '}'; // Add closing brace
+      const fullMatch = `${match[0]}}`; // Add closing brace
       const fnBody = match[2];
-      const startLine = code.substring(0, match.index).split('\n').length;
+      const startLine = code.substring(0, match.index).split("\n").length;
 
       asyncFunctions.push({
         name: match[1],
@@ -1987,16 +2147,16 @@ async function analyzeWithRegex(filePath) {
         start: match.index,
         end: match.index + fullMatch.length,
         startLine,
-        type: 'export',
+        type: "export",
         fullMatch,
       });
     }
 
     // Find arrow async functions
     while ((match = arrowAsyncPattern.exec(code)) !== null) {
-      const fullMatch = match[0] + '}'; // Add closing brace
+      const fullMatch = `${match[0]}}`; // Add closing brace
       const fnBody = match[2];
-      const startLine = code.substring(0, match.index).split('\n').length;
+      const startLine = code.substring(0, match.index).split("\n").length;
 
       asyncFunctions.push({
         name: match[1],
@@ -2004,16 +2164,16 @@ async function analyzeWithRegex(filePath) {
         start: match.index,
         end: match.index + fullMatch.length,
         startLine,
-        type: 'arrow',
+        type: "arrow",
         fullMatch,
       });
     }
 
     // Find class method async functions
     while ((match = classMethodPattern.exec(code)) !== null) {
-      const fullMatch = match[0] + '}'; // Add closing brace
+      const fullMatch = `${match[0]}}`; // Add closing brace
       const fnBody = match[2];
-      const startLine = code.substring(0, match.index).split('\n').length;
+      const startLine = code.substring(0, match.index).split("\n").length;
 
       asyncFunctions.push({
         name: match[1],
@@ -2021,7 +2181,7 @@ async function analyzeWithRegex(filePath) {
         start: match.index,
         end: match.index + fullMatch.length,
         startLine,
-        type: 'method',
+        type: "method",
         fullMatch,
       });
     }
@@ -2032,7 +2192,7 @@ async function analyzeWithRegex(filePath) {
       while ((match = simpleAsyncFnPattern.exec(code)) !== null) {
         const fullMatch = match[0];
         const fnBody = match[2];
-        const startLine = code.substring(0, match.index).split('\n').length;
+        const startLine = code.substring(0, match.index).split("\n").length;
 
         asyncFunctions.push({
           name: match[1],
@@ -2040,7 +2200,7 @@ async function analyzeWithRegex(filePath) {
           start: match.index,
           end: match.index + fullMatch.length,
           startLine,
-          type: 'standard-simple',
+          type: "standard-simple",
           fullMatch,
         });
       }
@@ -2049,7 +2209,7 @@ async function analyzeWithRegex(filePath) {
       while ((match = simpleExportAsyncFnPattern.exec(code)) !== null) {
         const fullMatch = match[0];
         const fnBody = match[2];
-        const startLine = code.substring(0, match.index).split('\n').length;
+        const startLine = code.substring(0, match.index).split("\n").length;
 
         asyncFunctions.push({
           name: match[1],
@@ -2057,7 +2217,7 @@ async function analyzeWithRegex(filePath) {
           start: match.index,
           end: match.index + fullMatch.length,
           startLine,
-          type: 'export-simple',
+          type: "export-simple",
           fullMatch,
         });
       }
@@ -2066,7 +2226,7 @@ async function analyzeWithRegex(filePath) {
       while ((match = simpleArrowAsyncPattern.exec(code)) !== null) {
         const fullMatch = match[0];
         const fnBody = match[2];
-        const startLine = code.substring(0, match.index).split('\n').length;
+        const startLine = code.substring(0, match.index).split("\n").length;
 
         asyncFunctions.push({
           name: match[1],
@@ -2074,7 +2234,7 @@ async function analyzeWithRegex(filePath) {
           start: match.index,
           end: match.index + fullMatch.length,
           startLine,
-          type: 'arrow-simple',
+          type: "arrow-simple",
           fullMatch,
         });
       }
@@ -2083,56 +2243,62 @@ async function analyzeWithRegex(filePath) {
     // If still no functions found, try a more aggressive approach
     if (asyncFunctions.length === 0) {
       console.log(
-        'No async functions found with standard patterns, trying more aggressive approach'
+        "No async functions found with standard patterns, trying more aggressive approach",
       );
 
       // Find all async function declarations
-      const allAsyncFunctions = code.match(/async\s+function\s+\w+[^{]*\{[\s\S]*?\}/g) || [];
+      const allAsyncFunctions =
+        code.match(/async\s+function\s+\w+[^{]*\{[\s\S]*?\}/g) || [];
       const allExportAsyncFunctions =
         code.match(/export\s+async\s+function\s+\w+[^{]*\{[\s\S]*?\}/g) || [];
-      const allArrowAsyncFunctions = code.match(/\w+\s*=\s*async[^{]*\{[\s\S]*?\}/g) || [];
+      const allArrowAsyncFunctions =
+        code.match(/\w+\s*=\s*async[^{]*\{[\s\S]*?\}/g) || [];
 
       // Process all found functions
-      [...allAsyncFunctions, ...allExportAsyncFunctions, ...allArrowAsyncFunctions].forEach(
-        (fnText) => {
-          let name = 'unknown';
-          let type = 'unknown';
+      [
+        ...allAsyncFunctions,
+        ...allExportAsyncFunctions,
+        ...allArrowAsyncFunctions,
+      ].forEach((fnText) => {
+        let name = "unknown";
+        let type = "unknown";
 
-          // Try to extract name
-          const nameMatch = fnText.match(
-            /(?:async\s+function\s+|export\s+async\s+function\s+|^|=\s*async[^(]*\()(\w+)/
-          );
-          if (nameMatch && nameMatch[1]) {
-            name = nameMatch[1];
-          }
-
-          // Determine type
-          if (fnText.startsWith('export')) {
-            type = 'export-aggressive';
-          } else if (fnText.includes('=')) {
-            type = 'arrow-aggressive';
-          } else {
-            type = 'standard-aggressive';
-          }
-
-          // Extract body
-          const bodyMatch = fnText.match(/\{([\s\S]*)\}/);
-          const body = bodyMatch ? bodyMatch[1] : '';
-
-          asyncFunctions.push({
-            name,
-            body,
-            start: code.indexOf(fnText),
-            end: code.indexOf(fnText) + fnText.length,
-            startLine: code.substring(0, code.indexOf(fnText)).split('\n').length,
-            type,
-            fullMatch: fnText,
-          });
+        // Try to extract name
+        const nameMatch = fnText.match(
+          /(?:async\s+function\s+|export\s+async\s+function\s+|^|=\s*async[^(]*\()(\w+)/,
+        );
+        if (nameMatch && nameMatch[1]) {
+          name = nameMatch[1];
         }
-      );
+
+        // Determine type
+        if (fnText.startsWith("export")) {
+          type = "export-aggressive";
+        } else if (fnText.includes("=")) {
+          type = "arrow-aggressive";
+        } else {
+          type = "standard-aggressive";
+        }
+
+        // Extract body
+        const bodyMatch = fnText.match(/\{([\s\S]*)\}/);
+        const body = bodyMatch ? bodyMatch[1] : "";
+
+        asyncFunctions.push({
+          name,
+          body,
+          start: code.indexOf(fnText),
+          end: code.indexOf(fnText) + fnText.length,
+          startLine: code.substring(0, code.indexOf(fnText)).split("\n").length,
+          type,
+          fullMatch: fnText,
+        });
+      });
     }
 
-    console.log(`Found ${asyncFunctions.length} functions via AST/regex analysis`);
+    console.log(
+      `Found ${asyncFunctions.length} functions via AST/regex analysis`,
+    );
 
     const result = {
       file: relativeFilePath,
@@ -2144,7 +2310,8 @@ async function analyzeWithRegex(filePath) {
     for (const fn of asyncFunctions) {
       // Look for consecutive await expressions using the same function call
       const awaitCalls = {};
-      const awaitPattern = /const\s+([a-zA-Z0-9_]+)\s*=\s*await\s+([a-zA-Z0-9_.]+)\(([^)]*)\)/g;
+      const awaitPattern =
+        /const\s+([a-zA-Z0-9_]+)\s*=\s*await\s+([a-zA-Z0-9_.]+)\(([^)]*)\)/g;
       let awaitMatch;
 
       const fnBody = fn.body;
@@ -2172,7 +2339,7 @@ async function analyzeWithRegex(filePath) {
 
         // Check if this await is already captured by the more specific pattern
         const isDuplicate = awaitCalls[fnName].some((call) =>
-          call.fullMatch.includes(awaitMatch[0])
+          call.fullMatch.includes(awaitMatch[0]),
         );
 
         if (!isDuplicate) {
@@ -2198,7 +2365,7 @@ async function analyzeWithRegex(filePath) {
             parallelOps.push({
               functionName: calledFn,
               variableName: call.variableName,
-              args: call.args.split(',').map((arg) => arg.trim()),
+              args: call.args.split(",").map((arg) => arg.trim()),
               fullMatch: call.fullMatch,
             });
           }
@@ -2217,7 +2384,11 @@ async function analyzeWithRegex(filePath) {
         };
 
         // Generate optimized version
-        fnInfo.optimizedCode = generateDefaultOptimization(fn.name, parallelOps, fn.fullMatch);
+        fnInfo.optimizedCode = generateDefaultOptimization(
+          fn.name,
+          parallelOps,
+          fn.fullMatch,
+        );
 
         result.functions.push(fnInfo);
       } else {
@@ -2266,7 +2437,7 @@ function getStageCachePath(stage) {
 
 // Modify the main function to use both AST and regex analysis
 async function main() {
-  const packagesDir = path.join(__dirname, '..', 'packages');
+  const _packagesDir = path.join(__dirname, "..", "packages");
 
   // Initialize cache if needed
   await initializeCache();
@@ -2274,44 +2445,49 @@ async function main() {
   // Parse command line arguments
   const cmdArgs = minimist(process.argv.slice(2), {
     boolean: [
-      'analyze',
-      'ai',
-      'with-ai',
-      'force-ai',
-      'verbose',
-      'regex-only',
-      'force-parse',
-      'skip-regex',
+      "analyze",
+      "ai",
+      "with-ai",
+      "force-ai",
+      "verbose",
+      "regex-only",
+      "force-parse",
+      "skip-regex",
     ],
-    string: ['file'],
+    string: ["file"],
   });
 
   // Set verbose mode if specified
   VERBOSE = cmdArgs.verbose || false;
 
   if (cmdArgs.analyze) {
-    console.log('Starting analysis...');
+    console.log("Starting analysis...");
 
     // Change let to const since it's assigned only once
     const parseResults = await (async () => {
       // Check if a specific file was provided
       if (
         cmdArgs.file &&
-        (cmdArgs.file.endsWith('.js') ||
-          cmdArgs.file.endsWith('.ts') ||
-          cmdArgs.file.endsWith('.tsx'))
+        (cmdArgs.file.endsWith(".js") ||
+          cmdArgs.file.endsWith(".ts") ||
+          cmdArgs.file.endsWith(".tsx"))
       ) {
         const filePath = path.resolve(process.cwd(), cmdArgs.file);
         console.log(`Analyzing specific file: ${filePath}`);
 
         // Try AST analysis first, unless regex-only is specified
         const astAnalysisResults = { functions: [], success: false };
-        if (!cmdArgs['regex-only']) {
+        if (!cmdArgs["regex-only"]) {
           try {
-            logVerbose('Attempting AST analysis...');
-            Object.assign(astAnalysisResults, await extractAsyncFunctions(filePath));
+            logVerbose("Attempting AST analysis...");
+            Object.assign(
+              astAnalysisResults,
+              await extractAsyncFunctions(filePath),
+            );
           } catch (error) {
-            console.warn(`Warning: AST analysis failed for ${filePath}: ${error.message}`);
+            console.warn(
+              `Warning: AST analysis failed for ${filePath}: ${error.message}`,
+            );
             astAnalysisResults.error = error.message;
           }
         }
@@ -2319,19 +2495,23 @@ async function main() {
         // If AST analysis found no functions or didn't complete successfully, try regex analysis
         const regexAnalysisResults = { functions: [] };
         if (
-          cmdArgs['regex-only'] ||
+          cmdArgs["regex-only"] ||
           astAnalysisResults.functions.length === 0 ||
           !astAnalysisResults.success
         ) {
-          logVerbose('Using regex analysis...');
+          logVerbose("Using regex analysis...");
           Object.assign(regexAnalysisResults, await analyzeWithRegex(filePath));
         }
 
         // Combine results (AST takes precedence for the same function names)
-        const astFunctionNames = new Set(astAnalysisResults.functions.map((f) => f.name));
+        const astFunctionNames = new Set(
+          astAnalysisResults.functions.map((f) => f.name),
+        );
         const combinedFunctions = [
           ...astAnalysisResults.functions,
-          ...regexAnalysisResults.functions.filter((f) => !astFunctionNames.has(f.name)),
+          ...regexAnalysisResults.functions.filter(
+            (f) => !astFunctionNames.has(f.name),
+          ),
         ];
 
         return {
@@ -2342,14 +2522,14 @@ async function main() {
       }
 
       // Process packages directory
-      if (existsSync(PARSE_CACHE_PATH) && !cmdArgs['force-parse']) {
-        const result = await loadStageResults('parse');
-        console.log('Found existing parse results, using cached data');
+      if (existsSync(PARSE_CACHE_PATH) && !cmdArgs["force-parse"]) {
+        const result = await loadStageResults("parse");
+        console.log("Found existing parse results, using cached data");
         return result;
       }
 
       // Get the packages directory
-      const packagesDir = path.resolve(process.cwd(), 'packages');
+      const packagesDir = path.resolve(process.cwd(), "packages");
 
       if (!existsSync(packagesDir)) {
         console.error(`Packages directory not found: ${packagesDir}`);
@@ -2358,34 +2538,42 @@ async function main() {
 
       console.log(`Analyzing packages in: ${packagesDir}`);
       const result = await parseAllPackages(packagesDir);
-      await saveStageResults('parse', result);
+      await saveStageResults("parse", result);
       return result;
     })();
 
     // Change this check to allow the script to continue with available results
     if (!parseResults) {
-      console.error('Error during analysis: Parse results are undefined');
+      console.error("Error during analysis: Parse results are undefined");
       return;
     }
 
     // Continue even if success is false, using what we have
     console.log(
-      `Found ${parseResults.functions ? parseResults.functions.length : 0} functions via AST/regex analysis`
+      `Found ${parseResults.functions ? parseResults.functions.length : 0} functions via AST/regex analysis`,
     );
 
     // Use regex analysis for files where AST analysis failed or found no functions
-    if (!cmdArgs['skip-regex'] && parseResults.files && parseResults.files.length > 0) {
+    if (
+      !cmdArgs["skip-regex"] &&
+      parseResults.files &&
+      parseResults.files.length > 0
+    ) {
       const filesToReanalyze = parseResults.files.filter((file) => {
         // Add null check before filtering functions
         if (!parseResults.functions || !Array.isArray(parseResults.functions)) {
           return true; // If functions array doesn't exist, reanalyze this file
         }
-        const functionsInFile = parseResults.functions.filter((fn) => fn.file === file);
+        const functionsInFile = parseResults.functions.filter(
+          (fn) => fn.file === file,
+        );
         return functionsInFile.length === 0;
       });
 
       if (filesToReanalyze.length > 0) {
-        logVerbose(`Reanalyzing ${filesToReanalyze.length} files with regex approach...`);
+        logVerbose(
+          `Reanalyzing ${filesToReanalyze.length} files with regex approach...`,
+        );
 
         for (const file of filesToReanalyze) {
           const regexResults = await analyzeWithRegex(file);
@@ -2402,21 +2590,27 @@ async function main() {
 
     // Continue with the AI analysis if available
     const analysisResults = await (async () => {
-      if (cmdArgs.ai || cmdArgs['with-ai']) {
+      if (cmdArgs.ai || cmdArgs["with-ai"]) {
         try {
-          if (existsSync(AI_CACHE_PATH) && !cmdArgs['force-ai']) {
-            const result = await loadStageResults('ai');
-            console.log('Found existing AI analysis results, using cached data');
+          if (existsSync(AI_CACHE_PATH) && !cmdArgs["force-ai"]) {
+            const result = await loadStageResults("ai");
+            console.log(
+              "Found existing AI analysis results, using cached data",
+            );
             return result;
           }
 
-          console.log('Starting AI analysis with Claude...');
+          console.log("Starting AI analysis with Claude...");
           const result = await analyzeWithAI(parseResults);
-          await saveStageResults('ai', result);
+          await saveStageResults("ai", result);
           return result;
         } catch (error) {
-          console.error('Error in AI analysis stage:', error);
-          return { results: {}, parallelizableFunctions: new Set(), errors: [error] };
+          console.error("Error in AI analysis stage:", error);
+          return {
+            results: {},
+            parallelizableFunctions: new Set(),
+            errors: [error],
+          };
         }
       }
 
@@ -2460,39 +2654,48 @@ async function main() {
 
     // Generate the final report
     try {
-      console.log('Generating optimization report...');
-      const reportPath = path.resolve(process.cwd(), 'scripts/optimization-report.md');
+      console.log("Generating optimization report...");
+      const reportPath = path.resolve(
+        process.cwd(),
+        "scripts/optimization-report.md",
+      );
       const report = await generateMarkdownReport(analysisResults);
 
       // Use fsPromises.writeFile
       await fsPromises.writeFile(reportPath, report);
       console.log(`Report saved to: ${reportPath}`);
     } catch (error) {
-      console.error('Error generating report:', error);
+      console.error("Error generating report:", error);
     }
 
     // Summary
-    console.log('\nAnalysis Summary:');
+    console.log("\nAnalysis Summary:");
     console.log(
-      `- Files processed: ${parseResults && parseResults.files ? parseResults.files.length : 0}`
+      `- Files processed: ${(parseResults && parseResults.files) ? parseResults.files.length : 0}`,
     );
     console.log(
-      `- Async functions found: ${parseResults && parseResults.functions ? parseResults.functions.length : 0}`
+      `- Async functions found: ${(parseResults && parseResults.functions) ? parseResults.functions.length : 0}`,
     );
     console.log(
-      `- Potentially parallelizable functions: ${analysisResults && analysisResults.parallelizableFunctions ? analysisResults.parallelizableFunctions.size : 0}`
+      `- Potentially parallelizable functions: ${(analysisResults && analysisResults.parallelizableFunctions) ? analysisResults.parallelizableFunctions.size : 0}`,
     );
     console.log(
-      `- Errors encountered: ${analysisResults && analysisResults.errors ? analysisResults.errors.length : 0}`
+      `- Errors encountered: ${(analysisResults && analysisResults.errors) ? analysisResults.errors.length : 0}`,
     );
 
     // Debug: Log the structure of analysisResults
-    console.log('\nDebug: analysisResults structure:');
-    console.log('- parallelizableFunctions:', analysisResults.parallelizableFunctions);
-    console.log('- results keys:', Object.keys(analysisResults.results));
+    console.log("\nDebug: analysisResults structure:");
+    console.log(
+      "- parallelizableFunctions:",
+      analysisResults.parallelizableFunctions,
+    );
+    console.log("- results keys:", Object.keys(analysisResults.results));
     if (Object.keys(analysisResults.results).length > 0) {
       const sampleKey = Object.keys(analysisResults.results)[0];
-      console.log(`- Sample result (${sampleKey}):`, analysisResults.results[sampleKey]);
+      console.log(
+        `- Sample result (${sampleKey}):`,
+        analysisResults.results[sampleKey],
+      );
     }
 
     // Apply optimizations if --apply flag is used
@@ -2502,7 +2705,7 @@ async function main() {
       analysisResults.parallelizableFunctions &&
       analysisResults.parallelizableFunctions.size > 0
     ) {
-      console.log('\nApplying optimizations...');
+      console.log("\nApplying optimizations...");
       await generateOptimizations(analysisResults);
     }
   }
@@ -2511,6 +2714,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('Test failed:', error);
+  console.error("Test failed:", error);
   process.exit(1);
 });

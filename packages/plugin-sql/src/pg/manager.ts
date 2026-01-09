@@ -1,7 +1,7 @@
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Pool, type PoolClient, type PoolConfig } from 'pg';
-import { sql } from 'drizzle-orm';
-import { logger, type UUID, validateUuid } from '@elizaos/core';
+import { logger, type UUID, validateUuid } from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { Pool, type PoolClient, type PoolConfig } from "pg";
 
 export class PostgresConnectionManager {
   private pool: Pool;
@@ -34,8 +34,8 @@ export class PostgresConnectionManager {
     if (rlsServerId) {
       poolConfig.application_name = rlsServerId;
       logger.debug(
-        { src: 'plugin:sql', rlsServerId: rlsServerId.substring(0, 8) },
-        'Pool configured with RLS server'
+        { src: "plugin:sql", rlsServerId: rlsServerId.substring(0, 8) },
+        "Pool configured with RLS server",
       );
     }
 
@@ -45,14 +45,14 @@ export class PostgresConnectionManager {
     // When an idle client encounters an error (DB restart, network partition, etc.),
     // the pool emits 'error'. Without a handler, this crashes the process.
     // The pool automatically removes and replaces the failed connection.
-    this.pool.on('error', (err) => {
+    this.pool.on("error", (err) => {
       logger.warn(
-        { src: 'plugin:sql', error: err?.message || String(err) },
-        'Pool client error (connection will be replaced)'
+        { src: "plugin:sql", error: err?.message || String(err) },
+        "Pool client error (connection will be replaced)",
       );
     });
 
-    this.db = drizzle(this.pool, { casing: 'snake_case' });
+    this.db = drizzle(this.pool, { casing: "snake_case" });
   }
 
   public getDatabase(): NodePgDatabase {
@@ -71,12 +71,15 @@ export class PostgresConnectionManager {
     let client: PoolClient | null = null;
     try {
       client = await this.pool.connect();
-      await client.query('SELECT 1');
+      await client.query("SELECT 1");
       return true;
     } catch (error) {
       logger.error(
-        { src: 'plugin:sql', error: error instanceof Error ? error.message : String(error) },
-        'Failed to connect to the database'
+        {
+          src: "plugin:sql",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to connect to the database",
       );
       return false;
     } finally {
@@ -102,18 +105,20 @@ export class PostgresConnectionManager {
    */
   public async withEntityContext<T>(
     entityId: UUID | null,
-    callback: (tx: NodePgDatabase) => Promise<T>
+    callback: (tx: NodePgDatabase) => Promise<T>,
   ): Promise<T> {
     // Check if data isolation is enabled - if not, skip SET LOCAL entirely
     // This avoids PostgreSQL transaction abort errors when app.entity_id is not configured
-    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
 
     return await this.db.transaction(async (tx) => {
       // Only set entity context if ENABLE_DATA_ISOLATION is true AND entityId is provided
       if (dataIsolationEnabled && entityId) {
         // Validate UUID format to prevent SQL injection since SET LOCAL requires sql.raw()
         if (!validateUuid(entityId)) {
-          throw new Error(`Invalid UUID format for entity context: ${entityId}`);
+          throw new Error(
+            `Invalid UUID format for entity context: ${entityId}`,
+          );
         }
 
         try {
@@ -123,10 +128,11 @@ export class PostgresConnectionManager {
           logger.debug(`[Entity Context] Set app.entity_id = ${entityId}`);
         } catch (error) {
           // This is an unexpected error since we already checked ENABLE_DATA_ISOLATION
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
           logger.error(
             { error, entityId },
-            `[Entity Context] Failed to set entity context: ${errorMessage}`
+            `[Entity Context] Failed to set entity context: ${errorMessage}`,
           );
           // Re-throw because if ENABLE_DATA_ISOLATION is true, this should work
           throw error;
@@ -135,7 +141,9 @@ export class PostgresConnectionManager {
         // Data isolation not enabled - just execute without entity context
         // This is the expected path for most deployments
       } else {
-        logger.debug('[Entity Context] No entity context set (server operation)');
+        logger.debug(
+          "[Entity Context] No entity context set (server operation)",
+        );
       }
 
       // Execute the callback with the transaction

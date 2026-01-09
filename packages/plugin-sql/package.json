@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-sql",
-  "version": "1.7.1-alpha.10",
+  "version": "2.0.0-alpha.0",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -42,27 +42,39 @@
       "types": "./dist/browser/index.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_sql.js",
+        "default": "./rust/pkg/web/elizaos_plugin_sql.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_sql.js",
+        "default": "./rust/pkg/node/elizaos_plugin_sql.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_sql.js"
     }
   },
   "sideEffects": false,
   "files": [
     "dist",
     "drizzle",
-    "types"
+    "types",
+    "rust/pkg"
   ],
   "dependencies": {
     "@electric-sql/pglite": "^0.3.3",
     "@elizaos/core": "workspace:*",
     "dotenv": "^17.2.3",
-    "drizzle-kit": "^0.31.1",
-    "drizzle-orm": "^0.45.0",
-    "pg": "^8.13.3",
+    "drizzle-kit": "^0.31.8",
+    "drizzle-orm": "^0.45.1",
+    "pg": "^8.16.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@elizaos/config": "workspace:*",
     "@eslint/js": "^9.28.0",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.3",
     "@types/pg": "^8.15.6",
     "eslint": "^9.28.0",
     "prettier": "^3.7.4",
@@ -76,6 +88,7 @@
     "migrate": "drizzle-kit migrate",
     "lint": "eslint . && prettier --write .",
     "lint:check": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write .",
     "format:check": "prettier --check ./src",
@@ -89,7 +102,16 @@
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
     "build:clean": "rm -rf dist",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "build:rust": "cd rust && ./build.sh",
+    "build:rust:native": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --features wasm",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets --features native -- -D warnings",
+    "typecheck:rust": "cd rust && cargo check --all-targets --all-features",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_sql || echo 'mypy not installed, skipping typecheck'"
   },
   "gitHead": "255e37c0e4a76da0b776219db5ebb9dadf20e89f"
 }

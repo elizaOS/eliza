@@ -1,6 +1,6 @@
-import dotenv from 'dotenv';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
+import { existsSync } from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
 
 /**
  * Expands a file path starting with `~` to the project directory.
@@ -9,7 +9,7 @@ import path from 'node:path';
  * @returns The expanded path.
  */
 export function expandTildePath(filepath: string): string {
-  if (filepath && filepath.startsWith('~')) {
+  if (filepath?.startsWith("~")) {
     return path.join(process.cwd(), filepath.slice(1));
   }
   return filepath;
@@ -29,7 +29,7 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
   let currentDir = startDir;
 
   while (true) {
-    const candidate = path.join(currentDir, '.env');
+    const candidate = path.join(currentDir, ".env");
     if (existsSync(candidate)) {
       return candidate;
     }
@@ -41,7 +41,7 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
     currentDir = parentDir;
   }
 
-  return path.join(startDir, '.env');
+  return path.join(startDir, ".env");
 }
 
 /**
@@ -66,11 +66,11 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   // cwd might be plugin-sql if we're running tests from monorepo
   // are we in monorepo config?
   let monoPath;
-  if (existsSync(path.join(process.cwd(), 'packages', 'core'))) {
+  if (existsSync(path.join(process.cwd(), "packages", "core"))) {
     monoPath = process.cwd();
   } else {
-    const twoUp = path.resolve(process.cwd(), '../..'); // assuming running from package
-    if (existsSync(path.join(twoUp, 'packages', 'core'))) {
+    const twoUp = path.resolve(process.cwd(), "../.."); // assuming running from package
+    if (existsSync(path.join(twoUp, "packages", "core"))) {
       monoPath = twoUp;
     }
   }
@@ -79,14 +79,14 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     dir ??
     process.env.PGLITE_DATA_DIR ??
     fallbackDir ??
-    (monoPath ? path.join(monoPath, '.eliza', '.elizadb') : undefined) ??
-    path.join(process.cwd(), '.eliza', '.elizadb');
+    (monoPath ? path.join(monoPath, ".eliza", ".elizadb") : undefined) ??
+    path.join(process.cwd(), ".eliza", ".elizadb");
 
   // Automatically migrate legacy path (<cwd>/.elizadb) to new location (<cwd>/.eliza/.elizadb)
   const resolved = expandTildePath(base);
-  const legacyPath = path.join(process.cwd(), '.elizadb');
+  const legacyPath = path.join(process.cwd(), ".elizadb");
   if (resolved === legacyPath) {
-    const newPath = path.join(process.cwd(), '.eliza', '.elizadb');
+    const newPath = path.join(process.cwd(), ".eliza", ".elizadb");
     process.env.PGLITE_DATA_DIR = newPath;
     return newPath;
   }

@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
+
 /**
  * Common build utilities for Bun.build across the monorepo
  */
 
-import type { BuildConfig, BunPlugin } from 'bun';
-import { existsSync, watch, type FSWatcher } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, type FSWatcher, watch } from "node:fs";
+import { join } from "node:path";
+import type { BuildConfig, BunPlugin } from "bun";
 
 export interface ElizaBuildOptions {
   /** Package root directory */
@@ -15,17 +16,17 @@ export interface ElizaBuildOptions {
   /** Output directory - defaults to 'dist' */
   outdir?: string;
   /** Target environment - defaults to 'node' for packages */
-  target?: 'node' | 'bun' | 'browser';
+  target?: "node" | "bun" | "browser";
   /** External dependencies */
   external?: string[];
   /** Whether to generate sourcemaps */
-  sourcemap?: boolean | 'linked' | 'inline' | 'external';
+  sourcemap?: boolean | "linked" | "inline" | "external";
   /** Whether to minify */
   minify?: boolean;
   /** Additional plugins */
   plugins?: BunPlugin[];
   /** Format - defaults to 'esm' */
-  format?: 'esm' | 'cjs';
+  format?: "esm" | "cjs";
   /** Copy assets configuration */
   assets?: Array<{ from: string; to: string }>;
   /** Whether this is a CLI tool */
@@ -52,86 +53,85 @@ export function getTimer() {
 }
 
 /**
- * Creates a standardized Bun build configuration for ElizaOS packages
+ * Creates a standardized Bun build configuration for elizaOS packages
  */
-export async function createElizaBuildConfig(options: ElizaBuildOptions): Promise<BuildConfig> {
-  const timer = getTimer();
-
+export async function createElizaBuildConfig(
+  options: ElizaBuildOptions,
+): Promise<BuildConfig> {
   const {
-    root = process.cwd(),
-    entrypoints = ['src/index.ts'],
-    outdir = 'dist',
-    target = 'node',
+    root: _root = process.cwd(),
+    entrypoints = ["src/index.ts"],
+    outdir = "dist",
+    target = "node",
     external = [],
     sourcemap = false,
     minify = false,
     plugins = [],
-    format = 'esm',
-    assets = [],
-    isCli = false,
+    format = "esm",
+    assets: _assets = [],
   } = options;
 
   // Resolve paths relative to root
   const resolvedEntrypoints = entrypoints
-    .filter((entry) => entry && entry.trim() !== '') // Filter out empty strings
-    .map((entry) => (entry.startsWith('./') ? entry : `./${entry}`));
+    .filter((entry) => entry && entry.trim() !== "") // Filter out empty strings
+    .map((entry) => (entry.startsWith("./") ? entry : `./${entry}`));
 
   // Common external packages for Node.js targets
   const nodeExternals =
-    target === 'node' || target === 'bun'
+    target === "node" || target === "bun"
       ? [
-          'node:*',
-          'fs',
-          'path',
-          'crypto',
-          'stream',
-          'buffer',
-          'util',
-          'events',
-          'url',
-          'http',
-          'https',
-          'os',
-          'child_process',
-          'worker_threads',
-          'cluster',
-          'zlib',
-          'querystring',
-          'string_decoder',
-          'tls',
-          'net',
-          'dns',
-          'dgram',
-          'readline',
-          'repl',
-          'vm',
-          'assert',
-          'console',
-          'process',
-          'timers',
-          'perf_hooks',
-          'async_hooks',
+          "node:*",
+          "fs",
+          "path",
+          "crypto",
+          "stream",
+          "buffer",
+          "util",
+          "events",
+          "url",
+          "http",
+          "https",
+          "os",
+          "child_process",
+          "worker_threads",
+          "cluster",
+          "zlib",
+          "querystring",
+          "string_decoder",
+          "tls",
+          "net",
+          "dns",
+          "dgram",
+          "readline",
+          "repl",
+          "vm",
+          "assert",
+          "console",
+          "process",
+          "timers",
+          "perf_hooks",
+          "async_hooks",
         ]
       : [];
 
-  // ElizaOS workspace packages that should typically be external
+  // elizaOS workspace packages that should typically be external
   const elizaExternals = [
-    '@elizaos/core',
-    '@elizaos/server',
-    '@elizaos/client',
-    '@elizaos/api-client',
-    '@elizaos/plugin-*',
+    "@elizaos/core",
+    "@elizaos/server",
+    "@elizaos/client",
+    "@elizaos/api-client",
+    "@elizaos/plugin-*",
   ];
 
   // Filter out empty strings and clean up the external array
   const cleanExternals = [...external].filter(
-    (ext) => ext && !ext.startsWith('//') && ext.trim() !== ''
+    (ext) => ext && !ext.startsWith("//") && ext.trim() !== "",
   );
 
   const config: BuildConfig = {
     entrypoints: resolvedEntrypoints,
     outdir,
-    target: target === 'node' ? 'node' : target,
+    target: target === "node" ? "node" : target,
     format,
     // Note: 'splitting' option removed as it's not part of Bun's BuildConfig type
     // splitting: format === 'esm' && entrypoints.length > 1,
@@ -140,9 +140,9 @@ export async function createElizaBuildConfig(options: ElizaBuildOptions): Promis
     external: [...nodeExternals, ...elizaExternals, ...cleanExternals],
     plugins,
     naming: {
-      entry: '[dir]/[name].[ext]',
-      chunk: '[name]-[hash].[ext]',
-      asset: '[name]-[hash].[ext]',
+      entry: "[dir]/[name].[ext]",
+      chunk: "[name]-[hash].[ext]",
+      asset: "[name]-[hash].[ext]",
     },
   };
 
@@ -156,9 +156,9 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   if (!assets.length) return;
 
   const timer = getTimer();
-  const { cp } = await import('node:fs/promises');
+  const { cp } = await import("node:fs/promises");
 
-  console.log('Copying assets...');
+  console.log("Copying assets...");
 
   // Process all assets in parallel
   const copyPromises = assets.map(async (asset) => {
@@ -176,11 +176,12 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
           success: false,
           message: `Source not found: ${asset.from}`,
           asset,
-          error: 'Source not found',
+          error: "Source not found",
         };
       }
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         success: false,
         message: `Failed to copy ${asset.from} to ${asset.to}: ${errorMessage}`,
@@ -195,7 +196,10 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 
   // Process results
   let successCount = 0;
-  let failedAssets: Array<{ asset: { from: string; to: string }; error: string }> = [];
+  const failedAssets: Array<{
+    asset: { from: string; to: string };
+    error: string;
+  }> = [];
 
   results.forEach((result) => {
     if (result.success) {
@@ -204,9 +208,11 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
       console.warn(`  ⚠ ${result.message}`);
       if (result.error) {
         // Check for specific error types
-        if (result.error.includes('EACCES') || result.error.includes('EPERM')) {
-          console.error(`    Permission denied. Try running with elevated privileges.`);
-        } else if (result.error.includes('ENOSPC')) {
+        if (result.error.includes("EACCES") || result.error.includes("EPERM")) {
+          console.error(
+            `    Permission denied. Try running with elevated privileges.`,
+          );
+        } else if (result.error.includes("ENOSPC")) {
           console.error(`    Insufficient disk space.`);
         }
         failedAssets.push({ asset: result.asset, error: result.error });
@@ -219,11 +225,15 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
   if (failedAssets.length === 0) {
     console.log(`✓ Assets copied (${totalTime}ms)`);
   } else if (successCount > 0) {
-    console.warn(`⚠ Copied ${successCount}/${assets.length} assets (${totalTime}ms)`);
-    console.warn(`  Failed assets: ${failedAssets.map((f) => f.asset.from).join(', ')}`);
+    console.warn(
+      `⚠ Copied ${successCount}/${assets.length} assets (${totalTime}ms)`,
+    );
+    console.warn(
+      `  Failed assets: ${failedAssets.map((f) => f.asset.from).join(", ")}`,
+    );
   } else {
     throw new Error(
-      `Failed to copy all assets. Errors: ${failedAssets.map((f) => `${f.asset.from}: ${f.error}`).join('; ')}`
+      `Failed to copy all assets. Errors: ${failedAssets.map((f) => `${f.asset.from}: ${f.error}`).join("; ")}`,
     );
   }
 }
@@ -231,38 +241,50 @@ export async function copyAssets(assets: Array<{ from: string; to: string }>) {
 /**
  * Generate TypeScript declarations using tsc
  */
-export async function generateDts(tsconfigPath = './tsconfig.build.json', throwOnError = true) {
+export async function generateDts(
+  tsconfigPath = "./tsconfig.build.json",
+  throwOnError = true,
+) {
   const timer = getTimer();
-  const { $ } = await import('bun');
+  const { $ } = await import("bun");
 
   if (!existsSync(tsconfigPath)) {
-    console.warn(`TypeScript config not found at ${tsconfigPath}, skipping d.ts generation`);
+    console.warn(
+      `TypeScript config not found at ${tsconfigPath}, skipping d.ts generation`,
+    );
     return;
   }
 
-  console.log('Generating TypeScript declarations...');
+  console.log("Generating TypeScript declarations...");
   try {
     // Use incremental compilation for faster subsequent builds
     await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
-    console.log(`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`);
+    console.log(
+      `✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`,
+    );
   } catch (error: unknown) {
-    console.error(`✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`);
-    console.error('Error details:', error instanceof Error ? error.message : String(error));
+    console.error(
+      `✗ Failed to generate TypeScript declarations (${timer.elapsed()}ms)`,
+    );
+    console.error(
+      "Error details:",
+      error instanceof Error ? error.message : String(error),
+    );
 
     if (throwOnError) {
       // Propagate so calling build fails hard on TS errors
       throw error;
     }
-    console.warn('Continuing build without TypeScript declarations...');
+    console.warn("Continuing build without TypeScript declarations...");
   }
 }
 
 /**
  * Clean build artifacts with proper error handling and retry logic
  */
-export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
+export async function cleanBuild(outdir = "dist", maxRetries = 3) {
   const timer = getTimer();
-  const { rm } = await import('node:fs/promises');
+  const { rm } = await import("node:fs/promises");
 
   if (!existsSync(outdir)) {
     console.log(`✓ ${outdir} directory already clean (${timer.elapsed()}ms)`);
@@ -278,23 +300,31 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
       return; // Success, exit the function
     } catch (error: unknown) {
       lastError = error;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       // Check for specific error types
-      if (errorMessage.includes('EACCES') || errorMessage.includes('EPERM')) {
+      if (errorMessage.includes("EACCES") || errorMessage.includes("EPERM")) {
         console.error(`✗ Permission denied while cleaning ${outdir}`);
-        console.error(`  Try running with elevated privileges or check file permissions.`);
+        console.error(
+          `  Try running with elevated privileges or check file permissions.`,
+        );
         throw error; // Don't retry permission errors
-      } else if (errorMessage.includes('ENOENT')) {
+      } else if (errorMessage.includes("ENOENT")) {
         // Directory was already deleted (possibly by concurrent process)
-        console.log(`✓ ${outdir} directory was already removed (${timer.elapsed()}ms)`);
+        console.log(
+          `✓ ${outdir} directory was already removed (${timer.elapsed()}ms)`,
+        );
         return;
-      } else if (errorMessage.includes('EBUSY') || errorMessage.includes('EMFILE')) {
+      } else if (
+        errorMessage.includes("EBUSY") ||
+        errorMessage.includes("EMFILE")
+      ) {
         // Resource busy or too many open files - these might be temporary
         if (attempt < maxRetries) {
           const waitTime = attempt * 500; // Exponential backoff: 500ms, 1000ms, 1500ms
           console.warn(
-            `⚠ Failed to clean ${outdir} (attempt ${attempt}/${maxRetries}): ${errorMessage}`
+            `⚠ Failed to clean ${outdir} (attempt ${attempt}/${maxRetries}): ${errorMessage}`,
           );
           console.warn(`  Retrying in ${waitTime}ms...`);
           await new Promise((resolve) => setTimeout(resolve, waitTime));
@@ -308,7 +338,8 @@ export async function cleanBuild(outdir = 'dist', maxRetries = 3) {
   }
 
   // If we've exhausted all retries
-  const finalError = lastError instanceof Error ? lastError : new Error(String(lastError));
+  const finalError =
+    lastError instanceof Error ? lastError : new Error(String(lastError));
   console.error(`✗ Failed to clean ${outdir} after ${maxRetries} attempts`);
   throw finalError;
 }
@@ -322,16 +353,17 @@ export function watchFiles(
   options: {
     extensions?: string[];
     debounceMs?: number;
-  } = {}
+  } = {},
 ): () => void {
-  const { extensions = ['.ts', '.js', '.tsx', '.jsx'], debounceMs = 100 } = options;
+  const { extensions = [".ts", ".js", ".tsx", ".jsx"], debounceMs = 100 } =
+    options;
 
   let debounceTimer: NodeJS.Timeout | null = null;
   let watcher: FSWatcher | null = null;
   let isCleanedUp = false;
 
   console.log(`📁 Watching ${directory} for changes...`);
-  console.log('💡 Press Ctrl+C to stop\n');
+  console.log("💡 Press Ctrl+C to stop\n");
 
   // Cleanup function to close watcher and clear timers
   const cleanup = () => {
@@ -346,7 +378,7 @@ export function watchFiles(
     if (watcher) {
       try {
         watcher.close();
-      } catch (error) {
+      } catch (_error) {
         // Ignore errors during cleanup
       }
       watcher = null;
@@ -354,7 +386,7 @@ export function watchFiles(
   };
 
   // Create the watcher with proper error handling
-  watcher = watch(directory, { recursive: true }, (eventType, filename) => {
+  watcher = watch(directory, { recursive: true }, (_eventType, filename) => {
     if (isCleanedUp) return;
 
     if (filename && extensions.some((ext) => filename.endsWith(ext))) {
@@ -373,12 +405,12 @@ export function watchFiles(
   });
 
   // Handle watcher errors
-  if (watcher && typeof watcher.on === 'function') {
-    watcher.on('error', (error: Error) => {
-      console.error('Watch error:', error.message);
-      if (error.message.includes('EMFILE')) {
+  if (watcher && typeof watcher.on === "function") {
+    watcher.on("error", (error: Error) => {
+      console.error("Watch error:", error.message);
+      if (error.message.includes("EMFILE")) {
         console.error(
-          'Too many open files. Consider increasing your system limits or reducing the watch scope.'
+          "Too many open files. Consider increasing your system limits or reducing the watch scope.",
         );
       }
     });
@@ -387,20 +419,20 @@ export function watchFiles(
   // Register cleanup handlers only once per watcher
   const handleExit = () => {
     cleanup();
-    console.log('\n\n👋 Stopping watch mode...');
+    console.log("\n\n👋 Stopping watch mode...");
     process.exit(0);
   };
 
   // Remove any existing handlers to avoid duplicates
-  process.removeAllListeners('SIGINT');
-  process.removeAllListeners('SIGTERM');
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
 
   // Add new handlers
-  process.once('SIGINT', handleExit);
-  process.once('SIGTERM', handleExit);
+  process.once("SIGINT", handleExit);
+  process.once("SIGTERM", handleExit);
 
   // Also cleanup on normal exit
-  process.once('exit', cleanup);
+  process.once("exit", cleanup);
 
   // Return cleanup function for manual cleanup
   return cleanup;
@@ -418,8 +450,15 @@ export interface BuildRunnerOptions {
 /**
  * Run a build with optional watch mode support
  */
-export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boolean }) {
-  const { packageName, buildOptions, isRebuild = false, onBuildComplete } = options;
+export async function runBuild(
+  options: BuildRunnerOptions & { isRebuild?: boolean },
+) {
+  const {
+    packageName,
+    buildOptions,
+    isRebuild = false,
+    onBuildComplete,
+  } = options;
   const totalTimer = getTimer();
 
   // Clear console and show timestamp for rebuilds
@@ -440,43 +479,50 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
   console.log(`✓ Configuration prepared (${configTimer.elapsed()}ms)`);
 
   // Build with Bun
-  console.log('\nBundling with Bun...');
+  console.log("\nBundling with Bun...");
   const buildTimer = getTimer();
   const result = await Bun.build(config);
 
   if (!result.success) {
-    console.error('✗ Build failed:', result.logs);
+    console.error("✗ Build failed:", result.logs);
     onBuildComplete?.(false);
     return false;
   }
 
-  const totalSize = result.outputs.reduce((sum, output) => sum + output.size, 0);
+  const totalSize = result.outputs.reduce(
+    (sum, output) => sum + output.size,
+    0,
+  );
   const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
   console.log(
-    `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`
+    `✓ Built ${result.outputs.length} file(s) - ${sizeMB}MB (${buildTimer.elapsed()}ms)`,
   );
 
   // Run post-build tasks
-  const postBuildTasks: Promise<void | null>[] = [];
+  const postBuildTasks: Promise<undefined | null>[] = [];
 
   // Add TypeScript declarations generation if requested
   if (buildOptions.generateDts) {
     postBuildTasks.push(
-      generateDts('./tsconfig.build.json').catch((err) => {
-        console.error('⚠ TypeScript declarations generation failed:', err);
-        // Don't throw here, as it's often non-critical
-        return null;
-      })
+      generateDts("./tsconfig.build.json")
+        .then(() => undefined)
+        .catch((err) => {
+          console.error("⚠ TypeScript declarations generation failed:", err);
+          // Don't throw here, as it's often non-critical
+          return null;
+        }),
     );
   }
 
   // Add asset copying if specified
-  if (buildOptions.assets?.length) {
+  if (buildOptions.assets && buildOptions.assets.length > 0) {
     postBuildTasks.push(
-      copyAssets(buildOptions.assets).catch((err) => {
-        console.error('✗ Asset copying failed:', err);
-        throw err; // Asset copying failure is critical
-      })
+      copyAssets(buildOptions.assets)
+        .then(() => undefined)
+        .catch((err) => {
+          console.error("✗ Asset copying failed:", err);
+          throw err; // Asset copying failure is critical
+        }),
     );
   }
 
@@ -498,7 +544,7 @@ export async function runBuild(options: BuildRunnerOptions & { isRebuild?: boole
  * Create a standardized build runner with watch mode support
  */
 export function createBuildRunner(options: BuildRunnerOptions) {
-  const isWatchMode = process.argv.includes('--watch');
+  const isWatchMode = process.argv.includes("--watch");
   let cleanupWatcher: (() => void) | null = null;
 
   async function build(isRebuild = false) {
@@ -509,20 +555,20 @@ export function createBuildRunner(options: BuildRunnerOptions) {
   }
 
   async function startWatchMode() {
-    console.log('👀 Starting watch mode...\n');
+    console.log("👀 Starting watch mode...\n");
 
     // Initial build
     const buildSuccess = await build(false);
 
     if (buildSuccess) {
-      const srcDir = join(process.cwd(), 'src');
+      const srcDir = join(process.cwd(), "src");
 
       // Store the cleanup function returned by watchFiles
       // The watcher stays active throughout the entire session
       cleanupWatcher = watchFiles(srcDir, async () => {
         await build(true);
-        console.log('📁 Watching src/ directory for changes...');
-        console.log('💡 Press Ctrl+C to stop\n');
+        console.log("📁 Watching src/ directory for changes...");
+        console.log("💡 Press Ctrl+C to stop\n");
       });
     }
   }
@@ -535,9 +581,9 @@ export function createBuildRunner(options: BuildRunnerOptions) {
     }
   };
 
-  process.once('beforeExit', cleanup);
-  process.once('SIGUSR1', cleanup);
-  process.once('SIGUSR2', cleanup);
+  process.once("beforeExit", cleanup);
+  process.once("SIGUSR1", cleanup);
+  process.once("SIGUSR2", cleanup);
 
   // Return the main function to run
   return async function run() {

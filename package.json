@@ -1,6 +1,6 @@
 {
   "name": "eliza",
-  "version": "1.4.4",
+  "version": "2.0.0-alpha.0",
   "module": "index.ts",
   "type": "module",
   "engines": {
@@ -21,6 +21,13 @@
     "build:core": "turbo run build --filter=@elizaos/core --no-cache",
     "build:server": "turbo run build --filter=@elizaos/server --no-cache",
     "lint": "turbo run lint --filter=./packages/* && prettier --write . --ignore-path .prettierignore && prettier --check . --ignore-path .prettierignore",
+    "lint:check": "turbo run lint:check --filter=./packages/* && turbo run lint:check --filter=./plugins/*",
+    "typecheck": "turbo run typecheck --filter=./packages/* && turbo run typecheck --filter=./plugins/*",
+    "lint:rust": "turbo run lint:rust --filter=./packages/*",
+    "typecheck:rust": "turbo run typecheck:rust --filter=./packages/*",
+    "lint:python": "turbo run lint:python --filter=./packages/*",
+    "typecheck:python": "turbo run typecheck:python --filter=./packages/*",
+    "lint:all": "bun run lint:check && bun run typecheck && bun run lint:rust && bun run typecheck:rust && bun run lint:python && bun run typecheck:python",
     "pre-commit": "bun run scripts/pre-commit-lint.js",
     "release": "bunx lerna publish from-package --dist-tag latest --force-publish --yes --no-verify-access",
     "release:beta": "bunx lerna publish from-package --dist-tag beta --force-publish --yes --no-verify-access",
@@ -32,39 +39,33 @@
     "version:major": "bunx lerna version major --force-publish --yes --no-push --no-git-tag-version",
     "migrate": "turbo run migrate --filter=./packages/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
-    "docker:build": "bash ./scripts/docker.sh build",
-    "docker:run": "bash ./scripts/docker.sh run",
-    "docker:bash": "bash ./scripts/docker.sh bash",
-    "docker:start": "bash ./scripts/docker.sh start",
-    "docker": "bun docker:build && bun docker:run && bun docker:bash",
     "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
     "test:core": "turbo run test --filter=./packages/core",
     "test:app": "turbo run test --concurrency 5 --filter=./packages/app",
-    "test:server": "turbo run test --filter=./packages/server",
-    "prepare": "husky"
+    "test:server": "turbo run test --filter=./packages/server"
   },
-  "packageManager": "bun@1.3.4",
+  "packageManager": "bun@1.3.5",
   "workspaces": [
     "packages/*",
     "plugin-specification/*"
   ],
   "devDependencies": {
-    "@types/bun": "^1.3.3",
+    "@biomejs/biome": "^2.3.11",
+    "@types/bun": "^1.3.5",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^24.10.1",
+    "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "@vitejs/plugin-react": "^5.1.1",
-    "bun": "^1.3.4",
-    "husky": "^9.1.7",
+    "@vitejs/plugin-react": "^5.1.2",
+    "bun": "^1.3.5",
     "lerna": "9.0.3",
-    "turbo": "^2.6.3",
+    "turbo": "^2.7.3",
     "typescript": "5.9.3"
   },
   "resolutions": {
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "@types/react": "19.1.5",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "@types/react": "19.2.3",
     "typedoc-plugin-markdown": "4.2.10",
     "typedoc": "0.27.9"
   },
@@ -85,8 +86,6 @@
     "bufferutil",
     "bun",
     "canvas",
-    "esbuild",
-    "husky",
     "node-llama-cpp",
     "protobufjs",
     "utf-8-validate"
@@ -94,6 +93,6 @@
   "dependencies": {
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.1",
-    "zod": "4.1.13"
+    "zod": "^4.3.5"
   }
 }

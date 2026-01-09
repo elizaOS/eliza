@@ -149,7 +149,7 @@ jobs:
           # Run tests in each package that has them (excluding CLI and client)
           # These packages are tested together because they:
           # - Use standard bun test without special environment requirements
-          # - Form the core backend functionality of ElizaOS
+          # - Form the core backend functionality of elizaOS
           # - Can run with in-memory PGLite database
           for package in core plugin-bootstrap plugin-dummy-services project-tee-starter server; do
             echo ""

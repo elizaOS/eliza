@@ -1,7 +1,12 @@
-import { createHash } from 'crypto';
-import { is, SQL } from 'drizzle-orm';
-import { PgTable, getTableConfig, PgDialect, type PgColumn } from 'drizzle-orm/pg-core';
-import type { SchemaSnapshot } from '../types';
+import { createHash } from "node:crypto";
+import { is, SQL } from "drizzle-orm";
+import {
+  getTableConfig,
+  type PgColumn,
+  PgDialect,
+  PgTable,
+} from "drizzle-orm/pg-core";
+import type { SchemaSnapshot } from "../types";
 
 /**
  * Utility functions from Drizzle's code
@@ -15,30 +20,30 @@ function isPgArrayType(sqlType: string): boolean {
 }
 
 function buildArrayString(array: any[], sqlType: string): string {
-  sqlType = sqlType.split('[')[0];
+  sqlType = sqlType.split("[")[0];
   const values = array
     .map((value) => {
-      if (typeof value === 'number' || typeof value === 'bigint') {
+      if (typeof value === "number" || typeof value === "bigint") {
         return value.toString();
-      } else if (typeof value === 'boolean') {
-        return value ? 'true' : 'false';
+      } else if (typeof value === "boolean") {
+        return value ? "true" : "false";
       } else if (Array.isArray(value)) {
         return buildArrayString(value, sqlType);
       } else if (value instanceof Date) {
-        if (sqlType === 'date') {
-          return `"${value.toISOString().split('T')[0]}"`;
-        } else if (sqlType === 'timestamp') {
-          return `"${value.toISOString().replace('T', ' ').slice(0, 23)}"`;
+        if (sqlType === "date") {
+          return `"${value.toISOString().split("T")[0]}"`;
+        } else if (sqlType === "timestamp") {
+          return `"${value.toISOString().replace("T", " ").slice(0, 23)}"`;
         } else {
           return `"${value.toISOString()}"`;
         }
-      } else if (typeof value === 'object') {
+      } else if (typeof value === "object") {
         return `"${JSON.stringify(value).replaceAll('"', '\\"')}"`;
       }
 
       return `"${value}"`;
     })
-    .join(',');
+    .join(",");
 
   return `{${values}}`;
 }
@@ -130,20 +135,23 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
         if (is(column.default, SQL)) {
           columnToSet.default = sqlToStr(column.default, undefined);
         } else {
-          if (typeof column.default === 'string') {
+          if (typeof column.default === "string") {
             columnToSet.default = `'${escapeSingleQuotes(column.default)}'`;
           } else {
-            if (sqlTypeLowered === 'jsonb' || sqlTypeLowered === 'json') {
+            if (sqlTypeLowered === "jsonb" || sqlTypeLowered === "json") {
               columnToSet.default = `'${JSON.stringify(column.default)}'::${sqlTypeLowered}`;
             } else if (column.default instanceof Date) {
-              if (sqlTypeLowered === 'date') {
-                columnToSet.default = `'${column.default.toISOString().split('T')[0]}'`;
-              } else if (sqlTypeLowered === 'timestamp') {
-                columnToSet.default = `'${column.default.toISOString().replace('T', ' ').slice(0, 23)}'`;
+              if (sqlTypeLowered === "date") {
+                columnToSet.default = `'${column.default.toISOString().split("T")[0]}'`;
+              } else if (sqlTypeLowered === "timestamp") {
+                columnToSet.default = `'${column.default.toISOString().replace("T", " ").slice(0, 23)}'`;
               } else {
                 columnToSet.default = `'${column.default.toISOString()}'`;
               }
-            } else if (isPgArrayType(sqlTypeLowered) && Array.isArray(column.default)) {
+            } else if (
+              isPgArrayType(sqlTypeLowered) &&
+              Array.isArray(column.default)
+            ) {
               columnToSet.default = `'${buildArrayString(column.default, sqlTypeLowered)}'`;
             } else {
               // Should do for all types
@@ -161,7 +169,8 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
         uniqueConstraintObject[(column as any).config.uniqueName] = {
           name: (column as any).config.uniqueName,
           columns: [name],
-          nullsNotDistinct: (column as any).config?.uniqueType === 'not distinct',
+          nullsNotDistinct:
+            (column as any).config?.uniqueType === "not distinct",
         };
       }
 
@@ -182,7 +191,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
     // Process unique constraints
     uniqueConstraints?.forEach((unq: any) => {
       const columnNames = unq.columns.map((c: any) => c.name);
-      const name = unq.name || `${tableName}_${columnNames.join('_')}_unique`;
+      const name = unq.name || `${tableName}_${columnNames.join("_")}_unique`;
 
       uniqueConstraintObject[name] = {
         name,
@@ -198,7 +207,8 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
       const columnsFrom = reference.columns.map((it: any) => it.name);
       const columnsTo = reference.foreignColumns.map((it: any) => it.name);
       const tableTo = getTableConfig(reference.foreignTable).name;
-      const schemaTo = getTableConfig(reference.foreignTable).schema || 'public';
+      const schemaTo =
+        getTableConfig(reference.foreignTable).schema || "public";
 
       const name = fk.getName();
 
@@ -210,8 +220,8 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
         schemaTo,
         columnsFrom,
         columnsTo,
-        onDelete: fk.onDelete || 'no action',
-        onUpdate: fk.onUpdate || 'no action',
+        onDelete: fk.onDelete || "no action",
+        onUpdate: fk.onUpdate || "no action",
       };
     });
 
@@ -228,7 +238,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
           const indexCol: any = {
             expression: col.name,
             isExpression: false,
-            asc: col.indexConfig?.order === 'asc',
+            asc: col.indexConfig?.order === "asc",
           };
           // Only add nulls if explicitly specified in the config
           if (col.indexConfig?.nulls) {
@@ -240,13 +250,13 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
 
       const name =
         idx.config.name ||
-        `${tableName}_${indexColumns.map((c: any) => c.expression).join('_')}_index`;
+        `${tableName}_${indexColumns.map((c: any) => c.expression).join("_")}_index`;
 
       indexesObject[name] = {
         name,
         columns: indexColumns,
         isUnique: idx.config.unique || false,
-        method: idx.config.method || 'btree',
+        method: idx.config.method || "btree",
       };
     });
 
@@ -262,9 +272,9 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
     }
 
     // Build the table object
-    tables[`${tableSchema || 'public'}.${tableName}`] = {
+    tables[`${tableSchema || "public"}.${tableName}`] = {
       name: tableName,
-      schema: tableSchema || 'public',
+      schema: tableSchema || "public",
       columns: columnsObject,
       indexes: indexesObject,
       foreignKeys: foreignKeysObject,
@@ -274,15 +284,15 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
     };
 
     // Track schemas
-    if (tableSchema && tableSchema !== 'public') {
+    if (tableSchema && tableSchema !== "public") {
       schemas[tableSchema] = tableSchema;
     }
   }
 
   // Create snapshot in Drizzle's format
   const snapshot: SchemaSnapshot = {
-    version: '7',
-    dialect: 'postgresql',
+    version: "7",
+    dialect: "postgresql",
     tables,
     schemas,
     enums,
@@ -301,7 +311,7 @@ export async function generateSnapshot(schema: any): Promise<SchemaSnapshot> {
  */
 export function hashSnapshot(snapshot: SchemaSnapshot): string {
   const content = JSON.stringify(snapshot);
-  return createHash('sha256').update(content).digest('hex');
+  return createHash("sha256").update(content).digest("hex");
 }
 
 /**
@@ -309,8 +319,8 @@ export function hashSnapshot(snapshot: SchemaSnapshot): string {
  */
 export function createEmptySnapshot(): SchemaSnapshot {
   return {
-    version: '7',
-    dialect: 'postgresql',
+    version: "7",
+    dialect: "postgresql",
     tables: {},
     schemas: {},
     enums: {},
@@ -327,7 +337,7 @@ export function createEmptySnapshot(): SchemaSnapshot {
  */
 export function hasChanges(
   previousSnapshot: SchemaSnapshot | null,
-  currentSnapshot: SchemaSnapshot
+  currentSnapshot: SchemaSnapshot,
 ): boolean {
   // If no previous snapshot, there are definitely changes
   if (!previousSnapshot) {

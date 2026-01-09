@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { PGlite } from '@electric-sql/pglite';
-import { PGliteClientManager } from '../../../pglite/manager';
-import { PgliteDatabaseAdapter } from '../../../pglite/adapter';
-import { DatabaseMigrationService } from '../../../migration-service';
-import * as schema from '../../../schema';
-import type { UUID } from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { PGlite } from "@electric-sql/pglite";
+import type { UUID } from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
+import { DatabaseMigrationService } from "../../../migration-service";
+import { PgliteDatabaseAdapter } from "../../../pglite/adapter";
+import { PGliteClientManager } from "../../../pglite/manager";
+import * as schema from "../../../schema";
 
-describe('PostgreSQL Adapter Integration Tests', () => {
+describe("PostgreSQL Adapter Integration Tests", () => {
   let adapter: PgliteDatabaseAdapter;
   let manager: PGliteClientManager;
   let cleanup: () => Promise<void>;
@@ -25,7 +25,7 @@ describe('PostgreSQL Adapter Integration Tests', () => {
     const db = adapter.getDatabase();
     await migrationService.initializeWithDatabase(db);
     migrationService.discoverAndRegisterPluginSchemas([
-      { name: '@elizaos/plugin-sql', description: 'SQL plugin', schema },
+      { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
     ]);
     await migrationService.runAllPluginMigrations();
 
@@ -40,103 +40,103 @@ describe('PostgreSQL Adapter Integration Tests', () => {
     }
   });
 
-  describe('Connection Management', () => {
-    it('should initialize successfully', async () => {
+  describe("Connection Management", () => {
+    it("should initialize successfully", async () => {
       const isReady = await adapter.isReady();
       expect(isReady).toBe(true);
     });
 
-    it('should get database connection', async () => {
+    it("should get database connection", async () => {
       const connection = await adapter.getConnection();
       expect(connection).toBeDefined();
     });
 
-    it('should close connection gracefully', async () => {
+    it("should close connection gracefully", async () => {
       await adapter.close();
 
       // Should not throw
       expect(true).toBe(true);
     });
 
-    it('should handle isReady when adapter is closed', async () => {
+    it("should handle isReady when adapter is closed", async () => {
       await adapter.close();
       const isReady = await adapter.isReady();
       expect(isReady).toBe(false);
     });
   });
 
-  describe('Database Operations', () => {
-    it('should perform withDatabase operation', async () => {
+  describe("Database Operations", () => {
+    it("should perform withDatabase operation", async () => {
       const result = await (adapter as any).withDatabase(async () => {
         // Simple operation to test
-        return 'success';
+        return "success";
       });
 
-      expect(result).toBe('success');
+      expect(result).toBe("success");
     });
 
-    it('should handle withDatabase errors', async () => {
+    it("should handle withDatabase errors", async () => {
       let errorCaught = false;
       try {
         await (adapter as any).withDatabase(async () => {
-          throw new Error('Test error');
+          throw new Error("Test error");
         });
       } catch (error) {
         errorCaught = true;
-        expect((error as Error).message).toBe('Test error');
+        expect((error as Error).message).toBe("Test error");
       }
 
       expect(errorCaught).toBe(true);
     });
 
-    it('should handle database operations', async () => {
+    it("should handle database operations", async () => {
       // Test a simple database operation
       const result = await (adapter as any).withDatabase(async () => {
-        return { status: 'ok' };
+        return { status: "ok" };
       });
 
-      expect(result).toEqual({ status: 'ok' });
+      expect(result).toEqual({ status: "ok" });
     });
 
-    it('should propagate errors from database operations', async () => {
+    it("should propagate errors from database operations", async () => {
       let errorCaught = false;
 
       try {
         await (adapter as any).withDatabase(async () => {
-          throw new Error('Database operation failed');
+          throw new Error("Database operation failed");
         });
       } catch (error) {
         errorCaught = true;
-        expect((error as Error).message).toBe('Database operation failed');
+        expect((error as Error).message).toBe("Database operation failed");
       }
 
       expect(errorCaught).toBe(true);
     });
   });
 
-  describe('Manager Operations', () => {
-    it('should get connection instance', () => {
+  describe("Manager Operations", () => {
+    it("should get connection instance", () => {
       const connection = manager.getConnection();
       expect(connection).toBeDefined();
     });
 
-    it('should check if shutting down', () => {
+    it("should check if shutting down", () => {
       const isShuttingDown = manager.isShuttingDown();
       expect(isShuttingDown).toBe(false);
     });
 
-    it('should handle close operation', async () => {
+    it("should handle close operation", async () => {
       await manager.close();
       const isShuttingDown = manager.isShuttingDown();
       expect(isShuttingDown).toBe(true);
     });
 
-    it('should test connection through adapter', async () => {
+    it("should test connection through adapter", async () => {
       const isReady = await adapter.isReady();
       expect(isReady).toBe(true);
     });
 
-    it('should handle connection errors', async () => {
+    it("should handle connection errors", async () => {
       // Close the adapter
       await adapter.close();
 
@@ -145,11 +145,14 @@ describe('PostgreSQL Adapter Integration Tests', () => {
       expect(isReady).toBe(false);
     });
 
-    it('should handle query failures', async () => {
+    it("should handle query failures", async () => {
       // PGLite adapter init doesn't actually run queries, so we test a different operation
       const mockClient = new PGlite();
       const mockManager = new PGliteClientManager(mockClient as any);
-      const mockAdapter = new PgliteDatabaseAdapter(uuidv4() as UUID, mockManager);
+      const mockAdapter = new PgliteDatabaseAdapter(
+        uuidv4() as UUID,
+        mockManager,
+      );
 
       // Close the manager to simulate a connection issue
       await mockManager.close();
@@ -160,61 +163,61 @@ describe('PostgreSQL Adapter Integration Tests', () => {
     });
   });
 
-  describe('Agent Operations', () => {
-    it('should create an agent', async () => {
+  describe("Agent Operations", () => {
+    it("should create an agent", async () => {
       const result = await adapter.createAgent({
         id: agentId,
-        name: 'Test Agent',
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
-        bio: 'Test agent bio',
+        name: "Test Agent",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        bio: "Test agent bio",
       } as any);
 
       expect(result).toBe(true);
     });
 
-    it('should retrieve an agent', async () => {
+    it("should retrieve an agent", async () => {
       // Create agent first
       await adapter.createAgent({
         id: agentId,
-        name: 'Test Agent',
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
-        bio: 'Test agent bio',
+        name: "Test Agent",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        bio: "Test agent bio",
       } as any);
 
       const agent = await adapter.getAgent(agentId);
       expect(agent).toBeDefined();
-      expect(agent?.name).toBe('Test Agent');
+      expect(agent?.name).toBe("Test Agent");
     });
 
-    it('should update an agent', async () => {
+    it("should update an agent", async () => {
       // Create agent first
       await adapter.createAgent({
         id: agentId,
-        name: 'Test Agent',
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
-        bio: 'Test agent bio',
+        name: "Test Agent",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        bio: "Test agent bio",
       } as any);
 
       // Update agent
       await adapter.updateAgent(agentId, {
-        name: 'Updated Agent',
+        name: "Updated Agent",
       });
 
       const agent = await adapter.getAgent(agentId);
-      expect(agent?.name).toBe('Updated Agent');
+      expect(agent?.name).toBe("Updated Agent");
     });
 
-    it('should delete an agent', async () => {
+    it("should delete an agent", async () => {
       // Create agent first
       await adapter.createAgent({
         id: agentId,
-        name: 'Test Agent',
-        createdAt: new Date().getTime(),
-        updatedAt: new Date().getTime(),
-        bio: 'Test agent bio',
+        name: "Test Agent",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        bio: "Test agent bio",
       } as any);
 
       const deleted = await adapter.deleteAgent(agentId);

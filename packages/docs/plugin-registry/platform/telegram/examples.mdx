@@ -1,0 +1,750 @@
+---
+title: "Examples"
+description: "This document provides practical examples of using the @elizaos/plugin-telegram package in various scenarios."
+---
+
+# Telegram Plugin Examples
+
+This document provides practical examples of using the @elizaos/plugin-telegram package in various scenarios.
+
+## Basic Bot Setup
+
+### Simple Message Bot
+
+Create a basic Telegram bot that responds to messages:
+
+```typescript
+import { AgentRuntime } from '@elizaos/core';
+import { telegramPlugin } from '@elizaos/plugin-telegram';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+
+const character = {
+  name: "SimpleTelegramBot",
+  description: "A simple Telegram bot",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  },
+  // Message examples for the bot's personality
+  messageExamples: [
+    {
+      user: "user",
+      content: { text: "Hello!" },
+      response: { text: "Hello! How can I help you today?" }
+    },
+    {
+      user: "user",
+      content: { text: "What's the weather?" },
+      response: { text: "I'm sorry, I don't have access to weather data. Is there something else I can help you with?" }
+    }
+  ]
+};
+
+// Create and start the runtime
+const runtime = new AgentRuntime({ character });
+await runtime.start();
+
+console.log('Telegram bot is running!');
+```
+
+### Echo Bot
+
+A simple bot that echoes messages back:
+
+```typescript
+const echoBot = {
+  name: "EchoBot",
+  description: "Echoes messages back to users",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  },
+  templates: {
+    telegramMessageHandlerTemplate: `
+      You are an echo bot. Simply repeat back what the user says.
+      If they send media, describe what you received.
+    `
+  }
+};
+```
+
+### FAQ Bot
+
+Bot that answers frequently asked questions:
+
+```typescript
+const faqBot = {
+  name: "FAQBot",
+  description: "Answers frequently asked questions",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  },
+  knowledge: [
+    "Our business hours are 9 AM to 5 PM EST, Monday through Friday.",
+    "Shipping typically takes 3-5 business days.",
+    "We accept returns within 30 days of purchase.",
+    "Customer support can be reached at support@example.com"
+  ],
+  templates: {
+    telegramMessageHandlerTemplate: `
+      You are a customer support FAQ bot. Answer questions based on the knowledge provided.
+      If you don't know the answer, politely say so and suggest contacting support.
+    `
+  }
+};
+```
+
+## Interactive Button Bots
+
+### Button Menu Bot
+
+Create a bot with interactive button menus:
+
+```typescript
+import { Action } from '@elizaos/core';
+
+const menuAction: Action = {
+  name: "SHOW_MENU",
+  description: "Shows the main menu",
+  similes: ["menu", "help", "start", "options"],
+  
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({
+      text: "What would you like to do?",
+      buttons: [
+        [
+          { text: "📊 View Stats", callback_data: "view_stats" },
+          { text: "⚙️ Settings", callback_data: "settings" }
+        ],
+        [
+          { text: "📚 Help", callback_data: "help" },
+          { text: "ℹ️ About", callback_data: "about" }
+        ]
+      ]
+    });
+    
+    return true;
+  }
+};
+
+const buttonBot = {
+  name: "MenuBot",
+  description: "Bot with interactive menus",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  actions: [menuAction],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  }
+};
+```
+
+### Inline Keyboard Bot
+
+Bot with inline URL buttons:
+
+```typescript
+const linkAction: Action = {
+  name: "SHARE_LINKS",
+  description: "Share useful links",
+  similes: ["links", "resources", "websites"],
+  
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({
+      text: "Here are some useful resources:",
+      buttons: [
+        [
+          { text: "📖 Documentation", url: "https://docs.example.com" },
+          { text: "💬 Community", url: "https://discord.gg/example" }
+        ],
+        [
+          { text: "🐙 GitHub", url: "https://github.com/example" },
+          { text: "🐦 Twitter", url: "https://twitter.com/example" }
+        ]
+      ]
+    });
+    
+    return true;
+  }
+};
+```
+
+### Callback Handler
+
+Handle button callbacks:
+
+```typescript
+const callbackAction: Action = {
+  name: "HANDLE_CALLBACK",
+  description: "Handles button callbacks",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const callbackData = message.content.callback_data;
+    
+    switch (callbackData) {
+      case "view_stats":
+        await callback({
+          text: "📊 *Your Stats*\n\nMessages sent: 42\nActive days: 7\nPoints: 128"
+        });
+        break;
+        
+      case "settings":
+        await callback({
+          text: "⚙️ *Settings*",
+          buttons: [
+            [
+              { text: "🔔 Notifications", callback_data: "toggle_notifications" },
+              { text: "🌐 Language", callback_data: "change_language" }
+            ],
+            [
+              { text: "⬅️ Back", callback_data: "main_menu" }
+            ]
+          ]
+        });
+        break;
+        
+      case "help":
+        await callback({
+          text: "📚 *Help*\n\nHere's how to use this bot:\n\n/start - Show main menu\n/help - Show this help\n/stats - View your statistics"
+        });
+        break;
+    }
+    
+    return true;
+  }
+};
+```
+
+## Media Processing Bots
+
+### Image Analysis Bot
+
+Bot that analyzes images using vision capabilities:
+
+```typescript
+const imageAnalysisBot = {
+  name: "ImageAnalyzer",
+  description: "Analyzes images sent by users",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  modelProvider: "openai",
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY
+  }
+};
+
+// The plugin automatically processes images and adds descriptions
+// You can create custom actions to enhance this:
+
+const analyzeImageAction: Action = {
+  name: "ANALYZE_IMAGE_DETAILS",
+  description: "Provide detailed image analysis",
+  
+  validate: async (runtime, message) => {
+    return message.attachments?.some(att => att.type === 'image') ?? false;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const imageAttachment = message.attachments.find(att => att.type === 'image');
+    
+    if (imageAttachment && imageAttachment.description) {
+      await callback({
+        text: `🖼️ *Image Analysis*\n\n${imageAttachment.description}\n\nWhat would you like to know about this image?`
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+### Voice Transcription Bot
+
+Bot that transcribes voice messages:
+
+```typescript
+const voiceBot = {
+  name: "VoiceTranscriber",
+  description: "Transcribes voice messages",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  },
+  templates: {
+    telegramMessageHandlerTemplate: `
+      When you receive a voice message transcript, acknowledge it and offer to help
+      with any questions about the content.
+    `
+  }
+};
+
+// Voice messages are automatically transcribed by the plugin
+// The transcript appears as regular text in message.content.text
+```
+
+### Document Processor
+
+Bot that processes various document types:
+
+```typescript
+const documentAction: Action = {
+  name: "PROCESS_DOCUMENT",
+  description: "Process uploaded documents",
+  
+  validate: async (runtime, message) => {
+    return message.attachments?.some(att => att.type === 'document') ?? false;
+  },
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const doc = message.attachments.find(att => att.type === 'document');
+    
+    if (doc) {
+      let response = `📄 Received document: ${doc.name}\n`;
+      response += `Type: ${doc.mimeType}\n`;
+      response += `Size: ${formatFileSize(doc.size)}\n\n`;
+      
+      if (doc.mimeType?.startsWith('text/')) {
+        response += "I can read text from this document. What would you like me to help you with?";
+      } else if (doc.mimeType?.startsWith('image/')) {
+        response += "This appears to be an image document. I can analyze it for you!";
+      } else {
+        response += "I've received the document. How can I assist you with it?";
+      }
+      
+      await callback({ text: response });
+    }
+    
+    return true;
+  }
+};
+
+function formatFileSize(bytes: number): string {
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  if (bytes === 0) return '0 Bytes';
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+}
+```
+
+## Group Management Bots
+
+### Group Moderator Bot
+
+Bot that helps moderate groups:
+
+```typescript
+const moderatorBot = {
+  name: "GroupModerator",
+  description: "Helps moderate Telegram groups",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    // Only work in specific groups
+    shouldOnlyJoinInAllowedGroups: true,
+    allowedGroupIds: ["-1001234567890", "-1009876543210"]
+  }
+};
+
+const welcomeAction: Action = {
+  name: "WELCOME_NEW_MEMBERS",
+  description: "Welcome new group members",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    if (message.content.new_chat_members) {
+      const names = message.content.new_chat_members
+        .map(member => member.first_name)
+        .join(', ');
+      
+      await callback({
+        text: `Welcome to the group, ${names}! 👋\n\nPlease read our rules in the pinned message.`,
+        buttons: [[
+          { text: "📋 View Rules", url: "https://example.com/rules" }
+        ]]
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+### Restricted Access Bot
+
+Bot with access control:
+
+```typescript
+const restrictedBot = {
+  name: "PrivateBot",
+  description: "Bot with restricted access",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_ALLOWED_CHATS: JSON.stringify([
+      "123456789",    // User ID
+      "-987654321",   // Group ID
+      "@channelname"  // Channel username
+    ])
+  }
+};
+
+// Additional access control action
+const checkAccessAction: Action = {
+  name: "CHECK_ACCESS",
+  description: "Verify user access",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const allowedUsers = ["user1", "user2", "admin"];
+    const username = message.username;
+    
+    if (!allowedUsers.includes(username)) {
+      await callback({
+        text: "Sorry, you don't have access to this bot. Please contact an administrator."
+      });
+      return false;
+    }
+    
+    return true;
+  }
+};
+```
+
+### Forum Topic Bot
+
+Bot that handles forum topics:
+
+```typescript
+const forumBot = {
+  name: "ForumAssistant",
+  description: "Manages forum topics",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    messageTrackingLimit: 50 // Track last 50 messages per topic
+  }
+};
+
+// Topic-aware action
+const topicAction: Action = {
+  name: "TOPIC_SUMMARY",
+  description: "Summarize current topic",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const topicId = message.threadId;
+    
+    if (topicId) {
+      // Get topic-specific context
+      const topicMessages = state.recentMessages?.filter(
+        msg => msg.threadId === topicId
+      );
+      
+      await callback({
+        text: `📋 Topic Summary\n\nMessages in this topic: ${topicMessages?.length || 0}\n\nUse /help for topic-specific commands.`
+      });
+    } else {
+      await callback({
+        text: "This command only works in forum topics."
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+## Advanced Examples
+
+### Multi-Language Bot
+
+Bot that supports multiple languages:
+
+```typescript
+const multiLangBot = {
+  name: "PolyglotBot",
+  description: "Multi-language support bot",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  }
+};
+
+const languageAction: Action = {
+  name: "SET_LANGUAGE",
+  description: "Set user language preference",
+  similes: ["language", "lang", "idioma", "langue"],
+  
+  handler: async (runtime, message, state, options, callback) => {
+    await callback({
+      text: "Please select your language / Seleccione su idioma / Choisissez votre langue:",
+      buttons: [
+        [
+          { text: "🇬🇧 English", callback_data: "lang_en" },
+          { text: "🇪🇸 Español", callback_data: "lang_es" }
+        ],
+        [
+          { text: "🇫🇷 Français", callback_data: "lang_fr" },
+          { text: "🇩🇪 Deutsch", callback_data: "lang_de" }
+        ]
+      ]
+    });
+    
+    return true;
+  }
+};
+```
+
+### Webhook Bot
+
+Bot configured for webhooks:
+
+```typescript
+import express from 'express';
+import { Telegraf } from 'telegraf';
+
+const app = express();
+app.use(express.json());
+
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+
+// Set webhook
+const WEBHOOK_URL = 'https://your-domain.com/telegram-webhook';
+bot.telegram.setWebhook(WEBHOOK_URL);
+
+// Webhook endpoint
+app.post('/telegram-webhook', (req, res) => {
+  bot.handleUpdate(req.body);
+  res.sendStatus(200);
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+const webhookBot = {
+  name: "WebhookBot",
+  description: "Production bot using webhooks",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_URL: WEBHOOK_URL
+  }
+};
+
+app.listen(3000, () => {
+  console.log('Webhook server running on port 3000');
+});
+```
+
+### State Management Bot
+
+Bot with persistent state management:
+
+```typescript
+const stateBot = {
+  name: "StatefulBot",
+  description: "Bot with state management",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  }
+};
+
+// User preferences storage
+const userPreferences = new Map();
+
+const savePreferenceAction: Action = {
+  name: "SAVE_PREFERENCE",
+  description: "Save user preferences",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const userId = message.userId;
+    const preference = options.preference;
+    
+    // Save to persistent storage
+    if (!userPreferences.has(userId)) {
+      userPreferences.set(userId, {});
+    }
+    
+    const prefs = userPreferences.get(userId);
+    prefs[preference.key] = preference.value;
+    
+    await callback({
+      text: `Preference saved! ${preference.key} = ${preference.value}`
+    });
+    
+    return true;
+  }
+};
+```
+
+### Error Handling Bot
+
+Bot with comprehensive error handling:
+
+```typescript
+const errorHandlingBot = {
+  name: "RobustBot",
+  description: "Bot with error handling",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN
+  }
+};
+
+const safeAction: Action = {
+  name: "SAFE_ACTION",
+  description: "Action with error handling",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    try {
+      // Risky operation
+      const result = await riskyOperation();
+      
+      await callback({
+        text: `Success: ${result}`
+      });
+    } catch (error) {
+      runtime.logger.error('Action failed:', error);
+      
+      // User-friendly error message
+      let errorMessage = "Sorry, something went wrong. ";
+      
+      if (error.code === 'TIMEOUT') {
+        errorMessage += "The operation timed out. Please try again.";
+      } else if (error.code === 'RATE_LIMIT') {
+        errorMessage += "Too many requests. Please wait a moment.";
+      } else {
+        errorMessage += "Please try again or contact support.";
+      }
+      
+      await callback({
+        text: errorMessage,
+        buttons: [[
+          { text: "🔄 Retry", callback_data: "retry_action" },
+          { text: "❌ Cancel", callback_data: "cancel" }
+        ]]
+      });
+    }
+    
+    return true;
+  }
+};
+```
+
+## Testing Examples
+
+### Test Bot Configuration
+
+```typescript
+const testBot = {
+  name: "TestBot",
+  description: "Bot for testing",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_TEST_BOT_TOKEN,
+    TELEGRAM_TEST_CHAT_ID: process.env.TELEGRAM_TEST_CHAT_ID
+  }
+};
+
+// Test action
+const testAction: Action = {
+  name: "RUN_TEST",
+  description: "Run test scenarios",
+  
+  handler: async (runtime, message, state, options, callback) => {
+    const testResults = [];
+    
+    // Test 1: Text message
+    testResults.push({
+      test: "Text Message",
+      result: "✅ Passed"
+    });
+    
+    // Test 2: Button interaction
+    await callback({
+      text: "Test: Button Interaction",
+      buttons: [[
+        { text: "Test Button", callback_data: "test_button" }
+      ]]
+    });
+    
+    // Test 3: Media handling
+    if (message.attachments?.length > 0) {
+      testResults.push({
+        test: "Media Processing",
+        result: "✅ Passed"
+      });
+    }
+    
+    // Send results
+    const summary = testResults.map(r => `${r.test}: ${r.result}`).join('\n');
+    await callback({
+      text: `Test Results:\n\n${summary}`
+    });
+    
+    return true;
+  }
+};
+```
+
+## Best Practices Examples
+
+### Production-Ready Bot
+
+```typescript
+import { telegramPlugin } from '@elizaos/plugin-telegram';
+import { bootstrapPlugin } from '@elizaos/plugin-bootstrap';
+import { AgentRuntime } from '@elizaos/core';
+
+const productionBot = {
+  name: "ProductionBot",
+  description: "Production-ready Telegram bot",
+  plugins: [bootstrapPlugin, telegramPlugin],
+  clients: ["telegram"],
+  settings: {
+    // Security
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+    TELEGRAM_ALLOWED_CHATS: process.env.TELEGRAM_ALLOWED_CHATS,
+    
+    // Performance
+    messageTrackingLimit: 50,
+    
+    // Behavior
+    allowDirectMessages: true,
+    shouldOnlyJoinInAllowedGroups: true,
+    allowedGroupIds: JSON.parse(process.env.ALLOWED_GROUPS || '[]')
+  },
+  // Rate limiting
+  rateLimits: {
+    maxMessagesPerMinute: 60,
+    maxMessagesPerHour: 1000
+  }
+};
+
+// Error recovery
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection:', error);
+  // Implement recovery logic
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('Shutting down gracefully...');
+  await runtime.stop();
+  process.exit(0);
+});
+```
