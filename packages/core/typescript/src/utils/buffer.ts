@@ -13,14 +13,6 @@
 export type BufferLike = Buffer | Uint8Array;
 
 /**
- * Interface for objects that look like ArrayBuffer views (TypedArrays)
- */
-interface ArrayBufferViewLike {
-  buffer?: unknown;
-  byteLength?: unknown;
-}
-
-/**
  * Check if we're in a Node.js environment with Buffer support
  */
 function hasNativeBuffer(): boolean {
@@ -37,17 +29,14 @@ export function fromHex(hex: string): BufferLike {
   const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
 
   if (hasNativeBuffer()) {
-    // Use native Buffer in Node.js
     return Buffer.from(cleanHex, "hex");
   }
 
   // Browser implementation using Uint8Array
   const bytes = new Uint8Array(cleanHex.length / 2);
-
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
   }
-
   return bytes;
 }
 
@@ -62,14 +51,12 @@ export function fromString(
   encoding: "utf8" | "utf-8" | "base64" = "utf8",
 ): BufferLike {
   if (hasNativeBuffer()) {
-    // Use native Buffer in Node.js
     const enc = encoding === "utf-8" ? "utf8" : encoding;
     return Buffer.from(str, enc as BufferEncoding);
   }
 
   // Browser implementation
   if (encoding === "base64") {
-    // Decode base64 string
     const binaryString = atob(str);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
@@ -79,8 +66,7 @@ export function fromString(
   }
 
   // UTF-8 encoding using TextEncoder (standard browser API)
-  const encoder = new TextEncoder();
-  return encoder.encode(str);
+  return new TextEncoder().encode(str);
 }
 
 /**
@@ -90,15 +76,13 @@ export function fromString(
  */
 export function toHex(buffer: BufferLike): string {
   if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
-    // Use native Buffer method in Node.js
     return buffer.toString("hex");
   }
 
-  // Browser implementation
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  // Browser implementation - buffer is already Uint8Array compatible
   let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const byte = bytes[i].toString(16);
+  for (let i = 0; i < buffer.length; i++) {
+    const byte = buffer[i].toString(16);
     hex += byte.length === 1 ? `0${byte}` : byte;
   }
   return hex;
@@ -115,58 +99,43 @@ export function toString(
   encoding: "utf8" | "utf-8" | "base64" | "hex" = "utf8",
 ): string {
   if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
-    // Use native Buffer method in Node.js
     const enc = encoding === "utf-8" ? "utf8" : encoding;
     return buffer.toString(enc as BufferEncoding);
   }
 
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-
-  // Handle different encodings
   if (encoding === "hex") {
-    return toHex(bytes);
+    return toHex(buffer);
   }
 
   if (encoding === "base64") {
-    // Convert to base64
     let binaryString = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binaryString += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < buffer.length; i++) {
+      binaryString += String.fromCharCode(buffer[i]);
     }
     return btoa(binaryString);
   }
 
   // UTF-8 decoding using TextDecoder (standard browser API)
-  const decoder = new TextDecoder();
-  return decoder.decode(bytes);
+  return new TextDecoder().decode(buffer);
 }
 
 /**
- * Check if an object is a Buffer or buffer-like object
+ * Check if an object is a Buffer or Uint8Array
  * @param obj - The object to check
  * @returns True if the object is buffer-like
  */
 export function isBuffer(obj: unknown): obj is BufferLike {
-  if (!obj) {
+  if (obj === null || obj === undefined) {
     return false;
   }
 
+  // Check for Node.js Buffer
   if (hasNativeBuffer() && Buffer.isBuffer(obj)) {
     return true;
   }
 
-  // Check for Uint8Array or similar typed arrays
-  if (obj instanceof Uint8Array || obj instanceof ArrayBuffer) {
-    return true;
-  }
-  if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
-    const typedObj = obj as ArrayBufferViewLike;
-    return (
-      typedObj.buffer instanceof ArrayBuffer &&
-      typeof typedObj.byteLength === "number"
-    );
-  }
-  return false;
+  // Check for Uint8Array (includes Buffer since Buffer extends Uint8Array)
+  return obj instanceof Uint8Array;
 }
 
 /**
@@ -178,7 +147,6 @@ export function alloc(size: number): BufferLike {
   if (hasNativeBuffer()) {
     return Buffer.alloc(size);
   }
-
   return new Uint8Array(size);
 }
 
@@ -191,7 +159,6 @@ export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
   if (hasNativeBuffer()) {
     return Buffer.from(bytes);
   }
-
   return new Uint8Array(bytes);
 }
 
@@ -211,15 +178,12 @@ export function concat(buffers: BufferLike[]): BufferLike {
     totalLength += buffer.length;
   }
 
-  // Create result buffer
+  // Create result buffer and copy data
   const result = new Uint8Array(totalLength);
   let offset = 0;
-
   for (const buffer of buffers) {
-    const bytes =
-      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-    result.set(bytes, offset);
-    offset += bytes.length;
+    result.set(buffer, offset);
+    offset += buffer.length;
   }
 
   return result;
@@ -240,9 +204,7 @@ export function slice(
   if (hasNativeBuffer() && Buffer.isBuffer(buffer)) {
     return buffer.slice(start, end);
   }
-
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  return bytes.slice(start, end);
+  return buffer.slice(start, end);
 }
 
 /**
@@ -256,11 +218,8 @@ export function equals(a: BufferLike, b: BufferLike): boolean {
     return false;
   }
 
-  const bytesA = a instanceof Uint8Array ? a : new Uint8Array(a);
-  const bytesB = b instanceof Uint8Array ? b : new Uint8Array(b);
-
-  for (let i = 0; i < bytesA.length; i++) {
-    if (bytesA[i] !== bytesB[i]) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
       return false;
     }
   }
@@ -278,35 +237,27 @@ export function byteLength(buffer: BufferLike): number {
 }
 
 /**
- * Create a random buffer of specified size
+ * Create a random buffer of specified size using cryptographically secure random bytes.
  * @param size - The size of the buffer
  * @returns A BufferLike object filled with random bytes
+ * @throws Error if no cryptographic random source is available
  */
 export function randomBytes(size: number): BufferLike {
-  // Prefer Web Crypto API across environments (Node >=18 exposes global crypto)
   const bytes = new Uint8Array(size);
 
-  interface GlobalWithCrypto {
-    crypto?: Crypto;
-    webcrypto?: Crypto;
+  // Use globalThis.crypto which is available in modern Node.js (>=18) and all browsers
+  const cryptoObj = globalThis.crypto;
+
+  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+    cryptoObj.getRandomValues(bytes);
+    return bytes;
   }
 
-  const cryptoGlobal =
-    typeof globalThis !== "undefined"
-      ? (globalThis as GlobalWithCrypto).crypto ||
-        (globalThis as GlobalWithCrypto).webcrypto
-      : undefined;
-
-  if (cryptoGlobal && typeof cryptoGlobal.getRandomValues === "function") {
-    cryptoGlobal.getRandomValues(bytes);
-  } else {
-    // Fallback: less secure random generation
-    for (let i = 0; i < size; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-
-  return bytes;
+  // No secure random source available - throw instead of using insecure fallback
+  throw new Error(
+    "No cryptographically secure random source available. " +
+      "Ensure you are running in a modern browser or Node.js >= 18.",
+  );
 }
 
 // Export a namespace-like object for compatibility

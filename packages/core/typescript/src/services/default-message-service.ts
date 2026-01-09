@@ -18,6 +18,7 @@ import {
   type RunEventPayload,
   shouldRespondTemplate,
   truncateToCompleteSentence,
+  type ActionResult,
 } from "../index";
 import { runWithStreamingContext } from "../streaming-context";
 import type { HandlerCallback } from "../types/components";
@@ -51,29 +52,21 @@ type ResolvedMessageOptions = {
   timeoutDuration: number;
   useMultiStep: boolean;
   maxMultiStepIterations: number;
-  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 };
 
 /**
- * Multi-step workflow execution result
+ * Multi-step workflow action result with action name tracking
  */
-interface MultiStepActionResult {
+interface MultiStepActionResult extends ActionResult {
   data: { actionName: string };
-  success: boolean;
-  text?: string;
-  error?: string | Error;
-  values?: Record<string, unknown>;
 }
 
 /**
- * Multi-step workflow state
+ * Multi-step workflow state - uses standard State since StateData.actionResults
+ * already supports ActionResult[] properly
  */
-interface MultiStepState extends State {
-  data: {
-    actionResults: MultiStepActionResult[];
-    [key: string]: unknown;
-  };
-}
+type MultiStepState = State;
 
 /**
  * Strategy mode for response generation
@@ -118,20 +111,15 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
-    const opts = {
+    const opts: ResolvedMessageOptions = {
       maxRetries: (options && options.maxRetries) ?? 3,
       timeoutDuration: (options && options.timeoutDuration) ?? 60 * 60 * 1000, // 1 hour
       useMultiStep:
         (options && options.useMultiStep) ??
-        parseBooleanFromText(
-          String(runtime.getSetting("USE_MULTI_STEP") || ""),
-        ),
+        parseBooleanFromText(String(runtime.getSetting("USE_MULTI_STEP") ?? "")),
       maxMultiStepIterations:
         (options && options.maxMultiStepIterations) ??
-        parseInt(
-          String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") || "6"),
-          10,
-        ),
+        parseInt(String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"), 10),
       onStreamChunk: options && options.onStreamChunk,
     };
 
@@ -151,16 +139,14 @@ export class DefaultMessageService implements IMessageService {
         "Message received",
       );
 
-      // Track this response ID
-      if (!latestResponseIds.has(runtime.agentId)) {
-        latestResponseIds.set(runtime.agentId, new Map<string, string>());
+      // Track this response ID - ensure map exists for this agent
+      let agentResponses = latestResponseIds.get(runtime.agentId);
+      if (!agentResponses) {
+        agentResponses = new Map<string, string>();
+        latestResponseIds.set(runtime.agentId, agentResponses);
       }
-      const agentResponses = latestResponseIds.get(runtime.agentId);
-      if (!agentResponses) throw new Error("Agent responses map not found");
-      // After the check above, agentResponses is guaranteed to exist
-      const agentResponsesMap = agentResponses;
 
-      const previousResponseId = agentResponsesMap.get(message.roomId);
+      const previousResponseId = agentResponses.get(message.roomId);
       if (previousResponseId) {
         logger.debug(
           {
@@ -172,7 +158,7 @@ export class DefaultMessageService implements IMessageService {
           "Updating response ID",
         );
       }
-      agentResponsesMap.set(message.roomId, responseId);
+      agentResponses.set(message.roomId, responseId);
 
       // Start run tracking with roomId for proper log association
       const runId: UUID = runtime.startRun(message.roomId)!;
@@ -213,15 +199,15 @@ export class DefaultMessageService implements IMessageService {
       // Use ResponseStreamExtractor to filter XML and only stream <text> (if REPLY) or <message>
       let streamingContext:
         | {
-            onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
-            messageId?: UUID;
+            onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
+            messageId?: string;
           }
         | undefined;
       if (opts.onStreamChunk) {
         const extractor = new ResponseStreamExtractor();
         const onStreamChunk = opts.onStreamChunk;
         streamingContext = {
-          onStreamChunk: async (chunk: string, msgId?: UUID) => {
+          onStreamChunk: async (chunk: string, msgId?: string) => {
             if (extractor.done) return;
             const textToStream = extractor.push(chunk);
             if (textToStream) {
@@ -713,28 +699,19 @@ export class DefaultMessageService implements IMessageService {
       }
 
       const date = new Date();
-      const providersData = state.data && state.data.providers;
-      interface ActionsProviderData {
-        ACTIONS?: {
-          data?: {
-            actionsData?: Array<{ name: string }>;
-          };
-        };
-      }
-      const actionsProvider =
-        typeof providersData === "object" &&
-        providersData !== null &&
-        "ACTIONS" in providersData
-          ? (providersData as ActionsProviderData).ACTIONS
-          : undefined;
-      const actionsData = actionsProvider && actionsProvider.data && actionsProvider.data.actionsData;
-      const availableActions = Array.isArray(actionsData)
-        ? actionsData.map((a: { name: string }) => a.name)
-        : [-1];
+      // Extract available actions from provider data
+      const stateData = state.data;
+      const stateDataProviders = stateData && stateData.providers;
+      const actionsProvider = stateDataProviders && stateDataProviders.ACTIONS;
+      const actionsProviderData = actionsProvider && actionsProvider.data;
+      const actionsData = actionsProviderData && "actionsData" in actionsProviderData
+        ? (actionsProviderData.actionsData as Array<{ name: string }>)
+        : undefined;
+      const availableActions = (actionsData && actionsData.map((a) => a.name)) ?? [];
 
       const _logData = {
         at: date.toString(),
-        timestamp: parseInt(`${date.getTime() / 1000}`, 10),
+        timestamp: Math.floor(date.getTime() / 1000),
         messageId: message.id,
         userEntityId: message.entityId,
         input: message.content.text,
@@ -1527,22 +1504,17 @@ export class DefaultMessageService implements IMessageService {
         );
 
         // Get cached action results from runtime
-        const cachedState = runtime.stateCache && runtime.stateCache.get(
+        const cachedState = runtime.stateCache.get(
           `${message.id}_action_results`,
         );
-        const actionResults = Array.isArray(cachedState && cachedState.values && cachedState.values.actionResults)
-          ? cachedState.values.actionResults
+        const cachedStateValues = cachedState && cachedState.values;
+        const rawActionResults = cachedStateValues && cachedStateValues.actionResults;
+        const actionResults: ActionResult[] = Array.isArray(rawActionResults)
+          ? rawActionResults
           : [];
-        const result =
-          actionResults.length > 0 &&
-          typeof actionResults[0] === "object" &&
-          actionResults[0] !== null
-            ? actionResults[0]
-            : null;
-        const success =
-          result && "success" in result && typeof result.success === "boolean"
-            ? result.success
-            : false;
+        const result: ActionResult | null =
+          actionResults.length > 0 ? actionResults[0] : null;
+        const success = (result && result.success) ?? false;
 
         traceActionResult.push({
           data: { actionName: typeof action === "string" ? action : "unknown" },

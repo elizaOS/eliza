@@ -30,8 +30,8 @@ pub struct WorldRecord {
 
 impl WorldRecord {
     /// Convert to elizaOS World type
-    pub fn to_world(&self) -> elizaos_core::World {
-        use elizaos_core::{World, WorldMetadata, UUID};
+    pub fn to_world(&self) -> elizaos::World {
+        use elizaos::{World, WorldMetadata, UUID};
 
         let metadata: Option<WorldMetadata> = serde_json::from_value(self.metadata.clone()).ok();
 

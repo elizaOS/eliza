@@ -203,3 +203,4 @@ class TestBuildCharacterPlugins:
         assert plugins.index("@elizaos/plugin-anthropic") < plugins.index("@elizaos/plugin-openai")
         # Platform plugins after LLM plugins
         assert plugins.index("@elizaos/plugin-discord") > plugins.index("@elizaos/plugin-openai")
+

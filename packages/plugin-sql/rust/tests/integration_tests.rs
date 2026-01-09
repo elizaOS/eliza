@@ -4,12 +4,11 @@
 
 #[cfg(feature = "native")]
 mod native_tests {
-    use elizaos_core::{Bio, Character, Content, Memory, UUID};
+    use elizaos::{Bio, Character, Content, Memory, UUID};
     use elizaos_plugin_sql::{DatabaseAdapter, PostgresAdapter};
 
     /// Test creating and retrieving an agent
     #[tokio::test]
-    #[ignore] // Requires PostgreSQL
     async fn test_agent_crud() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
@@ -29,7 +28,7 @@ mod native_tests {
             ..Default::default()
         };
 
-        let agent = elizaos_core::Agent::from_character(character);
+        let agent = elizaos::Agent::from_character(character);
 
         // Create agent
         let created = adapter
@@ -63,23 +62,81 @@ mod native_tests {
         assert!(retrieved.is_none());
     }
 
+    /// Helper to create test entities
+    async fn setup_test_entities(adapter: &PostgresAdapter) -> (UUID, UUID, UUID) {
+        let agent_id = UUID::new_v4();
+        let entity_id = UUID::new_v4();
+        let room_id = UUID::new_v4();
+
+        // Create agent first (required by memory foreign key)
+        let character = Character {
+            id: Some(agent_id.clone()),
+            name: "MemoryTestAgent".to_string(),
+            bio: Bio::Single("Agent for memory tests".to_string()),
+            ..Default::default()
+        };
+        let agent = elizaos::Agent::from_character(character);
+        adapter
+            .create_agent(&agent)
+            .await
+            .expect("Failed to create agent");
+
+        // Note: We need to create entity and room records too
+        // For now, let's work around by making entity_id and room_id nullable
+        // or use raw SQL to insert test data
+
+        // Insert entity directly
+        sqlx::query(
+            r#"
+            INSERT INTO entities (id, agent_id, names, metadata)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(uuid::Uuid::parse_str(entity_id.as_str()).unwrap())
+        .bind(uuid::Uuid::parse_str(agent_id.as_str()).unwrap())
+        .bind(serde_json::json!(["TestEntity"]))
+        .bind(serde_json::json!({}))
+        .execute(adapter.manager().get_pool())
+        .await
+        .expect("Failed to create entity");
+
+        // Insert room directly
+        sqlx::query(
+            r#"
+            INSERT INTO rooms (id, agent_id, source, type, name, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (id) DO NOTHING
+            "#,
+        )
+        .bind(uuid::Uuid::parse_str(room_id.as_str()).unwrap())
+        .bind(uuid::Uuid::parse_str(agent_id.as_str()).unwrap())
+        .bind("test")
+        .bind("GROUP")
+        .bind("TestRoom")
+        .bind(serde_json::json!({}))
+        .execute(adapter.manager().get_pool())
+        .await
+        .expect("Failed to create room");
+
+        (agent_id, entity_id, room_id)
+    }
+
     /// Test memory CRUD operations
     #[tokio::test]
-    #[ignore] // Requires PostgreSQL
     async fn test_memory_crud() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
 
-        let agent_id = UUID::new_v4();
-        let adapter = PostgresAdapter::new(&connection_string, &agent_id)
+        let temp_agent_id = UUID::new_v4();
+        let adapter = PostgresAdapter::new(&connection_string, &temp_agent_id)
             .await
             .expect("Failed to create adapter");
 
         adapter.init().await.expect("Failed to init");
 
-        // Create test data
-        let entity_id = UUID::new_v4();
-        let room_id = UUID::new_v4();
+        // Setup required entities
+        let (agent_id, entity_id, room_id) = setup_test_entities(&adapter).await;
 
         let memory = Memory {
             id: None,
@@ -126,23 +183,26 @@ mod native_tests {
             .await
             .expect("Failed to get memory");
         assert!(retrieved.is_none());
+
+        // Cleanup: delete agent (cascades to entity, room)
+        adapter.delete_agent(&agent_id).await.ok();
     }
 
     /// Test counting memories
     #[tokio::test]
-    #[ignore] // Requires PostgreSQL
     async fn test_count_memories() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());
 
-        let agent_id = UUID::new_v4();
-        let adapter = PostgresAdapter::new(&connection_string, &agent_id)
+        let temp_agent_id = UUID::new_v4();
+        let adapter = PostgresAdapter::new(&connection_string, &temp_agent_id)
             .await
             .expect("Failed to create adapter");
 
         adapter.init().await.expect("Failed to init");
 
-        let room_id = UUID::new_v4();
+        // Setup required entities
+        let (agent_id, entity_id, room_id) = setup_test_entities(&adapter).await;
 
         // Count should be 0 initially
         let count = adapter
@@ -155,7 +215,7 @@ mod native_tests {
         for i in 0..5 {
             let memory = Memory {
                 id: None,
-                entity_id: UUID::new_v4(),
+                entity_id: entity_id.clone(),
                 agent_id: Some(agent_id.clone()),
                 created_at: None,
                 content: Content {
@@ -195,11 +255,13 @@ mod native_tests {
             .await
             .expect("Failed to count memories");
         assert_eq!(count, 0);
+
+        // Cleanup
+        adapter.delete_agent(&agent_id).await.ok();
     }
 
     /// Test cache operations
     #[tokio::test]
-    #[ignore] // Requires PostgreSQL
     async fn test_cache() {
         let connection_string = std::env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/eliza_test".to_string());

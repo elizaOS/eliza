@@ -5,10 +5,18 @@
  * real inference capabilities. Throws errors if no provider is found.
  */
 
+import { z } from "zod";
 import { logger } from "../logger";
 
 /** Default Ollama endpoint */
 const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+
+/**
+ * Schema for Ollama /api/tags response
+ */
+const ollamaTagsResponseSchema = z.object({
+  models: z.array(z.object({ name: z.string() })).optional(),
+});
 
 /**
  * Detected inference provider information
@@ -22,7 +30,7 @@ export interface InferenceProviderInfo {
   endpoint?: string;
   /** Available models if detectable */
   models?: string[];
-  /** Any error message if provider check failed */
+  /** Error message if provider check failed */
   error?: string;
 }
 
@@ -41,165 +49,175 @@ export interface InferenceProviderDetectionResult {
 }
 
 /**
+ * Configuration for a cloud provider check
+ */
+interface CloudProviderConfig {
+  name: string;
+  envVars: string[];
+  endpoint: string;
+}
+
+const CLOUD_PROVIDERS: CloudProviderConfig[] = [
+  {
+    name: "openai",
+    envVars: ["OPENAI_API_KEY"],
+    endpoint: "https://api.openai.com/v1",
+  },
+  {
+    name: "anthropic",
+    envVars: ["ANTHROPIC_API_KEY"],
+    endpoint: "https://api.anthropic.com",
+  },
+  {
+    name: "google",
+    envVars: ["GOOGLE_API_KEY", "GOOGLE_AI_API_KEY"],
+    endpoint: "https://generativelanguage.googleapis.com",
+  },
+];
+
+/**
+ * Check if a cloud provider is configured by checking for API key
+ */
+function checkCloudProvider(config: CloudProviderConfig): InferenceProviderInfo {
+  const hasKey = config.envVars.some((envVar) => Boolean(process.env[envVar]));
+
+  if (hasKey) {
+    return {
+      name: config.name,
+      available: true,
+      endpoint: config.endpoint,
+    };
+  }
+
+  return {
+    name: config.name,
+    available: false,
+    error: `${config.envVars.join(" or ")} not set`,
+  };
+}
+
+/**
  * Check if Ollama is available and list its models
  */
 async function checkOllama(): Promise<InferenceProviderInfo> {
-  try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
-      method: "GET",
-      signal: AbortSignal.timeout(5000),
-    });
+  const response = await fetch(`${OLLAMA_URL}/api/tags`, {
+    method: "GET",
+    signal: AbortSignal.timeout(5000),
+  });
 
-    if (!response.ok) {
-      return {
-        name: "ollama",
-        available: false,
-        endpoint: OLLAMA_URL,
-        error: `Ollama returned status ${response.status}`,
-      };
-    }
-
-    const data = (await response.json()) as {
-      models?: Array<{ name: string }>;
-    };
-    const models = data.models?.map((m) => m.name) ?? [];
-
+  if (!response.ok) {
     return {
       name: "ollama",
-      available: true,
+      available: false,
       endpoint: OLLAMA_URL,
-      models,
+      error: `Ollama returned status ${response.status}`,
     };
+  }
+
+  const rawData: unknown = await response.json();
+  const parseResult = ollamaTagsResponseSchema.safeParse(rawData);
+
+  if (!parseResult.success) {
+    return {
+      name: "ollama",
+      available: false,
+      endpoint: OLLAMA_URL,
+      error: `Invalid response from Ollama: ${parseResult.error.message}`,
+    };
+  }
+
+  const parseResultDataModels = parseResult.data.models;
+  const models = (parseResultDataModels && parseResultDataModels.map((m) => m.name)) ?? [];
+
+  return {
+    name: "ollama",
+    available: true,
+    endpoint: OLLAMA_URL,
+    models,
+  };
+}
+
+/**
+ * Safely check Ollama, catching network errors
+ */
+async function safeCheckOllama(): Promise<InferenceProviderInfo> {
+  try {
+    return await checkOllama();
   } catch (error) {
     return {
       name: "ollama",
       available: false,
       endpoint: OLLAMA_URL,
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }
 
 /**
- * Check if OpenAI API is configured
+ * Build summary message for logging
  */
-function checkOpenAI(): InferenceProviderInfo {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey) {
-    return {
-      name: "openai",
-      available: true,
-      endpoint: "https://api.openai.com/v1",
-    };
-  }
-  return {
-    name: "openai",
-    available: false,
-    error: "OPENAI_API_KEY not set",
-  };
-}
-
-/**
- * Check if Anthropic API is configured
- */
-function checkAnthropic(): InferenceProviderInfo {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey) {
-    return {
-      name: "anthropic",
-      available: true,
-      endpoint: "https://api.anthropic.com",
-    };
-  }
-  return {
-    name: "anthropic",
-    available: false,
-    error: "ANTHROPIC_API_KEY not set",
-  };
-}
-
-/**
- * Check if Google AI API is configured
- */
-function checkGoogleAI(): InferenceProviderInfo {
-  const apiKey = process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  if (apiKey) {
-    return {
-      name: "google",
-      available: true,
-      endpoint: "https://generativelanguage.googleapis.com",
-    };
-  }
-  return {
-    name: "google",
-    available: false,
-    error: "GOOGLE_API_KEY not set",
-  };
-}
-
-/**
- * Detect all available inference providers
- */
-export async function detectInferenceProviders(): Promise<InferenceProviderDetectionResult> {
-  const providers: InferenceProviderInfo[] = [];
-
-  // Check cloud providers first (faster, no network timeout)
-  const openai = checkOpenAI();
-  const anthropic = checkAnthropic();
-  const google = checkGoogleAI();
-
-  providers.push(openai, anthropic, google);
-
-  // Check Ollama (requires network call)
-  const ollama = await checkOllama();
-  providers.push(ollama);
-
-  // Find available providers
-  const availableProviders = providers.filter((p) => p.available);
-  const hasProvider = availableProviders.length > 0;
-
-  // Determine primary provider (prefer cloud providers for reliability)
-  let primaryProvider: InferenceProviderInfo | null = null;
-  if (openai.available) {
-    primaryProvider = openai;
-  } else if (anthropic.available) {
-    primaryProvider = anthropic;
-  } else if (google.available) {
-    primaryProvider = google;
-  } else if (ollama.available) {
-    primaryProvider = ollama;
-  }
-
-  // Build summary message
-  let summary: string;
-  if (!hasProvider) {
-    summary =
+function buildSummary(
+  availableProviders: InferenceProviderInfo[],
+  primaryProvider: InferenceProviderInfo | null,
+): string {
+  if (availableProviders.length === 0) {
+    return (
       "NO INFERENCE PROVIDER AVAILABLE\n" +
       "   Integration tests require a working inference provider.\n\n" +
       "   Options:\n" +
       "   1. Start Ollama locally: ollama serve\n" +
       "   2. Set OPENAI_API_KEY environment variable\n" +
       "   3. Set ANTHROPIC_API_KEY environment variable\n" +
-      "   4. Set GOOGLE_API_KEY environment variable";
-  } else {
-    const providerList = availableProviders
-      .map((p) => {
-        let info = `   - ${p.name.toUpperCase()}`;
-        if (p.endpoint) info += ` (${p.endpoint})`;
-        if (p.models?.length) info += ` - ${p.models.length} models`;
-        return info;
-      })
-      .join("\n");
-
-    summary =
-      `Using inference provider: ${primaryProvider?.name.toUpperCase() ?? "NONE"}\n` +
-      `   Available providers:\n${providerList}`;
+      "   4. Set GOOGLE_API_KEY environment variable"
+    );
   }
+
+  const providerList = availableProviders
+    .map((p) => {
+      let info = `   - ${p.name.toUpperCase()}`;
+      if (p.endpoint) info += ` (${p.endpoint})`;
+      const pModels = p.models;
+      if (pModels && pModels.length) info += ` - ${pModels.length} models`;
+      return info;
+    })
+    .join("\n");
+
+  const primaryProviderName = primaryProvider && primaryProvider.name;
+  return (
+    `Using inference provider: ${primaryProviderName ? primaryProviderName.toUpperCase() : "NONE"}\n` +
+    `   Available providers:\n${providerList}`
+  );
+}
+
+/**
+ * Detect all available inference providers
+ */
+export async function detectInferenceProviders(): Promise<InferenceProviderDetectionResult> {
+  // Check all cloud providers
+  const cloudProviders = CLOUD_PROVIDERS.map(checkCloudProvider);
+
+  // Check Ollama (requires network call)
+  const ollama = await safeCheckOllama();
+
+  const allProviders = [...cloudProviders, ollama];
+  const availableProviders = allProviders.filter((p) => p.available);
+  const hasProvider = availableProviders.length > 0;
+
+  // Determine primary provider (prefer cloud providers for reliability)
+  let primaryProvider: InferenceProviderInfo | null = null;
+  for (const provider of allProviders) {
+    if (provider.available) {
+      primaryProvider = provider;
+      break;
+    }
+  }
+
+  const summary = buildSummary(availableProviders, primaryProvider);
 
   return {
     hasProvider,
     primaryProvider,
-    allProviders: providers,
+    allProviders,
     summary,
   };
 }

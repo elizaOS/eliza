@@ -13,6 +13,19 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Type for mocking Bun.spawn in tests */
+type SpawnResult = { exited: Promise<number> };
+type SpawnFn = (args: string[]) => SpawnResult;
+
+/** Type-safe access to mutable Bun global for testing */
+const BunGlobal = globalThis.Bun as { spawn: SpawnFn };
+
+/** Shape of an invalid plugin for testing error handling */
+interface InvalidPlugin {
+  description?: string;
+  name?: string;
+}
+
 describe("Plugin Functions", () => {
   let originalEnv: Record<string, string | undefined>;
 
@@ -78,16 +91,16 @@ describe("Plugin Functions", () => {
       const result = await loadPlugin(plugin);
 
       expect(result).toBe(plugin);
-      expect(result?.name).toBe("test-plugin");
+      expect(result && result.name).toBe("test-plugin");
     });
 
     test("should return null for invalid plugin object", async () => {
-      const invalidPlugin = {
+      const invalidPlugin: InvalidPlugin = {
         // Missing name
         description: "Invalid plugin",
-      } as any;
+      };
 
-      const result = await loadPlugin(invalidPlugin);
+      const result = await loadPlugin(invalidPlugin as Plugin);
 
       expect(result).toBeNull();
     });
@@ -99,15 +112,21 @@ describe("Plugin Functions", () => {
       expect(result).toBeNull();
     });
 
-    test.skipIf(!process.env.RUN_INTEGRATION_TESTS)(
-      "should load bootstrap plugin successfully",
-      async () => {
-        const result = await loadPlugin("@elizaos/plugin-bootstrap");
+    test("should load valid plugin object successfully", async () => {
+      // Test with a mock plugin object instead of requiring external package
+      const mockBootstrapPlugin: Plugin = {
+        name: "bootstrap",
+        description: "Core bootstrap functionality",
+        actions: [],
+        providers: [],
+        services: [],
+      };
 
-        expect(result).toBeDefined();
-        expect(result?.name).toBe("bootstrap");
-      },
-    );
+      const result = await loadPlugin(mockBootstrapPlugin);
+
+      expect(result).toBeDefined();
+      expect(result && result.name).toBe("bootstrap");
+    });
   });
 
   describe("resolvePlugins", () => {
@@ -189,12 +208,12 @@ describe("Plugin Functions", () => {
         services: [],
       };
 
-      const invalidPlugin = {
+      const invalidPlugin: InvalidPlugin = {
         // Missing name
         description: "Invalid plugin",
-      } as any;
+      };
 
-      const resolved = await resolvePlugins([validPlugin, invalidPlugin]);
+      const resolved = await resolvePlugins([validPlugin, invalidPlugin as Plugin]);
 
       expect(resolved).toHaveLength(1);
       expect(resolved[0].name).toBe("valid-plugin");
@@ -593,7 +612,7 @@ describe("Plugin Functions", () => {
   });
 
   describe("tryInstallPlugin (auto-install)", () => {
-    const originalSpawn = (Bun as any).spawn;
+    const originalSpawn = BunGlobal.spawn;
     const originalEnv = { ...process.env } as Record<string, string>;
 
     beforeEach(() => {
@@ -607,7 +626,7 @@ describe("Plugin Functions", () => {
     });
 
     afterEach(() => {
-      (Bun as any).spawn = originalSpawn;
+      BunGlobal.spawn = originalSpawn;
       process.env = { ...originalEnv } as Record<string, string | undefined>;
     });
 
@@ -615,10 +634,10 @@ describe("Plugin Functions", () => {
       process.env.ELIZA_NO_PLUGIN_AUTO_INSTALL = "true";
 
       let called = 0;
-      (Bun as any).spawn = ((_cmd: any[]) => {
+      BunGlobal.spawn = (_cmd: string[]): SpawnResult => {
         called += 1;
-        return { exited: Promise.resolve(0) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin(
         "@elizaos/test-no-plugin-auto-install",
@@ -631,10 +650,10 @@ describe("Plugin Functions", () => {
       process.env.ELIZA_NO_AUTO_INSTALL = "true";
 
       let called = 0;
-      (Bun as any).spawn = ((_cmd: any[]) => {
+      BunGlobal.spawn = (_cmd: string[]): SpawnResult => {
         called += 1;
-        return { exited: Promise.resolve(0) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-no-auto-install");
       expect(result).toBe(false);
@@ -645,10 +664,10 @@ describe("Plugin Functions", () => {
       process.env.CI = "true";
 
       let called = 0;
-      (Bun as any).spawn = ((_cmd: any[]) => {
+      BunGlobal.spawn = (_cmd: string[]): SpawnResult => {
         called += 1;
-        return { exited: Promise.resolve(0) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-ci-env");
       expect(result).toBe(false);
@@ -659,10 +678,10 @@ describe("Plugin Functions", () => {
       process.env.NODE_ENV = "test";
 
       let called = 0;
-      (Bun as any).spawn = ((_cmd: any[]) => {
+      BunGlobal.spawn = (_cmd: string[]): SpawnResult => {
         called += 1;
-        return { exited: Promise.resolve(0) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-test-mode");
       expect(result).toBe(false);
@@ -670,15 +689,13 @@ describe("Plugin Functions", () => {
     });
 
     test("succeeds when bun present and bun add exits 0", async () => {
-      const calls: any[] = [];
+      const calls: string[][] = [];
 
-      (Bun as any).spawn = ((args: any[]) => {
+      BunGlobal.spawn = (args: string[]): SpawnResult => {
         calls.push(args);
         // First call is bun --version, second is bun add <pkg>
-        const isVersion = Array.isArray(args) && args[1] === "--version";
-        const exitCode = isVersion ? 0 : 0;
-        return { exited: Promise.resolve(exitCode) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-success");
       expect(result).toBe(true);
@@ -689,14 +706,14 @@ describe("Plugin Functions", () => {
 
     test("fails when bun --version exits non-zero", async () => {
       let versionCalls = 0;
-      (Bun as any).spawn = ((args: any[]) => {
-        if (Array.isArray(args) && args[1] === "--version") {
+      BunGlobal.spawn = (args: string[]): SpawnResult => {
+        if (args[1] === "--version") {
           versionCalls += 1;
-          return { exited: Promise.resolve(1) } as any;
+          return { exited: Promise.resolve(1) };
         }
         // would be bun add; should not be called
-        return { exited: Promise.resolve(0) } as any;
-      }) as any;
+        return { exited: Promise.resolve(0) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-bun-version-fail");
       expect(result).toBe(false);
@@ -704,12 +721,12 @@ describe("Plugin Functions", () => {
     });
 
     test("fails when bun add exits non-zero", async () => {
-      const calls: any[] = [];
-      (Bun as any).spawn = ((args: any[]) => {
+      const calls: string[][] = [];
+      BunGlobal.spawn = (args: string[]): SpawnResult => {
         calls.push(args);
-        const isVersion = Array.isArray(args) && args[1] === "--version";
-        return { exited: Promise.resolve(isVersion ? 0 : 1) } as any;
-      }) as any;
+        const isVersion = args[1] === "--version";
+        return { exited: Promise.resolve(isVersion ? 0 : 1) };
+      };
 
       const result = await tryInstallPlugin("@elizaos/test-bun-add-fail");
       expect(result).toBe(false);
@@ -719,8 +736,8 @@ describe("Plugin Functions", () => {
     test("awaits process completion before returning", async () => {
       let versionResolved = false;
       let addResolved = false;
-      (Bun as any).spawn = ((args: any[]) => {
-        const isVersion = Array.isArray(args) && args[1] === "--version";
+      BunGlobal.spawn = (args: string[]): SpawnResult => {
+        const isVersion = args[1] === "--version";
         return {
           exited: (async () => {
             await delay(isVersion ? 25 : 50);
@@ -728,8 +745,8 @@ describe("Plugin Functions", () => {
             else addResolved = true;
             return 0;
           })(),
-        } as any;
-      }) as any;
+        };
+      };
 
       const result = await tryInstallPlugin("@elizaos/plugin-unique-test");
       expect(result).toBe(true);

@@ -2,7 +2,7 @@
 //!
 //! These tests verify that character files can be loaded and parsed correctly.
 
-use elizaos_core::{
+use elizaos::{
     build_character_plugins, merge_character_defaults, parse_character,
     types::{Bio, Character},
     validate_character,

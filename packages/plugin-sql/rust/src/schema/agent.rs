@@ -1,6 +1,6 @@
 //! Agent schema for elizaOS database
 //!
-//! Corresponds to the TypeScript agentTable in packages/plugin-sql/typescript/src/schema/agent.ts
+//! Corresponds to the TypeScript agentTable in packages/plugin-sql/typescript/schema/agent.ts
 
 /// SQL for creating the agents table
 pub const CREATE_AGENTS_TABLE: &str = r#"
@@ -55,8 +55,8 @@ pub struct AgentRecord {
 
 impl AgentRecord {
     /// Convert to elizaOS Agent type
-    pub fn to_agent(&self) -> elizaos_core::Agent {
-        use elizaos_core::{Agent, Bio, Character, UUID};
+    pub fn to_agent(&self) -> elizaos::Agent {
+        use elizaos::{Agent, Bio, Character, UUID};
 
         let bio = if let Some(arr) = self.bio.as_array() {
             Bio::Multiple(

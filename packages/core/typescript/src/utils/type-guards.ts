@@ -3,13 +3,40 @@
  * These functions help TypeScript narrow types safely
  */
 
-import { isBuffer } from "./buffer";
+/**
+ * Set of built-in object constructors that should not be considered plain objects
+ */
+const NON_PLAIN_CONSTRUCTORS = new Set([
+  Array,
+  Date,
+  RegExp,
+  Map,
+  Set,
+  WeakMap,
+  WeakSet,
+  Error,
+  Promise,
+  ArrayBuffer,
+  DataView,
+  Int8Array,
+  Uint8Array,
+  Uint8ClampedArray,
+  Int16Array,
+  Uint16Array,
+  Int32Array,
+  Uint32Array,
+  Float32Array,
+  Float64Array,
+  BigInt64Array,
+  BigUint64Array,
+]);
 
 /**
  * Check if a value is a plain object (not a special object type)
  * Type guard that narrows the type to Record<string, unknown>
  *
- * Excludes: null, arrays, buffers, Date, RegExp, Map, Set, WeakMap, WeakSet, Error, Promise
+ * A plain object is one created via {} or new Object(), not a built-in
+ * or custom class instance.
  *
  * @param value - The value to check
  * @returns True if the value is a plain object
@@ -26,38 +53,30 @@ import { isBuffer } from "./buffer";
 export function isPlainObject(
   value: unknown,
 ): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
+  if (value === null || typeof value !== "object") {
     return false;
   }
-  if (Array.isArray(value)) {
+
+  // Check constructor - plain objects have Object or null prototype
+  const proto = Object.getPrototypeOf(value);
+  if (proto === null) {
+    return true; // Object.create(null)
+  }
+
+  if (proto.constructor === Object) {
+    return true;
+  }
+
+  // Explicitly exclude known built-in types
+  if (NON_PLAIN_CONSTRUCTORS.has(proto.constructor)) {
     return false;
   }
-  if (isBuffer(value)) {
+
+  // Check for Buffer (Node.js specific)
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(value)) {
     return false;
   }
-  if (value instanceof Date) {
-    return false;
-  }
-  if (value instanceof RegExp) {
-    return false;
-  }
-  if (value instanceof Map) {
-    return false;
-  }
-  if (value instanceof Set) {
-    return false;
-  }
-  if (value instanceof WeakMap) {
-    return false;
-  }
-  if (value instanceof WeakSet) {
-    return false;
-  }
-  if (value instanceof Error) {
-    return false;
-  }
-  if (value instanceof Promise) {
-    return false;
-  }
-  return true;
+
+  // If it's a custom class instance, it's not a plain object
+  return false;
 }

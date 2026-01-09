@@ -120,7 +120,7 @@ export const StarterPluginTestSuite: TestSuite = {
       name: "should_have_hello_world_action",
       fn: async (runtime: IAgentRuntime) => {
         // Access actions through runtime.actions instead of getPlugin
-        const actionExists = runtime.actions?.some(
+        const actionExists = runtime.actions.some(
           (a) => a.name === "HELLO_WORLD",
         );
         if (!actionExists) {
@@ -165,7 +165,7 @@ export const StarterPluginTestSuite: TestSuite = {
         let responseReceived = false;
 
         // Find the hello world action in runtime.actions
-        const helloWorldAction = runtime.actions?.find(
+        const helloWorldAction = runtime.actions.find(
           (a) => a.name === "HELLO_WORLD",
         );
         if (!helloWorldAction) {
@@ -179,7 +179,8 @@ export const StarterPluginTestSuite: TestSuite = {
           responseText = response.text || "";
 
           // Verify the response includes the expected action
-          if (!response.actions?.includes("HELLO_WORLD")) {
+          const responseActions = response.actions;
+          if (!responseActions || !responseActions.includes("HELLO_WORLD")) {
             throw new Error("Response did not include HELLO_WORLD action");
           }
 
@@ -239,7 +240,7 @@ export const StarterPluginTestSuite: TestSuite = {
         };
 
         // Find the hello world provider in runtime.providers
-        const helloWorldProvider = runtime.providers?.find(
+        const helloWorldProvider = runtime.providers.find(
           (p) => p.name === "HELLO_WORLD_PROVIDER",
         );
         if (!helloWorldProvider) {

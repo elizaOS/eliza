@@ -3,7 +3,7 @@
 //! These tests verify that Rust serialization produces identical JSON
 //! to the TypeScript implementation.
 
-use elizaos_core::types::{
+use elizaos::types::{
     character::{Agent, AgentStatus, Bio, Character},
     environment::{ChannelType, Component, Entity, Relationship, Role, Room, World},
     memory::{Memory, MemoryMetadata, MemoryType},

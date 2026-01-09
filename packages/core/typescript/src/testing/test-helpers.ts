@@ -16,15 +16,19 @@ export function generateTestId(): UUID {
 }
 
 /**
- * Create a test memory object with sensible defaults
+ * Parameters for creating a test memory
  */
-export function createTestMemory(params: {
+interface CreateTestMemoryParams {
   entityId?: UUID;
   roomId?: UUID;
   agentId?: UUID;
   content: Content | string;
-  tableName?: string;
-}): Memory {
+}
+
+/**
+ * Create a test memory object with sensible defaults
+ */
+export function createTestMemory(params: CreateTestMemoryParams): Memory {
   const id = generateTestId();
   const entityId = params.entityId ?? generateTestId();
   const roomId = params.roomId ?? generateTestId();
@@ -63,11 +67,19 @@ export function createTestCharacter(
 }
 
 /**
+ * Options for waitFor utility
+ */
+interface WaitForOptions {
+  timeout?: number;
+  interval?: number;
+}
+
+/**
  * Wait for a condition to be true with timeout
  */
 export async function waitFor(
   condition: () => boolean | Promise<boolean>,
-  options: { timeout?: number; interval?: number } = {},
+  options: WaitForOptions = {},
 ): Promise<void> {
   const { timeout = 5000, interval = 100 } = options;
   const startTime = Date.now();
@@ -102,18 +114,19 @@ export async function expectRejection(
     }
 
     if (expectedMessage) {
-      if (typeof expectedMessage === "string") {
-        if (!error.message.includes(expectedMessage)) {
-          throw new Error(
-            `Expected error message to include "${expectedMessage}" but got: "${error.message}"`,
-          );
-        }
-      } else {
-        if (!expectedMessage.test(error.message)) {
-          throw new Error(
-            `Expected error message to match ${expectedMessage} but got: "${error.message}"`,
-          );
-        }
+      const messageMatches =
+        typeof expectedMessage === "string"
+          ? error.message.includes(expectedMessage)
+          : expectedMessage.test(error.message);
+
+      if (!messageMatches) {
+        throw new Error(
+          `Expected error message to ${
+            typeof expectedMessage === "string"
+              ? `include "${expectedMessage}"`
+              : `match ${expectedMessage}`
+          } but got: "${error.message}"`,
+        );
       }
     }
 
@@ -122,11 +135,19 @@ export async function expectRejection(
 }
 
 /**
+ * Options for retry utility
+ */
+interface RetryOptions {
+  maxRetries?: number;
+  baseDelay?: number;
+}
+
+/**
  * Retry a function with exponential backoff
  */
 export async function retry<T>(
   fn: () => Promise<T>,
-  options: { maxRetries?: number; baseDelay?: number } = {},
+  options: RetryOptions = {},
 ): Promise<T> {
   const { maxRetries = 3, baseDelay = 100 } = options;
   let lastError: Error | undefined;
@@ -147,16 +168,37 @@ export async function retry<T>(
 }
 
 /**
+ * Result of measuring execution time
+ */
+interface MeasureTimeResult<T> {
+  result: T;
+  durationMs: number;
+}
+
+/**
  * Measure execution time of an async function
  */
 export async function measureTime<T>(
   fn: () => Promise<T>,
-): Promise<{ result: T; durationMs: number }> {
+): Promise<MeasureTimeResult<T>> {
   const start = performance.now();
   const result = await fn();
   const durationMs = performance.now() - start;
   return { result, durationMs };
 }
+
+const RANDOM_CHARS =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+const RANDOM_WORDS = [
+  "hello",
+  "world",
+  "test",
+  "agent",
+  "memory",
+  "runtime",
+  "integration",
+];
 
 /**
  * Test data generators
@@ -167,30 +209,21 @@ export const testDataGenerators = {
 
   /** Generate a random string */
   randomString: (length = 10): string => {
-    const chars =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let result = "";
     for (let i = 0; i < length; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+      result += RANDOM_CHARS.charAt(
+        Math.floor(Math.random() * RANDOM_CHARS.length),
+      );
     }
     return result;
   },
 
   /** Generate a random sentence */
   randomSentence: (): string => {
-    const words = [
-      "hello",
-      "world",
-      "test",
-      "agent",
-      "memory",
-      "runtime",
-      "integration",
-    ];
     const length = 5 + Math.floor(Math.random() * 10);
     return Array.from(
       { length },
-      () => words[Math.floor(Math.random() * words.length)],
+      () => RANDOM_WORDS[Math.floor(Math.random() * RANDOM_WORDS.length)],
     ).join(" ");
   },
 };

@@ -1230,7 +1230,10 @@ export class BM25 {
           if (!termDocs.has(term)) {
             termDocs.set(term, new Set<number>());
           }
-          termDocs.get(term)?.add(docIndex);
+          const termDocsTerm = termDocs.get(term);
+          if (termDocsTerm) {
+            termDocsTerm.add(docIndex);
+          }
 
           // Increment frequency for this term in this document
           const currentFreq = docTermFrequencies.get(termIndexVal) || 0;
@@ -1247,7 +1250,10 @@ export class BM25 {
         if (!termFrequencies.has(termIndexVal)) {
           termFrequencies.set(termIndexVal, new Map<number, number>());
         }
-        termFrequencies.get(termIndexVal)?.set(docIndex, freq);
+        const termFrequenciesTermIndexVal = termFrequencies.get(termIndexVal);
+        if (termFrequenciesTermIndexVal) {
+          termFrequenciesTermIndexVal.set(docIndex, freq);
+        }
       });
     });
 
@@ -1358,9 +1364,8 @@ export class BM25 {
       const termIndex = this.termToIndex.get(term);
       if (termIndex === undefined) return []; // Phrase cannot exist if any term is missing
 
-      const docsContainingTermIter = this.termFrequencies
-        .get(termIndex)
-        ?.keys();
+      const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
+      const docsContainingTermIter = termFrequenciesTermIndex && termFrequenciesTermIndex.keys();
       if (!docsContainingTermIter) return []; // Should not happen, but check
 
       const currentTermDocs = new Set(docsContainingTermIter);
@@ -1444,7 +1449,8 @@ export class BM25 {
       if (termIndex === undefined) return currentScore;
 
       const idf = this.calculateIdf(termIndex);
-      const tf = this.termFrequencies.get(termIndex)?.get(docIndex) || 0;
+      const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
+      const tf = (termFrequenciesTermIndex && termFrequenciesTermIndex.get(docIndex)) || 0;
       const docLength = this.documentLengths[docIndex];
 
       // Calculate the BM25 contribution of this single term
@@ -1532,7 +1538,10 @@ export class BM25 {
       if (!this.termFrequencies.has(termIndexVal)) {
         this.termFrequencies.set(termIndexVal, new Map<number, number>());
       }
-      this.termFrequencies.get(termIndexVal)?.set(docIndex, freq);
+      const termFrequenciesTermIndexVal = this.termFrequencies.get(termIndexVal);
+      if (termFrequenciesTermIndexVal) {
+        termFrequenciesTermIndexVal.set(docIndex, freq);
+      }
 
       // Increment document frequency for the term
       // Ensure termIndexVal is within bounds of documentFrequency before incrementing
@@ -1581,7 +1590,8 @@ export class BM25 {
    * @returns The term frequency, or 0 if the term is not in the document or indices are invalid.
    */
   getTermFrequency(termIndex: number, docIndex: number): number {
-    return this.termFrequencies.get(termIndex)?.get(docIndex) || 0;
+    const termFrequenciesTermIndex = this.termFrequencies.get(termIndex);
+    return (termFrequenciesTermIndex && termFrequenciesTermIndex.get(docIndex)) || 0;
   }
 
   /**

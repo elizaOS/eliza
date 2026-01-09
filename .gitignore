@@ -207,5 +207,3 @@ standalone.ts
 
 # Continuous Claude cache (local only)
 .claude/cache/
-/thoughts
-plugins/

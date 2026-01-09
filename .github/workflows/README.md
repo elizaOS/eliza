@@ -1,49 +1,136 @@
-# GitHub Actions Workflows
+# CI/CD Workflows
 
-This directory contains all the GitHub Actions workflows for the Eliza project. These workflows automate various aspects of the development lifecycle, including testing, building, deployment, documentation updates, and security checks.
+This directory contains GitHub Actions workflows for the elizaOS project.
 
-Below is a summary of the existing workflows:
+## Release Workflows
 
-## CI/CD & Testing
+### NPM Packages (`release.yaml`)
 
-- **`ci.yaml`**: Handles general Continuous Integration tasks, likely running linters, and basic checks on pushes and pull requests.
-- **`cli-tests.yml`**: Executes tests specifically for the CLI package (`packages/cli`).
-- **`core-package-tests.yaml`**: Runs unit tests for core backend packages (core, server, plugins) excluding CLI and client packages.
-- **`client-cypress-tests.yml`**: Runs Cypress component and E2E tests for the client package.
-- **`plugin-sql-tests.yaml`**: Tests specifically for the SQL plugin package.
-- **`pr.yaml`**: Defines checks and processes that run on every pull request to `main` or `develop` branches.
-- **`tauri-ci.yml`**: Manages Continuous Integration for the Tauri desktop application, including building and testing across different platforms.
+Publishes TypeScript/JavaScript packages to NPM.
 
-## Releases & Deployment
+**Triggers:**
+- Push to `develop` → Alpha release
+- Push to `main` → Beta release
+- GitHub Release created → Production release
 
-- **`pre-release.yml`**: Automates the process of creating pre-releases.
-- **`release.yaml`**: Automates the official release process.
-- **`tauri-release.yml`**: Handles the release process for the Tauri desktop application, including building binaries and creating GitHub releases.
-- **`plugin-publish.yml`**: Automates the publishing of plugins, likely to a package registry.
-- **`tee-build-deploy.yml`**: Manages the build and deployment process for the Trusted Execution Environment (TEE) components.
-- **`image.yaml`**: Builds and possibly pushes Docker images for various services or applications within the project.
+**Packages:**
+- All `@elizaos/*` packages in the monorepo
 
-## Documentation Automation
+### Python Packages (`release-python.yaml`)
 
-- **`llmstxt-generator.yml`**: Automatically generates/updates `llms.txt` and `llms-full.txt` files (located in `packages/docs/static/`) using the `repomix` tool. These files are used as context for AI models. See the [Repomix Documentation Generator Workflow rule](.cursor/rules/llmstxt-generator-workflow.mdc) for more details.
-- **`jsdoc-automation.yml`**: Automates the generation of JSDoc comments for TypeScript code and potentially updates README files using the `autodoc` package. See the [JSDoc Automation Workflow rule](.cursor/rules/jsdoc-automation-workflow.mdc) for details.
-- **`generate-readme-translations.yml`**: Translates the root `README.md` file into multiple languages using an AI model and commits the translations. See the [README Translation Workflow rule](.cursor/rules/readme-translation-workflow.mdc) for more details.
-- **`update-news.yml`**: Fetches and updates news articles in the documentation (`packages/docs/news/`). This likely involves running the `packages/docs/scripts/update-news.sh` script.
-- **`docs-check-quality.yml`**: Automatically checks and fixes documentation quality issues in `packages/docs/` using Claude AI. Fixes double headers, duplicate content, missing frontmatter, heading hierarchy, and code block language tags. Runs on PRs that modify documentation files and creates follow-up PRs with fixes.
-- **`docs-check-dead-links.yml`**: Automatically checks and fixes broken links in `packages/docs/` using Claude AI. Validates internal and external links, fixes typos, updates moved file references, and handles redirects. Runs on PRs that modify documentation files and creates follow-up PRs with fixes.
+Publishes Python packages to PyPI.
 
-## AI-Assisted Development
+**Triggers:**
+- GitHub Release created
+- Manual dispatch
 
-- **`claude.yml`**: Enables Claude AI assistance via `@claude` mentions in issues, PRs, and comments. Uses Claude Opus 4.5 to provide code review, answer questions, and help with development tasks across the entire repository.
-- **`claude-code-review.yml`**: Automated PR code review using Claude AI. Runs on all PRs (non-draft) to check for security issues, missing tests, TypeScript types, proper imports, and code quality. Uses inline comments for specific feedback.
-- **`claude-security-review.yml`**: Specialized security review using Claude AI to identify potential vulnerabilities in code changes.
+**Packages:**
+- `elizaos` (packages/core/python) - Core runtime and types
+- `elizaos-plugin-sql` (packages/plugin-sql/python) - SQL database adapters
 
-## Security
+**Required Secrets:**
+- `PYPI_TOKEN` - PyPI API token with upload permissions
 
-- **`codeql.yml`**: Implements CodeQL analysis to find security vulnerabilities in the codebase.
+### Rust Crates (`release-rust.yaml`)
 
-## Maintenance
+Publishes Rust crates to crates.io.
 
-- **`weekly-maintenance.yml`**: Automated weekly maintenance tasks for repository upkeep.
+**Triggers:**
+- GitHub Release created
+- Manual dispatch
 
-These workflows are crucial for maintaining code quality, ensuring stability, and automating repetitive tasks.
+**Crates:**
+- `elizaos-core` (packages/core/rust) - Core runtime and types
+- `elizaos-plugin-sql` (packages/plugin-sql/rust) - SQL database adapters
+
+**Required Secrets:**
+- `CRATES_IO_TOKEN` - crates.io API token
+
+## Test Workflows
+
+### Main CI (`ci.yaml`)
+
+Runs on PRs and pushes to main:
+- TypeScript tests
+- Linting and formatting
+- Build verification
+
+### Multi-Language Tests (`multi-lang-tests.yaml`)
+
+Tests Rust and Python packages:
+- Rust: formatting, clippy, tests, release build
+- Python: ruff, mypy, pytest
+- WASM: build verification
+- Interop: cross-language integration tests
+
+### Plugin SQL Tests (`plugin-sql-tests.yaml`)
+
+Specific tests for the SQL plugin package.
+
+## Manual Release Process
+
+### 1. Create a GitHub Release
+
+1. Go to Releases → Create new release
+2. Create a new tag: `v1.0.0` (follows semver)
+3. Add release notes
+4. Publish release
+
+### 2. Automated Publishing
+
+The release will trigger:
+- `release.yaml` → NPM packages
+- `release-python.yaml` → PyPI packages
+- `release-rust.yaml` → crates.io crates
+
+### 3. Manual Publishing (if needed)
+
+**Python:**
+```bash
+cd packages/core/python
+pip install build twine
+python -m build
+twine upload dist/*
+```
+
+**Rust:**
+```bash
+cd packages/core/rust
+cargo publish
+```
+
+## Setting Up Secrets
+
+### PyPI Token
+
+1. Go to https://pypi.org/manage/account/token/
+2. Create a token with "Upload packages" scope
+3. Add as `PYPI_TOKEN` in repository secrets
+
+### crates.io Token
+
+1. Go to https://crates.io/settings/tokens
+2. Create a token with publish scope
+3. Add as `CRATES_IO_TOKEN` in repository secrets
+
+### NPM Token
+
+1. Go to https://www.npmjs.com/settings/~/tokens
+2. Create a token with publish permissions
+3. Add as `NPM_TOKEN` in repository secrets
+
+## Package Dependencies
+
+When releasing, packages should be published in this order:
+
+1. **Core packages first:**
+   - `elizaos` (Python)
+   - `elizaos-core` (Rust)
+   - `@elizaos/core` (NPM)
+
+2. **Then dependent packages:**
+   - `elizaos-plugin-sql` (Python, depends on elizaos)
+   - `elizaos-plugin-sql` (Rust, depends on elizaos-core)
+   - `@elizaos/plugin-sql` (NPM, depends on @elizaos/core)
+
+The workflows handle this ordering automatically.

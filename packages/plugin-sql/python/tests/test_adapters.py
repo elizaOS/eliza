@@ -1,55 +1,32 @@
-"""Tests for database adapters."""
+"""Tests for database adapters using real PostgreSQL via testcontainers."""
 
-import tempfile
+from __future__ import annotations
+
 import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 from elizaos.types import as_uuid
 
-from elizaos_plugin_sql.adapters.pglite import PGLiteAdapter
+if TYPE_CHECKING:
+    from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
 
 
-@pytest.fixture
-def agent_id() -> str:
-    """Generate a test agent ID."""
-    return as_uuid(str(uuid.uuid4()))
-
-
-@pytest.fixture
-async def pglite_adapter(agent_id: str) -> PGLiteAdapter:
-    """Create a PGLite adapter for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        adapter = PGLiteAdapter(
-            data_dir=tmpdir,
-            agent_id=agent_id,
-        )
-        await adapter.initialize()
-        yield adapter
-        await adapter.close()
-
-
-class TestPGLiteAdapter:
-    """Tests for PGLite adapter."""
+class TestPostgresAdapter:
+    """Tests for PostgreSQL adapter with real database."""
 
     @pytest.mark.asyncio
-    async def test_initialization(self, agent_id: str) -> None:
+    async def test_initialization(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test adapter initialization."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            adapter = PGLiteAdapter(
-                data_dir=tmpdir,
-                agent_id=agent_id,
-            )
-            await adapter.initialize()
-            assert await adapter.is_ready()
-            await adapter.close()
+        assert await postgres_adapter.is_ready()
 
     @pytest.mark.asyncio
-    async def test_agent_crud(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_agent_crud(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test agent CRUD operations."""
         agent_id = as_uuid(str(uuid.uuid4()))
 
         # Create
-        created = await pglite_adapter.create_agent(
+        created = await postgres_adapter.create_agent(
             {
                 "id": agent_id,
                 "name": "TestAgent",
@@ -59,30 +36,30 @@ class TestPGLiteAdapter:
         assert created is True
 
         # Read
-        agent = await pglite_adapter.get_agent(agent_id)
+        agent = await postgres_adapter.get_agent(agent_id)
         assert agent is not None
         assert agent["name"] == "TestAgent"
 
         # Update
-        updated = await pglite_adapter.update_agent(agent_id, {"name": "UpdatedAgent"})
+        updated = await postgres_adapter.update_agent(agent_id, {"name": "UpdatedAgent"})
         assert updated is True
 
-        agent = await pglite_adapter.get_agent(agent_id)
+        agent = await postgres_adapter.get_agent(agent_id)
         assert agent["name"] == "UpdatedAgent"
 
         # Delete
-        deleted = await pglite_adapter.delete_agent(agent_id)
+        deleted = await postgres_adapter.delete_agent(agent_id)
         assert deleted is True
 
-        agent = await pglite_adapter.get_agent(agent_id)
+        agent = await postgres_adapter.get_agent(agent_id)
         assert agent is None
 
     @pytest.mark.asyncio
-    async def test_entity_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_entity_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test entity operations."""
         # First create an agent
         agent_id = as_uuid(str(uuid.uuid4()))
-        await pglite_adapter.create_agent(
+        await postgres_adapter.create_agent(
             {
                 "id": agent_id,
                 "name": "TestAgent",
@@ -92,7 +69,7 @@ class TestPGLiteAdapter:
 
         # Create entity
         entity_id = as_uuid(str(uuid.uuid4()))
-        created = await pglite_adapter.create_entities(
+        created = await postgres_adapter.create_entities(
             [
                 {
                     "id": entity_id,
@@ -105,17 +82,17 @@ class TestPGLiteAdapter:
         assert created is True
 
         # Read
-        entities = await pglite_adapter.get_entities_by_ids([entity_id])
+        entities = await postgres_adapter.get_entities_by_ids([entity_id])
         assert entities is not None
         assert len(entities) == 1
         assert entities[0]["names"] == ["TestUser"]
 
     @pytest.mark.asyncio
-    async def test_memory_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_memory_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test memory operations."""
         # Create agent
         agent_id = as_uuid(str(uuid.uuid4()))
-        await pglite_adapter.create_agent(
+        await postgres_adapter.create_agent(
             {
                 "id": agent_id,
                 "name": "TestAgent",
@@ -125,7 +102,7 @@ class TestPGLiteAdapter:
 
         # Create room
         room_id = as_uuid(str(uuid.uuid4()))
-        await pglite_adapter.create_rooms(
+        await postgres_adapter.create_rooms(
             [
                 {
                     "id": room_id,
@@ -137,7 +114,7 @@ class TestPGLiteAdapter:
 
         # Create entity
         entity_id = as_uuid(str(uuid.uuid4()))
-        await pglite_adapter.create_entities(
+        await postgres_adapter.create_entities(
             [
                 {
                     "id": entity_id,
@@ -148,7 +125,7 @@ class TestPGLiteAdapter:
         )
 
         # Create memory
-        memory_id = await pglite_adapter.create_memory(
+        memory_id = await postgres_adapter.create_memory(
             {
                 "entityId": entity_id,
                 "roomId": room_id,
@@ -159,25 +136,25 @@ class TestPGLiteAdapter:
         assert memory_id is not None
 
         # Read
-        memory = await pglite_adapter.get_memory_by_id(memory_id)
+        memory = await postgres_adapter.get_memory_by_id(memory_id)
         assert memory is not None
         assert memory["content"]["text"] == "Hello, world!"
 
         # Count
-        count = await pglite_adapter.count_memories(room_id)
+        count = await postgres_adapter.count_memories(room_id)
         assert count == 1
 
         # Delete
-        await pglite_adapter.delete_memory(memory_id)
-        memory = await pglite_adapter.get_memory_by_id(memory_id)
+        await postgres_adapter.delete_memory(memory_id)
+        memory = await postgres_adapter.get_memory_by_id(memory_id)
         assert memory is None
 
     @pytest.mark.asyncio
-    async def test_world_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_world_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test world operations."""
         # Create agent
         agent_id = as_uuid(str(uuid.uuid4()))
-        await pglite_adapter.create_agent(
+        await postgres_adapter.create_agent(
             {
                 "id": agent_id,
                 "name": "TestAgent",
@@ -186,7 +163,7 @@ class TestPGLiteAdapter:
         )
 
         # Create world
-        world_id = await pglite_adapter.create_world(
+        world_id = await postgres_adapter.create_world(
             {
                 "name": "TestWorld",
                 "agentId": agent_id,
@@ -196,34 +173,34 @@ class TestPGLiteAdapter:
         assert world_id is not None
 
         # Read
-        world = await pglite_adapter.get_world(world_id)
+        world = await postgres_adapter.get_world(world_id)
         assert world is not None
         assert world["name"] == "TestWorld"
 
         # Update
-        await pglite_adapter.update_world(
+        await postgres_adapter.update_world(
             {
                 "id": world_id,
                 "name": "UpdatedWorld",
             }
         )
-        world = await pglite_adapter.get_world(world_id)
+        world = await postgres_adapter.get_world(world_id)
         assert world["name"] == "UpdatedWorld"
 
         # Get all
-        all_worlds = await pglite_adapter.get_all_worlds()
+        all_worlds = await postgres_adapter.get_all_worlds()
         assert len(all_worlds) >= 1
 
         # Remove
-        await pglite_adapter.remove_world(world_id)
-        world = await pglite_adapter.get_world(world_id)
+        await postgres_adapter.remove_world(world_id)
+        world = await postgres_adapter.get_world(world_id)
         assert world is None
 
     @pytest.mark.asyncio
-    async def test_room_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_room_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test room operations."""
         # Create room
-        room_ids = await pglite_adapter.create_rooms(
+        room_ids = await postgres_adapter.create_rooms(
             [
                 {
                     "source": "test",
@@ -235,54 +212,54 @@ class TestPGLiteAdapter:
         assert len(room_ids) == 1
 
         # Read
-        rooms = await pglite_adapter.get_rooms_by_ids(room_ids)
+        rooms = await postgres_adapter.get_rooms_by_ids(room_ids)
         assert rooms is not None
         assert len(rooms) == 1
         assert rooms[0]["name"] == "TestRoom"
 
         # Update
-        await pglite_adapter.update_room(
+        await postgres_adapter.update_room(
             {
                 "id": room_ids[0],
                 "name": "UpdatedRoom",
             }
         )
-        rooms = await pglite_adapter.get_rooms_by_ids(room_ids)
+        rooms = await postgres_adapter.get_rooms_by_ids(room_ids)
         assert rooms[0]["name"] == "UpdatedRoom"
 
         # Delete
-        await pglite_adapter.delete_room(room_ids[0])
-        rooms = await pglite_adapter.get_rooms_by_ids(room_ids)
+        await postgres_adapter.delete_room(room_ids[0])
+        rooms = await postgres_adapter.get_rooms_by_ids(room_ids)
         assert rooms is None or len(rooms) == 0
 
     @pytest.mark.asyncio
-    async def test_cache_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_cache_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test cache operations."""
         # Set
-        result = await pglite_adapter.set_cache("test_key", {"value": "test_value"})
+        result = await postgres_adapter.set_cache("test_key", {"value": "test_value"})
         assert result is True
 
         # Get
-        cached = await pglite_adapter.get_cache("test_key")
+        cached = await postgres_adapter.get_cache("test_key")
         assert cached is not None
         assert cached["value"] == "test_value"
 
         # Update
-        await pglite_adapter.set_cache("test_key", {"value": "updated_value"})
-        cached = await pglite_adapter.get_cache("test_key")
+        await postgres_adapter.set_cache("test_key", {"value": "updated_value"})
+        cached = await postgres_adapter.get_cache("test_key")
         assert cached["value"] == "updated_value"
 
         # Delete
-        result = await pglite_adapter.delete_cache("test_key")
+        result = await postgres_adapter.delete_cache("test_key")
         assert result is True
-        cached = await pglite_adapter.get_cache("test_key")
+        cached = await postgres_adapter.get_cache("test_key")
         assert cached is None
 
     @pytest.mark.asyncio
-    async def test_task_operations(self, pglite_adapter: PGLiteAdapter) -> None:
+    async def test_task_operations(self, postgres_adapter: "PostgresAdapter") -> None:
         """Test task operations."""
         # Create
-        task_id = await pglite_adapter.create_task(
+        task_id = await postgres_adapter.create_task(
             {
                 "name": "test-task",
                 "description": "A test task",
@@ -293,21 +270,21 @@ class TestPGLiteAdapter:
         assert task_id is not None
 
         # Read
-        task = await pglite_adapter.get_task(task_id)
+        task = await postgres_adapter.get_task(task_id)
         assert task is not None
         assert task["name"] == "test-task"
         assert task["status"] == "pending"
 
         # Get by name
-        tasks = await pglite_adapter.get_tasks_by_name("test-task")
+        tasks = await postgres_adapter.get_tasks_by_name("test-task")
         assert len(tasks) >= 1
 
         # Update
-        await pglite_adapter.update_task(task_id, {"status": "completed"})
-        task = await pglite_adapter.get_task(task_id)
+        await postgres_adapter.update_task(task_id, {"status": "completed"})
+        task = await postgres_adapter.get_task(task_id)
         assert task["status"] == "completed"
 
         # Delete
-        await pglite_adapter.delete_task(task_id)
-        task = await pglite_adapter.get_task(task_id)
+        await postgres_adapter.delete_task(task_id)
+        task = await postgres_adapter.get_task(task_id)
         assert task is None

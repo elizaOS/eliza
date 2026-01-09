@@ -5,9 +5,11 @@ import { detectEnvironment } from "./utils/environment";
  * Validates if a character has secrets configured
  */
 export function hasCharacterSecrets(character: Character): boolean {
+  const characterSettings = character && character.settings;
+  const characterSettingsSecrets = characterSettings && characterSettings.secrets;
   return Boolean(
-    character?.settings?.secrets &&
-      Object.keys(character.settings.secrets).length > 0,
+    characterSettingsSecrets &&
+      Object.keys(characterSettingsSecrets).length > 0,
   );
 }
 
@@ -81,7 +83,7 @@ export async function setDefaultSecretsFromEnv(
   }
 
   // Skip env merge if requested (e.g., in test mode)
-  if (options?.skipEnvMerge) {
+  if (options && options.skipEnvMerge) {
     return false;
   }
 

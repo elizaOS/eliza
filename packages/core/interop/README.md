@@ -60,7 +60,7 @@ runtime.registerPlugin(plugin);
 ### Loading a TypeScript Plugin in Rust
 
 ```rust
-use elizaos_core::interop::WasmPluginLoader;
+use elizaos::interop::WasmPluginLoader;
 
 let plugin = WasmPluginLoader::load("./my-ts-plugin.wasm").await?;
 runtime.register_plugin(plugin);

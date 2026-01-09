@@ -50,8 +50,8 @@ pub struct TaskRecord {
 
 impl TaskRecord {
     /// Convert to elizaOS Task type
-    pub fn to_task(&self) -> elizaos_core::Task {
-        use elizaos_core::{Task, TaskStatus, UUID};
+    pub fn to_task(&self) -> elizaos::Task {
+        use elizaos::{Task, TaskStatus, UUID};
 
         let status = match self.status.as_str() {
             "pending" => TaskStatus::Pending,

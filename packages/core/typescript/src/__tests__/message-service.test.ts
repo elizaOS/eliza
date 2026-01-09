@@ -50,7 +50,7 @@ describe("DefaultMessageService", () => {
         system: "You are a helpful AI assistant.",
       },
       getSetting: mock((key: string) => {
-        const settings: Record<string, any> = {
+        const settings: Record<string, string> = {
           ALWAYS_RESPOND_CHANNELS: "",
           ALWAYS_RESPOND_SOURCES: "",
           SHOULD_RESPOND_BYPASS_TYPES: "",
@@ -81,7 +81,7 @@ describe("DefaultMessageService", () => {
           const responseText =
             "<response><thought>Processing message</thought><actions>REPLY</actions><providers></providers><text>Hello! How can I help you?</text></response>";
           const textParams = params as GenerateTextParams;
-          if (textParams?.stream) {
+          if (textParams && textParams.stream) {
             // Return TextStreamResult for streaming - simulate chunked response
             return {
               textStream: (async function* () {
@@ -869,7 +869,7 @@ describe("DefaultMessageService", () => {
           const responseText =
             "<response><thought></thought><actions>REPLY</actions><text></text></response>";
           const textParams = params as GenerateTextParams;
-          if (textParams?.stream) {
+          if (textParams && textParams.stream) {
             return {
               textStream: (async function* () {
                 yield responseText;
@@ -905,7 +905,8 @@ describe("DefaultMessageService", () => {
       );
 
       // Verify the logging was called (which uses the type guards)
-      expect(mockRuntime.logger?.info).toHaveBeenCalled();
+      const mockRuntimeLogger = mockRuntime.logger;
+      expect(mockRuntimeLogger && mockRuntimeLogger.info).toHaveBeenCalled();
     });
   });
 
@@ -918,9 +919,10 @@ describe("DefaultMessageService", () => {
       });
 
       // The default timeout should be 1000ms (1 second)
+      const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
         String(
-          mockRuntime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000",
+          (mockRuntimeGetSetting && mockRuntimeGetSetting("PROVIDERS_TOTAL_TIMEOUT_MS")) || "1000",
         ),
         10,
       );
@@ -934,9 +936,10 @@ describe("DefaultMessageService", () => {
         return null;
       });
 
+      const mockRuntimeGetSetting = mockRuntime.getSetting;
       const timeout = parseInt(
         String(
-          mockRuntime.getSetting?.("PROVIDERS_TOTAL_TIMEOUT_MS") || "1000",
+          (mockRuntimeGetSetting && mockRuntimeGetSetting("PROVIDERS_TOTAL_TIMEOUT_MS")) || "1000",
         ),
         10,
       );

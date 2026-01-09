@@ -77,9 +77,9 @@ describeWasm("WASM Bindings", () => {
     try {
       // For Node.js, use the node-specific build
       if (fs.existsSync(wasmNodePath)) {
-        wasm = await import("../../pkg-node/elizaos_core.js");
+        wasm = await import("../../pkg-node/elizaos.js");
       } else {
-        wasm = await import("../../pkg/elizaos_core.js");
+        wasm = await import("../../pkg/elizaos.js");
       }
     } catch (error) {
       console.warn("WASM module not available:", error);

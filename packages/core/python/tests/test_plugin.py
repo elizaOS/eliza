@@ -131,3 +131,4 @@ class TestResolveDependencies:
         assert names.index("plugin-a") < names.index("plugin-c")
         assert names.index("plugin-b") < names.index("plugin-d")
         assert names.index("plugin-c") < names.index("plugin-d")
+

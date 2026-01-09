@@ -9,6 +9,7 @@ export type UUID = `${string}-${string}-${string}-${string}-${string}`;
  * Helper function to safely cast a string to strongly typed UUID
  * @param id The string UUID to validate and cast
  * @returns The same UUID with branded type information
+ * @throws Error if the id is not a valid UUID format
  */
 export function asUUID(id: string): UUID {
   if (
@@ -21,7 +22,21 @@ export function asUUID(id: string): UUID {
 }
 
 /**
- * Represents the content of a memory, message, or other information
+ * Allowed value types for content dynamic properties
+ */
+export type ContentValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ContentValue[]
+  | { [key: string]: ContentValue };
+
+/**
+ * Represents the content of a memory, message, or other information.
+ * This is the primary data structure for messages exchanged between
+ * users, agents, and the system.
  */
 export interface Content {
   /** The agent's internal thought process */
@@ -30,16 +45,16 @@ export interface Content {
   /** The main text content visible to users */
   text?: string;
 
-  /** Optional actions to be performed */
+  /** Actions to be performed */
   actions?: string[];
 
-  /** Optional providers to use for context generation */
+  /** Providers to use for context generation */
   providers?: string[];
 
-  /** Optional source/origin of the content */
+  /** Source/origin of the content (e.g., 'discord', 'telegram') */
   source?: string;
 
-  /** Optional target/destination for responses */
+  /** Target/destination for responses */
   target?: string;
 
   /** URL of the original message/post (e.g. tweet URL, Discord message link) */
@@ -51,7 +66,7 @@ export interface Content {
   /** Array of media attachments */
   attachments?: Media[];
 
-  /** room type */
+  /** Channel type where this content was sent */
   channelType?: ChannelType;
 
   /** Platform-provided metadata about mentions */
@@ -65,10 +80,36 @@ export interface Content {
   responseMessageId?: UUID;
 
   /**
-   * Additional dynamic properties
-   * Use specific properties above instead of this when possible
+   * Response ID for message tracking.
+   * Used to coordinate between streaming and final response.
    */
-  [key: string]: unknown;
+  responseId?: UUID;
+
+  /**
+   * Whether this is a simple response (no actions required).
+   * Used for optimization in the message handler.
+   */
+  simple?: boolean;
+
+  /**
+   * Results from action callbacks
+   */
+  actionCallbacks?: Content;
+
+  /**
+   * Results from evaluator callbacks
+   */
+  evalCallbacks?: Content;
+
+  /**
+   * Type marker for internal use
+   */
+  type?: string;
+
+  /**
+   * Additional dynamic properties for plugin extensions
+   */
+  [key: string]: ContentValue | ChannelType | MentionContext | Media[] | Content | undefined;
 }
 
 /**
@@ -126,7 +167,18 @@ export enum ContentType {
 }
 
 /**
- * A generic type for metadata objects, allowing for arbitrary key-value pairs.
- * This encourages consumers to perform type checking or casting.
+ * Allowed value types for metadata (JSON-serializable)
  */
-export type Metadata = Record<string, unknown>;
+export type MetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | MetadataValue[]
+  | { [key: string]: MetadataValue | undefined };
+
+/**
+ * A type for metadata objects with JSON-serializable values.
+ */
+export type Metadata = Record<string, MetadataValue>;

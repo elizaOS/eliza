@@ -19,215 +19,143 @@
 
 /**
  * Check if we're in Node.js or Bun with native crypto module available
- * @returns {boolean} True if Node.js or Bun crypto is available
  */
 function hasNodeCrypto(): boolean {
-  return (
-    typeof require !== "undefined" &&
-    typeof process !== "undefined" &&
-    (process.versions?.node !== undefined ||
-      process.versions?.bun !== undefined)
-  );
+  if (typeof require === "undefined" || typeof process === "undefined") {
+    return false;
+  }
+  const versions = process.versions;
+  if (!versions) {
+    return false;
+  }
+  return versions.node !== undefined || versions.bun !== undefined;
 }
+
+/**
+ * Hash algorithm mapping for Web Crypto API
+ */
+const WEB_CRYPTO_ALGO_MAP: Record<string, string> = {
+  sha256: "SHA-256",
+  sha1: "SHA-1",
+  sha512: "SHA-512",
+};
 
 /**
  * Get the appropriate crypto module for the current environment
- * @returns Native crypto in Node.js/Bun, crypto-browserify in browser
  */
-/** Possible return types from cipher update/final methods */
-type CipherResult = Buffer | string | Uint8Array | ArrayBuffer;
-
-/**
- * Convert a cipher result to Buffer
- * Handles all possible return types from Node crypto and crypto-browserify
- */
-function cipherResultToBuffer(result: CipherResult): Buffer {
-  if (Buffer.isBuffer(result)) {
-    return result;
+function getNodeCrypto(): typeof import("node:crypto") {
+  if (!hasNodeCrypto()) {
+    throw new Error("Node.js crypto module not available in this environment");
   }
-  if (typeof result === "string") {
-    return Buffer.from(result, "utf8");
-  }
-  if (result instanceof Uint8Array) {
-    return Buffer.from(result);
-  }
-  if (result instanceof ArrayBuffer) {
-    return Buffer.from(new Uint8Array(result));
-  }
-  // This should never happen if types are correct, but provides safety
-  throw new Error("Unexpected cipher result type");
-}
-
-function getCryptoModule(): {
-  createHash: (algorithm: string) => {
-    update: (
-      data: string | Uint8Array,
-    ) => ReturnType<typeof getCryptoModule>["createHash"];
-    digest: () => Buffer;
-  };
-  createCipheriv: (
-    algorithm: string,
-    key: Uint8Array,
-    iv: Uint8Array,
-  ) => {
-    update: (
-      data: Buffer,
-      inputEncoding?: string,
-      outputEncoding?: string,
-    ) => CipherResult;
-    final: (encoding?: string) => CipherResult;
-  };
-  createDecipheriv: (
-    algorithm: string,
-    key: Uint8Array,
-    iv: Uint8Array,
-  ) => {
-    update: (
-      data: Buffer,
-      inputEncoding?: string,
-      outputEncoding?: string,
-    ) => CipherResult;
-    final: (encoding?: string) => CipherResult;
-  };
-} {
-  if (hasNodeCrypto()) {
-    return require("node:crypto");
-  }
-  // Use crypto-browserify for synchronous APIs in browser
-  return require("crypto-browserify");
+  return require("node:crypto");
 }
 
 /**
- * Hash data using Web Crypto API (browser-compatible)
- * @param {string} algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
- * @param {Uint8Array} data - Data to hash
- * @returns {Promise<Uint8Array>} Hash result
- * @throws {Error} If Web Crypto API is not available or algorithm is unsupported
+ * Get Web Crypto SubtleCrypto interface, throwing if unavailable
  */
-async function webCryptoHash(
-  algorithm: string,
-  data: Uint8Array,
-): Promise<Uint8Array> {
-  const subtle = globalThis.crypto?.subtle;
+function getWebCryptoSubtle(): SubtleCrypto {
+  const globalThisCrypto = globalThis.crypto;
+  const subtle = globalThisCrypto && globalThisCrypto.subtle;
   if (!subtle) {
     throw new Error(
       "Web Crypto API not available. This browser may not support cryptographic operations.",
     );
   }
+  return subtle;
+}
 
-  const algoMap: Record<string, string> = {
-    sha256: "SHA-256",
-    sha1: "SHA-1",
-    sha512: "SHA-512",
-  };
+/**
+ * Hash data using Web Crypto API (browser-compatible)
+ */
+async function webCryptoHash(
+  algorithm: string,
+  data: Uint8Array,
+): Promise<Uint8Array> {
+  const subtle = getWebCryptoSubtle();
+  const webAlgo = WEB_CRYPTO_ALGO_MAP[algorithm.toLowerCase()];
 
-  const webAlgo = algoMap[algorithm.toLowerCase()];
   if (!webAlgo) {
     throw new Error(
-      `Unsupported algorithm: ${algorithm}. Supported algorithms: ${Object.keys(algoMap).join(", ")}`,
+      `Unsupported algorithm: ${algorithm}. Supported: ${Object.keys(WEB_CRYPTO_ALGO_MAP).join(", ")}`,
     );
   }
 
-  const hashBuffer = await subtle.digest(webAlgo, data as BufferSource);
+  // Create a copy to ensure we have a proper ArrayBuffer (not SharedArrayBuffer)
+  const dataBuffer = new Uint8Array(data).buffer;
+  const hashBuffer = await subtle.digest(webAlgo, dataBuffer);
   return new Uint8Array(hashBuffer);
 }
 
 /**
  * Encrypt data using AES-256-CBC with Web Crypto API (browser-compatible)
- * @param {Uint8Array} key - 256-bit (32-byte) encryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @param {Uint8Array} data - Data to encrypt
- * @returns {Promise<Uint8Array>} Encrypted data
- * @throws {Error} If Web Crypto API is not available or key/IV lengths are invalid
  */
 async function webCryptoEncrypt(
   key: Uint8Array,
   iv: Uint8Array,
   data: Uint8Array,
 ): Promise<Uint8Array> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error(
-      "Web Crypto API not available. This browser may not support cryptographic operations.",
-    );
-  }
+  validateKeyAndIv(key, iv);
+  const subtle = getWebCryptoSubtle();
 
-  if (key.length !== 32) {
-    throw new Error(
-      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
-    );
-  }
-
-  if (iv.length !== 16) {
-    throw new Error(
-      `Invalid IV length: ${iv.length} bytes. Expected 16 bytes for AES-CBC.`,
-    );
-  }
+  // Create copies to ensure we have proper ArrayBuffers (not SharedArrayBuffers)
+  const keyBuffer = new Uint8Array(key).buffer;
+  const ivCopy = new Uint8Array(iv);
+  const dataCopy = new Uint8Array(data);
 
   const cryptoKey = await subtle.importKey(
     "raw",
-    key as BufferSource,
+    keyBuffer,
     { name: "AES-CBC", length: 256 },
     false,
     ["encrypt"],
   );
 
-  const encrypted = await subtle.encrypt(
-    { name: "AES-CBC", iv: iv as BufferSource },
-    cryptoKey,
-    data as BufferSource,
-  );
-
+  const encrypted = await subtle.encrypt({ name: "AES-CBC", iv: ivCopy }, cryptoKey, dataCopy);
   return new Uint8Array(encrypted);
 }
 
 /**
  * Decrypt data using AES-256-CBC with Web Crypto API (browser-compatible)
- * @param {Uint8Array} key - 256-bit (32-byte) decryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @param {Uint8Array} data - Data to decrypt
- * @returns {Promise<Uint8Array>} Decrypted data
- * @throws {Error} If Web Crypto API is not available or key/IV lengths are invalid
  */
 async function webCryptoDecrypt(
   key: Uint8Array,
   iv: Uint8Array,
   data: Uint8Array,
 ): Promise<Uint8Array> {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error(
-      "Web Crypto API not available. This browser may not support cryptographic operations.",
-    );
-  }
+  validateKeyAndIv(key, iv);
+  const subtle = getWebCryptoSubtle();
 
-  if (key.length !== 32) {
-    throw new Error(
-      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
-    );
-  }
-
-  if (iv.length !== 16) {
-    throw new Error(
-      `Invalid IV length: ${iv.length} bytes. Expected 16 bytes for AES-CBC.`,
-    );
-  }
+  // Create copies to ensure we have proper ArrayBuffers (not SharedArrayBuffers)
+  const keyBuffer = new Uint8Array(key).buffer;
+  const ivCopy = new Uint8Array(iv);
+  const dataCopy = new Uint8Array(data);
 
   const cryptoKey = await subtle.importKey(
     "raw",
-    key as BufferSource,
+    keyBuffer,
     { name: "AES-CBC", length: 256 },
     false,
     ["decrypt"],
   );
 
-  const decrypted = await subtle.decrypt(
-    { name: "AES-CBC", iv: iv as BufferSource },
-    cryptoKey,
-    data as BufferSource,
-  );
-
+  const decrypted = await subtle.decrypt({ name: "AES-CBC", iv: ivCopy }, cryptoKey, dataCopy);
   return new Uint8Array(decrypted);
+}
+
+/**
+ * Validate key and IV lengths for AES-256-CBC
+ */
+function validateKeyAndIv(key: Uint8Array, iv: Uint8Array): void {
+  if (key.length !== 32) {
+    throw new Error(
+      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
+    );
+  }
+  if (iv.length !== 16) {
+    throw new Error(
+      `Invalid IV length: ${iv.length} bytes. Expected 16 bytes for AES-CBC.`,
+    );
+  }
 }
 
 /**
@@ -236,24 +164,30 @@ async function webCryptoDecrypt(
  * This function works in both Node.js and browser environments. In browsers, it uses
  * crypto-browserify to provide synchronous hashing compatible with Node.js crypto API.
  *
- * @param {string} algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
- * @returns {object} Hash object with update() and digest() methods
- *
- * @example
- * ```typescript
- * const hash = createHash('sha256')
- *   .update('hello')
- *   .update('world')
- *   .digest();
- * ```
+ * @param algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
+ * @returns Hash object with update() and digest() methods
  */
 export function createHash(algorithm: string): {
   update(data: string | Uint8Array): ReturnType<typeof createHash>;
   digest(): Uint8Array;
 } {
-  // Use crypto-browserify in browser, native crypto in Node.js
-  const crypto = getCryptoModule();
-  const hash = crypto.createHash(algorithm);
+  if (hasNodeCrypto()) {
+    const crypto = getNodeCrypto();
+    const hash = crypto.createHash(algorithm);
+    return {
+      update(data: string | Uint8Array) {
+        hash.update(data);
+        return this;
+      },
+      digest() {
+        return new Uint8Array(hash.digest());
+      },
+    };
+  }
+
+  // Use crypto-browserify in browser
+  const cryptoBrowserify = require("crypto-browserify");
+  const hash = cryptoBrowserify.createHash(algorithm);
   return {
     update(data: string | Uint8Array) {
       hash.update(data);
@@ -268,19 +202,11 @@ export function createHash(algorithm: string): {
 /**
  * Create a hash asynchronously (works in both Node.js and browser)
  *
- * This is the recommended method for cross-platform code as it works in both
- * Node.js and browser environments.
+ * This is the recommended method for cross-platform code.
  *
- * @param {string} algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
- * @param {string | Uint8Array} data - Data to hash
- * @returns {Promise<Uint8Array>} Hash result
- * @throws {Error} If algorithm is unsupported or Web Crypto API is unavailable
- *
- * @example
- * ```typescript
- * // Works in both Node.js and browser
- * const hash = await createHashAsync('sha256', 'hello world');
- * ```
+ * @param algorithm - Hash algorithm ('sha256', 'sha1', 'sha512')
+ * @param data - Data to hash
+ * @returns Hash result
  */
 export async function createHashAsync(
   algorithm: string,
@@ -290,35 +216,22 @@ export async function createHashAsync(
     typeof data === "string" ? new TextEncoder().encode(data) : data;
 
   if (hasNodeCrypto()) {
-    // Use Node.js native crypto for better performance
-    const crypto = getCryptoModule();
+    const crypto = getNodeCrypto();
     const hash = crypto.createHash(algorithm);
     hash.update(bytes);
     return new Uint8Array(hash.digest());
   }
 
-  // Use Web Crypto API in browser for async operations
   return webCryptoHash(algorithm, bytes);
 }
 
 /**
  * Create a cipher for encryption (cross-platform - synchronous)
  *
- * This function works in both Node.js and browser environments. In browsers, it uses
- * crypto-browserify to provide synchronous encryption compatible with Node.js crypto API.
- *
- * @param {string} algorithm - Cipher algorithm (currently only 'aes-256-cbc' is supported)
- * @param {Uint8Array} key - 256-bit (32-byte) encryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @returns {object} Cipher object with update() and final() methods
- * @throws {Error} If algorithm is unsupported
- *
- * @example
- * ```typescript
- * const cipher = createCipheriv('aes-256-cbc', key, iv);
- * let encrypted = cipher.update('data', 'utf8', 'hex');
- * encrypted += cipher.final('hex');
- * ```
+ * @param algorithm - Cipher algorithm (only 'aes-256-cbc' is supported)
+ * @param key - 256-bit (32-byte) encryption key
+ * @param iv - 128-bit (16-byte) initialization vector
+ * @returns Cipher object with update() and final() methods
  */
 export function createCipheriv(
   algorithm: string,
@@ -330,19 +243,28 @@ export function createCipheriv(
 } {
   if (algorithm !== "aes-256-cbc") {
     throw new Error(
-      `Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is currently supported.`,
+      `Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is supported.`,
     );
   }
 
-  // Use crypto-browserify in browser, native crypto in Node.js
-  const crypto = getCryptoModule();
-  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  if (hasNodeCrypto()) {
+    const crypto = getNodeCrypto();
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    return {
+      update(data: string, inputEncoding: string, outputEncoding: string): string {
+        return cipher.update(data, inputEncoding as BufferEncoding, outputEncoding as BufferEncoding);
+      },
+      final(encoding: string): string {
+        return cipher.final(encoding as BufferEncoding);
+      },
+    };
+  }
+
+  // Use crypto-browserify in browser
+  const cryptoBrowserify = require("crypto-browserify");
+  const cipher = cryptoBrowserify.createCipheriv(algorithm, key, iv);
   return {
-    update(
-      data: string,
-      inputEncoding: string,
-      outputEncoding: string,
-    ): string {
+    update(data: string, inputEncoding: string, outputEncoding: string): string {
       const result = cipher.update(
         Buffer.from(data, inputEncoding as BufferEncoding),
         undefined,
@@ -364,21 +286,10 @@ export function createCipheriv(
 /**
  * Create a decipher for decryption (cross-platform - synchronous)
  *
- * This function works in both Node.js and browser environments. In browsers, it uses
- * crypto-browserify to provide synchronous decryption compatible with Node.js crypto API.
- *
- * @param {string} algorithm - Cipher algorithm (currently only 'aes-256-cbc' is supported)
- * @param {Uint8Array} key - 256-bit (32-byte) decryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @returns {object} Decipher object with update() and final() methods
- * @throws {Error} If algorithm is unsupported
- *
- * @example
- * ```typescript
- * const decipher = createDecipheriv('aes-256-cbc', key, iv);
- * let decrypted = decipher.update(encrypted, 'hex', 'utf8');
- * decrypted += decipher.final('utf8');
- * ```
+ * @param algorithm - Cipher algorithm (only 'aes-256-cbc' is supported)
+ * @param key - 256-bit (32-byte) decryption key
+ * @param iv - 128-bit (16-byte) initialization vector
+ * @returns Decipher object with update() and final() methods
  */
 export function createDecipheriv(
   algorithm: string,
@@ -390,19 +301,28 @@ export function createDecipheriv(
 } {
   if (algorithm !== "aes-256-cbc") {
     throw new Error(
-      `Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is currently supported.`,
+      `Unsupported algorithm: ${algorithm}. Only 'aes-256-cbc' is supported.`,
     );
   }
 
-  // Use crypto-browserify in browser, native crypto in Node.js
-  const crypto = getCryptoModule();
-  const decipher = crypto.createDecipheriv(algorithm, key, iv);
+  if (hasNodeCrypto()) {
+    const crypto = getNodeCrypto();
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    return {
+      update(data: string, inputEncoding: string, outputEncoding: string): string {
+        return decipher.update(data, inputEncoding as BufferEncoding, outputEncoding as BufferEncoding);
+      },
+      final(encoding: string): string {
+        return decipher.final(encoding as BufferEncoding);
+      },
+    };
+  }
+
+  // Use crypto-browserify in browser
+  const cryptoBrowserify = require("crypto-browserify");
+  const decipher = cryptoBrowserify.createDecipheriv(algorithm, key, iv);
   return {
-    update(
-      data: string,
-      inputEncoding: string,
-      outputEncoding: string,
-    ): string {
+    update(data: string, inputEncoding: string, outputEncoding: string): string {
       const result = decipher.update(
         Buffer.from(data, inputEncoding as BufferEncoding),
         undefined,
@@ -424,112 +344,64 @@ export function createDecipheriv(
 /**
  * Encrypt data asynchronously (works in both Node.js and browser)
  *
- * This is the recommended method for cross-platform code as it works in both
- * Node.js and browser environments using AES-256-CBC.
+ * This is the recommended method for cross-platform code using AES-256-CBC.
  *
- * @param {Uint8Array} key - 256-bit (32-byte) encryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @param {Uint8Array} data - Data to encrypt
- * @returns {Promise<Uint8Array>} Encrypted data
- * @throws {Error} If key/IV lengths are invalid or Web Crypto API is unavailable
- *
- * @example
- * ```typescript
- * // Works in both Node.js and browser
- * const encrypted = await encryptAsync(key, iv, data);
- * ```
+ * @param key - 256-bit (32-byte) encryption key
+ * @param iv - 128-bit (16-byte) initialization vector
+ * @param data - Data to encrypt
+ * @returns Encrypted data
  */
 export async function encryptAsync(
   key: Uint8Array,
   iv: Uint8Array,
   data: Uint8Array,
 ): Promise<Uint8Array> {
-  if (key.length !== 32) {
-    throw new Error(
-      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
-    );
-  }
-
-  if (iv.length !== 16) {
-    throw new Error(
-      `Invalid IV length: ${iv.length} bytes. Expected 16 bytes for AES-CBC.`,
-    );
-  }
+  validateKeyAndIv(key, iv);
 
   if (hasNodeCrypto()) {
-    // Use Node.js native crypto for better performance
-    const crypto = getCryptoModule();
-    const dataBuffer = Buffer.from(data);
+    const crypto = getNodeCrypto();
     const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
-    const updateBuf = cipherResultToBuffer(cipher.update(dataBuffer));
-    const finalBuf = cipherResultToBuffer(cipher.final());
-    const encrypted = Buffer.concat([updateBuf, finalBuf]);
+    const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
     return new Uint8Array(encrypted);
   }
 
-  // Use Web Crypto API in browser for async operations
   return webCryptoEncrypt(key, iv, data);
 }
 
 /**
  * Decrypt data asynchronously (works in both Node.js and browser)
  *
- * This is the recommended method for cross-platform code as it works in both
- * Node.js and browser environments using AES-256-CBC.
+ * This is the recommended method for cross-platform code using AES-256-CBC.
  *
- * @param {Uint8Array} key - 256-bit (32-byte) decryption key
- * @param {Uint8Array} iv - 128-bit (16-byte) initialization vector
- * @param {Uint8Array} data - Data to decrypt
- * @returns {Promise<Uint8Array>} Decrypted data
- * @throws {Error} If key/IV lengths are invalid or Web Crypto API is unavailable
- *
- * @example
- * ```typescript
- * // Works in both Node.js and browser
- * const decrypted = await decryptAsync(key, iv, encryptedData);
- * ```
+ * @param key - 256-bit (32-byte) decryption key
+ * @param iv - 128-bit (16-byte) initialization vector
+ * @param data - Data to decrypt
+ * @returns Decrypted data
  */
 export async function decryptAsync(
   key: Uint8Array,
   iv: Uint8Array,
   data: Uint8Array,
 ): Promise<Uint8Array> {
-  if (key.length !== 32) {
-    throw new Error(
-      `Invalid key length: ${key.length} bytes. Expected 32 bytes for AES-256.`,
-    );
-  }
-
-  if (iv.length !== 16) {
-    throw new Error(
-      `Invalid IV length: ${iv.length} bytes. Expected 16 bytes for AES-CBC.`,
-    );
-  }
+  validateKeyAndIv(key, iv);
 
   if (hasNodeCrypto()) {
-    // Use Node.js native crypto for better performance
-    const crypto = getCryptoModule();
-    const dataBuffer = Buffer.from(data);
+    const crypto = getNodeCrypto();
     const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
-    const updateBuf = cipherResultToBuffer(decipher.update(dataBuffer));
-    const finalBuf = cipherResultToBuffer(decipher.final());
-    const decrypted = Buffer.concat([updateBuf, finalBuf]);
+    const decrypted = Buffer.concat([decipher.update(data), decipher.final()]);
     return new Uint8Array(decrypted);
   }
 
-  // Use Web Crypto API in browser for async operations
   return webCryptoDecrypt(key, iv, data);
 }
 
 /**
  * Legacy Web Crypto API export for backward compatibility
  *
- * **Deprecated:** Use the top-level async functions instead:
+ * @deprecated Use top-level async functions instead:
  * - `createHashAsync()` instead of `webCrypto.hash()`
  * - `encryptAsync()` instead of `webCrypto.encrypt()`
  * - `decryptAsync()` instead of `webCrypto.decrypt()`
- *
- * @deprecated Use top-level async functions for better cross-platform support
  */
 export const webCrypto = {
   hash: webCryptoHash,

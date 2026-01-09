@@ -35,8 +35,8 @@ pub struct RelationshipRecord {
 
 impl RelationshipRecord {
     /// Convert to elizaOS Relationship type
-    pub fn to_relationship(&self) -> elizaos_core::Relationship {
-        use elizaos_core::{Relationship, UUID};
+    pub fn to_relationship(&self) -> elizaos::Relationship {
+        use elizaos::{Relationship, UUID};
 
         let tags: Vec<String> = serde_json::from_value(self.tags.clone()).unwrap_or_default();
 

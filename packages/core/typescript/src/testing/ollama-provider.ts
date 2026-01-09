@@ -5,6 +5,7 @@
  * This is used when no cloud API keys are configured.
  */
 
+import { z } from "zod";
 import { logger } from "../logger";
 import type {
   GenerateTextParams,
@@ -23,7 +24,29 @@ const DEFAULT_MODELS = {
   text_small: process.env.OLLAMA_SMALL_MODEL || "llama3.2:1b",
   text_large: process.env.OLLAMA_LARGE_MODEL || "llama3.2:3b",
   embedding: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
-};
+} as const;
+
+/**
+ * Schema for Ollama /api/tags response
+ */
+const ollamaTagsResponseSchema = z.object({
+  models: z.array(z.object({ name: z.string() })).optional(),
+});
+
+/**
+ * Schema for Ollama /api/generate response
+ */
+const ollamaGenerateResponseSchema = z.object({
+  response: z.string(),
+});
+
+/**
+ * Schema for Ollama /api/embed response
+ */
+const ollamaEmbedResponseSchema = z.object({
+  embeddings: z.array(z.array(z.number())).optional(),
+  embedding: z.array(z.number()).optional(),
+});
 
 /**
  * Check if Ollama is available and responding
@@ -44,16 +67,30 @@ export async function isOllamaAvailable(): Promise<boolean> {
  * List available models in Ollama
  */
 export async function listOllamaModels(): Promise<string[]> {
-  try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`);
-    if (!response.ok) return [];
-    const data = (await response.json()) as {
-      models?: Array<{ name: string }>;
-    };
-    return (data.models && data.models.map((m) => m.name)) ?? [];
-  } catch {
-    return [];
+  const response = await fetch(`${OLLAMA_URL}/api/tags`);
+  if (!response.ok) {
+    throw new Error(`Ollama returned status ${response.status}`);
   }
+
+  const rawData: unknown = await response.json();
+  const parseResult = ollamaTagsResponseSchema.safeParse(rawData);
+
+  if (!parseResult.success) {
+    throw new Error(`Invalid Ollama response: ${parseResult.error.message}`);
+  }
+
+  const parseResultDataModels = parseResult.data.models;
+  return (parseResultDataModels && parseResultDataModels.map((m) => m.name)) ?? [];
+}
+
+/**
+ * Options for text generation
+ */
+interface TextGenerationOptions {
+  system?: string;
+  temperature?: number;
+  maxTokens?: number;
+  stopSequences?: string[];
 }
 
 /**
@@ -62,12 +99,7 @@ export async function listOllamaModels(): Promise<string[]> {
 async function generateTextWithOllama(
   model: string,
   prompt: string,
-  options: {
-    system?: string;
-    temperature?: number;
-    maxTokens?: number;
-    stopSequences?: string[];
-  } = {},
+  options: TextGenerationOptions = {},
 ): Promise<string> {
   const response = await fetch(`${OLLAMA_URL}/api/generate`, {
     method: "POST",
@@ -90,8 +122,14 @@ async function generateTextWithOllama(
     throw new Error(`Ollama request failed: ${response.status} ${errorText}`);
   }
 
-  const data = (await response.json()) as { response: string };
-  return data.response;
+  const rawData: unknown = await response.json();
+  const parseResult = ollamaGenerateResponseSchema.safeParse(rawData);
+
+  if (!parseResult.success) {
+    throw new Error(`Invalid Ollama response: ${parseResult.error.message}`);
+  }
+
+  return parseResult.data.response;
 }
 
 /**
@@ -117,12 +155,41 @@ async function generateEmbeddingWithOllama(
     );
   }
 
-  const data = (await response.json()) as {
-    embeddings?: number[][];
-    embedding?: number[];
-  };
-  // Handle both array of embeddings and single embedding response
-  return (data.embeddings && data.embeddings[0]) ?? (data.embedding) ?? [];
+  const rawData: unknown = await response.json();
+  const parseResult = ollamaEmbedResponseSchema.safeParse(rawData);
+
+  if (!parseResult.success) {
+    throw new Error(`Invalid Ollama embedding response: ${parseResult.error.message}`);
+  }
+
+  const parseResultDataEmbeddings = parseResult.data.embeddings;
+  const parseResultDataEmbedding = parseResult.data.embedding;
+  const embeddings = (parseResultDataEmbeddings && parseResultDataEmbeddings[0]) ?? parseResultDataEmbedding;
+  if (!embeddings) {
+    throw new Error("No embeddings returned from Ollama");
+  }
+
+  return embeddings;
+}
+
+/**
+ * Extract JSON object from a text response that may contain surrounding text
+ */
+function extractJsonFromResponse(response: string): Record<string, unknown> {
+  // Try to find JSON object in the response
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  const textToParse = jsonMatch ? jsonMatch[0] : response;
+
+  try {
+    const parsed: unknown = JSON.parse(textToParse);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Expected JSON object but got: ${typeof parsed}`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown parse error";
+    throw new Error(`Failed to parse JSON from Ollama response: ${message}\nResponse was: ${response.slice(0, 200)}`);
+  }
 }
 
 /**
@@ -181,112 +248,77 @@ async function handleTextEmbedding(
 }
 
 /**
- * Handle OBJECT_SMALL model requests (uses JSON mode)
+ * Generate structured object using Ollama with JSON mode
+ */
+async function generateObjectWithOllama(
+  runtime: IAgentRuntime,
+  model: string,
+  params: ObjectGenerationParams,
+): Promise<Record<string, unknown>> {
+  logger.debug({ src: "ollama", model }, "OBJECT generation request");
+
+  const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
+  const response = await generateTextWithOllama(model, jsonPrompt, {
+    system: runtime.character.system ?? undefined,
+    temperature: params.temperature ?? 0.3, // Lower temp for structured output
+    maxTokens: params.maxTokens,
+  });
+
+  return extractJsonFromResponse(response);
+}
+
+/**
+ * Handle OBJECT_SMALL model requests
  */
 async function handleObjectSmall(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
 ): Promise<Record<string, unknown>> {
-  logger.debug(
-    { src: "ollama", model: DEFAULT_MODELS.text_small },
-    "OBJECT_SMALL request",
-  );
-
-  const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
-  const response = await generateTextWithOllama(
-    DEFAULT_MODELS.text_small,
-    jsonPrompt,
-    {
-      system: runtime.character.system ?? undefined,
-      temperature: params.temperature ?? 0.3, // Lower temp for structured output
-      maxTokens: params.maxTokens,
-    },
-  );
-
-  try {
-    // Try to extract JSON from the response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    }
-    return JSON.parse(response) as Record<string, unknown>;
-  } catch {
-    logger.warn(
-      { src: "ollama", response },
-      "Failed to parse JSON response, returning as text",
-    );
-    return { text: response, error: "Failed to parse as JSON" };
-  }
+  return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_small, params);
 }
 
 /**
- * Handle OBJECT_LARGE model requests (uses JSON mode)
+ * Handle OBJECT_LARGE model requests
  */
 async function handleObjectLarge(
   runtime: IAgentRuntime,
   params: ObjectGenerationParams,
 ): Promise<Record<string, unknown>> {
-  logger.debug(
-    { src: "ollama", model: DEFAULT_MODELS.text_large },
-    "OBJECT_LARGE request",
-  );
-
-  const jsonPrompt = `${params.prompt}\n\nRespond with valid JSON only:`;
-  const response = await generateTextWithOllama(
-    DEFAULT_MODELS.text_large,
-    jsonPrompt,
-    {
-      system: runtime.character.system ?? undefined,
-      temperature: params.temperature ?? 0.3,
-      maxTokens: params.maxTokens,
-    },
-  );
-
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    }
-    return JSON.parse(response) as Record<string, unknown>;
-  } catch {
-    logger.warn(
-      { src: "ollama", response },
-      "Failed to parse JSON response, returning as text",
-    );
-    return { text: response, error: "Failed to parse as JSON" };
-  }
+  return generateObjectWithOllama(runtime, DEFAULT_MODELS.text_large, params);
 }
+
+/**
+ * Union type of all model parameter types for Ollama handlers
+ */
+type OllamaModelParams =
+  | GenerateTextParams
+  | TextEmbeddingParams
+  | ObjectGenerationParams;
+
+/**
+ * Union type of all model result types for Ollama handlers
+ */
+type OllamaModelResult = string | number[] | Record<string, unknown>;
+
+/**
+ * Model handler function type
+ */
+type ModelHandlerFn = (
+  runtime: IAgentRuntime,
+  params: OllamaModelParams,
+) => Promise<OllamaModelResult>;
 
 /**
  * Create all Ollama model handlers for registration
  */
-export function createOllamaModelHandlers(): Partial<Record<
-  ModelTypeName,
-  (
-    runtime: IAgentRuntime,
-    params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-  ) => Promise<string | number[] | Record<string, unknown>>
->> {
+export function createOllamaModelHandlers(): Partial<
+  Record<ModelTypeName, ModelHandlerFn>
+> {
   return {
-    [ModelType.TEXT_SMALL]: handleTextSmall as (
-      runtime: IAgentRuntime,
-      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-    ) => Promise<string | number[] | Record<string, unknown>>,
-    [ModelType.TEXT_LARGE]: handleTextLarge as (
-      runtime: IAgentRuntime,
-      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-    ) => Promise<string | number[] | Record<string, unknown>>,
-    [ModelType.TEXT_EMBEDDING]: (handleTextEmbedding as unknown) as (
-      runtime: IAgentRuntime,
-      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-    ) => Promise<string | number[] | Record<string, unknown>>,
-    [ModelType.OBJECT_SMALL]: handleObjectSmall as (
-      runtime: IAgentRuntime,
-      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-    ) => Promise<string | number[] | Record<string, unknown>>,
-    [ModelType.OBJECT_LARGE]: handleObjectLarge as (
-      runtime: IAgentRuntime,
-      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
-    ) => Promise<string | number[] | Record<string, unknown>>,
+    [ModelType.TEXT_SMALL]: handleTextSmall as ModelHandlerFn,
+    [ModelType.TEXT_LARGE]: handleTextLarge as ModelHandlerFn,
+    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding as ModelHandlerFn,
+    [ModelType.OBJECT_SMALL]: handleObjectSmall as ModelHandlerFn,
+    [ModelType.OBJECT_LARGE]: handleObjectLarge as ModelHandlerFn,
   };
 }

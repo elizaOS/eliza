@@ -119,7 +119,7 @@ run_python_tests() {
 }
 
 # Run all test suites
-run_rust_tests "elizaos-core" "$CORE_RUST"
+run_rust_tests "elizaos" "$CORE_RUST"
 run_rust_tests "elizaos-plugin-sql" "$PLUGIN_SQL_RUST"
 run_python_tests
 

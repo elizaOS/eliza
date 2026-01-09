@@ -1,9 +1,21 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { AgentRuntime } from "../runtime.ts";
-import { EventType, type Memory, type UUID } from "../types";
+import { EventType, type IDatabaseAdapter, type Memory, type UUID } from "../types";
 import type { EmbeddingGenerationPayload } from "../types/events.ts";
 import { stringToUuid } from "../utils.ts";
-import { createMockAdapter } from "./test-helpers";
+
+/**
+ * Minimal mock adapter for testing AgentRuntime event emission.
+ * Uses a Proxy to return mock implementations for all methods.
+ */
+function createMinimalMockAdapter(): IDatabaseAdapter {
+  return new Proxy({} as IDatabaseAdapter, {
+    get: (_target, prop) => {
+      if (prop === "db") return {};
+      return mock().mockResolvedValue(null);
+    },
+  });
+}
 
 describe("AgentRuntime - queueEmbeddingGeneration", () => {
   let runtime: AgentRuntime;
@@ -22,7 +34,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         system: "Test system prompt",
         bio: "Test bio",
       },
-      adapter: createMockAdapter(),
+      adapter: createMinimalMockAdapter(),
       conversationLength: 10,
     });
 

@@ -33,8 +33,8 @@ pub struct LogRecord {
 
 impl LogRecord {
     /// Convert to elizaOS Log type
-    pub fn to_log(&self) -> elizaos_core::Log {
-        use elizaos_core::{Log, LogBody, UUID};
+    pub fn to_log(&self) -> elizaos::Log {
+        use elizaos::{Log, LogBody, UUID};
 
         Log {
             id: Some(UUID::new(&self.id.to_string()).unwrap()),

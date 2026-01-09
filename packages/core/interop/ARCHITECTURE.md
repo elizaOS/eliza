@@ -246,7 +246,7 @@ await runtime.register_plugin(rust_plugin)
 ### Rust Runtime
 
 ```rust
-use elizaos_core::interop::WasmPluginLoader;
+use elizaos::interop::WasmPluginLoader;
 
 // Load WASM plugin (from TypeScript)
 let plugin = WasmPluginLoader::load("./plugin.wasm").await?;

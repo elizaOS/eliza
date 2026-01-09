@@ -153,7 +153,10 @@ describe("settings utilities", () => {
         secret: true,
         dependsOn: ["OTHER_SETTING"],
         onSetAction: onSetActionFn,
-        visibleIf: (settings) => settings.OTHER_SETTING?.value === "enabled",
+        visibleIf: (settings) => {
+          const otherSetting = settings.OTHER_SETTING;
+          return (otherSetting && otherSetting.value) === "enabled";
+        },
       };
 
       const setting = createSettingFromConfig(cfg);
@@ -206,10 +209,13 @@ describe("settings utilities", () => {
       expect(salt).toBe("secretsalt");
     });
 
-    it("should handle import.meta.env in non-node environments", () => {
-      // This test is skipped as it's difficult to properly simulate non-node environment
-      // without breaking other tests. The getSalt function is tested in other scenarios.
-      expect(true).toBe(true);
+    it("should work with getSalt called multiple times", () => {
+      // Test that getSalt returns consistent results across multiple calls
+      const salt1 = getSalt();
+      const salt2 = getSalt();
+      expect(salt1).toBe(salt2);
+      expect(typeof salt1).toBe("string");
+      expect(salt1.length).toBeGreaterThan(0);
     });
   });
 
@@ -601,7 +607,8 @@ describe("settings utilities", () => {
       const result = await getWorldSettings(mockRuntime, "server-123");
 
       expect(result).not.toBeNull();
-      expect(result?.API_KEY.value).toBe("secret-value");
+      const resultApiKey = result && result.API_KEY;
+      expect(resultApiKey && resultApiKey.value).toBe("secret-value");
     });
 
     it("should return null when world not found", async () => {
@@ -647,11 +654,13 @@ describe("settings utilities", () => {
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
       expect(result).not.toBeNull();
-      expect(result?.API_KEY).toBeDefined();
-      expect(result?.API_KEY.value).toBeNull();
-      expect(result?.API_KEY.secret).toBe(true);
-      expect(result?.PUBLIC_URL).toBeDefined();
-      expect(result?.PUBLIC_URL.secret).toBe(false);
+      const resultApiKey = result && result.API_KEY;
+      expect(resultApiKey).toBeDefined();
+      expect(resultApiKey && resultApiKey.value).toBeNull();
+      expect(resultApiKey && resultApiKey.secret).toBe(true);
+      const resultPublicUrl = result && result.PUBLIC_URL;
+      expect(resultPublicUrl).toBeDefined();
+      expect(resultPublicUrl && resultPublicUrl.secret).toBe(false);
     });
 
     it("should return existing settings if already initialized", async () => {
@@ -685,9 +694,10 @@ describe("settings utilities", () => {
       const result = await initializeOnboarding(mockRuntime, mockWorld, config);
 
       expect(result).not.toBeNull();
-      expect(result?.API_KEY).toBeDefined();
-      expect(result?.API_KEY.value).toBe("existing-secret");
-      expect(result?.NEW_KEY).toBeUndefined(); // Should not add new settings
+      const resultApiKey = result && result.API_KEY;
+      expect(resultApiKey).toBeDefined();
+      expect(resultApiKey && resultApiKey.value).toBe("existing-secret");
+      expect(result && result.NEW_KEY).toBeUndefined(); // Should not add new settings
     });
 
     it("should handle config without settings", async () => {
@@ -718,10 +728,12 @@ describe("settings utilities", () => {
 
       const encrypted = encryptedCharacter(character);
 
-      expect(encrypted.settings?.secrets?.API_KEY).not.toBe("secret-api-key");
-      expect(encrypted.settings?.secrets?.API_KEY).toContain(":");
-      expect(encrypted.settings?.secrets?.PASSWORD).not.toBe("secret-password");
-      expect(encrypted.settings?.secrets?.PASSWORD).toContain(":");
+      const encryptedSettings = encrypted.settings;
+      const encryptedSettingsSecrets = encryptedSettings && encryptedSettings.secrets;
+      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.API_KEY).not.toBe("secret-api-key");
+      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.API_KEY).toContain(":");
+      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.PASSWORD).not.toBe("secret-password");
+      expect(encryptedSettingsSecrets && encryptedSettingsSecrets.PASSWORD).toContain(":");
     });
 
     it("should encrypt character.secrets", () => {
@@ -737,10 +749,11 @@ describe("settings utilities", () => {
 
       const encrypted = encryptedCharacter(character);
 
-      expect(encrypted.secrets?.TOKEN).not.toBe("secret-token");
-      expect(encrypted.secrets?.TOKEN).toContain(":");
-      expect(encrypted.secrets?.KEY).not.toBe("secret-key");
-      expect(encrypted.secrets?.KEY).toContain(":");
+      const encryptedSecrets = encrypted.secrets;
+      expect(encryptedSecrets && encryptedSecrets.TOKEN).not.toBe("secret-token");
+      expect(encryptedSecrets && encryptedSecrets.TOKEN).toContain(":");
+      expect(encryptedSecrets && encryptedSecrets.KEY).not.toBe("secret-key");
+      expect(encryptedSecrets && encryptedSecrets.KEY).toContain(":");
     });
 
     it("should handle character without secrets", () => {
@@ -767,8 +780,10 @@ describe("settings utilities", () => {
 
       const encrypted = encryptedCharacter(character);
 
-      expect(character.secrets?.TOKEN).toBe("secret-token");
-      expect(encrypted.secrets?.TOKEN).not.toBe("secret-token");
+      const characterSecrets = character.secrets;
+      expect(characterSecrets && characterSecrets.TOKEN).toBe("secret-token");
+      const encryptedSecrets = encrypted.secrets;
+      expect(encryptedSecrets && encryptedSecrets.TOKEN).not.toBe("secret-token");
     });
   });
 
@@ -789,8 +804,10 @@ describe("settings utilities", () => {
 
       const decrypted = decryptedCharacter(character, mockRuntime);
 
-      expect(decrypted.settings?.secrets?.API_KEY).toBe("secret-api-key");
-      expect(decrypted.settings?.secrets?.PASSWORD).toBe("secret-password");
+      const decryptedSettings = decrypted.settings;
+      const decryptedSettingsSecrets = decryptedSettings && decryptedSettings.secrets;
+      expect(decryptedSettingsSecrets && decryptedSettingsSecrets.API_KEY).toBe("secret-api-key");
+      expect(decryptedSettingsSecrets && decryptedSettingsSecrets.PASSWORD).toBe("secret-password");
     });
 
     it("should decrypt character.secrets", () => {
@@ -807,8 +824,9 @@ describe("settings utilities", () => {
 
       const decrypted = decryptedCharacter(character, mockRuntime);
 
-      expect(decrypted.secrets?.TOKEN).toBe("secret-token");
-      expect(decrypted.secrets?.KEY).toBe("secret-key");
+      const decryptedSecrets = decrypted.secrets;
+      expect(decryptedSecrets && decryptedSecrets.TOKEN).toBe("secret-token");
+      expect(decryptedSecrets && decryptedSecrets.KEY).toBe("secret-key");
     });
 
     it("should handle character without secrets", () => {
@@ -922,26 +940,28 @@ ANOTHER_KEY=another-value`;
         await setDefaultSecretsFromEnv(character, { skipEnvMerge: false });
 
         // Verify complex objects are preserved
-        expect(character.settings?.discord).toEqual({
+        const characterSettings = character.settings;
+        expect(characterSettings && characterSettings.discord).toEqual({
           shouldIgnoreBotMessages: true,
           allowedChannelIds: ["123", "456"],
         });
-        expect(character.settings?.telegram).toEqual({
+        expect(characterSettings && characterSettings.telegram).toEqual({
           botToken: "bot-token",
         });
 
         // Verify existing settings root values are preserved
-        expect(character.settings?.SIMPLE_KEY).toBe("character-override");
+        expect(characterSettings && characterSettings.SIMPLE_KEY).toBe("character-override");
 
         // Verify .env values are NOT merged into settings root (no duplication)
-        expect(character.settings?.ANOTHER_KEY).toBeUndefined();
+        expect(characterSettings && characterSettings.ANOTHER_KEY).toBeUndefined();
 
         // Verify .env values are merged into settings.secrets
+        const characterSettingsSecrets = characterSettings && characterSettings.secrets as Record<string, string>;
         expect(
-          (character.settings?.secrets as Record<string, string>).SIMPLE_KEY,
+          characterSettingsSecrets && characterSettingsSecrets.SIMPLE_KEY,
         ).toBe("simple-value");
         expect(
-          (character.settings?.secrets as Record<string, string>).ANOTHER_KEY,
+          characterSettingsSecrets && characterSettingsSecrets.ANOTHER_KEY,
         ).toBe("another-value");
       } finally {
         process.chdir(originalCwd);

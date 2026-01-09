@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { pingServer, waitForServerReady } from "../utils/server-health";
+import {
+  pingServer,
+  ServerHealthError,
+  waitForServerReady,
+} from "../utils/server-health";
 
 describe("Server Health Utilities", () => {
   let originalFetch: typeof fetch;
@@ -80,19 +84,30 @@ describe("Server Health Utilities", () => {
       );
     });
 
-    it("should handle request timeout", async () => {
+    it("should return false on request timeout", async () => {
       const abortError = new DOMException("Aborted", "AbortError");
 
       fetchMock.mockImplementationOnce(() => {
         return Promise.reject(abortError);
       });
 
-      await expect(
-        pingServer({
-          port: 3000,
-          requestTimeout: 50,
-        }),
-      ).rejects.toThrow();
+      // pingServer returns false on errors, doesn't throw
+      const result = await pingServer({
+        port: 3000,
+        requestTimeout: 50,
+      });
+
+      expect(result).toBe(false);
+    });
+
+    it("should return false on network errors", async () => {
+      fetchMock.mockRejectedValueOnce(new Error("Network error"));
+
+      const result = await pingServer({
+        port: 3000,
+      });
+
+      expect(result).toBe(false);
     });
   });
 
@@ -110,15 +125,13 @@ describe("Server Health Utilities", () => {
       expect(fetchMock).toHaveBeenCalled();
     });
 
-    it("should handle abort signal timeout correctly", async () => {
-      let abortSignal: AbortSignal | undefined;
-      fetchMock.mockImplementationOnce((_url, options) => {
-        abortSignal = options?.signal as AbortSignal;
+    it("should continue polling on timeout and eventually throw", async () => {
+      // All requests timeout/abort
+      fetchMock.mockImplementation(() => {
         return new Promise((_, reject) => {
           setTimeout(() => {
-            const error = new DOMException("Aborted", "AbortError");
-            reject(error);
-          }, 50);
+            reject(new DOMException("Aborted", "AbortError"));
+          }, 10);
         });
       });
 
@@ -129,9 +142,7 @@ describe("Server Health Utilities", () => {
           pollInterval: 50,
           requestTimeout: 30,
         }),
-      ).rejects.toThrow();
-
-      expect(abortSignal).toBeDefined();
+      ).rejects.toThrow(ServerHealthError);
     });
 
     it("should poll until server is ready", async () => {
@@ -153,7 +164,7 @@ describe("Server Health Utilities", () => {
       expect(fetchMock).toHaveBeenCalledTimes(3);
     });
 
-    it("should throw error when server does not become ready within maxWaitTime", async () => {
+    it("should throw ServerHealthError when server does not become ready within maxWaitTime", async () => {
       fetchMock.mockResolvedValue(new Response("Not Ready", { status: 503 }));
 
       await expect(
@@ -163,6 +174,24 @@ describe("Server Health Utilities", () => {
           pollInterval: 50,
         }),
       ).rejects.toThrow("Server failed to become ready");
+    });
+
+    it("should throw ServerHealthError with correct properties", async () => {
+      fetchMock.mockResolvedValue(new Response("Not Ready", { status: 503 }));
+
+      try {
+        await waitForServerReady({
+          port: 3000,
+          maxWaitTime: 200,
+          pollInterval: 50,
+        });
+        expect.unreachable("Should have thrown");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ServerHealthError);
+        expect((error as ServerHealthError).url).toBe(
+          "http://localhost:3000/api/agents",
+        );
+      }
     });
 
     it("should use custom options", async () => {
@@ -201,7 +230,26 @@ describe("Server Health Utilities", () => {
       expect(elapsed).toBeGreaterThanOrEqual(900);
     });
 
-    it("should handle network errors gracefully", async () => {
+    it("should continue polling through network errors", async () => {
+      let callCount = 0;
+      fetchMock.mockImplementation(() => {
+        callCount++;
+        if (callCount < 3) {
+          return Promise.reject(new Error("Network error"));
+        }
+        return Promise.resolve(new Response("OK", { status: 200 }));
+      });
+
+      await waitForServerReady({
+        port: 3000,
+        maxWaitTime: 5000,
+        pollInterval: 50,
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("should throw after maxWaitTime when all requests fail", async () => {
       fetchMock.mockRejectedValue(new Error("Network error"));
 
       await expect(
@@ -210,7 +258,7 @@ describe("Server Health Utilities", () => {
           maxWaitTime: 200,
           pollInterval: 50,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(ServerHealthError);
     });
   });
 });

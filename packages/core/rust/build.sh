@@ -22,7 +22,7 @@ cargo test
 echo "Build complete!"
 echo ""
 echo "Outputs:"
-echo "  - Native: target/release/libelizaos_core.so (or .dylib on macOS, .dll on Windows)"
+echo "  - Native: target/release/libelizaos.so (or .dylib on macOS, .dll on Windows)"
 echo "  - WASM Web: pkg/web/"
 echo "  - WASM Node.js: pkg/node/"
 

@@ -16,7 +16,7 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust
-/// use elizaos_core::parse_character;
+/// use elizaos::parse_character;
 ///
 /// let json = r#"{"name": "TestAgent", "bio": "A test agent"}"#;
 /// let character = parse_character(json).unwrap();

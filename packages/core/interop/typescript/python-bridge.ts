@@ -240,13 +240,20 @@ export class PythonPluginBridge extends EventEmitter {
       // Wait for graceful shutdown
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
-          this.process?.kill("SIGKILL");
+          if (this.process) {
+            this.process.kill("SIGKILL");
+          }
           resolve();
         }, 5000);
 
-        this.process?.on("exit", () => {
-          clearTimeout(timeout);
+        if (this.process) {
+          this.process.on("exit", () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        } else {
           resolve();
+        }
         });
       });
     }

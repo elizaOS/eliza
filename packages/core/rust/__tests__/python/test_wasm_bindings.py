@@ -31,7 +31,7 @@ except ImportError:
 # Path to WASM module
 RUST_DIR = Path(__file__).parent.parent.parent
 WASM_PKG_DIR = RUST_DIR / "pkg-web"
-WASM_FILE = WASM_PKG_DIR / "elizaos_core_bg.wasm"
+WASM_FILE = WASM_PKG_DIR / "elizaos_bg.wasm"
 
 
 def wasm_available() -> bool:

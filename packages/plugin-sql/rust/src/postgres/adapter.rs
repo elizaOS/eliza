@@ -7,7 +7,7 @@ use tracing::{debug, error};
 
 use crate::base::*;
 use crate::schema::*;
-use elizaos_core::{
+use elizaos::{
     Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Participant, Relationship,
     Room, SearchMemoriesParams, Task, World, UUID,
 };

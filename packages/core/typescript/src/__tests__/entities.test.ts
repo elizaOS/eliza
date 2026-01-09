@@ -344,7 +344,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result?.id).toBe("entity-exact" as UUID);
+      expect(result && result.id).toBe("entity-exact" as UUID);
       // Verify getEntityById was called (covers lines 274-282)
       expect(mockRuntime.getEntityById).toHaveBeenCalledWith("entity-exact");
       parseXmlSpy.mockRestore();
@@ -401,7 +401,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result?.id).toBe("entity-user" as UUID);
+      expect(result && result.id).toBe("entity-user" as UUID);
       parseXmlSpy.mockRestore();
     });
 
@@ -456,7 +456,7 @@ describe("entities", () => {
       const result = await findEntityByName(mockRuntime, mockMemory, mockState);
 
       expect(result).toBeDefined();
-      expect(result?.id).toBe("entity-handle" as UUID);
+      expect(result && result.id).toBe("entity-handle" as UUID);
       parseXmlSpy.mockRestore();
     });
   });

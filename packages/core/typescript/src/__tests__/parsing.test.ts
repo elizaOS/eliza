@@ -49,10 +49,10 @@ describe("Parsing Module", () => {
       expect(parseJSONObjectFromText("{}")).toEqual({});
     });
 
-    it("should return null for invalid JSON", () => {
-      expect(parseJSONObjectFromText("invalid")).toBe(null);
-      expect(parseJSONObjectFromText("{invalid}")).toBe(null);
-      expect(parseJSONObjectFromText("```json\n{invalid}\n```")).toBe(null);
+    it("should throw for invalid JSON", () => {
+      expect(() => parseJSONObjectFromText("invalid")).toThrow();
+      expect(() => parseJSONObjectFromText("{invalid}")).toThrow();
+      expect(() => parseJSONObjectFromText("```json\n{invalid}\n```")).toThrow();
     });
   });
 });

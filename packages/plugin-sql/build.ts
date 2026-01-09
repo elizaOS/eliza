@@ -14,7 +14,7 @@ async function buildAll() {
   const nodeOk = await runBuild({
     packageName: "@elizaos/plugin-sql",
     buildOptions: {
-      entrypoints: ["typescript/src/index.node.ts"],
+      entrypoints: ["typescript/index.node.ts"],
       outdir: "dist/node",
       target: "node",
       format: "esm",
@@ -47,7 +47,7 @@ async function buildAll() {
   const browserOk = await runBuild({
     packageName: "@elizaos/plugin-sql",
     buildOptions: {
-      entrypoints: ["typescript/src/index.browser.ts"],
+      entrypoints: ["typescript/index.browser.ts"],
       outdir: "dist/browser",
       target: "browser",
       format: "esm",

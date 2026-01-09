@@ -8,6 +8,7 @@ PostgreSQL (production) and PGLite (development).
 from elizaos_plugin_sql.adapters.base import BaseSQLAdapter
 from elizaos_plugin_sql.adapters.pglite import PGLiteAdapter
 from elizaos_plugin_sql.adapters.postgres import PostgresAdapter
+from elizaos_plugin_sql.migration_service import MigrationService, derive_schema_name
 from elizaos_plugin_sql.plugin import sql_plugin
 from elizaos_plugin_sql.schema import (
     AgentTable,
@@ -31,6 +32,9 @@ __all__ = [
     "PostgresAdapter",
     "PGLiteAdapter",
     "BaseSQLAdapter",
+    # Migration
+    "MigrationService",
+    "derive_schema_name",
     # Schema tables
     "AgentTable",
     "CacheTable",
@@ -47,3 +51,4 @@ __all__ = [
     # Plugin
     "sql_plugin",
 ]
+

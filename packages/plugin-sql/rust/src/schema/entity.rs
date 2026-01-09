@@ -30,8 +30,8 @@ pub struct EntityRecord {
 
 impl EntityRecord {
     /// Convert to elizaOS Entity type
-    pub fn to_entity(&self) -> elizaos_core::Entity {
-        use elizaos_core::{Entity, UUID};
+    pub fn to_entity(&self) -> elizaos::Entity {
+        use elizaos::{Entity, UUID};
 
         let names: Vec<String> = serde_json::from_value(self.names.clone()).unwrap_or_default();
 

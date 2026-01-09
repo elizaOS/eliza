@@ -1,6 +1,6 @@
 //! Memory schema for elizaOS database
 //!
-//! Corresponds to the TypeScript memoryTable in packages/plugin-sql/typescript/src/schema/memory.ts
+//! Corresponds to the TypeScript memoryTable in packages/plugin-sql/typescript/schema/memory.ts
 
 /// SQL for creating the memories table
 pub const CREATE_MEMORIES_TABLE: &str = r#"
@@ -66,8 +66,8 @@ pub struct MemoryRecord {
 
 impl MemoryRecord {
     /// Convert to elizaOS Memory type
-    pub fn to_memory(&self) -> elizaos_core::Memory {
-        use elizaos_core::{Content, Memory, MemoryMetadata, UUID};
+    pub fn to_memory(&self) -> elizaos::Memory {
+        use elizaos::{Content, Memory, MemoryMetadata, UUID};
 
         let content: Content = serde_json::from_value(self.content.clone()).unwrap_or_default();
 
@@ -96,7 +96,7 @@ impl MemoryRecord {
     }
 
     /// Convert from elizaOS Memory type
-    pub fn from_memory(memory: &elizaos_core::Memory, table_name: &str) -> Self {
+    pub fn from_memory(memory: &elizaos::Memory, table_name: &str) -> Self {
         MemoryRecord {
             id: memory
                 .id

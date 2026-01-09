@@ -1,7 +1,7 @@
 import type { Memory } from "./memory";
-import type { Content } from "./primitives";
+import type { Content, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
-import type { State } from "./state";
+import type { ActionPlan, State } from "./state";
 
 /**
  * Example content with associated user for demonstration purposes
@@ -29,7 +29,7 @@ export type Handler = (
   options?: HandlerOptions,
   callback?: HandlerCallback,
   responses?: Memory[],
-) => Promise<ActionResult | undefined | undefined>;
+) => Promise<ActionResult | undefined>;
 
 /**
  * Validator function type for actions/evaluators
@@ -44,26 +44,29 @@ export type Validator = (
  * Represents an action the agent can perform
  */
 export interface Action {
-  /** Similar action descriptions */
-  similes?: string[];
+  /** Action name */
+  name: string;
 
   /** Detailed description */
   description: string;
 
-  /** Example usages */
-  examples?: ActionExample[][];
-
   /** Handler function */
   handler: Handler;
-
-  /** Action name */
-  name: string;
 
   /** Validation function */
   validate: Validator;
 
-  /** Allow extensions and custom options */
-  [key: string]: unknown;
+  /** Similar action descriptions */
+  similes?: string[];
+
+  /** Example usages */
+  examples?: ActionExample[][];
+
+  /** Optional priority for action ordering */
+  priority?: number;
+
+  /** Optional tags for categorization */
+  tags?: string[];
 }
 
 /**
@@ -106,15 +109,23 @@ export interface Evaluator {
   validate: Validator;
 }
 
+/**
+ * Value types allowed in provider results
+ */
+export type ProviderValue = string | number | boolean | null | ProviderValue[] | { [key: string]: ProviderValue };
+
+/**
+ * Result returned by a provider
+ */
 export interface ProviderResult {
   /** Human-readable text for LLM prompt inclusion */
   text?: string;
 
   /** Key-value pairs for template variable substitution */
-  values?: Record<string, unknown>;
+  values?: Record<string, ProviderValue>;
 
   /** Structured data for programmatic access by other components */
-  data?: Record<string, unknown>;
+  data?: Record<string, ProviderValue>;
 }
 
 /**
@@ -153,17 +164,17 @@ export interface Provider {
  * Used for action chaining and state management
  */
 export interface ActionResult {
+  /** Whether the action succeeded */
+  success: boolean;
+
   /** Optional text description of the result */
   text?: string;
 
   /** Values to merge into the state */
-  values?: Record<string, unknown>;
+  values?: Record<string, ProviderValue>;
 
   /** Data payload containing action-specific results */
-  data?: Record<string, unknown>;
-
-  /** Whether the action succeeded - defaults to true */
-  success: boolean;
+  data?: Record<string, ProviderValue>;
 
   /** Error information if the action failed */
   error?: string | Error;
@@ -182,6 +193,12 @@ export interface ActionContext {
 }
 
 /**
+ * Callback for streaming response chunks during action execution.
+ * messageId is a string that can be either a UUID or other identifier.
+ */
+export type StreamChunkCallback = (chunk: string, messageId?: string) => Promise<void>;
+
+/**
  * Options passed to action handlers during execution
  * Provides context about the current execution and multi-step plans
  */
@@ -190,22 +207,8 @@ export interface HandlerOptions {
   actionContext?: ActionContext;
 
   /** Multi-step action plan information */
-  actionPlan?: {
-    /** Total number of steps in the plan */
-    totalSteps: number;
-    /** Current step being executed (1-based) */
-    currentStep: number;
-    /** Array of action steps with status tracking */
-    steps: Array<{
-      action: string;
-      status: "pending" | "completed" | "failed";
-      result?: ActionResult;
-      error?: string;
-    }>;
-    /** AI's reasoning for this execution plan */
-    thought: string;
-  };
+  actionPlan?: ActionPlan;
 
-  /** Allow plugin extensions and custom options */
-  [key: string]: unknown;
+  /** Optional stream chunk callback for streaming responses */
+  onStreamChunk?: StreamChunkCallback;
 }

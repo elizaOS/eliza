@@ -112,7 +112,14 @@ describe("Action Chaining Fixes", () => {
     it("should enforce MAX_WORKING_MEMORY_ENTRIES limit", () => {
       // This is more of a documentation test showing the expected behavior
       const MAX_WORKING_MEMORY_ENTRIES = 50;
-      const workingMemory: Record<string, any> = {};
+      
+      interface WorkingMemoryEntry {
+        actionName: string;
+        timestamp: number;
+        result: { success: boolean };
+      }
+      
+      const workingMemory: Record<string, WorkingMemoryEntry> = {};
 
       // Add 60 entries
       for (let i = 0; i < 60; i++) {
@@ -127,18 +134,9 @@ describe("Action Chaining Fixes", () => {
       const entries = Object.entries(workingMemory);
       expect(entries.length).toBe(60);
 
-      // Sort by timestamp (newest first) with proper type safety
-      interface WorkingMemoryEntry {
-        timestamp?: number;
-        [key: string]: unknown;
-      }
-
+      // Sort by timestamp (newest first)
       const sorted = entries.sort((a, b) => {
-        const entryA = a[1] as WorkingMemoryEntry | null;
-        const entryB = b[1] as WorkingMemoryEntry | null;
-        const timestampA = entryA?.timestamp ?? 0;
-        const timestampB = entryB?.timestamp ?? 0;
-        return timestampB - timestampA;
+        return b[1].timestamp - a[1].timestamp;
       });
 
       // Keep only the most recent MAX_WORKING_MEMORY_ENTRIES
@@ -174,8 +172,9 @@ describe("Action Chaining Fixes", () => {
         logger: typeof mockLogger,
       ): T & { steps: S[] } => {
         if (!plan.steps || index < 0 || index >= plan.steps.length) {
+          const planStepsLength = plan.steps && plan.steps.length;
           logger.warn(
-            `Invalid step index: ${index} for plan with ${plan.steps?.length || 0} steps`,
+            `Invalid step index: ${index} for plan with ${planStepsLength || 0} steps`,
           );
           return plan;
         }
@@ -228,14 +227,15 @@ describe("Action Chaining Fixes", () => {
       expect(updated3).toBe(plan); // Should return original plan
       expect(warnCalls[0]).toBe("Invalid step index: 5 for plan with 3 steps");
 
-      // Test with null steps
+      // Test with null steps - intentionally passing invalid data for error handling test
       warnCalls.length = 0; // Clear warnings
       const planWithNullSteps: ActionPlan & { name: string } = {
         name: "test",
         thought: "test thought",
         totalSteps: 0,
         currentStep: 0,
-        steps: null as unknown as ActionPlan["steps"],
+        // Intentionally invalid: testing runtime robustness against malformed input
+        steps: null as ActionPlan["steps"],
       };
       const updated4 = updateActionStep(
         planWithNullSteps,

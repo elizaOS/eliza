@@ -41,7 +41,7 @@ export interface MessageProcessingOptions {
    * @param chunk - The text chunk being streamed
    * @param messageId - ID of the message being generated
    */
-  onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
 }
 
 /**

@@ -8,7 +8,7 @@ use js_sys::{Array, Reflect};
 use wasm_bindgen::JsValue;
 
 use crate::base::*;
-use elizaos_core::{
+use elizaos::{
     Agent, Component, Entity, GetMemoriesParams, Log, Memory, Metadata, Participant, Relationship,
     Room, SearchMemoriesParams, Task, World, UUID,
 };
@@ -85,7 +85,7 @@ impl DatabaseAdapter for PgLiteAdapter {
 
         // Parse the first row into an Agent
         let row = &rows[0];
-        let character = elizaos_core::Character {
+        let character = elizaos::Character {
             id: Some(agent_id.clone()),
             name: Reflect::get(row, &JsValue::from_str("name"))
                 .ok()
@@ -94,7 +94,7 @@ impl DatabaseAdapter for PgLiteAdapter {
             ..Default::default()
         };
 
-        Ok(Some(elizaos_core::Agent {
+        Ok(Some(elizaos::Agent {
             character,
             enabled: Some(true),
             status: None,
@@ -121,13 +121,13 @@ impl DatabaseAdapter for PgLiteAdapter {
                     .and_then(|v| v.as_string())
                     .unwrap_or_default();
 
-                let character = elizaos_core::Character {
+                let character = elizaos::Character {
                     id: Some(id),
                     name,
                     ..Default::default()
                 };
 
-                Some(elizaos_core::Agent {
+                Some(elizaos::Agent {
                     character,
                     enabled: Some(true),
                     status: None,
@@ -276,7 +276,7 @@ impl DatabaseAdapter for PgLiteAdapter {
                     .and_then(|v| v.as_string())
                     .unwrap_or_default();
 
-                let content: elizaos_core::Content =
+                let content: elizaos::Content =
                     serde_json::from_str(&content_str).unwrap_or_default();
 
                 Some(Memory {
@@ -330,7 +330,7 @@ impl DatabaseAdapter for PgLiteAdapter {
             entity_id,
             agent_id: None,
             created_at: None,
-            content: elizaos_core::Content::default(),
+            content: elizaos::Content::default(),
             embedding: None,
             room_id,
             world_id: None,

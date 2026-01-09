@@ -109,3 +109,4 @@ class TextStreamChunk(BaseModel):
     done: bool = Field(default=False, description="Whether this is the final chunk")
 
     model_config = {"populate_by_name": True}
+

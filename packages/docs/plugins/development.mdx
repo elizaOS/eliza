@@ -1,0 +1,842 @@
+---
+title: "Development"
+description: "From zero to published plugin in 30 minutes"
+---
+
+## Your Plugin in 3 Steps
+
+1. **Scaffold** - `elizaos create my-plugin --type plugin`
+2. **Build** - Add actions, providers, or services
+3. **Test** - Run locally, then publish
+
+That's it. No complex setup, no boilerplate to maintain.
+
+<Tip>
+**30 minutes to your first plugin.** The CLI generates everything - TypeScript config, build setup, even a README. Focus on your logic, not infrastructure.
+</Tip>
+
+<Note>
+This guide uses `bun` as the package manager, which is the preferred tool for elizaOS development. Bun provides faster installation times and built-in TypeScript support.
+</Note>
+
+## Quick Start: Scaffolding Plugins with CLI
+
+The easiest way to create a new plugin is using the elizaOS CLI, which provides interactive scaffolding with pre-configured templates.
+
+### Using `elizaos create`
+
+The CLI offers two plugin templates to get you started quickly:
+
+```bash
+# Interactive plugin creation
+elizaos create
+
+# Or specify the name directly
+elizaos create my-plugin --type plugin
+```
+
+When creating a plugin, you'll be prompted to choose between:
+
+1. **Quick Plugin (Backend Only)** - Simple backend-only plugin without frontend
+   - Perfect for: API integrations, blockchain actions, data providers
+   - Includes: Basic plugin structure, actions, providers, services
+   - No frontend components or UI routes
+
+2. **Full Plugin (with Frontend)** - Complete plugin with React frontend and API routes
+   - Perfect for: Plugins that need web UI, dashboards, or visual components
+   - Includes: Everything from Quick Plugin + React frontend, Vite setup, API routes
+   - Tailwind CSS pre-configured for styling
+
+### Quick Plugin Structure
+
+After running `elizaos create` and selecting "Quick Plugin", you'll get:
+
+```
+plugin-my-plugin/
+├── src/
+│   ├── index.ts           # Plugin manifest
+│   ├── actions/           # Your agent actions
+│   │   └── example.ts
+│   ├── providers/         # Context providers
+│   │   └── example.ts
+│   └── types/             # TypeScript types
+│       └── index.ts
+├── package.json           # Pre-configured with elizaos deps
+├── tsconfig.json          # TypeScript config
+├── tsup.config.ts         # Build configuration
+└── README.md              # Plugin documentation
+```
+
+### Full Plugin Structure
+
+Selecting "Full Plugin" adds frontend capabilities:
+
+```text
+plugin-my-plugin/
+├── src/
+│   ├── index.ts           # Plugin manifest with routes
+│   ├── actions/
+│   ├── providers/
+│   ├── types/
+│   └── frontend/          # React frontend
+│       ├── App.tsx
+│       ├── main.tsx
+│       └── components/
+├── public/                # Static assets
+├── index.html             # Frontend entry
+├── vite.config.ts         # Vite configuration
+├── tailwind.config.js     # Tailwind setup
+└── [other config files]
+```
+
+### After Scaffolding
+
+Once your plugin is created:
+
+```bash
+# Navigate to your plugin
+cd plugin-my-plugin
+
+# Install dependencies (automatically done by CLI)
+bun install
+
+# Start development mode with hot reloading
+elizaos dev
+
+# Or start in production mode
+elizaos start
+
+# Build your plugin for distribution
+bun run build
+```
+
+The scaffolded plugin includes:
+- ✅ Proper TypeScript configuration
+- ✅ Build setup with tsup (and Vite for full plugins)
+- ✅ Example action and provider to extend
+- ✅ Integration with `@elizaos/core`
+- ✅ Development scripts ready to use
+- ✅ Basic tests structure
+
+<Tip>
+The CLI templates follow all elizaOS conventions and best practices, making it easy to get started without worrying about configuration.
+</Tip>
+
+## Manual Plugin Creation
+
+If you prefer to create a plugin manually or need custom configuration:
+
+### 1. Initialize the Project
+
+```bash
+mkdir plugin-my-custom
+cd plugin-my-custom
+bun init
+```
+
+### 2. Install Dependencies
+
+```bash
+# Core dependency
+bun add @elizaos/core
+
+# Development dependencies
+bun add -d typescript tsup @types/node
+```
+
+### 3. Configure TypeScript
+
+Create `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+### 4. Configure Build
+
+Create `tsup.config.ts`:
+
+```typescript
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: ['src/index.ts'],
+  format: ['esm'],
+  dts: true,
+  splitting: false,
+  sourcemap: true,
+  clean: true,
+  external: ['@elizaos/core'],
+});
+```
+
+### 5. Create Plugin Structure
+
+Create `src/index.ts`:
+
+```typescript
+import type { Plugin } from '@elizaos/core';
+import { myAction } from './actions/myAction';
+import { myProvider } from './providers/myProvider';
+import { MyService } from './services/myService';
+
+export const myPlugin: Plugin = {
+  name: 'my-custom-plugin',
+  description: 'A custom plugin for elizaOS',
+  
+  actions: [myAction],
+  providers: [myProvider],
+  services: [MyService],
+  
+  init: async (config, runtime) => {
+    console.log('Plugin initialized');
+  }
+};
+
+export default myPlugin;
+```
+
+### 6. Update package.json
+
+```json
+{
+  "name": "@myorg/plugin-custom",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "bun test"
+  }
+}
+```
+
+## Using Your Plugin in Projects
+
+### Option 1: Plugin Inside the Monorepo
+
+If developing within the elizaOS monorepo:
+
+1. Add your plugin to the root `package.json` as a workspace dependency:
+
+```json
+{
+  "dependencies": {
+    "@yourorg/plugin-myplugin": "workspace:*"
+  }
+}
+```
+
+2. Run `bun install` in the root directory
+
+3. Use the plugin in your project:
+
+```typescript
+import { myPlugin } from '@yourorg/plugin-myplugin';
+
+const agent = {
+  name: 'MyAgent',
+  plugins: [myPlugin],
+};
+```
+
+### Option 2: Plugin Outside the Monorepo
+
+For plugins outside the elizaOS monorepo:
+
+1. In your plugin directory, build and link it:
+
+```bash
+# In your plugin directory
+bun install
+bun run build
+bun link
+```
+
+2. In your project directory, link the plugin:
+
+```bash
+# In your project directory
+cd packages/project-starter
+bun link @yourorg/plugin-myplugin
+```
+
+3. Add to your project's `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@yourorg/plugin-myplugin": "link:@yourorg/plugin-myplugin"
+  }
+}
+```
+
+<Note>
+When using `bun link`, remember to rebuild your plugin (`bun run build`) after making changes for them to be reflected in your project.
+</Note>
+
+## Testing Plugins
+
+### Test Environment Setup
+
+#### Directory Structure
+
+```
+src/
+  __tests__/
+    test-utils.ts         # Shared test utilities and mocks
+    index.test.ts         # Main plugin tests
+    actions.test.ts       # Action tests
+    providers.test.ts     # Provider tests
+    evaluators.test.ts    # Evaluator tests
+    services.test.ts      # Service tests
+  actions/
+  providers/
+  evaluators/
+  services/
+  index.ts
+```
+
+#### Base Test Imports
+
+```typescript
+import { describe, expect, it, mock, beforeEach, afterEach, spyOn } from 'bun:test';
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type HandlerCallback,
+  type Action,
+  type Provider,
+  type Evaluator,
+  ModelType,
+  logger,
+} from '@elizaos/core';
+```
+
+### Creating Test Utilities
+
+Create a `test-utils.ts` file with reusable mocks:
+
+```typescript
+import { mock } from 'bun:test';
+import {
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type Character,
+  type UUID,
+} from '@elizaos/core';
+
+// Mock Runtime Type
+export type MockRuntime = Partial<IAgentRuntime> & {
+  agentId: UUID;
+  character: Character;
+  getSetting: ReturnType<typeof mock>;
+  useModel: ReturnType<typeof mock>;
+  composeState: ReturnType<typeof mock>;
+  createMemory: ReturnType<typeof mock>;
+  getMemories: ReturnType<typeof mock>;
+  getService: ReturnType<typeof mock>;
+};
+
+// Create Mock Runtime
+export function createMockRuntime(overrides?: Partial<MockRuntime>): MockRuntime {
+  return {
+    agentId: 'test-agent-123' as UUID,
+    character: {
+      name: 'TestAgent',
+      bio: 'A test agent',
+      id: 'test-character' as UUID,
+      ...overrides?.character,
+    },
+    getSetting: mock((key: string) => {
+      const settings: Record<string, string> = {
+        TEST_API_KEY: 'test-key-123',
+        ...overrides?.settings,
+      };
+      return settings[key];
+    }),
+    useModel: mock(async () => ({
+      content: 'Mock response from LLM',
+      success: true,
+    })),
+    composeState: mock(async () => ({
+      values: { test: 'state' },
+      data: {},
+      text: 'Composed state',
+    })),
+    createMemory: mock(async () => ({ id: 'memory-123' })),
+    getMemories: mock(async () => []),
+    getService: mock(() => null),
+    ...overrides,
+  };
+}
+
+// Create Mock Message
+export function createMockMessage(overrides?: Partial<Memory>): Memory {
+  return {
+    id: 'msg-123' as UUID,
+    entityId: 'entity-123' as UUID,
+    roomId: 'room-123' as UUID,
+    content: {
+      text: 'Test message',
+      ...overrides?.content,
+    },
+    ...overrides,
+  } as Memory;
+}
+
+// Create Mock State
+export function createMockState(overrides?: Partial<State>): State {
+  return {
+    values: {
+      test: 'value',
+      ...overrides?.values,
+    },
+    data: overrides?.data || {},
+    text: overrides?.text || 'Test state',
+  } as State;
+}
+```
+
+### Testing Actions
+
+```typescript
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { myAction } from '../src/actions/myAction';
+import { createMockRuntime, createMockMessage, createMockState } from './test-utils';
+import { ActionResult } from '@elizaos/core';
+
+describe('MyAction', () => {
+  let mockRuntime: any;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime({
+      settings: { MY_API_KEY: 'test-key' },
+    });
+    mockMessage = createMockMessage({ content: { text: 'Do the thing' } });
+    mockState = createMockState();
+  });
+
+  describe('validation', () => {
+    it('should validate when all requirements are met', async () => {
+      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+      expect(isValid).toBe(true);
+    });
+
+    it('should not validate without required service', async () => {
+      mockRuntime.getService = mock(() => null);
+      const isValid = await myAction.validate(mockRuntime, mockMessage, mockState);
+      expect(isValid).toBe(false);
+    });
+  });
+
+  describe('handler', () => {
+    it('should return success ActionResult on successful execution', async () => {
+      const mockCallback = mock();
+
+      const result = await myAction.handler(
+        mockRuntime,
+        mockMessage,
+        mockState,
+        {},
+        mockCallback
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain('completed');
+      expect(result.values).toHaveProperty('lastActionTime');
+      expect(mockCallback).toHaveBeenCalled();
+    });
+
+    it('should handle errors gracefully', async () => {
+      // Make service throw error
+      mockRuntime.getService = mock(() => {
+        throw new Error('Service unavailable');
+      });
+
+      const result = await myAction.handler(mockRuntime, mockMessage, mockState);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.text).toContain('Failed');
+    });
+
+    it('should access previous action results', async () => {
+      const previousResults: ActionResult[] = [
+        {
+          success: true,
+          values: { previousData: 'test' },
+          data: { actionName: 'PREVIOUS_ACTION' },
+        },
+      ];
+
+      const result = await myAction.handler(
+        mockRuntime,
+        mockMessage,
+        mockState,
+        { context: { previousResults } }
+      );
+
+      // Verify it used previous results
+      expect(result.values?.usedPreviousData).toBe(true);
+    });
+  });
+
+  describe('examples', () => {
+    it('should have valid example structure', () => {
+      expect(myAction.examples).toBeDefined();
+      expect(Array.isArray(myAction.examples)).toBe(true);
+
+      // Each example should be a conversation array
+      for (const example of myAction.examples!) {
+        expect(Array.isArray(example)).toBe(true);
+
+        // Each message should have name and content
+        for (const message of example) {
+          expect(message).toHaveProperty('name');
+          expect(message).toHaveProperty('content');
+        }
+      }
+    });
+  });
+});
+```
+
+### Testing Providers
+
+```typescript
+import { describe, it, expect, beforeEach } from 'bun:test';
+import { myProvider } from '../src/providers/myProvider';
+import { createMockRuntime, createMockMessage, createMockState } from './test-utils';
+
+describe('MyProvider', () => {
+  let mockRuntime: any;
+  let mockMessage: Memory;
+  let mockState: State;
+
+  beforeEach(() => {
+    mockRuntime = createMockRuntime();
+    mockMessage = createMockMessage();
+    mockState = createMockState();
+  });
+
+  it('should return provider result with text and data', async () => {
+    const result = await myProvider.get(mockRuntime, mockMessage, mockState);
+
+    expect(result).toBeDefined();
+    expect(result.text).toContain('Current');
+    expect(result.data).toBeDefined();
+    expect(result.values).toBeDefined();
+  });
+
+  it('should handle errors gracefully', async () => {
+    // Mock service to throw error
+    mockRuntime.getService = mock(() => {
+      throw new Error('Service error');
+    });
+
+    const result = await myProvider.get(mockRuntime, mockMessage, mockState);
+
+    expect(result.text).toContain('Unable');
+    expect(result.data?.error).toBeDefined();
+  });
+});
+```
+
+### Testing Services
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { MyService } from '../src/services/myService';
+import { createMockRuntime } from './test-utils';
+
+describe('MyService', () => {
+  let mockRuntime: any;
+  let service: MyService;
+
+  beforeEach(async () => {
+    mockRuntime = createMockRuntime({
+      settings: {
+        MY_API_KEY: 'test-api-key',
+      },
+    });
+  });
+
+  afterEach(async () => {
+    if (service) {
+      await service.stop();
+    }
+  });
+
+  it('should initialize successfully with valid config', async () => {
+    service = await MyService.start(mockRuntime);
+    expect(service).toBeDefined();
+    expect(service.capabilityDescription).toBeDefined();
+  });
+
+  it('should throw error without API key', async () => {
+    mockRuntime.getSetting = mock(() => undefined);
+    
+    expect(async () => {
+      await MyService.start(mockRuntime);
+    }).toThrow('MY_API_KEY not configured');
+  });
+
+  it('should clean up resources on stop', async () => {
+    service = await MyService.start(mockRuntime);
+    await service.stop();
+    // Verify cleanup happened
+  });
+});
+```
+
+### E2E Testing
+
+For integration testing with a live runtime:
+
+```typescript
+// tests/e2e/myPlugin.e2e.ts
+export const myPluginE2ETests = {
+  name: 'MyPlugin E2E Tests',
+  tests: [
+    {
+      name: 'should execute full plugin flow',
+      fn: async (runtime: IAgentRuntime) => {
+        // Create test message
+        const message: Memory = {
+          id: generateId(),
+          entityId: 'test-user',
+          roomId: runtime.agentId,
+          content: {
+            text: 'Please do the thing',
+            source: 'test',
+          },
+        };
+
+        // Store message
+        await runtime.createMemory(message, 'messages');
+
+        // Compose state
+        const state = await runtime.composeState(message);
+
+        // Execute action
+        const result = await myAction.handler(
+          runtime,
+          message,
+          state,
+          {},
+          async (response) => {
+            // Verify callback responses
+            expect(response.text).toBeDefined();
+          }
+        );
+
+        // Verify result
+        expect(result.success).toBe(true);
+
+        // Verify side effects
+        const memories = await runtime.getMemories({
+          roomId: message.roomId,
+          tableName: 'action_results',
+          count: 1,
+        });
+
+        expect(memories.length).toBeGreaterThan(0);
+      },
+    },
+  ],
+};
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+bun test
+
+# Run specific test file
+bun test src/__tests__/actions.test.ts
+
+# Run with watch mode
+bun test --watch
+
+# Run with coverage
+bun test --coverage
+```
+
+### Test Best Practices
+
+1. **Test in Isolation**: Use mocks to isolate components
+2. **Test Happy Path and Errors**: Cover both success and failure cases
+3. **Test Validation Logic**: Ensure actions validate correctly
+4. **Test Examples**: Verify example structures are valid
+5. **Test Side Effects**: Verify database writes, API calls, etc.
+6. **Use Descriptive Names**: Make test purposes clear
+7. **Keep Tests Fast**: Mock external dependencies
+8. **Test Public API**: Focus on what users interact with
+
+## Development Workflow
+
+### 1. Development Mode
+
+```bash
+# Watch mode with hot reloading
+bun run dev
+
+# Or with elizaOS CLI
+elizaos dev
+```
+
+### 2. Building for Production
+
+```bash
+# Build the plugin
+bun run build
+
+# Output will be in dist/
+```
+
+### 3. Publishing
+
+#### To npm
+
+```bash
+# Login to npm
+npm login
+
+# Publish
+npm publish --access public
+```
+
+#### To GitHub Packages
+
+Update `package.json`:
+
+```json
+{
+  "name": "@yourorg/plugin-name",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}
+```
+
+Then publish:
+
+```bash
+npm publish
+```
+
+### 4. Version Management
+
+```bash
+# Bump version
+npm version patch  # 0.1.0 -> 0.1.1
+npm version minor  # 0.1.0 -> 0.2.0
+npm version major  # 0.1.0 -> 1.0.0
+```
+
+## Debugging
+
+### Enable Debug Logging
+
+```typescript
+import { logger } from '@elizaos/core';
+
+// In your plugin
+logger.debug('Plugin initialized', { config });
+logger.info('Action executed', { result });
+logger.error('Failed to connect', { error });
+```
+
+### VS Code Debug Configuration
+
+Create `.vscode/launch.json`:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Plugin",
+      "runtimeExecutable": "bun",
+      "program": "${workspaceFolder}/src/index.ts",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}
+```
+
+## Common Issues and Solutions
+
+### Issue: Plugin not loading
+
+**Solution**: Check that your plugin is properly exported and added to the agent's plugin array.
+
+### Issue: TypeScript errors
+
+**Solution**: Ensure `@elizaos/core` is installed and TypeScript is configured correctly.
+
+### Issue: Service not available
+
+**Solution**: Verify the service is registered in the plugin and started properly.
+
+### Issue: Tests failing with module errors
+
+**Solution**: Make sure your `tsconfig.json` has proper module resolution settings for Bun.
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Components" icon="cube" href="/plugins/components">
+    Deep dive into Actions, Providers, Evaluators, and Services
+  </Card>
+
+  <Card title="Common Patterns" icon="lightbulb" href="/plugins/patterns">
+    Learn proven plugin development patterns
+  </Card>
+
+  <Card title="Plugin Schemas" icon="list" href="/plugins/schemas">
+    Understand plugin configuration and validation
+  </Card>
+
+  <Card title="Plugin Reference" icon="book" href="/plugins/reference">
+    Complete API reference for all interfaces
+  </Card>
+
+  <Card title="Publish a Plugin" icon="upload" href="/guides/publish-a-plugin">
+    Share your plugin with the community
+  </Card>
+
+  <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+    Ship your agent with plugins to production
+  </Card>
+</CardGroup>

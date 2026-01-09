@@ -40,8 +40,8 @@ pub struct RoomRecord {
 
 impl RoomRecord {
     /// Convert to elizaOS Room type
-    pub fn to_room(&self) -> elizaos_core::Room {
-        use elizaos_core::{ChannelType, Room, UUID};
+    pub fn to_room(&self) -> elizaos::Room {
+        use elizaos::{ChannelType, Room, UUID};
 
         let room_type = match self.room_type.as_str() {
             "SELF" => ChannelType::SelfChannel,

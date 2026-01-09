@@ -12,16 +12,58 @@ import type { Metadata, UUID } from "./primitives";
 import type { Task } from "./task";
 
 /**
+ * Allowed value types for log body fields
+ */
+export type LogBodyValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | UUID
+  | Error
+  | LogBodyValue[]
+  | { [key: string]: LogBodyValue };
+
+/**
  * Base log body type with common properties
  */
 export interface BaseLogBody {
   runId?: string | UUID;
+  parentRunId?: string | UUID;
   status?: string;
   messageId?: UUID;
   roomId?: UUID;
   entityId?: UUID;
-  metadata?: Record<string, unknown>;
-  [key: string]: unknown;
+  metadata?: Record<string, LogBodyValue>;
+}
+
+/**
+ * Action log content structure
+ */
+export interface ActionLogContent {
+  actions?: string[];
+  text?: string;
+  thought?: string;
+}
+
+/**
+ * Action result structure for logging
+ */
+export interface ActionLogResult {
+  success?: boolean;
+  data?: Record<string, LogBodyValue>;
+  text?: string;
+  error?: string | Error;
+}
+
+/**
+ * Prompt tracking for action logs
+ */
+export interface ActionLogPrompt {
+  modelType: string;
+  prompt: string;
+  timestamp: number;
 }
 
 /**
@@ -32,25 +74,12 @@ export interface ActionLogBody extends BaseLogBody {
   actionId?: UUID | string;
   message?: string;
   messageId?: UUID;
-  state?: unknown;
-  responses?: unknown;
-  content?: {
-    actions?: string[];
-    [key: string]: unknown;
-  };
-  result?: {
-    success?: boolean;
-    data?: unknown;
-    text?: string;
-    error?: string | Error;
-    [key: string]: unknown;
-  };
+  state?: Record<string, LogBodyValue>;
+  responses?: Array<Record<string, LogBodyValue>>;
+  content?: ActionLogContent;
+  result?: ActionLogResult;
   isLegacyReturn?: boolean;
-  prompts?: Array<{
-    modelType: string;
-    prompt: string;
-    timestamp: number;
-  }>;
+  prompts?: ActionLogPrompt[];
   promptCount?: number;
   planStep?: string;
   planThought?: string;
@@ -63,7 +92,15 @@ export interface EvaluatorLogBody extends BaseLogBody {
   evaluator?: string;
   messageId?: UUID;
   message?: string;
-  state?: unknown;
+  state?: Record<string, LogBodyValue>;
+}
+
+/**
+ * Action context for model logs
+ */
+export interface ModelActionContext {
+  actionName: string;
+  actionId: UUID;
 }
 
 /**
@@ -72,17 +109,14 @@ export interface EvaluatorLogBody extends BaseLogBody {
 export interface ModelLogBody extends BaseLogBody {
   modelType?: string;
   modelKey?: string;
-  params?: Record<string, unknown>;
+  params?: Record<string, LogBodyValue>;
   prompt?: string;
   systemPrompt?: string | null;
   timestamp?: number;
   executionTime?: number;
   provider?: string;
-  actionContext?: {
-    actionName: string;
-    actionId: UUID;
-  };
-  response?: unknown;
+  actionContext?: ModelActionContext;
+  response?: string | Record<string, LogBodyValue>;
 }
 
 /**
@@ -301,7 +335,7 @@ export interface IDatabaseAdapter {
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]>;
 
   log(params: {
-    body: { [key: string]: unknown };
+    body: LogBody;
     entityId: UUID;
     roomId: UUID;
     type: string;
@@ -533,12 +567,24 @@ export interface UnifiedSearchOptions extends UnifiedMemoryOptions {
 }
 
 /**
- * Represents a generic database connection object.
- * The actual type of this connection will depend on the specific database adapter implementation
- * (e.g., a connection pool object for PostgreSQL, a client instance for a NoSQL database).
- * This `unknown` type serves as a placeholder in the abstract `IDatabaseAdapter`.
+ * Base interface for database connection objects.
+ * Specific adapters should extend this with their connection type.
+ * 
+ * @example
+ * ```typescript
+ * // In a PostgreSQL adapter:
+ * interface PgConnection extends DbConnection {
+ *   pool: Pool;
+ *   query: <T>(sql: string, params?: unknown[]) => Promise<T>;
+ * }
+ * ```
  */
-export type DbConnection = unknown;
+export interface DbConnection {
+  /** Whether the connection is currently active */
+  isConnected?: boolean;
+  /** Close the connection */
+  close?: () => Promise<void>;
+}
 
 // Allowable vector dimensions
 export const VECTOR_DIMS = {

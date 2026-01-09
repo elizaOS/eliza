@@ -160,8 +160,54 @@ ProviderResult {
 
 ## Testing
 
+### Rust Unit Tests
+
 ```bash
 cargo test
+```
+
+### TypeScript E2E Tests
+
+The plugin includes E2E tests that verify the agent can respond and call the `HELLO_RUST` action.
+
+**Prerequisites:**
+1. Install wasm-bindgen-cli: `cargo install wasm-bindgen-cli`
+2. Build the WASM module: `bun run build`
+3. Run tests: `elizaos test`
+
+The E2E tests verify:
+- Plugin loads correctly
+- `HELLO_RUST` action is registered
+- Agent can respond and call the `HELLO_RUST` action
+- `RUST_INFO` provider works correctly
+- Action validation works
+
+## Building
+
+### Build WASM for TypeScript Runtime
+
+```bash
+# Install wasm-bindgen-cli if not already installed
+cargo install wasm-bindgen-cli
+
+# Build Rust to WASM and generate bindings
+bun run build
+# or
+bun run build.ts
+```
+
+This will:
+1. Compile Rust to WASM (`target/wasm32-unknown-unknown/release/elizaos_plugin_starter.wasm`)
+2. Generate JavaScript bindings (`dist/elizaos_plugin_starter.js` and `dist/elizaos_plugin_starter_bg.wasm`)
+3. Compile TypeScript (`dist/index.js`)
+
+### Build FFI for Python Runtime
+
+```bash
+cargo build --release --features ffi
+# Output: target/release/libelizaos_plugin_starter.so (Linux)
+#         target/release/libelizaos_plugin_starter.dylib (macOS)
+#         target/release/elizaos_plugin_starter.dll (Windows)
 ```
 
 ## License

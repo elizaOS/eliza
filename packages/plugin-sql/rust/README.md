@@ -52,7 +52,7 @@ cargo test
 
 ```rust
 use elizaos_plugin_sql::{PostgresAdapter, DatabaseAdapter};
-use elizaos_core::UUID;
+use elizaos::UUID;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -149,6 +149,39 @@ The schema is designed to be identical to the TypeScript Drizzle ORM schema:
 | logs | Activity logs |
 | cache | Key-value cache |
 
+## Migration System
+
+The Rust implementation includes a migration system compatible with the TypeScript RuntimeMigrator:
+
+```rust
+use elizaos_plugin_sql::migration::{MigrationService, derive_schema_name};
+use std::sync::Arc;
+
+// Create migration service
+let migration_service = MigrationService::new(pool.clone());
+migration_service.initialize().await?;
+
+// Get migration status
+let status = migration_service.get_status("@your-org/plugin-name").await?;
+
+// Derive schema name for plugin isolation
+let schema_name = derive_schema_name("@your-org/plugin-name");
+// Returns: "your_org_plugin_name"
+```
+
+Features:
+- Migration tracking tables (`migrations._migrations`, `migrations._journal`, `migrations._snapshots`)
+- Schema snapshot storage
+- Plugin schema namespacing for isolation
+- Transaction-safe migrations
+
+### Future: drizzle-rs Integration
+
+The [drizzle-rs fork](https://github.com/themixednuts/drizzle-rs) is vendored at `vendor/drizzle-rs` for future integration. When stable, it will provide:
+- Schema definition using Rust macros
+- Automatic SQL generation from schema diffs
+- Type-safe database queries
+
 ## Compatibility
 
 This implementation is designed to be 100% compatible with the TypeScript version:
@@ -157,6 +190,7 @@ This implementation is designed to be 100% compatible with the TypeScript versio
 - **JSON Format**: All data uses camelCase to match TypeScript
 - **UUID Format**: UUIDs are stored in lowercase format
 - **Vector Search**: Uses pgvector with same similarity functions
+- **Migration Tables**: Same migration tracking schema as TypeScript
 
 ## License
 

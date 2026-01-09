@@ -11,8 +11,7 @@
     "forceConsistentCasingInFileNames": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "incremental": true,
-    "composite": true,
+    "declaration": false,
     "resolveJsonModule": true,
     "noImplicitAny": false,
     "allowJs": true,
@@ -25,5 +24,6 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["typescript/src/**/*.ts"]
+  "include": ["typescript/**/*.ts"],
+  "exclude": ["typescript/**/__tests__/**", "typescript/**/*.test.ts", "typescript/**/*.spec.ts"]
 }

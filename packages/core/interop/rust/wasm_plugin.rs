@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use elizaos_core::interop::wasm_plugin::*;
-//! use elizaos_core::types::*;
+//! use elizaos::interop::wasm_plugin::*;
+//! use elizaos::types::*;
 //!
 //! // Define your plugin
 //! struct MyPlugin;

@@ -43,6 +43,7 @@ import {
   type Log,
   type Memory,
   type MemoryMetadata,
+  type Metadata,
   MODEL_SETTINGS,
   type ModelHandler,
   type ModelParamsMap,
@@ -126,7 +127,7 @@ export class AgentRuntime implements IAgentRuntime {
   routes: Route[] = [];
   private taskWorkers = new Map<string, TaskWorker>();
   private sendHandlers = new Map<string, SendHandlerFunction>();
-  private eventHandlers: Map<string, ((data: unknown) => void)[]> = new Map();
+  private eventHandlers: Map<string, Array<(data: EventPayload) => void>> = new Map();
 
   /**
    * Reference to the elizaOS instance that created this runtime
@@ -849,7 +850,7 @@ export class AgentRuntime implements IAgentRuntime {
     state?: State,
     callback?: HandlerCallback,
     processOptions?: {
-      onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+      onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
     },
   ): Promise<void> {
     // Determine if we have multiple actions to execute
@@ -1136,8 +1137,8 @@ export class AgentRuntime implements IAgentRuntime {
         // the filter so content type detection from one call doesn't affect the next.
         let actionStreamingContext:
           | {
-              messageId: UUID;
-              onStreamChunk: (chunk: string, messageId?: UUID) => Promise<void>;
+              messageId: string;
+              onStreamChunk: (chunk: string, messageId?: string) => Promise<void>;
               onStreamEnd: () => void;
             }
           | undefined;
@@ -1147,7 +1148,7 @@ export class AgentRuntime implements IAgentRuntime {
 
           actionStreamingContext = {
             messageId: responseMessageId,
-            onStreamChunk: async (chunk: string, msgId?: UUID) => {
+            onStreamChunk: async (chunk: string, msgId?: string) => {
               if (!currentFilter) {
                 currentFilter = new ActionStreamFilter();
               }
@@ -1184,7 +1185,7 @@ export class AgentRuntime implements IAgentRuntime {
           typeof result === "boolean";
 
         // Only create ActionResult if we have a proper result
-        let actionResult: ActionResult | null = null;
+        let actionResult: ActionResult | undefined;
 
         if (!isLegacyReturn) {
           // Ensure we have an ActionResult with required success field
@@ -1203,7 +1204,6 @@ export class AgentRuntime implements IAgentRuntime {
               success: true, // Default success for legacy results
               data: {
                 actionName: action.name,
-                legacyResult: result,
               },
             };
           }
@@ -1211,11 +1211,11 @@ export class AgentRuntime implements IAgentRuntime {
           actionResults.push(actionResult);
 
           // Merge returned values into state
-          if (actionResult.values) {
-            const existingActionResults = Array.isArray(
-              (accumulatedState.data && accumulatedState.data.actionResults),
-            )
-              ? accumulatedState.data.actionResults
+          if (actionResult.values && accumulatedState) {
+            const accumulatedStateData = accumulatedState.data;
+            const rawActionResults = accumulatedStateData && accumulatedStateData.actionResults;
+            const existingActionResults: ActionResult[] = Array.isArray(rawActionResults)
+              ? rawActionResults
               : [];
             accumulatedState = {
               ...accumulatedState,
@@ -1229,7 +1229,7 @@ export class AgentRuntime implements IAgentRuntime {
           }
 
           // Store in working memory (in state data) with cleanup
-          if (actionResult && accumulatedState.data) {
+          if (accumulatedState && accumulatedState.data) {
             if (!accumulatedState.data.workingMemory)
               accumulatedState.data.workingMemory = {};
 
@@ -1241,10 +1241,7 @@ export class AgentRuntime implements IAgentRuntime {
               result: actionResult,
               timestamp: Date.now(),
             };
-            const workingMemory = accumulatedState.data.workingMemory as Record<
-              string,
-              WorkingMemoryEntry
-            >;
+            const workingMemory = accumulatedState.data.workingMemory;
             workingMemory[memoryKey] = memoryEntry;
 
             // Clean up old entries if we now exceed the limit
@@ -1252,10 +1249,8 @@ export class AgentRuntime implements IAgentRuntime {
             if (entries.length > this.maxWorkingMemoryEntries) {
               // Sort by timestamp (newest first) and keep only the most recent entries
               const sorted = entries.sort((a, b) => {
-                const entryA = a[1] as WorkingMemoryEntry | null;
-                const entryB = b[1] as WorkingMemoryEntry | null;
-                const timestampA = (entryA && entryA.timestamp) ?? 0;
-                const timestampB = (entryB && entryB.timestamp) ?? 0;
+                const timestampA = a[1].timestamp ?? 0;
+                const timestampB = b[1].timestamp ?? 0;
                 return timestampB - timestampA;
               });
               // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
@@ -1309,26 +1304,6 @@ export class AgentRuntime implements IAgentRuntime {
           content: {
             text: (actionResult && actionResult.text) || `Executed action: ${action.name}`,
             source: "action",
-            type: "action_result",
-            actionName: action.name,
-            actionStatus: (actionResult && actionResult.success) ? "completed" : "failed",
-            actionResult: isLegacyReturn ? { legacy: result } : actionResult,
-            runId,
-            ...(actionPlan && {
-              planStep: `${actionPlan.currentStep}/${actionPlan.totalSteps}`,
-              planThought: actionPlan.thought,
-            }),
-          },
-          metadata: {
-            type: "action_result",
-            actionName: action.name,
-            runId,
-            parentRunId,
-            actionId,
-            ...(actionPlan && {
-              totalSteps: actionPlan.totalSteps,
-              currentStep: actionPlan.currentStep,
-            }),
           },
         };
         await this.createMemory(actionMemory, "messages");
@@ -1339,6 +1314,11 @@ export class AgentRuntime implements IAgentRuntime {
         );
 
         // log to database with collected prompts
+        const logResult = actionResult ? {
+          success: actionResult.success,
+          text: actionResult.text,
+          error: actionResult.error,
+        } : undefined;
         await this.adapter.log({
           entityId: message.entityId,
           roomId: message.roomId,
@@ -1348,9 +1328,7 @@ export class AgentRuntime implements IAgentRuntime {
             actionId,
             message: message.content.text,
             messageId: message.id,
-            state: accumulatedState,
-            responses,
-            result: isLegacyReturn ? { legacy: result } : actionResult,
+            result: logResult,
             isLegacyReturn,
             prompts: (this.currentActionContext && this.currentActionContext.prompts) || [],
             promptCount: (this.currentActionContext && this.currentActionContext.prompts && this.currentActionContext.prompts.length) || 0,
@@ -1437,7 +1415,6 @@ export class AgentRuntime implements IAgentRuntime {
               evaluator: evaluator.name,
               messageId: message.id,
               message: message.content.text,
-              state,
               runId: this.getCurrentRunId(),
             },
           });
@@ -1616,7 +1593,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     messageServerId?: UUID;
     userId?: UUID;
-    metadata?: Record<string, unknown>;
+    metadata?: Metadata;
   }) {
     if (!worldId && messageServerId) {
       worldId = createUniqueUuid(this as IAgentRuntime, messageServerId);
@@ -1625,12 +1602,13 @@ export class AgentRuntime implements IAgentRuntime {
     if (!source) {
       throw new Error("Source is required for ensureEntityExists");
     }
-    const entityMetadata = {
-      [source]: {
-        id: userId,
-        name: name,
-        userName: userName,
-      },
+    // Build metadata object with only defined values
+    const sourceMetadata: Record<string, string> = {};
+    if (userId) sourceMetadata.id = userId;
+    if (name) sourceMetadata.name = name;
+    if (userName) sourceMetadata.userName = userName;
+    const entityMetadata: Metadata = {
+      [source]: sourceMetadata,
     };
     // First check if the entity exists
     const entity = await this.getEntityById(entityId);
@@ -1656,6 +1634,16 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(`Failed to create entity ${entityId}`);
       }
     } else {
+      // Build update metadata with only defined values
+      const existingSourceMeta = (entity.metadata && entity.metadata[source] &&
+        typeof entity.metadata[source] === "object")
+        ? (entity.metadata[source] as Record<string, string>)
+        : {};
+      const updateSourceMeta: Record<string, string> = { ...existingSourceMeta };
+      if (userId) updateSourceMeta.id = userId;
+      if (name) updateSourceMeta.name = name;
+      if (userName) updateSourceMeta.userName = userName;
+
       await this.adapter.updateEntity({
         id: entityId,
         names: [...new Set([...(entity.names || []), ...names])].filter(
@@ -1663,15 +1651,7 @@ export class AgentRuntime implements IAgentRuntime {
         ) as string[],
         metadata: {
           ...entity.metadata,
-          [source]: {
-            ...((entity.metadata && entity.metadata[source] &&
-            typeof entity.metadata[source] === "object")
-              ? (entity.metadata[source] as Record<string, unknown>)
-              : {}),
-            id: userId,
-            name: name,
-            userName: userName,
-          },
+          [source]: updateSourceMeta,
         },
         agentId: this.agentId,
       });
@@ -2255,11 +2235,12 @@ export class AgentRuntime implements IAgentRuntime {
         registrationOrder,
       });
       modelsArray.sort((a, b) => {
-      if ((b.priority || 0) !== (a.priority || 0)) {
-        return (b.priority || 0) - (a.priority || 0);
-      }
-      return (a.registrationOrder || 0) - (b.registrationOrder || 0);
-    });
+        if ((b.priority || 0) !== (a.priority || 0)) {
+          return (b.priority || 0) - (a.priority || 0);
+        }
+        return (a.registrationOrder || 0) - (b.registrationOrder || 0);
+      });
+    }
   }
 
   getModel(
@@ -2424,20 +2405,20 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Log to database
+    const responseValue =
+      Array.isArray(response) && response.every((x) => typeof x === "number")
+        ? "[array]"
+        : typeof response === "string"
+          ? response
+          : undefined;
     this.adapter.log({
       entityId: this.agentId,
       roomId: this.currentRoomId ?? this.agentId,
       body: {
         modelType,
         modelKey,
-        params: {
-          ...(typeof params === "object" && !Array.isArray(params) && params
-            ? params
-            : {}),
-          prompt: promptContent,
-        },
-        prompt: promptContent,
-        systemPrompt: this.character.system || null,
+        prompt: promptContent ?? undefined,
+        systemPrompt: this.character.system ?? undefined,
         runId: this.getCurrentRunId(),
         timestamp: Date.now(),
         executionTime: elapsedTime,
@@ -2449,11 +2430,7 @@ export class AgentRuntime implements IAgentRuntime {
               actionId: this.currentActionContext.actionId,
             }
           : undefined,
-        response:
-          Array.isArray(response) &&
-          response.every((x) => typeof x === "number")
-            ? "[array]"
-            : response,
+        response: responseValue,
       },
       type: `useModel:${modelKey}`,
     });
@@ -2624,12 +2601,8 @@ export class AgentRuntime implements IAgentRuntime {
       for await (const chunk of (response as TextStreamResult).textStream) {
         if (abortSignal && abortSignal.aborted) break;
         fullText += chunk;
-        try {
-          if (paramsChunk) await paramsChunk(chunk, msgId);
-        } catch {}
-        try {
-          if (ctxChunk) await ctxChunk(chunk, msgId);
-        } catch {}
+        if (paramsChunk) await paramsChunk(chunk, msgId);
+        if (ctxChunk) await ctxChunk(chunk, msgId);
       }
 
       // Signal stream end to allow context to reset state between useModel calls
@@ -3342,7 +3315,7 @@ export class AgentRuntime implements IAgentRuntime {
     sourceEntityId: UUID;
     targetEntityId: UUID;
     tags?: string[];
-    metadata?: { [key: string]: unknown };
+    metadata?: Metadata;
   }): Promise<boolean> {
     return await this.adapter.createRelationship(params);
   }
@@ -3392,7 +3365,7 @@ export class AgentRuntime implements IAgentRuntime {
   async deleteTask(id: UUID): Promise<void> {
     await this.adapter.deleteTask(id);
   }
-  on(event: string, callback: (data: unknown) => void): void {
+  on(event: string, callback: (data: EventPayload) => void): void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
@@ -3401,10 +3374,7 @@ export class AgentRuntime implements IAgentRuntime {
       handlers.push(callback);
     }
   }
-  off(event: string, callback: (data: unknown) => void): void {
-    if (!this.eventHandlers.has(event)) {
-      return;
-    }
+  off(event: string, callback: (data: EventPayload) => void): void {
     const handlers = this.eventHandlers.get(event);
     if (!handlers) {
       return;
@@ -3414,10 +3384,7 @@ export class AgentRuntime implements IAgentRuntime {
       handlers.splice(index, 1);
     }
   }
-  emit(event: string, data: unknown): void {
-    if (!this.eventHandlers.has(event)) {
-      return;
-    }
+  emit(event: string, data: EventPayload): void {
     const handlers = this.eventHandlers.get(event);
     if (!handlers) {
       return;

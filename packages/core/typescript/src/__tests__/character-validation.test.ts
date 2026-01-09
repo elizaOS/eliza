@@ -43,22 +43,25 @@ describe("Character Schema Validation", () => {
       const invalidCharacter = { bio: "No name character" };
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Character validation failed");
-      expect(result.error?.issues).toBeDefined();
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Character validation failed");
+      expect(resultError && resultError.issues).toBeDefined();
     });
 
     test("should reject character with empty name", () => {
       const invalidCharacter = { name: "", bio: "Empty name" };
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Character validation failed");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Character validation failed");
     });
 
     test("should reject character without bio", () => {
       const invalidCharacter = { name: "No Bio Character" };
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Character validation failed");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Character validation failed");
     });
 
     test("should accept bio as string array", () => {
@@ -78,7 +81,8 @@ describe("Character Schema Validation", () => {
       };
       const result = validateCharacter(characterWithExtra);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Unrecognized key");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Unrecognized key");
     });
 
     test("should validate optional fields correctly", () => {
@@ -143,7 +147,8 @@ describe("Character Schema Validation", () => {
       };
       const result = validateCharacter(characterWithInvalidUuid);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Invalid UUID format");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Invalid UUID format");
     });
   });
 
@@ -159,21 +164,24 @@ describe("Character Schema Validation", () => {
       const malformedJson = '{ "name": "Test", "bio": "Test" '; // Missing closing brace
       const result = parseAndValidateCharacter(malformedJson);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Invalid JSON");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Invalid JSON");
     });
 
     test("should handle JSON with invalid character data", () => {
       const invalidCharacterJson = JSON.stringify({ name: "", bio: "Invalid" });
       const result = parseAndValidateCharacter(invalidCharacterJson);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Character validation failed");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Character validation failed");
     });
 
     test("should handle empty JSON object", () => {
       const emptyJson = "{}";
       const result = parseAndValidateCharacter(emptyJson);
       expect(result.success).toBe(false);
-      expect(result.error?.message).toContain("Character validation failed");
+      const resultError = result.error;
+      expect(resultError && resultError.message).toContain("Character validation failed");
     });
   });
 
@@ -309,8 +317,10 @@ describe("Character Schema Validation", () => {
       };
       const result = validateCharacter(invalidCharacter);
       expect(result.success).toBe(false);
-      expect(result.error?.issues).toBeDefined();
-      expect(result.error?.issues?.length).toBeGreaterThan(0);
+      const resultError = result.error;
+      const resultErrorIssues = resultError && resultError.issues;
+      expect(resultErrorIssues).toBeDefined();
+      expect(resultErrorIssues && resultErrorIssues.length).toBeGreaterThan(0);
     });
   });
 });

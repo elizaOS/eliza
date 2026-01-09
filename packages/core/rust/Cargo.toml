@@ -1,5 +1,5 @@
 [package]
-name = "elizaos-core"
+name = "elizaos"
 version = "2.0.0"
 edition = "2021"
 authors = ["elizaOS Team"]

@@ -12,8 +12,8 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use elizaos_core::{AgentRuntime, Character, parse_character};
-//! use elizaos_core::runtime::RuntimeOptions;
+//! use elizaos::{AgentRuntime, Character, parse_character};
+//! use elizaos::runtime::RuntimeOptions;
 //!
 //! async fn example() -> anyhow::Result<()> {
 //!     let character = parse_character(r#"{"name": "TestAgent", "bio": "A test agent"}"#)?;
