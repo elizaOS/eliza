@@ -6,6 +6,22 @@ import path from 'node:path';
  * Node-specific utils split out for server builds.
  */
 
+/**
+ * Checks if a database URL is for Neon serverless database.
+ * When true, we use @neondatabase/serverless driver instead of pg.
+ *
+ * Neon URLs typically contain:
+ * - neon.tech (Neon's main domain)
+ * - neon.database (alternative domain)
+ *
+ * @example
+ * isNeonDatabase('postgres://user:pass@ep-cool-name-123456.us-east-2.aws.neon.tech/dbname') // true
+ * isNeonDatabase('postgres://user:pass@localhost:5432/dbname') // false
+ */
+export function isNeonDatabase(url: string): boolean {
+  return url.includes('neon.tech') || url.includes('neon.database');
+}
+
 export function expandTildePath(filepath: string): string {
   if (filepath && filepath.startsWith('~')) {
     return path.join(process.cwd(), filepath.slice(1));
