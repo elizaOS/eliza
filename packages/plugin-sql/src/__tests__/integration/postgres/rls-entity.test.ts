@@ -31,7 +31,8 @@ import { PostgresConnectionManager } from '../../../pg/manager';
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
 describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', () => {
-  let setupClient: Client; // Setup client for migrations and data setup
+  let setupClient: Client; // Setup client for migrations (eliza_test user)
+  let superuserClient: Client; // Superuser client for data setup (bypasses RLS)
   let manager: PostgresConnectionManager; // Production code path for RLS tests
 
   const POSTGRES_URL =
@@ -49,23 +50,28 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
   const agentId = uuidv4();
 
   beforeAll(async () => {
-    // Setup client with server context (for migrations and data setup)
+    // Setup client with server context (for migrations)
     setupClient = new Client({
       connectionString: POSTGRES_URL,
       application_name: serverId,
     });
     await setupClient.connect();
 
+    // Superuser connection for data setup (bypasses RLS)
+    // This is needed because RLS policies block inserts without proper entity context
+    const superuserUrl = new URL(POSTGRES_URL);
+    superuserUrl.username = 'postgres';
+    superuserUrl.password = 'postgres';
+    superuserClient = new Client({
+      connectionString: superuserUrl.toString(),
+      application_name: serverId,
+    });
+
     // Clean up from previous tests - drop all tables and schemas for fresh start
-    // Use a superuser connection for cleanup if possible
-    const cleanupUrl = new URL(POSTGRES_URL);
-    cleanupUrl.username = 'postgres';
-    cleanupUrl.password = 'postgres';
-    const cleanupClient = new Client({ connectionString: cleanupUrl.toString() });
     try {
-      await cleanupClient.connect();
-      await cleanupClient.query(`DROP SCHEMA IF EXISTS migrations CASCADE`);
-      await cleanupClient.query(`
+      await superuserClient.connect();
+      await superuserClient.query(`DROP SCHEMA IF EXISTS migrations CASCADE`);
+      await superuserClient.query(`
         DO $$ DECLARE
           r RECORD;
         BEGIN
@@ -75,14 +81,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
         END $$;
       `);
       console.log('[RLS Test] Cleanup complete using superuser');
-      await cleanupClient.end();
     } catch (err) {
-      console.log('[RLS Test] Superuser cleanup failed, continuing with eliza_test');
-      try {
-        await cleanupClient.end();
-      } catch {
-        /* ignore */
-      }
+      console.log('[RLS Test] Superuser cleanup failed:', err instanceof Error ? err.message : String(err));
+      throw new Error('RLS tests require superuser access for cleanup and data setup');
     }
 
     // Initialize schema with migrations
@@ -125,17 +126,17 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Enable data isolation for these tests (required for withEntityContext to set entity context)
     process.env.ENABLE_DATA_ISOLATION = 'true';
 
-    // Setup test data (with server context via application_name)
+    // Setup test data using superuser (bypasses RLS for initial data creation)
     // servers table has no RLS, so any connection can insert
-    await setupClient.query(
+    await superuserClient.query(
       `INSERT INTO servers (id, created_at, updated_at)
        VALUES ($1, NOW(), NOW())
        ON CONFLICT (id) DO NOTHING`,
       [serverId]
     );
 
-    // Create agent (server_id will be set by DEFAULT current_server_id())
-    await setupClient.query(
+    // Create agent (explicitly set server_id for RLS)
+    await superuserClient.query(
       `INSERT INTO agents (id, name, username, server_id, created_at, updated_at)
        VALUES ($1, 'Test Agent RLS', $2, $3, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
@@ -144,15 +145,15 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
 
     // Create entities
     try {
-      const result = await setupClient.query(
-        `INSERT INTO entities (id, agent_id, names, metadata, created_at)
+      const result = await superuserClient.query(
+        `INSERT INTO entities (id, agent_id, names, metadata, server_id, created_at)
          VALUES
-           ($1, $4, ARRAY['Alice'], '{}'::jsonb, NOW()),
-           ($2, $4, ARRAY['Bob'], '{}'::jsonb, NOW()),
-           ($3, $4, ARRAY['Charlie'], '{}'::jsonb, NOW())
+           ($1, $4, ARRAY['Alice'], '{}'::jsonb, $5, NOW()),
+           ($2, $4, ARRAY['Bob'], '{}'::jsonb, $5, NOW()),
+           ($3, $4, ARRAY['Charlie'], '{}'::jsonb, $5, NOW())
          ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names
          RETURNING id`,
-        [aliceId, bobId, charlieId, agentId]
+        [aliceId, bobId, charlieId, agentId, serverId]
       );
       console.log('[RLS Test] Entities created:', result.rows.length);
     } catch (err) {
@@ -164,34 +165,34 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     }
 
     // Create rooms
-    await setupClient.query(
-      `INSERT INTO rooms (id, agent_id, source, type, created_at)
+    await superuserClient.query(
+      `INSERT INTO rooms (id, agent_id, source, type, server_id, created_at)
        VALUES
-         ($1, $3, 'test', 'DM', NOW()),
-         ($2, $3, 'test', 'GROUP', NOW())
+         ($1, $3, 'test', 'DM', $4, NOW()),
+         ($2, $3, 'test', 'GROUP', $4, NOW())
        ON CONFLICT (id) DO NOTHING`,
-      [room1Id, room2Id, agentId]
+      [room1Id, room2Id, agentId, serverId]
     );
 
     // Create participants
     // Room1: Alice + Bob
     // Room2: Bob + Charlie
     try {
-      const participantResult = await setupClient.query(
-        `INSERT INTO participants (id, entity_id, room_id, agent_id, created_at)
+      const participantResult = await superuserClient.query(
+        `INSERT INTO participants (id, entity_id, room_id, agent_id, server_id, created_at)
          VALUES
-           (gen_random_uuid(), $1, $2, $4, NOW()),
-           (gen_random_uuid(), $3, $2, $4, NOW()),
-           (gen_random_uuid(), $3, $5, $4, NOW()),
-           (gen_random_uuid(), $6, $5, $4, NOW())
+           (gen_random_uuid(), $1, $2, $4, $7, NOW()),
+           (gen_random_uuid(), $3, $2, $4, $7, NOW()),
+           (gen_random_uuid(), $3, $5, $4, $7, NOW()),
+           (gen_random_uuid(), $6, $5, $4, $7, NOW())
          ON CONFLICT DO NOTHING
          RETURNING id, entity_id`,
-        [aliceId, room1Id, bobId, agentId, room2Id, charlieId]
+        [aliceId, room1Id, bobId, agentId, room2Id, charlieId, serverId]
       );
       console.log(
         '[RLS Test] Participants created:',
         participantResult.rows.length,
-        participantResult.rows.map((r) => ({ e: r.entity_id?.substring(0, 8) }))
+        participantResult.rows.map((r: { entity_id?: string }) => ({ e: r.entity_id?.substring(0, 8) }))
       );
     } catch (err) {
       console.error(
@@ -202,62 +203,46 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       throw err;
     }
 
-    // Create memories (STRICT Entity RLS - need entity context)
+    // Create memories (with server_id explicitly set)
     // Memory in room1 (accessible to Alice and Bob)
-    await setupClient.query('BEGIN');
-    await setupClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
-    await setupClient.query(
-      `INSERT INTO memories (id, agent_id, room_id, content, type, created_at)
-       VALUES (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', NOW())`,
-      [agentId, room1Id]
+    await superuserClient.query(
+      `INSERT INTO memories (id, agent_id, room_id, content, type, server_id, created_at)
+       VALUES (gen_random_uuid(), $1, $2, '{"text": "Message in room1"}', 'message', $3, NOW())`,
+      [agentId, room1Id, serverId]
     );
-    await setupClient.query('COMMIT');
 
     // Memory in room2 (accessible to Bob and Charlie)
-    await setupClient.query('BEGIN');
-    await setupClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
-    await setupClient.query(
-      `INSERT INTO memories (id, agent_id, room_id, content, type, created_at)
-       VALUES (gen_random_uuid(), $1, $2, '{"text": "Message in room2"}', 'message', NOW())`,
-      [agentId, room2Id]
+    await superuserClient.query(
+      `INSERT INTO memories (id, agent_id, room_id, content, type, server_id, created_at)
+       VALUES (gen_random_uuid(), $1, $2, '{"text": "Message in room2"}', 'message', $3, NOW())`,
+      [agentId, room2Id, serverId]
     );
-    await setupClient.query('COMMIT');
 
     console.log('[RLS Test] Test data setup complete');
   });
 
   afterAll(async () => {
-    // Cleanup - need entity context for STRICT tables like memories
+    // Cleanup using superuser (bypasses RLS)
     try {
-      // Delete memories with entity context
-      await setupClient.query('BEGIN');
-      await setupClient.query(`SET LOCAL app.entity_id = '${aliceId}'`);
-      await setupClient.query(`DELETE FROM memories WHERE room_id = $1`, [room1Id]);
-      await setupClient.query('COMMIT');
-
-      await setupClient.query('BEGIN');
-      await setupClient.query(`SET LOCAL app.entity_id = '${bobId}'`);
-      await setupClient.query(`DELETE FROM memories WHERE room_id = $1`, [room2Id]);
-      await setupClient.query('COMMIT');
-
-      // Delete other data (non-STRICT tables)
-      await setupClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [
+      await superuserClient.query(`DELETE FROM memories WHERE room_id IN ($1, $2)`, [room1Id, room2Id]);
+      await superuserClient.query(`DELETE FROM participants WHERE room_id IN ($1, $2)`, [
         room1Id,
         room2Id,
       ]);
-      await setupClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
-      await setupClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [
+      await superuserClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
+      await superuserClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [
         aliceId,
         bobId,
         charlieId,
       ]);
-      await setupClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
-      await setupClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
+      await superuserClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
+      await superuserClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
     } catch (err) {
       console.warn('[RLS Test] Cleanup error:', err);
     }
 
     await setupClient.end();
+    await superuserClient.end();
     await manager.close();
   });
 
