@@ -18,8 +18,7 @@ import { v4 as uuidv4 } from 'uuid';
  * NOTE: This test expects rls-entity.test.ts to have run first (same BATCH_RLS),
  * which creates the schema and installs RLS functions.
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS.
+ * Uses SET app.server_id for server context (unified approach for pg and Neon).
  */
 
 describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STRICT)', () => {
@@ -38,28 +37,22 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
   const bobPrivateRoomId = uuidv4(); // Bob only
 
   beforeAll(async () => {
-    // Setup client with server context (for creating test data)
-    setupClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
+    // Setup client (for creating test data)
+    setupClient = new Client({ connectionString: POSTGRES_URL });
     await setupClient.connect();
+    await setupClient.query(`SET app.server_id = '${serverId}'`);
 
-    // Alice client with Entity RLS context
-    aliceClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
+    // Alice client
+    aliceClient = new Client({ connectionString: POSTGRES_URL });
     await aliceClient.connect();
+    await aliceClient.query(`SET app.server_id = '${serverId}'`);
 
-    // Bob client with Entity RLS context
-    bobClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
+    // Bob client
+    bobClient = new Client({ connectionString: POSTGRES_URL });
     await bobClient.connect();
+    await bobClient.query(`SET app.server_id = '${serverId}'`);
 
-    // Setup test data (with server context via application_name)
+    // Setup test data
     // servers table has no RLS, so any connection can insert
     await setupClient.query(
       `INSERT INTO servers (id, created_at, updated_at)
