@@ -346,11 +346,7 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
       }
       // Notify all listeners for real-time streaming
       for (const listener of logListeners) {
-        try {
-          listener(entry);
-        } catch {
-          // Ignore errors in listeners to prevent breaking the logging flow
-        }
+        listener(entry);
       }
     },
     clear(): void {
@@ -484,17 +480,18 @@ adzeStore.addListener(
   (log: { data?: { message?: string | unknown[]; level?: number } }) => {
     try {
       const d = log.data;
-      const msg = Array.isArray(d?.message)
-        ? d.message
+      const dMessage = d && d.message;
+      const msg = Array.isArray(dMessage)
+        ? dMessage
             .map((m: unknown) => (typeof m === "string" ? m : safeStringify(m)))
             .join(" ")
-        : typeof d?.message === "string"
-          ? d.message
+        : typeof dMessage === "string"
+          ? dMessage
           : "";
 
       const entry: LogEntry = {
         time: Date.now(),
-        level: typeof d?.level === "number" ? d.level : undefined,
+        level: (d && typeof d.level === "number") ? d.level : undefined,
         msg,
       };
       globalInMemoryDestination.write(entry);
@@ -753,8 +750,6 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     typeof level === "number" ? "info" : level || effectiveLogLevel;
   const currentLevel = levelStr.toLowerCase();
 
-  // No-op: previously captured to Sentry; removed for browser compatibility
-  const captureIfError = (_method: string, _args: unknown[]): void => {};
 
   /**
    * Invoke Adze method with error capture
@@ -764,9 +759,6 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
     if (!shouldLog(method, currentLevel)) {
       return;
     }
-
-    // Ensure Sentry sees the semantic level name (e.g., 'fatal')
-    captureIfError(method, args);
 
     // Capture to in-memory destination for API access (even for namespaced loggers)
     let msg = "";
@@ -918,8 +910,9 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
    * Clear console and memory buffer
    */
   const clear = (): void => {
-    if (typeof console?.clear === "function") {
-      console.clear();
+    const consoleClear = console && console.clear;
+    if (typeof consoleClear === "function") {
+      consoleClear();
     }
     globalInMemoryDestination.clear();
   };

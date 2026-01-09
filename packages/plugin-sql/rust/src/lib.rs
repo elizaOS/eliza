@@ -12,7 +12,7 @@
 //!
 //! ```rust,ignore
 //! use elizaos_plugin_sql::{PostgresAdapter, DatabaseAdapter};
-//! use elizaos_core::UUID;
+//! use elizaos::UUID;
 //!
 //! async fn example() -> anyhow::Result<()> {
 //!     let agent_id = UUID::new_v4();
@@ -27,6 +27,8 @@
 #![warn(missing_docs)]
 
 pub mod base;
+#[cfg(feature = "native")]
+pub mod migration;
 pub mod schema;
 
 #[cfg(feature = "native")]
@@ -39,7 +41,7 @@ pub mod pglite;
 pub mod wasm;
 
 // Re-export core types
-pub use elizaos_core::types::*;
+pub use elizaos::types::*;
 
 // Re-export adapters
 pub use base::DatabaseAdapter;
@@ -51,8 +53,8 @@ pub use postgres::PostgresAdapter;
 pub use pglite::PgLiteAdapter;
 
 /// Plugin definition for elizaOS
-pub fn plugin() -> elizaos_core::Plugin {
-    elizaos_core::Plugin::new(
+pub fn plugin() -> elizaos::Plugin {
+    elizaos::Plugin::new(
         "sql",
         "SQL database plugin with PostgreSQL and PGLite support",
     )

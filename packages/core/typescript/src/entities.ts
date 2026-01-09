@@ -127,8 +127,9 @@ async function getRecentInteractions(
           rel.sourceEntityId === entity.id),
     );
 
-    if (relationship?.metadata?.interactions) {
-      interactionScore = relationship.metadata.interactions as number;
+    const relationshipMetadata = relationship && relationship.metadata;
+    if (relationshipMetadata && relationshipMetadata.interactions) {
+      interactionScore = relationshipMetadata.interactions as number;
     }
 
     // Add bonus points for recent direct replies
@@ -182,7 +183,8 @@ export async function findEntityByName(
       if (!entity.components) return entity;
 
       // Get world roles if we have a world
-      const worldRoles = world?.metadata?.roles || {};
+      const worldMetadata = world && world.metadata;
+      const worldRoles = (worldMetadata && worldMetadata.roles) || {};
 
       // Filter components based on permissions
       entity.components = entity.components.filter((component) => {
@@ -241,7 +243,7 @@ export async function findEntityByName(
   const prompt = composePrompt({
     state: {
       roomName: (room.name || room.id) as string,
-      worldName: (world?.name || "Unknown") as string,
+      worldName: ((world && world.name) || "Unknown") as string,
       entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
       entityId: message.entityId,
       senderId: message.entityId,
@@ -271,7 +273,8 @@ export async function findEntityByName(
     if (entity) {
       // Filter components again for the returned entity
       if (entity.components) {
-        const worldRoles = world?.metadata?.roles || {};
+        const worldMetadata = world && world.metadata;
+        const worldRoles = (worldMetadata && worldMetadata.roles) || {};
         entity.components = entity.components.filter((component) => {
           if (component.sourceEntityId === message.entityId) return true;
           if (world && component.sourceEntityId) {
@@ -290,14 +293,16 @@ export async function findEntityByName(
   // Handle matches - parseKeyValueXml returns nested structures differently
   let matchesArray: EntityMatch[] = [];
   const parsedResolution = resolution as ParsedResolution;
-  if (parsedResolution.matches?.match) {
+  const parsedResolutionMatches = parsedResolution.matches;
+  if (parsedResolutionMatches && parsedResolutionMatches.match) {
     // Normalize to array
-    const matchValue = parsedResolution.matches.match;
+    const matchValue = parsedResolutionMatches.match;
     matchesArray = Array.isArray(matchValue) ? matchValue : [matchValue];
   }
 
-  if (matchesArray.length > 0 && matchesArray[0]?.name) {
-    const matchName = matchesArray[0].name.toLowerCase();
+  const firstMatch = matchesArray[0];
+  if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
+    const matchName = firstMatch.name.toLowerCase();
 
     // Find matching entity by username/handle in components or by name
     const matchingEntity = allEntities.find((entity) => {
@@ -305,10 +310,15 @@ export async function findEntityByName(
       if (entity.names.some((n) => n.toLowerCase() === matchName)) return true;
 
       // Check components for username/handle match
-      return entity.components?.some(
-        (c) =>
-          (c.data.username as string)?.toLowerCase() === matchName ||
-          (c.data.handle as string)?.toLowerCase() === matchName,
+      const entityComponents = entity.components;
+      if (!entityComponents) return false;
+      return entityComponents.some(
+        (c) => {
+          const cDataUsername = c.data.username as string;
+          const cDataHandle = c.data.handle as string;
+          return (cDataUsername && cDataUsername.toLowerCase() === matchName) ||
+            (cDataHandle && cDataHandle.toLowerCase() === matchName);
+        },
       );
     });
 
@@ -426,7 +436,7 @@ export async function getEntityDetails({
 
     uniqueEntities.set(entity.id, {
       id: entity.id,
-      name: room?.source
+      name: (room && room.source)
         ? getEntityNameFromMetadata(room.source) || entity.names[0]
         : entity.names[0],
       names: entity.names,

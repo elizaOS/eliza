@@ -68,8 +68,13 @@ export interface DescriptionMetadata extends BaseMetadata {
   type: MemoryType.DESCRIPTION;
 }
 
+/**
+ * Custom metadata with typed dynamic properties
+ */
 export interface CustomMetadata extends BaseMetadata {
-  [key: string]: unknown;
+  type: MemoryType.CUSTOM;
+  /** Custom metadata values - must be JSON-serializable */
+  [key: string]: MemoryTypeAlias | string | number | boolean | null | undefined | string[] | UUID;
 }
 
 export type MemoryMetadata =

@@ -94,7 +94,7 @@ describe("elizaOS", () => {
     };
 
     it("should add multiple agents", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
         {
           character: { ...testCharacter, name: "TestAgent2" },
@@ -108,39 +108,39 @@ describe("elizaOS", () => {
     });
 
     it("should start agents", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
-      await elizaOS.startAgents(agentIds);
+      await instance.startAgents(agentIds);
 
-      const agent = elizaOS.getAgent(agentIds[0]);
+      const agent = instance.getAgent(agentIds[0]);
       expect(agent).toBeTruthy();
     });
 
     it("should stop agents", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
-      await elizaOS.startAgents(agentIds);
-      await elizaOS.stopAgents(agentIds);
+      await instance.startAgents(agentIds);
+      await instance.stopAgents(agentIds);
 
       // Agent should still exist but be stopped
-      const agent = elizaOS.getAgent(agentIds[0]);
+      const agent = instance.getAgent(agentIds[0]);
       expect(agent).toBeTruthy();
     });
 
     it("should delete agents", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
-      await elizaOS.deleteAgents(agentIds);
+      await instance.deleteAgents(agentIds);
 
-      const agent = elizaOS.getAgent(agentIds[0]);
+      const agent = instance.getAgent(agentIds[0]);
       expect(agent).toBeUndefined();
     });
 
     it("should get all agents", async () => {
-      const _agentIds = await elizaOS.addAgents([
+      const _agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
         {
           character: { ...testCharacter, name: "TestAgent2" },
@@ -148,7 +148,7 @@ describe("elizaOS", () => {
         },
       ]);
 
-      const agents = elizaOS.getAgents();
+      const agents = instance.getAgents();
       expect(agents).toHaveLength(2);
     });
   });
@@ -161,44 +161,44 @@ describe("elizaOS", () => {
     };
 
     it("should assign elizaOS reference to runtime when agent is added", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
-      const runtime = elizaOS.getAgent(agentIds[0]);
+      const runtime = instance.getAgent(agentIds[0]);
       expect(runtime).toBeTruthy();
-      expect(runtime?.elizaOS).toBe(elizaOS);
+      expect(runtime && runtime.elizaOS).toBe(instance);
     });
 
     it("should assign elizaOS reference to runtime when agent is registered", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
-      const runtime = elizaOS.getAgent(agentIds[0]);
+      const runtime = instance.getAgent(agentIds[0]);
 
       // Remove and re-register
-      await elizaOS.deleteAgents(agentIds);
-      elizaOS.registerAgent(runtime!);
+      await instance.deleteAgents(agentIds);
+      instance.registerAgent(runtime!);
 
-      expect(runtime?.elizaOS).toBe(elizaOS);
+      expect(runtime && runtime.elizaOS).toBe(instance);
     });
 
     it("hasElizaOS() should return true when elizaOS is assigned", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
-      const runtime = elizaOS.getAgent(agentIds[0]);
-      expect(runtime?.hasElizaOS()).toBe(true);
+      const runtime = instance.getAgent(agentIds[0]);
+      expect(runtime && runtime.hasElizaOS()).toBe(true);
     });
 
     it("hasElizaOS() should narrow TypeScript type correctly", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
-      const runtime = elizaOS.getAgent(agentIds[0]);
-      if (runtime?.hasElizaOS()) {
+      const runtime = instance.getAgent(agentIds[0]);
+      if (runtime && runtime.hasElizaOS()) {
         // TypeScript should know elizaOS is defined here
         expect(runtime.elizaOS).toBeDefined();
         expect(runtime.elizaOS.handleMessage).toBeDefined();
@@ -209,34 +209,38 @@ describe("elizaOS", () => {
     });
 
     it("should clear elizaOS reference on runtime.stop()", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
-      const runtime = elizaOS.getAgent(agentIds[0]);
-      expect(runtime?.elizaOS).toBe(elizaOS);
+      const runtime = instance.getAgent(agentIds[0]);
+      expect(runtime && runtime.elizaOS).toBe(instance);
 
       // Stop the runtime
-      await runtime?.stop();
+      if (runtime) {
+        await runtime.stop();
+      }
 
       // elizaOS reference should be cleared to prevent memory leak
-      expect(runtime?.elizaOS).toBeUndefined();
+      expect(runtime && runtime.elizaOS).toBeUndefined();
     });
 
     it("should prevent memory leaks with bidirectional reference", async () => {
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
-      const runtime = elizaOS.getAgent(agentIds[0]);
+      const runtime = instance.getAgent(agentIds[0]);
 
       // Verify bidirectional reference
-      expect(runtime?.elizaOS).toBe(elizaOS);
-      expect(elizaOS.getAgent(agentIds[0])).toBe(runtime);
+      expect(runtime && runtime.elizaOS).toBe(instance);
+      expect(instance.getAgent(agentIds[0])).toBe(runtime);
 
       // Stop and verify cleanup
-      await runtime?.stop();
-      expect(runtime?.elizaOS).toBeUndefined();
+      if (runtime) {
+        await runtime.stop();
+      }
+      expect(runtime && runtime.elizaOS).toBeUndefined();
     });
   });
 
@@ -248,7 +252,7 @@ describe("elizaOS", () => {
     };
 
     it("should not store runtime in registry when ephemeral is true", async () => {
-      const result = await elizaOS.addAgents(
+      const result = await instance.addAgents(
         [{ character: testCharacter, plugins: [mockSqlPlugin] }],
         {
           ephemeral: true,
@@ -264,11 +268,11 @@ describe("elizaOS", () => {
       expect(runtime.agentId).toBeDefined();
 
       // Should NOT be in registry
-      expect(elizaOS.getAgent(runtime.agentId)).toBeUndefined();
+      expect(instance.getAgent(runtime.agentId)).toBeUndefined();
     });
 
     it("should return UUIDs by default (not runtimes)", async () => {
-      const result = await elizaOS.addAgents([
+      const result = await instance.addAgents([
         { character: testCharacter, plugins: [mockSqlPlugin] },
       ]);
 
@@ -277,7 +281,7 @@ describe("elizaOS", () => {
     });
 
     it("should return runtimes when returnRuntimes is true", async () => {
-      const result = await elizaOS.addAgents(
+      const result = await instance.addAgents(
         [{ character: testCharacter, plugins: [mockSqlPlugin] }],
         {
           returnRuntimes: true,
@@ -290,7 +294,7 @@ describe("elizaOS", () => {
     });
 
     it("should auto-start when autoStart is true", async () => {
-      const result = await elizaOS.addAgents(
+      const result = await instance.addAgents(
         [{ character: testCharacter, plugins: [mockSqlPlugin] }],
         {
           autoStart: true,
@@ -309,7 +313,7 @@ describe("elizaOS", () => {
         _custom: true,
       } as IDatabaseAdapter;
 
-      const result = await elizaOS.addAgents(
+      const result = await instance.addAgents(
         [
           {
             character: testCharacter,
@@ -328,11 +332,11 @@ describe("elizaOS", () => {
 
     it("should emit event with ephemeral flag", async () => {
       const addedHandler = mock();
-      elizaOS.addEventListener("agents:added", (e: Event) => {
+      instance.addEventListener("agents:added", (e: Event) => {
         addedHandler((e as CustomEvent).detail);
       });
 
-      await elizaOS.addAgents(
+      await instance.addAgents(
         [{ character: testCharacter, plugins: [mockSqlPlugin] }],
         {
           ephemeral: true,
@@ -352,7 +356,7 @@ describe("elizaOS", () => {
     };
 
     it("should accept runtime directly instead of UUID", async () => {
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: testCharacter, plugins: [mockSqlPlugin] }],
         {
           ephemeral: true,
@@ -366,7 +370,7 @@ describe("elizaOS", () => {
       runtime.messageService = { handleMessage: handleMessageMock };
       runtime.ensureConnection = mock().mockResolvedValue(undefined);
 
-      const result = await elizaOS.handleMessage(runtime, {
+      const result = await instance.handleMessage(runtime, {
         entityId: uuidv4() as UUID,
         roomId: uuidv4() as UUID,
         content: { text: "Hello" },
@@ -380,7 +384,7 @@ describe("elizaOS", () => {
       const unknownId = uuidv4() as UUID;
 
       await expect(
-        elizaOS.handleMessage(unknownId, {
+        instance.handleMessage(unknownId, {
           entityId: uuidv4() as UUID,
           roomId: uuidv4() as UUID,
           content: { text: "Hello" },
@@ -392,12 +396,12 @@ describe("elizaOS", () => {
   describe("Event System", () => {
     it("should emit events when agents are added", async () => {
       const addedHandler = mock();
-      elizaOS.addEventListener("agents:added", (e: Event) => {
+      instance.addEventListener("agents:added", (e: Event) => {
         const customEvent = e as CustomEvent<AgentsAddedDetail>;
         addedHandler(customEvent.detail);
       });
 
-      await elizaOS.addAgents([
+      await instance.addAgents([
         {
           character: { name: "Test1", bio: "Test agent 1" },
           plugins: [mockSqlPlugin],
@@ -416,19 +420,19 @@ describe("elizaOS", () => {
 
     it("should emit events when agents are stopped", async () => {
       const stoppedHandler = mock();
-      elizaOS.addEventListener("agents:stopped", (e: Event) => {
+      instance.addEventListener("agents:stopped", (e: Event) => {
         const customEvent = e as CustomEvent<AgentsStoppedDetail>;
         stoppedHandler(customEvent.detail);
       });
 
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         {
           character: { name: "Test1", bio: "Test agent" },
           plugins: [mockSqlPlugin],
         },
       ]);
-      await elizaOS.startAgents(agentIds);
-      await elizaOS.stopAgents(agentIds);
+      await instance.startAgents(agentIds);
+      await instance.stopAgents(agentIds);
 
       expect(stoppedHandler).toHaveBeenCalledTimes(1);
       const eventData: AgentsStoppedDetail = stoppedHandler.mock.calls[0][0];
@@ -437,18 +441,18 @@ describe("elizaOS", () => {
 
     it("should emit events when agents are deleted", async () => {
       const deletedHandler = mock();
-      elizaOS.addEventListener("agents:deleted", (e: Event) => {
+      instance.addEventListener("agents:deleted", (e: Event) => {
         const customEvent = e as CustomEvent<AgentsDeletedDetail>;
         deletedHandler(customEvent.detail);
       });
 
-      const agentIds = await elizaOS.addAgents([
+      const agentIds = await instance.addAgents([
         {
           character: { name: "Test1", bio: "Test agent" },
           plugins: [mockSqlPlugin],
         },
       ]);
-      await elizaOS.deleteAgents(agentIds);
+      await instance.deleteAgents(agentIds);
 
       expect(deletedHandler).toHaveBeenCalledTimes(1);
       const eventData: AgentsDeletedDetail = deletedHandler.mock.calls[0][0];
@@ -470,7 +474,7 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithSecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
@@ -479,7 +483,8 @@ describe("elizaOS", () => {
       const character = runtime.character;
 
       // Secrets should be encrypted (format: iv:encrypted)
-      expect(character.settings?.secrets).toBeDefined();
+      const characterSettings = character.settings;
+      expect(characterSettings && characterSettings.secrets).toBeDefined();
       const secrets = character.settings.secrets as Record<string, string>;
 
       // Check that API_KEY is encrypted (contains ':' separator for iv:encrypted format)
@@ -509,7 +514,7 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithSecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
@@ -542,13 +547,14 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithEmptySecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
 
       // Should not throw, secrets should remain empty object
-      expect(runtime.character.settings?.secrets).toEqual({});
+      const runtimeCharacterSettings = runtime.character.settings;
+      expect(runtimeCharacterSettings && runtimeCharacterSettings.secrets).toEqual({});
     });
 
     it("should handle character without settings", async () => {
@@ -558,7 +564,7 @@ describe("elizaOS", () => {
         system: "You are a test agent",
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithoutSettings, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
@@ -582,7 +588,7 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithMixedSecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
@@ -609,7 +615,7 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithRootSecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];
@@ -646,7 +652,7 @@ describe("elizaOS", () => {
         },
       };
 
-      const [runtime] = (await elizaOS.addAgents(
+      const [runtime] = (await instance.addAgents(
         [{ character: characterWithBothSecrets, plugins: [mockSqlPlugin] }],
         { returnRuntimes: true, isTestMode: true },
       )) as IAgentRuntime[];

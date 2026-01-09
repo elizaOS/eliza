@@ -8,7 +8,7 @@ import type {
   HandlerCallback,
   Provider,
 } from "./components";
-import type { IDatabaseAdapter } from "./database";
+import type { DbConnection, IDatabaseAdapter } from "./database";
 import type { IElizaOS } from "./elizaos";
 import type { ChannelType, Entity, Room, World } from "./environment";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
@@ -24,7 +24,7 @@ import type {
   TextGenerationModelType,
 } from "./model";
 import type { Plugin, Route, RuntimeEventStorage } from "./plugin";
-import type { Content, UUID } from "./primitives";
+import type { Content, Metadata, UUID } from "./primitives";
 import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { TaskWorker } from "./task";
@@ -58,7 +58,8 @@ export interface IAgentRuntime extends IDatabaseAdapter {
 
   initialize(options?: { skipMigrations?: boolean }): Promise<void>;
 
-  getConnection(): Promise<unknown>;
+  /** Get the underlying database connection. Type depends on the adapter implementation. */
+  getConnection(): Promise<DbConnection | unknown>;
 
   getService<T extends Service>(service: ServiceTypeName | string): T | null;
 
@@ -95,7 +96,7 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     state?: State,
     callback?: HandlerCallback,
     options?: {
-      onStreamChunk?: (chunk: string, messageId?: UUID) => Promise<void>;
+      onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
     },
   ): Promise<void>;
 
@@ -194,6 +195,14 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     options?: GenerateTextOptions,
   ): Promise<GenerateTextResult>;
 
+  /**
+   * Register a model handler for a specific model type.
+   * Model handlers process inference requests for specific model types.
+   * @param modelType - The type of model to register
+   * @param handler - The handler function that processes model requests
+   * @param provider - The name of the provider (plugin) registering this handler
+   * @param priority - Optional priority for handler selection (higher = preferred)
+   */
   registerModel(
     modelType: ModelTypeName | string,
     handler: (
@@ -204,6 +213,12 @@ export interface IAgentRuntime extends IDatabaseAdapter {
     priority?: number,
   ): void;
 
+  /**
+   * Get the registered model handler for a specific model type.
+   * Returns the highest priority handler if multiple are registered.
+   * @param modelType - The type of model to retrieve
+   * @returns The model handler function or undefined if not found
+   */
   getModel(
     modelType: ModelTypeName | string,
   ):

@@ -48,7 +48,6 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
-    "@elizaos/cli": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "dotenv": "^17.2.3",

@@ -321,7 +321,9 @@ describe("Python Bridge", () => {
       // Simulate response
       const pendingReq = pending.get(requestId);
       pending.delete(requestId);
-      pendingReq?.resolve({ success: true });
+      if (pendingReq) {
+        pendingReq.resolve({ success: true });
+      }
 
       expect(pending.has(requestId)).toBe(false);
 

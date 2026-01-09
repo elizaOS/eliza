@@ -67,58 +67,58 @@ start_postgres() {
 
 # Define test groups (PGLite)
 BATCH1=(
-    "typescript/src/__tests__/integration/memory.test.ts"
-    "typescript/src/__tests__/integration/cache.test.ts"
-    "typescript/src/__tests__/integration/embedding.test.ts"
+    "typescript/__tests__/integration/memory.test.ts"
+    "typescript/__tests__/integration/cache.test.ts"
+    "typescript/__tests__/integration/embedding.test.ts"
 )
 
 BATCH2=(
-    "typescript/src/__tests__/integration/agent.test.ts"
-    "typescript/src/__tests__/integration/entity.test.ts"
-    "typescript/src/__tests__/integration/entity-crud.test.ts"
+    "typescript/__tests__/integration/agent.test.ts"
+    "typescript/__tests__/integration/entity.test.ts"
+    "typescript/__tests__/integration/entity-crud.test.ts"
 )
 
 BATCH3=(
-    "typescript/src/__tests__/integration/component.test.ts"
-    "typescript/src/__tests__/integration/relationship.test.ts"
-    "typescript/src/__tests__/integration/room.test.ts"
+    "typescript/__tests__/integration/component.test.ts"
+    "typescript/__tests__/integration/relationship.test.ts"
+    "typescript/__tests__/integration/room.test.ts"
 )
 
 BATCH4=(
-    "typescript/src/__tests__/integration/world.test.ts"
-    "typescript/src/__tests__/integration/log.test.ts"
-    "typescript/src/__tests__/integration/messaging.test.ts"
+    "typescript/__tests__/integration/world.test.ts"
+    "typescript/__tests__/integration/log.test.ts"
+    "typescript/__tests__/integration/messaging.test.ts"
 )
 
 BATCH5=(
-    "typescript/src/__tests__/integration/base-comprehensive.test.ts"
-    "typescript/src/__tests__/integration/base-adapter-methods.test.ts"
-    "typescript/src/__tests__/integration/cascade-delete.test.ts"
+    "typescript/__tests__/integration/base-comprehensive.test.ts"
+    "typescript/__tests__/integration/base-adapter-methods.test.ts"
+    "typescript/__tests__/integration/cascade-delete.test.ts"
 )
 
 BATCH6=(
-    "typescript/src/__tests__/integration/entity-methods.test.ts"
-    "typescript/src/__tests__/integration/participant.test.ts"
-    "typescript/src/__tests__/integration/task.test.ts"
+    "typescript/__tests__/integration/entity-methods.test.ts"
+    "typescript/__tests__/integration/participant.test.ts"
+    "typescript/__tests__/integration/task.test.ts"
 )
 
 BATCH7=(
-    "typescript/src/__tests__/integration/utils.test.ts"
-    "typescript/src/__tests__/integration/schema-factory.test.ts"
+    "typescript/__tests__/integration/utils.test.ts"
+    "typescript/__tests__/integration/schema-factory.test.ts"
 )
 
 # PostgreSQL-specific tests
 BATCH_POSTGRES=(
-    "typescript/src/__tests__/integration/postgres/pglite-adapter.test.ts"
-    "typescript/src/__tests__/integration/postgres/postgres-init.test.ts"
-    "typescript/src/__tests__/integration/postgres/pg-adapter-integration.test.ts"
+    "typescript/__tests__/integration/postgres/pglite-adapter.test.ts"
+    "typescript/__tests__/integration/postgres/postgres-init.test.ts"
+    "typescript/__tests__/integration/postgres/pg-adapter-integration.test.ts"
 )
 
 BATCH_RLS=(
-    "typescript/src/__tests__/integration/postgres/rls-entity.test.ts"
-    "typescript/src/__tests__/integration/postgres/rls-server.test.ts"
-    "typescript/src/__tests__/integration/postgres/rls-logs.test.ts"
-    "typescript/src/__tests__/integration/postgres/rls-message-server-agents.test.ts"
+    "typescript/__tests__/integration/postgres/rls-entity.test.ts"
+    "typescript/__tests__/integration/postgres/rls-server.test.ts"
+    "typescript/__tests__/integration/postgres/rls-logs.test.ts"
+    "typescript/__tests__/integration/postgres/rls-message-server-agents.test.ts"
 )
 
 run_batch() {

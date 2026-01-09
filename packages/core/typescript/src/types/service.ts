@@ -61,9 +61,20 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
 };
 
 /**
- * Map of service type names to their implementation classes
+ * Map of service type names to their implementation classes.
+ * Plugins can extend this via module augmentation:
+ * @example
+ * ```typescript
+ * declare module '@elizaos/core' {
+ *   interface ServiceClassMap {
+ *     MY_SERVICE: typeof MyService;
+ *   }
+ * }
+ * ```
  */
-export type ServiceClassMap = {};
+export interface ServiceClassMap {
+  // Extensible via module augmentation
+}
 
 /**
  * Helper to infer service instance type from service type name
@@ -130,14 +141,14 @@ export abstract class Service {
   /** Service configuration */
   config?: Metadata;
 
-  /** Start service connection */
+  /** Start service connection - subclasses must override this */
   static async start(_runtime: IAgentRuntime): Promise<Service> {
-    throw new Error("Not implemented");
+    throw new Error("Service.start() must be implemented by subclass");
   }
 
-  /** Stop service connection */
+  /** Stop service connection - subclasses must override this */
   static async stop(_runtime: IAgentRuntime): Promise<void> {
-    throw new Error("Not implemented");
+    throw new Error("Service.stop() must be implemented by subclass");
   }
 
   /** Optional static method to register send handlers */
@@ -147,12 +158,13 @@ export abstract class Service {
 /**
  * Generic service interface that provides better type checking for services
  * @template ConfigType The configuration type for this service
+ * @template InputType The input type for processing
  * @template ResultType The result type returned by the service operations
  */
 export interface TypedService<
   ConfigType extends Metadata = Metadata,
-  InputType = unknown,
-  ResultType = unknown,
+  InputType = Record<string, string | number | boolean>,
+  ResultType = Record<string, string | number | boolean>,
 > extends Service {
   /**
    * The configuration for this service instance

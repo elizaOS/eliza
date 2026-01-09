@@ -82,6 +82,13 @@ class BaseSQLAdapter(IDatabaseAdapter):
         if not self._engine:
             raise RuntimeError("Database engine not created")
 
+        # Initialize migration service
+        from elizaos_plugin_sql.migration_service import MigrationService
+
+        migration_service = MigrationService(self._engine)
+        await migration_service.initialize()
+
+        # Create tables using Alembic or direct creation
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 

@@ -1,3 +1,4 @@
+import type { UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
@@ -248,7 +249,7 @@ export type GenerateTextParams = {
    * });
    * ```
    */
-  onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: UUID) => void | Promise<void>;
 };
 
 /**
@@ -557,14 +558,16 @@ export type PluginModelResult<K extends keyof ModelResultMap> =
 /**
  * Type guard to check if a model type supports streaming.
  */
-export function isStreamableModelType(modelType: ModelTypeName): boolean {
-  return [
-    ModelType.TEXT_SMALL,
-    ModelType.TEXT_LARGE,
-    ModelType.TEXT_REASONING_SMALL,
-    ModelType.TEXT_REASONING_LARGE,
-    ModelType.TEXT_COMPLETION,
-  ].includes(modelType as any);
+const STREAMABLE_MODEL_TYPES: ReadonlySet<string> = new Set([
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_REASONING_SMALL,
+  ModelType.TEXT_REASONING_LARGE,
+  ModelType.TEXT_COMPLETION,
+]);
+
+export function isStreamableModelType(modelType: ModelTypeName): modelType is StreamableModelType {
+  return STREAMABLE_MODEL_TYPES.has(modelType);
 }
 
 /**

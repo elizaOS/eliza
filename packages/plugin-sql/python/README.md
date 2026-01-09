@@ -14,6 +14,8 @@ pip install elizaos-plugin-sql
 - **PGLite adapter** for lightweight local development
 - **SQLAlchemy ORM** with async support
 - **Automatic migrations** using Alembic
+- **Runtime migration service** compatible with TypeScript RuntimeMigrator
+- **Plugin schema namespacing** for isolation
 - **Vector embeddings** for semantic search
 - **Full type safety** with Pydantic models
 
@@ -78,6 +80,41 @@ The plugin provides the following database tables:
 - `cache` - Key-value cache
 - `logs` - Activity logs
 
+## Migration System
+
+The package includes a migration service compatible with the TypeScript RuntimeMigrator:
+
+```python
+from elizaos_plugin_sql import MigrationService, derive_schema_name
+
+# Create migration service
+migration_service = MigrationService(engine)
+await migration_service.initialize()
+
+# Get migration status
+status = await migration_service.get_status("@your-org/plugin-name")
+
+# Derive schema name for plugin isolation
+schema_name = derive_schema_name("@your-org/plugin-name")
+# Returns: "your_org_plugin_name"
+```
+
+### Running Alembic Migrations
+
+```bash
+# Set database URL
+export POSTGRES_URL="postgresql+asyncpg://user:pass@localhost/db"
+
+# Generate a new migration
+alembic revision --autogenerate -m "Add new table"
+
+# Apply migrations
+alembic upgrade head
+
+# Rollback
+alembic downgrade -1
+```
+
 ## Development
 
 ```bash
@@ -86,6 +123,9 @@ pip install -e ".[dev]"
 
 # Run tests
 pytest
+
+# Run migration tests
+pytest tests/test_migrations.py
 
 # Type checking
 mypy elizaos_plugin_sql
@@ -97,4 +137,5 @@ ruff check elizaos_plugin_sql
 ## License
 
 MIT
+
 

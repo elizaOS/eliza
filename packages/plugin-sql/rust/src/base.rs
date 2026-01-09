@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use elizaos_core::{
+use elizaos::{
     Agent, Component, Entity, GetMemoriesParams, Log, Memory, MemoryMetadata, Metadata,
     Participant, Relationship, Room, SearchMemoriesParams, Task, World, UUID,
 };

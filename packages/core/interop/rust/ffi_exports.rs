@@ -6,8 +6,8 @@
 //! # Example
 //!
 //! ```rust
-//! use elizaos_core::interop::ffi_exports::*;
-//! use elizaos_core::types::Plugin;
+//! use elizaos::interop::ffi_exports::*;
+//! use elizaos::types::Plugin;
 //!
 //! // Create your plugin
 //! let plugin = Plugin::new("my-plugin", "A cool plugin");
@@ -280,7 +280,7 @@ pub extern "C" fn elizaos_free_string(ptr: *mut c_char) {
 /// # Example
 ///
 /// ```rust,ignore
-/// use elizaos_core::interop::ffi_exports::*;
+/// use elizaos::interop::ffi_exports::*;
 ///
 /// struct MyPlugin { /* ... */ }
 ///

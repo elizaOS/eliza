@@ -8,6 +8,7 @@ use tracing::{debug, info};
 /// PostgreSQL connection manager
 pub struct PostgresConnectionManager {
     pool: PgPool,
+    #[allow(dead_code)]
     connection_string: String,
 }
 
@@ -53,15 +54,40 @@ impl PostgresConnectionManager {
         self.pool.close().await;
     }
 
+    /// Execute SQL that may contain multiple statements separated by semicolons
+    async fn execute_sql(&self, sql: &str) -> Result<()> {
+        // Split by semicolons and execute each statement separately
+        // sqlx doesn't support multiple statements in a single query
+        for statement in sql.split(';') {
+            let trimmed = statement.trim();
+            if !trimmed.is_empty() {
+                sqlx::query(trimmed)
+                    .execute(&self.pool)
+                    .await
+                    .with_context(|| format!("Failed to execute: {}", &trimmed[..trimmed.len().min(50)]))?;
+            }
+        }
+        Ok(())
+    }
+
     /// Run database migrations
     pub async fn run_migrations(&self) -> Result<()> {
+        #[cfg(feature = "native")]
+        {
+            use crate::migration::MigrationService;
+
+            // Initialize migration service
+            // Note: PgPool is already reference-counted, so we can clone it
+            let migration_service = MigrationService::new(self.pool.clone());
+            migration_service.initialize().await?;
+        }
+
         use crate::schema::*;
 
-        // Create vector extension
-        sqlx::query(embedding::ENSURE_VECTOR_EXTENSION)
-            .execute(&self.pool)
-            .await
-            .context("Failed to create vector extension")?;
+        // Create vector extension (ignore errors if not available)
+        if let Err(e) = self.execute_sql(embedding::ENSURE_VECTOR_EXTENSION).await {
+            info!("Vector extension not available (optional): {}", e);
+        }
 
         // Create tables in order (respecting foreign key constraints)
         let static_migrations = [
@@ -78,21 +104,18 @@ impl PostgresConnectionManager {
         ];
 
         for migration in static_migrations {
-            sqlx::query(migration)
-                .execute(&self.pool)
+            self.execute_sql(migration)
                 .await
                 .context("Failed to run migration")?;
         }
 
         // Create embeddings table with dynamic dimension
         let embedding_sql = embedding::create_embeddings_table_sql(embedding::DEFAULT_DIMENSION);
-        sqlx::query(&embedding_sql)
-            .execute(&self.pool)
+        self.execute_sql(&embedding_sql)
             .await
             .context("Failed to create embeddings table")?;
 
-        sqlx::query(embedding::CREATE_EMBEDDINGS_INDEXES)
-            .execute(&self.pool)
+        self.execute_sql(embedding::CREATE_EMBEDDINGS_INDEXES)
             .await
             .context("Failed to create embeddings indexes")?;
 
@@ -113,8 +136,7 @@ impl PostgresConnectionManager {
         ];
 
         for migration in remaining_migrations {
-            sqlx::query(migration)
-                .execute(&self.pool)
+            self.execute_sql(migration)
                 .await
                 .context("Failed to run migration")?;
         }

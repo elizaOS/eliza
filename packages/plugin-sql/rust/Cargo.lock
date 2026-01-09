@@ -342,7 +342,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "elizaos-core"
+name = "elizaos"
 version = "2.0.0"
 dependencies = [
  "anyhow",
@@ -374,11 +374,12 @@ dependencies = [
  "async-trait",
  "chrono",
  "console_error_panic_hook",
- "elizaos-core",
+ "elizaos",
  "futures",
  "getrandom 0.2.16",
  "js-sys",
  "pretty_assertions",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

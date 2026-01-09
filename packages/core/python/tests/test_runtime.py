@@ -315,3 +315,4 @@ class TestAgentRuntimeServices:
     def test_get_registered_service_types_empty(self, runtime: AgentRuntime) -> None:
         """Test getting registered service types when empty."""
         assert runtime.get_registered_service_types() == []
+

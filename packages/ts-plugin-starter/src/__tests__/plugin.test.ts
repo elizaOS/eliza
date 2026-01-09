@@ -31,16 +31,21 @@ describe("Plugin Configuration", () => {
     expect(starterPlugin.description).toBeDefined();
     expect(starterPlugin.description.length).toBeGreaterThan(0);
     expect(starterPlugin.actions).toBeDefined();
-    expect(starterPlugin.actions?.length).toBeGreaterThan(0);
+    const starterPluginActions = starterPlugin.actions;
+    expect(starterPluginActions && starterPluginActions.length).toBeGreaterThan(0);
     expect(starterPlugin.providers).toBeDefined();
-    expect(starterPlugin.providers?.length).toBeGreaterThan(0);
+    const starterPluginProviders = starterPlugin.providers;
+    expect(starterPluginProviders && starterPluginProviders.length).toBeGreaterThan(0);
     expect(starterPlugin.services).toBeDefined();
-    expect(starterPlugin.services?.length).toBeGreaterThan(0);
+    const starterPluginServices = starterPlugin.services;
+    expect(starterPluginServices && starterPluginServices.length).toBeGreaterThan(0);
     expect(starterPlugin.models).toBeDefined();
-    expect(starterPlugin.models?.[ModelType.TEXT_SMALL]).toBeDefined();
-    expect(starterPlugin.models?.[ModelType.TEXT_LARGE]).toBeDefined();
+    const starterPluginModels = starterPlugin.models;
+    expect(starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL]).toBeDefined();
+    expect(starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE]).toBeDefined();
     expect(starterPlugin.routes).toBeDefined();
-    expect(starterPlugin.routes?.length).toBeGreaterThan(0);
+    const starterPluginRoutes = starterPlugin.routes;
+    expect(starterPluginRoutes && starterPluginRoutes.length).toBeGreaterThan(0);
     expect(starterPlugin.events).toBeDefined();
   });
 
@@ -91,7 +96,8 @@ describe("Plugin Configuration", () => {
 
 describe("Hello World Action", () => {
   let runtime: IAgentRuntime;
-  const helloWorldAction = starterPlugin.actions?.[0];
+  const starterPluginActions = starterPlugin.actions;
+  const helloWorldAction = starterPluginActions && starterPluginActions[0];
 
   beforeEach(() => {
     runtime = createMockRuntime();
@@ -99,11 +105,11 @@ describe("Hello World Action", () => {
 
   it("should have hello world action", () => {
     expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction?.name).toBe("HELLO_WORLD");
+    expect(helloWorldAction && helloWorldAction.name).toBe("HELLO_WORLD");
   });
 
   it("should always validate messages (current implementation)", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -126,7 +132,7 @@ describe("Hello World Action", () => {
   });
 
   it("should validate even without text content", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -143,7 +149,7 @@ describe("Hello World Action", () => {
   });
 
   it("should properly validate hello messages", async () => {
-    if (!helloWorldAction?.validate) {
+    if (!helloWorldAction || !helloWorldAction.validate) {
       throw new Error("Hello world action validate not found");
     }
 
@@ -180,7 +186,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle hello world action with callback", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -219,7 +225,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle errors gracefully", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -252,7 +258,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle missing callback gracefully", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -274,7 +280,7 @@ describe("Hello World Action", () => {
   });
 
   it("should handle state parameter correctly", async () => {
-    if (!helloWorldAction?.handler) {
+    if (!helloWorldAction || !helloWorldAction.handler) {
       throw new Error("Hello world action handler not found");
     }
 
@@ -299,7 +305,8 @@ describe("Hello World Action", () => {
 });
 
 describe("Hello World Provider", () => {
-  const provider = starterPlugin.providers?.[0];
+  const starterPluginProviders = starterPlugin.providers;
+  const provider = starterPluginProviders && starterPluginProviders[0];
   let runtime: IAgentRuntime;
 
   beforeEach(() => {
@@ -308,11 +315,11 @@ describe("Hello World Provider", () => {
 
   it("should have hello world provider", () => {
     expect(provider).toBeDefined();
-    expect(provider?.name).toBe("HELLO_WORLD_PROVIDER");
+    expect(provider && provider.name).toBe("HELLO_WORLD_PROVIDER");
   });
 
   it("should provide hello world data", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -329,7 +336,7 @@ describe("Hello World Provider", () => {
   });
 
   it("should provide consistent structure across calls", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -349,7 +356,7 @@ describe("Hello World Provider", () => {
   });
 
   it("should handle different input states", async () => {
-    if (!provider?.get) {
+    if (!provider || !provider.get) {
       throw new Error("Hello world provider not found");
     }
 
@@ -378,7 +385,8 @@ describe("Model Handlers", () => {
   });
 
   it("should handle TEXT_SMALL model", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
+    const starterPluginModels = starterPlugin.models;
+    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL];
     if (!handler) {
       throw new Error("TEXT_SMALL model handler not found");
     }
@@ -397,7 +405,8 @@ describe("Model Handlers", () => {
   });
 
   it("should handle TEXT_LARGE model with custom parameters", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
+    const starterPluginModels = starterPlugin.models;
+    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE];
     if (!handler) {
       throw new Error("TEXT_LARGE model handler not found");
     }
@@ -417,7 +426,8 @@ describe("Model Handlers", () => {
   });
 
   it("should handle empty prompt", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
+    const starterPluginModels = starterPlugin.models;
+    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_SMALL];
     if (!handler) {
       throw new Error("TEXT_SMALL model handler not found");
     }
@@ -437,7 +447,8 @@ describe("Model Handlers", () => {
   });
 
   it("should handle missing parameters", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
+    const starterPluginModels = starterPlugin.models;
+    const handler = starterPluginModels && starterPluginModels[ModelType.TEXT_LARGE];
     if (!handler) {
       throw new Error("TEXT_LARGE model handler not found");
     }
@@ -464,10 +475,11 @@ describe("API Routes", () => {
   });
 
   it("should handle hello world route", async () => {
-    const helloRoute = starterPlugin.routes?.find(
+    const starterPluginRoutes = starterPlugin.routes;
+    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
       (r) => r.name === "hello-world-route",
     );
-    if (!helloRoute?.handler) {
+    if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
 
@@ -485,22 +497,24 @@ describe("API Routes", () => {
   });
 
   it("should validate route configuration", () => {
-    const helloRoute = starterPlugin.routes?.find(
+    const starterPluginRoutes = starterPlugin.routes;
+    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
       (r) => r.name === "hello-world-route",
     );
 
     expect(helloRoute).toBeDefined();
-    expect(helloRoute?.path).toBe("/helloworld");
-    expect(helloRoute?.type).toBe("GET");
+    expect(helloRoute && helloRoute.path).toBe("/helloworld");
+    expect(helloRoute && helloRoute.type).toBe("GET");
     // Routes don't have a public property in the current implementation
-    expect(helloRoute?.handler).toBeDefined();
+    expect(helloRoute && helloRoute.handler).toBeDefined();
   });
 
   it("should handle request with query parameters", async () => {
-    const helloRoute = starterPlugin.routes?.find(
+    const starterPluginRoutes = starterPlugin.routes;
+    const helloRoute = starterPluginRoutes && starterPluginRoutes.find(
       (r) => r.name === "hello-world-route",
     );
-    if (!helloRoute?.handler) {
+    if (!helloRoute || !helloRoute.handler) {
       throw new Error("Hello world route handler not found");
     }
 
@@ -541,7 +555,9 @@ describe("Event Handlers", () => {
   });
 
   it("should log when MESSAGE_RECEIVED event is triggered", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
+    const starterPluginEvents = starterPlugin.events;
+    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents && messageReceivedEvents[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
@@ -553,7 +569,9 @@ describe("Event Handlers", () => {
   });
 
   it("should handle malformed event payload", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
+    const starterPluginEvents = starterPlugin.events;
+    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents && messageReceivedEvents[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }
@@ -569,7 +587,9 @@ describe("Event Handlers", () => {
   });
 
   it("should handle event with empty message content", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
+    const starterPluginEvents = starterPlugin.events;
+    const messageReceivedEvents = starterPluginEvents && starterPluginEvents[EventType.MESSAGE_RECEIVED];
+    const handler = messageReceivedEvents && messageReceivedEvents[0];
     if (!handler) {
       throw new Error("MESSAGE_RECEIVED event handler not found");
     }

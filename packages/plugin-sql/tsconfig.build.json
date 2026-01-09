@@ -7,22 +7,22 @@
     "emitDeclarationOnly": true
   },
   "include": [
-    "typescript/src/index.browser.ts",
-    "typescript/src/pglite/**/*.ts",
-    "typescript/src/schema/**/*.ts",
-    "typescript/src/base.ts",
-    "typescript/src/types.ts",
-    "typescript/src/utils.browser.ts",
-    "typescript/src/migration-service.ts",
-    "typescript/src/migrations.ts",
-    "typescript/src/rls.ts",
-    "typescript/src/runtime-migrator/**/*.ts"
+    "typescript/index.browser.ts",
+    "typescript/pglite/**/*.ts",
+    "typescript/schema/**/*.ts",
+    "typescript/base.ts",
+    "typescript/types.ts",
+    "typescript/utils.browser.ts",
+    "typescript/migration-service.ts",
+    "typescript/migrations.ts",
+    "typescript/rls.ts",
+    "typescript/runtime-migrator/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "typescript/src/**/__tests__/**",
-    "typescript/src/**/*.test.ts",
-    "typescript/src/**/*.spec.ts"
+    "typescript/**/__tests__/**",
+    "typescript/**/*.test.ts",
+    "typescript/**/*.spec.ts"
   ]
 }

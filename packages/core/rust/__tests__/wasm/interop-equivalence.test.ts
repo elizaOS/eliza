@@ -33,7 +33,7 @@ describeInterop("TypeScript/Rust Interop Equivalence", () => {
 
   beforeAll(async () => {
     try {
-      wasm = await import("../../pkg-node/elizaos_core.js");
+      wasm = await import("../../pkg-node/elizaos.js");
     } catch (error) {
       console.warn("WASM module not available:", error);
     }

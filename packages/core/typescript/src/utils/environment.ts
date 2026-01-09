@@ -30,16 +30,10 @@ export function detectEnvironment(): RuntimeEnvironment {
   }
 
   // Check for browser
-  interface GlobalWithWindow {
-    window?: Window & {
-      document?: Document;
-    };
-  }
-
   if (
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as GlobalWithWindow).window !== "undefined" &&
-    typeof (globalThis as GlobalWithWindow).window?.document !== "undefined"
+    typeof (globalThis as { window?: Window }).window !== "undefined" &&
+    typeof (globalThis as { document?: Document }).document !== "undefined"
   ) {
     return "browser";
   }
@@ -54,30 +48,16 @@ class BrowserEnvironmentStore {
   private store: EnvironmentConfig = {};
 
   constructor() {
-    interface GlobalWithWindowEnv {
-      window?: {
-        ENV?: EnvironmentConfig;
-      };
-    }
-
-    interface GlobalWithEnv {
-      __ENV__?: EnvironmentConfig;
-    }
-
     // Load from window.ENV if available (common pattern for browser apps)
-    const windowWithEnv = globalThis as GlobalWithWindowEnv;
-    if (
-      typeof globalThis !== "undefined" &&
-      windowWithEnv.window &&
-      windowWithEnv.window.ENV
-    ) {
-      this.store = { ...windowWithEnv.window.ENV };
+    const globalWindow = (globalThis as { window?: { ENV?: EnvironmentConfig } }).window;
+    if (globalWindow && globalWindow.ENV) {
+      this.store = { ...globalWindow.ENV };
     }
 
     // Also check for __ENV__ (another common pattern)
-    const globalWithEnv = globalThis as GlobalWithEnv;
-    if (typeof globalThis !== "undefined" && globalWithEnv.__ENV__) {
-      this.store = { ...this.store, ...globalWithEnv.__ENV__ };
+    const globalEnv = (globalThis as { __ENV__?: EnvironmentConfig }).__ENV__;
+    if (globalEnv) {
+      this.store = { ...this.store, ...globalEnv };
     }
   }
 
@@ -103,13 +83,12 @@ class BrowserEnvironmentStore {
  * Environment abstraction class
  */
 class Environment {
-  private runtime: RuntimeEnvironment;
-  private browserStore?: BrowserEnvironmentStore;
+  private readonly runtime: RuntimeEnvironment;
+  private browserStore: BrowserEnvironmentStore | null = null;
   private cache: Map<string, string | undefined> = new Map();
 
   constructor() {
     this.runtime = detectEnvironment();
-
     if (this.runtime === "browser") {
       this.browserStore = new BrowserEnvironmentStore();
     }
@@ -143,38 +122,21 @@ class Environment {
     // Check cache first
     if (this.cache.has(key)) {
       const cached = this.cache.get(key);
-      return cached === undefined && defaultValue !== undefined
-        ? defaultValue
-        : cached;
+      return cached ?? defaultValue;
     }
 
     let value: string | undefined;
 
-    switch (this.runtime) {
-      case "node":
-        // In Node.js, use process.env
-        if (typeof process !== "undefined" && process.env) {
-          value = process.env[key];
-        }
-        break;
-
-      case "browser":
-        // In browser, use our store
-        if (this.browserStore) {
-          value = this.browserStore.get(key);
-        }
-        break;
-
-      default:
-        value = undefined;
+    if (this.runtime === "node") {
+      value = process.env[key];
+    } else if (this.browserStore) {
+      value = this.browserStore.get(key);
     }
 
     // Cache the result
     this.cache.set(key, value);
 
-    return value === undefined && defaultValue !== undefined
-      ? defaultValue
-      : value;
+    return value ?? defaultValue;
   }
 
   /**
@@ -186,18 +148,10 @@ class Environment {
     // Clear cache
     this.cache.delete(key);
 
-    switch (this.runtime) {
-      case "node":
-        if (typeof process !== "undefined" && process.env) {
-          process.env[key] = stringValue;
-        }
-        break;
-
-      case "browser":
-        if (this.browserStore) {
-          this.browserStore.set(key, value);
-        }
-        break;
+    if (this.runtime === "node") {
+      process.env[key] = stringValue;
+    } else if (this.browserStore) {
+      this.browserStore.set(key, value);
     }
   }
 
@@ -205,26 +159,19 @@ class Environment {
    * Check if an environment variable exists
    */
   has(key: string): boolean {
-    const value = this.get(key);
-    return value !== undefined;
+    return this.get(key) !== undefined;
   }
 
   /**
-   * Get all environment variables (filtered for safety)
+   * Get all environment variables
    */
   getAll(): EnvironmentConfig {
-    switch (this.runtime) {
-      case "node":
-        if (typeof process !== "undefined" && process.env) {
-          return { ...process.env };
-        }
-        break;
+    if (this.runtime === "node") {
+      return { ...process.env };
+    }
 
-      case "browser":
-        if (this.browserStore) {
-          return this.browserStore.getAll();
-        }
-        break;
+    if (this.browserStore) {
+      return this.browserStore.getAll();
     }
 
     return {};
@@ -235,12 +182,9 @@ class Environment {
    */
   getBoolean(key: string, defaultValue = false): boolean {
     const value = this.get(key);
-
     if (value === undefined) {
       return defaultValue;
     }
-
-    // Common truthy values
     return ["true", "1", "yes", "on"].includes(value.toLowerCase());
   }
 
@@ -249,11 +193,9 @@ class Environment {
    */
   getNumber(key: string, defaultValue?: number): number | undefined {
     const value = this.get(key);
-
     if (value === undefined) {
       return defaultValue;
     }
-
     const parsed = Number(value);
     return Number.isNaN(parsed) ? defaultValue : parsed;
   }
@@ -326,11 +268,11 @@ export function getNumberEnv(
 export function initBrowserEnvironment(config: EnvironmentConfig): void {
   const env = getEnvironment();
   if (env.isBrowser()) {
-    Object.entries(config).forEach(([key, value]) => {
+    for (const [key, value] of Object.entries(config)) {
       if (value !== undefined) {
         env.set(key, value);
       }
-    });
+    }
   }
 }
 
@@ -364,15 +306,12 @@ export function findEnvFile(
     return null;
   }
 
-  // Dynamic import to avoid bundling issues in browser
   const fs = require("node:fs");
   const path = require("node:path");
 
   let currentDir = startDir || process.cwd();
 
-  // Traverse up the directory tree
   while (true) {
-    // Check each possible filename in the current directory
     for (const filename of filenames) {
       const candidate = path.join(currentDir, filename);
       if (fs.existsSync(candidate)) {
@@ -380,10 +319,8 @@ export function findEnvFile(
       }
     }
 
-    // Move to parent directory
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
-      // Reached root, stop searching
       break;
     }
     currentDir = parentDir;
@@ -394,50 +331,31 @@ export function findEnvFile(
 
 /**
  * Load environment variables from .env file into process.env
- * This function is idempotent - safe to call multiple times
  *
  * Node.js only - does nothing in browser environments
  *
  * @param envPath - Optional explicit path to .env file. If not provided, will search upwards from cwd
- * @returns true if .env was found and loaded, false otherwise
- *
- * @example
- * ```typescript
- * // Load from auto-discovered .env file
- * loadEnvFile();
- *
- * // Load from specific path
- * loadEnvFile('/path/to/.env');
- * ```
+ * @returns true if .env was found and loaded successfully
+ * @throws Error if the .env file exists but cannot be parsed
  */
 export function loadEnvFile(envPath?: string): boolean {
   if (typeof process === "undefined" || !process.cwd) {
     return false;
   }
 
-  // Dynamic import to avoid bundling dotenv in browser
   const dotenv = require("dotenv");
 
-  // Find .env file if path not explicitly provided
   const resolvedPath = envPath || findEnvFile();
   if (!resolvedPath) {
     return false;
   }
 
-  // Load .env into process.env
-  // Note: dotenv won't override existing process.env vars, but calling loadEnvFile()
-  // multiple times with different paths will merge variables from multiple files
   const result = dotenv.config({ path: resolvedPath });
 
   if (result.error) {
-    // File exists but couldn't be parsed
-    if (typeof console !== "undefined" && console.warn) {
-      console.warn(
-        `Failed to parse .env file at ${resolvedPath}:`,
-        result.error,
-      );
-    }
-    return false;
+    throw new Error(
+      `Failed to parse .env file at ${resolvedPath}: ${result.error.message}`,
+    );
   }
 
   return true;

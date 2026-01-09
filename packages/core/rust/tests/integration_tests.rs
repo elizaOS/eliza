@@ -10,7 +10,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use elizaos_core::{
+use elizaos::{
     parse_character,
     runtime::{AgentRuntime, DatabaseAdapter, RuntimeOptions},
     types::{
@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct MockDatabaseAdapter {
     memories: Mutex<HashMap<String, Memory>>,
-    agents: Mutex<HashMap<String, elizaos_core::Agent>>,
+    agents: Mutex<HashMap<String, elizaos::Agent>>,
     rooms: Mutex<HashMap<String, Room>>,
     entities: Mutex<HashMap<String, Entity>>,
     worlds: Mutex<HashMap<String, World>>,
@@ -60,12 +60,12 @@ impl DatabaseAdapter for MockDatabaseAdapter {
         Ok(*initialized)
     }
 
-    async fn get_agent(&self, agent_id: &UUID) -> Result<Option<elizaos_core::Agent>> {
+    async fn get_agent(&self, agent_id: &UUID) -> Result<Option<elizaos::Agent>> {
         let agents = self.agents.lock().unwrap();
         Ok(agents.get(agent_id.as_str()).cloned())
     }
 
-    async fn create_agent(&self, agent: &elizaos_core::Agent) -> Result<bool> {
+    async fn create_agent(&self, agent: &elizaos::Agent) -> Result<bool> {
         let mut agents = self.agents.lock().unwrap();
         if let Some(id) = &agent.character.id {
             agents.insert(id.as_str().to_string(), agent.clone());
@@ -75,7 +75,7 @@ impl DatabaseAdapter for MockDatabaseAdapter {
         }
     }
 
-    async fn update_agent(&self, agent_id: &UUID, agent: &elizaos_core::Agent) -> Result<bool> {
+    async fn update_agent(&self, agent_id: &UUID, agent: &elizaos::Agent) -> Result<bool> {
         let mut agents = self.agents.lock().unwrap();
         agents.insert(agent_id.as_str().to_string(), agent.clone());
         Ok(true)
@@ -1189,7 +1189,7 @@ mod database_adapter_tests {
         adapter.create_world(&world).await.unwrap();
 
         // Create room
-        let room = Room::new("test-room", "test", elizaos_core::types::ChannelType::Group);
+        let room = Room::new("test-room", "test", elizaos::types::ChannelType::Group);
         let room_id = adapter.create_room(&room).await.unwrap();
 
         // Retrieve room

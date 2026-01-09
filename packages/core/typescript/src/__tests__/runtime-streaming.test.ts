@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { AgentRuntime } from "../runtime";
 import {
   getStreamingContextManager,
@@ -8,14 +8,32 @@ import {
   setStreamingContextManager,
 } from "../streaming-context";
 import { createNodeStreamingContextManager } from "../streaming-context.node";
-import type { Character } from "../types";
+import type { Character, IDatabaseAdapter } from "../types";
 import {
   type GenerateTextParams,
   ModelType,
   type TextStreamResult,
 } from "../types/model";
 import { stringToUuid } from "../utils";
-import { createMockAdapter } from "./test-helpers";
+
+/**
+ * Minimal mock adapter for testing AgentRuntime streaming.
+ * Uses a Proxy to return mock implementations for all methods.
+ * Caches mock functions so they can be inspected later.
+ */
+function createMinimalMockAdapter(): IDatabaseAdapter {
+  const mockCache: Record<string, ReturnType<typeof mock>> = {};
+  return new Proxy({} as IDatabaseAdapter, {
+    get: (_target, prop) => {
+      if (prop === "db") return {};
+      const propStr = String(prop);
+      if (!mockCache[propStr]) {
+        mockCache[propStr] = mock().mockResolvedValue(null);
+      }
+      return mockCache[propStr];
+    },
+  });
+}
 
 describe("useModel Streaming", () => {
   let runtime: AgentRuntime;
@@ -58,7 +76,7 @@ describe("useModel Streaming", () => {
     runtime = new AgentRuntime({
       agentId: stringToUuid("test-streaming-agent"),
       character: mockCharacter,
-      adapter: createMockAdapter(),
+      adapter: createMinimalMockAdapter(),
     });
   });
 
@@ -274,7 +292,7 @@ describe("useModel Streaming", () => {
       expect(contextChunks).toEqual(mockChunks);
     });
 
-    it("should continue streaming if one callback throws", async () => {
+    it("should propagate error if callback throws", async () => {
       const paramsChunks: string[] = [];
       const contextChunks: string[] = [];
       const mockChunks = ["A", "B", "C"];
@@ -300,21 +318,21 @@ describe("useModel Streaming", () => {
         },
       };
 
-      const result = await runWithStreamingContext(context, () =>
-        runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: "Test",
-          onStreamChunk: (chunk: string) => {
-            paramsChunks.push(chunk);
-          },
-        }),
-      );
+      await expect(
+        runWithStreamingContext(context, () =>
+          runtime.useModel(ModelType.TEXT_LARGE, {
+            prompt: "Test",
+            onStreamChunk: (chunk: string) => {
+              paramsChunks.push(chunk);
+            },
+          }),
+        ),
+      ).rejects.toThrow("Context callback error");
 
-      // Should complete successfully despite error
-      expect(result).toBe("ABC");
-      // Params callback should receive all chunks
-      expect(paramsChunks).toEqual(["A", "B", "C"]);
-      // Context callback should receive A and C (B threw)
-      expect(contextChunks).toEqual(["A", "C"]);
+      // Params callback should receive chunks up to the error
+      expect(paramsChunks).toEqual(["A", "B"]);
+      // Context callback should receive only A (B threw)
+      expect(contextChunks).toEqual(["A"]);
     });
   });
 
@@ -425,7 +443,7 @@ describe("useModel Streaming", () => {
   describe("database logging", () => {
     it("should log streaming model calls to database", async () => {
       const mockChunks = ["Hello", " ", "World"];
-      const mockAdapter = createMockAdapter();
+      const mockAdapter = createMinimalMockAdapter();
 
       const streamingRuntime = new AgentRuntime({
         agentId: stringToUuid("test-logging-agent"),
@@ -462,7 +480,7 @@ describe("useModel Streaming", () => {
     });
 
     it("should log non-streaming model calls to database", async () => {
-      const mockAdapter = createMockAdapter();
+      const mockAdapter = createMinimalMockAdapter();
 
       const nonStreamingRuntime = new AgentRuntime({
         agentId: stringToUuid("test-logging-agent-2"),

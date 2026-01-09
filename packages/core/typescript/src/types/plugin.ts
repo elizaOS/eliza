@@ -8,13 +8,24 @@ import type { Service } from "./service";
 import type { TestSuite } from "./testing";
 
 /**
+ * Supported types for route request body fields
+ */
+export type RouteBodyValue =
+  | string
+  | number
+  | boolean
+  | null
+  | RouteBodyValue[]
+  | { [key: string]: RouteBodyValue };
+
+/**
  * Minimal request interface
  * Plugins can use this type for route handlers
  */
 export interface RouteRequest {
-  body?: unknown;
+  body?: Record<string, RouteBodyValue>;
   params?: Record<string, string>;
-  query?: Record<string, unknown>;
+  query?: Record<string, string | string[]>;
   headers?: Record<string, string | string[] | undefined>;
   method?: string;
   path?: string;
@@ -34,19 +45,53 @@ export interface RouteResponse {
   headersSent?: boolean;
 }
 
-export type Route = {
+interface BaseRoute {
   type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
   path: string;
   filePath?: string;
-  public?: boolean;
-  name?: string extends { public: true } ? string : string | undefined;
   handler?: (
     req: RouteRequest,
     res: RouteResponse,
     runtime: IAgentRuntime,
   ) => Promise<void>;
   isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
-};
+}
+
+interface PublicRoute extends BaseRoute {
+  public: true;
+  name: string; // Name is required for public routes
+}
+
+interface PrivateRoute extends BaseRoute {
+  public?: false;
+  name?: string; // Name is optional for private routes
+}
+
+export type Route = PublicRoute | PrivateRoute;
+
+/**
+ * JSON Schema type definition for component validation
+ */
+export interface JSONSchemaDefinition {
+  type: "string" | "number" | "boolean" | "object" | "array" | "null";
+  properties?: Record<string, JSONSchemaDefinition>;
+  items?: JSONSchemaDefinition;
+  required?: string[];
+  enum?: (string | number | boolean)[];
+  description?: string;
+}
+
+/**
+ * Component type definition for entity components
+ */
+export interface ComponentTypeDefinition {
+  /** Component type name */
+  name: string;
+  /** JSON Schema for component data validation */
+  schema: JSONSchemaDefinition;
+  /** Optional custom validator function */
+  validator?: (data: Record<string, RouteBodyValue>) => boolean;
+}
 
 /**
  * Plugin for extending agent functionality
@@ -71,17 +116,13 @@ export interface Plugin {
     runtime: IAgentRuntime,
   ) => Promise<void>;
 
-  // Configuration
-  config?: { [key: string]: string | number | boolean | null | undefined };
+  /** Plugin configuration - string keys to primitive values */
+  config?: Record<string, string | number | boolean | null>;
 
   services?: (typeof Service)[];
 
-  // Entity component definitions
-  componentTypes?: {
-    name: string;
-    schema: Record<string, unknown>;
-    validator?: (data: unknown) => boolean;
-  }[];
+  /** Entity component definitions with JSON schema */
+  componentTypes?: ComponentTypeDefinition[];
 
   // Optional plugin features
   actions?: Action[];

@@ -4,20 +4,40 @@
  * that can be customized via environment variables.
  */
 
-// Browser-safe path utilities
-const pathJoin = (...parts: string[]) => {
+/**
+ * Join path segments, using native path.join in Node.js or simple string join in browser
+ */
+function pathJoin(...parts: string[]): string {
   if (typeof process !== "undefined" && process.platform) {
-    // Node.js environment - use native path module
     const path = require("node:path");
     return path.join(...parts);
   }
-  // Browser or fallback implementation
+  // Browser fallback: simple forward-slash join
   return parts
-    .filter((part) => part)
+    .filter(Boolean)
     .join("/")
-    .replace(/\/+/g, "/")
-    .replace(/\/$/, "");
-};
+    .replace(/\/+/g, "/");
+}
+
+/**
+ * Get the current working directory, with browser fallback
+ */
+function getCwd(): string {
+  if (typeof process !== "undefined" && process.cwd) {
+    return process.cwd();
+  }
+  return ".";
+}
+
+/**
+ * Get an environment variable value
+ */
+function getEnvVar(key: string): string | undefined {
+  if (typeof process !== "undefined" && process.env) {
+    return process.env[key];
+  }
+  return undefined;
+}
 
 /**
  * Interface for elizaOS paths configuration
@@ -32,11 +52,45 @@ export interface ElizaPathsConfig {
 }
 
 /**
+ * Path configuration with environment variable key and default subdirectory
+ */
+interface PathConfig {
+  envKey: string;
+  subPath: string[];
+}
+
+/**
+ * Path configurations for all elizaOS directories
+ */
+const PATH_CONFIGS: Record<keyof Omit<ElizaPathsConfig, "dataDir">, PathConfig> = {
+  databaseDir: {
+    envKey: "ELIZA_DATABASE_DIR",
+    subPath: [".elizadb"],
+  },
+  charactersDir: {
+    envKey: "ELIZA_DATA_DIR_CHARACTERS",
+    subPath: ["data", "characters"],
+  },
+  generatedDir: {
+    envKey: "ELIZA_DATA_DIR_GENERATED",
+    subPath: ["data", "generated"],
+  },
+  uploadsAgentsDir: {
+    envKey: "ELIZA_DATA_DIR_UPLOADS_AGENTS",
+    subPath: ["data", "uploads", "agents"],
+  },
+  uploadsChannelsDir: {
+    envKey: "ELIZA_DATA_DIR_UPLOADS_CHANNELS",
+    subPath: ["data", "uploads", "channels"],
+  },
+};
+
+/**
  * elizaOS paths management class
  * Provides centralized access to all elizaOS data directory paths
  */
 class ElizaPaths {
-  private cache: Map<string, string> = new Map();
+  private cache = new Map<string, string>();
 
   /**
    * Get the base data directory
@@ -45,11 +99,7 @@ class ElizaPaths {
     const cached = this.cache.get("dataDir");
     if (cached) return cached;
 
-    const dir =
-      (typeof process !== "undefined" && process.env?.ELIZA_DATA_DIR) ||
-      (typeof process !== "undefined" && process.cwd
-        ? pathJoin(process.cwd(), ".eliza")
-        : ".eliza");
+    const dir = getEnvVar("ELIZA_DATA_DIR") || pathJoin(getCwd(), ".eliza");
     this.cache.set("dataDir", dir);
     return dir;
   }
@@ -58,75 +108,35 @@ class ElizaPaths {
    * Get the database directory (backward compatible with PGLITE_DATA_DIR)
    */
   getDatabaseDir(): string {
-    const cached = this.cache.get("databaseDir");
-    if (cached) return cached;
-
-    const dir =
-      (typeof process !== "undefined" && process.env?.ELIZA_DATABASE_DIR) ||
-      (typeof process !== "undefined" && process.env?.PGLITE_DATA_DIR) ||
-      pathJoin(this.getDataDir(), ".elizadb");
-    this.cache.set("databaseDir", dir);
-    return dir;
+    return this.getPathWithFallback("databaseDir", "PGLITE_DATA_DIR");
   }
 
   /**
    * Get the characters storage directory
    */
   getCharactersDir(): string {
-    const cached = this.cache.get("charactersDir");
-    if (cached) return cached;
-
-    const dir =
-      (typeof process !== "undefined" &&
-        process.env?.ELIZA_DATA_DIR_CHARACTERS) ||
-      pathJoin(this.getDataDir(), "data", "characters");
-    this.cache.set("charactersDir", dir);
-    return dir;
+    return this.getPath("charactersDir");
   }
 
   /**
    * Get the AI-generated content directory
    */
   getGeneratedDir(): string {
-    const cached = this.cache.get("generatedDir");
-    if (cached) return cached;
-
-    const dir =
-      (typeof process !== "undefined" &&
-        process.env?.ELIZA_DATA_DIR_GENERATED) ||
-      pathJoin(this.getDataDir(), "data", "generated");
-    this.cache.set("generatedDir", dir);
-    return dir;
+    return this.getPath("generatedDir");
   }
 
   /**
    * Get the agent uploads directory
    */
   getUploadsAgentsDir(): string {
-    const cached = this.cache.get("uploadsAgentsDir");
-    if (cached) return cached;
-
-    const dir =
-      (typeof process !== "undefined" &&
-        process.env?.ELIZA_DATA_DIR_UPLOADS_AGENTS) ||
-      pathJoin(this.getDataDir(), "data", "uploads", "agents");
-    this.cache.set("uploadsAgentsDir", dir);
-    return dir;
+    return this.getPath("uploadsAgentsDir");
   }
 
   /**
    * Get the channel uploads directory
    */
   getUploadsChannelsDir(): string {
-    const cached = this.cache.get("uploadsChannelsDir");
-    if (cached) return cached;
-
-    const dir =
-      (typeof process !== "undefined" &&
-        process.env?.ELIZA_DATA_DIR_UPLOADS_CHANNELS) ||
-      pathJoin(this.getDataDir(), "data", "uploads", "channels");
-    this.cache.set("uploadsChannelsDir", dir);
-    return dir;
+    return this.getPath("uploadsChannelsDir");
   }
 
   /**
@@ -148,6 +158,39 @@ class ElizaPaths {
    */
   clearCache(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Get a path by config key, using cache
+   */
+  private getPath(key: keyof typeof PATH_CONFIGS): string {
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const config = PATH_CONFIGS[key];
+    const envValue = getEnvVar(config.envKey);
+    const dir = envValue || pathJoin(this.getDataDir(), ...config.subPath);
+
+    this.cache.set(key, dir);
+    return dir;
+  }
+
+  /**
+   * Get a path with an additional fallback environment variable
+   */
+  private getPathWithFallback(
+    key: keyof typeof PATH_CONFIGS,
+    fallbackEnvKey: string,
+  ): string {
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const config = PATH_CONFIGS[key];
+    const envValue = getEnvVar(config.envKey) || getEnvVar(fallbackEnvKey);
+    const dir = envValue || pathJoin(this.getDataDir(), ...config.subPath);
+
+    this.cache.set(key, dir);
+    return dir;
   }
 }
 

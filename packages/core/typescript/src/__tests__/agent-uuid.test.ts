@@ -191,10 +191,10 @@ describe("Agent UUID Identification", () => {
 
     expect(agent1).toBeTruthy();
     expect(agent2).toBeTruthy();
-    expect(agent1?.id).toBe(agentId1);
-    expect(agent2?.id).toBe(agentId2);
-    expect(agent1?.name).toBe(sharedName);
-    expect(agent2?.name).toBe(sharedName);
+    expect(agent1 && agent1.id).toBe(agentId1);
+    expect(agent2 && agent2.id).toBe(agentId2);
+    expect(agent1 && agent1.name).toBe(sharedName);
+    expect(agent2 && agent2.name).toBe(sharedName);
   });
 
   it("should generate deterministic UUIDs from character names for backward compatibility", async () => {
@@ -257,7 +257,7 @@ describe("Agent UUID Identification", () => {
     // Verify agent created with the explicit ID
     const agent = await mockAdapter.getAgent(explicitId);
     expect(agent).toBeTruthy();
-    expect(agent?.id).toBe(explicitId);
+    expect(agent && agent.id).toBe(explicitId);
   });
 
   it("should update agent by UUID, not by name", async () => {
@@ -284,8 +284,8 @@ describe("Agent UUID Identification", () => {
 
     // Verify agent still has same ID but updated name
     const agent = await mockAdapter.getAgent(agentId);
-    expect(agent?.id).toBe(agentId);
-    expect(agent?.name).toBe(updatedName);
+    expect(agent && agent.id).toBe(agentId);
+    expect(agent && agent.name).toBe(updatedName);
 
     // Verify no duplicate was created
     const allAgents = await mockAdapter.getAgents();
@@ -318,9 +318,9 @@ describe("Agent UUID Identification", () => {
 
     expect(agent1).toBeTruthy();
     expect(agent2).toBeTruthy();
-    expect(agent1?.name).toBe(sharedName);
-    expect(agent2?.name).toBe(sharedName);
-    expect(agent1?.id).not.toBe(agent2?.id);
+    expect(agent1 && agent1.name).toBe(sharedName);
+    expect(agent2 && agent2.name).toBe(sharedName);
+    expect(agent1 && agent1.id).not.toBe(agent2 && agent2.id);
 
     const allAgents = await mockAdapter.getAgents();
     expect(allAgents).toHaveLength(2);

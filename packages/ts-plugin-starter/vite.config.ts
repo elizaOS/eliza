@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   base: "./",
   build: {
-    emptyOutDir: true,
+    emptyOutDir: false, // Preserve plugin build outputs
     outDir: "dist",
     manifest: true,
   },

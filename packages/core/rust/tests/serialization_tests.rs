@@ -2,7 +2,7 @@
 //!
 //! These tests verify that Rust types serialize to JSON in a format identical to TypeScript.
 
-use elizaos_core::types::{
+use elizaos::types::{
     Agent, AgentStatus, Bio, ChannelType, Character, Content, Memory, Room, State, World, UUID,
 };
 use pretty_assertions::assert_eq;

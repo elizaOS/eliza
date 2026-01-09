@@ -19,8 +19,8 @@ import type {
   UUID,
 } from "../types";
 import {
-  type InferenceProviderInfo,
   requireInferenceProvider,
+  type InferenceProviderInfo,
 } from "./inference-provider";
 import { createOllamaModelHandlers } from "./ollama-provider";
 
@@ -74,6 +74,28 @@ export const DEFAULT_TEST_CHARACTER: Character = {
 };
 
 /**
+ * Type for registerModel handler parameter
+ */
+type ModelHandlerFn = (
+  runtime: IAgentRuntime,
+  params: Record<string, unknown>,
+) => Promise<unknown>;
+
+/**
+ * Register Ollama model handlers on the runtime
+ */
+function registerOllamaHandlers(runtime: AgentRuntime): void {
+  const ollamaHandlers = createOllamaModelHandlers();
+
+  for (const [modelType, handler] of Object.entries(ollamaHandlers)) {
+    if (handler) {
+      // Cast is safe: the handler accepts specific param types which are subsets of Record<string, unknown>
+      runtime.registerModel(modelType, handler as ModelHandlerFn, "ollama");
+    }
+  }
+}
+
+/**
  * Creates a fully initialized AgentRuntime for integration testing.
  */
 export async function createIntegrationTestRuntime(
@@ -124,26 +146,33 @@ export async function createIntegrationTestRuntime(
   });
 
   // Register Ollama model handlers if using local inference
-  if (inferenceProvider?.name === "ollama") {
-    const ollamaHandlers = createOllamaModelHandlers();
-    for (const [modelType, handler] of Object.entries(ollamaHandlers)) {
-      runtime.registerModel(modelType, handler, "ollama");
-    }
+  if (inferenceProvider && inferenceProvider.name === "ollama") {
+    registerOllamaHandlers(runtime);
   }
 
   // Initialize with timeout
   const initPromise = runtime.initialize();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(
+    timeoutId = setTimeout(
       () =>
         reject(
-          new Error(`Runtime initialization timed out after ${initTimeout}ms`),
+          new Error(
+            `Runtime initialization timed out after ${initTimeout}ms`,
+          ),
         ),
       initTimeout,
     );
   });
 
-  await Promise.race([initPromise, timeoutPromise]);
+  try {
+    await Promise.race([initPromise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 
   logger.info(
     { src: "integration-test", agentId },
@@ -151,22 +180,11 @@ export async function createIntegrationTestRuntime(
   );
 
   const cleanup = async () => {
-    try {
-      await runtime.stop();
-      logger.debug(
-        { src: "integration-test", agentId },
-        "Test runtime cleaned up",
-      );
-    } catch (error) {
-      logger.warn(
-        {
-          src: "integration-test",
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "Error during test cleanup",
-      );
-    }
+    await runtime.stop();
+    logger.debug(
+      { src: "integration-test", agentId },
+      "Test runtime cleaned up",
+    );
   };
 
   return { runtime, agentId, inferenceProvider, cleanup };

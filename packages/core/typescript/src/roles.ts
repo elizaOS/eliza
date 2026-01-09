@@ -31,12 +31,15 @@ export async function getUserServerRole(
   const worldId = createUniqueUuid(runtime, serverId);
   const world = await runtime.getWorld(worldId);
 
-  if (!world || !world.metadata?.roles) {
+  const worldMetadata = world?.metadata;
+  const roles = worldMetadata?.roles;
+  if (!roles) {
     return Role.NONE;
   }
 
-  if (world.metadata.roles[entityId as UUID]) {
-    return world.metadata.roles[entityId as UUID] as Role;
+  const role = roles[entityId as UUID];
+  if (role) {
+    return role as Role;
   }
 
   return Role.NONE;
@@ -71,7 +74,9 @@ export async function findWorldsForOwner(
   const ownerWorlds: World[] = [];
   // Find world where the user is the owner
   for (const world of worlds) {
-    if (world.metadata?.ownership?.ownerId === entityId) {
+    const worldMetadata = world.metadata;
+    const worldMetadataOwnership = worldMetadata && worldMetadata.ownership;
+    if (worldMetadataOwnership && worldMetadataOwnership.ownerId === entityId) {
       ownerWorlds.push(world);
     }
   }

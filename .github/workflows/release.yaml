@@ -392,6 +392,46 @@ jobs:
 
       # Build packages with correct version numbers
       # Only happens AFTER git operations succeed
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/core/rust/target
+            packages/plugin-sql/rust/target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Build WASM packages
+        run: |
+          echo "Building WASM packages..."
+          
+          # Build core WASM
+          echo "Building @elizaos/core WASM..."
+          cd packages/core/rust
+          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
+          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
+          cd ../../..
+          
+          # Build plugin-sql WASM
+          echo "Building @elizaos/plugin-sql WASM..."
+          cd packages/plugin-sql/rust
+          wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
+          wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
+          cd ../../..
+          
+          echo "WASM builds complete"
+
       - name: Build packages
         run: |
           echo "Building packages with version v${{ steps.version.outputs.version }}..."

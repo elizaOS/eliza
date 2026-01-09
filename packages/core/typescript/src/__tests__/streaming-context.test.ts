@@ -42,8 +42,8 @@ describe("Streaming Context", () => {
       });
 
       expect(capturedContext).toBeDefined();
-      expect(capturedContext?.messageId).toBe("test-message-id");
-      expect(capturedContext?.onStreamChunk).toBe(context.onStreamChunk);
+      expect(capturedContext && capturedContext.messageId).toBe("test-message-id");
+      expect(capturedContext && capturedContext.onStreamChunk).toBe(context.onStreamChunk);
     });
 
     it("should return undefined outside of context", () => {
@@ -84,8 +84,10 @@ describe("Streaming Context", () => {
 
       const result = await runWithStreamingContext(context, async () => {
         const ctx = getStreamingContext();
-        await ctx?.onStreamChunk("chunk1");
-        await ctx?.onStreamChunk("chunk2");
+        if (ctx && ctx.onStreamChunk) {
+          await ctx.onStreamChunk("chunk1");
+          await ctx.onStreamChunk("chunk2");
+        }
         return "async-result";
       });
 
@@ -112,14 +114,18 @@ describe("Streaming Context", () => {
         runWithStreamingContext(context1, async () => {
           await new Promise((r) => setTimeout(r, 10));
           const ctx = getStreamingContext();
-          await ctx?.onStreamChunk("from-context-1");
-          return ctx?.messageId;
+          if (ctx && ctx.onStreamChunk) {
+            await ctx.onStreamChunk("from-context-1");
+          }
+          return ctx && ctx.messageId;
         }),
         runWithStreamingContext(context2, async () => {
           await new Promise((r) => setTimeout(r, 5));
           const ctx = getStreamingContext();
-          await ctx?.onStreamChunk("from-context-2");
-          return ctx?.messageId;
+          if (ctx && ctx.onStreamChunk) {
+            await ctx.onStreamChunk("from-context-2");
+          }
+          return ctx && ctx.messageId;
         }),
       ]);
 
@@ -145,14 +151,17 @@ describe("Streaming Context", () => {
       };
 
       runWithStreamingContext(outerContext, () => {
-        expect(getStreamingContext()?.messageId).toBe("outer");
+        const outerCtx = getStreamingContext();
+        expect(outerCtx && outerCtx.messageId).toBe("outer");
 
         runWithStreamingContext(innerContext, () => {
-          expect(getStreamingContext()?.messageId).toBe("inner");
+          const innerCtx = getStreamingContext();
+          expect(innerCtx && innerCtx.messageId).toBe("inner");
         });
 
         // Back to outer context
-        expect(getStreamingContext()?.messageId).toBe("outer");
+        const outerCtxAgain = getStreamingContext();
+        expect(outerCtxAgain && outerCtxAgain.messageId).toBe("outer");
       });
     });
   });

@@ -3,29 +3,89 @@ import type {
   MessageProcessingResult,
 } from "../services/message-service";
 import type { Character } from "./agent";
+import type { ActionResult } from "./components";
 import type { Memory } from "./memory";
 import type { Content, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { State } from "./state";
 
 /**
- * Batch operation for sending messages
+ * Payload for message batch operations
  */
-export interface BatchOperation {
-  agentId: UUID;
-  operation: "message" | "action" | "evaluate";
-  payload: any;
+export interface MessageOperationPayload {
+  entityId: UUID;
+  roomId: UUID;
+  content: Content;
+  worldId?: UUID;
 }
 
 /**
- * Result of a batch operation
+ * Payload for action batch operations
  */
-export interface BatchResult {
+export interface ActionOperationPayload {
+  action: string;
+  params?: Record<string, string | number | boolean>;
+}
+
+/**
+ * Payload for evaluate batch operations
+ */
+export interface EvaluateOperationPayload {
+  evaluator: string;
+  context: Record<string, string | number | boolean>;
+}
+
+/**
+ * Discriminated union for batch operations
+ */
+export type BatchOperation =
+  | {
+      agentId: UUID;
+      operation: "message";
+      payload: MessageOperationPayload;
+    }
+  | {
+      agentId: UUID;
+      operation: "action";
+      payload: ActionOperationPayload;
+    }
+  | {
+      agentId: UUID;
+      operation: "evaluate";
+      payload: EvaluateOperationPayload;
+    };
+
+/**
+ * Result types for each operation type
+ */
+export interface MessageBatchResult {
   agentId: UUID;
   success: boolean;
-  result?: any;
+  result?: Memory;
   error?: Error;
 }
+
+export interface ActionBatchResult {
+  agentId: UUID;
+  success: boolean;
+  result?: ActionResult;
+  error?: Error;
+}
+
+export interface EvaluateBatchResult {
+  agentId: UUID;
+  success: boolean;
+  result?: { passed: boolean; feedback?: string };
+  error?: Error;
+}
+
+/**
+ * Union type for batch operation results
+ */
+export type BatchResult =
+  | MessageBatchResult
+  | ActionBatchResult
+  | EvaluateBatchResult;
 
 /**
  * Read-only runtime accessor
@@ -135,7 +195,7 @@ export interface IElizaOS {
    *   roomId: channelId,
    *   content: { text: "Hello!" }
    * });
-   * console.log(result.processing?.responseContent); // Agent's response
+   * console.log(result.processing && result.processing.responseContent); // Agent's response
    *
    * @example
    * // ASYNC mode - fire and forget

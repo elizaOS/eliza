@@ -771,7 +771,7 @@ describe("Logger - Cross-Environment Tests", () => {
     });
 
     describe("Browser JSON Format Tests", () => {
-      let savedProcess: any;
+      let savedProcess: typeof globalThis.process | undefined;
 
       beforeEach(() => {
         // Save process before deleting it
@@ -866,9 +866,10 @@ describe("Logger - Cross-Environment Tests", () => {
         delete globalThis.process;
 
         // Remove location to test fallback
+        const globalThisWindow = globalThis.window;
         globalThis.window = {
           document: {},
-          console: globalThis.window?.console || {},
+          console: (globalThisWindow && globalThisWindow.console) || {},
         };
 
         expect(() => {

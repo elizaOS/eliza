@@ -24,6 +24,9 @@ from elizaos.logger import create_logger
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
+# Import test suite for E2E tests
+from elizaos_plugin_starter.tests import python_plugin_starter_test_suite
+
 logger = create_logger(namespace="python-plugin-starter")
 
 
@@ -236,6 +239,10 @@ plugin = Plugin(
     # Services
     services=[
         StarterService,
+    ],
+    # Test suites for E2E testing
+    tests=[
+        python_plugin_starter_test_suite,
     ],
     # Plugin dependencies (if any)
     # dependencies=["@elizaos/plugin-bootstrap"],

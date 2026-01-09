@@ -223,20 +223,18 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Check that DB settings were preserved
-    expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe(
+    expect(updatedAgent.settings && updatedAgent.settings.SOLANA_PUBLIC_KEY).toBe(
       "CioDPgLA1o8cuuhXZ7M3Fi1Lzqo2Cr8VudjY6ErtvYp4",
     );
-    expect(updatedAgent.settings?.OLD_SETTING).toBe("should_be_kept");
+    expect(updatedAgent.settings && updatedAgent.settings.OLD_SETTING).toBe("should_be_kept");
 
     // Check that character.json settings were applied
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
-    expect(updatedAgent.settings?.TEMPERATURE).toBe("0.7");
+    expect(updatedAgent.settings && updatedAgent.settings.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings && updatedAgent.settings.TEMPERATURE).toBe("0.7");
 
     // Check that secrets were preserved
-    expect(
-      (updatedAgent.settings?.secrets as Record<string, string>)
-        ?.SOLANA_PRIVATE_KEY,
-    ).toBe("4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...");
+    const updatedAgentSettingsSecrets = updatedAgent.settings && updatedAgent.settings.secrets as Record<string, string> | undefined;
+    expect(updatedAgentSettingsSecrets && updatedAgentSettingsSecrets.SOLANA_PRIVATE_KEY).toBe("4zkwqei5hFqtHvqGTMFC6FDCBSPoJqTqN3v7pNDYrqFY...");
   });
 
   it("should allow character.json to override DB settings", async () => {
@@ -289,10 +287,10 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // MODEL should be overridden by character.json
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings && updatedAgent.settings.MODEL).toBe("gpt-4");
 
     // But SOLANA_PUBLIC_KEY should be preserved from DB
-    expect(updatedAgent.settings?.SOLANA_PUBLIC_KEY).toBe("wallet123");
+    expect(updatedAgent.settings && updatedAgent.settings.SOLANA_PUBLIC_KEY).toBe("wallet123");
   });
 
   it("should deep merge secrets from both DB and character.json", async () => {
@@ -344,12 +342,13 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Both DB and character secrets should be present
-    const secrets = updatedAgent.settings?.secrets as
+    const updatedAgentSettings = updatedAgent.settings;
+    const secrets = updatedAgentSettings && updatedAgentSettings.secrets as
       | Record<string, string>
       | undefined;
-    expect(secrets?.RUNTIME_SECRET).toBe("from_db");
-    expect(secrets?.WALLET_KEY).toBe("wallet_key_from_db");
-    expect(secrets?.API_KEY).toBe("from_character");
+    expect(secrets && secrets.RUNTIME_SECRET).toBe("from_db");
+    expect(secrets && secrets.WALLET_KEY).toBe("wallet_key_from_db");
+    expect(secrets && secrets.API_KEY).toBe("from_character");
   });
 
   it("should handle agent with no settings in DB", async () => {
@@ -387,7 +386,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Should have character settings even though DB had none
-    expect(updatedAgent.settings?.MODEL).toBe("gpt-4");
+    expect(updatedAgent.settings && updatedAgent.settings.MODEL).toBe("gpt-4");
   });
 
   it("should handle character with no settings", async () => {
@@ -423,7 +422,7 @@ describe("ensureAgentExists - Settings Persistence", () => {
     const updatedAgent = updateCall[1] as Partial<Agent>;
 
     // Should preserve DB settings
-    expect(updatedAgent.settings?.DB_SETTING).toBe("value");
+    expect(updatedAgent.settings && updatedAgent.settings.DB_SETTING).toBe("value");
   });
 
   it("should throw error if agent id is not provided", async () => {
@@ -489,8 +488,8 @@ describe("ensureAgentExists - Settings Persistence", () => {
       });
 
       // Before initialize, character should only have file settings
-      expect(testRuntime.character.settings?.SOLANA_PUBLIC_KEY).toBeUndefined();
-      expect(testRuntime.character.settings?.MODEL).toBe("gpt-4");
+      expect(testRuntime.character.settings && testRuntime.character.settings.SOLANA_PUBLIC_KEY).toBeUndefined();
+      expect(testRuntime.character.settings && testRuntime.character.settings.MODEL).toBe("gpt-4");
 
       // Mock the services that initialize() expects
       (
@@ -526,17 +525,16 @@ describe("ensureAgentExists - Settings Persistence", () => {
       await testRuntime.initialize();
 
       // After initialize, character should have BOTH DB and file settings
-      expect(testRuntime.character.settings?.SOLANA_PUBLIC_KEY).toBe(
+      const testRuntimeCharacterSettings = testRuntime.character.settings;
+      expect(testRuntimeCharacterSettings && testRuntimeCharacterSettings.SOLANA_PUBLIC_KEY).toBe(
         "wallet_from_db",
       );
-      expect(testRuntime.character.settings?.RUNTIME_SETTING).toBe(
+      expect(testRuntimeCharacterSettings && testRuntimeCharacterSettings.RUNTIME_SETTING).toBe(
         "from_previous_run",
       );
-      expect(testRuntime.character.settings?.MODEL).toBe("gpt-4"); // Character file wins
-      expect(
-        (testRuntime.character.settings?.secrets as Record<string, string>)
-          ?.SOLANA_PRIVATE_KEY,
-      ).toBe("secret_from_db");
+      expect(testRuntimeCharacterSettings && testRuntimeCharacterSettings.MODEL).toBe("gpt-4"); // Character file wins
+      const testRuntimeCharacterSettingsSecrets = testRuntimeCharacterSettings && testRuntimeCharacterSettings.secrets as Record<string, string> | undefined;
+      expect(testRuntimeCharacterSettingsSecrets && testRuntimeCharacterSettingsSecrets.SOLANA_PRIVATE_KEY).toBe("secret_from_db");
 
       // Verify getSetting() can now access DB settings
       expect(testRuntime.getSetting("SOLANA_PUBLIC_KEY")).toBe(

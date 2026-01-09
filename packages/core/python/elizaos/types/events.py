@@ -234,3 +234,4 @@ EventHandler = Callable[[EventPayload], Awaitable[None]]
 
 # Event payload map type - maps event types to their payload types
 EventPayloadMap = dict[EventType, type[EventPayload]]
+

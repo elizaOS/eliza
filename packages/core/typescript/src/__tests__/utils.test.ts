@@ -154,10 +154,10 @@ describe("Utils Comprehensive Tests", () => {
       expect(result).toEqual({ name: "Alice", age: "30" });
     });
 
-    it("should return null for invalid JSON", () => {
-      expect(parseJSONObjectFromText("not json")).toBeNull();
-      expect(parseJSONObjectFromText("{invalid json}")).toBeNull();
-      expect(parseJSONObjectFromText("")).toBeNull();
+    it("should throw for invalid JSON", () => {
+      expect(() => parseJSONObjectFromText("not json")).toThrow();
+      expect(() => parseJSONObjectFromText("{invalid json}")).toThrow();
+      expect(() => parseJSONObjectFromText("")).toThrow();
     });
 
     it("should return null for arrays", () => {
@@ -481,8 +481,8 @@ describe("Utils Comprehensive Tests", () => {
       const result = parseKeyValueXml(xml);
       // Ensure we did not truncate at the inner </text>
       expect(result).not.toBeNull();
-      expect(result?.text).toContain("outer");
-      expect(result?.text).toContain("<text>inner</text>");
+      expect(result && result.text).toContain("outer");
+      expect(result && result.text).toContain("<text>inner</text>");
     });
 
     it("should treat self-closing tags with whitespace as self-closing and skip them", () => {

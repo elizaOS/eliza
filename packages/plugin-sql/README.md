@@ -56,7 +56,7 @@ The plugin uses a structured schema with the following main tables:
 - **Cache**: Provides a caching mechanism for frequently accessed data
 - **World**: Manages world settings and configurations
 
-Each table is defined using Drizzle ORM schema definitions in the `typescript/src/schema` directory. The schema is designed to support the elizaOS ecosystem's requirements for agent-based systems.
+Each table is defined using Drizzle ORM schema definitions in the `typescript/schema` directory. The schema is designed to support the elizaOS ecosystem's requirements for agent-based systems.
 
 ## Usage
 

@@ -225,9 +225,12 @@ export const formatPosts = ({
 
   // Sort rooms by the newest message's createdAt
   const sortedRooms = Object.entries(groupedMessages).sort(
-    ([, messagesA], [, messagesB]) =>
-      (messagesB[messagesB.length - 1]?.createdAt || 0) -
-      (messagesA[messagesA.length - 1]?.createdAt || 0),
+    ([, messagesA], [, messagesB]) => {
+      const lastMessageB = messagesB[messagesB.length - 1];
+      const lastMessageA = messagesA[messagesA.length - 1];
+      return ((lastMessageB && lastMessageB.createdAt) || 0) -
+        ((lastMessageA && lastMessageA.createdAt) || 0);
+    },
   );
 
   const formattedPosts = sortedRooms.map(([roomId, roomMessages]) => {
@@ -243,8 +246,9 @@ export const formatPosts = ({
             "No entity found for message",
           );
         }
-        const userName = entity?.names[0] || "Unknown User";
-        const displayName = entity?.names[0] || "unknown";
+        const entityNames = entity && entity.names;
+        const userName = (entityNames && entityNames[0]) || "Unknown User";
+        const displayName = (entityNames && entityNames[0]) || "unknown";
 
         return `Name: ${userName} (@${displayName} EntityID:${message.entityId})
 MessageID: ${message.id}${message.content.inReplyTo ? `\nIn reply to: ${message.content.inReplyTo}` : ""}
@@ -285,9 +289,9 @@ export const formatMessages = ({
 
       const messageActions = (message.content as Content).actions;
       const messageThought = (message.content as Content).thought;
-      const formattedName =
-        entities.find((entity: Entity) => entity.id === message.entityId)
-          ?.names[0] || "Unknown User";
+      const foundEntity = entities.find((entity: Entity) => entity.id === message.entityId);
+      const foundEntityNames = foundEntity && foundEntity.names;
+      const formattedName = (foundEntityNames && foundEntityNames[0]) || "Unknown User";
 
       const attachments = (message.content as Content).attachments;
 
@@ -640,18 +644,13 @@ export function parseJSONObjectFromText(
 ): Record<string, unknown> | null {
   const jsonBlockMatch = text.match(jsonBlockPattern);
 
-  let jsonData: Record<string, unknown> | null = null;
-  try {
-    if (jsonBlockMatch) {
-      // Parse the JSON from inside the code block
-      jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
-    } else {
-      // Try to parse the text directly if it's not in a code block
-      jsonData = JSON.parse(normalizeJsonString(text.trim()));
-    }
-  } catch {
-    // Return null on parse error
-    return null;
+  let jsonData: Record<string, unknown>;
+  if (jsonBlockMatch) {
+    // Parse the JSON from inside the code block
+    jsonData = JSON.parse(normalizeJsonString(jsonBlockMatch[1].trim()));
+  } else {
+    // Try to parse the text directly if it's not in a code block
+    jsonData = JSON.parse(normalizeJsonString(text.trim()));
   }
 
   // Ensure we have a non-null object that's not an array
@@ -808,10 +807,9 @@ export function safeReplacer() {
  * @returns {boolean} - Returns `true` for affirmative inputs, `false` for negative or unrecognized inputs
  */
 export function parseBooleanFromText(
-  value: string | undefined | null,
+  value: string | boolean | undefined | null,
 ): boolean {
-  if (!value) return false;
-  // shouldn't need this but we're hitting where value is true at runtime
+  if (value === undefined || value === null) return false;
   if (typeof value === "boolean") return value;
 
   const affirmative = ["YES", "Y", "TRUE", "T", "1", "ON", "ENABLE"];
@@ -826,7 +824,7 @@ export function parseBooleanFromText(
     return false;
   }
 
-  // For environment variables, we'll treat unrecognized values as false
+  // For environment variables, treat unrecognized values as false
   return false;
 }
 
@@ -941,14 +939,10 @@ function getCachedSha1(message: string): Uint8Array {
 
   // Asynchronously compute with WebCrypto for next time (if available)
   if (checkWebCrypto()) {
-    sha1BytesAsync(message)
-      .then((webDigest) => {
-        // Update cache with WebCrypto result (should be identical)
-        sha1Cache.set(message, webDigest);
-      })
-      .catch(() => {
-        // Ignore errors, we already have the pure JS result
-      });
+    sha1BytesAsync(message).then((webDigest) => {
+      // Update cache with WebCrypto result (should be identical)
+      sha1Cache.set(message, webDigest);
+    });
   }
 
   // Limit cache size to prevent memory leaks

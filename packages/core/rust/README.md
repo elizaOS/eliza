@@ -51,7 +51,7 @@ cargo test
 ### Rust (Native)
 
 ```rust
-use elizaos_core::{AgentRuntime, Character, parse_character};
+use elizaos::{AgentRuntime, Character, parse_character};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

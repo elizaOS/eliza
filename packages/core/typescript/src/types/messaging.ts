@@ -90,25 +90,33 @@ export interface MessageStreamErrorPayload {
 }
 
 /**
+ * Control message actions that can be sent to the frontend
+ */
+export type ControlMessageAction = "disable_input" | "enable_input";
+
+/**
+ * Payload for UI control messages
+ */
+export interface UIControlPayload {
+  /** Action to perform */
+  action: ControlMessageAction;
+  /** Optional target element identifier */
+  target?: string;
+  /** Optional reason for the action */
+  reason?: string;
+  /** Optional duration in milliseconds */
+  duration?: number;
+}
+
+/**
  * Interface for control messages sent from the backend to the frontend
  * to manage UI state and interaction capabilities
  */
 export interface ControlMessage {
   /** Message type identifier */
   type: "control";
-
   /** Control message payload */
-  payload: {
-    /** Action to perform */
-    action: "disable_input" | "enable_input";
-
-    /** Optional target element identifier */
-    target?: string;
-
-    /** Additional optional parameters */
-    [key: string]: unknown;
-  };
-
+  payload: UIControlPayload;
   /** Room ID to ensure signal is directed to the correct chat window */
   roomId: UUID;
 }

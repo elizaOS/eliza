@@ -26,6 +26,7 @@ import type {
   Character,
   GenerateTextParams,
   Handler,
+  IAgentRuntime,
   IDatabaseAdapter,
   Memory,
   ModelHandler,
@@ -245,7 +246,6 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         description: "A test plugin",
       };
       await runtime.registerPlugin(mockPlugin);
-      console.log("runtime.plugins", runtime.plugins);
       // Check if the plugin is added to the internal list
       expect(runtime.plugins.some((p) => p.name === "TestPlugin")).toBe(true);
     });
@@ -571,8 +571,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       expect(state.values).toHaveProperty("p2_val", 2);
       // Check combined values includes provider outputs
       expect(state.values).toHaveProperty("providers"); // Check if the combined text is stored
-      expect(state.data?.providers?.P1?.values).toEqual({ p1_val: 1 }); // Check provider data cache
-      expect(state.data?.providers?.P2?.values).toEqual({ p2_val: 2 });
+      const stateData = state.data;
+      const stateDataProviders = stateData && stateData.providers;
+      const stateDataProvidersP1 = stateDataProviders && stateDataProviders.P1;
+      const stateDataProvidersP2 = stateDataProviders && stateDataProviders.P2;
+      expect(stateDataProvidersP1 && stateDataProvidersP1.values).toEqual({ p1_val: 1 }); // Check provider data cache
+      expect(stateDataProvidersP2 && stateDataProvidersP2.values).toEqual({ p2_val: 2 });
     });
 
     it("should filter providers", async () => {
@@ -1281,9 +1285,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
+        let capturedParams: GenerateTextParams | null = null;
         const mockHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
           },
@@ -1301,7 +1305,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           temperature: 0.1, // This should win
         });
 
-        expect(capturedParams.temperature).toBe(0.1);
+        expect(capturedParams && capturedParams.temperature).toBe(0.1);
       });
 
       it("should handle models without specific configuration support", async () => {
@@ -1319,9 +1323,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
+        let capturedParams: GenerateTextParams | null = null;
         const mockHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
           },
@@ -1363,9 +1367,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           adapter: mockDatabaseAdapter,
         });
 
-        let capturedParams: any = null;
+        let capturedParams: GenerateTextParams | null = null;
         const mockHandler = mock().mockImplementation(
-          async (_runtime: any, params: any) => {
+          async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
           },

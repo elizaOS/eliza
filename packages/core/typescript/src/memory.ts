@@ -100,7 +100,7 @@ export function isCustomMetadata(
 export function isDocumentMemory(
   memory: Memory,
 ): memory is Memory & { metadata: DocumentMetadata } {
-  return memory.metadata && memory.metadata.type === MemoryType.DOCUMENT;
+  return memory.metadata !== undefined && memory.metadata.type === MemoryType.DOCUMENT;
 }
 
 /**
@@ -109,7 +109,7 @@ export function isDocumentMemory(
 export function isFragmentMemory(
   memory: Memory,
 ): memory is Memory & { metadata: FragmentMetadata } {
-  return memory.metadata && memory.metadata.type === MemoryType.FRAGMENT;
+  return memory.metadata !== undefined && memory.metadata.type === MemoryType.FRAGMENT;
 }
 
 /**

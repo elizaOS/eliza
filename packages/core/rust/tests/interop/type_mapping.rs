@@ -2,7 +2,7 @@
 //!
 //! Verifies that Rust types map correctly to TypeScript types
 
-use elizaos_core::types::{
+use elizaos::types::{
     character::{Agent, AgentStatus, Bio, Character},
     components::{Action, Evaluator, Provider},
     environment::{ChannelType, Component, Entity, Relationship, Room, World},

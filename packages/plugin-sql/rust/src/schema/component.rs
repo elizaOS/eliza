@@ -38,8 +38,8 @@ pub struct ComponentRecord {
 
 impl ComponentRecord {
     /// Convert to elizaOS Component type
-    pub fn to_component(&self) -> elizaos_core::Component {
-        use elizaos_core::{Component, UUID};
+    pub fn to_component(&self) -> elizaos::Component {
+        use elizaos::{Component, UUID};
 
         Component {
             id: UUID::new(&self.id.to_string()).unwrap(),

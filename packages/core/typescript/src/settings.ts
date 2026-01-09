@@ -297,12 +297,13 @@ export async function getWorldSettings(
   const worldId = createUniqueUuid(runtime, serverId);
   const world = await runtime.getWorld(worldId);
 
-  if (!world || !world.metadata?.settings) {
+  const settings = world && world.metadata && world.metadata.settings;
+  if (!settings) {
     return null;
   }
 
   // Get settings from metadata
-  const saltedSettings = world.metadata.settings as WorldSettings;
+  const saltedSettings = settings as WorldSettings;
 
   // Remove salt from settings before returning
   const salt = getSalt();
@@ -318,13 +319,14 @@ export async function initializeOnboarding(
   config: OnboardingConfig,
 ): Promise<WorldSettings | null> {
   // Check if settings state already exists
-  if (world.metadata?.settings) {
+  const existingSettings = world.metadata && world.metadata.settings;
+  if (existingSettings) {
     logger.debug(
       { src: "core:settings", serverId: world.messageServerId },
       "Onboarding state already exists",
     );
     // Get settings from metadata and remove salt
-    const saltedSettings = world.metadata.settings as WorldSettings;
+    const saltedSettings = existingSettings as WorldSettings;
     const salt = getSalt();
     return unsaltWorldSettings(saltedSettings, salt);
   }
@@ -367,9 +369,11 @@ export function encryptedCharacter(character: Character): Character {
   const salt = getSalt();
 
   // Encrypt character.settings.secrets if it exists
-  if (encryptedChar.settings?.secrets) {
+  const encryptedCharSettings = encryptedChar.settings;
+  const encryptedCharSettingsSecrets = encryptedCharSettings && encryptedCharSettings.secrets;
+  if (encryptedCharSettingsSecrets) {
     encryptedChar.settings.secrets = encryptObjectValues(
-      encryptedChar.settings.secrets,
+      encryptedCharSettingsSecrets,
       salt,
     );
   }
@@ -397,9 +401,11 @@ export function decryptedCharacter(
   const salt = getSalt();
 
   // Decrypt character.settings.secrets if it exists
-  if (decryptedChar.settings?.secrets) {
+  const decryptedCharSettings = decryptedChar.settings;
+  const decryptedCharSettingsSecrets = decryptedCharSettings && decryptedCharSettings.secrets;
+  if (decryptedCharSettingsSecrets) {
     decryptedChar.settings.secrets = decryptObjectValues(
-      decryptedChar.settings.secrets,
+      decryptedCharSettingsSecrets,
       salt,
     );
   }

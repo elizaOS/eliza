@@ -14,12 +14,12 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["tokio/full", "sqlx", "elizaos-core/native"]
-wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "elizaos-core/wasm", "getrandom/js"]
+native = ["tokio/full", "sqlx", "elizaos/native"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "elizaos/wasm", "getrandom/js"]
 
 [dependencies]
-# Core dependency
-elizaos-core = { path = "../../core/rust" }
+# Core dependency (path for local dev, version for publishing)
+elizaos = { version = "2.0.0", path = "../../core/rust" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -38,6 +38,9 @@ anyhow = "1.0"
 
 # Logging
 tracing = "0.1"
+
+# Regex for schema name derivation
+regex = "1.10"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }

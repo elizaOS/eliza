@@ -194,7 +194,7 @@ export interface EmbeddingGenerationPayload extends EventPayload {
   retryCount?: number;
   maxRetries?: number;
   embedding?: number[];
-  error?: Error | string | unknown;
+  error?: Error | string;
   runId?: UUID;
 }
 

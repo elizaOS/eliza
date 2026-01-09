@@ -1,5 +1,10 @@
-import type { ActionResult } from "./components";
+import type { ActionResult, ProviderResult } from "./components";
 import type { Entity, Room, World } from "./environment";
+
+/**
+ * Allowed value types for state values (JSON-serializable)
+ */
+export type StateValue = string | number | boolean | null | StateValue[] | { [key: string]: StateValue };
 
 /** Single step in an action plan */
 export interface ActionPlanStep {
@@ -18,6 +23,32 @@ export interface ActionPlan {
 }
 
 /**
+ * Provider result cache entry
+ */
+export interface ProviderCacheEntry {
+  text?: string;
+  values?: Record<string, StateValue>;
+  data?: Record<string, StateValue>;
+}
+
+/**
+ * Working memory entry for multi-step action execution
+ */
+export interface WorkingMemoryEntry {
+  /** Name of the action that created this entry */
+  actionName: string;
+  /** Result from the action execution */
+  result: ActionResult;
+  /** Timestamp when the entry was created */
+  timestamp: number;
+}
+
+/**
+ * Working memory record for temporary state during action execution
+ */
+export type WorkingMemory = Record<string, WorkingMemoryEntry>;
+
+/**
  * Structured data cached in state by providers and actions.
  * Common properties are typed for better DX while allowing dynamic extension.
  */
@@ -29,32 +60,43 @@ export interface StateData {
   /** Cached entity data from providers */
   entity?: Entity;
   /** Provider results cache keyed by provider name */
-  providers?: Record<string, Record<string, unknown>>;
+  providers?: Record<string, ProviderCacheEntry>;
   /** Current action plan for multi-step actions */
   actionPlan?: ActionPlan;
   /** Results from previous action executions */
   actionResults?: ActionResult[];
-  /** Allow additional dynamic properties */
+  /** Working memory for temporary state during multi-step action execution */
+  workingMemory?: WorkingMemory;
+  /** Allow dynamic properties for plugin extensions */
+  [key: string]: unknown;
+}
+
+/**
+ * State values populated by providers
+ */
+export interface StateValues {
+  /** Agent name */
+  agentName?: string;
+  /** Action names available to the agent */
+  actionNames?: string;
+  /** Provider names used */
+  providers?: string;
+  /** Other dynamic values */
   [key: string]: unknown;
 }
 
 /**
  * Represents the current state or context of a conversation or agent interaction.
- * This interface is a flexible container for various pieces of information that define the agent's
- * understanding at a point in time. It includes:
- * - `values`: A key-value store for general state variables, often populated by providers.
- * - `data`: Structured data cache with typed common properties for room, world, entity, etc.
- * - `text`: A string representation of the current context, often a summary or concatenated history.
- * The `[key: string]: unknown;` allows for dynamic properties to be added as needed.
- * This state object is passed to handlers for actions, evaluators, and providers.
+ * This interface is a container for various pieces of information that define the agent's
+ * understanding at a point in time.
  */
 export interface State {
-  /** Additional dynamic properties */
-  [key: string]: unknown;
-  values: {
-    [key: string]: unknown;
-  };
+  /** Key-value store for state variables populated by providers */
+  values: StateValues;
   /** Structured data cache with typed properties */
   data: StateData;
+  /** String representation of the current context */
   text: string;
+  /** Dynamic properties for template expansion */
+  [key: string]: unknown;
 }
