@@ -9,6 +9,8 @@ import { logger } from "../logger";
 import type {
   GenerateTextParams,
   IAgentRuntime,
+  ModelTypeName,
+  ObjectGenerationParams,
   TextEmbeddingParams,
 } from "../types";
 import { ModelType } from "../types";
@@ -48,7 +50,7 @@ export async function listOllamaModels(): Promise<string[]> {
     const data = (await response.json()) as {
       models?: Array<{ name: string }>;
     };
-    return data.models?.map((m) => m.name) ?? [];
+    return (data.models && data.models.map((m) => m.name)) ?? [];
   } catch {
     return [];
   }
@@ -120,7 +122,7 @@ async function generateEmbeddingWithOllama(
     embedding?: number[];
   };
   // Handle both array of embeddings and single embedding response
-  return data.embeddings?.[0] ?? data.embedding ?? [];
+  return (data.embeddings && data.embeddings[0]) ?? (data.embedding) ?? [];
 }
 
 /**
@@ -183,7 +185,7 @@ async function handleTextEmbedding(
  */
 async function handleObjectSmall(
   runtime: IAgentRuntime,
-  params: GenerateTextParams,
+  params: ObjectGenerationParams,
 ): Promise<Record<string, unknown>> {
   logger.debug(
     { src: "ollama", model: DEFAULT_MODELS.text_small },
@@ -222,7 +224,7 @@ async function handleObjectSmall(
  */
 async function handleObjectLarge(
   runtime: IAgentRuntime,
-  params: GenerateTextParams,
+  params: ObjectGenerationParams,
 ): Promise<Record<string, unknown>> {
   logger.debug(
     { src: "ollama", model: DEFAULT_MODELS.text_large },
@@ -256,22 +258,35 @@ async function handleObjectLarge(
 }
 
 /**
- * Model handler type for registration
- */
-type ModelHandler = (
-  runtime: IAgentRuntime,
-  params: Record<string, unknown>,
-) => Promise<string | number[] | Record<string, unknown>>;
-
-/**
  * Create all Ollama model handlers for registration
  */
-export function createOllamaModelHandlers(): Record<string, ModelHandler> {
+export function createOllamaModelHandlers(): Partial<Record<
+  ModelTypeName,
+  (
+    runtime: IAgentRuntime,
+    params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+  ) => Promise<string | number[] | Record<string, unknown>>
+>> {
   return {
-    [ModelType.TEXT_SMALL]: handleTextSmall as ModelHandler,
-    [ModelType.TEXT_LARGE]: handleTextLarge as ModelHandler,
-    [ModelType.TEXT_EMBEDDING]: handleTextEmbedding as unknown as ModelHandler,
-    [ModelType.OBJECT_SMALL]: handleObjectSmall as ModelHandler,
-    [ModelType.OBJECT_LARGE]: handleObjectLarge as ModelHandler,
+    [ModelType.TEXT_SMALL]: handleTextSmall as (
+      runtime: IAgentRuntime,
+      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+    ) => Promise<string | number[] | Record<string, unknown>>,
+    [ModelType.TEXT_LARGE]: handleTextLarge as (
+      runtime: IAgentRuntime,
+      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+    ) => Promise<string | number[] | Record<string, unknown>>,
+    [ModelType.TEXT_EMBEDDING]: (handleTextEmbedding as unknown) as (
+      runtime: IAgentRuntime,
+      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+    ) => Promise<string | number[] | Record<string, unknown>>,
+    [ModelType.OBJECT_SMALL]: handleObjectSmall as (
+      runtime: IAgentRuntime,
+      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+    ) => Promise<string | number[] | Record<string, unknown>>,
+    [ModelType.OBJECT_LARGE]: handleObjectLarge as (
+      runtime: IAgentRuntime,
+      params: GenerateTextParams | TextEmbeddingParams | ObjectGenerationParams,
+    ) => Promise<string | number[] | Record<string, unknown>>,
   };
 }

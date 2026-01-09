@@ -1,6 +1,6 @@
 //! Memory schema for elizaOS database
 //!
-//! Corresponds to the TypeScript memoryTable in packages/plugin-sql/src/schema/memory.ts
+//! Corresponds to the TypeScript memoryTable in packages/plugin-sql/typescript/src/schema/memory.ts
 
 /// SQL for creating the memories table
 pub const CREATE_MEMORIES_TABLE: &str = r#"

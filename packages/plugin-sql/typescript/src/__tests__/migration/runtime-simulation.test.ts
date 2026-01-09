@@ -175,7 +175,8 @@ describe("Runtime Simulation - Full Migration Flow", () => {
         WHERE schema_name = 'polymarket'
       ) as exists
     `);
-    expect(polymarketSchemaExists.rows[0]?.exists).toBe(true);
+    const firstRow = polymarketSchemaExists.rows && polymarketSchemaExists.rows[0];
+    expect(firstRow && firstRow.exists).toBe(true);
     console.log("\n✅ Polymarket schema created");
 
     const polymarketTables = await db.execute(sql`
@@ -314,9 +315,10 @@ describe("Runtime Simulation - Full Migration Flow", () => {
     `);
 
     console.log(
-      `\n📊 Final migration count: ${finalMigrationCount.rows[0]?.count}`,
+      `\n📊 Final migration count: ${(finalMigrationCount.rows && finalMigrationCount.rows[0] && finalMigrationCount.rows[0].count)}`,
     );
-    expect(Number(finalMigrationCount.rows[0]?.count)).toBe(2);
+    const finalFirstRow = finalMigrationCount.rows && finalMigrationCount.rows[0];
+    expect(Number(finalFirstRow && finalFirstRow.count)).toBe(2);
 
     // Final summary
     console.log(`\n${"=".repeat(80)}`);

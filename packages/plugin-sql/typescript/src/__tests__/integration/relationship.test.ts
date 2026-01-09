@@ -72,7 +72,7 @@ describe("Relationship Integration Tests", () => {
         targetEntityId: testTargetEntityId,
       });
       expect(retrieved).toBeDefined();
-      expect(retrieved?.tags).toContain("friend");
+      expect(retrieved && retrieved.tags).toContain("friend");
     });
 
     it("should update an existing relationship", async () => {
@@ -100,8 +100,8 @@ describe("Relationship Integration Tests", () => {
         sourceEntityId: testEntityId,
         targetEntityId: testTargetEntityId,
       });
-      expect(updatedRetrieved?.tags).toContain("best_friend");
-      expect(updatedRetrieved?.metadata).toEqual({ since: "2023" });
+      expect(updatedRetrieved && updatedRetrieved.tags).toContain("best_friend");
+      expect(updatedRetrieved && updatedRetrieved.metadata).toEqual({ since: "2023" });
     });
 
     it("should retrieve relationships by entity ID and tags", async () => {

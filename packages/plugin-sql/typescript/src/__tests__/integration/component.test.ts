@@ -92,8 +92,8 @@ describe("Component Integration Tests", () => {
         "test_component",
       );
       expect(retrieved).toBeDefined();
-      expect(retrieved?.id).toBe(component.id);
-      expect(retrieved?.data).toEqual({ value: "test" });
+      expect(retrieved && retrieved.id).toBe(component.id);
+      expect(retrieved && retrieved.data).toEqual({ value: "test" });
     });
 
     it("should update an existing component", async () => {
@@ -121,7 +121,7 @@ describe("Component Integration Tests", () => {
         "updatable_component",
       );
       expect(retrieved).toBeDefined();
-      expect(retrieved?.data).toEqual({ value: "updated" });
+      expect(retrieved && retrieved.data).toEqual({ value: "updated" });
     });
 
     it("should delete a component", async () => {

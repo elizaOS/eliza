@@ -75,16 +75,16 @@ print_section "Core Classes and Interfaces Documentation"
     echo ""
     echo "### Checking if core types from types.ts are documented..."
 
-    # Extract major interfaces and types from core/src/types.ts
-    if [ -f "packages/core/src/types.ts" ]; then
+    # Extract major interfaces and types from core/typescript/src/types.ts
+    if [ -f "packages/core/typescript/src/types/index.ts" ]; then
         # Extract interface and type names
-        grep -E "^export (interface|type) \w+" "packages/core/src/types.ts" | \
+        grep -E "^export (interface|type) \w+" "packages/core/typescript/src/types/index.ts" | \
         sed -E 's/export (interface|type) (\w+).*/\2/' | \
         while read -r type_name; do
             check_entity_documented "$type_name" "Type/Interface"
         done | sort -u | head -20
     else
-        echo "Could not find packages/core/src/types.ts"
+        echo "Could not find packages/core/typescript/src/types/index.ts"
     fi
 
     echo ""
@@ -206,7 +206,7 @@ print_section "API Documentation Coverage"
 
     echo "### Core API Functions"
     # Check if major exported functions are documented
-    find packages/core/src -name "*.ts" -not -path "*/test/*" -not -name "*.test.ts" | while read -r file; do
+    find packages/core/typescript/src -name "*.ts" -not -path "*/test/*" -not -name "*.test.ts" | while read -r file; do
         # Extract exported functions
         grep -E "^export (async )?function \w+|^export const \w+ = (async )?\(" "$file" 2>/dev/null | \
         sed -E 's/export (async )?function (\w+).*/\2/; s/export const (\w+).*/\1/' | \

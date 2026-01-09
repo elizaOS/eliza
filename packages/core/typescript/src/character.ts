@@ -20,11 +20,12 @@ export function parseCharacter(input: string | object | Character): Character {
     const validationResult = validateCharacter(input);
 
     if (!validationResult.success) {
-      const errorDetails = validationResult.error?.issues
-        ? validationResult.error.issues
+      const validationError = validationResult.error;
+      const errorDetails = (validationError && validationError.issues)
+        ? validationError.issues
             .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
             .join("; ")
-        : validationResult.error?.message || "Unknown validation error";
+        : (validationError && validationError.message) || "Unknown validation error";
       throw new Error(`Character validation failed: ${errorDetails}`);
     }
 
@@ -53,11 +54,12 @@ export function validateCharacterConfig(character: Character): {
     };
   }
 
-  const errors = validationResult.error?.issues
-    ? validationResult.error.issues.map(
+  const validationError = validationResult.error;
+  const errors = (validationError && validationError.issues)
+    ? validationError.issues.map(
         (issue) => `${issue.path.join(".")}: ${issue.message}`,
       )
-    : [validationResult.error?.message || "Unknown validation error"];
+    : [(validationError && validationError.message) || "Unknown validation error"];
 
   return {
     isValid: false,
@@ -106,38 +108,38 @@ export function buildCharacterPlugins(
     "@elizaos/plugin-sql",
 
     // Text-only plugins (no embedding support)
-    ...(env.ANTHROPIC_API_KEY?.trim() ? ["@elizaos/plugin-anthropic"] : []),
-    ...(env.OPENROUTER_API_KEY?.trim() ? ["@elizaos/plugin-openrouter"] : []),
+    ...((env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.trim()) ? ["@elizaos/plugin-anthropic"] : []),
+    ...((env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim()) ? ["@elizaos/plugin-openrouter"] : []),
 
     // Embedding-capable plugins (before platform plugins per documented order)
-    ...(env.OPENAI_API_KEY?.trim() ? ["@elizaos/plugin-openai"] : []),
-    ...(env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
+    ...((env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim()) ? ["@elizaos/plugin-openai"] : []),
+    ...((env.GOOGLE_GENERATIVE_AI_API_KEY && env.GOOGLE_GENERATIVE_AI_API_KEY.trim())
       ? ["@elizaos/plugin-google-genai"]
       : []),
 
     // Platform plugins
-    ...(env.DISCORD_API_TOKEN?.trim() ? ["@elizaos/plugin-discord"] : []),
-    ...(env.TWITTER_API_KEY?.trim() &&
-    env.TWITTER_API_SECRET_KEY?.trim() &&
-    env.TWITTER_ACCESS_TOKEN?.trim() &&
-    env.TWITTER_ACCESS_TOKEN_SECRET?.trim()
+    ...((env.DISCORD_API_TOKEN && env.DISCORD_API_TOKEN.trim()) ? ["@elizaos/plugin-discord"] : []),
+    ...((env.TWITTER_API_KEY && env.TWITTER_API_KEY.trim()) &&
+    (env.TWITTER_API_SECRET_KEY && env.TWITTER_API_SECRET_KEY.trim()) &&
+    (env.TWITTER_ACCESS_TOKEN && env.TWITTER_ACCESS_TOKEN.trim()) &&
+    (env.TWITTER_ACCESS_TOKEN_SECRET && env.TWITTER_ACCESS_TOKEN_SECRET.trim())
       ? ["@elizaos/plugin-twitter"]
       : []),
-    ...(env.TELEGRAM_BOT_TOKEN?.trim() ? ["@elizaos/plugin-telegram"] : []),
+    ...((env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_BOT_TOKEN.trim()) ? ["@elizaos/plugin-telegram"] : []),
 
     // Bootstrap plugin
     ...(() => {
-      const ignore = env.IGNORE_BOOTSTRAP?.trim().toLowerCase();
+      const ignore = (env.IGNORE_BOOTSTRAP && env.IGNORE_BOOTSTRAP.trim().toLowerCase());
       const shouldIgnore =
         ignore === "true" || ignore === "1" || ignore === "yes";
       return shouldIgnore ? [] : ["@elizaos/plugin-bootstrap"];
     })(),
 
     // Only include Ollama as fallback if no other LLM providers are configured
-    ...(!env.ANTHROPIC_API_KEY?.trim() &&
-    !env.OPENROUTER_API_KEY?.trim() &&
-    !env.OPENAI_API_KEY?.trim() &&
-    !env.GOOGLE_GENERATIVE_AI_API_KEY?.trim()
+    ...(!(env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.trim()) &&
+    !(env.OPENROUTER_API_KEY && env.OPENROUTER_API_KEY.trim()) &&
+    !(env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim()) &&
+    !(env.GOOGLE_GENERATIVE_AI_API_KEY && env.GOOGLE_GENERATIVE_AI_API_KEY.trim())
       ? ["@elizaos/plugin-ollama"]
       : []),
   ];

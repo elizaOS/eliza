@@ -5,7 +5,7 @@ config({ path: "../../.env" });
 
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/schema/index.ts",
+  schema: "./typescript/src/schema/index.ts",
   out: "./drizzle/migrations",
   dbCredentials: {
     url: process.env.POSTGRES_URL || "file:../../.eliza/.elizadb",

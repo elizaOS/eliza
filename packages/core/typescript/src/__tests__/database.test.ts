@@ -769,7 +769,7 @@ describe("DatabaseAdapter Tests", () => {
   it("should get an account by user ID", async () => {
     const account = await adapter.getEntityById("test-user-id" as UUID);
     expect(account).not.toBeNull();
-    expect(account?.metadata?.username).toBe("testuser");
+    expect(account && account.metadata && account.metadata.username).toBe("testuser");
   });
 
   it("should create a new account", async () => {

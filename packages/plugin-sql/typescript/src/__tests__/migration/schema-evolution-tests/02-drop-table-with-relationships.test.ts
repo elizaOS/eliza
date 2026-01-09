@@ -307,7 +307,7 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     }
 
     expect(blockedError).not.toBeNull();
-    expect(blockedError?.message).toContain("Destructive migration blocked");
+    expect(blockedError && blockedError.message).toContain("Destructive migration blocked");
     console.log(`  ✅ Table drop blocked without env var`);
 
     // Test 3: Production mode should also block
@@ -322,8 +322,8 @@ describe("Schema Evolution Test: Drop Table with Production Relationships", () =
     }
 
     expect(productionError).not.toBeNull();
-    expect(productionError?.message).toContain("production");
-    expect(productionError?.message).toContain(
+    expect(productionError && productionError.message).toContain("production");
+    expect(productionError && productionError.message).toContain(
       "ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS",
     );
     console.log(`  ✅ Table drop blocked in production`);

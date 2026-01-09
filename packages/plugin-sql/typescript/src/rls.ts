@@ -377,7 +377,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       ) as rls_enabled
     `);
 
-    const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
+    const rlsEnabled = checkResult.rows && checkResult.rows[0] && checkResult.rows[0].rls_enabled;
 
     if (!rlsEnabled) {
       logger.debug(
