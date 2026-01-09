@@ -93,9 +93,9 @@ export class DatabaseMigrationService {
 
     // Build migration options with sensible defaults
     const migrationOptions = {
-      verbose: options?.verbose ?? !isProduction,
-      force: options?.force ?? false,
-      dryRun: options?.dryRun ?? false,
+      verbose: (options && options.verbose) ?? !isProduction,
+      force: (options && options.force) ?? false,
+      dryRun: (options && options.dryRun) ?? false,
     };
 
     // Log migration start

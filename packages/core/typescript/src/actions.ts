@@ -108,7 +108,7 @@ const formatSelectedExamples = (examples: ActionExample[][]): string => {
  * @returns A comma-separated string of action names.
  */
 export function formatActionNames(actions: Action[]): string {
-  if (!actions?.length) return "";
+  if (!actions || !actions.length) return "";
 
   // Create a shuffled copy instead of mutating the original array
   return [...actions]
@@ -123,7 +123,7 @@ export function formatActionNames(actions: Action[]): string {
  * @returns A detailed string of actions, including names and descriptions.
  */
 export function formatActions(actions: Action[]): string {
-  if (!actions?.length) return "";
+  if (!actions || !actions.length) return "";
 
   // Create a shuffled copy without mutating the original
   return [...actions]

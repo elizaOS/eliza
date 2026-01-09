@@ -204,9 +204,9 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       }
 
       // Close connections
-      await setupClient?.end();
-      await aliceClient?.end();
-      await bobClient?.end();
+      if (setupClient) await setupClient.end();
+      if (aliceClient) await aliceClient.end();
+      if (bobClient) await bobClient.end();
     });
 
     it("should verify RLS is enabled on logs table", async () => {

@@ -124,8 +124,8 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         const agent = await adapter.getAgent(testAgentId);
 
         expect(agent).toBeDefined();
-        expect(agent?.id).toBe(testAgentId);
-        expect(agent?.name).toBe("PG Direct Test Agent");
+        expect(agent && agent.id).toBe(testAgentId);
+        expect(agent && agent.name).toBe("PG Direct Test Agent");
       });
 
       it("should update agent settings", async () => {
@@ -139,7 +139,7 @@ describe("PostgreSQL Adapter Direct Integration Tests", () => {
         expect(updated).toBe(true);
 
         const agent = await adapter.getAgent(testAgentId);
-        expect(agent?.settings).toEqual({
+        expect(agent && agent.settings).toEqual({
           theme: "dark",
           language: "en",
         });

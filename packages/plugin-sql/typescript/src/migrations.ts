@@ -276,7 +276,7 @@ export async function migrateToEntityRLS(
                 `SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`,
               ),
             );
-            const nullCount = nullCountResult.rows?.[0]?.count as
+            const nullCount = (nullCountResult.rows && nullCountResult.rows[0] && nullCountResult.rows[0].count) as
               | string
               | undefined;
             if (nullCount && parseInt(nullCount, 10) > 0) {

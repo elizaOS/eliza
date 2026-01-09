@@ -1,6 +1,6 @@
 //! Agent schema for elizaOS database
 //!
-//! Corresponds to the TypeScript agentTable in packages/plugin-sql/src/schema/agent.ts
+//! Corresponds to the TypeScript agentTable in packages/plugin-sql/typescript/src/schema/agent.ts
 
 /// SQL for creating the agents table
 pub const CREATE_AGENTS_TABLE: &str = r#"

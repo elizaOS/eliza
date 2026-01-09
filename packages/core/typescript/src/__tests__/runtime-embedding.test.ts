@@ -56,7 +56,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
       expect(event).toBeDefined();
-      expect(event?.payload).toMatchObject({
+      expect(event && event.payload).toMatchObject({
         runtime,
         memory,
         priority: "normal",
@@ -175,7 +175,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
       const event = emittedEvents.find(
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
-      expect((event?.payload as EmbeddingGenerationPayload).priority).toBe(
+      expect((event && event.payload as EmbeddingGenerationPayload).priority).toBe(
         "normal",
       );
     });
@@ -287,7 +287,7 @@ describe("AgentRuntime - queueEmbeddingGeneration", () => {
         (e) => e.event === EventType.EMBEDDING_GENERATION_REQUESTED,
       );
       expect(event).toBeDefined();
-      expect((event?.payload as EmbeddingGenerationPayload).memory.id).toBe(
+      expect((event && event.payload as EmbeddingGenerationPayload).memory.id).toBe(
         asyncMemory.id,
       );
     });

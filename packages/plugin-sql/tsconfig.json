@@ -25,5 +25,5 @@
     "noUnusedParameters": true,
     "allowUnusedLabels": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["typescript/src/**/*.ts"]
 }

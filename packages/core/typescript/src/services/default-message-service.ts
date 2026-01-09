@@ -119,20 +119,20 @@ export class DefaultMessageService implements IMessageService {
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
     const opts = {
-      maxRetries: options?.maxRetries ?? 3,
-      timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
+      maxRetries: (options && options.maxRetries) ?? 3,
+      timeoutDuration: (options && options.timeoutDuration) ?? 60 * 60 * 1000, // 1 hour
       useMultiStep:
-        options?.useMultiStep ??
+        (options && options.useMultiStep) ??
         parseBooleanFromText(
           String(runtime.getSetting("USE_MULTI_STEP") || ""),
         ),
       maxMultiStepIterations:
-        options?.maxMultiStepIterations ??
+        (options && options.maxMultiStepIterations) ??
         parseInt(
           String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") || "6"),
           10,
         ),
-      onStreamChunk: options?.onStreamChunk,
+      onStreamChunk: options && options.onStreamChunk,
     };
 
     // Set up timeout monitoring
@@ -355,9 +355,8 @@ export class DefaultMessageService implements IMessageService {
       // Check if room is muted
       if (
         agentUserState === "MUTED" &&
-        !message.content.text
-          ?.toLowerCase()
-          .includes(runtime.character.name.toLowerCase())
+        message.content.text &&
+        !message.content.text.toLowerCase().includes(runtime.character.name.toLowerCase())
       ) {
         runtime.logger.debug(
           { src: "service:message", roomId: message.roomId },
@@ -432,7 +431,7 @@ export class DefaultMessageService implements IMessageService {
         const shouldRespondPrompt = composePromptFromState({
           state,
           template:
-            runtime.character.templates?.shouldRespondTemplate ||
+            (runtime.character.templates && runtime.character.templates.shouldRespondTemplate) ||
             shouldRespondTemplate,
         });
 
@@ -462,7 +461,7 @@ export class DefaultMessageService implements IMessageService {
 
         // If an action is provided, the agent intends to respond in some way
         const nonResponseActions = ["IGNORE", "NONE"];
-        const actionValue = responseObject?.action;
+        const actionValue = responseObject && responseObject.action;
         shouldRespondToMessage =
           typeof actionValue === "string" &&
           !nonResponseActions.includes(actionValue.toUpperCase());
@@ -694,12 +693,12 @@ export class DefaultMessageService implements IMessageService {
         entityName = message.metadata.entityName;
       }
 
-      const isDM = message.content?.channelType === ChannelType.DM;
+      const isDM = message.content && message.content.channelType === ChannelType.DM;
       let roomName = entityName;
 
       if (!isDM) {
         const roomDatas = await runtime.getRoomsByIds([message.roomId]);
-        if (roomDatas?.length) {
+        if (roomDatas && roomDatas.length) {
           const roomData = roomDatas[0];
           if (roomData.name) {
             roomName = roomData.name;
@@ -714,7 +713,7 @@ export class DefaultMessageService implements IMessageService {
       }
 
       const date = new Date();
-      const providersData = state.data?.providers;
+      const providersData = state.data && state.data.providers;
       interface ActionsProviderData {
         ACTIONS?: {
           data?: {
@@ -728,7 +727,7 @@ export class DefaultMessageService implements IMessageService {
         "ACTIONS" in providersData
           ? (providersData as ActionsProviderData).ACTIONS
           : undefined;
-      const actionsData = actionsProvider?.data?.actionsData;
+      const actionsData = actionsProvider && actionsProvider.data && actionsProvider.data.actionsData;
       const availableActions = Array.isArray(actionsData)
         ? actionsData.map((a: { name: string }) => a.name)
         : [-1];
@@ -739,13 +738,13 @@ export class DefaultMessageService implements IMessageService {
         messageId: message.id,
         userEntityId: message.entityId,
         input: message.content.text,
-        thought: responseContent?.thought,
-        simple: responseContent?.simple,
+        thought: responseContent && responseContent.thought,
+        simple: responseContent && responseContent.simple,
         availableActions,
-        actions: responseContent?.actions,
-        providers: responseContent?.providers,
-        irt: responseContent?.inReplyTo,
-        output: responseContent?.text,
+        actions: responseContent && responseContent.actions,
+        providers: responseContent && responseContent.providers,
+        irt: responseContent && responseContent.inReplyTo,
+        output: responseContent && responseContent.text,
         entityName,
         source: message.content.source,
         channelType: message.content.channelType,
@@ -857,8 +856,8 @@ export class DefaultMessageService implements IMessageService {
       (s: string) => s.trim().toLowerCase(),
     );
 
-    const roomType = room.type?.toString().toLowerCase();
-    const sourceStr = message.content.source?.toLowerCase() || "";
+    const roomType = (room.type && room.type.toString().toLowerCase());
+    const sourceStr = (message.content.source && message.content.source.toLowerCase()) || "";
 
     // 1. DM/VOICE_DM/API channels: always respond (private channels)
     if (respondChannels.has(roomType)) {
@@ -880,10 +879,10 @@ export class DefaultMessageService implements IMessageService {
 
     // 3. Platform mentions and replies: always respond
     const hasPlatformMention = !!(
-      mentionContext?.isMention || mentionContext?.isReply
+      (mentionContext && mentionContext.isMention) || (mentionContext && mentionContext.isReply)
     );
     if (hasPlatformMention) {
-      const mentionType = mentionContext?.isMention ? "mention" : "reply";
+      const mentionType = (mentionContext && mentionContext.isMention) ? "mention" : "reply";
       return {
         shouldRespond: true,
         skipEvaluation: true,
@@ -974,10 +973,10 @@ export class DefaultMessageService implements IMessageService {
             runtime.logger.debug(
               {
                 src: "service:message",
-                descriptionPreview: processedAttachment.description?.substring(
+                descriptionPreview: (processedAttachment.description && processedAttachment.description.substring(
                   0,
                   100,
-                ),
+                )),
               },
               "Generated image description",
             );
@@ -991,15 +990,15 @@ export class DefaultMessageService implements IMessageService {
             const textMatch = responseStr.match(/<text>([^<]+)<\/text>/);
 
             if (titleMatch || descMatch || textMatch) {
-              processedAttachment.title = titleMatch?.[1] || "Image";
-              processedAttachment.description = descMatch?.[1] || "";
-              processedAttachment.text = textMatch?.[1] || descMatch?.[1] || "";
+              processedAttachment.title = (titleMatch && titleMatch[1]) || "Image";
+              processedAttachment.description = (descMatch && descMatch[1]) || "";
+              processedAttachment.text = (textMatch && textMatch[1]) || (descMatch && descMatch[1]) || "";
 
               runtime.logger.debug(
                 {
                   src: "service:message",
                   descriptionPreview:
-                    processedAttachment.description?.substring(0, 100),
+                    (processedAttachment.description && processedAttachment.description.substring(0, 100)),
                 },
                 "Used fallback XML parsing for description",
               );
@@ -1024,10 +1023,10 @@ export class DefaultMessageService implements IMessageService {
           runtime.logger.debug(
             {
               src: "service:message",
-              descriptionPreview: processedAttachment.description?.substring(
+              descriptionPreview: (processedAttachment.description && processedAttachment.description.substring(
                 0,
                 100,
-              ),
+              )),
             },
             "Generated image description",
           );
@@ -1061,7 +1060,7 @@ export class DefaultMessageService implements IMessageService {
           runtime.logger.debug(
             {
               src: "service:message",
-              textPreview: processedAttachment.text?.substring(0, 100),
+              textPreview: (processedAttachment.text && processedAttachment.text.substring(0, 100)),
             },
             "Extracted text content",
           );
@@ -1091,7 +1090,7 @@ export class DefaultMessageService implements IMessageService {
   ): Promise<StrategyResult> {
     state = await runtime.composeState(message, ["ACTIONS"]);
 
-    if (!state.values?.actionNames) {
+    if (!state.values || !state.values.actionNames) {
       runtime.logger.warn(
         { src: "service:message" },
         "actionNames data missing from state",
@@ -1101,7 +1100,7 @@ export class DefaultMessageService implements IMessageService {
     const prompt = composePromptFromState({
       state,
       template:
-        runtime.character.templates?.messageHandlerTemplate ||
+        (runtime.character.templates && runtime.character.templates.messageHandlerTemplate) ||
         messageHandlerTemplate,
     });
 
@@ -1112,7 +1111,7 @@ export class DefaultMessageService implements IMessageService {
 
     while (
       retries < opts.maxRetries &&
-      (!responseContent?.thought || !responseContent?.actions)
+      (!responseContent || !responseContent.thought || !responseContent.actions)
     ) {
       const response = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
@@ -1188,15 +1187,15 @@ export class DefaultMessageService implements IMessageService {
       }
 
       retries++;
-      if (!responseContent?.thought || !responseContent?.actions) {
+      if (!responseContent || !responseContent.thought || !responseContent.actions) {
         runtime.logger.warn(
           {
             src: "service:message",
             retries,
             maxRetries: opts.maxRetries,
-            hasThought: !!responseContent?.thought,
-            hasActions: !!responseContent?.actions,
-            actionsValue: responseContent?.actions,
+            hasThought: !!(responseContent && responseContent.thought),
+            hasActions: !!(responseContent && responseContent.actions),
+            actionsValue: responseContent && responseContent.actions,
           },
           "Missing required fields (thought or actions), retrying",
         );
@@ -1230,7 +1229,7 @@ export class DefaultMessageService implements IMessageService {
 
     // Automatically determine if response is simple
     const isSimple =
-      responseContent.actions?.length === 1 &&
+      responseContent && responseContent.actions && responseContent.actions.length === 1 &&
       typeof responseContent.actions[0] === "string" &&
       responseContent.actions[0].toUpperCase() === "REPLY" &&
       (!responseContent.providers || responseContent.providers.length === 0);
@@ -1293,7 +1292,7 @@ export class DefaultMessageService implements IMessageService {
       const prompt = composePromptFromState({
         state: accumulatedState,
         template:
-          runtime.character.templates?.multiStepDecisionTemplate ||
+          (runtime.character.templates && runtime.character.templates.multiStepDecisionTemplate) ||
           multiStepDecisionTemplate,
       });
 
@@ -1528,10 +1527,10 @@ export class DefaultMessageService implements IMessageService {
         );
 
         // Get cached action results from runtime
-        const cachedState = runtime.stateCache?.get(
+        const cachedState = runtime.stateCache && runtime.stateCache.get(
           `${message.id}_action_results`,
         );
-        const actionResults = Array.isArray(cachedState?.values?.actionResults)
+        const actionResults = Array.isArray(cachedState && cachedState.values && cachedState.values.actionResults)
           ? cachedState.values.actionResults
           : [];
         const result =
@@ -1582,7 +1581,7 @@ export class DefaultMessageService implements IMessageService {
     const summaryPrompt = composePromptFromState({
       state: accumulatedState,
       template:
-        runtime.character.templates?.multiStepSummaryTemplate ||
+        (runtime.character.templates && runtime.character.templates.multiStepSummaryTemplate) ||
         multiStepSummaryTemplate,
     });
 
@@ -1592,7 +1591,7 @@ export class DefaultMessageService implements IMessageService {
     const summary = parseKeyValueXml(finalOutput);
 
     let responseContent: Content | null = null;
-    const summaryText = summary?.text;
+    const summaryText = summary && summary.text;
     if (typeof summaryText === "string" && summaryText) {
       responseContent = {
         actions: ["MULTI_STEP_SUMMARY"],

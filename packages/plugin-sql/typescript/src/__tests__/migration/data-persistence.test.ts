@@ -122,7 +122,7 @@ describe("Data Persistence Through Migrations", () => {
       expect(status.hasRun).toBe(true);
       expect(status.snapshots).toBeGreaterThan(0);
       expect(status.journal).toBeDefined();
-      expect(status.journal?.entries).toHaveLength(2); // One for introspection, one for migration
+      expect(status.journal && status.journal.entries).toHaveLength(2); // One for introspection, one for migration
     });
 
     it("should preserve data through column type changes that are safe", async () => {
@@ -431,11 +431,11 @@ describe("Data Persistence Through Migrations", () => {
       // Verify complete migration history
       const status = await migrator.getStatus("@elizaos/plugin-sql");
       expect(status.hasRun).toBe(true);
-      expect(status.journal?.entries).toHaveLength(3); // Three migrations
+      expect(status.journal && status.journal.entries).toHaveLength(3); // Three migrations
       expect(status.snapshots).toBe(3); // Three snapshots
 
       // Verify each snapshot was saved correctly
-      const journalEntries = status.journal?.entries || [];
+      const journalEntries = (status.journal && status.journal.entries) || [];
       expect(journalEntries[0].idx).toBe(0);
       expect(journalEntries[1].idx).toBe(1);
       expect(journalEntries[2].idx).toBe(2);

@@ -99,7 +99,7 @@ describe("Task Integration Tests", () => {
 
       const retrieved = await adapter.getTask(taskId);
       expect(retrieved).not.toBeNull();
-      expect(retrieved?.id).toBe(taskId);
+      expect(retrieved && retrieved.id).toBe(taskId);
     });
 
     it("should update a task", async () => {
@@ -122,8 +122,8 @@ describe("Task Integration Tests", () => {
       });
 
       const retrieved = await adapter.getTask(taskId);
-      expect(retrieved?.description).toBe("Updated Description");
-      expect(retrieved?.metadata).toEqual({ status: "completed" });
+      expect(retrieved && retrieved.description).toBe("Updated Description");
+      expect(retrieved && retrieved.metadata).toEqual({ status: "completed" });
     });
 
     it("should delete a task", async () => {

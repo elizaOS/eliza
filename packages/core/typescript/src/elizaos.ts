@@ -125,13 +125,13 @@ export class elizaOS extends EventTarget implements IElizaOS {
       // Priority: .env < character.json (character overrides)
       // In test mode, skip env merge to avoid database bloat from system variables
       await setDefaultSecretsFromEnv(character, {
-        skipEnvMerge: options?.isTestMode,
+        skipEnvMerge: options && options.isTestMode,
       });
 
       // Encrypt all secrets after merging env vars
       const salt = getSalt();
       if (
-        character.settings?.secrets &&
+        character.settings && character.settings.secrets &&
         typeof character.settings.secrets === "object"
       ) {
         character.settings.secrets = encryptObjectValues(
@@ -148,7 +148,7 @@ export class elizaOS extends EventTarget implements IElizaOS {
       }
 
       let resolvedPlugins = agent.plugins
-        ? await resolvePlugins(agent.plugins, options?.isTestMode || false)
+        ? await resolvePlugins(agent.plugins, (options && options.isTestMode) || false)
         : [];
 
       // Filter out plugin-sql if databaseAdapter is provided
@@ -174,7 +174,7 @@ export class elizaOS extends EventTarget implements IElizaOS {
       runtime.elizaOS = this;
 
       // Only store in registry if not ephemeral
-      if (!options?.ephemeral) {
+      if (!(options && options.ephemeral)) {
         this.runtimes.set(runtime.agentId, runtime);
       }
 
@@ -193,7 +193,7 @@ export class elizaOS extends EventTarget implements IElizaOS {
               ...characterWithoutSecrets,
               settings: settingsWithoutSecrets,
             },
-            ephemeral: options?.ephemeral,
+            ephemeral: options && options.ephemeral,
           },
         }),
       );
@@ -205,10 +205,10 @@ export class elizaOS extends EventTarget implements IElizaOS {
     const ids = await Promise.all(promises);
 
     // Auto-start if requested (useful for serverless)
-    if (options?.autoStart) {
+    if (options && options.autoStart) {
       await Promise.all(
         createdRuntimes.map(async (runtime) => {
-          await runtime.initialize({ skipMigrations: options?.skipMigrations });
+          await runtime.initialize({ skipMigrations: options && options.skipMigrations });
 
           // Run init function if provided
           const initFn = this.initFunctions.get(runtime.agentId);
@@ -231,13 +231,13 @@ export class elizaOS extends EventTarget implements IElizaOS {
         detail: {
           agentIds: ids,
           count: ids.length,
-          ephemeral: options?.ephemeral,
+            ephemeral: options && options.ephemeral,
         },
       }),
     );
 
     // Return runtimes directly if requested (serverless pattern)
-    if (options?.returnRuntimes) {
+    if (options && options.returnRuntimes) {
       return createdRuntimes;
     }
 
@@ -524,11 +524,11 @@ export class elizaOS extends EventTarget implements IElizaOS {
 
     // 5. Extract processing options (includes streaming callback)
     const processingOptions: MessageProcessingOptions = {
-      maxRetries: options?.maxRetries,
-      timeoutDuration: options?.timeoutDuration,
-      useMultiStep: options?.useMultiStep,
-      maxMultiStepIterations: options?.maxMultiStepIterations,
-      onStreamChunk: options?.onStreamChunk,
+      maxRetries: options && options.maxRetries,
+      timeoutDuration: options && options.timeoutDuration,
+      useMultiStep: options && options.useMultiStep,
+      maxMultiStepIterations: options && options.maxMultiStepIterations,
+      onStreamChunk: options && options.onStreamChunk,
     };
 
     // 6. Helper to wrap message handling with Entity RLS context if available
@@ -543,7 +543,7 @@ export class elizaOS extends EventTarget implements IElizaOS {
     };
 
     // 7. Determine mode: async or sync
-    const isAsyncMode = !!options?.onResponse;
+    const isAsyncMode = !!(options && options.onResponse);
 
     if (isAsyncMode) {
       // ========== ASYNC MODE ==========
@@ -565,7 +565,8 @@ export class elizaOS extends EventTarget implements IElizaOS {
       };
 
       // Wrap message handling with Entity RLS context
-      const messagePromise = runtime.messageService?.handleMessage(
+      const messageService = runtime.messageService;
+      const messagePromise = messageService && messageService.handleMessage(
         runtime,
         userMessage,
         callback,
@@ -576,10 +577,14 @@ export class elizaOS extends EventTarget implements IElizaOS {
       }
       handleMessageWithEntityContext(() => messagePromise)
         .then(() => {
-          if (options.onComplete) options.onComplete();
+          if (options && options.onComplete) {
+            options.onComplete();
+          }
         })
         .catch((error: Error) => {
-          if (options.onError) options.onError(error);
+          if (options && options.onError) {
+            options.onError(error);
+          }
         });
 
       // Emit event for tracking
@@ -594,7 +599,8 @@ export class elizaOS extends EventTarget implements IElizaOS {
       // ========== SYNC MODE ==========
       // Wait for response
 
-      const messagePromise = runtime.messageService?.handleMessage(
+      const messageService = runtime.messageService;
+      const messagePromise = messageService && messageService.handleMessage(
         runtime,
         userMessage,
         undefined,
@@ -608,7 +614,7 @@ export class elizaOS extends EventTarget implements IElizaOS {
           () => messagePromise,
         );
 
-      if (options?.onComplete) await options.onComplete();
+      if (options && options.onComplete) await options.onComplete();
 
       // Emit event for tracking
       this.dispatchEvent(

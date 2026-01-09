@@ -1,6 +1,6 @@
 //! Embedding schema for elizaOS database
 //!
-//! Corresponds to the TypeScript embeddingTable in packages/plugin-sql/src/schema/embedding.ts
+//! Corresponds to the TypeScript embeddingTable in packages/plugin-sql/typescript/src/schema/embedding.ts
 
 /// Supported embedding dimensions
 pub const DIMENSION_384: i32 = 384;

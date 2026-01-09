@@ -7,25 +7,25 @@
     "emitDeclarationOnly": true
   },
   "include": [
-    "src/index.node.ts",
-    "src/index.ts",
-    "src/pglite/**/*.ts",
-    "src/pg/**/*.ts",
-    "src/schema/**/*.ts",
-    "src/base.ts",
-    "src/rls.ts",
-    "src/types.ts",
-    "src/utils.ts",
-    "src/utils.node.ts",
-    "src/migration-service.ts",
-    "src/migrations.ts",
-    "src/runtime-migrator/**/*.ts"
+    "typescript/src/index.node.ts",
+    "typescript/src/index.ts",
+    "typescript/src/pglite/**/*.ts",
+    "typescript/src/pg/**/*.ts",
+    "typescript/src/schema/**/*.ts",
+    "typescript/src/base.ts",
+    "typescript/src/rls.ts",
+    "typescript/src/types.ts",
+    "typescript/src/utils.ts",
+    "typescript/src/utils.node.ts",
+    "typescript/src/migration-service.ts",
+    "typescript/src/migrations.ts",
+    "typescript/src/runtime-migrator/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "src/**/__tests__/**",
-    "src/**/*.test.ts",
-    "src/**/*.spec.ts"
+    "typescript/src/**/__tests__/**",
+    "typescript/src/**/*.test.ts",
+    "typescript/src/**/*.spec.ts"
   ]
 }
