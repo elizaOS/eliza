@@ -10,7 +10,7 @@ import { agentTable } from './agent';
  * @property {string} agentId - The UUID of the agent associated with the room.
  * @property {string} source - The source of the room.
  * @property {string} type - The type of the room.
- * @property {string} serverId - The server ID of the room.
+ * @property {string} messageServerId - The message server ID of the room.
  * @property {string} worldId - The UUID of the world associated with the room.
  * @property {string} name - The name of the room.
  * @property {object} metadata - Additional metadata for the room in JSON format.
