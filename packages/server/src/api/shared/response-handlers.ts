@@ -11,7 +11,7 @@ import { ResponseMode } from './constants';
 
 /**
  * Message memory type for elizaOS.handleMessage
- * Re-export from core for convenience
+ * Export from core for convenience
  */
 export type { Memory };
 

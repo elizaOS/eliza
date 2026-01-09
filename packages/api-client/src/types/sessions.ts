@@ -199,13 +199,3 @@ export interface MessageResponse {
   sessionStatus?: SessionStatusData;
 }
 
-/**
- * @deprecated Use MessageResponse instead - old format for backward compatibility
- */
-export interface LegacyMessageResponse {
-  id: string;
-  content: string;
-  authorId: string;
-  createdAt: Date;
-  metadata?: SessionMessageMetadata;
-}

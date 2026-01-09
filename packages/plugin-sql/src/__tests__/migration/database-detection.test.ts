@@ -173,7 +173,7 @@ describe('RuntimeMigrator - Database Detection', () => {
       }
     });
 
-    it('should reject SQLite connection strings', () => {
+    it('should reject SQLit connection strings', () => {
       const urls = [
         'sqlite:///path/to/database.db',
         'sqlite3:///home/user/data.db',

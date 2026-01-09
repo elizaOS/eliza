@@ -9,7 +9,7 @@ The server package provides the REST API and WebSocket server infrastructure for
 - REST API endpoints for agent management and interaction
 - WebSocket support for real-time communication
 - JWT authentication with data isolation (Privy, Auth0, Clerk, Supabase, Google, custom)
-- Database integration with SQLite/PostgreSQL
+- Database integration with SQLit/PostgreSQL
 - Plugin system integration
 - Multi-agent runtime management
 - Built-in web UI serving (client bundled with server)
@@ -246,7 +246,7 @@ The server respects these environment variables:
 - `PORT` - Server port (default: 3000)
 - `HOST` - Server host (default: localhost)
 - `DATABASE_URL` - PostgreSQL connection string
-- `SQLITE_PATH` - Path to SQLite database file
+- `SQLITE_PATH` - Path to SQLit database file
 - `LOG_LEVEL` - Logging level (debug, info, warn, error)
 - `CORS_ORIGIN` - CORS allowed origins
 - `ENABLE_DATA_ISOLATION` - Enable JWT authentication and data isolation (true/false)

@@ -2,31 +2,25 @@ import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { TestRunner } from '../../../src/utils/test-runner';
 import type { IAgentRuntime, Plugin, ProjectAgent, Character } from '@elizaos/core';
 
-// Mock the logger
-mock.module('@elizaos/core', () => ({
-  logger: {
-    info: mock(),
-    debug: mock(),
-    error: mock(),
-    warn: mock(),
-    success: mock(),
-  },
-}));
+// Store original env
+const originalEnv = process.env.ELIZA_TESTING_PLUGIN;
+
+// Create minimal mock runtime factory
+const createMockRuntime = (): IAgentRuntime => {
+  return {
+    agentId: 'test-agent-id',
+    character: { name: 'Test Agent', bio: 'Test bio' } as Character,
+    plugins: [],
+  } as Partial<IAgentRuntime> as IAgentRuntime;
+};
 
 describe('TestRunner Plugin Isolation', () => {
   let mockRuntime: IAgentRuntime;
-  const originalEnv = process.env.ELIZA_TESTING_PLUGIN;
 
   beforeEach(() => {
     // Reset environment
     delete process.env.ELIZA_TESTING_PLUGIN;
-
-    // Create a mock runtime with minimal required properties
-    mockRuntime = {
-      agentId: 'test-agent-id',
-      character: { name: 'Test Agent', bio: 'Test bio' } as Character,
-      plugins: [],
-    } as Partial<IAgentRuntime> as IAgentRuntime;
+    mockRuntime = createMockRuntime();
   });
 
   afterEach(() => {
@@ -70,10 +64,11 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      // The test runner should identify the test plugin, not the SQL plugin
-      expect((testRunner as any).isDirectPluginTest).toBe(true);
-      expect((testRunner as any).pluginUnderTest).toBe(testPlugin);
-      expect((testRunner as any).pluginUnderTest?.name).toBe('test-plugin');
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(true);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBe(testPlugin);
+      expect(
+        ((testRunner as Record<string, unknown>).pluginUnderTest as Plugin | undefined)?.name
+      ).toBe('test-plugin');
     });
 
     it('should not identify as plugin test when only core plugins are present', () => {
@@ -91,8 +86,8 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(false);
-      expect((testRunner as any).pluginUnderTest).toBeUndefined();
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(false);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBeUndefined();
     });
 
     it('should handle multiple non-core plugins by selecting the first one', () => {
@@ -122,8 +117,8 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(true);
-      expect((testRunner as any).pluginUnderTest).toBe(plugin1);
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(true);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBe(plugin1);
     });
 
     it('should not identify as plugin test when ELIZA_TESTING_PLUGIN is not set', () => {
@@ -142,13 +137,17 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(false);
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(false);
     });
   });
 
   describe('Test Execution', () => {
     it('should only run tests for the identified plugin', async () => {
       process.env.ELIZA_TESTING_PLUGIN = 'true';
+
+      let sqlTestCalled = false;
+      let targetTest1Called = false;
+      let targetTest2Called = false;
 
       const sqlPlugin: Plugin = {
         name: '@elizaos/plugin-sql',
@@ -159,7 +158,9 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'sql test',
-                fn: mock(),
+                fn: async () => {
+                  sqlTestCalled = true;
+                },
               },
             ],
           },
@@ -175,11 +176,15 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'target test 1',
-                fn: mock(),
+                fn: async () => {
+                  targetTest1Called = true;
+                },
               },
               {
                 name: 'target test 2',
-                fn: mock(),
+                fn: async () => {
+                  targetTest2Called = true;
+                },
               },
             ],
           },
@@ -199,17 +204,18 @@ describe('TestRunner Plugin Isolation', () => {
       expect(results.passed).toBe(2);
 
       // SQL plugin tests should not have been called
-      const sqlTests = sqlPlugin.tests?.[0]?.tests?.[0];
-      expect(sqlTests?.fn).not.toHaveBeenCalled();
+      expect(sqlTestCalled).toBe(false);
 
       // Target plugin tests should have been called
-      const targetTests = targetPlugin.tests?.[0]?.tests;
-      // expect(targetTests?.[0]?.fn).toHaveBeenCalled(); // TODO: Fix for bun test
-      // expect(targetTests?.[1]?.fn).toHaveBeenCalled(); // TODO: Fix for bun test
+      expect(targetTest1Called).toBe(true);
+      expect(targetTest2Called).toBe(true);
     });
 
     it('should skip project tests when testing a plugin', async () => {
       process.env.ELIZA_TESTING_PLUGIN = 'true';
+
+      let pluginTestCalled = false;
+      let projectTestCalled = false;
 
       const targetPlugin: Plugin = {
         name: 'target-plugin',
@@ -220,7 +226,9 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'plugin test',
-                fn: mock(),
+                fn: async () => {
+                  pluginTestCalled = true;
+                },
               },
             ],
           },
@@ -236,7 +244,9 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'project test',
-                fn: mock(),
+                fn: async () => {
+                  projectTestCalled = true;
+                },
               },
             ],
           },
@@ -248,15 +258,10 @@ describe('TestRunner Plugin Isolation', () => {
 
       // Only plugin test should run
       expect(results.total).toBe(1);
-      const pluginTests = targetPlugin.tests?.[0]?.tests?.[0];
-      // expect(pluginTests?.fn).toHaveBeenCalled(); // TODO: Fix for bun test
+      expect(pluginTestCalled).toBe(true);
 
       // Project test should not run
-      const projectTests =
-        projectAgent.tests && Array.isArray(projectAgent.tests) && projectAgent.tests.length > 0
-          ? projectAgent.tests[0].tests?.[0]
-          : undefined;
-      expect(projectTests?.fn).not.toHaveBeenCalled();
+      expect(projectTestCalled).toBe(false);
     });
 
     it('should handle plugins without tests gracefully', async () => {
@@ -282,6 +287,9 @@ describe('TestRunner Plugin Isolation', () => {
     it('should apply test filters correctly when testing plugins', async () => {
       process.env.ELIZA_TESTING_PLUGIN = 'true';
 
+      let suiteATestCalled = false;
+      let suiteBTestCalled = false;
+
       const targetPlugin: Plugin = {
         name: 'target-plugin',
         description: 'Target Plugin',
@@ -291,7 +299,9 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'test a',
-                fn: mock(),
+                fn: async () => {
+                  suiteATestCalled = true;
+                },
               },
             ],
           },
@@ -300,7 +310,9 @@ describe('TestRunner Plugin Isolation', () => {
             tests: [
               {
                 name: 'test b',
-                fn: mock(),
+                fn: async () => {
+                  suiteBTestCalled = true;
+                },
               },
             ],
           },
@@ -318,10 +330,8 @@ describe('TestRunner Plugin Isolation', () => {
       // Only Suite A test should run
       expect(results.total).toBe(1);
       expect(results.skipped).toBe(1);
-      const suiteATests = targetPlugin.tests?.[0]?.tests?.[0];
-      const suiteBTests = targetPlugin.tests?.[1]?.tests?.[0];
-      // expect(suiteATests?.fn).toHaveBeenCalled(); // TODO: Fix for bun test
-      expect(suiteBTests?.fn).not.toHaveBeenCalled();
+      expect(suiteATestCalled).toBe(true);
+      expect(suiteBTestCalled).toBe(false);
     });
   });
 
@@ -336,8 +346,8 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(false);
-      expect((testRunner as any).pluginUnderTest).toBeUndefined();
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(false);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBeUndefined();
     });
 
     it('should handle null/undefined project agent', () => {
@@ -345,8 +355,8 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, undefined);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(false);
-      expect((testRunner as any).pluginUnderTest).toBeUndefined();
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(false);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBeUndefined();
     });
 
     it('should handle character name based plugin detection', () => {
@@ -365,8 +375,8 @@ describe('TestRunner Plugin Isolation', () => {
 
       const testRunner = new TestRunner(mockRuntime, projectAgent);
 
-      expect((testRunner as any).isDirectPluginTest).toBe(true);
-      expect((testRunner as any).pluginUnderTest).toBe(testPlugin);
+      expect((testRunner as Record<string, unknown>).isDirectPluginTest).toBe(true);
+      expect((testRunner as Record<string, unknown>).pluginUnderTest).toBe(testPlugin);
     });
   });
 });

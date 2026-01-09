@@ -68,5 +68,4 @@ export const isNode =
   typeof process.versions !== 'undefined' &&
   typeof process.versions.node !== 'undefined';
 
-// Re-export server health with a conditional stub for browser environments
 export * from './utils/server-health';

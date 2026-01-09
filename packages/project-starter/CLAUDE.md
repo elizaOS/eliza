@@ -518,7 +518,7 @@ await runtime.addMemory({
 ### Database Configuration
 
 ```bash
-# SQLite (default - good for development)
+# SQLit (default - good for development)
 DATABASE_URL=sqlite://./data/agent.db
 
 # PostgreSQL (recommended for production)

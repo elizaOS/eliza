@@ -1,4 +1,4 @@
-// Upload configurations - internal re-export for package structure
+// Upload configurations - internal export for package structure
 export {
   agentAudioUpload,
   agentMediaUpload,

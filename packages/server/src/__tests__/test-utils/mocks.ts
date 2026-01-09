@@ -33,7 +33,7 @@ export function createMockAgentRuntime(overrides?: Partial<IAgentRuntime>): IAge
       system: 'Test system',
       modelProvider: 'openai',
       settings: {
-        model: 'gpt-4',
+        model: 'gpt-5',
         secrets: {},
       },
     } as Character,

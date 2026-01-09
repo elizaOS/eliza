@@ -47,7 +47,7 @@ describe('Report Generation Integration', () => {
         run_id: 'run-001',
         matrix_combination_id: 'combo-1',
         parameters: {
-          'character.llm.model': 'gpt-4',
+          'character.llm.model': 'gpt-5',
           'character.temperature': 0.7,
         },
         metrics: {
@@ -114,7 +114,7 @@ describe('Report Generation Integration', () => {
         run_id: 'run-003',
         matrix_combination_id: 'combo-1',
         parameters: {
-          'character.llm.model': 'gpt-4',
+          'character.llm.model': 'gpt-5',
           'character.temperature': 0.9,
         },
         metrics: {
@@ -176,10 +176,10 @@ describe('Report Generation Integration', () => {
 
     // Verify parameter grouping
     expect(reportData.results_by_parameter['character.llm.model']).toBeDefined();
-    expect(reportData.results_by_parameter['character.llm.model']['gpt-4']).toBeDefined();
+    expect(reportData.results_by_parameter['character.llm.model']['gpt-5']).toBeDefined();
     expect(reportData.results_by_parameter['character.llm.model']['gpt-3.5-turbo']).toBeDefined();
 
-    const gpt4Stats = reportData.results_by_parameter['character.llm.model']['gpt-4'];
+    const gpt4Stats = reportData.results_by_parameter['character.llm.model']['gpt-5'];
     expect(gpt4Stats.total_runs).toBe(2);
     expect(gpt4Stats.total_failed_runs).toBe(1);
 

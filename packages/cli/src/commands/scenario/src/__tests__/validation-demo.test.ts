@@ -19,7 +19,7 @@ describe('Matrix Schema Demo and Integration', () => {
       matrix: [
         {
           parameter: 'character.llm.model',
-          values: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+          values: ['gpt-5', 'gpt-3.5-turbo'],
         },
         {
           parameter: 'run[0].input',
@@ -56,15 +56,15 @@ describe('Matrix Schema Demo and Integration', () => {
     // Verify the combinations are correct
     const expectedCombinations = [
       {
-        'character.llm.model': 'gpt-4-turbo',
+        'character.llm.model': 'gpt-5',
         'run[0].input': 'List open issues for elizaOS/eliza',
       },
       {
-        'character.llm.model': 'gpt-4-turbo',
+        'character.llm.model': 'gpt-5',
         'run[0].input': 'Find current issues for the elizaos/eliza repo',
       },
       {
-        'character.llm.model': 'gpt-4-turbo',
+        'character.llm.model': 'gpt-5',
         'run[0].input': "Show me what's open in the elizaOS/eliza GitHub.",
       },
       {
@@ -145,7 +145,7 @@ describe('Matrix Schema Demo and Integration', () => {
       matrix: [
         {
           parameter: 'character.llm.model',
-          values: ['gpt-4', 'gpt-3.5-turbo', 'claude-3', 'llama-2'], // 4 values
+          values: ['gpt-5', 'gpt-3.5-turbo', 'claude-3', 'llama-2'], // 4 values
         },
         {
           parameter: 'character.temperature',

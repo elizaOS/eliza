@@ -194,7 +194,7 @@ describe('Run Isolation System', () => {
 
       const parameters = {
         'character.name': 'Alice',
-        'character.model': 'gpt-4',
+        'character.model': 'gpt-5',
       };
 
       const context = await createIsolatedEnvironment('scenario-test', testOutputDir);
@@ -212,7 +212,7 @@ describe('Run Isolation System', () => {
       const scenarioData = JSON.parse(scenarioContent);
 
       expect(scenarioData.character.name).toBe('Alice');
-      expect(scenarioData.character.model).toBe('gpt-4');
+      expect(scenarioData.character.model).toBe('gpt-5');
 
       await context.cleanup();
     });
@@ -242,7 +242,7 @@ describe('Run Isolation System', () => {
 
       const parameters = {
         'character.name': 'OverriddenName',
-        'character.settings.model': 'gpt-4',
+        'character.settings.model': 'gpt-5',
         'run[0].evaluations[0].value': 'overridden-value',
       };
 
@@ -253,7 +253,7 @@ describe('Run Isolation System', () => {
       const scenarioData = JSON.parse(scenarioContent);
 
       expect(scenarioData.character.name).toBe('OverriddenName');
-      expect(scenarioData.character.settings.model).toBe('gpt-4');
+      expect(scenarioData.character.settings.model).toBe('gpt-5');
       expect(scenarioData.run[0].evaluations[0].value).toBe('overridden-value');
 
       await context.cleanup();

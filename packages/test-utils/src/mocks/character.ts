@@ -123,7 +123,7 @@ export function createMockCharacter(overrides: MockCharacterOverrides = {}): Cha
     plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-bootstrap'],
 
     settings: {
-      model: 'gpt-4',
+      model: 'gpt-5',
       temperature: 0.1, // Low temperature for consistent test responses
       maxTokens: 1000,
       secrets: {},

@@ -14,7 +14,7 @@ describe('Matrix Schema Validation', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+            values: ['gpt-5', 'gpt-3.5-turbo'],
           },
           {
             parameter: 'run[0].input',
@@ -43,7 +43,7 @@ describe('Matrix Schema Validation', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4'],
+            values: ['gpt-5'],
           },
         ],
       };
@@ -63,7 +63,7 @@ describe('Matrix Schema Validation', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'claude-3'],
+            values: ['gpt-5', 'claude-3'],
           },
           {
             parameter: 'run[0].input',
@@ -253,7 +253,7 @@ describe('Matrix Schema Validation', () => {
     it('should have correct TypeScript types for MatrixAxis', () => {
       const axis: MatrixAxis = {
         parameter: 'character.llm.model',
-        values: ['gpt-4', 'claude-3', 42, true, null],
+        values: ['gpt-5', 'claude-3', 42, true, null],
       };
 
       // This test passes if the TypeScript compiler accepts the above without errors
@@ -322,7 +322,7 @@ describe('Matrix Schema Validation', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4-turbo', 'gpt-3.5-turbo'],
+            values: ['gpt-5', 'gpt-3.5-turbo'],
           },
           {
             parameter: 'run[0].input',
@@ -351,7 +351,7 @@ describe('Matrix Schema Validation', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'gpt-3.5-turbo', 'claude-3'],
+            values: ['gpt-5', 'gpt-3.5-turbo', 'claude-3'],
           },
           {
             parameter: 'character.temperature',

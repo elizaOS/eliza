@@ -22,7 +22,7 @@ describe('Matrix Runner', () => {
       matrix: [
         {
           parameter: 'character.llm.model',
-          values: ['gpt-4', 'gpt-3.5-turbo'],
+          values: ['gpt-5', 'gpt-3.5-turbo'],
         },
         {
           parameter: 'run[0].input',
@@ -38,7 +38,7 @@ describe('Matrix Runner', () => {
       matrix: [
         {
           parameter: 'character.llm.model',
-          values: ['gpt-4', 'gpt-3.5-turbo', 'claude-3'],
+          values: ['gpt-5', 'gpt-3.5-turbo', 'claude-3'],
         },
         {
           parameter: 'run[0].input',
@@ -97,13 +97,13 @@ describe('Matrix Runner', () => {
       const modelValues = new Set(combinations.map((c) => c.parameters['character.llm.model']));
       const inputValues = new Set(combinations.map((c) => c.parameters['run[0].input']));
 
-      expect(modelValues).toEqual(new Set(['gpt-4', 'gpt-3.5-turbo']));
+      expect(modelValues).toEqual(new Set(['gpt-5', 'gpt-3.5-turbo']));
       expect(inputValues).toEqual(new Set(['Hello', 'Hi']));
 
       // Verify all combinations exist
       const expectedCombinations = [
-        { 'character.llm.model': 'gpt-4', 'run[0].input': 'Hello' },
-        { 'character.llm.model': 'gpt-4', 'run[0].input': 'Hi' },
+        { 'character.llm.model': 'gpt-5', 'run[0].input': 'Hello' },
+        { 'character.llm.model': 'gpt-5', 'run[0].input': 'Hi' },
         { 'character.llm.model': 'gpt-3.5-turbo', 'run[0].input': 'Hello' },
         { 'character.llm.model': 'gpt-3.5-turbo', 'run[0].input': 'Hi' },
       ];
@@ -187,11 +187,11 @@ describe('Matrix Runner', () => {
   describe('filterCombinations', () => {
     it('should filter combinations by parameter value', () => {
       const combinations = generateMatrixCombinations(basicConfig);
-      const filtered = filterCombinations(combinations, 'gpt-4');
+      const filtered = filterCombinations(combinations, 'gpt-5');
 
       expect(filtered.length).toBeLessThan(combinations.length);
       filtered.forEach((combo) => {
-        expect(JSON.stringify(combo.parameters)).toContain('gpt-4');
+        expect(JSON.stringify(combo.parameters)).toContain('gpt-5');
       });
     });
 
@@ -201,7 +201,7 @@ describe('Matrix Runner', () => {
 
       expect(filtered.length).toBeGreaterThan(0);
       filtered.forEach((combo) => {
-        expect(JSON.stringify(combo.parameters).toLowerCase()).toContain('gpt-4');
+        expect(JSON.stringify(combo.parameters).toLowerCase()).toContain('gpt-5');
       });
     });
 
@@ -280,11 +280,11 @@ describe('Matrix Runner', () => {
       const context = createExecutionContext(basicConfig, combinations, {
         parallelism: 1,
         dryRun: true,
-        filter: 'gpt-4',
+        filter: 'gpt-5',
         verbose: false,
       });
 
-      expect(context.settings.filter).toBe('gpt-4');
+      expect(context.settings.filter).toBe('gpt-5');
     });
   });
 

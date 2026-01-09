@@ -156,7 +156,7 @@ describe('Progress Tracker', () => {
     it('should format detailed progress messages correctly', () => {
       progressTracker.startRun('run-001', 'combo-001', {
         'character.name': 'Alice',
-        'character.model': 'gpt-4',
+        'character.model': 'gpt-5',
       });
 
       const detailedMessage = progressMessages.find(
@@ -168,7 +168,7 @@ describe('Progress Tracker', () => {
 
       expect(detailedMessage).toBeDefined();
       expect(detailedMessage).toContain('Alice');
-      expect(detailedMessage).toContain('gpt-4');
+      expect(detailedMessage).toContain('gpt-5');
     });
 
     it('should format time estimates in human-readable format', () => {

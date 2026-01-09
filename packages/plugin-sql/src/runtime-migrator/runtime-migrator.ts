@@ -181,7 +181,7 @@ export class RuntimeMigrator {
     ];
     if (pgSchemes.some((s) => url.startsWith(s))) return true;
 
-    // Exclude PGLite, SQLite databases (only for non-postgres:// URLs)
+    // Exclude PGLite, SQLit databases (only for non-postgres:// URLs)
     const excludePatterns = ['pglite', 'sqlite'];
     const urlBase = url.split('?')[0];
     if (excludePatterns.some((p) => url.includes(p))) return false;

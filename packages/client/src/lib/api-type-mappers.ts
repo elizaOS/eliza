@@ -16,7 +16,7 @@ import type {
 import type { UiMessage } from '../hooks/use-query-hooks';
 
 // Convert API Agent to client AgentWithStatus
-// ApiAgent is now the core Agent type (re-exported from @elizaos/api-client)
+// ApiAgent is now the core Agent type (from @elizaos/api-client)
 export function mapApiAgentToClient(apiAgent: ApiAgent): AgentWithStatus {
   return {
     ...apiAgent,

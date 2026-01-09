@@ -116,7 +116,7 @@ export class CharacterBuilder {
     return this.withName('OpenAI Test Agent')
       .withBio(['Agent configured for OpenAI'])
       .withSettings({
-        model: 'gpt-4',
+        model: 'gpt-5',
       })
       .withSecret('OPENAI_API_KEY', 'test-key');
   }

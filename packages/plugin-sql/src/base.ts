@@ -26,10 +26,12 @@ import {
 import type { DatabaseMigrationService } from './migration-service';
 import {
   and,
+  asc,
   cosineDistance,
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   lt,
@@ -3627,12 +3629,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }
 
   /**
-   * Gets messages for a channel
+   * Gets messages for a channel with optional pagination.
+   *
+   * @param channelId - The channel to fetch messages from
+   * @param limit - Maximum number of messages to return (default: 50)
+   * @param beforeTimestamp - Only return messages created before this timestamp (for backward pagination)
+   * @param afterTimestamp - Only return messages created after this timestamp (for forward pagination)
+   * @returns Array of messages sorted by creation time (newest first for beforeTimestamp, oldest first for afterTimestamp)
    */
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    afterTimestamp?: Date
   ): Promise<
     Array<{
       id: UUID;
@@ -3650,15 +3659,24 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   > {
     return this.withDatabase(async () => {
       const conditions = [eq(messageTable.channelId, channelId)];
+
       if (beforeTimestamp) {
         conditions.push(lt(messageTable.createdAt, beforeTimestamp));
       }
+
+      if (afterTimestamp) {
+        conditions.push(gt(messageTable.createdAt, afterTimestamp));
+      }
+
+      // For afterTimestamp queries, we want oldest first to support forward pagination
+      // For beforeTimestamp or default queries, we want newest first for backward pagination
+      const orderDirection = afterTimestamp && !beforeTimestamp ? asc : desc;
 
       const query = this.db
         .select()
         .from(messageTable)
         .where(and(...conditions))
-        .orderBy(desc(messageTable.createdAt))
+        .orderBy(orderDirection(messageTable.createdAt))
         .limit(limit);
 
       const results = await query;

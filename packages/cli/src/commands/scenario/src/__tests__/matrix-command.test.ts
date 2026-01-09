@@ -75,7 +75,7 @@ describe('Matrix CLI Command', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'gpt-3.5-turbo'],
+            values: ['gpt-5', 'gpt-3.5-turbo'],
           },
         ],
       };
@@ -89,7 +89,7 @@ base_scenario: "test.scenario.yaml"
 runs_per_combination: 2
 matrix:
   - parameter: "character.llm.model"
-    values: ["gpt-4", "gpt-3.5-turbo"]
+    values: ["gpt-5", "gpt-3.5-turbo"]
 `
       );
 
@@ -214,7 +214,7 @@ invalid_field: true
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'gpt-3.5-turbo', 'claude-3'],
+            values: ['gpt-5', 'gpt-3.5-turbo', 'claude-3'],
           },
           {
             parameter: 'character.temperature',

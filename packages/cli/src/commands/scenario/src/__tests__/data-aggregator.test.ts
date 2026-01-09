@@ -81,7 +81,7 @@ describe('RunDataAggregator', () => {
     it('should initialize a new run with unique ID', () => {
       const runId = 'test-run-123';
       const combinationId = 'combo-001';
-      const parameters = { 'character.llm.model': 'gpt-4' };
+      const parameters = { 'character.llm.model': 'gpt-5' };
 
       aggregator.startRun(runId, combinationId, parameters);
 
@@ -162,7 +162,7 @@ describe('RunDataAggregator', () => {
   describe('buildResult', () => {
     it('should build a complete ScenarioRunResult for successful run', async () => {
       // Arrange: Set up a complete run
-      aggregator.startRun('test-run-456', 'combo-002', { model: 'gpt-4' });
+      aggregator.startRun('test-run-456', 'combo-002', { model: 'gpt-5' });
       aggregator.recordFinalResponse('Agent completed the task successfully.');
       aggregator.recordMetrics({
         execution_time_seconds: 12.3,
@@ -192,7 +192,7 @@ describe('RunDataAggregator', () => {
       expect(result).toEqual({
         run_id: 'test-run-456',
         matrix_combination_id: 'combo-002',
-        parameters: { model: 'gpt-4' },
+        parameters: { model: 'gpt-5' },
         metrics: {
           execution_time_seconds: 12.3,
           llm_calls: 2,
@@ -300,7 +300,7 @@ describe('ScenarioRunResult schema validation', () => {
       run_id: 'run-20231027-015',
       matrix_combination_id: 'combo-003',
       parameters: {
-        'character.llm.model': 'gpt-4-turbo',
+        'character.llm.model': 'gpt-5',
         'run[0].input': 'Test input',
       },
       metrics: {

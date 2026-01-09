@@ -55,7 +55,7 @@ describe('PDF Export Functionality', () => {
       run_id: 'test-run-001',
       matrix_combination_id: 'combo-1',
       parameters: {
-        'character.llm.model': 'gpt-4',
+        'character.llm.model': 'gpt-5',
         'character.temperature': 0.7,
       },
       metrics: {
@@ -220,7 +220,7 @@ describe('PDF Export Functionality', () => {
       const runWithCapabilities: ScenarioRunResult = {
         run_id: 'chart-test-run',
         matrix_combination_id: 'combo-chart',
-        parameters: { model: 'gpt-4' },
+        parameters: { model: 'gpt-5' },
         metrics: {
           execution_time_seconds: 30.0,
           llm_calls: 2,
@@ -266,7 +266,7 @@ describe('PDF Export Functionality', () => {
         const run: ScenarioRunResult = {
           run_id: `multi-run-${i.toString().padStart(3, '0')}`,
           matrix_combination_id: `combo-${i}`,
-          parameters: { model: i % 2 === 0 ? 'gpt-4' : 'gpt-3.5-turbo' },
+          parameters: { model: i % 2 === 0 ? 'gpt-5' : 'gpt-3.5-turbo' },
           metrics: {
             execution_time_seconds: 15 + i * 2,
             llm_calls: i,

@@ -42,7 +42,7 @@ describe('Socket.IO End-to-End Message Flow', () => {
     const { runtime } = await agentFixture.setup({
       character: new CharacterBuilder()
         .asSocketIOTestAgent()
-        .withSettings({ model: 'gpt-4' })
+        .withSettings({ model: 'gpt-5' })
         .withSecret('OPENAI_API_KEY', 'test-key')
         .build(),
     });

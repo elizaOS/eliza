@@ -32,7 +32,7 @@ describe('AnalysisEngine', () => {
       matrix: [
         {
           parameter: 'character.llm.model',
-          values: ['gpt-4', 'gpt-3.5-turbo'],
+          values: ['gpt-5', 'gpt-3.5-turbo'],
         },
         {
           parameter: 'character.temperature',
@@ -54,7 +54,7 @@ describe('AnalysisEngine', () => {
       const mockRuns: ScenarioRunResult[] = [
         createMockRunResult({
           run_id: 'run-1',
-          parameters: { 'character.llm.model': 'gpt-4' },
+          parameters: { 'character.llm.model': 'gpt-5' },
           metrics: {
             execution_time_seconds: 10.5,
             llm_calls: 3,
@@ -102,7 +102,7 @@ describe('AnalysisEngine', () => {
         }),
         createMockRunResult({
           run_id: 'run-3',
-          parameters: { 'character.llm.model': 'gpt-4' },
+          parameters: { 'character.llm.model': 'gpt-5' },
           metrics: {
             execution_time_seconds: 12.1,
             llm_calls: 4,
@@ -147,7 +147,7 @@ describe('AnalysisEngine', () => {
       const mockRuns: ScenarioRunResult[] = [
         createMockRunResult({
           run_id: 'run-1',
-          parameters: { 'character.llm.model': 'gpt-4' },
+          parameters: { 'character.llm.model': 'gpt-5' },
           error: null,
           evaluations: [
             {
@@ -160,7 +160,7 @@ describe('AnalysisEngine', () => {
         }),
         createMockRunResult({
           run_id: 'run-2',
-          parameters: { 'character.llm.model': 'gpt-4' },
+          parameters: { 'character.llm.model': 'gpt-5' },
           error: 'Execution timeout',
           evaluations: [],
         }),
@@ -197,7 +197,7 @@ describe('AnalysisEngine', () => {
       const mockRuns: ScenarioRunResult[] = [
         createMockRunResult({
           run_id: 'run-1',
-          parameters: { 'character.llm.model': 'gpt-4', 'character.temperature': 0.7 },
+          parameters: { 'character.llm.model': 'gpt-5', 'character.temperature': 0.7 },
           metrics: { execution_time_seconds: 10 },
           evaluations: [
             {
@@ -210,7 +210,7 @@ describe('AnalysisEngine', () => {
         }),
         createMockRunResult({
           run_id: 'run-2',
-          parameters: { 'character.llm.model': 'gpt-4', 'character.temperature': 0.9 },
+          parameters: { 'character.llm.model': 'gpt-5', 'character.temperature': 0.9 },
           metrics: { execution_time_seconds: 12 },
           evaluations: [
             {
@@ -243,10 +243,10 @@ describe('AnalysisEngine', () => {
 
       // Check grouping by model
       expect(result.results_by_parameter['character.llm.model']).toBeDefined();
-      expect(result.results_by_parameter['character.llm.model']['gpt-4']).toBeDefined();
+      expect(result.results_by_parameter['character.llm.model']['gpt-5']).toBeDefined();
       expect(result.results_by_parameter['character.llm.model']['gpt-3.5-turbo']).toBeDefined();
 
-      const gpt4Stats = result.results_by_parameter['character.llm.model']['gpt-4'];
+      const gpt4Stats = result.results_by_parameter['character.llm.model']['gpt-5'];
       const gpt35Stats = result.results_by_parameter['character.llm.model']['gpt-3.5-turbo'];
 
       expect(gpt4Stats.total_runs).toBe(2);
@@ -447,7 +447,7 @@ describe('AnalysisEngine', () => {
       const mockRuns: ScenarioRunResult[] = [
         createMockRunResult({
           parameters: {
-            'character.llm.model': 'gpt-4',
+            'character.llm.model': 'gpt-5',
             'character.settings': { temperature: 0.7, maxTokens: 1000 }, // Complex object
           },
         }),
@@ -492,7 +492,7 @@ function createMockRunResult(overrides: Partial<ScenarioRunResult> = {}): Scenar
   return {
     run_id: `run-${Math.random().toString(36).substr(2, 9)}`,
     matrix_combination_id: `combination-${Math.random().toString(36).substr(2, 9)}`,
-    parameters: { 'character.llm.model': 'gpt-4' },
+    parameters: { 'character.llm.model': 'gpt-5' },
     metrics: defaultMetrics,
     final_agent_response: 'Mock response',
     evaluations: defaultEvaluations,

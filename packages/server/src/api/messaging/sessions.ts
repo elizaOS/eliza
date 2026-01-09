@@ -916,42 +916,22 @@ export function createSessionsRouter(elizaOS: ElizaOS, serverInstance: AgentServ
 
       if (afterDate && beforeDate) {
         // Range query: messages between two timestamps
-        // The database layer currently only supports 'before', so we fetch and filter
-        const fetchLimit = Math.min(500, messageLimit * 10);
-
-        const allMessages = await serverInstance.getMessagesForChannel(
+        // Using native database support for both beforeTimestamp and afterTimestamp
+        messages = await serverInstance.getMessagesForChannel(
           session.channelId,
-          fetchLimit,
-          beforeDate
+          messageLimit,
+          beforeDate,
+          afterDate
         );
-
-        messages = allMessages
-          .filter((msg) => msg.createdAt > afterDate && msg.createdAt < beforeDate)
-          .slice(0, messageLimit);
-
-        if (allMessages.length === fetchLimit) {
-          logger.debug({ src: 'http', fetchLimit }, 'Range query hit message limit');
-        }
       } else if (afterDate) {
         // Forward pagination: messages newer than a timestamp
-        // TODO: When database layer supports 'after', replace this with direct query
-        const fetchLimit = Math.min(1000, messageLimit * 20);
-        const recentMessages = await serverInstance.getMessagesForChannel(
+        // Now using native database support for afterTimestamp
+        messages = await serverInstance.getMessagesForChannel(
           session.channelId,
-          fetchLimit
+          messageLimit,
+          undefined, // beforeTimestamp
+          afterDate // afterTimestamp
         );
-
-        const newerMessages = recentMessages.filter((msg) => msg.createdAt > afterDate);
-
-        if (newerMessages.length > messageLimit) {
-          // Get the oldest N messages from the newer set for continuous pagination
-          messages = newerMessages
-            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-            .slice(0, messageLimit)
-            .reverse(); // Return in newest-first order
-        } else {
-          messages = newerMessages;
-        }
       } else {
         // Standard backward pagination
         messages = await serverInstance.getMessagesForChannel(

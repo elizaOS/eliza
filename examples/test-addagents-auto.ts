@@ -1,6 +1,6 @@
 process.env.LOG_LEVEL = 'debug';
 
-import { ElizaOS, stringToUuid, type UUID } from '@elizaos/core';
+import { ElizaOS, stringToUuid, type UUID, type Plugin } from '@elizaos/core';
 import bootstrapPlugin from '@elizaos/plugin-bootstrap';
 import openaiPlugin from '@elizaos/plugin-openai';
 import sqlPlugin from '@elizaos/plugin-sql';
@@ -15,13 +15,14 @@ async function main() {
       bio: 'A French chef assistant.',
       system: 'You are Michel, a world-renowned French chef. You MUST respond in French and use cooking metaphors. Always sign your messages with "- Chef Michel".',
       settings: {
-        OPENAI_SMALL_MODEL: 'gpt-4o-mini',
-        OPENAI_LARGE_MODEL: 'gpt-4o-mini',
+        OPENAI_SMALL_MODEL: 'gpt-5-mini',
+        OPENAI_LARGE_MODEL: 'gpt-5-mini',
       }
     },
-    plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
+    plugins: [sqlPlugin as Plugin, bootstrapPlugin as Plugin, openaiPlugin as Plugin],
   }], {
-    autoStart: true
+    autoStart: true,
+    returnRuntimes: true,
   });
 
   // Send message
@@ -32,7 +33,7 @@ async function main() {
   console.log('User: Hello! What is 2 + 2?\n');
 
   // Mode SYNC pour voir le résultat complet
-  const result = await eliza.sendMessage(runtime, {
+  const result = await eliza.handleMessage(runtime, {
     entityId: userId,
     roomId,
     content: { text: 'Hello! What is 2 + 2?', source: 'test' }

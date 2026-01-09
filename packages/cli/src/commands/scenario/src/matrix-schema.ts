@@ -113,7 +113,7 @@ export type ValidationResult = ValidationSuccess | ValidationError;
  *   matrix: [
  *     {
  *       parameter: "character.llm.model",
- *       values: ["gpt-4", "claude-3"]
+ *       values: ["gpt-5", "claude-3"]
  *     }
  *   ]
  * };
@@ -155,7 +155,7 @@ export function validateMatrixConfig(config: unknown): ValidationResult {
  *   name: "Test",
  *   base_scenario: "test.yaml",
  *   matrix: [
- *     { parameter: "model", values: ["gpt-4", "claude-3"] },      // 2 values
+ *     { parameter: "model", values: ["gpt-5", "claude-3"] },      // 2 values
  *     { parameter: "temperature", values: [0.1, 0.5, 0.9] }      // 3 values
  *   ]
  * };
@@ -191,7 +191,7 @@ export function calculateTotalRuns(config: MatrixConfig): number {
  *   name: "Test",
  *   base_scenario: "test.yaml",
  *   matrix: [
- *     { parameter: "model", values: ["gpt-4", "claude-3"] },
+ *     { parameter: "model", values: ["gpt-5", "claude-3"] },
  *     { parameter: "temp", values: [0.1, 0.5] }
  *   ]
  * };
@@ -199,8 +199,8 @@ export function calculateTotalRuns(config: MatrixConfig): number {
  * const combinations = generateParameterCombinations(config);
  * // Returns:
  * // [
- * //   { "model": "gpt-4", "temp": 0.1 },
- * //   { "model": "gpt-4", "temp": 0.5 },
+ * //   { "model": "gpt-5", "temp": 0.1 },
+ * //   { "model": "gpt-5", "temp": 0.5 },
  * //   { "model": "claude-3", "temp": 0.1 },
  * //   { "model": "claude-3", "temp": 0.5 }
  * // ]

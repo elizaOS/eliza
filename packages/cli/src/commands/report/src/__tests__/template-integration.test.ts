@@ -55,7 +55,7 @@ describe('HTML Template Integration', () => {
         },
         results_by_parameter: {
           model: {
-            'gpt-4': {
+            'gpt-5': {
               total_runs: 2,
               total_failed_runs: 0,
               average_execution_time: 45.0,
@@ -100,7 +100,7 @@ describe('HTML Template Integration', () => {
             run_id: 'test-run-1',
             matrix_combination_id: 'combo-1',
             parameters: {
-              model: 'gpt-4',
+              model: 'gpt-5',
               temperature: 0.7,
             },
             metrics: {

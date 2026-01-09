@@ -1,37 +1,55 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
-import { handleError } from '../../../src/utils/handle-error';
 
-// Mock logger
-mock.module('@elizaos/core', () => ({
-  logger: {
-    error: mock(),
-  },
-}));
+// Store original references
+const originalExit = process.exit;
+const originalConsoleError = console.error;
+
+// Capture error output
+let errorOutput: string[] = [];
+let exitCode: number | undefined;
+
+const captureErrors = () => {
+  errorOutput = [];
+  exitCode = undefined;
+
+  console.error = (...args: unknown[]) => {
+    errorOutput.push(args.map(String).join(' '));
+  };
+
+  // Mock process.exit to capture code without actually exiting
+  process.exit = ((code?: number) => {
+    exitCode = code;
+    throw new Error(`process.exit called with code ${code}`);
+  }) as typeof process.exit;
+};
+
+const restoreOriginals = () => {
+  console.error = originalConsoleError;
+  process.exit = originalExit;
+};
 
 describe('handleError', () => {
-  let originalExit: typeof process.exit;
-  let mockExit: any;
+  let handleError: (error: unknown) => void;
 
-  beforeEach(() => {
-    // Save original process.exit
-    originalExit = process.exit;
-    // Mock process.exit
-    mockExit = mock((code?: number) => {
-      throw new Error(`process.exit called with code ${code}`);
-    });
-    process.exit = mockExit as any;
+  beforeEach(async () => {
+    captureErrors();
+    // Dynamic import to get fresh module
+    const module = await import('../../../src/utils/handle-error');
+    handleError = module.handleError;
   });
 
   afterEach(() => {
-    // Restore original process.exit
-    process.exit = originalExit;
+    restoreOriginals();
+    errorOutput = [];
+    exitCode = undefined;
   });
+
   it('should handle Error objects with message', () => {
     const error = new Error('Test error message');
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('Test error message'); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('Test error message'))).toBe(true);
+    expect(exitCode).toBe(1);
   });
 
   it('should handle Error objects with stack trace', () => {
@@ -39,55 +57,61 @@ describe('handleError', () => {
     error.stack = 'Error: Test error\n    at testFunction (test.js:10:5)';
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('Test error'); // TODO: Fix for bun test
-    // expect(logger.error).toHaveBeenCalledWith('Error: Test error\n    at testFunction (test.js:10:5)'); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('Test error'))).toBe(true);
+    expect(exitCode).toBe(1);
   });
 
   it('should handle string errors', () => {
     const error = 'String error message';
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('String error message'); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('String error message'))).toBe(true);
+    expect(exitCode).toBe(1);
   });
 
   it('should handle unknown error types', () => {
     const error = { custom: 'error object' };
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('An unknown error occurred'); // TODO: Fix for bun test
-    // expect(logger.error).toHaveBeenCalledWith(JSON.stringify({ custom: 'error object' }, null, 2)); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('unknown') || line.includes('error'))).toBe(
+      true
+    );
+    expect(exitCode).toBe(1);
   });
 
   it('should handle null error', () => {
     expect(() => handleError(null)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('An unknown error occurred'); // TODO: Fix for bun test
-    // expect(logger.error).toHaveBeenCalledWith('null'); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(
+      errorOutput.some(
+        (line) => line.includes('unknown') || line.includes('null') || line.includes('error')
+      )
+    ).toBe(true);
+    expect(exitCode).toBe(1);
   });
 
   it('should handle undefined error', () => {
     expect(() => handleError(undefined)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('An unknown error occurred'); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('unknown') || line.includes('error'))).toBe(
+      true
+    );
+    expect(exitCode).toBe(1);
   });
 
   it('should handle error objects without message', () => {
     const error = new Error();
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('An error occurred'); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(exitCode).toBe(1);
   });
 
   it('should handle circular reference errors', () => {
-    const error: any = { prop: 'value' };
+    const error: Record<string, unknown> = { prop: 'value' };
     error.circular = error; // Create circular reference
 
     expect(() => handleError(error)).toThrow('process.exit called with code 1');
-    // expect(logger.error).toHaveBeenCalledWith('An unknown error occurred'); // TODO: Fix for bun test
-    // expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('[object Object]')); // TODO: Fix for bun test
-    // expect(mockExit).toHaveBeenCalledWith(1); // TODO: Fix for bun test
+    expect(errorOutput.some((line) => line.includes('unknown') || line.includes('error'))).toBe(
+      true
+    );
+    expect(exitCode).toBe(1);
   });
 });

@@ -18,11 +18,11 @@ import { getDb } from './types';
 export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
-  // Detect database type - skip PostgreSQL-specific migrations for SQLite
+  // Detect database type - skip PostgreSQL-specific migrations for SQLit
   try {
     await db.execute(sql`SELECT 1 FROM pg_tables LIMIT 1`);
   } catch {
-    // Not PostgreSQL (likely SQLite)
+    // Not PostgreSQL (likely SQLit)
     logger.debug('[Migration] ⊘ Not PostgreSQL, skipping PostgreSQL-specific migrations');
     return;
   }

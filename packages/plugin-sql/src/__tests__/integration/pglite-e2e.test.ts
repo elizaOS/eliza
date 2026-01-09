@@ -57,7 +57,7 @@ describe('PostgreSQL E2E Tests', () => {
         name: 'Test Agent',
         settings: {
           apiKey: 'test-key',
-          model: 'gpt-4',
+          model: 'gpt-5',
         },
       };
 

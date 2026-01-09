@@ -27,6 +27,59 @@ import { RunDataAggregator } from './src/data-aggregator';
 import { TrajectoryReconstructor } from './src/TrajectoryReconstructor';
 
 /**
+ * Tracks LLM usage metrics during scenario execution via event listeners
+ */
+interface LLMMetricsTracker {
+  llmCalls: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Creates an LLM metrics tracker that listens for MODEL_USED events
+ *
+ * @param runtime - The agent runtime to track metrics for
+ * @returns Object with metrics and cleanup function
+ */
+function createLLMMetricsTracker(runtime: IAgentRuntime): {
+  tracker: LLMMetricsTracker;
+  cleanup: () => void;
+} {
+  const tracker: LLMMetricsTracker = {
+    llmCalls: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+
+  // Register event handler for MODEL_USED events
+  const handler = async (payload: {
+    provider: string;
+    type: string;
+    prompt: string;
+    tokens?: { prompt: number; completion: number; total: number };
+  }) => {
+    tracker.llmCalls++;
+    if (payload.tokens) {
+      tracker.promptTokens += payload.tokens.prompt;
+      tracker.completionTokens += payload.tokens.completion;
+      tracker.totalTokens += payload.tokens.total;
+    }
+  };
+
+  runtime.registerEvent('MODEL_USED', handler);
+
+  return {
+    tracker,
+    cleanup: () => {
+      // Note: ElizaOS currently doesn't provide an unregisterEvent method
+      // The handler will be garbage collected when the runtime is destroyed
+    },
+  };
+}
+
+/**
  * Safe evaluation runner with fallback mechanism for ticket #5783
  * Uses enhanced evaluations by default, falls back to original boolean evaluations on any error
  */
@@ -111,6 +164,7 @@ export const scenario = new Command()
         let mockEngine: MockEngine | null = null;
         let finalStatus = false; // Default to fail
         let reporter: Reporter | null = null;
+        let llmMetricsTracker: { tracker: LLMMetricsTracker; cleanup: () => void } | null = null;
 
         // Create unique scenario run identifier
         const scenarioRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -206,6 +260,12 @@ export const scenario = new Command()
           }
           provider = new LocalEnvironmentProvider(server, agentId, runtime, serverPort);
           logger.info('Using local environment');
+
+          // Initialize LLM metrics tracker to capture MODEL_USED events
+          if (runtime) {
+            llmMetricsTracker = createLLMMetricsTracker(runtime);
+            logger.debug('LLM metrics tracker initialized');
+          }
 
           // Initialize MockEngine if we have a runtime and mocks are defined
           if (runtime && scenario.setup?.mocks && !options.live) {
@@ -362,12 +422,17 @@ export const scenario = new Command()
           // Generate centralized ScenarioRunResult (Ticket #5786)
           if (dataAggregator && runtime) {
             try {
-              // Record execution metrics
+              // Record execution metrics using tracked LLM usage
               const executionTimeSeconds = (endTime - startTime) / 1000;
+              const llmMetrics = llmMetricsTracker?.tracker ?? {
+                llmCalls: 0,
+                totalTokens: 0,
+              };
+
               dataAggregator.recordMetrics({
                 execution_time_seconds: executionTimeSeconds,
-                llm_calls: 1, // TODO: Track actual LLM calls
-                total_tokens: 500, // TODO: Track actual token usage
+                llm_calls: llmMetrics.llmCalls,
+                total_tokens: llmMetrics.totalTokens,
               });
 
               // Record final agent response (from last result)
@@ -472,6 +537,11 @@ export const scenario = new Command()
 
           process.exit(1);
         } finally {
+          // Cleanup LLM metrics tracker
+          if (llmMetricsTracker) {
+            llmMetricsTracker.cleanup();
+          }
+
           // Revert mocks first to ensure clean state
           if (mockEngine) {
             logger.info('Reverting mocks...');

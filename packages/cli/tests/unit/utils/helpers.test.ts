@@ -1,31 +1,48 @@
-import { describe, it, expect, mock, spyOn, beforeEach, afterEach } from 'bun:test';
-import { displayAgent, logHeader } from '../../../src/utils/helpers';
+import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
 import type { Agent } from '@elizaos/core';
-import colors from 'yoctocolors';
 
-// Mock dependencies
-mock.module('@elizaos/core', () => ({
-  logger: {
-    info: mock(),
-    error: mock(),
-  },
-}));
-
-mock.module('yoctocolors', () => ({
-  default: {
-    green: mock((text) => `[green]${text}[/green]`),
-    cyan: mock((text) => `[cyan]${text}[/cyan]`),
-  },
-}));
-
-// Mock console
+// Store original console.log
 const originalConsoleLog = console.log;
-const consoleSpy = mock(() => {});
-console.log = consoleSpy;
+let consoleOutput: string[] = [];
+
+// Mock console.log to capture output
+const captureConsole = () => {
+  consoleOutput = [];
+  console.log = (...args: unknown[]) => {
+    consoleOutput.push(args.map(String).join(' '));
+  };
+};
+
+const restoreConsole = () => {
+  console.log = originalConsoleLog;
+};
+
+// Helper to check if any output contains a string
+const outputContains = (searchStr: string): boolean => {
+  return consoleOutput.some((line) => line.includes(searchStr));
+};
+
+// Helper to check if any output matches exactly
+const outputIncludes = (searchStr: string): boolean => {
+  return consoleOutput.includes(searchStr);
+};
 
 describe('helpers', () => {
-  beforeEach(() => {
-    // Reset console spy if needed
+  // Import helpers dynamically after mocking
+  let displayAgent: (data: Partial<Agent>, title?: string) => void;
+  let logHeader: (title: string) => void;
+
+  beforeEach(async () => {
+    captureConsole();
+    // Dynamic import to ensure fresh module
+    const helpers = await import('../../../src/utils/helpers');
+    displayAgent = helpers.displayAgent;
+    logHeader = helpers.logHeader;
+  });
+
+  afterEach(() => {
+    restoreConsole();
+    consoleOutput = [];
   });
 
   describe('displayAgent', () => {
@@ -37,8 +54,8 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith('Name: Test Agent'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent'); // TODO: Fix for bun test
+      expect(outputContains('Name: Test Agent')).toBe(true);
+      expect(outputContains('Username: test_agent')).toBe(true);
     });
 
     it('should generate username from name if not provided', () => {
@@ -48,7 +65,7 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith('Username: test_agent_name'); // TODO: Fix for bun test
+      expect(outputContains('Username: test_agent_name')).toBe(true);
     });
 
     it('should display bio array', () => {
@@ -59,21 +76,21 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Bio line 1'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Bio line 2'); // TODO: Fix for bun test
+      expect(outputContains('Bio:')).toBe(true);
+      expect(outputContains('Bio line 1')).toBe(true);
+      expect(outputContains('Bio line 2')).toBe(true);
     });
 
     it('should display bio string as array', () => {
       const agent: Partial<Agent> = {
         name: 'Test Agent',
-        bio: 'Single bio line' as any,
+        bio: 'Single bio line' as unknown as string[],
       };
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Bio:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Single bio line'); // TODO: Fix for bun test
+      expect(outputContains('Bio:')).toBe(true);
+      expect(outputContains('Single bio line')).toBe(true);
     });
 
     it('should display all array sections', () => {
@@ -87,13 +104,21 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Adjectives:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  smart'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  funny'); // TODO: Fix for bun test
+      expect(outputContains('Adjectives:')).toBe(true);
+      expect(outputContains('smart')).toBe(true);
+      expect(outputContains('funny')).toBe(true);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Topics:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  AI'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  Tech'); // TODO: Fix for bun test
+      expect(outputContains('Topics:')).toBe(true);
+      expect(outputContains('AI')).toBe(true);
+      expect(outputContains('Tech')).toBe(true);
+
+      expect(outputContains('Plugins:')).toBe(true);
+      expect(outputContains('plugin1')).toBe(true);
+      expect(outputContains('plugin2')).toBe(true);
+
+      expect(outputContains('Post Examples:')).toBe(true);
+      expect(outputContains('Example 1')).toBe(true);
+      expect(outputContains('Example 2')).toBe(true);
     });
 
     it('should display style sections', () => {
@@ -108,10 +133,13 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('General Style:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith('  General style 1'); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Chat Style:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Post Style:')); // TODO: Fix for bun test
+      expect(outputContains('General Style:')).toBe(true);
+      expect(outputContains('General style 1')).toBe(true);
+      expect(outputContains('General style 2')).toBe(true);
+      expect(outputContains('Chat Style:')).toBe(true);
+      expect(outputContains('Chat style 1')).toBe(true);
+      expect(outputContains('Post Style:')).toBe(true);
+      expect(outputContains('Post style 1')).toBe(true);
     });
 
     it('should display message examples', () => {
@@ -127,9 +155,9 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Message Examples:')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Anon: Hello')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Agent: Hi there')); // TODO: Fix for bun test
+      expect(outputContains('Message Examples:')).toBe(true);
+      expect(outputContains('Anon: Hello')).toBe(true);
+      expect(outputContains('Agent: Hi there')).toBe(true);
     });
 
     it('should use custom title', () => {
@@ -139,8 +167,7 @@ describe('helpers', () => {
 
       displayAgent(agent, 'Custom Title');
 
-      // logHeader should be called with custom title
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Custom Title')); // TODO: Fix for bun test
+      expect(outputContains('Custom Title')).toBe(true);
     });
 
     it('should handle empty sections gracefully', () => {
@@ -153,10 +180,18 @@ describe('helpers', () => {
 
       displayAgent(agent);
 
-      // Should not display empty sections
-      // expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('Bio:')); // TODO: Fix for bun test
-      // expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('Topics:')); // TODO: Fix for bun test
-      // expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('Adjectives:')); // TODO: Fix for bun test
+      // Empty sections should not be displayed
+      // Bio: should not appear because bio is empty array
+      const bioLines = consoleOutput.filter(
+        (line) => line.includes('Bio:') && !line.includes('Name:')
+      );
+      expect(bioLines.length).toBe(0);
+
+      // Topics: should not appear because it's undefined
+      expect(outputContains('Topics:')).toBe(false);
+
+      // Adjectives: should not appear because it's empty
+      expect(outputContains('Adjectives:')).toBe(false);
     });
   });
 
@@ -164,36 +199,34 @@ describe('helpers', () => {
     it('should log header with borders', () => {
       logHeader('Test Header');
 
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┌')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┐')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('└')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith(expect.stringContaining('┘')); // TODO: Fix for bun test
-      // expect(colors.green).toHaveBeenCalledWith('Test Header'); // TODO: Fix for bun test
+      expect(outputContains('┌')).toBe(true);
+      expect(outputContains('┐')).toBe(true);
+      expect(outputContains('└')).toBe(true);
+      expect(outputContains('┘')).toBe(true);
+      expect(outputContains('Test Header')).toBe(true);
     });
 
     it('should add padding around title', () => {
       logHeader('Short');
 
-      // Should be called with padded title
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('  === ')); // TODO: Fix for bun test
-      // expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(' ===  ')); // TODO: Fix for bun test
+      expect(outputContains('===')).toBe(true);
+      expect(outputContains('Short')).toBe(true);
     });
 
     it('should create border matching title length', () => {
       logHeader('A Very Long Title That Should Have A Long Border');
 
-      // Check that green was called with border characters
-      const greenCalls = colors.green.mock.calls;
-      const borderCalls = greenCalls.filter((call) => call[0].includes('─'));
-
-      expect(borderCalls.length).toBeGreaterThan(0);
+      // Check that output contains horizontal border characters
+      const borderLines = consoleOutput.filter((line) => line.includes('─'));
+      expect(borderLines.length).toBeGreaterThan(0);
     });
 
     it('should add newline before header', () => {
       logHeader('Test');
 
-      const calls = consoleSpy.mock.calls;
-      expect(calls.some((call) => call[0].startsWith('\n'))).toBe(true);
+      // First output should start with newline
+      expect(consoleOutput.length).toBeGreaterThan(0);
+      expect(consoleOutput[0].startsWith('\n')).toBe(true);
     });
   });
 });

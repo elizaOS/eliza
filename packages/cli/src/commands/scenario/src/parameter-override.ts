@@ -79,7 +79,7 @@ export interface OverrideResult {
  *
  * @example
  * ```typescript
- * const scenario = { character: { llm: { model: "gpt-4" } } };
+ * const scenario = { character: { llm: { model: "gpt-5" } } };
  * const result = validateParameterPath(scenario, "character.llm.model");
  * // result.isValid === true, result.targetType === "string"
  *
@@ -324,7 +324,7 @@ export function setValueAtPath(obj: Record<string, unknown>, path: string, value
  *
  * @example
  * ```typescript
- * const scenario = { character: { llm: { model: "gpt-4" } } };
+ * const scenario = { character: { llm: { model: "gpt-5" } } };
  * const result = applyParameterOverride(scenario, "character.llm.model", "gpt-3.5-turbo");
  * // result.character.llm.model === "gpt-3.5-turbo"
  * // original scenario is unchanged
@@ -399,7 +399,7 @@ export function applyMatrixOverrides(
  * @example
  * ```typescript
  * const baseScenario = {
- *   character: { llm: { model: "gpt-4" } },
+ *   character: { llm: { model: "gpt-5" } },
  *   run: [{ input: "original" }]
  * };
  *
@@ -496,13 +496,13 @@ export function applyParameterOverrides(
  * @example
  * ```typescript
  * const combination = {
- *   "character.llm.model": "gpt-4",
+ *   "character.llm.model": "gpt-5",
  *   "run[0].input": "test input"
  * };
  *
  * const overrides = combinationToOverrides(combination);
  * // Returns: [
- * //   { path: "character.llm.model", value: "gpt-4" },
+ * //   { path: "character.llm.model", value: "gpt-5" },
  * //   { path: "run[0].input", value: "test input" }
  * // ]
  * ```

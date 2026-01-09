@@ -134,7 +134,7 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS - Logs Isolation (STR
     // Log 2: Alice in private room
     await setupClient.query(
       `INSERT INTO logs (id, entity_id, room_id, type, body, created_at)
-       VALUES ($1, $2, $3, 'useModel:TEXT_LARGE', '{"model":"gpt-4","tokens":500}'::jsonb, NOW())`,
+       VALUES ($1, $2, $3, 'useModel:TEXT_LARGE', '{"model":"gpt-5","tokens":500}'::jsonb, NOW())`,
       [uuidv4(), aliceId, alicePrivateRoomId]
     );
 

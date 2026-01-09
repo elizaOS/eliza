@@ -30,6 +30,69 @@ interface TargetExtractionResult {
 }
 
 /**
+ * Interface for services that support sending direct messages.
+ * Plugins implementing messaging should conform to this interface.
+ */
+interface DirectMessageCapableService {
+  sendDirectMessage: (target: string, content: Content) => Promise<void>;
+}
+
+/**
+ * Interface for services that support sending room messages.
+ * Plugins implementing room messaging should conform to this interface.
+ */
+interface RoomMessageCapableService {
+  sendRoomMessage: (target: string, content: Content) => Promise<void>;
+}
+
+/**
+ * Type guard to check if a service supports direct messaging.
+ */
+function hasDirectMessageCapability(service: unknown): service is DirectMessageCapableService {
+  return (
+    service !== null &&
+    typeof service === 'object' &&
+    'sendDirectMessage' in service &&
+    typeof (service as DirectMessageCapableService).sendDirectMessage === 'function'
+  );
+}
+
+/**
+ * Type guard to check if a service supports room messaging.
+ */
+function hasRoomMessageCapability(service: unknown): service is RoomMessageCapableService {
+  return (
+    service !== null &&
+    typeof service === 'object' &&
+    'sendRoomMessage' in service &&
+    typeof (service as RoomMessageCapableService).sendRoomMessage === 'function'
+  );
+}
+
+/**
+ * Get all available message sources from the runtime's registered services.
+ *
+ * This function inspects all registered services to find those that implement
+ * messaging capabilities (sendDirectMessage or sendRoomMessage methods).
+ * This provides automatic discovery of message sources from plugins.
+ */
+function getAvailableMessageSources(runtime: IAgentRuntime): Set<string> {
+  const sources = new Set<string>();
+
+  const allServices = runtime.getAllServices();
+  for (const [serviceType, services] of allServices) {
+    for (const service of services) {
+      if (hasDirectMessageCapability(service) || hasRoomMessageCapability(service)) {
+        // Use the service type as the source identifier
+        sources.add(serviceType);
+      }
+    }
+  }
+
+  return sources;
+}
+
+/**
  * Task: Extract Target and Source Information
  *
  * Recent Messages:
@@ -115,6 +178,55 @@ Example outputs:
 </response>
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.`;
+
+/**
+ * Create an error ActionResult with consistent structure.
+ */
+function createErrorResult(
+  text: string,
+  errorCode: string,
+  additionalValues?: Record<string, unknown>,
+  error?: Error
+): ActionResult {
+  return {
+    text,
+    values: {
+      success: false,
+      error: errorCode,
+      ...additionalValues,
+    },
+    data: {
+      actionName: 'SEND_MESSAGE',
+      error: text,
+      ...additionalValues,
+    },
+    success: false,
+    error,
+  };
+}
+
+/**
+ * Create a success ActionResult with consistent structure.
+ */
+function createSuccessResult(
+  text: string,
+  additionalValues: Record<string, unknown>,
+  additionalData: Record<string, unknown>
+): ActionResult {
+  return {
+    text,
+    values: {
+      success: true,
+      ...additionalValues,
+    },
+    data: {
+      actionName: 'SEND_MESSAGE',
+      ...additionalData,
+    },
+    success: true,
+  };
+}
+
 /**
  * Represents an action to send a message to a user or room.
  *
@@ -142,9 +254,11 @@ export const sendMessageAction: Action = {
     // Get source types from room components
     const availableSources = new Set(roomComponents.map((c) => c.type));
 
-    // TODO: Add ability for plugins to register their sources
-    // const registeredSources = runtime.getRegisteredSources?.() || [];
-    // availableSources.add(...registeredSources);
+    // Also check for messaging-capable services registered by plugins
+    const messagingServices = getAvailableMessageSources(runtime);
+    for (const service of messagingServices) {
+      availableSources.add(service);
+    }
 
     return availableSources.size > 0;
   },
@@ -157,453 +271,113 @@ export const sendMessageAction: Action = {
     callback?: HandlerCallback,
     responses?: Memory[]
   ): Promise<ActionResult> => {
-    try {
-      if (!state) {
-        logger.error(
-          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
-          'State is required for sendMessage action'
-        );
-        return {
-          text: 'State is required for sendMessage action',
-          values: {
-            success: false,
-            error: 'STATE_REQUIRED',
-          },
-          data: {
-            actionName: 'SEND_MESSAGE',
-            error: 'State is required',
-          },
-          success: false,
-          error: new Error('State is required for sendMessage action'),
-        };
-      }
-      if (!callback) {
-        logger.error(
-          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
-          'Callback is required for sendMessage action'
-        );
-        return {
-          text: 'Callback is required for sendMessage action',
-          values: {
-            success: false,
-            error: 'CALLBACK_REQUIRED',
-          },
-          data: {
-            actionName: 'SEND_MESSAGE',
-            error: 'Callback is required',
-          },
-          success: false,
-          error: new Error('Callback is required for sendMessage action'),
-        };
-      }
-      if (!responses) {
-        logger.error(
-          { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
-          'Responses are required for sendMessage action'
-        );
-        return {
-          text: 'Responses are required for sendMessage action',
-          values: {
-            success: false,
-            error: 'RESPONSES_REQUIRED',
-          },
-          data: {
-            actionName: 'SEND_MESSAGE',
-            error: 'Responses are required',
-          },
-          success: false,
-          error: new Error('Responses are required for sendMessage action'),
-        };
-      }
-
-      // Handle initial responses
-      for (const response of responses) {
-        await callback(response.content);
-      }
-
-      const sourceEntityId = message.entityId;
-      const room = state.data.room ?? (await runtime.getRoom(message.roomId));
-
-      if (!room) {
-        return {
-          text: 'Could not find room',
-          values: { success: false, error: 'ROOM_NOT_FOUND' },
-          data: { actionName: 'SEND_MESSAGE', error: 'Room not found' },
-          success: false,
-        };
-      }
-
-      const worldId = room.worldId;
-
-      // Extract target and source information
-      const targetPrompt = composePromptFromState({
-        state,
-        template: targetExtractionTemplate,
-      });
-
-      const targetResult = await runtime.useModel(ModelType.TEXT_SMALL, {
-        prompt: targetPrompt,
-        stopSequences: [],
-      });
-
-      const targetData = parseKeyValueXml<TargetExtractionResult>(targetResult);
-
-      if (!targetData?.targetType || !targetData?.source) {
-        await callback({
-          text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
-          actions: ['SEND_MESSAGE_ERROR'],
-          source: message.content.source,
-        });
-        return {
-          text: 'Could not determine message target',
-          values: {
-            success: false,
-            error: 'TARGET_UNCLEAR',
-          },
-          data: {
-            actionName: 'SEND_MESSAGE',
-            error: 'Could not parse target information from message',
-          },
-          success: false,
-        };
-      }
-
-      const source = targetData.source.toLowerCase();
-
-      if (targetData.targetType === 'user') {
-        // Try to find the target user entity
-        const targetEntity = await findEntityByName(runtime, message, state);
-
-        if (!targetEntity) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Target user not found',
-            values: {
-              success: false,
-              error: 'USER_NOT_FOUND',
-              targetType: 'user',
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: 'Could not find target user',
-              targetType: 'user',
-              source,
-            },
-            success: false,
-          };
-        }
-
-        // Get the component for the specified source
-        const userComponent = await runtime.getComponent(
-          targetEntity.id!,
-          source,
-          worldId,
-          sourceEntityId
-        );
-
-        if (!userComponent) {
-          await callback({
-            text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: `No ${source} information found for user`,
-            values: {
-              success: false,
-              error: 'COMPONENT_NOT_FOUND',
-              targetType: 'user',
-              source,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: `No ${source} component found for target user`,
-              targetType: 'user',
-              targetEntityId: targetEntity.id,
-              source,
-            },
-            success: false,
-          };
-        }
-
-        interface ServiceWithSendDirectMessage {
-          sendDirectMessage?: (target: string, content: Content) => Promise<void>;
-        }
-        const service = runtime.getService(source) as ServiceWithSendDirectMessage | null;
-        const sendDirectMessage = service?.sendDirectMessage;
-
-        if (!sendDirectMessage) {
-          await callback({
-            text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Message service not available',
-            values: {
-              success: false,
-              error: 'SERVICE_NOT_FOUND',
-              targetType: 'user',
-              source,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: `No sendDirectMessage service found for ${source}`,
-              targetType: 'user',
-              source,
-            },
-            success: false,
-          };
-        }
-        // Send the message using the appropriate client
-        try {
-          await sendDirectMessage(targetEntity.id!, {
-            text: message.content.text,
-            source: message.content.source,
-          });
-
-          await callback({
-            text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
-            actions: ['SEND_MESSAGE'],
-            source: message.content.source,
-          });
-          return {
-            text: `Message sent to ${targetEntity.names[0]}`,
-            values: {
-              success: true,
-              targetType: 'user',
-              targetId: targetEntity.id,
-              targetName: targetEntity.names[0],
-              source,
-              messageSent: true,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              targetType: 'user',
-              targetId: targetEntity.id,
-              targetName: targetEntity.names[0],
-              source,
-              messageContent: message.content.text,
-            },
-            success: true,
-          };
-        } catch (error: unknown) {
-          logger.error(
-            {
-              src: 'plugin:bootstrap:action:send_message',
-              agentId: runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'Failed to send direct message'
-          );
-          await callback({
-            text: 'I encountered an error trying to send the message. Please try again.',
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Failed to send direct message',
-            values: {
-              success: false,
-              error: 'SEND_FAILED',
-              targetType: 'user',
-              source,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: error instanceof Error ? error.message : String(error),
-              targetType: 'user',
-              targetId: targetEntity.id,
-              source,
-            },
-            success: false,
-            error: error instanceof Error ? error : new Error(String(error)),
-          };
-        }
-      } else if (targetData.targetType === 'room') {
-        // Try to find the target room
-        if (!worldId) {
-          return {
-            text: 'Could not determine world for room lookup',
-            values: { success: false, error: 'NO_WORLD_ID' },
-            data: { actionName: 'SEND_MESSAGE', error: 'No world ID available' },
-            success: false,
-          };
-        }
-        const rooms = await runtime.getRooms(worldId);
-        const targetRoom = rooms.find((r) => {
-          // Match room name from identifiers
-          return r.name?.toLowerCase() === targetData.identifiers?.roomName?.toLowerCase();
-        });
-
-        if (!targetRoom) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Target room not found',
-            values: {
-              success: false,
-              error: 'ROOM_NOT_FOUND',
-              targetType: 'room',
-              roomName: targetData.identifiers?.roomName,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: 'Could not find target room',
-              targetType: 'room',
-              roomName: targetData.identifiers?.roomName,
-              source,
-            },
-            success: false,
-          };
-        }
-
-        interface ServiceWithSendRoomMessage {
-          sendRoomMessage?: (target: string, content: Content) => Promise<void>;
-        }
-        const service = runtime.getService(source) as ServiceWithSendRoomMessage | null;
-        const sendRoomMessage = service?.sendRoomMessage;
-
-        if (!sendRoomMessage) {
-          await callback({
-            text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Room message service not available',
-            values: {
-              success: false,
-              error: 'SERVICE_NOT_FOUND',
-              targetType: 'room',
-              source,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: `No sendRoomMessage service found for ${source}`,
-              targetType: 'room',
-              source,
-            },
-            success: false,
-          };
-        }
-
-        // Send the message to the room
-        try {
-          await sendRoomMessage(targetRoom.id, {
-            text: message.content.text,
-            source: message.content.source,
-          });
-
-          await callback({
-            text: `Message sent to ${targetRoom.name} on ${source}.`,
-            actions: ['SEND_MESSAGE'],
-            source: message.content.source,
-          });
-          return {
-            text: `Message sent to ${targetRoom.name}`,
-            values: {
-              success: true,
-              targetType: 'room',
-              targetId: targetRoom.id,
-              targetName: targetRoom.name,
-              source,
-              messageSent: true,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              targetType: 'room',
-              targetId: targetRoom.id,
-              targetName: targetRoom.name,
-              source,
-              messageContent: message.content.text,
-            },
-            success: true,
-          };
-        } catch (error: unknown) {
-          logger.error(
-            {
-              src: 'plugin:bootstrap:action:send_message',
-              agentId: runtime.agentId,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'Failed to send room message'
-          );
-          await callback({
-            text: 'I encountered an error trying to send the message to the room. Please try again.',
-            actions: ['SEND_MESSAGE_ERROR'],
-            source: message.content.source,
-          });
-          return {
-            text: 'Failed to send room message',
-            values: {
-              success: false,
-              error: 'SEND_FAILED',
-              targetType: 'room',
-              source,
-            },
-            data: {
-              actionName: 'SEND_MESSAGE',
-              error: error instanceof Error ? error.message : String(error),
-              targetType: 'room',
-              targetId: targetRoom.id,
-              targetName: targetRoom.name,
-              source,
-            },
-            success: false,
-            error: error instanceof Error ? error : new Error(String(error)),
-          };
-        }
-      }
-
-      // Should not reach here
-      return {
-        text: 'Unknown target type',
-        values: {
-          success: false,
-          error: 'UNKNOWN_TARGET_TYPE',
-        },
-        data: {
-          actionName: 'SEND_MESSAGE',
-          error: `Unknown target type: ${targetData.targetType}`,
-        },
-        success: false,
-      };
-    } catch (error) {
+    if (!state) {
       logger.error(
-        {
-          src: 'plugin:bootstrap:action:send_message',
-          agentId: runtime.agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'Error in sendMessage handler'
+        { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+        'State is required for sendMessage action'
       );
-      await callback?.({
-        text: 'There was an error processing your message request.',
+      return createErrorResult(
+        'State is required for sendMessage action',
+        'STATE_REQUIRED',
+        undefined,
+        new Error('State is required for sendMessage action')
+      );
+    }
+
+    if (!callback) {
+      logger.error(
+        { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+        'Callback is required for sendMessage action'
+      );
+      return createErrorResult(
+        'Callback is required for sendMessage action',
+        'CALLBACK_REQUIRED',
+        undefined,
+        new Error('Callback is required for sendMessage action')
+      );
+    }
+
+    if (!responses) {
+      logger.error(
+        { src: 'plugin:bootstrap:action:send_message', agentId: runtime.agentId },
+        'Responses are required for sendMessage action'
+      );
+      return createErrorResult(
+        'Responses are required for sendMessage action',
+        'RESPONSES_REQUIRED',
+        undefined,
+        new Error('Responses are required for sendMessage action')
+      );
+    }
+
+    // Handle initial responses
+    for (const response of responses) {
+      await callback(response.content);
+    }
+
+    const sourceEntityId = message.entityId;
+    const room = state.data.room ?? (await runtime.getRoom(message.roomId));
+
+    if (!room) {
+      return createErrorResult('Could not find room', 'ROOM_NOT_FOUND');
+    }
+
+    const worldId = room.worldId;
+
+    // Extract target and source information
+    const targetPrompt = composePromptFromState({
+      state,
+      template: targetExtractionTemplate,
+    });
+
+    const targetResult = await runtime.useModel(ModelType.TEXT_SMALL, {
+      prompt: targetPrompt,
+      stopSequences: [],
+    });
+
+    const targetData = parseKeyValueXml<TargetExtractionResult>(targetResult);
+
+    if (!targetData?.targetType || !targetData?.source) {
+      await callback({
+        text: "I couldn't determine where you want me to send the message. Could you please specify the target (user or room) and platform?",
         actions: ['SEND_MESSAGE_ERROR'],
         source: message.content.source,
       });
-      return {
-        text: 'Error processing message request',
-        values: {
-          success: false,
-          error: 'HANDLER_ERROR',
-        },
-        data: {
-          actionName: 'SEND_MESSAGE',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
+      return createErrorResult('Could not determine message target', 'TARGET_UNCLEAR', {
+        targetType: targetData?.targetType,
+        source: targetData?.source,
+      });
     }
+
+    const source = targetData.source.toLowerCase();
+
+    if (targetData.targetType === 'user') {
+      return await handleDirectMessage(
+        runtime,
+        message,
+        state,
+        callback,
+        source,
+        sourceEntityId,
+        worldId
+      );
+    }
+
+    if (targetData.targetType === 'room') {
+      return await handleRoomMessage(
+        runtime,
+        message,
+        callback,
+        source,
+        worldId,
+        targetData.identifiers?.roomName
+      );
+    }
+
+    // Should not reach here
+    return createErrorResult('Unknown target type', 'UNKNOWN_TARGET_TYPE', {
+      targetType: targetData.targetType,
+    });
   },
 
   examples: [
@@ -654,5 +428,176 @@ export const sendMessageAction: Action = {
     ],
   ] as ActionExample[][],
 };
+
+/**
+ * Handle sending a direct message to a user.
+ */
+async function handleDirectMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State,
+  callback: HandlerCallback,
+  source: string,
+  sourceEntityId: string,
+  worldId: string | undefined
+): Promise<ActionResult> {
+  // Try to find the target user entity
+  const targetEntity = await findEntityByName(runtime, message, state);
+
+  if (!targetEntity) {
+    await callback({
+      text: "I couldn't find the user you want me to send a message to. Could you please provide more details about who they are?",
+      actions: ['SEND_MESSAGE_ERROR'],
+      source: message.content.source,
+    });
+    return createErrorResult('Target user not found', 'USER_NOT_FOUND', {
+      targetType: 'user',
+      source,
+    });
+  }
+
+  // Get the component for the specified source
+  const userComponent = await runtime.getComponent(
+    targetEntity.id,
+    source,
+    worldId,
+    sourceEntityId
+  );
+
+  if (!userComponent) {
+    await callback({
+      text: `I couldn't find ${source} information for that user. Could you please provide their ${source} details?`,
+      actions: ['SEND_MESSAGE_ERROR'],
+      source: message.content.source,
+    });
+    return createErrorResult(`No ${source} information found for user`, 'COMPONENT_NOT_FOUND', {
+      targetType: 'user',
+      source,
+      targetEntityId: targetEntity.id,
+    });
+  }
+
+  const service = runtime.getService(source);
+
+  if (!hasDirectMessageCapability(service)) {
+    await callback({
+      text: `The ${source} service doesn't support sending direct messages. Please check if the plugin is properly configured.`,
+      actions: ['SEND_MESSAGE_ERROR'],
+      source: message.content.source,
+    });
+    return createErrorResult('Message service not available', 'SERVICE_NOT_FOUND', {
+      targetType: 'user',
+      source,
+    });
+  }
+
+  // Send the message using the appropriate client
+  await service.sendDirectMessage(targetEntity.id, {
+    text: message.content.text,
+    source: message.content.source,
+  });
+
+  await callback({
+    text: `Message sent to ${targetEntity.names[0]} on ${source}.`,
+    actions: ['SEND_MESSAGE'],
+    source: message.content.source,
+  });
+
+  return createSuccessResult(
+    `Message sent to ${targetEntity.names[0]}`,
+    {
+      targetType: 'user',
+      targetId: targetEntity.id,
+      targetName: targetEntity.names[0],
+      source,
+      messageSent: true,
+    },
+    {
+      targetType: 'user',
+      targetId: targetEntity.id,
+      targetName: targetEntity.names[0],
+      source,
+      messageContent: message.content.text,
+    }
+  );
+}
+
+/**
+ * Handle sending a message to a room.
+ */
+async function handleRoomMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  callback: HandlerCallback,
+  source: string,
+  worldId: string | undefined,
+  targetRoomName: string | undefined
+): Promise<ActionResult> {
+  if (!worldId) {
+    return createErrorResult('Could not determine world for room lookup', 'NO_WORLD_ID');
+  }
+
+  const rooms = await runtime.getRooms(worldId);
+  const targetRoom = rooms.find(
+    (r) => r.name?.toLowerCase() === targetRoomName?.toLowerCase()
+  );
+
+  if (!targetRoom) {
+    await callback({
+      text: "I couldn't find the room you want me to send a message to. Could you please specify the exact room name?",
+      actions: ['SEND_MESSAGE_ERROR'],
+      source: message.content.source,
+    });
+    return createErrorResult('Target room not found', 'ROOM_NOT_FOUND', {
+      targetType: 'room',
+      roomName: targetRoomName,
+      source,
+    });
+  }
+
+  const service = runtime.getService(source);
+
+  if (!hasRoomMessageCapability(service)) {
+    await callback({
+      text: `The ${source} service doesn't support sending room messages. Please check if the plugin is properly configured.`,
+      actions: ['SEND_MESSAGE_ERROR'],
+      source: message.content.source,
+    });
+    return createErrorResult('Room message service not available', 'SERVICE_NOT_FOUND', {
+      targetType: 'room',
+      source,
+    });
+  }
+
+  // Send the message to the room
+  await service.sendRoomMessage(targetRoom.id, {
+    text: message.content.text,
+    source: message.content.source,
+  });
+
+  await callback({
+    text: `Message sent to ${targetRoom.name} on ${source}.`,
+    actions: ['SEND_MESSAGE'],
+    source: message.content.source,
+  });
+
+  return createSuccessResult(
+    `Message sent to ${targetRoom.name}`,
+    {
+      targetType: 'room',
+      targetId: targetRoom.id,
+      targetName: targetRoom.name,
+      source,
+      messageSent: true,
+    },
+    {
+      targetType: 'room',
+      targetId: targetRoom.id,
+      targetName: targetRoom.name,
+      source,
+      messageContent: message.content.text,
+    }
+  );
+}
 
 export default sendMessageAction;

@@ -129,7 +129,7 @@ describe('AgentsService', () => {
       agent: {
         name: 'New Agent',
         bio: 'A new agent',
-        metadata: { model: 'gpt-4' },
+        metadata: { model: 'gpt-5' },
       },
     };
 

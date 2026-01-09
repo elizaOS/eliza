@@ -21,7 +21,7 @@ describe('Full Matrix Integration Tests', () => {
       character: {
         name: 'TestAgent',
         llm: {
-          model: 'gpt-4',
+          model: 'gpt-5',
           temperature: 0.7,
         },
       },
@@ -82,7 +82,7 @@ describe('Full Matrix Integration Tests', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'gpt-3.5-turbo'],
+            values: ['gpt-5', 'gpt-3.5-turbo'],
           },
           {
             parameter: 'character.llm.temperature',
@@ -126,7 +126,7 @@ describe('Full Matrix Integration Tests', () => {
 
         expect(result.parameters).toHaveProperty('character.llm.model');
         expect(result.parameters).toHaveProperty('character.llm.temperature');
-        expect(['gpt-4', 'gpt-3.5-turbo']).toContain(result.parameters['character.llm.model']);
+        expect(['gpt-5', 'gpt-3.5-turbo']).toContain(result.parameters['character.llm.model']);
         expect([0.3, 0.7, 0.9]).toContain(result.parameters['character.llm.temperature']);
       });
 
@@ -223,7 +223,7 @@ describe('Full Matrix Integration Tests', () => {
         matrix: [
           {
             parameter: 'character.llm.model',
-            values: ['gpt-4', 'gpt-3.5-turbo', 'claude-3', 'gemini-pro'],
+            values: ['gpt-5', 'gpt-3.5-turbo', 'claude-3', 'gemini-pro'],
           },
           {
             parameter: 'character.llm.temperature',

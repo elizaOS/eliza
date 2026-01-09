@@ -64,7 +64,7 @@ describe('Parameter Override System', () => {
       character: {
         name: 'TestAgent',
         llm: {
-          model: 'gpt-4',
+          model: 'gpt-5',
           temperature: 0.7,
           max_tokens: 2000,
         },
@@ -188,7 +188,7 @@ describe('Parameter Override System', () => {
   describe('New API Functions (Ticket #5780)', () => {
     it('should test applyParameterOverride single function', () => {
       const scenario = {
-        character: { llm: { model: 'gpt-4' } },
+        character: { llm: { model: 'gpt-5' } },
         run: [{ input: 'original' }],
       };
 
@@ -196,12 +196,12 @@ describe('Parameter Override System', () => {
       const result = applyParameterOverride(scenario, 'character.llm.model', 'gpt-3.5-turbo');
 
       expect(result.character.llm.model).toBe('gpt-3.5-turbo');
-      expect(scenario.character.llm.model).toBe('gpt-4'); // Original unchanged
+      expect(scenario.character.llm.model).toBe('gpt-5'); // Original unchanged
     });
 
     it('should test applyMatrixOverrides batch function', () => {
       const scenario = {
-        character: { llm: { model: 'gpt-4' } },
+        character: { llm: { model: 'gpt-5' } },
         run: [{ input: 'original' }],
       };
 
@@ -214,7 +214,7 @@ describe('Parameter Override System', () => {
 
       expect(result.character.llm.model).toBe('gpt-3.5-turbo');
       expect(result.run[0].input).toBe('modified');
-      expect(scenario.character.llm.model).toBe('gpt-4'); // Original unchanged
+      expect(scenario.character.llm.model).toBe('gpt-5'); // Original unchanged
     });
 
     it('should provide detailed validation feedback', () => {
@@ -387,7 +387,7 @@ describe('Parameter Override System', () => {
   describe('Real-World Scenario Examples', () => {
     it('should handle matrix parameter combinations', () => {
       const combination1: ParameterOverride[] = [
-        { path: 'character.llm.model', value: 'gpt-4-turbo' },
+        { path: 'character.llm.model', value: 'gpt-5' },
         { path: 'run[0].input', value: 'List open issues for elizaOS/eliza' },
       ];
 
@@ -399,7 +399,7 @@ describe('Parameter Override System', () => {
       const result1 = applyParameterOverrides(baseScenario, combination1);
       const result2 = applyParameterOverrides(baseScenario, combination2);
 
-      expect(result1.character.llm.model).toBe('gpt-4-turbo');
+      expect(result1.character.llm.model).toBe('gpt-5');
       expect(result1.run[0].input).toBe('List open issues for elizaOS/eliza');
 
       expect(result2.character.llm.model).toBe('gpt-3.5-turbo');

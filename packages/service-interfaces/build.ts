@@ -124,7 +124,7 @@ async function generateTypeScriptDeclarations() {
     await fs.mkdir('dist/node', { recursive: true });
     await fs.mkdir('dist/browser', { recursive: true });
 
-    // Create re-export files for conditional exports structure
+    // Create conditional export files for package structure
     // dist/node/index.d.ts - points to the Node.js entry point
     await fs.writeFile(
       'dist/node/index.d.ts',

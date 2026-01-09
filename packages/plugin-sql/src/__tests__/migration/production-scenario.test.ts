@@ -106,7 +106,7 @@ describe('Production Migration Scenarios', () => {
 
       await db.execute(sql`
         INSERT INTO agents (id, name, settings)
-        VALUES (${agentId}::uuid, 'Production Agent', '{"model": "gpt-4"}'::jsonb)
+        VALUES (${agentId}::uuid, 'Production Agent', '{"model": "gpt-5"}'::jsonb)
       `);
 
       await db.execute(sql`
@@ -210,7 +210,7 @@ describe('Production Migration Scenarios', () => {
 
       await db.execute(sql`
         INSERT INTO agents (id, name, settings)
-        VALUES (${agentId}::uuid, 'Production Agent', '{"model": "gpt-4"}'::jsonb)
+        VALUES (${agentId}::uuid, 'Production Agent', '{"model": "gpt-5"}'::jsonb)
       `);
 
       await db.execute(sql`

@@ -74,7 +74,6 @@ function getGlobalAgentServer(): AgentServer {
   return globalAgentServer;
 }
 
-// Re-export for backward compatibility
 export type MessageServiceMessage = MessageServiceStructure;
 
 export class MessageBusService extends Service {

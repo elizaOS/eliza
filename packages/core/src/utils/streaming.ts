@@ -13,7 +13,6 @@
 
 import type { IStreamExtractor } from '../types/streaming';
 
-// Re-export interface for convenience
 export type { IStreamExtractor } from '../types/streaming';
 
 // ============================================================================

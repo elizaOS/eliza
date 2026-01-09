@@ -116,7 +116,8 @@ type DatabaseAdapterWithMessaging = DatabaseAdapter & {
   getMessagesForChannel(
     channelId: UUID,
     limit?: number,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    afterTimestamp?: Date
   ): Promise<CentralRootMessage[]>;
   findOrCreateDmChannel(
     user1Id: UUID,
@@ -1699,13 +1700,22 @@ export class AgentServer {
     return createdMessage;
   }
 
+  /**
+   * Get messages for a channel with optional pagination.
+   *
+   * @param channelId - The channel to fetch messages from
+   * @param limit - Maximum number of messages to return (default: 50)
+   * @param beforeTimestamp - Only return messages created before this timestamp (backward pagination)
+   * @param afterTimestamp - Only return messages created after this timestamp (forward pagination)
+   * @returns Array of messages sorted by creation time
+   */
   async getMessagesForChannel(
     channelId: UUID,
     limit: number = 50,
-    beforeTimestamp?: Date
+    beforeTimestamp?: Date,
+    afterTimestamp?: Date
   ): Promise<CentralRootMessage[]> {
-    // TODO: Add afterTimestamp support when database layer is updated
-    return this.database.getMessagesForChannel(channelId, limit, beforeTimestamp);
+    return this.database.getMessagesForChannel(channelId, limit, beforeTimestamp, afterTimestamp);
   }
 
   async updateMessage(

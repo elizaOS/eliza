@@ -55,7 +55,7 @@ export function createMockRuntime(overrides: MockRuntimeOverrides = {}): IAgentR
     knowledge: [],
     plugins: [],
     settings: {
-      model: 'gpt-4',
+      model: 'gpt-5',
       secrets: {},
     },
     style: {

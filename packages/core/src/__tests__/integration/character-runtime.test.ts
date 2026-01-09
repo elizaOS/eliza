@@ -24,7 +24,7 @@ describe('Character-Runtime Integration Tests', () => {
       style: { all: [], chat: [], post: [] },
       adjectives: [],
       settings: {
-        MODEL: 'gpt-4',
+        MODEL: 'gpt-5',
       },
     };
 
@@ -44,7 +44,7 @@ describe('Character-Runtime Integration Tests', () => {
       });
 
       expect(runtime.character.name).toBe('TestAgent');
-      expect(runtime.character.settings?.MODEL).toBe('gpt-4');
+      expect(runtime.character.settings?.MODEL).toBe('gpt-5');
     });
 
     it('should validate character before creating runtime', () => {

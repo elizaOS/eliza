@@ -268,7 +268,7 @@ describe('Character Schema Validation', () => {
           temperature: 0.8,
           maxTokens: 2000,
           enableDebug: true,
-          model: 'gpt-4',
+          model: 'gpt-5',
           customConfig: {
             nested: {
               deeply: {

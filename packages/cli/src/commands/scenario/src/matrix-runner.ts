@@ -31,7 +31,7 @@ import {
  *   base_scenario: "test.scenario.yaml",
  *   runs_per_combination: 1,
  *   matrix: [
- *     { parameter: "character.llm.model", values: ["gpt-4", "gpt-3.5"] },
+ *     { parameter: "character.llm.model", values: ["gpt-5", "gpt-3.5"] },
  *     { parameter: "run[0].input", values: ["Hello", "Hi"] }
  *   ]
  * };

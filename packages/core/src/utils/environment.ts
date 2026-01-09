@@ -325,7 +325,7 @@ export function initBrowserEnvironment(config: EnvironmentConfig): void {
 export const currentRuntime = detectEnvironment();
 
 /**
- * Re-export the Environment class for advanced usage
+ * Export the Environment class for advanced usage
  */
 export { Environment };
 

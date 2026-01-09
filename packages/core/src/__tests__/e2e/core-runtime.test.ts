@@ -49,7 +49,7 @@ describe('Core Runtime E2E Tests', () => {
       style: { all: [], chat: [], post: [] },
       adjectives: [],
       settings: {
-        MODEL: 'gpt-4',
+        MODEL: 'gpt-5',
       },
     };
 
@@ -194,7 +194,7 @@ describe('Core Runtime E2E Tests', () => {
       });
 
       expect(newRuntime.character.name).toBe('TestAgent');
-      expect(newRuntime.character.settings?.MODEL).toBe('gpt-4');
+      expect(newRuntime.character.settings?.MODEL).toBe('gpt-5');
       expect(newRuntime.agentId).toBe(agentId);
     });
   });

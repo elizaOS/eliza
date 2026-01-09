@@ -1,7 +1,6 @@
 import { UUID, Agent } from '@elizaos/core';
 import { PaginationParams } from './base';
 
-// Re-export Agent from core
 export type { Agent } from '@elizaos/core';
 
 export interface AgentCreateParams {

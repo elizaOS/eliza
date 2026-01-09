@@ -12,7 +12,6 @@ export type MessageBroadcastData = {
   senderName: string;
   text: string;
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   createdAt: number;
   source: string;
   name: string; // Required for ContentWithUser compatibility
@@ -26,7 +25,6 @@ export type MessageBroadcastData = {
 
 export type MessageCompleteData = {
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: unknown;
 };
 
@@ -35,7 +33,6 @@ export type ControlMessageData = {
   action: 'enable_input' | 'disable_input';
   target?: string;
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: unknown;
 };
 
@@ -43,21 +40,18 @@ export type ControlMessageData = {
 export type MessageDeletedData = {
   messageId: string;
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: unknown;
 };
 
 // Define type for channel cleared events
 export type ChannelClearedData = {
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: unknown;
 };
 
 // Define type for channel deleted events
 export type ChannelDeletedData = {
   channelId: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: unknown;
 };
 
@@ -69,7 +63,6 @@ export type LogStreamData = {
   agentId?: string;
   agentName?: string;
   channelId?: string;
-  roomId?: string; // Deprecated - for backward compatibility only
   [key: string]: string | number | boolean | null | undefined;
 };
 
