@@ -13,7 +13,12 @@
         "package.json",
         "tsconfig*.json",
         "build.ts",
-        "tsup.config.ts"
+        "tsup.config.ts",
+        "vite.config.ts",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "bunfig.toml",
+        "tsconfig.build.json"
       ],
       "outputs": ["dist/**"]
     },
