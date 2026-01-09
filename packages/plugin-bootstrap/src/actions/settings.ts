@@ -906,7 +906,7 @@ export const updateSettingsAction: Action = {
           {
             src: 'plugin:bootstrap:action:settings',
             agentId: runtime.agentId,
-            serverId: world?.messageServerId,
+            messageServerId: world?.messageServerId,
           },
           'No settings state found for server'
         );
@@ -917,7 +917,7 @@ export const updateSettingsAction: Action = {
         {
           src: 'plugin:bootstrap:action:settings',
           agentId: runtime.agentId,
-          serverId: world.messageServerId,
+          messageServerId: world.messageServerId,
         },
         'Found valid settings state for server'
       );
