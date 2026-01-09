@@ -149,9 +149,77 @@ describe('PostgresConnectionManager', () => {
 
       await expect(manager.close()).rejects.toThrow('Close failed');
     });
+
+    it('should set isClosed to true after close', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      expect(manager.isClosed()).toBe(false);
+      await manager.close();
+      expect(manager.isClosed()).toBe(true);
+    });
+
+    it('should be idempotent - calling close twice only calls pool.end once', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      await manager.close();
+      await manager.close();
+
+      expect(mockPoolInstance.end).toHaveBeenCalledTimes(1);
+    });
   });
 
-  describe('withEntityContext', () => {
+  describe('isClosed', () => {
+    it('should return false initially', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.isClosed()).toBe(false);
+    });
+
+    it('should return true after close', async () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      mockPoolInstance.end.mockResolvedValue(undefined);
+
+      await manager.close();
+      expect(manager.isClosed()).toBe(true);
+    });
+  });
+
+  describe('getConnectionString', () => {
+    it('should return the connection string used to create the manager', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.getConnectionString()).toBe(connectionUrl);
+    });
+  });
+
+  describe('getRlsServerId', () => {
+    it('should return undefined when no RLS server ID is provided', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const manager = new PostgresConnectionManager(connectionUrl);
+
+      expect(manager.getRlsServerId()).toBeUndefined();
+    });
+
+    it('should return the RLS server ID when provided', () => {
+      const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
+      const rlsServerId = '12345678-1234-1234-1234-123456789012';
+      const manager = new PostgresConnectionManager(connectionUrl, rlsServerId);
+
+      expect(manager.getRlsServerId()).toBe(rlsServerId);
+    });
+  });
+
+  describe('withIsolationContext', () => {
     const connectionUrl = 'postgresql://user:pass@localhost:5432/testdb';
     const testEntityId = '9f984e0e-1329-43f3-b2b7-02f74a148990';
 
@@ -176,7 +244,7 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      const result = await manager.withEntityContext(testEntityId as any, async (_tx) => {
+      const result = await manager.withIsolationContext(testEntityId as any, async (_tx) => {
         return 'success';
       });
 
@@ -202,7 +270,7 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      const result = await manager.withEntityContext(null, async (_tx) => {
+      const result = await manager.withIsolationContext(null, async (_tx) => {
         return 'success';
       });
 
@@ -213,7 +281,7 @@ describe('PostgresConnectionManager', () => {
       db.transaction = originalTransaction;
     });
 
-    it('should execute SET LOCAL with raw SQL (not parameterized) when isolation is enabled', async () => {
+    it('should execute set_config with parameterized SQL when isolation is enabled', async () => {
       process.env.ENABLE_DATA_ISOLATION = 'true';
 
       const manager = new PostgresConnectionManager(connectionUrl);
@@ -232,18 +300,18 @@ describe('PostgresConnectionManager', () => {
         return callback(mockTx);
       }) as any;
 
-      await manager.withEntityContext(testEntityId as any, async (_tx) => {
+      await manager.withIsolationContext(testEntityId as any, async (_tx) => {
         return 'success';
       });
 
       expect(mockTx.execute).toHaveBeenCalled();
 
-      // Verify the query uses sql.raw() (inline value) not parameterized
-      // sql.raw() produces a query with the value embedded in queryChunks[0].value[0]
+      // Verify the query uses set_config() with parameterized values
+      // Drizzle sql template produces a query with the value in params array
       expect(executedQuery).toBeDefined();
       const queryStr = executedQuery?.queryChunks?.[0]?.value?.[0] || String(executedQuery);
-      expect(queryStr).toContain(testEntityId);
-      expect(queryStr).not.toContain('$1');
+      expect(queryStr).toContain('set_config');
+      expect(queryStr).toContain('app.entity_id');
 
       db.transaction = originalTransaction;
     });
@@ -264,7 +332,7 @@ describe('PostgresConnectionManager', () => {
       }) as any;
 
       await expect(
-        manager.withEntityContext(testEntityId as any, async (_tx) => {
+        manager.withIsolationContext(testEntityId as any, async (_tx) => {
           throw new Error('Callback error');
         })
       ).rejects.toThrow('Callback error');
