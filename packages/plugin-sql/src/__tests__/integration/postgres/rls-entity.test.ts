@@ -3,7 +3,7 @@ import { Client } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import type { IDatabaseAdapter, UUID } from '@elizaos/core';
+import { stringToUuid, type IDatabaseAdapter, type UUID } from '@elizaos/core';
 import { DatabaseMigrationService } from '../../../migration-service';
 import { plugin as sqlPlugin } from '../../../index';
 import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } from '../../../rls';
@@ -36,7 +36,11 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
 
   const POSTGRES_URL =
     process.env.POSTGRES_URL || 'postgresql://eliza_test:test123@localhost:5432/eliza_test';
-  const serverId = uuidv4();
+  // Use ELIZA_SERVER_ID if set (CI mode with ENABLE_DATA_ISOLATION=true)
+  // Otherwise generate a random UUID for local testing
+  const serverId = process.env.ELIZA_SERVER_ID
+    ? stringToUuid(process.env.ELIZA_SERVER_ID)
+    : uuidv4();
   const aliceId = uuidv4();
   const bobId = uuidv4();
   const charlieId = uuidv4();
