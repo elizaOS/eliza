@@ -5,16 +5,22 @@ import { PgliteDatabaseAdapter } from './pglite/adapter';
 import { PGliteClientManager } from './pglite/manager';
 import { PgDatabaseAdapter } from './pg/adapter';
 import { PostgresConnectionManager } from './pg/manager';
-import { resolvePgliteDir } from './utils.node';
+import { NeonDatabaseAdapter } from './neon/adapter';
+import { NeonConnectionManager } from './neon/manager';
+import { resolvePgliteDir, isNeonDatabase } from './utils.node';
 import * as schema from './schema';
 
 const GLOBAL_SINGLETONS = Symbol.for('@elizaos/plugin-sql/global-singletons');
 
+// Union type for both manager types
+type ConnectionManager = PostgresConnectionManager | NeonConnectionManager;
+
 interface GlobalSingletons {
   pgLiteClientManager?: PGliteClientManager;
-  // Map of PostgreSQL connection managers by server_id (for RLS multi-tenancy)
+  // Map of connection managers by server_id (for RLS multi-tenancy)
   // Key: server_id (or 'default' for non-RLS mode)
-  postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
+  // Value: PostgresConnectionManager (for standard PG) or NeonConnectionManager (for Neon serverless)
+  postgresConnectionManagers?: Map<string, ConnectionManager>;
 }
 
 // Type assertion needed because globalThis doesn't include symbol keys in its type definition
@@ -32,6 +38,9 @@ export function createDatabaseAdapter(
   agentId: UUID
 ): IDatabaseAdapter {
   if (config.postgresUrl) {
+    // Detect if this is a Neon serverless database
+    const useNeonDriver = isNeonDatabase(config.postgresUrl);
+
     // Determine RLS server_id if data isolation is enabled
     const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === 'true';
     let rlsServerId: string | undefined;
@@ -56,23 +65,50 @@ export function createDatabaseAdapter(
       );
     }
 
+    // Add driver type to manager key to avoid mixing Neon and Postgres managers
+    const fullManagerKey = `${managerKey}:${useNeonDriver ? 'neon' : 'pg'}`;
+
     // Initialize connection managers map if needed
     if (!globalSingletons.postgresConnectionManagers) {
       globalSingletons.postgresConnectionManagers = new Map();
     }
 
     // Get or create connection manager for this server_id
-    let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
-    if (!manager) {
+    let manager = globalSingletons.postgresConnectionManagers.get(fullManagerKey);
+
+    // Check if existing manager was closed (e.g., after adapter.close())
+    // If so, we need to recreate it to avoid "pool is closed" errors
+    if (manager && manager.isClosed()) {
       logger.debug(
-        { src: 'plugin:sql', managerKey: managerKey.slice(0, 8) },
-        'Creating new connection pool'
+        { src: 'plugin:sql', managerKey: fullManagerKey.slice(0, 16) },
+        'Existing connection pool was closed, recreating'
       );
-      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
-      globalSingletons.postgresConnectionManagers.set(managerKey, manager);
+      globalSingletons.postgresConnectionManagers.delete(fullManagerKey);
+      manager = undefined;
     }
 
-    return new PgDatabaseAdapter(agentId, manager);
+    if (!manager) {
+      if (useNeonDriver) {
+        logger.debug(
+          { src: 'plugin:sql:neon', managerKey: fullManagerKey.slice(0, 16) },
+          'Creating new Neon serverless connection pool'
+        );
+        manager = new NeonConnectionManager(config.postgresUrl, rlsServerId);
+      } else {
+        logger.debug(
+          { src: 'plugin:sql', managerKey: fullManagerKey.slice(0, 16) },
+          'Creating new PostgreSQL connection pool'
+        );
+        manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
+      }
+      globalSingletons.postgresConnectionManagers.set(fullManagerKey, manager);
+    }
+
+    // Return the appropriate adapter based on driver type
+    if (useNeonDriver) {
+      return new NeonDatabaseAdapter(agentId, manager as NeonConnectionManager);
+    }
+    return new PgDatabaseAdapter(agentId, manager as PostgresConnectionManager);
   }
 
   const dataDir = resolvePgliteDir(config.dataDir);
