@@ -27,16 +27,45 @@
     "@elizaos/client#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "vite.config.ts",
+        "postcss.config.js",
+        "tailwind.config.ts",
+        "bunfig.toml",
+        "index.html",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/cli#build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsconfig.build.json",
+        "bunfig.toml",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/server#build": {
       "dependsOn": ["@elizaos/client#build", "^build"],
       "env": ["LOG_LEVEL"],
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsconfig.build.json",
+        "bunfig.toml",
+        "../../build-utils.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "lint": {
