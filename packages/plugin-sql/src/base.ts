@@ -104,7 +104,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
    * @param callback - The database operations to execute with the entity context
    * @returns The result of the callback
    */
-  public abstract withEntityContext<T>(
+  public abstract withIsolationContext<T>(
     entityId: UUID | null,
     callback: (tx: DrizzleDatabase) => Promise<T>
   ): Promise<T>;
@@ -1080,7 +1080,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
       throw new Error('offset must be a non-negative number');
     }
 
-    return this.withEntityContext(entityId ?? null, async (tx) => {
+    return this.withIsolationContext(entityId ?? null, async (tx) => {
       const conditions = [eq(memoryTable.type, tableName)];
 
       if (start) {
@@ -1414,9 +1414,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
         // This ensures any problematic characters are properly escaped during JSON serialization
         const jsonString = JSON.stringify(sanitizedBody);
 
-        // Use withEntityContext to set Entity RLS context before inserting
+        // Use withIsolationContext to set Entity RLS context before inserting
         // This ensures the log entry passes STRICT Entity RLS policy
-        await this.withEntityContext(params.entityId, async (tx) => {
+        await this.withIsolationContext(params.entityId, async (tx) => {
           await tx.insert(logTable).values({
             body: sql`${jsonString}::jsonb`,
             entityId: params.entityId,
@@ -1508,10 +1508,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
   }): Promise<Log[]> {
     const { entityId, roomId, type, count, offset } = params;
 
-    // Use withEntityContext for RLS only when entityId is provided
+    // Use withIsolationContext for RLS only when entityId is provided
     // Without entityId, bypass RLS to see all logs (for non-RLS mode)
     // Note: No WHERE filter on entityId - RLS handles access control automatically
-    return this.withEntityContext(entityId ?? null, async (tx) => {
+    return this.withIsolationContext(entityId ?? null, async (tx) => {
       const result = await tx
         .select()
         .from(logTable)
@@ -1555,8 +1555,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const fromDate = typeof params.from === 'number' ? new Date(params.from) : undefined;
     const toDate = typeof params.to === 'number' ? new Date(params.to) : undefined;
 
-    // Use withEntityContext for RLS when entityId is provided
-    return this.withEntityContext(params.entityId ?? null, async (tx) => {
+    // Use withIsolationContext for RLS when entityId is provided
+    return this.withIsolationContext(params.entityId ?? null, async (tx) => {
       const runMap = new Map<string, AgentRunSummary>();
 
       const conditions: SQL<unknown>[] = [
@@ -1955,9 +1955,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<any> {
     const metadataToInsert =
       typeof memory.metadata === 'string' ? memory.metadata : JSON.stringify(memory.metadata ?? {});
 
-    // Use withEntityContext to set Entity RLS context if needed
+    // Use withIsolationContext to set Entity RLS context if needed
     // This delegates to the concrete adapter implementation (PostgreSQL or PGLite)
-    await this.withEntityContext(memory.entityId, async (tx) => {
+    await this.withIsolationContext(memory.entityId, async (tx) => {
       await tx.insert(memoryTable).values([
         {
           id: memoryId,
