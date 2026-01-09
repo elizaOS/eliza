@@ -220,7 +220,7 @@ export class AgentRuntime implements IAgentRuntime {
     this.currentRunId = undefined; // Initialize run ID tracker
 
     // Set max working memory entries from settings or environment
-    if (opts.settings?.MAX_WORKING_MEMORY_ENTRIES) {
+    if (opts.settings && opts.settings.MAX_WORKING_MEMORY_ENTRIES) {
       this.maxWorkingMemoryEntries =
         parseInt(opts.settings.MAX_WORKING_MEMORY_ENTRIES, 10) || 50;
     } else {
@@ -470,7 +470,7 @@ export class AgentRuntime implements IAgentRuntime {
     this.messageService = new DefaultMessageService();
 
     // Run migrations for all loaded plugins (unless explicitly skipped for serverless mode)
-    const skipMigrations = options?.skipMigrations ?? false;
+    const skipMigrations = (options && options.skipMigrations) ?? false;
     if (skipMigrations) {
       this.logger.debug(
         { src: "agent", agentId: this.agentId },
@@ -737,9 +737,9 @@ export class AgentRuntime implements IAgentRuntime {
         : undefined;
 
     const value =
-      secrets?.[key] ||
-      settings?.[key] ||
-      nestedSecrets?.[key] ||
+      (secrets && secrets[key]) ||
+      (settings && settings[key]) ||
+      (nestedSecrets && nestedSecrets[key]) ||
       this.settings[key];
 
     // Handle each type appropriately
@@ -829,7 +829,7 @@ export class AgentRuntime implements IAgentRuntime {
           src: "agent",
           agentId: this.agentId,
           index,
-          stepsCount: plan.steps?.length || 0,
+          stepsCount: (plan.steps && plan.steps.length) || 0,
         },
         "Invalid step index",
       );
@@ -855,7 +855,7 @@ export class AgentRuntime implements IAgentRuntime {
     // Determine if we have multiple actions to execute
     const allActions: string[] = [];
     for (const response of responses) {
-      if (response.content?.actions && response.content.actions.length > 0) {
+      if (response.content && response.content.actions && response.content.actions.length > 0) {
         allActions.push(...response.content.actions);
       }
     }
@@ -881,8 +881,9 @@ export class AgentRuntime implements IAgentRuntime {
         }
       | undefined;
 
+    const firstResponse = responses[0];
     const thought =
-      responses[0]?.content?.thought ||
+      (firstResponse && firstResponse.content && firstResponse.content.thought) ||
       `Executing ${allActions.length} actions: ${allActions.join(", ")}`;
 
     if (hasMultipleActions) {
@@ -904,7 +905,7 @@ export class AgentRuntime implements IAgentRuntime {
     let actionIndex = 0;
 
     for (const response of responses) {
-      if (!response.content?.actions || response.content.actions.length === 0) {
+      if (!response.content || !response.content.actions || response.content.actions.length === 0) {
         this.logger.warn(
           { src: "agent", agentId: this.agentId },
           "No action found in response",
@@ -972,9 +973,9 @@ export class AgentRuntime implements IAgentRuntime {
         if (!action) {
           // Try similes
           for (const _action of this.actions) {
-            const exactSimileMatch = _action.similes?.find(
+            const exactSimileMatch = (_action.similes && _action.similes.find(
               (simile) => normalizeAction(simile) === normalizedResponseAction,
-            );
+            ));
 
             if (exactSimileMatch) {
               action = _action;
@@ -990,11 +991,11 @@ export class AgentRuntime implements IAgentRuntime {
               break;
             }
 
-            const fuzzySimileMatch = _action.similes?.find(
+            const fuzzySimileMatch = (_action.similes && _action.similes.find(
               (simile) =>
                 normalizeAction(simile).includes(normalizedResponseAction) ||
                 normalizedResponseAction.includes(normalizeAction(simile)),
-            );
+            ));
 
             if (fuzzySimileMatch) {
               action = _action;
@@ -1018,7 +1019,7 @@ export class AgentRuntime implements IAgentRuntime {
             "Action not found",
           );
 
-          if (actionPlan?.steps[actionIndex]) {
+          if (actionPlan && actionPlan.steps && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: "failed",
               error: errorMsg,
@@ -1050,7 +1051,7 @@ export class AgentRuntime implements IAgentRuntime {
           );
 
           // Update plan with error immutably
-          if (actionPlan?.steps[actionIndex]) {
+          if (actionPlan && actionPlan.steps && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: "failed",
               error: "No handler",
@@ -1079,7 +1080,7 @@ export class AgentRuntime implements IAgentRuntime {
         const actionContext: ActionContext = {
           previousResults: actionResults,
           getPreviousResult: (actionName: string) => {
-            return actionResults.find((r) => r.data?.actionName === actionName);
+            return actionResults.find((r) => r.data && r.data.actionName === actionName);
           },
         };
 
@@ -1098,7 +1099,7 @@ export class AgentRuntime implements IAgentRuntime {
         }
 
         // Pass streaming callback to action handlers
-        if (processOptions?.onStreamChunk) {
+        if (processOptions && processOptions.onStreamChunk) {
           options.onStreamChunk = processOptions.onStreamChunk;
         }
 
@@ -1114,7 +1115,7 @@ export class AgentRuntime implements IAgentRuntime {
             runId: runId,
             type: "agent_action",
             thought: thought,
-            source: message.content?.source,
+            source: (message.content && message.content.source),
           },
         });
 
@@ -1140,8 +1141,9 @@ export class AgentRuntime implements IAgentRuntime {
               onStreamEnd: () => void;
             }
           | undefined;
-        if (processOptions?.onStreamChunk) {
+        if (processOptions && processOptions.onStreamChunk) {
           let currentFilter: ActionStreamFilter | null = null;
+          const onStreamChunk = processOptions.onStreamChunk;
 
           actionStreamingContext = {
             messageId: responseMessageId,
@@ -1150,8 +1152,8 @@ export class AgentRuntime implements IAgentRuntime {
                 currentFilter = new ActionStreamFilter();
               }
               const textToStream = currentFilter.push(chunk);
-              if (textToStream) {
-                await processOptions.onStreamChunk?.(textToStream, msgId);
+              if (textToStream && onStreamChunk) {
+                await onStreamChunk(textToStream, msgId);
               }
             },
             onStreamEnd: () => {
@@ -1211,7 +1213,7 @@ export class AgentRuntime implements IAgentRuntime {
           // Merge returned values into state
           if (actionResult.values) {
             const existingActionResults = Array.isArray(
-              accumulatedState.data?.actionResults,
+              (accumulatedState.data && accumulatedState.data.actionResults),
             )
               ? accumulatedState.data.actionResults
               : [];
@@ -1232,7 +1234,7 @@ export class AgentRuntime implements IAgentRuntime {
               accumulatedState.data.workingMemory = {};
 
             // Add new entry first, then clean up if we exceed the limit
-            const responseAction = actionResult.data?.actionName || action.name;
+            const responseAction = (actionResult.data && actionResult.data.actionName) || action.name;
             const memoryKey = `action_${responseAction}_${uuidv4()}`;
             const memoryEntry: WorkingMemoryEntry = {
               actionName: action.name,
@@ -1252,8 +1254,8 @@ export class AgentRuntime implements IAgentRuntime {
               const sorted = entries.sort((a, b) => {
                 const entryA = a[1] as WorkingMemoryEntry | null;
                 const entryB = b[1] as WorkingMemoryEntry | null;
-                const timestampA = entryA?.timestamp ?? 0;
-                const timestampB = entryB?.timestamp ?? 0;
+                const timestampA = (entryA && entryA.timestamp) ?? 0;
+                const timestampB = (entryB && entryB.timestamp) ?? 0;
                 return timestampB - timestampA;
               });
               // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
@@ -1264,7 +1266,7 @@ export class AgentRuntime implements IAgentRuntime {
           }
 
           // Update plan with success immutably
-          if (actionPlan?.steps[actionIndex]) {
+          if (actionPlan && actionPlan.steps && actionPlan.steps[actionIndex]) {
             actionPlan = this.updateActionStep(actionPlan, actionIndex, {
               status: "completed",
               result: actionResult,
@@ -1272,7 +1274,7 @@ export class AgentRuntime implements IAgentRuntime {
           }
         }
 
-        const isSuccess = actionResult?.success !== false;
+        const isSuccess = (actionResult && actionResult.success) !== false;
         const statusText = isSuccess ? "completed" : "failed";
 
         await this.emitEvent(EventType.ACTION_COMPLETED, {
@@ -1281,14 +1283,14 @@ export class AgentRuntime implements IAgentRuntime {
           world: message.worldId,
           content: {
             // Use action's actual text, not status message (prevents overwriting streamed content)
-            text: actionResult?.text || "",
+            text: (actionResult && actionResult.text) || "",
             actions: [action.name],
             actionStatus: statusText,
             actionId: actionId,
             type: "agent_action",
             thought: thought,
             actionResult: actionResult,
-            source: message.content?.source, // Include original message source
+            source: (message.content && message.content.source), // Include original message source
           },
         });
 
@@ -1305,11 +1307,11 @@ export class AgentRuntime implements IAgentRuntime {
           roomId: message.roomId,
           worldId: message.worldId,
           content: {
-            text: actionResult?.text || `Executed action: ${action.name}`,
+            text: (actionResult && actionResult.text) || `Executed action: ${action.name}`,
             source: "action",
             type: "action_result",
             actionName: action.name,
-            actionStatus: actionResult?.success ? "completed" : "failed",
+            actionStatus: (actionResult && actionResult.success) ? "completed" : "failed",
             actionResult: isLegacyReturn ? { legacy: result } : actionResult,
             runId,
             ...(actionPlan && {
@@ -1350,8 +1352,8 @@ export class AgentRuntime implements IAgentRuntime {
             responses,
             result: isLegacyReturn ? { legacy: result } : actionResult,
             isLegacyReturn,
-            prompts: this.currentActionContext?.prompts || [],
-            promptCount: this.currentActionContext?.prompts.length || 0,
+            prompts: (this.currentActionContext && this.currentActionContext.prompts) || [],
+            promptCount: (this.currentActionContext && this.currentActionContext.prompts && this.currentActionContext.prompts.length) || 0,
             runId,
             parentRunId,
             ...(actionPlan && {
@@ -1379,8 +1381,8 @@ export class AgentRuntime implements IAgentRuntime {
   }
 
   getActionResults(messageId: UUID): ActionResult[] {
-    const cachedState = this.stateCache?.get(`${messageId}_action_results`);
-    return (cachedState?.data?.actionResults as ActionResult[]) || [];
+    const cachedState = this.stateCache && this.stateCache.get(`${messageId}_action_results`);
+    return (cachedState && cachedState.data && cachedState.data.actionResults as ActionResult[]) || [];
   }
 
   async evaluate(
@@ -1484,9 +1486,9 @@ export class AgentRuntime implements IAgentRuntime {
     // Step 1: Create all rooms FIRST (before adding any participants)
     const roomIds = rooms.map((r: { id: UUID }) => r.id);
     const roomExistsCheck = await this.getRoomsByIds(roomIds);
-    const roomsIdExists = roomExistsCheck?.map((r: { id: UUID }) => r.id);
+    const roomsIdExists = roomExistsCheck && roomExistsCheck.map((r: { id: UUID }) => r.id);
     const roomsToCreate = roomIds.filter(
-      (id: UUID) => !roomsIdExists?.includes(id),
+      (id: UUID) => !(roomsIdExists && roomsIdExists.includes(id)),
     );
 
     const rf = {
@@ -1513,9 +1515,7 @@ export class AgentRuntime implements IAgentRuntime {
       .filter((id): id is UUID => id !== undefined);
     const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
     const entitiesToUpdate =
-      entityExistsCheck
-        ?.map((e) => e.id)
-        .filter((id): id is UUID => id !== undefined) || [];
+      (entityExistsCheck && entityExistsCheck.map((e) => e.id).filter((id): id is UUID => id !== undefined)) || [];
     const entitiesToCreate = entities.filter(
       (e) => e.id !== undefined && !entitiesToUpdate.includes(e.id),
     );
@@ -1664,8 +1664,8 @@ export class AgentRuntime implements IAgentRuntime {
         metadata: {
           ...entity.metadata,
           [source]: {
-            ...(entity.metadata?.[source] &&
-            typeof entity.metadata[source] === "object"
+            ...((entity.metadata && entity.metadata[source] &&
+            typeof entity.metadata[source] === "object")
               ? (entity.metadata[source] as Record<string, unknown>)
               : {}),
             id: userId,
@@ -1899,7 +1899,7 @@ export class AgentRuntime implements IAgentRuntime {
       string,
       { text?: string; values?: Record<string, unknown>; providerName: string }
     > = {
-      ...((cachedState.data?.providers as Record<
+      ...((cachedState.data && cachedState.data.providers as Record<
         string,
         {
           text?: string;
@@ -1915,7 +1915,7 @@ export class AgentRuntime implements IAgentRuntime {
     for (const provider of providersToGet) {
       const result = currentProviderResults[provider.name];
       if (
-        result?.text &&
+        result && result.text &&
         typeof result.text === "string" &&
         result.text.trim() !== ""
       ) {
@@ -1929,7 +1929,7 @@ export class AgentRuntime implements IAgentRuntime {
     for (const provider of providersToGet) {
       const providerResult = currentProviderResults[provider.name];
       if (
-        providerResult?.values &&
+        providerResult && providerResult.values &&
         typeof providerResult.values === "object" &&
         providerResult.values !== null
       ) {
@@ -1940,7 +1940,7 @@ export class AgentRuntime implements IAgentRuntime {
       if (!providersToGet.some((p) => p.name === providerName)) {
         const providerResult = currentProviderResults[providerName];
         if (
-          providerResult?.values &&
+          providerResult && providerResult.values &&
           typeof providerResult.values === "object" &&
           providerResult.values !== null
         ) {
@@ -2150,8 +2150,14 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Add the service to the arrays
-    this.services.get(serviceType)?.push(serviceInstance);
-    this.serviceTypes.get(serviceType)?.push(serviceDef);
+    const servicesArray = this.services.get(serviceType);
+    if (servicesArray) {
+      servicesArray.push(serviceInstance);
+    }
+    const serviceTypesArray = this.serviceTypes.get(serviceType);
+    if (serviceTypesArray) {
+      serviceTypesArray.push(serviceDef);
+    }
 
     // inform everyone that's waiting for this service, that it's now available
     // removes the need for polling and timers
@@ -2168,10 +2174,13 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     if (serviceDef.registerSendHandlers) {
-      (serviceDef.constructor as typeof Service).registerSendHandlers?.(
-        this as IAgentRuntime,
-        serviceInstance,
-      );
+      const registerSendHandlers = (serviceDef.constructor as typeof Service).registerSendHandlers;
+      if (registerSendHandlers) {
+        registerSendHandlers(
+          this as IAgentRuntime,
+          serviceInstance,
+        );
+      }
     }
     // Update service status to registered
     this.serviceRegistrationStatus.set(serviceType, "registered");
@@ -2237,13 +2246,15 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     const registrationOrder = Date.now();
-    this.models.get(modelKey)?.push({
-      handler,
-      provider,
-      priority: priority || 0,
-      registrationOrder,
-    });
-    this.models.get(modelKey)?.sort((a, b) => {
+    const modelsArray = this.models.get(modelKey);
+    if (modelsArray) {
+      modelsArray.push({
+        handler,
+        provider,
+        priority: priority || 0,
+        registrationOrder,
+      });
+      modelsArray.sort((a, b) => {
       if ((b.priority || 0) !== (a.priority || 0)) {
         return (b.priority || 0) - (a.priority || 0);
       }
@@ -2262,7 +2273,7 @@ export class AgentRuntime implements IAgentRuntime {
     const modelKey =
       typeof modelType === "string" ? modelType : ModelType[modelType];
     const models = this.models.get(modelKey);
-    if (!models?.length) {
+    if (!models || !models.length) {
       return undefined;
     }
 
@@ -2431,7 +2442,7 @@ export class AgentRuntime implements IAgentRuntime {
         timestamp: Date.now(),
         executionTime: elapsedTime,
         provider:
-          provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+          provider || (this.models.get(modelKey) && this.models.get(modelKey)![0] && this.models.get(modelKey)![0].provider) || "unknown",
         actionContext: this.currentActionContext
           ? {
               actionName: this.currentActionContext.actionName,
@@ -2469,9 +2480,10 @@ export class AgentRuntime implements IAgentRuntime {
         ? JSON.stringify(paramsObj.messages)
         : null);
     const model = this.getModel(modelKey);
+    const modelsForKey = this.models.get(modelKey);
     const modelWithProvider =
-      provider &&
-      this.models.get(modelKey)?.find((m) => m.provider === provider);
+      provider && modelsForKey &&
+      modelsForKey.find((m) => m.provider === provider);
     const handler = modelWithProvider ? modelWithProvider.handler : model;
     if (!handler) {
       const errorMsg = `No handler found for delegate type: ${modelKey}`;
@@ -2578,11 +2590,11 @@ export class AgentRuntime implements IAgentRuntime {
     const paramsAsStreaming = isPlainObject(modelParams)
       ? (modelParams as StreamingParams)
       : undefined;
-    const paramsChunk = paramsAsStreaming?.onStreamChunk;
-    const ctxChunk = streamingCtx?.onStreamChunk;
-    const msgId = streamingCtx?.messageId;
-    const abortSignal = streamingCtx?.abortSignal;
-    const explicitStream = paramsAsStreaming?.stream;
+    const paramsChunk = paramsAsStreaming && paramsAsStreaming.onStreamChunk;
+    const ctxChunk = streamingCtx && streamingCtx.onStreamChunk;
+    const msgId = streamingCtx && streamingCtx.messageId;
+    const abortSignal = streamingCtx && streamingCtx.abortSignal;
+    const explicitStream = paramsAsStreaming && paramsAsStreaming.stream;
 
     // stream: false = force no stream, otherwise stream if any callback exists
     const shouldStream =
@@ -2610,7 +2622,7 @@ export class AgentRuntime implements IAgentRuntime {
     ) {
       let fullText = "";
       for await (const chunk of (response as TextStreamResult).textStream) {
-        if (abortSignal?.aborted) break;
+        if (abortSignal && abortSignal.aborted) break;
         fullText += chunk;
         try {
           if (paramsChunk) await paramsChunk(chunk, msgId);
@@ -2621,7 +2633,8 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Signal stream end to allow context to reset state between useModel calls
-      const ctxEnd = getStreamingContext()?.onStreamEnd;
+      const streamingCtxEnd = getStreamingContext();
+      const ctxEnd = streamingCtxEnd && streamingCtxEnd.onStreamEnd;
       if (ctxEnd) ctxEnd();
 
       // Log the completed stream
@@ -2689,13 +2702,13 @@ export class AgentRuntime implements IAgentRuntime {
     input: string,
     options?: GenerateTextOptions,
   ): Promise<GenerateTextResult> {
-    if (!input?.trim()) {
+    if (!input || !input.trim()) {
       throw new Error("Input cannot be empty");
     }
 
     // Set defaults
-    const includeCharacter = options?.includeCharacter ?? true;
-    const modelType = options?.modelType ?? ModelType.TEXT_LARGE;
+    const includeCharacter = (options && options.includeCharacter) ?? true;
+    const modelType = (options && options.modelType) ?? ModelType.TEXT_LARGE;
 
     let prompt = input;
 
@@ -2716,7 +2729,10 @@ export class AgentRuntime implements IAgentRuntime {
       }
 
       // Add style directives (all + chat)
-      const styles = [...(c.style?.all || []), ...(c.style?.chat || [])];
+      const styles = [
+        ...((c.style && c.style.all) || []),
+        ...((c.style && c.style.chat) || []),
+      ];
       if (styles.length > 0) {
         parts.push(`Style:\n${styles.map((s) => `- ${s}`).join("\n")}`);
       }
@@ -2729,21 +2745,21 @@ export class AgentRuntime implements IAgentRuntime {
 
     const params: GenerateTextParams = {
       prompt,
-      maxTokens: options?.maxTokens,
-      minTokens: options?.minTokens,
-      temperature: options?.temperature,
-      topP: options?.topP,
-      topK: options?.topK,
-      minP: options?.minP,
-      seed: options?.seed,
-      repetitionPenalty: options?.repetitionPenalty,
-      frequencyPenalty: options?.frequencyPenalty,
-      presencePenalty: options?.presencePenalty,
-      stopSequences: options?.stopSequences,
+      maxTokens: options && options.maxTokens,
+      minTokens: options && options.minTokens,
+      temperature: options && options.temperature,
+      topP: options && options.topP,
+      topK: options && options.topK,
+      minP: options && options.minP,
+      seed: options && options.seed,
+      repetitionPenalty: options && options.repetitionPenalty,
+      frequencyPenalty: options && options.frequencyPenalty,
+      presencePenalty: options && options.presencePenalty,
+      stopSequences: options && options.stopSequences,
       // User identifier for provider tracking/analytics - auto-populates from character name if not provided
       // Explicitly set empty string or null will be preserved (not overridden)
-      user: options?.user !== undefined ? options.user : this.character.name,
-      responseFormat: options?.responseFormat,
+      user: (options && options.user !== undefined) ? options.user : this.character.name,
+      responseFormat: options && options.responseFormat,
     };
 
     const response = await this.useModel(modelType, params);
@@ -2768,7 +2784,10 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.events[event]) {
       this.events[event] = [];
     }
-    this.events[event]?.push(handler as (params: unknown) => Promise<void>);
+    const eventHandlers = this.events[event];
+    if (eventHandlers) {
+      eventHandlers.push(handler as (params: unknown) => Promise<void>);
+    }
   }
 
   getEvent(event: string): ((params: unknown) => Promise<void>)[] | undefined {
@@ -2884,15 +2903,17 @@ export class AgentRuntime implements IAgentRuntime {
       };
 
       // Deep merge secrets to preserve runtime-generated secrets
+      const existingSecrets = existingAgent.settings && existingAgent.settings.secrets;
+      const agentSecrets = agent.settings && agent.settings.secrets;
       const mergedSecrets =
-        typeof existingAgent.settings?.secrets === "object" ||
-        typeof agent.settings?.secrets === "object"
+        typeof existingSecrets === "object" ||
+        typeof agentSecrets === "object"
           ? {
-              ...(typeof existingAgent.settings?.secrets === "object"
-                ? existingAgent.settings.secrets
+              ...(typeof existingSecrets === "object"
+                ? existingSecrets
                 : {}),
-              ...(typeof agent.settings?.secrets === "object"
-                ? agent.settings.secrets
+              ...(typeof agentSecrets === "object"
+                ? agentSecrets
                 : {}),
             }
           : undefined;
@@ -2939,7 +2960,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
   async getEntityById(entityId: UUID): Promise<Entity | null> {
     const entities = await this.adapter.getEntitiesByIds([entityId]);
-    if (!entities?.length) return null;
+    if (!entities || !entities.length) return null;
     return entities[0];
   }
 
@@ -3044,7 +3065,7 @@ export class AgentRuntime implements IAgentRuntime {
     }
 
     // Skip if no text content
-    if (!memory.content?.text) {
+    if (!memory.content || !memory.content.text) {
       return;
     }
 
@@ -3244,7 +3265,7 @@ export class AgentRuntime implements IAgentRuntime {
   }
   async getRoom(roomId: UUID): Promise<Room | null> {
     const rooms = await this.adapter.getRoomsByIds([roomId]);
-    if (!rooms?.length) return null;
+    if (!rooms || !rooms.length) return null;
     return rooms[0];
   }
 
@@ -3375,7 +3396,10 @@ export class AgentRuntime implements IAgentRuntime {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
-    this.eventHandlers.get(event)?.push(callback);
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.push(callback);
+    }
   }
   off(event: string, callback: (data: unknown) => void): void {
     if (!this.eventHandlers.has(event)) {
@@ -3487,7 +3511,7 @@ export class AgentRuntime implements IAgentRuntime {
     return await this.adapter.getMemoriesByWorldId(params);
   }
   async runMigrations(migrationsPaths?: string[]): Promise<void> {
-    if (this.adapter?.runMigrations) {
+    if (this.adapter && this.adapter.runMigrations) {
       await this.adapter.runMigrations(migrationsPaths);
     } else {
       this.logger.warn(
