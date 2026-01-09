@@ -90,11 +90,19 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     console.log('[RLS Test] Schema initialized via migrations');
 
     // Install RLS functions and apply to all tables
+    // Skip if ENABLE_DATA_ISOLATION is already set (CI mode) - migrations already installed them
     const mockAdapter = { db } as IDatabaseAdapter;
-    await installRLSFunctions(mockAdapter);
-    await applyRLSToNewTables(mockAdapter);
-    await applyEntityRLSToAllTables(mockAdapter);
-    console.log('[RLS Test] RLS functions installed and applied');
+    if (process.env.ENABLE_DATA_ISOLATION !== 'true') {
+      await installRLSFunctions(mockAdapter);
+      await applyRLSToNewTables(mockAdapter);
+      await applyEntityRLSToAllTables(mockAdapter);
+      console.log('[RLS Test] RLS functions installed and applied');
+    } else {
+      // In CI with ENABLE_DATA_ISOLATION=true, migrations already installed RLS.
+      // We still need to apply entity RLS to ensure participant-based isolation is set up.
+      await applyEntityRLSToAllTables(mockAdapter);
+      console.log('[RLS Test] RLS already installed by migrations, applied entity RLS');
+    }
 
     // Grant permissions on newly created tables to eliza_test
     // (in case the test is run by a different user who owns the tables)
