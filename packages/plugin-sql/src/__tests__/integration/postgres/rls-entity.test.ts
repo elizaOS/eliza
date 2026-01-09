@@ -71,6 +71,8 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
     // Clean up from previous tests - drop all tables and schemas for fresh start
     try {
       await superuserClient.connect();
+      // Set server context for superuser so INSERT DEFAULT current_server_id() works
+      await superuserClient.query(`SET app.server_id = '${serverId}'`);
       await superuserClient.query(`DROP SCHEMA IF EXISTS migrations CASCADE`);
       await superuserClient.query(`
         DO $$ DECLARE
