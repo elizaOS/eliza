@@ -4,6 +4,17 @@
     "build": {
       "dependsOn": ["^build"],
       "env": ["LOG_LEVEL"],
+      // WHY explicit inputs:
+      // By default, Turbo hashes ALL files to determine cache validity.
+      // This causes unnecessary rebuilds when unrelated files change (README, tests, etc).
+      // Listing only build-relevant files improves cache hit rates significantly.
+      "inputs": [
+        "src/**",
+        "package.json",
+        "tsconfig*.json",
+        "build.ts",
+        "tsup.config.ts"
+      ],
       "outputs": ["dist/**"]
     },
     "@elizaos/client#build": {
