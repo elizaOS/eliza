@@ -142,7 +142,7 @@ describe('PgDatabaseAdapter', () => {
         getClient: getClientMock,
         testConnection: mock().mockResolvedValue(true),
         close: mock().mockResolvedValue(undefined),
-        withEntityContext: mock(),
+        withIsolationContext: mock(),
       } as any;
 
       const poolAdapter = new PgDatabaseAdapter(agentId, poolManager);
@@ -177,7 +177,7 @@ describe('PgDatabaseAdapter', () => {
         getClient: mock(),
         testConnection: mock().mockResolvedValue(true),
         close: mock().mockResolvedValue(undefined),
-        withEntityContext: mock(),
+        withIsolationContext: mock(),
       } as any;
 
       const concurrentAdapter = new PgDatabaseAdapter(agentId, concurrentManager);

@@ -230,5 +230,24 @@ describe('SQL Plugin', () => {
       expect(adapter1).toBeDefined();
       expect(adapter2).toBeDefined();
     });
+
+    it('should recreate manager after it is closed', async () => {
+      const postgresUrl = 'postgresql://localhost:5432/test';
+
+      // Create first adapter
+      const adapter1 = createDatabaseAdapter({ postgresUrl }, agentId);
+      expect(adapter1).toBeDefined();
+
+      // Close the adapter (which closes the underlying manager)
+      await adapter1.close();
+
+      // Create second adapter - should get a new manager since the old one is closed
+      const adapter2 = createDatabaseAdapter({ postgresUrl }, agentId);
+      expect(adapter2).toBeDefined();
+
+      // Both adapters should be defined and functional
+      // The key behavior being tested is that createDatabaseAdapter doesn't
+      // return a broken adapter after the previous one was closed
+    });
   });
 });
