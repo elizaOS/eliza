@@ -18,7 +18,8 @@
         "postcss.config.js",
         "tailwind.config.ts",
         "bunfig.toml",
-        "tsconfig.build.json"
+        "tsconfig.build.json",
+        "../../build-utils.ts"
       ],
       "outputs": ["dist/**"]
     },
