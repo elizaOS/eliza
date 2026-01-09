@@ -66,7 +66,7 @@ describe('Message Handler Logic', () => {
           name: 'Test Room',
           type: ChannelType.GROUP,
           worldId: 'test-world-id',
-          serverId: 'test-server-id',
+          messageServerId: 'test-server-id',
           source: 'test',
         }),
 
