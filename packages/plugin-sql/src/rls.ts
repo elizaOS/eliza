@@ -12,13 +12,13 @@ import { getDb } from './types';
  * 1. **Server RLS** - Multi-server isolation
  *    - Isolates data between different ElizaOS server instances
  *    - Uses `server_id` column added dynamically to all tables
- *    - Server context set via PostgreSQL `application_name` connection parameter
+ *    - Server context set via `SET LOCAL app.server_id` (transaction-scoped)
  *    - Prevents data leakage between different deployments/environments
  *
  * 2. **Entity RLS** - User/agent-level privacy isolation
  *    - Isolates data between different users (Clients (plugins/API) users)
  *    - Uses `entity_id`, `author_id`, or joins via `participants` table
- *    - Entity context set via `app.entity_id` transaction-local variable
+ *    - Entity context set via `SET LOCAL app.entity_id` (transaction-scoped)
  *    - Provides DM privacy and multi-user isolation within a server
  *
  * CRITICAL SECURITY REQUIREMENTS:
@@ -29,8 +29,11 @@ import { getDb } from './types';
  * - Superusers bypass ALL RLS policies by design, defeating the isolation mechanism
  *
  * ARCHITECTURE:
- * - Server RLS: Uses PostgreSQL `application_name` (set at connection pool level)
+ * - Server RLS: Uses `SET LOCAL app.server_id` (set per transaction)
  * - Entity RLS: Uses `SET LOCAL app.entity_id` (set per transaction)
+ * - Both contexts are set in withIsolationContext() at transaction start
+ * - Uses industry-standard pattern: SET LOCAL + current_setting()
+ * - Works with both pg and @neondatabase/serverless drivers
  * - Policies use FORCE ROW LEVEL SECURITY to enforce even for table owners
  * - Automatic index creation for performance (`server_id`, `entity_id`, `room_id`)
  *
@@ -90,20 +93,19 @@ export async function installRLSFunctions(adapter: IDatabaseAdapter): Promise<vo
     )
   `);
 
-  // Function to get server_id from application_name
-  // This allows multi-tenant isolation without needing superuser privileges
-  // Each connection pool sets application_name = server_id
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION current_server_id() RETURNS UUID AS $$
     DECLARE
-      app_name TEXT;
+      server_id_text TEXT;
     BEGIN
-      app_name := NULLIF(current_setting('application_name', TRUE), '');
+      server_id_text := NULLIF(current_setting('app.server_id', TRUE), '');
 
-      -- Return NULL if application_name is not set or not a valid UUID
-      -- This allows admin queries to work without RLS restrictions
+      IF server_id_text IS NULL OR server_id_text = '' THEN
+        RETURN NULL;
+      END IF;
+
       BEGIN
-        RETURN app_name::UUID;
+        RETURN server_id_text::UUID;
       EXCEPTION WHEN OTHERS THEN
         RETURN NULL;
       END;

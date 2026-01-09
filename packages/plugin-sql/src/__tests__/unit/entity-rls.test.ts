@@ -429,7 +429,7 @@ describe('Entity RLS Security Properties', () => {
 });
 
 describe('Entity RLS Integration', () => {
-  describe('withEntityContext Helper', () => {
+  describe('withIsolationContext Helper', () => {
     it('should set entity context before query execution', () => {
       const entityId = stringToUuid('alice');
       const sessionCommand = `SET LOCAL app.entity_id = '${entityId}'`;
@@ -464,22 +464,22 @@ describe('Entity RLS Integration', () => {
   });
 
   describe('ElizaOS Integration Point', () => {
-    it('should check for withEntityContext method availability', () => {
+    it('should check for withIsolationContext method availability', () => {
       const postgresAdapter = {
-        withEntityContext: async (entityId: string, callback: () => Promise<any>) => {
+        withIsolationContext: async (entityId: string, callback: () => Promise<any>) => {
           return callback();
         },
       };
 
       const pgliteAdapter = {
-        // No withEntityContext method (not supported)
+        // No withIsolationContext method (not supported)
       };
 
       // PostgreSQL adapter should have method
-      expect(typeof postgresAdapter.withEntityContext).toBe('function');
+      expect(typeof postgresAdapter.withIsolationContext).toBe('function');
 
       // PGLite adapter should NOT have method
-      expect(typeof (pgliteAdapter as any).withEntityContext).toBe('undefined');
+      expect(typeof (pgliteAdapter as any).withIsolationContext).toBe('undefined');
     });
 
     it('should extract entityId from user message', () => {
@@ -537,13 +537,13 @@ describe('Entity RLS Backward Compatibility', () => {
 
   describe('No Breaking Changes', () => {
     it('should not modify existing API interfaces', () => {
-      // withEntityContext is OPTIONAL
+      // withIsolationContext is OPTIONAL
       interface IDatabaseAdapter {
-        withEntityContext?(entityId: string | null, callback: () => Promise<any>): Promise<any>;
+        withIsolationContext?(entityId: string | null, callback: () => Promise<any>): Promise<any>;
       }
 
       const adapter: IDatabaseAdapter = {
-        // No withEntityContext - still valid!
+        // No withIsolationContext - still valid!
       };
 
       expect(adapter).toBeDefined();

@@ -207,7 +207,7 @@ export const worldProvider: Provider = {
         world: {
           id: world.id,
           name: world.name,
-          serverId: world.messageServerId,
+          messageServerId: world.messageServerId,
           metadata: world.metadata || {},
           currentRoom: {
             id: currentRoom.id,
