@@ -6,9 +6,9 @@ import { PostgresConnectionManager } from '../../../pg/manager';
 const generateUuid = () => stringToUuid(`test-${Date.now()}-${Math.random()}`);
 
 /**
- * Integration tests for PostgresConnectionManager.withEntityContext()
+ * Integration tests for PostgresConnectionManager.withIsolationContext()
  *
- * These tests verify that withEntityContext correctly executes SET LOCAL
+ * These tests verify that withIsolationContext correctly executes SET LOCAL
  * without parameterization errors. This is a regression test for the bug
  * where sql`SET LOCAL app.entity_id = ${entityId}` produced a parameterized
  * query that PostgreSQL rejected.
@@ -16,7 +16,7 @@ const generateUuid = () => stringToUuid(`test-${Date.now()}-${Math.random()}`);
  * Requires: POSTGRES_URL environment variable and ENABLE_DATA_ISOLATION=true
  */
 describe.skipIf(!process.env.POSTGRES_URL)(
-  'PostgresConnectionManager.withEntityContext Integration',
+  'PostgresConnectionManager.withIsolationContext Integration',
   () => {
     let manager: PostgresConnectionManager;
     const serverId = generateUuid();
@@ -51,7 +51,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       });
 
       it('should execute callback without SET LOCAL', async () => {
-        const result = await manager.withEntityContext(testEntityId as any, async (_tx) => {
+        const result = await manager.withIsolationContext(testEntityId as any, async (_tx) => {
           // Just verify the callback executes successfully
           return 'success';
         });
@@ -60,7 +60,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       });
 
       it('should work with null entityId', async () => {
-        const result = await manager.withEntityContext(null, async (tx) => {
+        const result = await manager.withIsolationContext(null, async (tx) => {
           return 'null-entity-success';
         });
 
@@ -92,7 +92,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
         // Note: This may still fail if app.entity_id GUC is not configured,
         // but it should NOT fail with "syntax error at or near $1"
         try {
-          const result = await manager.withEntityContext(testEntityId as any, async (tx) => {
+          const result = await manager.withIsolationContext(testEntityId as any, async (tx) => {
             return 'isolation-enabled-success';
           });
 
@@ -107,7 +107,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
           // that's okay - it means SET LOCAL was called correctly
           if (error.message.includes('unrecognized configuration parameter')) {
             console.log(
-              '[withEntityContext Test] SET LOCAL called correctly, but app.entity_id not configured'
+              '[withIsolationContext Test] SET LOCAL called correctly, but app.entity_id not configured'
             );
             return; // Test passes - SET LOCAL syntax was correct
           }
@@ -118,7 +118,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
       });
 
       it('should skip SET LOCAL when entityId is null', async () => {
-        const result = await manager.withEntityContext(null, async (tx) => {
+        const result = await manager.withIsolationContext(null, async (tx) => {
           return 'null-entity-with-isolation';
         });
 
@@ -135,7 +135,7 @@ describe.skipIf(!process.env.POSTGRES_URL)(
 
         for (const uuid of uuids) {
           try {
-            await manager.withEntityContext(uuid as any, async (tx) => {
+            await manager.withIsolationContext(uuid as any, async (tx) => {
               return 'uuid-test';
             });
           } catch (error: any) {

@@ -22,8 +22,7 @@ import { installRLSFunctions, applyRLSToNewTables, applyEntityRLSToAllTables } f
  * 1. Running migrations to create the schema
  * 2. Installing RLS functions and policies
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS.
+ * Uses SET app.server_id for server context (unified approach for pg and Neon).
  */
 
 // Skip these tests if POSTGRES_URL is not set (e.g., in CI without PostgreSQL)
@@ -42,12 +41,11 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
   const agentId = uuidv4();
 
   beforeAll(async () => {
-    // Setup client with server context (for migrations and data setup)
-    setupClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
+    // Setup client (for migrations and data setup)
+    setupClient = new Client({ connectionString: POSTGRES_URL });
     await setupClient.connect();
+    // Set server context for the session
+    await setupClient.query(`SET app.server_id = '${serverId}'`);
 
     // Clean up from previous tests - drop all tables and schemas for fresh start
     // Use a superuser connection for cleanup if possible
@@ -103,14 +101,13 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
       console.log('[RLS Test] Permission grant skipped (may already be granted)');
     }
 
-    // User client with server context (for test assertions)
-    userClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: serverId,
-    });
+    // User client (for test assertions)
+    userClient = new Client({ connectionString: POSTGRES_URL });
     await userClient.connect();
+    // Set server context for the session
+    await userClient.query(`SET app.server_id = '${serverId}'`);
 
-    // Setup test data (with server context via application_name)
+    // Setup test data
     // servers table has no RLS, so any connection can insert
     await setupClient.query(
       `INSERT INTO servers (id, created_at, updated_at)
@@ -364,11 +361,9 @@ describe.skipIf(!process.env.POSTGRES_URL)('PostgreSQL RLS Entity Integration', 
   it('should combine Server RLS + Entity RLS (double isolation)', async () => {
     // Create a different server context client
     const wrongServerId = uuidv4();
-    const wrongServerClient = new Client({
-      connectionString: POSTGRES_URL,
-      application_name: wrongServerId,
-    });
+    const wrongServerClient = new Client({ connectionString: POSTGRES_URL });
     await wrongServerClient.connect();
+    await wrongServerClient.query(`SET app.server_id = '${wrongServerId}'`);
 
     try {
       await wrongServerClient.query('BEGIN');

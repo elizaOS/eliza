@@ -11,8 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
  * NOTE: This test expects rls-entity.test.ts to have run first (same BATCH_RLS),
  * which creates the schema and installs RLS functions.
  *
- * Uses eliza_test user for ALL connections (not superuser) - the application_name
- * provides server context for RLS. Each server's data is set up via its own connection.
+ * Uses SET app.server_id for server context (unified approach for pg and Neon).
  */
 
 describe.skipIf(!process.env.POSTGRES_URL)(
@@ -35,30 +34,22 @@ describe.skipIf(!process.env.POSTGRES_URL)(
 
     beforeAll(async () => {
       // Setup clients - each with its own server context
-      setupClientA = new Client({
-        connectionString: POSTGRES_URL,
-        application_name: serverAId,
-      });
-      setupClientB = new Client({
-        connectionString: POSTGRES_URL,
-        application_name: serverBId,
-      });
+      setupClientA = new Client({ connectionString: POSTGRES_URL });
+      setupClientB = new Client({ connectionString: POSTGRES_URL });
 
       await setupClientA.connect();
       await setupClientB.connect();
+      await setupClientA.query(`SET app.server_id = '${serverAId}'`);
+      await setupClientB.query(`SET app.server_id = '${serverBId}'`);
 
       // User clients (same as setup, just clearer naming)
-      serverAClient = new Client({
-        connectionString: POSTGRES_URL,
-        application_name: serverAId,
-      });
-      serverBClient = new Client({
-        connectionString: POSTGRES_URL,
-        application_name: serverBId,
-      });
+      serverAClient = new Client({ connectionString: POSTGRES_URL });
+      serverBClient = new Client({ connectionString: POSTGRES_URL });
 
       await serverAClient.connect();
       await serverBClient.connect();
+      await serverAClient.query(`SET app.server_id = '${serverAId}'`);
+      await serverBClient.query(`SET app.server_id = '${serverBId}'`);
 
       // Create RLS servers (servers table has no RLS)
       await setupClientA.query(
