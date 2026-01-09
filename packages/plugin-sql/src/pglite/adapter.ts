@@ -39,18 +39,13 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   }
 
   /**
-   * Execute a callback with entity context for Entity RLS
-   * PGLite: No RLS support, just execute the callback in a simple transaction
-   *
-   * This is a public method because it's part of the adapter's public API
-   * for operations that need entity-scoped database access.
+   * Execute a callback with isolation context.
+   * PGLite: No RLS support, just execute the callback in a simple transaction.
    */
-  public async withEntityContext<T>(
+  public async withIsolationContext<T>(
     _entityId: UUID | null,
     callback: (tx: PgliteDatabase) => Promise<T>
   ): Promise<T> {
-    // PGLite doesn't support RLS, so just execute in a transaction without setting entity context
-    // The entityId parameter is ignored since PGLite doesn't support RLS
     return this.db.transaction(callback);
   }
 
@@ -103,7 +98,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   protected async withDatabase<T>(operation: () => Promise<T>): Promise<T> {
     if (this.manager.isShuttingDown()) {
       const error = new Error('Database is shutting down - operation rejected');
-      logger.warn({ src: 'plugin:sql', error: error.message }, 'Database operation rejected during shutdown');
+      logger.warn(
+        { src: 'plugin:sql', error: error.message },
+        'Database operation rejected during shutdown'
+      );
       throw error;
     }
     return operation();

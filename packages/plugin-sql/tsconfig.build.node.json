@@ -11,6 +11,7 @@
     "src/index.ts",
     "src/pglite/**/*.ts",
     "src/pg/**/*.ts",
+    "src/neon/**/*.ts",
     "src/schema/**/*.ts",
     "src/base.ts",
     "src/rls.ts",
