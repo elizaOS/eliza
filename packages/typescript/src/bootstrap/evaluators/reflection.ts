@@ -9,10 +9,10 @@ import {
   type Memory,
   ModelType,
   parseKeyValueXml,
-  reflectionEvaluatorTemplate,
   type State,
   type UUID,
 } from "@elizaos/core";
+import { reflectionEvaluatorTemplate } from "../../prompts";
 import { v4 } from "uuid";
 import { z } from "zod";
 

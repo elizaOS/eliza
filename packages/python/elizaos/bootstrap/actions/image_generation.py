@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import IMAGE_GENERATION_TEMPLATE
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -45,7 +45,7 @@ class GenerateImageAction:
         "Use this when the user requests visual content or imagery."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
         """Validate that image generation is available."""
         # Check if the runtime has image generation capability
         return runtime.has_model(ModelType.IMAGE)
@@ -66,12 +66,12 @@ class GenerateImageAction:
         # Compose state with context
         state = await runtime.compose_state(message, ["RECENT_MESSAGES", "ACTION_STATE"])
 
-        prompt = runtime.compose_prompt(
-            state=state,
-            template=runtime.character.templates.get(
-                "imageGenerationTemplate", IMAGE_GENERATION_TEMPLATE
-            ),
+        template = (
+            runtime.character.templates.get("imageGenerationTemplate")
+            if runtime.character.templates and "imageGenerationTemplate" in runtime.character.templates
+            else IMAGE_GENERATION_TEMPLATE
         )
+        prompt = runtime.compose_prompt(state=state, template=template)
 
         try:
             # First, generate the image prompt using text model
@@ -188,3 +188,4 @@ generate_image_action = Action(
     handler=GenerateImageAction().handler,
     examples=GenerateImageAction().examples,
 )
+

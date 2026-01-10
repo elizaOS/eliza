@@ -1,19 +1,18 @@
 {
-  "name": "@elizaos/example-tic-tac-toe",
+  "name": "@elizaos/example-game-of-life",
   "version": "1.0.0",
-  "description": "Tic-tac-toe game with perfect AI using minimax algorithm - no LLM required",
+  "description": "Agentic Game of Life - multi-agent evolution simulation with self-replicating agents",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "bun run game.ts",
-    "dev": "bun --watch run game.ts",
-    "play": "bun run game.ts --human",
-    "watch": "bun run game.ts --watch",
-    "bench": "bun run game.ts --bench"
+    "dev": "bun run game.ts --fast --stats",
+    "fast": "bun run game.ts --fast",
+    "stats": "bun run game.ts --stats"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {
@@ -24,4 +23,3 @@
     "node": ">=18.0.0"
   }
 }
-

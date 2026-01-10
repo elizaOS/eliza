@@ -41,6 +41,9 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 
+# Regex for XML parsing
+regex = "1.10"
+
 # File handling
 directories = "5.0"
 

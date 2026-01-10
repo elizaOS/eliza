@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from uuid import UUID
 
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import CHOOSE_OPTION_TEMPLATE
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -38,7 +39,7 @@ class ChooseOptionAction:
         "and decision-making when multiple options are presented."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
         """Validate that options are available to choose from."""
         # Check if message contains options
         if message.content and message.content.options:
@@ -80,12 +81,12 @@ class ChooseOptionAction:
             for idx, opt in enumerate(available_options)
         )
 
-        prompt = runtime.compose_prompt(
-            state=state,
-            template=runtime.character.templates.get(
-                "chooseOptionTemplate", CHOOSE_OPTION_TEMPLATE
-            ),
+        template = (
+            runtime.character.templates.get("chooseOptionTemplate")
+            if runtime.character.templates and "chooseOptionTemplate" in runtime.character.templates
+            else CHOOSE_OPTION_TEMPLATE
         )
+        prompt = runtime.compose_prompt(state=state, template=template)
         prompt = prompt.replace("{{options}}", options_context)
 
         try:
@@ -181,3 +182,4 @@ choose_option_action = Action(
     handler=ChooseOptionAction().handler,
     examples=ChooseOptionAction().examples,
 )
+

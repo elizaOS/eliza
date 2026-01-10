@@ -19,6 +19,7 @@
 
 pub mod error;
 pub mod types;
+pub mod xml_parser;
 
 pub use error::{LocalAIError, Result};
 pub use types::*;

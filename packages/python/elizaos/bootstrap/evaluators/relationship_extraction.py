@@ -10,8 +10,9 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.types import EvaluatorResult
 from elizaos.types import Evaluator
+
+from elizaos.bootstrap.types import EvaluatorResult
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
@@ -32,36 +33,30 @@ def extract_platform_identities(text: str) -> list[dict[str, str | bool | float]
     for match in TWITTER_PATTERN.finditer(text):
         handle = match.group()
         if handle.lower() not in ("@here", "@everyone", "@channel"):
-            identities.append(
-                {
-                    "platform": "twitter",
-                    "handle": handle,
-                    "verified": False,
-                    "confidence": 0.7,
-                }
-            )
+            identities.append({
+                "platform": "twitter",
+                "handle": handle,
+                "verified": False,
+                "confidence": 0.7,
+            })
 
     # Email addresses
     for match in EMAIL_PATTERN.finditer(text):
-        identities.append(
-            {
-                "platform": "email",
-                "handle": match.group(),
-                "verified": False,
-                "confidence": 0.9,
-            }
-        )
+        identities.append({
+            "platform": "email",
+            "handle": match.group(),
+            "verified": False,
+            "confidence": 0.9,
+        })
 
     # Discord usernames
     for match in DISCORD_PATTERN.finditer(text):
-        identities.append(
-            {
-                "platform": "discord",
-                "handle": match.group(),
-                "verified": False,
-                "confidence": 0.8,
-            }
-        )
+        identities.append({
+            "platform": "discord",
+            "handle": match.group(),
+            "verified": False,
+            "confidence": 0.8,
+        })
 
     return identities
 
@@ -80,13 +75,11 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
     ]
     for pattern in friend_patterns:
         if re.search(pattern, text, re.IGNORECASE):
-            indicators.append(
-                {
-                    "type": "friend",
-                    "sentiment": "positive",
-                    "confidence": 0.8,
-                }
-            )
+            indicators.append({
+                "type": "friend",
+                "sentiment": "positive",
+                "confidence": 0.8,
+            })
             break
 
     # Colleague indicators
@@ -99,13 +92,11 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
     ]
     for pattern in colleague_patterns:
         if re.search(pattern, text, re.IGNORECASE):
-            indicators.append(
-                {
-                    "type": "colleague",
-                    "sentiment": "neutral",
-                    "confidence": 0.8,
-                }
-            )
+            indicators.append({
+                "type": "colleague",
+                "sentiment": "neutral",
+                "confidence": 0.8,
+            })
             break
 
     # Family indicators
@@ -116,13 +107,11 @@ def detect_relationship_indicators(text: str) -> list[dict[str, str | float]]:
     ]
     for pattern in family_patterns:
         if re.search(pattern, text, re.IGNORECASE):
-            indicators.append(
-                {
-                    "type": "family",
-                    "sentiment": "positive",
-                    "confidence": 0.9,
-                }
-            )
+            indicators.append({
+                "type": "family",
+                "sentiment": "positive",
+                "confidence": 0.9,
+            })
             break
 
     return indicators
@@ -217,6 +206,7 @@ async def evaluate_relationship_extraction(
 async def validate_relationship_extraction(
     runtime: IAgentRuntime,
     message: Memory,
+    _state: State | None = None,
 ) -> bool:
     """Validate that extraction can be performed."""
     return message.content is not None and bool(message.content.text)
@@ -230,3 +220,4 @@ relationship_extraction_evaluator = Evaluator(
     handler=evaluate_relationship_extraction,
     examples=[],
 )
+

@@ -208,33 +208,7 @@ async function getTokenFromWallet(
  *
  * Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
  */
-const swapTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "inputTokenSymbol": "SOL",
-    "outputTokenSymbol": "USDC",
-    "inputTokenCA": "So11111111111111111111111111111111111111112",
-    "outputTokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    "amount": 1.5
-}
-\`\`\`
-
-{{recentMessages}}
-
-Given the recent messages and wallet information below:
-
-{{walletInfo}}
-
-Extract the following information about the requested token swap:
-- Input token symbol (the token being sold)
-- Output token symbol (the token being bought)
-- Input token contract address if provided
-- Output token contract address if provided
-- Amount to swap
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.`;
+import { swapTemplate } from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Action for executing a token swap from one token to another on Solana.

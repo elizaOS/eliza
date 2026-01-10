@@ -63,11 +63,11 @@ async function generateWithRetry(
   }
 ): Promise<string> {
   const generate = () => generateText({
-    model: groq.languageModel(model) as Parameters<typeof generateText>[0]['model'],
+    model: groq.languageModel(model) as unknown as Parameters<typeof generateText>[0]['model'],
     prompt: params.prompt,
     system: params.system,
     temperature: params.temperature,
-    maxTokens: params.maxTokens,
+    maxRetries: 3,
     frequencyPenalty: params.frequencyPenalty,
     presencePenalty: params.presencePenalty,
     stopSequences: params.stopSequences,
@@ -135,7 +135,7 @@ export const groqPlugin: Plugin = {
       const model = getSmallModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as Parameters<typeof generateObject>[0]['model'],
+        model: groq.languageModel(model) as unknown as Parameters<typeof generateObject>[0]['model'],
         output: 'no-schema',
         prompt: params.prompt,
         temperature: params.temperature,
@@ -148,7 +148,7 @@ export const groqPlugin: Plugin = {
       const model = getLargeModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model) as Parameters<typeof generateObject>[0]['model'],
+        model: groq.languageModel(model) as unknown as Parameters<typeof generateObject>[0]['model'],
         output: 'no-schema',
         prompt: params.prompt,
         temperature: params.temperature,
@@ -158,7 +158,7 @@ export const groqPlugin: Plugin = {
 
     [ModelType.TRANSCRIPTION]: async (runtime, params) => {
       const audioBuffer = typeof params === 'string' ? Buffer.from(params, 'base64') : 
-        Buffer.isBuffer(params) ? params : (params as { audioData: Buffer }).audioData;
+        Buffer.isBuffer(params) ? params : (params as unknown as { audioData: Buffer }).audioData;
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
       formData.append('file', new File([audioBuffer as BlobPart], 'audio.mp3', { type: 'audio/mp3' }));

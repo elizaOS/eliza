@@ -5,7 +5,7 @@ A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LL
 - **No Character Required**: Uses the new anonymous character feature (`Agent-N`)
 - **No LLM Calls**: Custom model handlers implement perfect play via minimax
 - **Custom Model Handlers**: Intercepts `TEXT_LARGE` and `TEXT_SMALL` to return optimal moves
-- **plugin-localdb**: Uses local database for persistence
+- **plugin-sql**: Uses PGLite in-memory database for persistence
 
 ## How It Works
 
@@ -86,7 +86,7 @@ The AI uses the classic minimax algorithm with depth-based scoring to find the o
 │                 (Anonymous Character)                   │
 ├─────────────────────────────────────────────────────────┤
 │  plugins:                                               │
-│  ├── plugin-localdb     (persistence)                   │
+│  ├── plugin-sql         (persistence)                   │
 │  ├── bootstrap-plugin   (basic capabilities)            │
 │  └── tic-tac-toe-plugin (custom model handlers)         │
 ├─────────────────────────────────────────────────────────┤

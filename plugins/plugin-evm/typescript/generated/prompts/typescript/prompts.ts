@@ -147,6 +147,23 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
 
 export const SWAP_TEMPLATE = swapTemplate;
 
+export const tokenBalanceTemplate = `Extract the token ticker and blockchain from the user's message.
+
+User message: "{{userMessage}}"
+
+Return the token symbol and chain name in this format:
+<response>
+<token>TOKEN_SYMBOL</token>
+<chain>CHAIN_NAME</chain>
+</response>
+
+If no token is mentioned or it's not a balance inquiry, return:
+<response>
+<error>Not a token balance request</error>
+</response>`;
+
+export const TOKEN_BALANCE_TEMPLATE = tokenBalanceTemplate;
+
 export const transferTemplate = `Given the recent messages and wallet information below:
 
 {{recentMessages}}

@@ -10,15 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import UPDATE_SETTINGS_TEMPLATE
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
 
-@dataclass
+@dataclass 
 class SettingUpdate:
     """Represents a single setting update."""
 
@@ -52,7 +52,7 @@ class UpdateSettingsAction:
         "Use this to modify behavior and preferences."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Validate that settings can be updated."""
         # Settings can always be updated if the agent is running
         return True
@@ -84,12 +84,12 @@ class UpdateSettingsAction:
                 if not key.lower().endswith(("key", "secret", "password", "token"))
             )
 
-            prompt = runtime.compose_prompt(
-                state=state,
-                template=runtime.character.templates.get(
-                    "updateSettingsTemplate", UPDATE_SETTINGS_TEMPLATE
-                ),
+            template = (
+                runtime.character.templates.get("updateSettingsTemplate")
+                if runtime.character.templates and "updateSettingsTemplate" in runtime.character.templates
+                else UPDATE_SETTINGS_TEMPLATE
             )
+            prompt = runtime.compose_prompt(state=state, template=template)
             prompt = prompt.replace("{{settings}}", settings_context)
 
             response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
@@ -133,7 +133,7 @@ class UpdateSettingsAction:
 
             # Apply updates
             for setting in updated_settings:
-                await runtime.set_setting(setting.key, setting.value)
+                runtime.set_setting(setting.key, setting.value)
 
             # Return updated setting keys (not full objects for ProviderValue compatibility)
             updated_keys = [s.key for s in updated_settings]
@@ -208,3 +208,4 @@ update_settings_action = Action(
     handler=UpdateSettingsAction().handler,
     examples=UpdateSettingsAction().examples,
 )
+

@@ -14,30 +14,10 @@ import type { Message, TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting reaction information from the user's request.
- */
-export const reactToMessageTemplate = `# Adding reactions to Discord messages
-{{recentMessages}}
+import { reactToMessageTemplate } from "../generated/prompts/typescript/prompts.js";
 
-# Instructions: {{senderName}} wants to add a reaction to a message. Extract:
-1. Which message to react to (last, specific message reference, or by content)
-2. What emoji/reaction to add
-
-Examples:
-- "react with 👍 to the last message" -> messageRef: "last", emoji: "👍"
-- "add :fire: reaction" -> messageRef: "last", emoji: "🔥" or ":fire:"
-- "react to that message with ❤️" -> messageRef: "previous", emoji: "❤️"
-- "add a thumbs up to john's message about the meeting" -> messageRef: "john meeting", emoji: "👍"
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "messageRef": "<last|previous|message-id|search-text>",
-  "emoji": "<emoji-character|:emoji-name:>"
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { reactToMessageTemplate };
 
 /**
  * Extracts emoji tokens from a string in the order they appear.

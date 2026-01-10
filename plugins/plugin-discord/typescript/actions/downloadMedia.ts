@@ -13,35 +13,10 @@ import {
   ServiceType,
   type State,
 } from "@elizaos/core";
+import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
-/**
- * Template for generating a media URL for a requested media file.
- *
- * @type {string}
- * @description This template is used for messages where a user is requesting to download a specific media file (video or audio). The goal is to determine the URL of the media they want to download.
- *
- * @param {string} recentMessages - Placeholder for recent messages related to the request.
- * @param {string} senderName - Name of the sender requesting the media file.
- *
- * @returns {string} - Formatted template with instructions and JSON structure for response.
- *
- * @example
- * `mediaUrlTemplate` contains the template for generating a media URL based on user request.
- */
-
-export const mediaUrlTemplate = `# Messages we are searching for a media URL
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting to download a specific media file (video or audio). Your goal is to determine the URL of the media they want to download.
-The "mediaUrl" is the URL of the media file that the user wants downloaded. If not specified, return null.
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "mediaUrl": "<Media URL>"
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { mediaUrlTemplate };
 
 /**
  * Get a media URL from the user through text input using the provided runtime and state.

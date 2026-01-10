@@ -6,7 +6,7 @@
  * - elizaOS runtime with NO character (uses anonymous character)
  * - Custom model handlers that implement perfect play via minimax
  * - No LLM calls - pure algorithmic decision making
- * - plugin-localdb for persistence
+ * - plugin-sql for persistence (PGLite in-memory)
  *
  * Usage:
  *   bun run examples/tic-tac-toe/typescript/game.ts
@@ -22,7 +22,7 @@ import {
   type IAgentRuntime,
   ModelType,
 } from "@elizaos/core";
-import { plugin as localDbPlugin } from "@elizaos/plugin-localdb";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 
 // ============================================================================
 // TIC-TAC-TOE ENGINE
@@ -396,7 +396,7 @@ async function createSession(): Promise<GameSession> {
   // Uses our custom tic-tac-toe plugin for model handling
   const runtime = new AgentRuntime({
     // No character - uses anonymous Agent-N
-    plugins: [localDbPlugin, bootstrapPlugin, ticTacToePlugin],
+    plugins: [sqlPlugin, bootstrapPlugin, ticTacToePlugin],
     settings: {
       PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR || "memory://",
     },
@@ -463,7 +463,7 @@ function showIntro(): void {
 ║  • NO CHARACTER - uses anonymous agent                             ║
 ║  • NO LLM - pure algorithmic minimax                               ║
 ║  • Custom model handlers intercept TEXT_LARGE/TEXT_SMALL           ║
-║  • Uses plugin-localdb for persistence                             ║
+║  • Uses plugin-sql for persistence                                 ║
 ║                                                                    ║
 ║  The AI will either WIN or DRAW - never lose!                      ║
 ╚════════════════════════════════════════════════════════════════════╝

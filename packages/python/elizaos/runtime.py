@@ -437,7 +437,8 @@ class AgentRuntime(IAgentRuntime):
                 return True
             if decrypted == "false":
                 return False
-            return decrypted
+            # Cast to str since decrypt_secret returns object for type flexibility
+            return str(decrypted) if decrypted is not None else None
 
         return None
 
@@ -1010,6 +1011,13 @@ class AgentRuntime(IAgentRuntime):
         return state
 
     # Model usage
+    def has_model(self, model_type: str | ModelType) -> bool:
+        """Check if a model handler is registered for the given model type."""
+
+        key = model_type.value if isinstance(model_type, ModelType) else model_type
+        handlers = self._models.get(key, [])
+        return len(handlers) > 0
+
     async def use_model(
         self,
         model_type: str | ModelType,
@@ -1071,7 +1079,9 @@ class AgentRuntime(IAgentRuntime):
         options: GenerateTextOptions | None = None,
     ) -> GenerateTextResult:
         """Generate text using an LLM."""
-        model_type = options.model_type if options else ModelType.TEXT_LARGE
+        model_type: str | ModelType = ModelType.TEXT_LARGE
+        if options and options.model_type:
+            model_type = options.model_type
 
         params: dict[str, str | int | float] = {
             "prompt": input_text,

@@ -53,29 +53,7 @@ interface PriceHistoryParams {
   error?: string;
 }
 
-// Template for LLM parameter extraction
-const priceHistoryTemplate = `
-Extract the token ID and interval from the user's message for getting price history.
-
-User message: "{{message}}"
-
-Please extract:
-- tokenId: The token identifier (numeric string)
-- interval: Time interval (e.g., "1m", "5m", "1h", "1d", "1w"). Default to "1d" if not specified.
-
-Return a JSON object with the extracted parameters. If you cannot find a tokenId, set error field.
-
-Example response:
-{
-  "tokenId": "123456789",
-  "interval": "1d"
-}
-
-If tokenId is missing:
-{
-  "error": "Token ID is required for price history"
-}
-`;
+import { getPriceHistoryTemplate as priceHistoryTemplate } from "../generated/prompts/typescript/prompts.js";
 
 export const getPriceHistory: Action = {
   name: 'POLYMARKET_GET_PRICE_HISTORY',

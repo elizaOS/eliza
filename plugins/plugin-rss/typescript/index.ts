@@ -91,7 +91,7 @@ export const rssPlugin: Plugin = {
     RSS_CHECK_INTERVAL_MINUTES: process.env.RSS_CHECK_INTERVAL_MINUTES ?? null,
   },
 
-  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
+  async init(_config: Record<string, string>, _runtime: IAgentRuntime): Promise<void> {
     logger.info('Initializing RSS plugin');
     // Plugin initialization is handled by the service start
   },
@@ -136,8 +136,9 @@ export const rssPlugin: Plugin = {
               throw new Error(`Expected 1 item, got ${feed.items.length}`);
             }
             
-            if (feed.items[0].title !== 'Test Article') {
-              throw new Error(`Expected item title "Test Article", got "${feed.items[0].title}"`);
+            const firstItem = feed.items[0];
+            if (firstItem && firstItem.title !== 'Test Article') {
+              throw new Error(`Expected item title "Test Article", got "${firstItem.title}"`);
             }
             
             logger.info('[RSS Test] Parser test passed');

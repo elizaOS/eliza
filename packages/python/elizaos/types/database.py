@@ -432,7 +432,7 @@ class IDatabaseAdapter(ABC):
         ...
 
     @abstractmethod
-    async def update_memory(self, memory: "Memory | dict[str, Any]") -> bool:
+    async def update_memory(self, memory: Memory | dict[str, Any]) -> bool:
         """Update a memory (accepts Memory object or dict)."""
         ...
 

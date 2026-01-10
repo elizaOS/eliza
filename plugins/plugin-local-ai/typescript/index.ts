@@ -8,7 +8,7 @@ import type {
   TextEmbeddingParams,
   ObjectGenerationParams,
 } from '@elizaos/core';
-import { type IAgentRuntime, ModelType, type Plugin, logger } from '@elizaos/core';
+import { type IAgentRuntime, ModelType, type Plugin, logger, parseKeyValueXml } from '@elizaos/core';
 import {
   type Llama,
   LlamaChatSession,
@@ -27,6 +27,17 @@ import { TranscribeManager } from './utils/transcribeManager';
 import { TTSManager } from './utils/ttsManager';
 import { VisionManager } from './utils/visionManager';
 import { basename } from 'path';
+
+// Re-export XML utilities for users
+export {
+  extractXmlTag,
+  parseSimpleXml,
+  escapeXml,
+  unescapeXml,
+  wrapInCdata,
+  sanitizeForXml,
+  buildXmlResponse,
+} from './utils/xmlParser';
 
 // Words to punish in LLM responses
 /**
@@ -1104,93 +1115,130 @@ export const localAiPlugin: Plugin = {
           temperature: params.temperature,
         });
 
-        // Enhance the prompt to request JSON output
-        let jsonPrompt = params.prompt;
-        if (!jsonPrompt.includes('```json') && !jsonPrompt.includes('respond with valid JSON')) {
-          jsonPrompt +=
-            '\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.';
+        // Build XML schema hint from the provided schema
+        let schemaHint = '';
+        if (params.schema) {
+          const schemaKeys = Object.keys(params.schema);
+          schemaHint = schemaKeys.map(key => `<${key}>value</${key}>`).join('\n');
         }
+
+        // Enhance the prompt to request XML output
+        const xmlPrompt = `${params.prompt}
+
+Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ''}
+
+IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
+<code><![CDATA[
+your code here
+]]></code>
+
+Example response format:
+<response>
+<thought>Your reasoning here</thought>
+<text>Your response text here</text>
+</response>`;
 
         // Directly generate text using the local small model
         const textResponse = await localAIManager.generateText({
-          prompt: jsonPrompt,
+          prompt: xmlPrompt,
           stopSequences: params.stopSequences,
           runtime,
           modelType: ModelType.TEXT_SMALL,
         });
 
-        // Extract and parse JSON from the text response
+        // Parse XML from the text response
         try {
-          // Function to extract JSON content from text
-          const extractJSON = (text: string): string => {
-            // Try to find content between JSON codeblocks or markdown blocks
-            const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
-            const match = text.match(jsonBlockRegex);
+          logger.debug('Raw model response:', textResponse.substring(0, 500));
 
-            if (match && match[1]) {
-              return match[1].trim();
-            }
+          // Use the robust XML parser from core
+          const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-            // If no code blocks, try to find JSON-like content
-            // This regex looks for content that starts with { and ends with }
-            const jsonContentRegex = /\s*(\{[\s\S]*\})\s*$/;
-            const contentMatch = text.match(jsonContentRegex);
+          if (parsedXml) {
+            logger.debug('Parsed XML result:', parsedXml);
 
-            if (contentMatch && contentMatch[1]) {
-              return contentMatch[1].trim();
-            }
-
-            // If no JSON-like content found, return the original text
-            return text.trim();
-          };
-
-          const extractedJsonText = extractJSON(textResponse);
-          logger.debug('Extracted JSON text:', extractedJsonText);
-
-          let jsonObject;
-          try {
-            jsonObject = JSON.parse(extractedJsonText);
-          } catch (parseError) {
-            // Try fixing common JSON issues
-            logger.debug('Initial JSON parse failed, attempting to fix common issues');
-
-            // Replace any unescaped newlines in string values
-            const fixedJson = extractedJsonText
-              .replace(/:\s*"([^"]*)(?:\n)([^"]*)"/g, ': "$1\\n$2"')
-              // Remove any non-JSON text that might have gotten mixed into string values
-              .replace(/"([^"]*?)[^a-zA-Z0-9\s\.,;:\-_\(\)"'\[\]{}]([^"]*?)"/g, '"$1$2"')
-              // Fix missing quotes around property names
-              .replace(/(\s*)(\w+)(\s*):/g, '$1"$2"$3:')
-              // Fix trailing commas in arrays and objects
-              .replace(/,(\s*[\]}])/g, '$1');
-
-            try {
-              jsonObject = JSON.parse(fixedJson);
-            } catch (finalError) {
-              logger.error('Failed to parse JSON after fixing:', finalError);
-              throw new Error('Invalid JSON returned from model');
-            }
-          }
-
-          // Validate against schema if provided
-          if (params.schema) {
-            try {
-              // Simplistic schema validation - check if all required properties exist
+            // Validate against schema if provided
+            if (params.schema) {
               for (const key of Object.keys(params.schema)) {
-                if (!(key in jsonObject)) {
-                  jsonObject[key] = null; // Add missing properties with null value
+                if (!(key in parsedXml)) {
+                  (parsedXml as Record<string, unknown>)[key] = null;
                 }
               }
-            } catch (schemaError) {
-              logger.error('Schema validation failed:', schemaError);
+            }
+
+            return parsedXml;
+          }
+
+          // Fallback: Try to extract structured data manually
+          logger.warn('parseKeyValueXml returned null, attempting manual extraction');
+          const result: Record<string, unknown> = {};
+
+          // Extract content from common XML tags
+          const extractTag = (text: string, tagName: string): string | null => {
+            // Handle CDATA sections
+            const cdataPattern = new RegExp(
+              `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
+              'i'
+            );
+            const cdataMatch = text.match(cdataPattern);
+            if (cdataMatch) {
+              return cdataMatch[1];
+            }
+
+            // Handle regular content with proper nesting
+            const startTag = `<${tagName}>`;
+            const endTag = `</${tagName}>`;
+            const startIdx = text.indexOf(startTag);
+            if (startIdx === -1) return null;
+
+            let depth = 1;
+            let searchStart = startIdx + startTag.length;
+            while (depth > 0 && searchStart < text.length) {
+              const nextOpen = text.indexOf(startTag, searchStart);
+              const nextClose = text.indexOf(endTag, searchStart);
+              if (nextClose === -1) break;
+
+              if (nextOpen !== -1 && nextOpen < nextClose) {
+                depth++;
+                searchStart = nextOpen + startTag.length;
+              } else {
+                depth--;
+                if (depth === 0) {
+                  return text.slice(startIdx + startTag.length, nextClose).trim();
+                }
+                searchStart = nextClose + endTag.length;
+              }
+            }
+            return null;
+          };
+
+          // Extract common fields
+          const thought = extractTag(textResponse, 'thought');
+          const text = extractTag(textResponse, 'text');
+          const code = extractTag(textResponse, 'code');
+
+          if (thought) result.thought = thought;
+          if (text) result.text = text;
+          if (code) result.code = code;
+
+          // Extract schema fields
+          if (params.schema) {
+            for (const key of Object.keys(params.schema)) {
+              if (!(key in result)) {
+                const value = extractTag(textResponse, key);
+                result[key] = value;
+              }
             }
           }
 
-          return jsonObject;
+          if (Object.keys(result).length > 0) {
+            return result;
+          }
+
+          throw new Error('Could not parse XML response');
         } catch (parseError) {
-          logger.error('Failed to parse JSON:', parseError);
+          logger.error('Failed to parse XML:', parseError);
           logger.error('Raw response:', textResponse);
-          throw new Error('Invalid JSON returned from model');
+          throw new Error('Invalid XML returned from model');
         }
       } catch (error) {
         logger.error('Error in OBJECT_SMALL handler:', error);
@@ -1208,106 +1256,130 @@ export const localAiPlugin: Plugin = {
           temperature: params.temperature,
         });
 
-        // Enhance the prompt to request JSON output
-        let jsonPrompt = params.prompt;
-        if (!jsonPrompt.includes('```json') && !jsonPrompt.includes('respond with valid JSON')) {
-          jsonPrompt +=
-            '\nPlease respond with valid JSON only, without any explanations, markdown formatting, or additional text.';
+        // Build XML schema hint from the provided schema
+        let schemaHint = '';
+        if (params.schema) {
+          const schemaKeys = Object.keys(params.schema);
+          schemaHint = schemaKeys.map(key => `<${key}>value</${key}>`).join('\n');
         }
+
+        // Enhance the prompt to request XML output
+        const xmlPrompt = `${params.prompt}
+
+Respond using XML format wrapped in <response> tags. ${schemaHint ? `Include these fields:\n${schemaHint}` : ''}
+
+IMPORTANT: If your response contains code, wrap code blocks in CDATA sections like this:
+<code><![CDATA[
+your code here
+]]></code>
+
+Example response format:
+<response>
+<thought>Your reasoning here</thought>
+<text>Your response text here</text>
+</response>`;
 
         // Directly generate text using the local large model
         const textResponse = await localAIManager.generateText({
-          prompt: jsonPrompt,
+          prompt: xmlPrompt,
           stopSequences: params.stopSequences,
           runtime,
           modelType: ModelType.TEXT_LARGE,
         });
 
-        // Extract and parse JSON from the text response
+        // Parse XML from the text response
         try {
-          // Function to extract JSON content from text
-          const extractJSON = (text: string): string => {
-            // Try to find content between JSON codeblocks or markdown blocks
-            const jsonBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
-            const match = text.match(jsonBlockRegex);
+          logger.debug('Raw model response:', textResponse.substring(0, 500));
 
-            if (match && match[1]) {
-              return match[1].trim();
-            }
+          // Use the robust XML parser from core
+          const parsedXml = parseKeyValueXml<Record<string, unknown>>(textResponse);
 
-            // If no code blocks, try to find JSON-like content
-            // This regex looks for content that starts with { and ends with }
-            const jsonContentRegex = /\s*(\{[\s\S]*\})\s*$/;
-            const contentMatch = text.match(jsonContentRegex);
+          if (parsedXml) {
+            logger.debug('Parsed XML result:', parsedXml);
 
-            if (contentMatch && contentMatch[1]) {
-              return contentMatch[1].trim();
-            }
-
-            // If no JSON-like content found, return the original text
-            return text.trim();
-          };
-
-          // Clean up the extracted JSON to handle common formatting issues
-          const cleanupJSON = (jsonText: string): string => {
-            // Remove common logging/debugging patterns that might get mixed into the JSON
-            return (
-              jsonText
-                // Remove any lines that look like log statements
-                .replace(/\[DEBUG\].*?(\n|$)/g, '\n')
-                .replace(/\[LOG\].*?(\n|$)/g, '\n')
-                .replace(/console\.log.*?(\n|$)/g, '\n')
-            );
-          };
-
-          const extractedJsonText = extractJSON(textResponse);
-          const cleanedJsonText = cleanupJSON(extractedJsonText);
-          logger.debug('Extracted JSON text:', cleanedJsonText);
-
-          let jsonObject;
-          try {
-            jsonObject = JSON.parse(cleanedJsonText);
-          } catch (parseError) {
-            // Try fixing common JSON issues
-            logger.debug('Initial JSON parse failed, attempting to fix common issues');
-
-            // Replace any unescaped newlines in string values
-            const fixedJson = cleanedJsonText
-              .replace(/:\s*"([^"]*)(?:\n)([^"]*)"/g, ': "$1\\n$2"')
-              // Remove any non-JSON text that might have gotten mixed into string values
-              .replace(/"([^"]*?)[^a-zA-Z0-9\s\.,;:\-_\(\)"'\[\]{}]([^"]*?)"/g, '"$1$2"')
-              // Fix missing quotes around property names
-              .replace(/(\s*)(\w+)(\s*):/g, '$1"$2"$3:')
-              // Fix trailing commas in arrays and objects
-              .replace(/,(\s*[\]}])/g, '$1');
-
-            try {
-              jsonObject = JSON.parse(fixedJson);
-            } catch (finalError) {
-              logger.error('Failed to parse JSON after fixing:', finalError);
-              throw new Error('Invalid JSON returned from model');
-            }
-          }
-
-          // Validate against schema if provided
-          if (params.schema) {
-            try {
-              // Simplistic schema validation - check if all required properties exist
+            // Validate against schema if provided
+            if (params.schema) {
               for (const key of Object.keys(params.schema)) {
-                if (!(key in jsonObject)) {
-                  jsonObject[key] = null; // Add missing properties with null value
+                if (!(key in parsedXml)) {
+                  (parsedXml as Record<string, unknown>)[key] = null;
                 }
               }
-            } catch (schemaError) {
-              logger.error('Schema validation failed:', schemaError);
+            }
+
+            return parsedXml;
+          }
+
+          // Fallback: Try to extract structured data manually
+          logger.warn('parseKeyValueXml returned null, attempting manual extraction');
+          const result: Record<string, unknown> = {};
+
+          // Extract content from common XML tags with CDATA support
+          const extractTag = (text: string, tagName: string): string | null => {
+            // Handle CDATA sections
+            const cdataPattern = new RegExp(
+              `<${tagName}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tagName}>`,
+              'i'
+            );
+            const cdataMatch = text.match(cdataPattern);
+            if (cdataMatch) {
+              return cdataMatch[1];
+            }
+
+            // Handle regular content with proper nesting
+            const startTag = `<${tagName}>`;
+            const endTag = `</${tagName}>`;
+            const startIdx = text.indexOf(startTag);
+            if (startIdx === -1) return null;
+
+            let depth = 1;
+            let searchStart = startIdx + startTag.length;
+            while (depth > 0 && searchStart < text.length) {
+              const nextOpen = text.indexOf(startTag, searchStart);
+              const nextClose = text.indexOf(endTag, searchStart);
+              if (nextClose === -1) break;
+
+              if (nextOpen !== -1 && nextOpen < nextClose) {
+                depth++;
+                searchStart = nextOpen + startTag.length;
+              } else {
+                depth--;
+                if (depth === 0) {
+                  return text.slice(startIdx + startTag.length, nextClose).trim();
+                }
+                searchStart = nextClose + endTag.length;
+              }
+            }
+            return null;
+          };
+
+          // Extract common fields
+          const thought = extractTag(textResponse, 'thought');
+          const text = extractTag(textResponse, 'text');
+          const code = extractTag(textResponse, 'code');
+
+          if (thought) result.thought = thought;
+          if (text) result.text = text;
+          if (code) result.code = code;
+
+          // Extract schema fields
+          if (params.schema) {
+            for (const key of Object.keys(params.schema)) {
+              if (!(key in result)) {
+                const value = extractTag(textResponse, key);
+                result[key] = value;
+              }
             }
           }
 
-          return jsonObject;
+          if (Object.keys(result).length > 0) {
+            return result;
+          }
+
+          throw new Error('Could not parse XML response');
         } catch (parseError) {
-          logger.error('Failed to parse JSON:', parseError);
+          logger.error('Failed to parse XML:', parseError);
           logger.error('Raw response:', textResponse);
-          throw new Error('Invalid JSON returned from model');
+          throw new Error('Invalid XML returned from model');
         }
       } catch (error) {
         logger.error('Error in OBJECT_LARGE handler:', error);

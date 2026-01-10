@@ -19,6 +19,15 @@ from elizaos_plugin_local_ai.types import (
     TranscriptionParams,
     TranscriptionResult,
 )
+from elizaos_plugin_local_ai.xml_parser import (
+    build_xml_response,
+    escape_xml,
+    extract_xml_tag,
+    parse_simple_xml,
+    sanitize_for_xml,
+    unescape_xml,
+    wrap_in_cdata,
+)
 
 __version__ = "1.0.0"
 
@@ -38,4 +47,12 @@ __all__ = [
     "TextGenerationResult",
     "EmbeddingResult",
     "TranscriptionResult",
+    # XML utilities
+    "extract_xml_tag",
+    "unescape_xml",
+    "escape_xml",
+    "wrap_in_cdata",
+    "parse_simple_xml",
+    "sanitize_for_xml",
+    "build_xml_response",
 ]

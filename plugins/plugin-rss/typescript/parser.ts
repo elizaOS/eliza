@@ -17,14 +17,17 @@ function parseTag(tag: string, str: string): string[] {
     let match;
     while ((match = regex.exec(str)) !== null) {
       // Decode HTML entities and trim whitespace
-      const value = match[1]
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'")
-        .trim();
-      matches.push(value);
+      const content = match[1];
+      if (content !== undefined) {
+        const value = content
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&apos;/g, "'")
+          .trim();
+        matches.push(value);
+      }
     }
     return matches;
   } catch (error) {
@@ -46,13 +49,14 @@ function parseCDATA(str: string | undefined): string {
  */
 function parseImage(imageXml: string): RssImage | null {
   const imageMatch = /<image>(.*?)<\/image>/s.exec(imageXml);
-  if (imageMatch) {
+  if (imageMatch && imageMatch[1]) {
+    const imgContent = imageMatch[1];
     return {
-      url: parseTag('url', imageMatch[1])[0] || '',
-      title: parseTag('title', imageMatch[1])[0] || '',
-      link: parseTag('link', imageMatch[1])[0] || '',
-      width: parseTag('width', imageMatch[1])[0] || '',
-      height: parseTag('height', imageMatch[1])[0] || '',
+      url: parseTag('url', imgContent)[0] ?? '',
+      title: parseTag('title', imgContent)[0] ?? '',
+      link: parseTag('link', imgContent)[0] ?? '',
+      width: parseTag('width', imgContent)[0] ?? '',
+      height: parseTag('height', imgContent)[0] ?? '',
     };
   }
   return null;
@@ -63,14 +67,14 @@ function parseImage(imageXml: string): RssImage | null {
  */
 function parseEnclosure(itemXml: string): RssEnclosure | null {
   const enclosureTag = /<enclosure[^>]*\/?>/i.exec(itemXml);
-  if (enclosureTag) {
-    const url = /url="([^"]*)"/.exec(enclosureTag[0]);
-    const type = /type="([^"]*)"/.exec(enclosureTag[0]);
-    const length = /length="([^"]*)"/.exec(enclosureTag[0]);
+  if (enclosureTag && enclosureTag[0]) {
+    const urlMatch = /url="([^"]*)"/.exec(enclosureTag[0]);
+    const typeMatch = /type="([^"]*)"/.exec(enclosureTag[0]);
+    const lengthMatch = /length="([^"]*)"/.exec(enclosureTag[0]);
     return {
-      url: url ? url[1] : '',
-      type: type ? type[1] : '',
-      length: length ? length[1] : ''
+      url: urlMatch?.[1] ?? '',
+      type: typeMatch?.[1] ?? '',
+      length: lengthMatch?.[1] ?? ''
     };
   }
   return null;
@@ -111,7 +115,7 @@ export function parseRssToJson(xml: string): RssFeed {
     const channelRegex = /<channel>(.*?)<\/channel>/s;
     const channelMatch = channelRegex.exec(cleanXml);
 
-    if (!channelMatch) {
+    if (!channelMatch || !channelMatch[1]) {
       throw new Error('No channel element found in RSS feed');
     }
 
@@ -137,7 +141,9 @@ export function parseRssToJson(xml: string): RssFeed {
     let itemMatch;
 
     while ((itemMatch = itemRegex.exec(channelXml)) !== null) {
-      channel.items.push(parseItem(itemMatch[1]));
+      if (itemMatch[1]) {
+        channel.items.push(parseItem(itemMatch[1]));
+      }
     }
 
     return channel;

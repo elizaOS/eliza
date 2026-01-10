@@ -139,6 +139,21 @@ Respond with an XML block containing only the extracted values. Use empty tags f
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>."""
 
+TOKEN_BALANCE_TEMPLATE = """Extract the token ticker and blockchain from the user's message.
+
+User message: "{{userMessage}}"
+
+Return the token symbol and chain name in this format:
+<response>
+<token>TOKEN_SYMBOL</token>
+<chain>CHAIN_NAME</chain>
+</response>
+
+If no token is mentioned or it's not a balance inquiry, return:
+<response>
+<error>Not a token balance request</error>
+</response>"""
+
 TRANSFER_TEMPLATE = """Given the recent messages and wallet information below:
 
 {{recentMessages}}
@@ -193,6 +208,7 @@ __all__ = [
     "PROPOSE_TEMPLATE",
     "QUEUE_PROPOSAL_TEMPLATE",
     "SWAP_TEMPLATE",
+    "TOKEN_BALANCE_TEMPLATE",
     "TRANSFER_TEMPLATE",
     "VOTE_TEMPLATE",
 ]
