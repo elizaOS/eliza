@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeAll } from 'bun:test';
+import {  describe, test, expect, beforeAll  } from "vitest";
 import { openrouterPlugin } from '../src/index';
 
 // Create a minimal mock runtime that satisfies the needs of our tests

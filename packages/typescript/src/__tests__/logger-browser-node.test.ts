@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger } from "../logger";
 import { getEnvironment } from "../utils/environment";
 
@@ -37,7 +37,7 @@ describe("Logger - Cross-Environment Tests", () => {
     originalProcess = globalThis.process;
     originalWindow = globalThis.window;
     originalDocument = globalThis.document;
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -57,7 +57,7 @@ describe("Logger - Cross-Environment Tests", () => {
     } else {
       delete globalThis.document;
     }
-    mock.restore();
+    vi.clearAllMocks();
     // Clear environment cache for next test
     getEnvironment().clearCache();
   });
@@ -90,12 +90,12 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.window = {
         document: {},
         console: {
-          log: mock(),
-          info: mock(),
-          warn: mock(),
-          error: mock(),
-          debug: mock(),
-          trace: mock(),
+          log: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+          trace: vi.fn(),
         },
       };
       globalThis.document = {};
@@ -124,13 +124,13 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.window = {
         document: {},
         console: {
-          log: mock(),
-          info: mock(),
-          warn: mock(),
-          error: mock(),
-          debug: mock(),
-          trace: mock(),
-          clear: mock(),
+          log: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+          trace: vi.fn(),
+          clear: vi.fn(),
         },
       };
       globalThis.document = {};
@@ -174,13 +174,13 @@ describe("Logger - Cross-Environment Tests", () => {
 
       // Mock console methods
       const mockConsole = {
-        log: mock(),
-        info: mock(),
-        warn: mock(),
-        error: mock(),
-        debug: mock(),
-        trace: mock(),
-        clear: mock(),
+        log: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        clear: vi.fn(),
       };
       globalThis.console = mockConsole as Console;
 
@@ -210,12 +210,12 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.document = {};
 
       const mockConsole = {
-        info: mock(),
-        log: mock(),
-        warn: mock(),
-        error: mock(),
-        debug: mock(),
-        trace: mock(),
+        info: vi.fn(),
+        log: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
       };
       globalThis.console = mockConsole as Console;
 
@@ -247,12 +247,12 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.document = {};
 
       const mockConsole = {
-        trace: mock(),
-        debug: mock(),
-        info: mock(),
-        warn: mock(),
-        error: mock(),
-        log: mock(),
+        trace: vi.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        log: vi.fn(),
       };
       globalThis.console = mockConsole as Console;
 
@@ -303,8 +303,8 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.document = {};
 
       const mockConsole = {
-        info: mock(),
-        log: mock(),
+        info: vi.fn(),
+        log: vi.fn(),
       };
       globalThis.console = mockConsole as Console;
 
@@ -433,7 +433,7 @@ describe("Logger - Cross-Environment Tests", () => {
       expect(() => nodeLogger.info(testData, "Complex object")).not.toThrow();
 
       // Test in browser
-      globalThis.window = { document: {}, console: { info: mock() } };
+      globalThis.window = { document: {}, console: { info: vi.fn() } };
       globalThis.document = {};
       delete globalThis.process;
       const browserLogger = createLogger({ __forceType: "browser" });
@@ -455,7 +455,7 @@ describe("Logger - Cross-Environment Tests", () => {
       expect(() => nodeLogger.error({ error }, "Error occurred")).not.toThrow();
 
       // Browser
-      globalThis.window = { document: {}, console: { error: mock() } };
+      globalThis.window = { document: {}, console: { error: vi.fn() } };
       globalThis.document = {};
       delete globalThis.process;
       const browserLogger = createLogger({ __forceType: "browser" });
@@ -472,7 +472,7 @@ describe("Logger - Cross-Environment Tests", () => {
       globalThis.document = {};
       // Create a partial console mock - missing methods will fallback to console.log
       globalThis.console = {
-        log: mock(),
+        log: vi.fn(),
         // Missing other methods - logger will fallback to console.log
       } as Partial<Console> as Console;
 
@@ -554,7 +554,7 @@ describe("Logger - Cross-Environment Tests", () => {
 
     it("should clear logs properly in both environments", () => {
       // Browser
-      const mockClear = mock();
+      const mockClear = vi.fn();
       globalThis.window = { document: {}, console: { clear: mockClear } };
       globalThis.document = {};
       globalThis.console = { ...globalThis.console, clear: mockClear };
@@ -781,13 +781,13 @@ describe("Logger - Cross-Environment Tests", () => {
         globalThis.window = {
           document: {},
           console: {
-            log: mock(),
-            info: mock(),
-            warn: mock(),
-            error: mock(),
-            debug: mock(),
-            trace: mock(),
-            clear: mock(),
+            log: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+            trace: vi.fn(),
+            clear: vi.fn(),
           },
           location: {
             hostname: "localhost",
@@ -963,7 +963,7 @@ describe("Logger - Cross-Environment Tests", () => {
         // Test Browser
         globalThis.window = {
           document: {},
-          console: { info: mock() },
+          console: { info: vi.fn() },
           location: { hostname: "browser-host" },
         };
         globalThis.document = {};
@@ -1005,7 +1005,7 @@ describe("Logger - Cross-Environment Tests", () => {
         // Browser
         globalThis.window = {
           document: {},
-          console: { error: mock() },
+          console: { error: vi.fn() },
         };
         globalThis.document = {};
         delete globalThis.process;
@@ -1048,12 +1048,12 @@ describe("Logger - Cross-Environment Tests", () => {
         globalThis.window = {
           document: {},
           console: {
-            log: mock(),
-            info: mock(),
-            warn: mock(),
-            error: mock(),
-            debug: mock(),
-            trace: mock(),
+            log: vi.fn(),
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+            trace: vi.fn(),
           },
         };
         globalThis.document = {};

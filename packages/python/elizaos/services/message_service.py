@@ -70,6 +70,17 @@ class DefaultMessageService(IMessageService):
         start_time = time.time()
 
         try:
+            # Check if shouldRespond evaluation is enabled
+            # When disabled (ChatGPT mode), we always respond
+            check_should_respond = runtime.is_check_should_respond_enabled()
+            if not check_should_respond:
+                runtime.logger.debug(
+                    "check_should_respond disabled, always responding (ChatGPT mode)"
+                )
+            # Note: This implementation always responds, so check_should_respond=False
+            # maintains the default behavior. When shouldRespond logic is added,
+            # this check will bypass it when check_should_respond is False.
+
             # Save the incoming message to memory first
             runtime.logger.debug("Saving incoming message to memory")
             if message.id:

@@ -2,7 +2,7 @@
  * @fileoverview Tests for Ollama provider
  */
 
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   isOllamaAvailable,
   listOllamaModels,
@@ -19,7 +19,7 @@ describe("Ollama Provider", () => {
 
   describe("isOllamaAvailable", () => {
     it("should return true when Ollama responds OK", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
       } as Response);
 
@@ -28,7 +28,7 @@ describe("Ollama Provider", () => {
     });
 
     it("should return false when Ollama returns error", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
       } as Response);
@@ -38,7 +38,7 @@ describe("Ollama Provider", () => {
     });
 
     it("should return false on network error", async () => {
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const result = await isOllamaAvailable();
       expect(result).toBe(false);
@@ -47,7 +47,7 @@ describe("Ollama Provider", () => {
 
   describe("listOllamaModels", () => {
     it("should return list of model names", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
           models: [
@@ -63,7 +63,7 @@ describe("Ollama Provider", () => {
     });
 
     it("should return empty array when no models", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => ({}),
       } as Response);
@@ -73,7 +73,7 @@ describe("Ollama Provider", () => {
     });
 
     it("should throw on error response", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
         status: 500,
       } as Response);
@@ -84,7 +84,7 @@ describe("Ollama Provider", () => {
     });
 
     it("should throw on invalid response structure", async () => {
-      globalThis.fetch = mock().mockResolvedValue({
+      globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         json: async () => "not an object",
       } as Response);
@@ -106,7 +106,7 @@ describe("Ollama Provider", () => {
 
     describe("TEXT_SMALL handler", () => {
       it("should call Ollama generate API", async () => {
-        const mockFetch = mock().mockResolvedValue({
+        const mockFetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({ response: "Hello, I am a test response" }),
         } as Response);
@@ -136,7 +136,7 @@ describe("Ollama Provider", () => {
     describe("TEXT_EMBEDDING handler", () => {
       it("should call Ollama embed API", async () => {
         const embedding = [0.1, 0.2, 0.3, 0.4, 0.5];
-        globalThis.fetch = mock().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({ embeddings: [embedding] }),
         } as Response);
@@ -152,7 +152,7 @@ describe("Ollama Provider", () => {
 
       it("should handle single embedding response format", async () => {
         const embedding = [0.1, 0.2, 0.3];
-        globalThis.fetch = mock().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({ embedding }),
         } as Response);
@@ -167,7 +167,7 @@ describe("Ollama Provider", () => {
       });
 
       it("should throw when no embeddings returned", async () => {
-        globalThis.fetch = mock().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({}),
         } as Response);
@@ -184,7 +184,7 @@ describe("Ollama Provider", () => {
 
     describe("OBJECT_SMALL handler", () => {
       it("should extract JSON from response", async () => {
-        globalThis.fetch = mock().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({
             response: 'Here is the JSON: {"name": "test", "value": 42}',
@@ -203,7 +203,7 @@ describe("Ollama Provider", () => {
       });
 
       it("should throw on invalid JSON", async () => {
-        globalThis.fetch = mock().mockResolvedValue({
+        globalThis.fetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({
             response: "This is not valid JSON at all",
@@ -220,7 +220,7 @@ describe("Ollama Provider", () => {
       });
 
       it("should use lower temperature for structured output", async () => {
-        const mockFetch = mock().mockResolvedValue({
+        const mockFetch = vi.fn().mockResolvedValue({
           ok: true,
           json: async () => ({ response: '{"result": true}' }),
         } as Response);

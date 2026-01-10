@@ -4,6 +4,35 @@ import type { IAgentRuntime } from "./runtime";
 export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string;
 
 /**
+ * LLM Mode for overriding model selection.
+ * 
+ * - `DEFAULT`: Use the model type specified in the useModel call (no override)
+ * - `SMALL`: Override all text generation model calls to use TEXT_SMALL
+ * - `LARGE`: Override all text generation model calls to use TEXT_LARGE
+ * 
+ * This is useful for cost optimization (force SMALL) or quality (force LARGE).
+ * While not recommended for production, it can be a fast way to make the agent run cheaper.
+ * 
+ * @example
+ * ```typescript
+ * const runtime = new AgentRuntime({
+ *   character: myCharacter,
+ *   llmMode: LLMMode.SMALL, // All LLM calls will use TEXT_SMALL
+ * });
+ * ```
+ */
+export const LLMMode = {
+  /** Use the model type as specified in the call (no override) */
+  DEFAULT: "DEFAULT",
+  /** Override all text generation model calls to use TEXT_SMALL */
+  SMALL: "SMALL",
+  /** Override all text generation model calls to use TEXT_LARGE */
+  LARGE: "LARGE",
+} as const;
+
+export type LLMModeType = (typeof LLMMode)[keyof typeof LLMMode];
+
+/**
  * Defines the recognized types of models that the agent runtime can use.
  * These include models for text generation (small, large, reasoning, completion),
  * text embedding, tokenization (encode/decode), image generation and description,

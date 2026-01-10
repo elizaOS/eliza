@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { $ } from "bun";

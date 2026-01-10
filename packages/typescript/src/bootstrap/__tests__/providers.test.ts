@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChannelType,
   type IAgentRuntime,
@@ -36,11 +36,11 @@ describe("Choice Provider", () => {
     mockState = setup.mockState;
 
     // Default mock for getTasks
-    mockRuntime.getTasks = mock().mockResolvedValue([]);
+    mockRuntime.getTasks = vi.fn().mockResolvedValue([]);
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should list pending tasks with options", async () => {
@@ -72,7 +72,7 @@ describe("Choice Provider", () => {
         },
       },
     ];
-    mockRuntime.getTasks = mock().mockResolvedValue(tasks);
+    mockRuntime.getTasks = vi.fn().mockResolvedValue(tasks);
 
     const result = await choiceProvider.get(
       mockRuntime as IAgentRuntime,
@@ -105,7 +105,7 @@ describe("Choice Provider", () => {
   });
 
   it("should handle no pending tasks gracefully", async () => {
-    mockRuntime.getTasks = mock().mockResolvedValue([]); // No tasks
+    mockRuntime.getTasks = vi.fn().mockResolvedValue([]); // No tasks
 
     const result = await choiceProvider.get(
       mockRuntime as IAgentRuntime,
@@ -130,7 +130,7 @@ describe("Choice Provider", () => {
         metadata: {}, // No options here
       },
     ];
-    mockRuntime.getTasks = mock().mockResolvedValue(tasks);
+    mockRuntime.getTasks = vi.fn().mockResolvedValue(tasks);
 
     const result = await choiceProvider.get(
       mockRuntime as IAgentRuntime,
@@ -146,7 +146,7 @@ describe("Choice Provider", () => {
   });
 
   it("should handle errors from getTasks gracefully", async () => {
-    mockRuntime.getTasks = mock().mockRejectedValue(
+    mockRuntime.getTasks = vi.fn().mockRejectedValue(
       new Error("Task service error"),
     );
 
@@ -180,7 +180,7 @@ describe("Facts Provider", () => {
     mockState = setup.mockState;
 
     // Mock for initial recent messages
-    mockRuntime.getMemories = mock().mockResolvedValue([
+    mockRuntime.getMemories = vi.fn().mockResolvedValue([
       {
         id: "msg-prev-1" as UUID,
         content: { text: "Previous message 1" },
@@ -189,10 +189,10 @@ describe("Facts Provider", () => {
     ]);
 
     // Mock for useModel
-    mockRuntime.useModel = mock().mockResolvedValue([0.1, 0.2, 0.3]); // Example embedding
+    mockRuntime.useModel = vi.fn().mockResolvedValue([0.1, 0.2, 0.3]); // Example embedding
 
     // Mock for searchMemories
-    mockRuntime.searchMemories = mock().mockImplementation(async (params) => {
+    mockRuntime.searchMemories = vi.fn().mockImplementation(async (params) => {
       if (params.tableName === "facts" && params.count === 6) {
         // Could differentiate between the two calls if needed by params.entityId
         if (params.entityId === mockMessage.entityId) {
@@ -228,7 +228,7 @@ describe("Facts Provider", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should retrieve facts about a user", async () => {
@@ -253,7 +253,7 @@ describe("Facts Provider", () => {
 
   it("should handle empty results gracefully", async () => {
     // Mock empty memories from searchMemories
-    mockRuntime.searchMemories = mock().mockResolvedValue([]);
+    mockRuntime.searchMemories = vi.fn().mockResolvedValue([]);
 
     const result = await factsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -267,7 +267,7 @@ describe("Facts Provider", () => {
 
   it("should handle errors gracefully", async () => {
     // Mock error in getMemories (initial call)
-    mockRuntime.getMemories = mock().mockRejectedValue(
+    mockRuntime.getMemories = vi.fn().mockRejectedValue(
       new Error("Database error"),
     );
 
@@ -296,19 +296,19 @@ describe("Providers Provider", () => {
           name: "TEST_PROVIDER_1",
           description: "Test provider 1",
           dynamic: true,
-          get: mock(),
+          get: vi.fn(),
         },
         {
           name: "TEST_PROVIDER_2",
           description: "Test provider 2",
           dynamic: true,
-          get: mock(),
+          get: vi.fn(),
         },
         {
           name: "INTERNAL_PROVIDER",
           description: "Internal provider",
           dynamic: false,
-          get: mock(),
+          get: vi.fn(),
         },
       ],
     });
@@ -317,7 +317,7 @@ describe("Providers Provider", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should list all dynamic providers", async () => {
@@ -396,11 +396,11 @@ describe("Recent Messages Provider", () => {
     mockState = createMockState();
 
     // Mock getMemories to return sample messages
-    mockRuntime.getMemories = mock().mockResolvedValue(mockMessages);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue(mockMessages);
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should retrieve recent messages", async () => {
@@ -424,7 +424,7 @@ describe("Recent Messages Provider", () => {
 
   it("should handle empty message list gracefully", async () => {
     // Mock empty messages for this specific test
-    mockRuntime.getMemories = mock().mockResolvedValue([]);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
     // Ensure the current message content is also empty for the provider's specific check
     mockMessage.content = { ...mockMessage.content, text: "" };
 
@@ -441,7 +441,7 @@ describe("Recent Messages Provider", () => {
 
   it("should handle errors gracefully", async () => {
     // Mock error in getMemories
-    mockRuntime.getMemories = mock().mockRejectedValue(
+    mockRuntime.getMemories = vi.fn().mockRejectedValue(
       new Error("Database error"),
     );
 
@@ -470,7 +470,7 @@ describe("Role Provider", () => {
     mockState = createMockState();
 
     // Reset mocks
-    mock.restore();
+    vi.clearAllMocks();
 
     (mockRuntime.getRoom as ReturnType<typeof mock>).mockResolvedValue({
       id: "default-room" as UUID,
@@ -506,7 +506,7 @@ describe("Role Provider", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should retrieve and format role hierarchy", async () => {
@@ -542,8 +542,7 @@ describe("Role Provider", () => {
       },
     );
 
-    // Setup getEntityById mock
-    (mockRuntime.getEntityById as ReturnType<typeof mock>).mockImplementation(
+    // Setup getEntityById vi.fn(mockRuntime.getEntityById as ReturnType<typeof mock>).mockImplementation(
       async (id) => {
         if (id === ownerId) {
           return {
@@ -573,7 +572,7 @@ describe("Role Provider", () => {
     expect(result.text).not.toContain("## Administrators"); // Ensure other sections aren't there
     expect(result.text).not.toContain("## Members");
 
-    // createUniqueUuid is not directly mockable in bun:test
+    // createUniqueUuid can be mocked with vi.mock() if needed
     expect(mockRuntime.getWorld).toHaveBeenCalled();
     expect(mockRuntime.getEntityById).toHaveBeenCalledWith(ownerId);
   });
@@ -703,14 +702,14 @@ describe("Settings Provider", () => {
     });
 
     // Mock getRoom to provide room data
-    mockRuntime.getRoom = mock().mockResolvedValue({
+    mockRuntime.getRoom = vi.fn().mockResolvedValue({
       id: "test-room-id" as UUID,
       worldId: "world-1" as UUID,
       type: ChannelType.GROUP, // Default, can be overridden by message
     });
 
     // Mock getWorld to provide world data
-    mockRuntime.getWorld = mock().mockResolvedValue({
+    mockRuntime.getWorld = vi.fn().mockResolvedValue({
       id: "world-1" as UUID,
       messageServerId: "server-1",
       name: "Test World",
@@ -718,8 +717,8 @@ describe("Settings Provider", () => {
   });
 
   afterEach(async () => {
-    mock.restore();
-    // Cannot mock @elizaos/core functions in bun:test
+    vi.clearAllMocks();
+    // Can mock @elizaos/core functions with vi.mock() if needed
   });
 
   it("should retrieve settings in onboarding mode", async () => {
@@ -788,7 +787,7 @@ describe("Settings Provider", () => {
   });
 
   it("should handle errors gracefully when getWorldSettings fails", async () => {
-    // Note: We cannot directly mock getWorldSettings from @elizaos/core in bun:test
+    // Note: We cannot directly mock getWorldSettings from @elizaos/core in vitest
     // This test would need to be refactored to test error handling differently
     // For now, we'll test what we can without mocking core functions
 
@@ -817,7 +816,7 @@ describe("Settings Provider", () => {
   });
 
   it("should handle missing world gracefully", async () => {
-    mockRuntime.getWorld = mock().mockResolvedValue(null);
+    mockRuntime.getWorld = vi.fn().mockResolvedValue(null);
     mockMessage.content = { channelType: ChannelType.GROUP };
     mockState.data = {
       ...mockState.data,
@@ -853,14 +852,14 @@ describe("Attachments Provider", () => {
     mockState = setup.mockState;
 
     // Mock getConversationLength
-    mockRuntime.getConversationLength = mock().mockReturnValue(10);
+    mockRuntime.getConversationLength = vi.fn().mockReturnValue(10);
 
     // Mock getMemories for testing
-    mockRuntime.getMemories = mock().mockResolvedValue([]);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue([]);
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should handle messages with no attachments", async () => {
@@ -984,7 +983,7 @@ describe("Attachments Provider", () => {
       },
     ];
 
-    mockRuntime.getMemories = mock().mockResolvedValue(recentMessages);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue(recentMessages);
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -1060,7 +1059,7 @@ describe("Attachments Provider", () => {
       },
     ];
 
-    mockRuntime.getMemories = mock().mockResolvedValue(messages);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue(messages);
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -1128,7 +1127,7 @@ describe("Attachments Provider", () => {
       },
     ];
 
-    mockRuntime.getMemories = mock().mockResolvedValue(recentMessages);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue(recentMessages);
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -1214,7 +1213,7 @@ describe("Attachments Provider", () => {
       },
     ];
 
-    mockRuntime.getMemories = mock().mockResolvedValue(recentMessages);
+    mockRuntime.getMemories = vi.fn().mockResolvedValue(recentMessages);
 
     const result = await attachmentsProvider.get(
       mockRuntime as IAgentRuntime,
@@ -1245,7 +1244,7 @@ describe("Attachments Provider", () => {
     };
 
     // Mock error in getMemories
-    mockRuntime.getMemories = mock().mockRejectedValue(
+    mockRuntime.getMemories = vi.fn().mockRejectedValue(
       new Error("Database error"),
     );
 

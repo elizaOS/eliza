@@ -1,4 +1,4 @@
-import { describe, expect, it, type Mock, mock } from "bun:test";
+import { describe, expect, it, type Mock, vi } from "vitest";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { plugin } from "../../index.browser";
 
@@ -6,8 +6,8 @@ describe("plugin-sql browser entrypoint", () => {
   it("skips adapter registration when runtime is ready", async () => {
     const runtime = {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
-      isReady: mock(() => Promise.resolve(true)),
-      registerDatabaseAdapter: mock(() => {}),
+      isReady: vi.fn(() => Promise.resolve(true)),
+      registerDatabaseAdapter: vi.fn(() => {}),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     await plugin.init?.({}, runtime);
@@ -19,8 +19,8 @@ describe("plugin-sql browser entrypoint", () => {
   it("registers PGlite adapter when readiness check fails", async () => {
     const runtime = {
       agentId: "00000000-0000-0000-0000-000000000001" as UUID,
-      isReady: mock(() => Promise.reject(new Error("no adapter"))),
-      registerDatabaseAdapter: mock(() => {}),
+      isReady: vi.fn(() => Promise.reject(new Error("no adapter"))),
+      registerDatabaseAdapter: vi.fn(() => {}),
     } as Partial<IAgentRuntime> as IAgentRuntime;
 
     await plugin.init?.({}, runtime);

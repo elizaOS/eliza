@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MemoryService } from '../services/memory-service';
 import { LongTermMemoryCategory } from '../types/index';
 import type { IAgentRuntime, UUID } from '@elizaos/core';
@@ -12,37 +12,37 @@ describe('MemoryService', () => {
 
     // Create mock database
     const mockDb = {
-      insert: mock(() => ({
-        values: mock(async () => {}),
+      insert: vi.fn(() => ({
+        values: vi.fn(async () => {}),
       })),
-      select: mock(() => ({
-        from: mock(() => ({
-          where: mock(() => ({
-            orderBy: mock(() => ({
-              limit: mock(async () => []),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(() => ({
+            orderBy: vi.fn(() => ({
+              limit: vi.fn(async () => []),
             })),
-            limit: mock(async () => []),
+            limit: vi.fn(async () => []),
           })),
         })),
       })),
-      update: mock(() => ({
-        set: mock(() => ({
-          where: mock(async () => {}),
+      update: vi.fn(() => ({
+        set: vi.fn(() => ({
+          where: vi.fn(async () => {}),
         })),
       })),
-      delete: mock(() => ({
-        where: mock(async () => {}),
+      delete: vi.fn(() => ({
+        where: vi.fn(async () => {}),
       })),
     };
 
     // Create mock runtime
     mockRuntime = {
       agentId: 'test-agent-id' as UUID,
-      getSetting: mock(() => undefined),
-      countMemories: mock(async () => 0),
+      getSetting: vi.fn(() => undefined),
+      countMemories: vi.fn(async () => 0),
       db: mockDb,
-      getConnection: mock(async () => ({
-        query: mock(async () => ({ rows: [] })),
+      getConnection: vi.fn(async () => ({
+        query: vi.fn(async () => ({ rows: [] })),
       })),
     } as unknown as IAgentRuntime;
   });
@@ -60,7 +60,7 @@ describe('MemoryService', () => {
     });
 
     it('should load config from runtime settings', async () => {
-      mockRuntime.getSetting = mock((key: string) => {
+      mockRuntime.getSetting = vi.fn((key: string) => {
         const settings: Record<string, string> = {
           MEMORY_SUMMARIZATION_THRESHOLD: '30',
           MEMORY_RETAIN_RECENT: '5',
@@ -104,15 +104,15 @@ describe('MemoryService', () => {
       const roomId = 'room-1' as UUID;
 
       // Mock countMemories to return below threshold
-      mockRuntime.countMemories = mock(async () => 15);
+      mockRuntime.countMemories = vi.fn(async () => 15);
       expect(await service.shouldSummarize(roomId)).toBe(false);
 
       // Mock countMemories to return at threshold (default is 16)
-      mockRuntime.countMemories = mock(async () => 16);
+      mockRuntime.countMemories = vi.fn(async () => 16);
       expect(await service.shouldSummarize(roomId)).toBe(true);
 
       // Mock countMemories to return above threshold
-      mockRuntime.countMemories = mock(async () => 20);
+      mockRuntime.countMemories = vi.fn(async () => 20);
       expect(await service.shouldSummarize(roomId)).toBe(true);
     });
   });
@@ -180,11 +180,11 @@ describe('MemoryService', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockMemoryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockMemoryData),
               })),
             })),
           })),
@@ -261,11 +261,11 @@ describe('MemoryService', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockSummaryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockSummaryData),
               })),
             })),
           })),
@@ -321,11 +321,11 @@ describe('MemoryService', () => {
       ];
 
       (mockRuntime as any).db = {
-        select: mock(() => ({
-          from: mock(() => ({
-            where: mock(() => ({
-              orderBy: mock(() => ({
-                limit: mock(async () => mockMemoryData),
+        select: vi.fn(() => ({
+          from: vi.fn(() => ({
+            where: vi.fn(() => ({
+              orderBy: vi.fn(() => ({
+                limit: vi.fn(async () => mockMemoryData),
               })),
             })),
           })),
@@ -343,8 +343,8 @@ describe('MemoryService', () => {
     it('should return empty string when no memories', async () => {
       const entityId = 'user-1' as UUID;
 
-      mockRuntime.getConnection = mock(async () => ({
-        query: mock(async () => ({ rows: [] })),
+      mockRuntime.getConnection = vi.fn(async () => ({
+        query: vi.fn(async () => ({ rows: [] })),
       }));
 
       const formatted = await service.getFormattedLongTermMemories(entityId);

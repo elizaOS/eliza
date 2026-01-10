@@ -9,10 +9,12 @@ mod attachments;
 mod capabilities;
 mod character;
 mod choice;
+mod contacts;
 mod current_time;
 mod entities;
 mod evaluators_list;
 mod facts;
+mod follow_ups;
 mod knowledge;
 mod providers_list;
 mod recent_messages;
@@ -27,10 +29,12 @@ pub use attachments::AttachmentsProvider;
 pub use capabilities::CapabilitiesProvider;
 pub use character::CharacterProvider;
 pub use choice::ChoiceProvider;
+pub use contacts::ContactsProvider;
 pub use current_time::CurrentTimeProvider;
 pub use entities::EntitiesProvider;
 pub use evaluators_list::EvaluatorsProvider;
 pub use facts::FactsProvider;
+pub use follow_ups::FollowUpsProvider;
 pub use knowledge::KnowledgeProvider;
 pub use providers_list::ProvidersListProvider;
 pub use recent_messages::RecentMessagesProvider;
@@ -66,30 +70,40 @@ pub trait Provider: Send + Sync {
     ) -> PluginResult<ProviderResult>;
 }
 
-/// Get all available providers.
-pub fn all_providers() -> Vec<Box<dyn Provider>> {
+/// Get basic providers (always available).
+pub fn basic_providers() -> Vec<Box<dyn Provider>> {
     vec![
-        // Core providers (order matters for prompt composition)
         Box::new(CharacterProvider),
         Box::new(CurrentTimeProvider),
-        // Context providers
         Box::new(RecentMessagesProvider),
         Box::new(EntitiesProvider),
-        Box::new(RelationshipsProvider),
-        Box::new(FactsProvider),
-        Box::new(KnowledgeProvider),
-        Box::new(WorldProvider),
-        // State providers
         Box::new(ActionStateProvider),
-        Box::new(AgentSettingsProvider),
-        // Capability providers
         Box::new(ActionsProvider),
         Box::new(CapabilitiesProvider),
         Box::new(EvaluatorsProvider),
         Box::new(ProvidersListProvider),
-        // Dynamic providers
         Box::new(AttachmentsProvider),
-        Box::new(ChoiceProvider),
-        Box::new(RolesProvider),
+        Box::new(WorldProvider),
     ]
+}
+
+/// Get extended providers (opt-in).
+pub fn extended_providers() -> Vec<Box<dyn Provider>> {
+    vec![
+        Box::new(ChoiceProvider),
+        Box::new(ContactsProvider),
+        Box::new(FactsProvider),
+        Box::new(FollowUpsProvider),
+        Box::new(KnowledgeProvider),
+        Box::new(RelationshipsProvider),
+        Box::new(RolesProvider),
+        Box::new(AgentSettingsProvider),
+    ]
+}
+
+/// Get all available providers.
+pub fn all_providers() -> Vec<Box<dyn Provider>> {
+    let mut providers = basic_providers();
+    providers.extend(extended_providers());
+    providers
 }

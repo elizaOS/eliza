@@ -2,7 +2,7 @@
  * @fileoverview Tests for integration runtime factory
  */
 
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   createIntegrationTestRuntime,
   withTestRuntime,
@@ -13,70 +13,70 @@ import type { IDatabaseAdapter, UUID, Plugin } from "../types";
 // Mock database adapter
 function createMockDatabaseAdapter(): IDatabaseAdapter {
   return {
-    init: mock().mockResolvedValue(undefined),
-    close: mock().mockResolvedValue(undefined),
-    getConnection: mock().mockResolvedValue({}),
+    init: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined),
+    getConnection: vi.fn().mockResolvedValue({}),
     // Add minimal stubs for all required methods
-    getAgent: mock().mockResolvedValue(null),
-    createAgent: mock().mockResolvedValue(undefined),
-    getAgents: mock().mockResolvedValue([]),
-    updateAgent: mock().mockResolvedValue(undefined),
-    deleteAgent: mock().mockResolvedValue(undefined),
-    countAgents: mock().mockResolvedValue(0),
-    getEntityById: mock().mockResolvedValue(null),
-    getEntitiesForRoom: mock().mockResolvedValue([]),
-    createEntity: mock().mockResolvedValue(undefined),
-    updateEntity: mock().mockResolvedValue(undefined),
-    getComponent: mock().mockResolvedValue(null),
-    getComponents: mock().mockResolvedValue([]),
-    createComponent: mock().mockResolvedValue(undefined),
-    updateComponent: mock().mockResolvedValue(undefined),
-    deleteComponent: mock().mockResolvedValue(undefined),
-    getMemoryById: mock().mockResolvedValue(null),
-    getMemories: mock().mockResolvedValue([]),
-    getMemoriesByIds: mock().mockResolvedValue([]),
-    getMemoriesByRoomIds: mock().mockResolvedValue([]),
-    createMemory: mock().mockResolvedValue(undefined),
-    searchMemories: mock().mockResolvedValue([]),
-    searchMemoriesByEmbedding: mock().mockResolvedValue([]),
-    deleteMemory: mock().mockResolvedValue(undefined),
-    deleteAllMemories: mock().mockResolvedValue(undefined),
-    countMemories: mock().mockResolvedValue(0),
-    getRoom: mock().mockResolvedValue(null),
-    getRooms: mock().mockResolvedValue([]),
-    createRoom: mock().mockResolvedValue("test-room-id" as UUID),
-    updateRoom: mock().mockResolvedValue(undefined),
-    deleteRoom: mock().mockResolvedValue(undefined),
-    addParticipantToRoom: mock().mockResolvedValue(undefined),
-    removeParticipantFromRoom: mock().mockResolvedValue(undefined),
-    getParticipantsForRoom: mock().mockResolvedValue([]),
-    getRoomsForParticipant: mock().mockResolvedValue([]),
-    getRoomsForParticipants: mock().mockResolvedValue([]),
-    getRelationship: mock().mockResolvedValue(null),
-    getRelationships: mock().mockResolvedValue([]),
-    createRelationship: mock().mockResolvedValue(undefined),
-    updateRelationship: mock().mockResolvedValue(undefined),
-    getWorld: mock().mockResolvedValue(null),
-    getWorlds: mock().mockResolvedValue([]),
-    createWorld: mock().mockResolvedValue(undefined),
-    updateWorld: mock().mockResolvedValue(undefined),
-    removeWorld: mock().mockResolvedValue(undefined),
-    getTask: mock().mockResolvedValue(null),
-    getTasks: mock().mockResolvedValue([]),
-    getTasksByName: mock().mockResolvedValue([]),
-    createTask: mock().mockResolvedValue(undefined),
-    updateTask: mock().mockResolvedValue(undefined),
-    deleteTask: mock().mockResolvedValue(undefined),
-    getLogs: mock().mockResolvedValue([]),
-    createLog: mock().mockResolvedValue(undefined),
-    deleteLogs: mock().mockResolvedValue(undefined),
-    getCache: mock().mockResolvedValue(null),
-    setCache: mock().mockResolvedValue(undefined),
-    deleteCache: mock().mockResolvedValue(undefined),
-    ensureAgentExists: mock().mockResolvedValue(undefined),
-    ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
-    withTransaction: mock().mockImplementation((fn) => fn()),
-    withDatabase: mock().mockImplementation((fn) => fn({})),
+    getAgent: vi.fn().mockResolvedValue(null),
+    createAgent: vi.fn().mockResolvedValue(undefined),
+    getAgents: vi.fn().mockResolvedValue([]),
+    updateAgent: vi.fn().mockResolvedValue(undefined),
+    deleteAgent: vi.fn().mockResolvedValue(undefined),
+    countAgents: vi.fn().mockResolvedValue(0),
+    getEntityById: vi.fn().mockResolvedValue(null),
+    getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+    createEntity: vi.fn().mockResolvedValue(undefined),
+    updateEntity: vi.fn().mockResolvedValue(undefined),
+    getComponent: vi.fn().mockResolvedValue(null),
+    getComponents: vi.fn().mockResolvedValue([]),
+    createComponent: vi.fn().mockResolvedValue(undefined),
+    updateComponent: vi.fn().mockResolvedValue(undefined),
+    deleteComponent: vi.fn().mockResolvedValue(undefined),
+    getMemoryById: vi.fn().mockResolvedValue(null),
+    getMemories: vi.fn().mockResolvedValue([]),
+    getMemoriesByIds: vi.fn().mockResolvedValue([]),
+    getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
+    createMemory: vi.fn().mockResolvedValue(undefined),
+    searchMemories: vi.fn().mockResolvedValue([]),
+    searchMemoriesByEmbedding: vi.fn().mockResolvedValue([]),
+    deleteMemory: vi.fn().mockResolvedValue(undefined),
+    deleteAllMemories: vi.fn().mockResolvedValue(undefined),
+    countMemories: vi.fn().mockResolvedValue(0),
+    getRoom: vi.fn().mockResolvedValue(null),
+    getRooms: vi.fn().mockResolvedValue([]),
+    createRoom: vi.fn().mockResolvedValue("test-room-id" as UUID),
+    updateRoom: vi.fn().mockResolvedValue(undefined),
+    deleteRoom: vi.fn().mockResolvedValue(undefined),
+    addParticipantToRoom: vi.fn().mockResolvedValue(undefined),
+    removeParticipantFromRoom: vi.fn().mockResolvedValue(undefined),
+    getParticipantsForRoom: vi.fn().mockResolvedValue([]),
+    getRoomsForParticipant: vi.fn().mockResolvedValue([]),
+    getRoomsForParticipants: vi.fn().mockResolvedValue([]),
+    getRelationship: vi.fn().mockResolvedValue(null),
+    getRelationships: vi.fn().mockResolvedValue([]),
+    createRelationship: vi.fn().mockResolvedValue(undefined),
+    updateRelationship: vi.fn().mockResolvedValue(undefined),
+    getWorld: vi.fn().mockResolvedValue(null),
+    getWorlds: vi.fn().mockResolvedValue([]),
+    createWorld: vi.fn().mockResolvedValue(undefined),
+    updateWorld: vi.fn().mockResolvedValue(undefined),
+    removeWorld: vi.fn().mockResolvedValue(undefined),
+    getTask: vi.fn().mockResolvedValue(null),
+    getTasks: vi.fn().mockResolvedValue([]),
+    getTasksByName: vi.fn().mockResolvedValue([]),
+    createTask: vi.fn().mockResolvedValue(undefined),
+    updateTask: vi.fn().mockResolvedValue(undefined),
+    deleteTask: vi.fn().mockResolvedValue(undefined),
+    getLogs: vi.fn().mockResolvedValue([]),
+    createLog: vi.fn().mockResolvedValue(undefined),
+    deleteLogs: vi.fn().mockResolvedValue(undefined),
+    getCache: vi.fn().mockResolvedValue(null),
+    setCache: vi.fn().mockResolvedValue(undefined),
+    deleteCache: vi.fn().mockResolvedValue(undefined),
+    ensureAgentExists: vi.fn().mockResolvedValue(undefined),
+    ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
+    withTransaction: vi.fn().mockImplementation((fn) => fn()),
+    withDatabase: vi.fn().mockImplementation((fn) => fn({})),
   } as unknown as IDatabaseAdapter;
 }
 
@@ -86,7 +86,7 @@ describe("Integration Runtime", () => {
 
   beforeEach(() => {
     // Mock Ollama as available
-    globalThis.fetch = mock().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ models: [{ name: "llama3.2:1b" }] }),
     } as Response);
@@ -120,7 +120,7 @@ describe("Integration Runtime", () => {
       delete process.env.OPENAI_API_KEY;
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.GOOGLE_API_KEY;
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const adapter = createMockDatabaseAdapter();
 
@@ -137,7 +137,7 @@ describe("Integration Runtime", () => {
       delete process.env.OPENAI_API_KEY;
       delete process.env.ANTHROPIC_API_KEY;
       delete process.env.GOOGLE_API_KEY;
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const adapter = createMockDatabaseAdapter();
 
@@ -164,7 +164,7 @@ describe("Integration Runtime", () => {
 
     it("should use custom character overrides", async () => {
       process.env.OPENAI_API_KEY = "test-key";
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const adapter = createMockDatabaseAdapter();
 
@@ -189,7 +189,7 @@ describe("Integration Runtime", () => {
   describe("withTestRuntime", () => {
     it("should cleanup even when test throws", async () => {
       process.env.OPENAI_API_KEY = "test-key";
-      globalThis.fetch = mock().mockRejectedValue(new Error("ECONNREFUSED"));
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
       const adapter = createMockDatabaseAdapter();
 

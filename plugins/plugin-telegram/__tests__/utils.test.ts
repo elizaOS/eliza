@@ -1,23 +1,23 @@
-import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Mock telegraf before importing
-mock.module('telegraf', () => ({
+vi.mock('telegraf', () => ({
   Markup: {
     button: {
-      url: mock((text: string, url: string) => ({ text, url, type: 'url' })),
-      login: mock((text: string, url: string) => ({ text, url, type: 'login' })),
+      url: vi.fn((text: string, url: string) => ({ text, url, type: 'url' })),
+      login: vi.fn((text: string, url: string) => ({ text, url, type: 'login' })),
     },
   },
 }));
 
 // Mock logger
-const warnSpy = mock();
-mock.module('@elizaos/core', () => ({
+const warnSpy = vi.fn();
+vi.mock('@elizaos/core', () => ({
   logger: {
-    debug: mock(),
-    info: mock(),
+    debug: vi.fn(),
+    info: vi.fn(),
     warn: warnSpy,
-    error: mock(),
+    error: vi.fn(),
   },
 }));
 
@@ -31,7 +31,7 @@ import type { Button } from '../src/types';
 
 describe('Telegram Utils', () => {
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   describe('splitMessage', () => {

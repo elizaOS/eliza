@@ -12,26 +12,10 @@ from typing import TYPE_CHECKING
 
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import IMAGE_GENERATION_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
-
-
-IMAGE_GENERATION_TEMPLATE = """# Task: Generate an image prompt for {{agentName}}.
-
-{{providers}}
-
-# Instructions:
-Based on the conversation, create a detailed prompt for image generation.
-The prompt should be specific, descriptive, and suitable for AI image generation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the image prompt</thought>
-    <prompt>Detailed image generation prompt</prompt>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
 
 @dataclass

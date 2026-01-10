@@ -2,8 +2,8 @@
   "name": "@elizaos/plugin-elizacloud",
   "version": "1.7.4",
   "type": "module",
-  "main": "dist/cjs/index.node.cjs",
-  "module": "dist/node/index.node.js",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
@@ -37,10 +37,23 @@
       "types": "./dist/browser/index.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_elizacloud.js",
+        "default": "./rust/pkg/web/elizaos_plugin_elizacloud.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_elizacloud.js",
+        "default": "./rust/pkg/node/elizaos_plugin_elizacloud.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_elizacloud.js"
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "types",
+    "rust/pkg"
   ],
   "dependencies": {
     "@ai-sdk/openai": "^2.0.88",
@@ -60,11 +73,22 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "dev": "bun --hot build.ts",
-    "lint": "prettier --write ./src",
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "prettier --write ./typescript",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "test": "bun test typescript/",
+    "test:unit": "bun test typescript/__tests__/unit/",
+    "test:integration": "bun test typescript/__tests__/integration/",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_elizacloud"
   },
   "publishConfig": {
     "access": "public"

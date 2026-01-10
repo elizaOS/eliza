@@ -1,23 +1,13 @@
 import {
   addHeader,
   type IAgentRuntime,
+  type ActionResult,
   logger,
   type Memory,
   type Provider,
+  type ProviderValue,
   type State,
 } from "@elizaos/core";
-
-/**
- * Working memory entry from action execution
- */
-interface WorkingMemoryEntry {
-  actionName?: string;
-  result?: {
-    text?: string;
-    data?: unknown;
-  };
-  timestamp?: number;
-}
 
 /**
  * Provider for sharing action execution state and plan between actions
@@ -29,11 +19,9 @@ export const actionStateProvider: Provider = {
     "Previous action results, working memory, and action plan from the current execution run",
   position: 150,
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-    // Get action results, plan, and working memory from the incoming state
-    const stateData = state.data;
-    const actionResults = (stateData && stateData.actionResults) || [];
-    const actionPlan = (stateData && stateData.actionPlan) || null;
-    const workingMemory = (stateData && stateData.workingMemory) || {};
+    const actionResults = state.data.actionResults ?? [];
+    const actionPlan = state.data.actionPlan;
+    const workingMemory = state.data.workingMemory;
 
     // Format action plan for display
     let planText = "";
@@ -89,10 +77,11 @@ export const actionStateProvider: Provider = {
     if (actionResults.length > 0) {
       const formattedResults = actionResults
         .map((result, index) => {
-          const resultData = result.data as { actionName?: string } | undefined;
+          const actionNameValue = result.data && result.data.actionName;
           const actionName =
-            (resultData && resultData.actionName) ||
-            "Unknown Action";
+            typeof actionNameValue === "string"
+              ? actionNameValue
+              : "Unknown Action";
           const success = result.success;
           const status = success ? "Success" : "Failed";
 
@@ -128,35 +117,19 @@ export const actionStateProvider: Provider = {
 
     // Format working memory
     let memoryText = "";
-    if (Object.keys(workingMemory).length > 0) {
+    if (workingMemory && Object.keys(workingMemory).length > 0) {
       const memoryEntries = Object.entries(workingMemory)
-        .sort((a, b) => {
-          const aTimestamp =
-            a[1] &&
-            typeof a[1] === "object" &&
-            "timestamp" in a[1] &&
-            typeof a[1].timestamp === "number"
-              ? a[1].timestamp
-              : 0;
-          const bTimestamp =
-            b[1] &&
-            typeof b[1] === "object" &&
-            "timestamp" in b[1] &&
-            typeof b[1].timestamp === "number"
-              ? b[1].timestamp
-              : 0;
-          return bTimestamp - aTimestamp;
-        })
+        .sort((a, b) => b[1].timestamp - a[1].timestamp)
         .slice(0, 10) // Show last 10 entries
-        .map(([key, value]: [string, unknown]) => {
-          const valueObj =
-            value && typeof value === "object"
-              ? (value as WorkingMemoryEntry)
-              : null;
-          if (valueObj && valueObj.actionName && valueObj.result) {
-            return `**${valueObj.actionName}**: ${valueObj.result.text || JSON.stringify(valueObj.result.data)}`;
-          }
-          return `**${key}**: ${JSON.stringify(value)}`;
+        .map(([key, entry]) => {
+          const result: ActionResult = entry.result;
+          const resultText =
+            typeof result.text === "string" && result.text.trim().length > 0
+              ? result.text
+              : result.data
+                ? JSON.stringify(result.data)
+                : "(no output)";
+          return `**${entry.actionName || key}**: ${resultText}`;
         })
         .join("\n");
 
@@ -176,8 +149,7 @@ export const actionStateProvider: Provider = {
 
       recentActionMemories = recentMessages.filter(
         (msg) =>
-          msg.content && msg.content.type === "action_result" &&
-          msg.metadata && msg.metadata.type === "action_result",
+          msg.content && msg.content.type === "action_result",
       );
     } catch (error) {
       if (logger) {
@@ -254,10 +226,10 @@ export const actionStateProvider: Provider = {
 
     return {
       data: {
-        actionResults,
-        actionPlan,
-        workingMemory,
-        recentActionMemories,
+        actionResults: actionResults as unknown as ProviderValue,
+        actionPlan: actionPlan as unknown as ProviderValue,
+        workingMemory: workingMemory as unknown as ProviderValue,
+        recentActionMemories: recentActionMemories as unknown as ProviderValue,
       },
       values: {
         hasActionResults: actionResults.length > 0,

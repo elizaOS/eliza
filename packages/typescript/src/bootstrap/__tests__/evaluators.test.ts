@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ChannelType,
   composePrompt,
@@ -14,9 +14,9 @@ import { type MockRuntime, setupActionTest } from "./test-utils";
 const coreModule = await import("@elizaos/core");
 
 // Mock the getEntityDetails function while preserving other exports
-mock.module("@elizaos/core", () => ({
+vi.mock("@elizaos/core", () => ({
   ...coreModule, // Spread all the actual exports
-  getEntityDetails: mock().mockImplementation(() => {
+  getEntityDetails: vi.fn().mockImplementation(() => {
     return Promise.resolve([
       { id: "test-entity-id", names: ["Test Entity"], metadata: {} },
       { id: "test-agent-id", names: ["Test Agent"], metadata: {} },
@@ -24,12 +24,12 @@ mock.module("@elizaos/core", () => ({
       { id: "entity-2", names: ["Entity 2"], metadata: {} },
     ]);
   }),
-  composePrompt: mock().mockReturnValue("Composed prompt"),
+  composePrompt: vi.fn().mockReturnValue("Composed prompt"),
   logger: {
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -39,7 +39,7 @@ describe("Reflection Evaluator", () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();
@@ -49,12 +49,12 @@ describe("Reflection Evaluator", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should call the model with the correct prompt", async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
+    const parseKeyValueXmlMock = vi.fn().mockImplementation((_xml: string) => {
       return {
         thought: "I am doing well in this conversation.",
         facts: {
@@ -80,10 +80,10 @@ describe("Reflection Evaluator", () => {
     });
 
     // Override the module mock for this test
-    mock.module("@elizaos/core", () => ({
+    vi.mock("@elizaos/core", () => ({
       ...coreModule,
       parseKeyValueXml: parseKeyValueXmlMock,
-      getEntityDetails: mock().mockResolvedValue([
+      getEntityDetails: vi.fn().mockResolvedValue([
         { id: "test-entity-id", names: ["Test Entity"], metadata: {} },
         { id: "test-agent-id", names: ["Test Agent"], metadata: {} },
       ]),
@@ -160,7 +160,7 @@ describe("Reflection Evaluator", () => {
 
   it("should store new facts and relationships", async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
+    const parseKeyValueXmlMock = vi.fn().mockImplementation((_xml: string) => {
       return {
         thought: "I am doing well in this conversation.",
         facts: {
@@ -186,10 +186,10 @@ describe("Reflection Evaluator", () => {
     });
 
     // Override the module mock for this test
-    mock.module("@elizaos/core", () => ({
+    vi.mock("@elizaos/core", () => ({
       ...coreModule,
       parseKeyValueXml: parseKeyValueXmlMock,
-      getEntityDetails: mock().mockResolvedValue([
+      getEntityDetails: vi.fn().mockResolvedValue([
         { id: "test-entity-id", names: ["Test Entity"], metadata: {} },
         { id: "test-agent-id", names: ["Test Agent"], metadata: {} },
         { id: "entity-1", names: ["Entity 1"], metadata: {} },
@@ -316,7 +316,7 @@ describe("Reflection Evaluator", () => {
 
   it("should filter out invalid facts", async () => {
     // Mock parseKeyValueXml for this test
-    const parseKeyValueXmlMock = mock().mockImplementation((_xml: string) => {
+    const parseKeyValueXmlMock = vi.fn().mockImplementation((_xml: string) => {
       return {
         thought: "Some of these facts are invalid",
         facts: {
@@ -353,10 +353,10 @@ describe("Reflection Evaluator", () => {
     });
 
     // Override the module mock for this test
-    mock.module("@elizaos/core", () => ({
+    vi.mock("@elizaos/core", () => ({
       ...coreModule,
       parseKeyValueXml: parseKeyValueXmlMock,
-      getEntityDetails: mock().mockResolvedValue([
+      getEntityDetails: vi.fn().mockResolvedValue([
         { id: "test-entity-id", names: ["Test Entity"], metadata: {} },
         { id: "test-agent-id", names: ["Test Agent"], metadata: {} },
       ]),
@@ -469,7 +469,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
   let mockState: Partial<State>;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
 
     // Use setupActionTest for consistent test setup
     const setup = setupActionTest();
@@ -479,7 +479,7 @@ describe("Multiple Prompt Evaluator Factory", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   it("should create a valid evaluator with multiple prompts", async () => {

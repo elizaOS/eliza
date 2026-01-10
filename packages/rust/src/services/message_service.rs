@@ -95,6 +95,16 @@ impl IMessageService for DefaultMessageService {
             message.entity_id, message.room_id
         );
 
+        // Check if shouldRespond evaluation is enabled
+        // When disabled (ChatGPT mode), we always respond
+        let check_should_respond = runtime.is_check_should_respond_enabled().await;
+        if !check_should_respond {
+            debug!("check_should_respond disabled, always responding (ChatGPT mode)");
+        }
+        // Note: This implementation always responds, so check_should_respond=false
+        // maintains the default behavior. When shouldRespond logic is added,
+        // this check will bypass it when check_should_respond is false.
+
         // Save the incoming message to memory first
         if let Some(adapter) = runtime.get_adapter() {
             debug!("Saving incoming message to memory");

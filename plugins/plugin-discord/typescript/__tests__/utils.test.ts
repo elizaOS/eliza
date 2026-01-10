@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
@@ -14,14 +14,14 @@ describe("Discord Utils - Smart Split Message", () => {
 
   beforeEach(() => {
     mockLogger = {
-      debug: mock(() => {}),
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
+      debug: vi.fn(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
     };
 
     mockRuntime = {
-      useModel: mock(async () => ""),
+      useModel: vi.fn(async () => ""),
       logger: mockLogger,
     } as any;
   });
@@ -32,7 +32,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const expectedChunks = ["chunk1", "chunk2", "chunk3"];
 
       // Mock LLM to return a valid JSON array
-      mockRuntime.useModel = mock(async () => JSON.stringify(expectedChunks));
+      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -49,7 +49,7 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Mock LLM to return JSON array in code block
       const llmResponse = `\`\`\`json\n${JSON.stringify(expectedChunks)}\n\`\`\``;
-      mockRuntime.useModel = mock(async () => llmResponse);
+      mockRuntime.useModel = vi.fn(async () => llmResponse);
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -62,7 +62,7 @@ describe("Discord Utils - Smart Split Message", () => {
 
       // Mock LLM to return JSON array with markdown code block
       const llmResponse = `Here are the chunks:\n\`\`\`json\n${JSON.stringify(expectedChunks)}\n\`\`\`\nDone!`;
-      mockRuntime.useModel = mock(async () => llmResponse);
+      mockRuntime.useModel = vi.fn(async () => llmResponse);
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -74,7 +74,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const tooLongChunks = ["a".repeat(MAX_MESSAGE_LENGTH + 100)];
 
       // Mock LLM to return chunks that are too long
-      mockRuntime.useModel = mock(async () => JSON.stringify(tooLongChunks));
+      mockRuntime.useModel = vi.fn(async () => JSON.stringify(tooLongChunks));
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -90,7 +90,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const longContent = "a".repeat(3000);
 
       // Mock LLM to return invalid JSON
-      mockRuntime.useModel = mock(async () => "This is not valid JSON");
+      mockRuntime.useModel = vi.fn(async () => "This is not valid JSON");
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -107,7 +107,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const longContent = "a".repeat(3000);
 
       // Mock LLM to return a JSON object (wrong type)
-      mockRuntime.useModel = mock(async () => '{"chunk": "value"}');
+      mockRuntime.useModel = vi.fn(async () => '{"chunk": "value"}');
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -122,7 +122,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const longContent = "a".repeat(3000);
 
       // Mock LLM to return empty array
-      mockRuntime.useModel = mock(async () => "[]");
+      mockRuntime.useModel = vi.fn(async () => "[]");
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -137,7 +137,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const longContent = "a".repeat(3000);
 
       // Mock LLM to return array with non-string values
-      mockRuntime.useModel = mock(async () => "[123, true, null]");
+      mockRuntime.useModel = vi.fn(async () => "[123, true, null]");
 
       const result = await smartSplitMessage(mockRuntime, longContent);
 
@@ -160,7 +160,7 @@ describe("Discord Utils - Smart Split Message", () => {
       const longContent = "a".repeat(3000);
 
       // Mock LLM to throw an error
-      mockRuntime.useModel = mock(async () => {
+      mockRuntime.useModel = vi.fn(async () => {
         throw new Error("LLM error");
       });
 
@@ -256,7 +256,7 @@ function test() {
       const chunk1 = codeContent.slice(0, 1500);
       const chunk2 = codeContent.slice(1500);
       const expectedChunks = [chunk1, chunk2].filter((c) => c.length > 0);
-      mockRuntime.useModel = mock(async () => JSON.stringify(expectedChunks));
+      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
 
       const result = await smartSplitMessage(mockRuntime, codeContent);
 
@@ -283,7 +283,7 @@ function test() {
         listContent.slice(0, 1500),
         listContent.slice(1500),
       ];
-      mockRuntime.useModel = mock(async () => JSON.stringify(expectedChunks));
+      mockRuntime.useModel = vi.fn(async () => JSON.stringify(expectedChunks));
 
       const result = await smartSplitMessage(mockRuntime, listContent);
 

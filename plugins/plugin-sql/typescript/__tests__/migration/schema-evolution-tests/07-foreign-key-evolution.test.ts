@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { sql } from "drizzle-orm";
 import { foreignKey, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";

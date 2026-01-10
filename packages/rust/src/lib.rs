@@ -31,6 +31,7 @@
 
 pub mod character;
 pub mod plugin;
+pub mod prompts;
 pub mod runtime;
 pub mod services;
 pub mod settings;

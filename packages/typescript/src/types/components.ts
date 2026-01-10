@@ -194,7 +194,7 @@ export interface Evaluator {
 /**
  * Value types allowed in provider results
  */
-export type ProviderValue = string | number | boolean | null | ProviderValue[] | { [key: string]: ProviderValue };
+export type ProviderValue = string | number | boolean | null | undefined | ProviderValue[] | { [key: string]: ProviderValue | undefined };
 
 /**
  * Result returned by a provider

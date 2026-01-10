@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { rememberAction } from '../actions/remember';
 import { MemoryService } from '../services/memory-service';
 import type { IAgentRuntime, Memory, UUID } from '@elizaos/core';
@@ -13,14 +13,14 @@ describe('rememberAction', () => {
     mockRuntime = {
       agentId: 'test-agent' as UUID,
       character: { name: 'TestAgent' },
-      getSetting: mock(() => undefined),
-      getService: mock((name: string) => {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn((name: string) => {
         if (name === 'memory') return mockMemoryService;
         return null;
       }),
-      getMemories: mock(async () => []),
-      getConnection: mock(async () => ({
-        query: mock(async () => ({ rows: [] })),
+      getMemories: vi.fn(async () => []),
+      getConnection: vi.fn(async () => ({
+        query: vi.fn(async () => ({ rows: [] })),
       })),
     } as unknown as IAgentRuntime;
 
@@ -115,7 +115,7 @@ describe('rememberAction', () => {
 
   describe('error handling', () => {
     it('should return error when service is not available', async () => {
-      mockRuntime.getService = mock(() => null);
+      mockRuntime.getService = vi.fn(() => null);
 
       const message: Memory = {
         id: 'msg-1' as UUID,

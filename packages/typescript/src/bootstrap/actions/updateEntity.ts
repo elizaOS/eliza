@@ -18,8 +18,10 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  type Metadata,
   ModelType,
   parseKeyValueXml,
+  type ProviderValue,
   type State,
   type UUID,
 } from "@elizaos/core";
@@ -349,7 +351,7 @@ export const updateEntityAction: Action = {
       }
 
       const componentType = parsedResult.source.toLowerCase();
-      const componentData = parsedResult.data;
+      const componentData = parsedResult.data as Metadata;
 
       // Now that we know the component type, get the existing component if it exists
       existingComponent = await runtime.getComponent(
@@ -383,19 +385,19 @@ export const updateEntityAction: Action = {
           text: `Updated ${componentType} information`,
           values: {
             success: true,
-            entityId: entity.id,
-            entityName: entity.names[0],
+            entityId: entity.id ?? null,
+            entityName: entity.names[0] ?? null,
             componentType,
             componentUpdated: true,
             isNewComponent: false,
           },
           data: {
             actionName: "UPDATE_CONTACT",
-            entityId: entity.id,
-            entityName: entity.names[0],
+            entityId: entity.id ?? null,
+            entityName: entity.names[0] ?? null,
             componentType,
-            componentData,
-            existingComponentId: existingComponent.id,
+            componentData: componentData as ProviderValue,
+            existingComponentId: existingComponent.id ?? null,
           },
           success: true,
         };
@@ -423,19 +425,19 @@ export const updateEntityAction: Action = {
           text: `Added new ${componentType} information`,
           values: {
             success: true,
-            entityId: entity.id,
-            entityName: entity.names[0],
+            entityId: entity.id ?? null,
+            entityName: entity.names[0] ?? null,
             componentType,
             componentCreated: true,
             isNewComponent: true,
           },
           data: {
             actionName: "UPDATE_CONTACT",
-            entityId: entity.id,
-            entityName: entity.names[0],
+            entityId: entity.id ?? null,
+            entityName: entity.names[0] ?? null,
             componentType,
-            componentData,
-            newComponentId,
+            componentData: componentData as ProviderValue,
+            newComponentId: newComponentId ?? null,
           },
           success: true,
         };

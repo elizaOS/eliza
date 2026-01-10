@@ -1,18 +1,15 @@
-import {
-  afterEach,
+import { afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  mock,
-  spyOn,
-} from "bun:test";
+  vi } from "vitest";
 
-// Helper type for bun:test mocks with additional methods
-interface BunMockFunction<T extends (...args: never[]) => unknown> {
+// Helper type for vitest mocks with additional methods
+interface VitestMockFunction<T extends (...args: never[]) => unknown> {
   (...args: Parameters<T>): ReturnType<T>;
-  mockResolvedValue: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
-  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => BunMockFunction<T>;
+  mockResolvedValue: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
+  mockResolvedValueOnce: (value: Awaited<ReturnType<T>>) => VitestMockFunction<T>;
   mock: {
     calls: Parameters<T>[][];
     results: ReturnType<T>[];
@@ -45,13 +42,13 @@ const stringToUuid = (id: string): UUID => id as UUID;
 // --- Mocks ---
 
 // Use hoisted for prompts mock
-const mockSplitChunks = mock();
-mock.module("../src/utils", () => ({
+const mockSplitChunks = vi.fn();
+vi.mock("../src/utils", () => ({
   splitChunks: mockSplitChunks,
 }));
 
-// Use hoisted for ./index mock (safeReplacer)
-const _mockSafeReplacer = mock((_key, value) => value); // Simple replacer mock
+// Use hoisted for ./index vi.fn(safeReplacer)
+const _mockSafeReplacer = vi.fn((_key, value) => value); // Simple replacer mock
 // Don't mock the entire index module to avoid interfering with other tests
 
 // Track adapter readiness across init/close to properly test idempotent initialization
@@ -59,78 +56,78 @@ let adapterReady = false;
 
 // Mock IDatabaseAdapter (inline style matching your example)
 const mockDatabaseAdapter: IDatabaseAdapter = {
-  isRoomParticipant: mock().mockResolvedValue(true),
+  isRoomParticipant: vi.fn().mockResolvedValue(true),
   db: {},
-  init: mock().mockImplementation(async () => {
+  init: vi.fn().mockImplementation(async () => {
     adapterReady = true;
   }),
-  initialize: mock().mockResolvedValue(undefined),
-  isReady: mock().mockImplementation(async () => adapterReady),
-  close: mock().mockImplementation(async () => {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  isReady: vi.fn().mockImplementation(async () => adapterReady),
+  close: vi.fn().mockImplementation(async () => {
     adapterReady = false;
   }),
-  getConnection: mock().mockResolvedValue({}),
-  getEntitiesByIds: mock().mockResolvedValue([]),
-  createEntities: mock().mockResolvedValue(true),
-  getMemories: mock().mockResolvedValue([]),
-  getMemoryById: mock().mockResolvedValue(null),
-  getMemoriesByRoomIds: mock().mockResolvedValue([]),
-  getMemoriesByIds: mock().mockResolvedValue([]),
-  getCachedEmbeddings: mock().mockResolvedValue([]),
-  log: mock().mockResolvedValue(undefined),
-  searchMemories: mock().mockResolvedValue([]),
-  createMemory: mock().mockResolvedValue(stringToUuid(uuidv4())),
-  deleteMemory: mock().mockResolvedValue(undefined),
-  deleteManyMemories: mock().mockResolvedValue(undefined),
-  deleteAllMemories: mock().mockResolvedValue(undefined),
-  countMemories: mock().mockResolvedValue(0),
-  getRoomsByIds: mock().mockResolvedValue([]),
-  createRooms: mock().mockResolvedValue([stringToUuid(uuidv4())]),
-  deleteRoom: mock().mockResolvedValue(undefined),
-  getRoomsForParticipant: mock().mockResolvedValue([]),
-  getRoomsForParticipants: mock().mockResolvedValue([]),
-  addParticipantsRoom: mock().mockResolvedValue(true),
-  removeParticipant: mock().mockResolvedValue(true),
-  getParticipantsForEntity: mock().mockResolvedValue([]),
-  getParticipantsForRoom: mock().mockResolvedValue([]),
-  getParticipantUserState: mock().mockResolvedValue(null),
-  setParticipantUserState: mock().mockResolvedValue(undefined),
-  createRelationship: mock().mockResolvedValue(true),
-  getRelationship: mock().mockResolvedValue(null),
-  getRelationships: mock().mockResolvedValue([]),
-  getAgent: mock().mockResolvedValue(null),
-  getAgents: mock().mockResolvedValue([]),
-  createAgent: mock().mockResolvedValue(true),
-  updateAgent: mock().mockResolvedValue(true),
-  deleteAgent: mock().mockResolvedValue(true),
-  ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
-  getEntitiesForRoom: mock().mockResolvedValue([]),
-  updateEntity: mock().mockResolvedValue(undefined),
-  getComponent: mock().mockResolvedValue(null),
-  getComponents: mock().mockResolvedValue([]),
-  createComponent: mock().mockResolvedValue(true),
-  updateComponent: mock().mockResolvedValue(undefined),
-  deleteComponent: mock().mockResolvedValue(undefined),
-  createWorld: mock().mockResolvedValue(stringToUuid(uuidv4())),
-  getWorld: mock().mockResolvedValue(null),
-  getAllWorlds: mock().mockResolvedValue([]),
-  updateWorld: mock().mockResolvedValue(undefined),
-  updateRoom: mock().mockResolvedValue(undefined),
-  getRoomsByWorld: mock().mockResolvedValue([]),
-  updateRelationship: mock().mockResolvedValue(undefined),
-  getCache: mock().mockResolvedValue(undefined),
-  setCache: mock().mockResolvedValue(true),
-  deleteCache: mock().mockResolvedValue(true),
-  createTask: mock().mockResolvedValue(stringToUuid(uuidv4())),
-  getTasks: mock().mockResolvedValue([]),
-  getTask: mock().mockResolvedValue(null),
-  getTasksByName: mock().mockResolvedValue([]),
-  updateTask: mock().mockResolvedValue(undefined),
-  deleteTask: mock().mockResolvedValue(undefined),
-  updateMemory: mock().mockResolvedValue(true),
-  getLogs: mock().mockResolvedValue([]),
-  deleteLog: mock().mockResolvedValue(undefined),
-  removeWorld: mock().mockResolvedValue(undefined),
+  getConnection: vi.fn().mockResolvedValue({}),
+  getEntitiesByIds: vi.fn().mockResolvedValue([]),
+  createEntities: vi.fn().mockResolvedValue(true),
+  getMemories: vi.fn().mockResolvedValue([]),
+  getMemoryById: vi.fn().mockResolvedValue(null),
+  getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
+  getMemoriesByIds: vi.fn().mockResolvedValue([]),
+  getCachedEmbeddings: vi.fn().mockResolvedValue([]),
+  log: vi.fn().mockResolvedValue(undefined),
+  searchMemories: vi.fn().mockResolvedValue([]),
+  createMemory: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  deleteMemory: vi.fn().mockResolvedValue(undefined),
+  deleteManyMemories: vi.fn().mockResolvedValue(undefined),
+  deleteAllMemories: vi.fn().mockResolvedValue(undefined),
+  countMemories: vi.fn().mockResolvedValue(0),
+  getRoomsByIds: vi.fn().mockResolvedValue([]),
+  createRooms: vi.fn().mockResolvedValue([stringToUuid(uuidv4())]),
+  deleteRoom: vi.fn().mockResolvedValue(undefined),
+  getRoomsForParticipant: vi.fn().mockResolvedValue([]),
+  getRoomsForParticipants: vi.fn().mockResolvedValue([]),
+  addParticipantsRoom: vi.fn().mockResolvedValue(true),
+  removeParticipant: vi.fn().mockResolvedValue(true),
+  getParticipantsForEntity: vi.fn().mockResolvedValue([]),
+  getParticipantsForRoom: vi.fn().mockResolvedValue([]),
+  getParticipantUserState: vi.fn().mockResolvedValue(null),
+  setParticipantUserState: vi.fn().mockResolvedValue(undefined),
+  createRelationship: vi.fn().mockResolvedValue(true),
+  getRelationship: vi.fn().mockResolvedValue(null),
+  getRelationships: vi.fn().mockResolvedValue([]),
+  getAgent: vi.fn().mockResolvedValue(null),
+  getAgents: vi.fn().mockResolvedValue([]),
+  createAgent: vi.fn().mockResolvedValue(true),
+  updateAgent: vi.fn().mockResolvedValue(true),
+  deleteAgent: vi.fn().mockResolvedValue(true),
+  ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
+  getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+  updateEntity: vi.fn().mockResolvedValue(undefined),
+  getComponent: vi.fn().mockResolvedValue(null),
+  getComponents: vi.fn().mockResolvedValue([]),
+  createComponent: vi.fn().mockResolvedValue(true),
+  updateComponent: vi.fn().mockResolvedValue(undefined),
+  deleteComponent: vi.fn().mockResolvedValue(undefined),
+  createWorld: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  getWorld: vi.fn().mockResolvedValue(null),
+  getAllWorlds: vi.fn().mockResolvedValue([]),
+  updateWorld: vi.fn().mockResolvedValue(undefined),
+  updateRoom: vi.fn().mockResolvedValue(undefined),
+  getRoomsByWorld: vi.fn().mockResolvedValue([]),
+  updateRelationship: vi.fn().mockResolvedValue(undefined),
+  getCache: vi.fn().mockResolvedValue(undefined),
+  setCache: vi.fn().mockResolvedValue(true),
+  deleteCache: vi.fn().mockResolvedValue(true),
+  createTask: vi.fn().mockResolvedValue(stringToUuid(uuidv4())),
+  getTasks: vi.fn().mockResolvedValue([]),
+  getTask: vi.fn().mockResolvedValue(null),
+  getTasksByName: vi.fn().mockResolvedValue([]),
+  updateTask: vi.fn().mockResolvedValue(undefined),
+  deleteTask: vi.fn().mockResolvedValue(undefined),
+  updateMemory: vi.fn().mockResolvedValue(true),
+  getLogs: vi.fn().mockResolvedValue([]),
+  deleteLog: vi.fn().mockResolvedValue(undefined),
+  removeWorld: vi.fn().mockResolvedValue(undefined),
   deleteRoomsByWorldId: (_worldId: UUID): Promise<void> => {
     throw new Error("Function not implemented.");
   },
@@ -149,8 +146,8 @@ const createMockAction = (name: string): Action => ({
   description: `Test action ${name}`,
   similes: [`like ${name}`],
   examples: [],
-  handler: mock().mockResolvedValue(undefined),
-  validate: mock().mockImplementation(async () => true),
+  handler: vi.fn().mockResolvedValue(undefined),
+  validate: vi.fn().mockImplementation(async () => true),
 });
 
 // Mock Memory creator
@@ -203,7 +200,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
   let agentId: UUID;
 
   beforeEach(() => {
-    mock.restore(); // Bun:test equivalent of clearAllMocks
+    vi.clearAllMocks();
 
     // Reset all mock call counts manually but keep return values
     Object.values(mockDatabaseAdapter).forEach((mockFn) => {
@@ -251,7 +248,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should call plugin init function", async () => {
-      const initMock = mock().mockResolvedValue(undefined);
+      const initMock = vi.fn().mockResolvedValue(undefined);
       const mockPlugin: Plugin = {
         name: "InitPlugin",
         description: "Plugin with init",
@@ -263,9 +260,9 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should register plugin features (actions, providers, models) when initialized", async () => {
-      const actionHandler = mock();
-      const providerGet = mock().mockResolvedValue({ text: "provider_text" });
-      const modelHandler = mock().mockResolvedValue("model_result");
+      const actionHandler = vi.fn();
+      const providerGet = vi.fn().mockResolvedValue({ text: "provider_text" });
+      const modelHandler = vi.fn().mockResolvedValue("model_result");
 
       const mockPlugin: Plugin = {
         name: "FeaturesPlugin",
@@ -291,7 +288,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       // Mock adapter calls needed for initialize
-      const ensureAgentExistsSpy = spyOn(
+      const ensureAgentExistsSpy = vi.spyOn(
         AgentRuntime.prototype,
         "ensureAgentExists",
       ).mockResolvedValue({
@@ -303,7 +300,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
@@ -315,7 +312,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
@@ -327,12 +324,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getRoomsByIds as BunMockFunction<
+        mockDatabaseAdapter.getRoomsByIds as VitestMockFunction<
           IDatabaseAdapter["getRoomsByIds"]
         >
       ).mockResolvedValue([]);
       (
-        mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<
+        mockDatabaseAdapter.getParticipantsForRoom as VitestMockFunction<
           IDatabaseAdapter["getParticipantsForRoom"]
         >
       ).mockResolvedValue([]);
@@ -354,7 +351,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     >;
     beforeEach(() => {
       // Mock adapter calls needed for a successful initialize
-      ensureAgentExistsSpy = spyOn(
+      ensureAgentExistsSpy = vi.spyOn(
         AgentRuntime.prototype,
         "ensureAgentExists",
       ).mockResolvedValue({
@@ -365,7 +362,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         enabled: true,
       });
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
@@ -377,7 +374,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getEntitiesByIds as BunMockFunction<
+        mockDatabaseAdapter.getEntitiesByIds as VitestMockFunction<
           IDatabaseAdapter["getEntitiesByIds"]
         >
       ).mockResolvedValue([
@@ -389,12 +386,12 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         },
       ]);
       (
-        mockDatabaseAdapter.getRoomsByIds as BunMockFunction<
+        mockDatabaseAdapter.getRoomsByIds as VitestMockFunction<
           IDatabaseAdapter["getRoomsByIds"]
         >
       ).mockResolvedValue([]);
       (
-        mockDatabaseAdapter.getParticipantsForRoom as BunMockFunction<
+        mockDatabaseAdapter.getParticipantsForRoom as VitestMockFunction<
           IDatabaseAdapter["getParticipantsForRoom"]
         >
       ).mockResolvedValue([]);
@@ -492,7 +489,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = spyOn(
+      const runMigrationsSpy = vi.spyOn(
         runtimeWithMigrations,
         "runPluginMigrations" as keyof AgentRuntime,
       );
@@ -512,7 +509,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       // Spy on runPluginMigrations
-      const runMigrationsSpy = spyOn(
+      const runMigrationsSpy = vi.spyOn(
         runtimeDefault,
         "runPluginMigrations" as keyof AgentRuntime,
       );
@@ -529,11 +526,11 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
   describe("State Composition", () => {
     it("should call provider get methods", async () => {
-      const provider1Get = mock().mockResolvedValue({
+      const provider1Get = vi.fn().mockResolvedValue({
         text: "p1_text",
         values: { p1_val: 1 },
       });
-      const provider2Get = mock().mockResolvedValue({
+      const provider2Get = vi.fn().mockResolvedValue({
         text: "p2_text",
         values: { p2_val: 2 },
       });
@@ -580,8 +577,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should filter providers", async () => {
-      const provider1Get = mock().mockResolvedValue({ text: "p1_text" });
-      const provider2Get = mock().mockResolvedValue({ text: "p2_text" });
+      const provider1Get = vi.fn().mockResolvedValue({ text: "p1_text" });
+      const provider2Get = vi.fn().mockResolvedValue({ text: "p2_text" });
       const provider1: Provider = { name: "P1", get: provider1Get };
       const provider2: Provider = { name: "P2", get: provider2Get };
 
@@ -607,7 +604,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
   describe("Model Usage", () => {
     it("should call registered model handler", async () => {
-      const modelHandler = mock().mockResolvedValue("success");
+      const modelHandler = vi.fn().mockResolvedValue("success");
       const modelType = ModelType.TEXT_LARGE;
 
       runtime.registerModel(modelType, modelHandler, "test-provider");
@@ -644,7 +641,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     let responseMemory: Memory;
 
     beforeEach(() => {
-      mockActionHandler = mock().mockResolvedValue(undefined);
+      mockActionHandler = vi.fn().mockResolvedValue(undefined);
       testAction = createMockAction("TestAction");
       testAction.handler = mockActionHandler; // Assign mock handler
 
@@ -667,7 +664,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       responseMemory.content.actions = ["TestAction"]; // Specify action to run
 
       // Mock composeState as it's called within processActions
-      spyOn(runtime, "composeState").mockResolvedValue(
+      vi.spyOn(runtime, "composeState").mockResolvedValue(
         createMockState("composed state text"),
       );
     });
@@ -715,8 +712,8 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
     it("should prioritize exact action name matches over fuzzy matches", async () => {
       // Create two actions where one name is a substring of another
-      const replyHandler = mock().mockResolvedValue(undefined);
-      const replyWithImageHandler = mock().mockResolvedValue(undefined);
+      const replyHandler = vi.fn().mockResolvedValue(undefined);
+      const replyWithImageHandler = vi.fn().mockResolvedValue(undefined);
 
       const replyAction: Action = {
         name: "REPLY",
@@ -724,7 +721,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         similes: [],
         examples: [],
         handler: replyHandler,
-        validate: mock().mockImplementation(async () => true),
+        validate: vi.fn().mockImplementation(async () => true),
       };
 
       const replyWithImageAction: Action = {
@@ -733,7 +730,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         similes: [],
         examples: [],
         handler: replyWithImageHandler,
-        validate: mock().mockImplementation(async () => true),
+        validate: vi.fn().mockImplementation(async () => true),
       };
 
       // Register both actions
@@ -769,13 +766,13 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         description: "Test action",
         similes: [],
         examples: [],
-        handler: mock().mockResolvedValue({
+        handler: vi.fn().mockResolvedValue({
           success: true,
           text: "Action completed",
           data: { result: "test data" },
           values: { testValue: 123 },
         }),
-        validate: mock().mockResolvedValue(true),
+        validate: vi.fn().mockResolvedValue(true),
       };
 
       runtime.registerAction(testAction);
@@ -803,7 +800,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         },
       ];
 
-      spyOn(runtime, "composeState").mockResolvedValue(
+      vi.spyOn(runtime, "composeState").mockResolvedValue(
         createMockState("test state"),
       );
 
@@ -872,7 +869,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
   // --- Event Emitter Tests ---
   describe("Event Emitter (on/emit/off)", () => {
     it("should register and emit events", () => {
-      const handler = mock();
+      const handler = vi.fn();
       const eventName = "testEvent";
       const eventData = { info: "data" };
 
@@ -884,7 +881,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
     });
 
     it("should remove event handler with off", () => {
-      const handler = mock();
+      const handler = vi.fn();
       const eventName = "testEvent";
 
       runtime.on(eventName, handler);
@@ -925,7 +922,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         );
 
         // Mock provider needed by composeState
-        const providerGet = mock().mockResolvedValue({ text: "provider text" });
+        const providerGet = vi.fn().mockResolvedValue({ text: "provider text" });
         runtime.registerProvider({ name: "TestProvider", get: providerGet });
 
         const state = await runtime.composeState(message);
@@ -1286,7 +1283,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock().mockImplementation(
+        const mockHandler = vi.fn().mockImplementation(
           async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
@@ -1324,7 +1321,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock().mockImplementation(
+        const mockHandler = vi.fn().mockImplementation(
           async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
@@ -1368,7 +1365,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         });
 
         let capturedParams: GenerateTextParams | null = null;
-        const mockHandler = mock().mockImplementation(
+        const mockHandler = vi.fn().mockImplementation(
           async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
             capturedParams = params;
             return "response";
@@ -1419,7 +1416,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
 
     describe("useModel with streaming", () => {
       it("should return string when stream is false", async () => {
-        const mockHandler = mock().mockResolvedValue("Non-streaming response");
+        const mockHandler = vi.fn().mockResolvedValue("Non-streaming response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
           mockHandler,
@@ -1436,7 +1433,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
       });
 
       it("should return string without streaming context", async () => {
-        const mockHandler = mock().mockResolvedValue("Direct response");
+        const mockHandler = vi.fn().mockResolvedValue("Direct response");
         runtime.registerModel(
           ModelType.TEXT_LARGE,
           mockHandler,
@@ -1476,7 +1473,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
           finishReason: Promise.resolve("stop"),
         };
 
-        const mockHandler = mock().mockResolvedValue(mockStreamResult);
+        const mockHandler = vi.fn().mockResolvedValue(mockStreamResult);
         runtime.registerModel(
           ModelType.TEXT_LARGE,
           mockHandler,
@@ -1527,7 +1524,7 @@ describe("AgentRuntime (Non-Instrumented Baseline)", () => {
         // Create mock handlers that return different streams for each call
         // Note: The runtime uses XmlTextStreamExtractor which extracts content from <text> tags
         let callCount = 0;
-        const mockHandler = mock().mockImplementation(() => {
+        const mockHandler = vi.fn().mockImplementation(() => {
           callCount++;
           const id = callCount;
           // Stream XML with <text> tags so XmlTextStreamExtractor can extract the content

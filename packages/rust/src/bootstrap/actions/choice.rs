@@ -4,30 +4,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::CHOOSE_OPTION_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const CHOOSE_OPTION_TEMPLATE: &str = r#"# Task: Choose an option from the available choices.
-
-{{providers}}
-
-# Available Options:
-{{options}}
-
-# Instructions: 
-Analyze the options and select the most appropriate one based on the current context.
-Provide your reasoning and the selected option ID.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the selection</thought>
-    <selected_id>The ID of the selected option</selected_id>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
 
 /// Action for choosing from available options.
 pub struct ChooseOptionAction;

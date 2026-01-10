@@ -3,18 +3,26 @@ import { formatEther, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TransferAction } from "../actions/transfer";
-import { WalletProvider } from "../providers/wallet";
-import { getTestChains } from "./custom-chain";
+import { TransferAction } from "../../actions/transfer";
+import { WalletProvider } from "../../providers/wallet";
+import {
+  anvil,
+  ANVIL_ADDRESS,
+  ANVIL_ADDRESS_2,
+  ANVIL_PRIVATE_KEY,
+  getAnvilChain,
+  getTestChains,
+} from "../custom-chain";
 
 // Test environment - use a funded wallet private key for real testing
 const TEST_PRIVATE_KEY = process.env.TEST_PRIVATE_KEY || generatePrivateKey();
-const FUNDED_TEST_WALLET = process.env.FUNDED_TEST_PRIVATE_KEY; // Optional funded wallet for integration tests
 
 // Mock the ICacheManager
 const mockCacheManager = {
   get: vi.fn().mockResolvedValue(null),
   set: vi.fn(),
+  getCache: vi.fn().mockResolvedValue(null),
+  setCache: vi.fn().mockResolvedValue(undefined),
 };
 
 describe("Transfer Action", () => {
@@ -59,7 +67,7 @@ describe("Transfer Action", () => {
 
     it("should validate transfer parameters", async () => {
       const transferParams = {
-        fromChain: "sepolia" as any,
+        fromChain: "sepolia" as const,
         toAddress: receiver.address,
         amount: "0.001", // Small amount for testing
       };
@@ -74,7 +82,7 @@ describe("Transfer Action", () => {
       // Test with unrealistic large amount that will definitely fail
       await expect(
         ta.transfer({
-          fromChain: "sepolia" as any,
+          fromChain: "sepolia" as const,
           toAddress: receiver.address,
           amount: "1000000", // 1M ETH - definitely insufficient
         }),
@@ -84,8 +92,8 @@ describe("Transfer Action", () => {
     it("should validate recipient address format", async () => {
       await expect(
         ta.transfer({
-          fromChain: "sepolia" as any,
-          toAddress: "invalid-address" as any,
+          fromChain: "sepolia" as const,
+          toAddress: "invalid-address" as `0x${string}`,
           amount: "0.001",
         }),
       ).rejects.toThrow();
@@ -94,113 +102,11 @@ describe("Transfer Action", () => {
     it("should handle zero amount transfers", async () => {
       await expect(
         ta.transfer({
-          fromChain: "sepolia" as any,
+          fromChain: "sepolia" as const,
           toAddress: receiver.address,
           amount: "0",
         }),
       ).rejects.toThrow();
-    });
-
-    describe("Network-specific transfers", () => {
-      it("should work with Sepolia testnet", async () => {
-        const balance = await wp.getWalletBalanceForChain("sepolia");
-        console.log(`Sepolia balance: ${balance} ETH`);
-
-        if (balance && parseFloat(balance) > 0.001) {
-          // Only test if we have sufficient funds
-          const result = await ta.transfer({
-            fromChain: "sepolia" as any,
-            toAddress: receiver.address,
-            amount: "0.0001", // Very small amount
-          });
-
-          expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
-          expect(result.to).toBe(receiver.address);
-          expect(result.value).toBe(parseEther("0.0001"));
-        } else {
-          console.warn("Skipping funded transfer test - insufficient balance");
-          // Test the failure case instead
-          await expect(
-            ta.transfer({
-              fromChain: "sepolia" as any,
-              toAddress: receiver.address,
-              amount: "0.001",
-            }),
-          ).rejects.toThrow("Transfer failed");
-        }
-      });
-
-      it("should work with Base Sepolia testnet", async () => {
-        const balance = await wp.getWalletBalanceForChain("baseSepolia");
-        console.log(`Base Sepolia balance: ${balance} ETH`);
-
-        if (balance && parseFloat(balance) > 0.001) {
-          const result = await ta.transfer({
-            fromChain: "baseSepolia" as any,
-            toAddress: receiver.address,
-            amount: "0.0001",
-          });
-
-          expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
-          expect(result.to).toBe(receiver.address);
-        } else {
-          console.warn(
-            "Skipping Base Sepolia transfer test - insufficient balance",
-          );
-          await expect(
-            ta.transfer({
-              fromChain: "baseSepolia" as any,
-              toAddress: receiver.address,
-              amount: "0.001",
-            }),
-          ).rejects.toThrow("Transfer failed");
-        }
-      });
-    });
-
-    describe("Integration tests with funded wallet", () => {
-      it("should perform actual transfer if funded wallet is available", async () => {
-        if (!FUNDED_TEST_WALLET) {
-          console.log("Skipping integration test - no funded wallet provided");
-          return; // Just return instead of this.skip()
-        }
-
-        // Create wallet provider with funded wallet
-        const fundedWp = new WalletProvider(
-          FUNDED_TEST_WALLET as `0x${string}`,
-          mockCacheManager as any,
-          { sepolia: testChains.sepolia },
-        );
-        const fundedTa = new TransferAction(fundedWp);
-
-        const balance = await fundedWp.getWalletBalanceForChain("sepolia");
-        console.log(`Funded wallet balance: ${balance} ETH`);
-
-        if (balance && parseFloat(balance) > 0.01) {
-          const result = await fundedTa.transfer({
-            fromChain: "sepolia" as any,
-            toAddress: receiver.address,
-            amount: "0.001", // 0.001 ETH
-          });
-
-          expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
-          expect(result.from).toBe(fundedWp.getAddress());
-          expect(result.to).toBe(receiver.address);
-          expect(result.value).toBe(parseEther("0.001"));
-
-          // Wait a bit and check if transaction was successful
-          const publicClient = fundedWp.getPublicClient("sepolia");
-          const receipt = await publicClient.waitForTransactionReceipt({
-            hash: result.hash,
-            timeout: 30000, // 30 second timeout
-          });
-
-          expect(receipt.status).toBe("success");
-          console.log(`Transfer successful: ${result.hash}`);
-        } else {
-          // Skip if insufficient funds
-        }
-      });
     });
 
     describe("Gas and fee estimation", () => {
@@ -246,19 +152,107 @@ describe("Transfer Action", () => {
       });
     });
   });
-});
 
-const _prepareChains = () => {
-  const customChains: Record<string, Chain> = {};
-  const chainNames = ["sepolia", "baseSepolia"];
+  describe("Local Anvil Transfer Tests (Funded)", () => {
+    let anvilWp: WalletProvider;
+    let anvilTa: TransferAction;
 
-  chainNames.forEach((chain) => {
-    try {
-      customChains[chain] = WalletProvider.genChainFromName(chain as any);
-    } catch (error) {
-      console.warn(`Failed to add chain ${chain}:`, error);
-    }
+    beforeEach(() => {
+      anvilWp = new WalletProvider(
+        ANVIL_PRIVATE_KEY,
+        mockCacheManager as any,
+        getAnvilChain(),
+      );
+      anvilTa = new TransferAction(anvilWp);
+    });
+
+    it("should have funded balance on Anvil", async () => {
+      const balance = await anvilWp.getWalletBalanceForChain("anvil" as any);
+      expect(balance).not.toBeNull();
+      expect(parseFloat(balance!)).toBeGreaterThan(1000); // Anvil starts with 10000 ETH
+      console.log(`Anvil balance: ${balance} ETH`);
+    });
+
+    it("should transfer ETH on local Anvil", async () => {
+      const receiver = privateKeyToAccount(generatePrivateKey());
+
+      const result = await anvilTa.transfer({
+        fromChain: "anvil" as any,
+        toAddress: receiver.address,
+        amount: "1.0", // 1 ETH
+      });
+
+      expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+      expect(result.to.toLowerCase()).toBe(receiver.address.toLowerCase());
+      expect(result.value).toBe(parseEther("1.0"));
+
+      console.log(`Transfer successful: ${result.hash}`);
+    });
+
+    it("should transfer to known Anvil address", async () => {
+      const result = await anvilTa.transfer({
+        fromChain: "anvil" as any,
+        toAddress: ANVIL_ADDRESS_2,
+        amount: "0.5",
+      });
+
+      expect(result.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+      expect(result.to.toLowerCase()).toBe(ANVIL_ADDRESS_2.toLowerCase());
+
+      // Wait for confirmation
+      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash: result.hash,
+        timeout: 5000,
+      });
+
+      expect(receipt.status).toBe("success");
+      console.log(`Transfer confirmed in block ${receipt.blockNumber}`);
+    });
+
+    it("should estimate gas correctly on Anvil", async () => {
+      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const receiver = privateKeyToAccount(generatePrivateKey());
+
+      const gasEstimate = await publicClient.estimateGas({
+        account: ANVIL_ADDRESS,
+        to: receiver.address,
+        value: parseEther("1.0"),
+      });
+
+      expect(typeof gasEstimate).toBe("bigint");
+      expect(gasEstimate).toBe(21000n); // Standard ETH transfer
+      console.log(`Gas estimate: ${gasEstimate}`);
+    });
+
+    it("should get gas price from Anvil", async () => {
+      const publicClient = anvilWp.getPublicClient("anvil" as any);
+      const gasPrice = await publicClient.getGasPrice();
+
+      expect(typeof gasPrice).toBe("bigint");
+      expect(gasPrice).toBeGreaterThan(0n);
+      console.log(`Anvil gas price: ${formatEther(gasPrice)} ETH`);
+    });
+
+    it("should handle multiple sequential transfers", async () => {
+      const receiver1 = privateKeyToAccount(generatePrivateKey());
+      const receiver2 = privateKeyToAccount(generatePrivateKey());
+
+      const result1 = await anvilTa.transfer({
+        fromChain: "anvil" as any,
+        toAddress: receiver1.address,
+        amount: "0.1",
+      });
+
+      const result2 = await anvilTa.transfer({
+        fromChain: "anvil" as any,
+        toAddress: receiver2.address,
+        amount: "0.2",
+      });
+
+      expect(result1.hash).not.toBe(result2.hash);
+      expect(result1.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+      expect(result2.hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+    });
   });
-
-  return customChains;
-};
+});

@@ -1,17 +1,17 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
 
 // Create mock pool instance
 const mockPoolInstance = {
-  connect: mock(),
-  end: mock(),
-  query: mock(),
-  on: mock(), // Required for pool error handler
+  connect: vi.fn(),
+  end: vi.fn(),
+  query: vi.fn(),
+  on: vi.fn(), // Required for pool error handler
 };
 
 // Mock the 'pg' module
-mock.module("pg", () => ({
-  Pool: mock(() => mockPoolInstance),
+vi.mock("pg", () => ({
+  Pool: vi.fn(() => mockPoolInstance),
 }));
 
 // Import after mocking
@@ -64,8 +64,8 @@ describe("PostgresConnectionManager", () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: mock().mockResolvedValue({ rows: [] }),
-        release: mock(),
+        query: vi.fn().mockResolvedValue({ rows: [] }),
+        release: vi.fn(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);
@@ -93,8 +93,8 @@ describe("PostgresConnectionManager", () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: mock().mockResolvedValue({ rows: [] }),
-        release: mock(),
+        query: vi.fn().mockResolvedValue({ rows: [] }),
+        release: vi.fn(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);
@@ -123,8 +123,8 @@ describe("PostgresConnectionManager", () => {
       const manager = new PostgresConnectionManager(connectionUrl);
 
       const mockClient = {
-        query: mock().mockRejectedValue(new Error("Query failed")),
-        release: mock(),
+        query: vi.fn().mockRejectedValue(new Error("Query failed")),
+        release: vi.fn(),
       };
 
       mockPoolInstance.connect.mockResolvedValue(mockClient);
@@ -171,13 +171,13 @@ describe("PostgresConnectionManager", () => {
 
       // Mock the transaction method
       const mockTx = {
-        execute: mock().mockResolvedValue({ rows: [] }),
-        select: mock().mockReturnThis(),
-        from: mock().mockReturnThis(),
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
+        select: vi.fn().mockReturnThis(),
+        from: vi.fn().mockReturnThis(),
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = mock(
+      db.transaction = vi.fn(
         async (callback: (tx: typeof mockTx) => Promise<string>) => {
           return callback(mockTx);
         },
@@ -204,11 +204,11 @@ describe("PostgresConnectionManager", () => {
       const db = manager.getDatabase();
 
       const mockTx = {
-        execute: mock().mockResolvedValue({ rows: [] }),
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = mock(
+      db.transaction = vi.fn(
         async (callback: (tx: typeof mockTx) => Promise<string>) => {
           return callback(mockTx);
         },
@@ -233,14 +233,14 @@ describe("PostgresConnectionManager", () => {
 
       let executedQuery: any = null;
       const mockTx = {
-        execute: mock((query: any) => {
+        execute: vi.fn((query: any) => {
           executedQuery = query;
           return Promise.resolve({ rows: [] });
         }),
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = mock(
+      db.transaction = vi.fn(
         async (callback: (tx: typeof mockTx) => Promise<string>) => {
           return callback(mockTx);
         },
@@ -270,11 +270,11 @@ describe("PostgresConnectionManager", () => {
       const db = manager.getDatabase();
 
       const mockTx = {
-        execute: mock().mockResolvedValue({ rows: [] }),
+        execute: vi.fn().mockResolvedValue({ rows: [] }),
       };
 
       const originalTransaction = db.transaction;
-      db.transaction = mock(
+      db.transaction = vi.fn(
         async (callback: (tx: typeof mockTx) => Promise<string>) => {
           return callback(mockTx);
         },

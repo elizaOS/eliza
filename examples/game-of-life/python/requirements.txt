@@ -1,0 +1,6 @@
+# elizaOS Python packages (optional - game runs standalone)
+# elizaos>=1.0.0
+
+# No external dependencies required - pure Python implementation
+# The game uses minimax algorithm and does not require any LLM
+

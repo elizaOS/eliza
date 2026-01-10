@@ -1,36 +1,45 @@
-# dependencies (bun install)
-node_modules
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+target/
 
-# output
-out
-dist
-*.tgz
+# Build outputs
+typescript/dist/
+python/dist/
+python/*.egg-info/
+rust/target/
 
-# code coverage
-coverage
-*.lcov
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
+# OS
 .DS_Store
+Thumbs.db
 
-.turbo
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+
+# Turbo
+.turbo/
+
+# Lock files (keep for reproducibility)
+# bun.lock
+# Cargo.lock

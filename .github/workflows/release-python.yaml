@@ -2,7 +2,7 @@ name: Python Release
 
 # Publish Python packages to PyPI on release
 # Packages:
-#   - elizaos (packages/core/python)
+#   - elizaos (packages/python)
 #   - elizaos-plugin-sql (packages/plugin-sql/python)
 
 on:
@@ -38,7 +38,7 @@ jobs:
       matrix:
         include:
           - name: elizaos
-            path: packages/core/python
+            path: packages/python
             pypi_name: elizaos
           - name: elizaos-plugin-sql
             path: packages/plugin-sql/python

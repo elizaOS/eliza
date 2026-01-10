@@ -5,7 +5,7 @@
  * Run with: ANTHROPIC_API_KEY=your-key bun test typescript/__tests__/integration/
  */
 
-import { describe, expect, it, beforeAll } from "bun:test";
+import {  describe, expect, it, beforeAll  } from "vitest";
 
 // Check if we have an API key before running tests
 const API_KEY = process.env["ANTHROPIC_API_KEY"];

@@ -1,205 +1,171 @@
-# 🤖 ElizaOS Automated n8n Creation Plugin
+# 🤖 elizaOS N8n Plugin
 
-> **Transform your ElizaOS agents into autonomous plugin developers!** This revolutionary plugin empowers AI agents to create, build, test, and deploy new ElizaOS plugins using natural language or structured specifications.
+> **AI-powered plugin creation for ElizaOS** - Transform natural language into production-ready plugins using Claude models.
 
-[![npm version](https://img.shields.io/npm/v/@elizaos/plugin-auton8n.svg)](https://www.npmjs.com/package/@elizaos/plugin-auton8n)
+[![npm version](https://img.shields.io/npm/v/@elizaos/plugin-n8n.svg)](https://www.npmjs.com/package/@elizaos/plugin-n8n)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🌟 What is AutoN8n?
+## 🌟 Overview
 
-AutoN8n (Auomated n8n) is a groundbreaking ElizaOS plugin that enables **AI-driven plugin development**. Your agents can now:
+The N8n plugin enables AI agents to autonomously create, build, test, and deploy ElizaOS plugins. Available in **TypeScript**, **Python**, and **Rust** with full feature parity.
 
-- 🧠 **Generate complete plugins** from simple descriptions
-- 🔄 **Iteratively refine code** through AI-powered development cycles
-- ✅ **Automatically test and validate** generated plugins
-- 🚀 **Deploy production-ready code** without human intervention
-- 🔧 **Integrate with n8n workflows** for advanced automation scenarios
+### Key Features
 
-## 🎯 Key Features
+- 🧠 **AI-Powered Generation** - Claude models generate complete plugin implementations
+- 🔄 **Iterative Refinement** - Automatic error fixing through build/lint/test cycles
+- ✅ **Quality Assurance** - Built-in testing and validation
+- 🚀 **Production Ready** - Generated code follows ElizaOS best practices
+- 🌐 **Multi-Language** - Use from TypeScript, Python, or Rust
 
-### AI-Powered Development
-- **Claude AI Integration**: Leverages Anthropic's Claude for intelligent code generation
-- **Multi-Model Support**: Choose between Claude Sonnet 3.5 or Opus 3 models
-- **Context-Aware Generation**: Creates code that follows ElizaOS best practices
+## 📦 Installation
 
-### Autonomous Development Lifecycle
-- **5-Stage Pipeline**: Generation → Build → Lint → Test → Validation
-- **Self-Healing**: Automatically fixes errors through iterative refinement
-- **Quality Assurance**: Built-in code quality checks and AI validation
+### TypeScript/Node.js
 
-### Developer Experience
-- **Natural Language Interface**: Create plugins by simply describing what you need
-- **Real-Time Progress Tracking**: Monitor plugin creation status and logs
-- **Job Management**: Start, track, and cancel plugin creation jobs
+```bash
+npm install @elizaos/plugin-n8n
+# or
+pnpm add @elizaos/plugin-n8n
+# or  
+bun add @elizaos/plugin-n8n
+```
+
+### Python
+
+```bash
+pip install elizaos-plugin-n8n
+```
+
+### Rust
+
+```toml
+[dependencies]
+elizaos-plugin-n8n = "1.0"
+```
+
+## ⚙️ Configuration
+
+Set the following environment variables:
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | ✅ | Anthropic API key | - |
+| `PLUGIN_DATA_DIR` | ❌ | Plugin workspace directory | `./data` |
+| `CLAUDE_MODEL` | ❌ | Claude model to use | `claude-3-opus-20240229` |
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Node.js 18+
-- ElizaOS framework
-- Anthropic API key
-
-### Installation
-
-```bash
-# Install the plugin
-npm install @elizaos/plugin-auton8n
-
-# Or with yarn
-yarn add @elizaos/plugin-auton8n
-
-# Or with pnpm
-pnpm add @elizaos/plugin-auton8n
-```
-
-### Configuration
-
-1. Create a `.env` file:
-
-```env
-# Required
-ANTHROPIC_API_KEY=sk-ant-api03-...
-
-# Optional
-PLUGIN_DATA_DIR=./plugin-workspace
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
-```
-
-2. Register the plugin in your agent:
+### TypeScript
 
 ```typescript
-import { pluginDynamic } from '@elizaos/plugin-auton8n';
+import { n8nPlugin } from '@elizaos/plugin-n8n';
 
+// Register with your agent
 const agent = new Agent({
   name: "DevBot",
-  plugins: [pluginDynamic],
-  // ... other configuration
+  plugins: [n8nPlugin],
 });
+
+// The agent can now create plugins via conversation:
+// "Create a weather plugin that fetches current conditions"
 ```
 
-## 💬 Usage Examples
+### Python
 
-### Example 1: Create a Weather Plugin
+```python
+import asyncio
+from elizaos_plugin_n8n import N8nConfig, PluginCreationClient, PluginSpecification
 
+async def main():
+    config = N8nConfig.from_env()
+    
+    async with PluginCreationClient(config) as client:
+        spec = PluginSpecification(
+            name="@elizaos/plugin-weather",
+            description="Weather information plugin",
+            actions=[{"name": "getWeather", "description": "Get weather"}],
+        )
+        
+        job_id = await client.create_plugin(spec)
+        print(f"Job started: {job_id}")
+
+asyncio.run(main())
 ```
-User: Create a weather plugin that can fetch current weather and forecasts for any city
 
-Agent: I'll create a comprehensive weather plugin for you. This will include actions for fetching current weather and forecasts, with proper error handling and caching.
+### Rust
 
-🚀 Plugin creation started!
-📋 Job ID: 7d4b3c2a-8e9f-4a1b-9c5d-1234567890ab
-⏳ Status: Generating plugin code...
+```rust
+use elizaos_plugin_n8n::{N8nConfig, PluginCreationClient, PluginSpecification};
 
-The plugin will include:
-- getCurrentWeather action
-- getWeatherForecast action  
-- weatherProvider for context
-- Caching service for API efficiency
-- OpenWeatherMap API integration
-
-Use "check plugin status" to monitor progress.
-```
-
-### Example 2: Create from Specification
-
-```typescript
-User: Create a plugin with this spec:
-{
-  "name": "@elizaos/plugin-github",
-  "description": "GitHub integration for repo management",
-  "actions": [
-    {
-      "name": "createIssue",
-      "description": "Create a new GitHub issue",
-      "parameters": {
-        "repo": "string",
-        "title": "string", 
-        "body": "string",
-        "labels": "string[]"
-      }
-    },
-    {
-      "name": "mergePR",
-      "description": "Merge a pull request",
-      "parameters": {
-        "repo": "string",
-        "prNumber": "number"
-      }
-    }
-  ]
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = N8nConfig::from_env()?;
+    let client = PluginCreationClient::new(config)?;
+    
+    let spec = PluginSpecification::builder()
+        .name("@elizaos/plugin-weather")
+        .description("Weather information plugin")
+        .build()?;
+    
+    let job_id = client.create_plugin(spec, None).await?;
+    println!("Job started: {}", job_id);
+    
+    Ok(())
 }
-
-Agent: Creating your GitHub integration plugin now...
 ```
 
-### Example 3: Natural Language to Plugin
+## 💬 Conversational Usage
+
+Once the plugin is registered with an agent, users can create plugins through natural conversation:
 
 ```
-User: I need a plugin that helps track cryptocurrency prices and send alerts when prices change by more than 5%
+User: Create a plugin that helps manage todo lists with add, remove, and list functionality
 
-Agent: I'll create a cryptocurrency price tracking plugin with alerting capabilities. This will include:
+Agent: I'll create a todo list management plugin for you!
 
-📊 Real-time price tracking
-🔔 Configurable price alerts (5% threshold)
-💰 Support for multiple cryptocurrencies
-📈 Price history tracking
-🚨 Alert notifications through multiple channels
+📦 Plugin: @elizaos/plugin-todo
+📝 Description: Todo list management with add, remove, and list functionality
+🆔 Job ID: abc-123-def
 
-Starting development now... Job ID: abc-123-def
+Components to be created:
+- 3 actions (addTodo, removeTodo, listTodos)
+- 1 provider (todoProvider)
+
+Use 'check plugin status' to monitor progress.
 ```
 
-## 🛠️ Available Actions
+## 🛠️ Actions
 
-### `createPlugin`
-Creates a plugin from a detailed specification.
+| Action | Description |
+|--------|-------------|
+| `createPlugin` | Create plugin from JSON specification |
+| `createPluginFromDescription` | Create plugin from natural language |
+| `checkPluginCreationStatus` | Check job progress |
+| `cancelPluginCreation` | Cancel active job |
 
-```typescript
-// Example usage in conversation
-User: Create a plugin with the specification: { ... }
-```
+## 📊 Providers
 
-### `createPluginFromDescription`
-Creates a plugin from natural language description.
-
-```typescript
-// Example usage
-User: Create a plugin that can translate text between languages
-```
-
-### `checkPluginCreationStatus`
-Monitors the progress of plugin creation.
-
-```typescript
-// Example response
-Agent: 📊 Plugin Creation Status:
-├─ Status: running
-├─ Phase: testing (4/5)
-├─ Progress: 80%
-└─ Recent activity:
-   • ✅ Code generation complete
-   • ✅ Build successful
-   • ✅ Linting passed
-   • 🔄 Running tests... (18/20 passed)
-```
-
-### `cancelPluginCreation`
-Cancels an active plugin creation job.
+| Provider | Description |
+|----------|-------------|
+| `plugin_creation_status` | Active job status |
+| `plugin_creation_capabilities` | Available features |
+| `plugin_registry` | Created plugins list |
+| `plugin_exists_check` | Check if plugin exists |
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     AutoN8n Plugin System                     │
+│                     N8n Plugin System                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
-│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐  │
-│  │   Actions    │    │  Providers   │    │   Services    │  │
-│  │             │    │              │    │               │  │
-│  │ • create    │    │ • status     │    │ • Plugin      │  │
-│  │ • check     │◄───┤ • capability │◄───┤   Creation    │  │
-│  │ • cancel    │    │ • registry   │    │   Service     │  │
-│  │ • describe  │    │ • exists     │    │               │  │
-│  └─────────────┘    └──────────────┘    └───────┬───────┘  │
+│  ┌─────────────┐    ┌──────────────┐    ┌───────────────┐   │
+│  │   Actions   │    │  Providers   │    │   Services    │   │
+│  │             │    │              │    │               │   │
+│  │ • create    │    │ • status     │    │ • Plugin      │   │
+│  │ • check     │◄───┤ • capability │◄───┤   Creation    │   │
+│  │ • cancel    │    │ • registry   │    │   Service     │   │
+│  │ • describe  │    │ • exists     │    │               │   │
+│  └─────────────┘    └──────────────┘    └───────┬───────┘   │
 │                                                   │          │
 │                    ┌──────────────────────────────▼───────┐  │
 │                    │     AI Code Generation Pipeline      │  │
@@ -215,141 +181,82 @@ Cancels an active plugin creation job.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📁 Generated Plugin Structure
-
-When AutoN8n creates a plugin, it generates a complete, production-ready structure:
+## 📁 Project Structure
 
 ```
-generated-plugin/
-├── src/
-│   ├── index.ts              # Main plugin export
-│   ├── actions/              # Action implementations
-│   ├── providers/            # Context providers
-│   ├── services/             # Service classes
-│   └── __tests__/            # Comprehensive tests
-├── package.json              # Dependencies & scripts
-├── tsconfig.json             # TypeScript configuration
-├── vitest.config.ts          # Test configuration
-├── .eslintrc.json            # Linting rules
-└── README.md                 # Plugin documentation
+plugin-n8n/
+├── typescript/           # TypeScript implementation
+│   ├── index.ts         # Main plugin export
+│   ├── actions/         # Action implementations
+│   ├── providers/       # Provider implementations
+│   ├── services/        # Service classes
+│   ├── types/           # Type definitions
+│   ├── utils/           # Utilities
+│   └── __tests__/       # Tests
+├── python/              # Python implementation
+│   ├── elizaos_plugin_n8n/
+│   │   ├── __init__.py
+│   │   ├── client.py    # Main client
+│   │   ├── config.py    # Configuration
+│   │   ├── errors.py    # Error types
+│   │   ├── models.py    # Model definitions
+│   │   └── types.py     # Type definitions
+│   └── tests/           # Tests
+├── rust/                # Rust implementation
+│   ├── src/
+│   │   ├── lib.rs       # Library entry
+│   │   ├── client.rs    # Main client
+│   │   ├── config.rs    # Configuration
+│   │   ├── error.rs     # Error types
+│   │   ├── models.rs    # Model definitions
+│   │   └── types.rs     # Type definitions
+│   └── tests/           # Tests
+├── package.json         # NPM package config
+└── README.md           # This file
 ```
 
-## 🧪 Testing & Quality Assurance
+## 🧪 Development
 
-AutoN8n ensures high-quality plugin generation through:
-
-1. **Automated Testing**: Every generated plugin includes comprehensive test suites
-2. **Code Linting**: ESLint validation ensures code style consistency
-3. **Type Safety**: Full TypeScript support with strict type checking
-4. **AI Validation**: Claude reviews the generated code for completeness
-5. **Iterative Refinement**: Automatically fixes issues through multiple iterations
-
-## 🔧 Advanced Configuration
-
-### Model Selection
-
-Choose between different Claude models based on your needs:
-
-```typescript
-// Use Sonnet for faster generation
-process.env.CLAUDE_MODEL = 'claude-3-5-sonnet-20241022';
-
-// Use Opus for more complex plugins
-process.env.CLAUDE_MODEL = 'claude-3-opus-20240229';
-```
-
-### Custom Templates
-
-Provide your own plugin templates:
-
-```typescript
-const customSpec = {
-  name: '@company/plugin-custom',
-  template: 'path/to/custom-template',
-  // ... other options
-};
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues & Solutions
-
-#### "AI code generation not available"
-```bash
-# Check your API key
-echo $ANTHROPIC_API_KEY
-
-# Verify it starts with sk-ant-api
-# Get a key from https://console.anthropic.com
-```
-
-#### Build failures
-```bash
-# Check job logs
-User: Check plugin creation status
-
-# Common fixes:
-# 1. Ensure all dependencies are specified
-# 2. Check for TypeScript syntax errors
-# 3. Verify import paths are correct
-```
-
-#### "Plugin already exists"
-```bash
-# The plugin name is already in use
-# Try a different name or check existing plugins
-User: Show me all created plugins
-```
-
-### Debug Mode
-
-Enable detailed logging:
-
-```typescript
-// In your .env file
-DEBUG=elizaos:plugin-auton8n:*
-
-// Or programmatically
-process.env.DEBUG = 'elizaos:plugin-auton8n:*';
-```
-
-## 🤝 Contributing
-
-We love contributions! Here's how to help:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Setup
+### Build All
 
 ```bash
-# Clone the repo
-git clone https://github.com/elizaos/elizaos.git
-cd packages/plugin-auton8n
-
-# Install dependencies
-pnpm install
-
-# Run tests
-pnpm test
-
-# Build the plugin
-pnpm build
+npm run build:all
 ```
 
-## 📚 Resources
+### Test All
 
-- [ElizaOS Documentation](https://elizaos.github.io/eliza/)
-- [Plugin Development Guide](https://elizaos.github.io/eliza/docs/plugins)
-- [API Reference](https://elizaos.github.io/eliza/api)
-- [Discord Community](https://discord.gg/elizaos)
+```bash
+npm run test:all
+```
+
+### Lint All
+
+```bash
+npm run lint:all
+```
+
+### Language-Specific Commands
+
+```bash
+# TypeScript
+npm run build
+npm run test
+npm run typecheck
+
+# Python
+npm run test:python
+npm run lint:python
+npm run typecheck:python
+
+# Rust
+npm run build:rust
+npm run test:rust
+npm run lint:rust
+```
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
@@ -358,10 +265,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Inspired by [n8n](https://n8n.io) workflow automation
 
 ---
-
-<p align="center">
-  <strong>Ready to give your AI agents superpowers? Install AutoN8n today!</strong>
-</p>
 
 <p align="center">
   <a href="https://github.com/elizaos/eliza">⭐ Star us on GitHub</a> •

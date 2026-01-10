@@ -1,71 +1,127 @@
 {
-    "name": "@elizaos-plugins/client-github",
-    "version": "0.25.6-alpha.1",
-    "type": "module",
-    "main": "dist/index.js",
-    "module": "dist/index.js",
-    "types": "dist/index.d.ts",
-    "exports": {
-        "./package.json": "./package.json",
-        ".": {
-            "import": {
-                "@elizaos/source": "./src/index.ts",
-                "types": "./dist/index.d.ts",
-                "default": "./dist/index.js"
-            }
-        }
+  "name": "@elizaos/plugin-github",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-github.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
-    "files": [
-        "dist"
-    ],
-    "dependencies": {
-        "@octokit/rest": "20.1.1",
-        "@octokit/types": "12.6.0",
-        "glob": "10.4.5",
-        "simple-git": "3.27.0"
-    },
-    "devDependencies": {
-        "@types/glob": "8.1.0",
-        "tsup": "8.3.5",
-        "vitest": "^3.0.0"
-    },
-    "scripts": {
-        "build": "tsup --format esm --dts",
-        "dev": "tsup --format esm --dts --watch",
-        "test": "vitest run",
-        "test:watch": "vitest"
-    },
-    "publishConfig": {
-        "access": "public"
-    },
-    "agentConfig": {
-        "pluginType": "elizaos:client:1.0.0",
-        "pluginParameters": {
-            "GITHUB_OWNER": {
-                "type": "string",
-                "minLength": 1,
-                "description": "GitHub owner is required"
-            },
-            "GITHUB_REPO": {
-                "type": "string",
-                "minLength": 1,
-                "description": "GitHub repo is required"
-            },
-            "GITHUB_BRANCH": {
-                "type": "string",
-                "minLength": 1,
-                "description": "GitHub branch is required"
-            },
-            "GITHUB_PATH": {
-                "type": "string",
-                "minLength": 1,
-                "description": "GitHub path is required"
-            },
-            "GITHUB_API_TOKEN": {
-                "type": "string",
-                "minLength": 1,
-                "description": "GitHub API token is required"
-            }
-        }
+    "./rust": {
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_github.js",
+        "default": "./rust/pkg/node/elizaos_plugin_github.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_github.js"
     }
+  },
+  "files": [
+    "dist",
+    "rust/pkg",
+    "python"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.7.0",
+    "@octokit/rest": "^21.0.0",
+    "@octokit/types": "^13.0.0",
+    "@octokit/webhooks-types": "^7.5.0",
+    "glob": "^11.0.0",
+    "simple-git": "^3.27.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test typescript/__tests__/",
+    "test:integration": "elizaos test",
+    "lint": "biome check --write typescript/",
+    "lint:check": "biome check typescript/",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "biome format --write typescript/",
+    "format:check": "biome format typescript/",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "typecheck:rust": "cd rust && cargo check --all-targets --all-features",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "test:python": "cd python && pytest",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_github || echo 'mypy not installed, skipping typecheck'"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GITHUB_API_TOKEN": {
+        "type": "string",
+        "description": "GitHub personal access token for API authentication",
+        "required": true,
+        "sensitive": true
+      },
+      "GITHUB_OWNER": {
+        "type": "string",
+        "description": "Default GitHub repository owner (username or organization)",
+        "required": false,
+        "sensitive": false
+      },
+      "GITHUB_REPO": {
+        "type": "string",
+        "description": "Default GitHub repository name",
+        "required": false,
+        "sensitive": false
+      },
+      "GITHUB_BRANCH": {
+        "type": "string",
+        "description": "Default branch name (defaults to main)",
+        "required": false,
+        "default": "main",
+        "sensitive": false
+      },
+      "GITHUB_WEBHOOK_SECRET": {
+        "type": "string",
+        "description": "Secret for validating GitHub webhook payloads",
+        "required": false,
+        "sensitive": true
+      },
+      "GITHUB_APP_ID": {
+        "type": "string",
+        "description": "GitHub App ID for app-based authentication",
+        "required": false,
+        "sensitive": false
+      },
+      "GITHUB_APP_PRIVATE_KEY": {
+        "type": "string",
+        "description": "GitHub App private key for app-based authentication",
+        "required": false,
+        "sensitive": true
+      },
+      "GITHUB_INSTALLATION_ID": {
+        "type": "string",
+        "description": "GitHub App installation ID",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

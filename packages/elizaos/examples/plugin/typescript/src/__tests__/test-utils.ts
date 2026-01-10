@@ -1,4 +1,4 @@
-import { mock, spyOn } from "bun:test";
+import { vi } from "vitest";
 import {
   asUUID,
   type Character,
@@ -92,8 +92,8 @@ export function createTestState(overrides: Partial<State> = {}): State {
  */
 function _createMockFn<T extends (...args: any[]) => any>(
   implementation?: T,
-): ReturnType<typeof mock> {
-  return mock(implementation || (() => {}));
+): ReturnType<typeof vi.fn> {
+  return vi.fn(implementation || (() => {}));
 }
 
 /**
@@ -120,98 +120,98 @@ export function createMockRuntime(
     fetch: null,
     routes: [],
     logger: {
-      info: mock(() => {}),
-      warn: mock(() => {}),
-      error: mock(() => {}),
-      debug: mock(() => {}),
+      info: vi.fn(() => {}),
+      warn: vi.fn(() => {}),
+      error: vi.fn(() => {}),
+      debug: vi.fn(() => {}),
     },
     db: {},
 
     // Database methods
-    initialize: mock().mockResolvedValue(undefined),
-    init: mock().mockResolvedValue(undefined),
-    runMigrations: mock().mockResolvedValue(undefined),
-    isReady: mock().mockResolvedValue(true),
-    close: mock().mockResolvedValue(undefined),
-    getConnection: mock().mockResolvedValue({}),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    init: vi.fn().mockResolvedValue(undefined),
+    runMigrations: vi.fn().mockResolvedValue(undefined),
+    isReady: vi.fn().mockResolvedValue(true),
+    close: vi.fn().mockResolvedValue(undefined),
+    getConnection: vi.fn().mockResolvedValue({}),
 
     // Agent methods
-    getAgent: mock().mockResolvedValue(null),
-    getAgents: mock().mockResolvedValue([]),
-    createAgent: mock().mockResolvedValue(true),
-    updateAgent: mock().mockResolvedValue(true),
-    deleteAgent: mock().mockResolvedValue(true),
+    getAgent: vi.fn().mockResolvedValue(null),
+    getAgents: vi.fn().mockResolvedValue([]),
+    createAgent: vi.fn().mockResolvedValue(true),
+    updateAgent: vi.fn().mockResolvedValue(true),
+    deleteAgent: vi.fn().mockResolvedValue(true),
 
     // Memory methods
-    createMemory: mock().mockImplementation(async (memory: Memory) => ({
+    createMemory: vi.fn().mockImplementation(async (memory: Memory) => ({
       ...memory,
       id: memory.id || createUUID(),
     })),
-    getMemories: mock().mockResolvedValue([]),
-    getMemoryById: mock().mockResolvedValue(null),
-    getMemoriesByIds: mock().mockResolvedValue([]),
-    getMemoriesByRoomIds: mock().mockResolvedValue([]),
-    searchMemories: mock().mockResolvedValue([]),
+    getMemories: vi.fn().mockResolvedValue([]),
+    getMemoryById: vi.fn().mockResolvedValue(null),
+    getMemoriesByIds: vi.fn().mockResolvedValue([]),
+    getMemoriesByRoomIds: vi.fn().mockResolvedValue([]),
+    searchMemories: vi.fn().mockResolvedValue([]),
 
-    addEmbeddingToMemory: mock().mockImplementation(
+    addEmbeddingToMemory: vi.fn().mockImplementation(
       async (memory: Memory) => memory,
     ),
-    queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
-    getAllMemories: mock().mockResolvedValue([]),
-    clearAllAgentMemories: mock().mockResolvedValue(undefined),
-    updateMemory: mock().mockResolvedValue(true),
-    deleteMemory: mock().mockResolvedValue(undefined),
-    deleteManyMemories: mock().mockResolvedValue(undefined),
-    deleteAllMemories: mock().mockResolvedValue(undefined),
-    countMemories: mock().mockResolvedValue(0),
+    queueEmbeddingGeneration: vi.fn().mockResolvedValue(undefined),
+    getAllMemories: vi.fn().mockResolvedValue([]),
+    clearAllAgentMemories: vi.fn().mockResolvedValue(undefined),
+    updateMemory: vi.fn().mockResolvedValue(true),
+    deleteMemory: vi.fn().mockResolvedValue(undefined),
+    deleteManyMemories: vi.fn().mockResolvedValue(undefined),
+    deleteAllMemories: vi.fn().mockResolvedValue(undefined),
+    countMemories: vi.fn().mockResolvedValue(0),
 
     // Entity methods
-    getEntitiesByIds: mock().mockResolvedValue([]),
-    getEntitiesForRoom: mock().mockResolvedValue([]),
-    createEntities: mock().mockResolvedValue(true),
-    updateEntity: mock().mockResolvedValue(undefined),
-    createEntity: mock().mockResolvedValue(true),
-    getEntityById: mock().mockResolvedValue(null),
+    getEntitiesByIds: vi.fn().mockResolvedValue([]),
+    getEntitiesForRoom: vi.fn().mockResolvedValue([]),
+    createEntities: vi.fn().mockResolvedValue(true),
+    updateEntity: vi.fn().mockResolvedValue(undefined),
+    createEntity: vi.fn().mockResolvedValue(true),
+    getEntityById: vi.fn().mockResolvedValue(null),
 
     // Room methods
-    createRoom: mock().mockImplementation(async () => createUUID()),
-    createRooms: mock().mockImplementation(async () => [createUUID()]),
-    getRoom: mock().mockResolvedValue(null),
-    getRooms: mock().mockResolvedValue([]),
-    getRoomsByIds: mock().mockResolvedValue([]),
-    getRoomsByWorld: mock().mockResolvedValue([]),
-    updateRoom: mock().mockResolvedValue(undefined),
-    deleteRoom: mock().mockResolvedValue(undefined),
-    deleteRoomsByWorldId: mock().mockResolvedValue(undefined),
-    addParticipant: mock().mockResolvedValue(true),
-    addParticipantsRoom: mock().mockResolvedValue(true),
-    removeParticipant: mock().mockResolvedValue(true),
-    getRoomsForParticipant: mock().mockResolvedValue([]),
-    getRoomsForParticipants: mock().mockResolvedValue([]),
-    getParticipantsForEntity: mock().mockResolvedValue([]),
-    getParticipantsForRoom: mock().mockResolvedValue([]),
-    getParticipantUserState: mock().mockResolvedValue(null),
-    setParticipantUserState: mock().mockResolvedValue(undefined),
+    createRoom: vi.fn().mockImplementation(async () => createUUID()),
+    createRooms: vi.fn().mockImplementation(async () => [createUUID()]),
+    getRoom: vi.fn().mockResolvedValue(null),
+    getRooms: vi.fn().mockResolvedValue([]),
+    getRoomsByIds: vi.fn().mockResolvedValue([]),
+    getRoomsByWorld: vi.fn().mockResolvedValue([]),
+    updateRoom: vi.fn().mockResolvedValue(undefined),
+    deleteRoom: vi.fn().mockResolvedValue(undefined),
+    deleteRoomsByWorldId: vi.fn().mockResolvedValue(undefined),
+    addParticipant: vi.fn().mockResolvedValue(true),
+    addParticipantsRoom: vi.fn().mockResolvedValue(true),
+    removeParticipant: vi.fn().mockResolvedValue(true),
+    getRoomsForParticipant: vi.fn().mockResolvedValue([]),
+    getRoomsForParticipants: vi.fn().mockResolvedValue([]),
+    getParticipantsForEntity: vi.fn().mockResolvedValue([]),
+    getParticipantsForRoom: vi.fn().mockResolvedValue([]),
+    getParticipantUserState: vi.fn().mockResolvedValue(null),
+    setParticipantUserState: vi.fn().mockResolvedValue(undefined),
 
     // Service methods
-    getService: mock().mockReturnValue(null),
-    getServicesByType: mock().mockReturnValue([]),
-    getAllServices: mock().mockReturnValue(new Map()),
-    registerService: mock().mockResolvedValue(undefined),
-    getRegisteredServiceTypes: mock().mockReturnValue([]),
-    hasService: mock().mockReturnValue(false),
-    getServiceLoadPromise: mock().mockResolvedValue(null),
+    getService: vi.fn().mockReturnValue(null),
+    getServicesByType: vi.fn().mockReturnValue([]),
+    getAllServices: vi.fn().mockReturnValue(new Map()),
+    registerService: vi.fn().mockResolvedValue(undefined),
+    getRegisteredServiceTypes: vi.fn().mockReturnValue([]),
+    hasService: vi.fn().mockReturnValue(false),
+    getServiceLoadPromise: vi.fn().mockResolvedValue(null),
 
     // Plugin/Action/Provider methods
-    registerPlugin: mock().mockResolvedValue(undefined),
-    registerProvider: mock().mockReturnValue(undefined),
-    registerAction: mock().mockReturnValue(undefined),
-    registerEvaluator: mock().mockReturnValue(undefined),
+    registerPlugin: vi.fn().mockResolvedValue(undefined),
+    registerProvider: vi.fn().mockReturnValue(undefined),
+    registerAction: vi.fn().mockReturnValue(undefined),
+    registerEvaluator: vi.fn().mockReturnValue(undefined),
 
     // Model methods
-    registerModel: mock().mockReturnValue(undefined),
-    getModel: mock().mockReturnValue(undefined),
-    useModel: mock().mockImplementation(async (modelType: ModelTypeName) => {
+    registerModel: vi.fn().mockReturnValue(undefined),
+    getModel: vi.fn().mockReturnValue(undefined),
+    useModel: vi.fn().mockImplementation(async (modelType: ModelTypeName) => {
       if (modelType === ModelType.TEXT_SMALL) {
         return "Never gonna give you up, never gonna let you down";
       } else if (modelType === ModelType.TEXT_LARGE) {
@@ -221,82 +221,82 @@ export function createMockRuntime(
     }),
 
     // Event methods
-    registerEvent: mock().mockReturnValue(undefined),
-    getEvent: mock().mockReturnValue(undefined),
-    emitEvent: mock().mockResolvedValue(undefined),
+    registerEvent: vi.fn().mockReturnValue(undefined),
+    getEvent: vi.fn().mockReturnValue(undefined),
+    emitEvent: vi.fn().mockResolvedValue(undefined),
 
     // Settings methods
-    setSetting: mock().mockReturnValue(undefined),
-    getSetting: mock().mockImplementation((key: string) => {
+    setSetting: vi.fn().mockReturnValue(undefined),
+    getSetting: vi.fn().mockImplementation((key: string) => {
       if (key === "EXAMPLE_PLUGIN_VARIABLE") return "test-value";
       return null;
     }),
 
     // Other methods
-    processActions: mock().mockResolvedValue(undefined),
-    evaluate: mock().mockResolvedValue(null),
-    ensureConnections: mock().mockResolvedValue(undefined),
-    ensureConnection: mock().mockResolvedValue(undefined),
-    getConversationLength: mock().mockReturnValue(10),
-    composeState: mock().mockImplementation(async () => createTestState()),
+    processActions: vi.fn().mockResolvedValue(undefined),
+    evaluate: vi.fn().mockResolvedValue(null),
+    ensureConnections: vi.fn().mockResolvedValue(undefined),
+    ensureConnection: vi.fn().mockResolvedValue(undefined),
+    getConversationLength: vi.fn().mockReturnValue(10),
+    composeState: vi.fn().mockImplementation(async () => createTestState()),
     // Task methods
-    getTasks: mock().mockResolvedValue([]),
-    getTask: mock().mockResolvedValue(null),
-    getTasksByName: mock().mockResolvedValue([]),
-    createTask: mock().mockImplementation(async () => createUUID()),
-    updateTask: mock().mockResolvedValue(undefined),
-    deleteTask: mock().mockResolvedValue(undefined),
-    registerTaskWorker: mock().mockReturnValue(undefined),
-    getTaskWorker: mock().mockReturnValue(undefined),
-    stop: mock().mockResolvedValue(undefined),
-    createRunId: mock().mockImplementation(() => createUUID()),
-    startRun: mock().mockImplementation(() => createUUID()),
-    endRun: mock().mockReturnValue(undefined),
-    getCurrentRunId: mock().mockImplementation(() => createUUID()),
-    registerSendHandler: mock().mockReturnValue(undefined),
-    sendMessageToTarget: mock().mockResolvedValue(undefined),
-    registerDatabaseAdapter: mock().mockReturnValue(undefined),
-    log: mock().mockResolvedValue(undefined),
-    getLogs: mock().mockResolvedValue([]),
-    deleteLog: mock().mockResolvedValue(undefined),
+    getTasks: vi.fn().mockResolvedValue([]),
+    getTask: vi.fn().mockResolvedValue(null),
+    getTasksByName: vi.fn().mockResolvedValue([]),
+    createTask: vi.fn().mockImplementation(async () => createUUID()),
+    updateTask: vi.fn().mockResolvedValue(undefined),
+    deleteTask: vi.fn().mockResolvedValue(undefined),
+    registerTaskWorker: vi.fn().mockReturnValue(undefined),
+    getTaskWorker: vi.fn().mockReturnValue(undefined),
+    stop: vi.fn().mockResolvedValue(undefined),
+    createRunId: vi.fn().mockImplementation(() => createUUID()),
+    startRun: vi.fn().mockImplementation(() => createUUID()),
+    endRun: vi.fn().mockReturnValue(undefined),
+    getCurrentRunId: vi.fn().mockImplementation(() => createUUID()),
+    registerSendHandler: vi.fn().mockReturnValue(undefined),
+    sendMessageToTarget: vi.fn().mockResolvedValue(undefined),
+    registerDatabaseAdapter: vi.fn().mockReturnValue(undefined),
+    log: vi.fn().mockResolvedValue(undefined),
+    getLogs: vi.fn().mockResolvedValue([]),
+    deleteLog: vi.fn().mockResolvedValue(undefined),
 
     // Component methods (from IDatabaseAdapter)
-    getComponent: mock().mockResolvedValue(null),
-    getComponents: mock().mockResolvedValue([]),
-    createComponent: mock().mockResolvedValue(true),
-    updateComponent: mock().mockResolvedValue(undefined),
-    deleteComponent: mock().mockResolvedValue(undefined),
+    getComponent: vi.fn().mockResolvedValue(null),
+    getComponents: vi.fn().mockResolvedValue([]),
+    createComponent: vi.fn().mockResolvedValue(true),
+    updateComponent: vi.fn().mockResolvedValue(undefined),
+    deleteComponent: vi.fn().mockResolvedValue(undefined),
 
     // Relationship methods
-    createRelationship: mock().mockResolvedValue(true),
-    getRelationships: mock().mockResolvedValue([]),
+    createRelationship: vi.fn().mockResolvedValue(true),
+    getRelationships: vi.fn().mockResolvedValue([]),
 
-    getRelationship: mock().mockResolvedValue(null),
-    updateRelationship: mock().mockResolvedValue(undefined),
+    getRelationship: vi.fn().mockResolvedValue(null),
+    updateRelationship: vi.fn().mockResolvedValue(undefined),
 
     // Embedding methods
-    ensureEmbeddingDimension: mock().mockResolvedValue(undefined),
-    getCachedEmbeddings: mock().mockResolvedValue([]),
+    ensureEmbeddingDimension: vi.fn().mockResolvedValue(undefined),
+    getCachedEmbeddings: vi.fn().mockResolvedValue([]),
 
     // World methods
-    getWorld: mock().mockResolvedValue(null),
-    createWorld: mock().mockImplementation(async () => createUUID()),
-    updateWorld: mock().mockResolvedValue(undefined),
-    removeWorld: mock().mockResolvedValue(undefined),
-    getAllWorlds: mock().mockResolvedValue([]),
+    getWorld: vi.fn().mockResolvedValue(null),
+    createWorld: vi.fn().mockImplementation(async () => createUUID()),
+    updateWorld: vi.fn().mockResolvedValue(undefined),
+    removeWorld: vi.fn().mockResolvedValue(undefined),
+    getAllWorlds: vi.fn().mockResolvedValue([]),
 
     // Required method that was missing
-    ensureParticipantInRoom: mock().mockResolvedValue(undefined),
-    ensureWorldExists: mock().mockResolvedValue(undefined),
-    ensureRoomExists: mock().mockResolvedValue(undefined),
+    ensureParticipantInRoom: vi.fn().mockResolvedValue(undefined),
+    ensureWorldExists: vi.fn().mockResolvedValue(undefined),
+    ensureRoomExists: vi.fn().mockResolvedValue(undefined),
 
     // Cache methods
-    getCache: mock().mockResolvedValue(undefined),
-    setCache: mock().mockResolvedValue(true),
-    deleteCache: mock().mockResolvedValue(true),
+    getCache: vi.fn().mockResolvedValue(undefined),
+    setCache: vi.fn().mockResolvedValue(true),
+    deleteCache: vi.fn().mockResolvedValue(true),
 
     // Other missing database methods
-    getMemoriesByWorldId: mock().mockResolvedValue([]),
+    getMemoriesByWorldId: vi.fn().mockResolvedValue([]),
 
     // Apply any overrides
     ...overrides,
@@ -304,10 +304,10 @@ export function createMockRuntime(
 
   // Setup logger spies if not already overridden
   if (!overrides.logger) {
-    spyOn(logger, "info").mockImplementation(() => {});
-    spyOn(logger, "warn").mockImplementation(() => {});
-    spyOn(logger, "error").mockImplementation(() => {});
-    spyOn(logger, "debug").mockImplementation(() => {});
+    vi.spyOn(logger, "info").mockImplementation(() => {});
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    vi.spyOn(logger, "error").mockImplementation(() => {});
+    vi.spyOn(logger, "debug").mockImplementation(() => {});
   }
 
   return mockRuntime;
@@ -345,7 +345,7 @@ export const testFixtures = {
 /**
  * Type guard to check if a value is a mock function
  */
-export function isMockFunction(value: any): value is ReturnType<typeof mock> {
+export function isMockFunction(value: any): value is ReturnType<typeof vi.fn> {
   return value && typeof value.mock === "object";
 }
 
@@ -378,10 +378,10 @@ export function assertSpyCalledWith(spy: any, ...args: any[]) {
  * Setup logger spies for testing
  */
 export function setupLoggerSpies() {
-  spyOn(logger, "info").mockImplementation(() => {});
-  spyOn(logger, "warn").mockImplementation(() => {});
-  spyOn(logger, "error").mockImplementation(() => {});
-  spyOn(logger, "debug").mockImplementation(() => {});
+  vi.spyOn(logger, "info").mockImplementation(() => {});
+  vi.spyOn(logger, "warn").mockImplementation(() => {});
+  vi.spyOn(logger, "error").mockImplementation(() => {});
+  vi.spyOn(logger, "debug").mockImplementation(() => {});
 }
 
 /**

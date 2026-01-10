@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/plugin-simple-voice",
+  "version": "0.1.0",
+  "description": "Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "bun test",
+    "lint": "eslint . --fix && prettier --write ./src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "tts",
+    "text-to-speech",
+    "sam",
+    "retro",
+    "voice-synthesis",
+    "1980s"
+  ],
+  "author": "ElizaOS Team",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "sam-js": "^0.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "@types/bun": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "bun": "^1.0.0",
+    "eslint": "^9.28.0",
+    "prettier": "3.5.3",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.26.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ai16z/eliza.git",
+    "directory": "plugins/plugin-simple-voice/typescript"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
+

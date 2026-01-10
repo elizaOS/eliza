@@ -12,31 +12,38 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
+  "sideEffects": false,
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@ai-sdk/groq": "^1.2.9",
-    "@ai-sdk/ui-utils": "^1.2.11",
+    "@ai-sdk/groq": "^3.0.4",
     "@elizaos/core": "^1.0.0",
-    "ai": "^4.3.15",
-    "js-tiktoken": "^1.0.18",
-    "tsup": "8.4.0"
+    "ai": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "bun-types": "^1.2.0",
+    "prettier": "3.5.3",
+    "typescript": "^5.8.2"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "test": "npx elizaos test"
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist node_modules",
+    "format": "prettier --write .",
+    "test": "bun test typescript/",
+    "build:rust": "cd rust && cargo build --release",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy -- -D warnings",
+    "test:python": "cd python && PYTHONPATH=. pytest",
+    "lint:python": "cd python && ruff check . && ruff format --check ."
   },
   "publishConfig": {
     "access": "public"
@@ -44,66 +51,42 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "GROQ_BASE_URL": {
-        "type": "string",
-        "description": "Custom base URL for Groq API endpoints.",
-        "required": false,
-        "default": "https://api.groq.com/openai/v1",
-        "sensitive": false
-      },
-      "GROQ_SMALL_MODEL": {
-        "type": "string",
-        "description": "Overrides the default model name used for small-sized text/object generation.",
-        "required": false,
-        "default": "llama-3.1-8b-instant",
-        "sensitive": false
-      },
-      "GROQ_LARGE_MODEL": {
-        "type": "string",
-        "description": "Overrides the default model name used for large-sized text/object generation.",
-        "required": false,
-        "default": "qwen-qwq-32b",
-        "sensitive": false
-      },
       "GROQ_API_KEY": {
         "type": "string",
-        "description": "Groq API key used to authenticate requests to Groq services.",
+        "description": "Groq API key",
         "required": true,
         "sensitive": true
       },
-      "SMALL_MODEL": {
+      "GROQ_BASE_URL": {
         "type": "string",
-        "description": "Alternative env var to specify the small model name if GROQ_SMALL_MODEL is not provided.",
+        "description": "Custom API base URL",
         "required": false,
-        "default": "llama-3.1-8b-instant",
-        "sensitive": false
+        "default": "https://api.groq.com/openai/v1"
       },
-      "LARGE_MODEL": {
+      "GROQ_SMALL_MODEL": {
         "type": "string",
-        "description": "Alternative env var to specify the large model name if GROQ_LARGE_MODEL is not provided.",
+        "description": "Small model name",
         "required": false,
-        "default": "qwen-qwq-32b",
-        "sensitive": false
+        "default": "llama-3.1-8b-instant"
+      },
+      "GROQ_LARGE_MODEL": {
+        "type": "string",
+        "description": "Large model name",
+        "required": false,
+        "default": "llama-3.3-70b-versatile"
       },
       "GROQ_TTS_MODEL": {
         "type": "string",
-        "description": "Model name used for Groq text-to-speech requests.",
+        "description": "TTS model name",
         "required": false,
-        "default": "playai-tts",
-        "sensitive": false
+        "default": "playai-tts"
       },
       "GROQ_TTS_VOICE": {
         "type": "string",
-        "description": "Voice selection for Groq text-to-speech.",
+        "description": "TTS voice name",
         "required": false,
-        "default": "Chip-PlayAI",
-        "sensitive": false
+        "default": "Chip-PlayAI"
       }
     }
-  },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "devDependencies": {
-    "prettier": "3.5.3",
-    "typescript": "^5.8.2"
   }
 }

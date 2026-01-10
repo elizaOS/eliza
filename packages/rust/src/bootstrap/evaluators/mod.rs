@@ -3,8 +3,10 @@
 //! This module contains all evaluator implementations.
 
 mod reflection;
+mod relationship_extraction;
 
 pub use reflection::ReflectionEvaluator;
+pub use relationship_extraction::RelationshipExtractionEvaluator;
 
 use crate::error::PluginResult;
 use crate::runtime::IAgentRuntime;
@@ -32,10 +34,23 @@ pub trait Evaluator: Send + Sync {
     ) -> PluginResult<EvaluatorResult>;
 }
 
-/// Get all available evaluators.
-pub fn all_evaluators() -> Vec<Box<dyn Evaluator>> {
+/// Get basic evaluators (always available).
+pub fn basic_evaluators() -> Vec<Box<dyn Evaluator>> {
+    vec![]
+}
+
+/// Get extended evaluators (opt-in).
+pub fn extended_evaluators() -> Vec<Box<dyn Evaluator>> {
     vec![
         Box::new(ReflectionEvaluator),
+        Box::new(RelationshipExtractionEvaluator),
     ]
+}
+
+/// Get all available evaluators.
+pub fn all_evaluators() -> Vec<Box<dyn Evaluator>> {
+    let mut evaluators = basic_evaluators();
+    evaluators.extend(extended_evaluators());
+    evaluators
 }
 

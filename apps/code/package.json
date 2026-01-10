@@ -11,9 +11,9 @@
     "start": "bun src/index.tsx",
     "dev": "bun --watch src/index.tsx",
     "build": "bun build src/index.tsx --outdir dist --target bun",
-    "test": "bun test",
-    "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "cli": "bun src/index.tsx"
   },
   "dependencies": {
@@ -35,7 +35,9 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
+    "@vitest/coverage-v8": "^2.1.8",
     "react-devtools-core": "^7.0.1",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
   }
 }

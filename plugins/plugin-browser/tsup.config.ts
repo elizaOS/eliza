@@ -1,22 +1,35 @@
-import { defineConfig } from "tsup";
+import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ["src/index.ts"],
-  outDir: "dist",
+  entry: ['src/index.ts'],
+  outDir: 'dist',
+  format: ['esm'],
   sourcemap: true,
   clean: true,
-  dts: {
-    resolve: true,
-  },
-  format: ["esm"], // Ensure you're targeting CommonJS
+  dts: true,
   external: [
-    "dotenv", // Externalize dotenv to prevent bundling
-    "fs", // Externalize fs to use Node.js built-in module
-    "path", // Externalize other built-ins if necessary
-    "https",
-    "http",
-    "zod",
-    "@elizaos/core",
-    // Add other modules you want to externalize
+    // Mark browser automation dependencies as external
+    '@browserbasehq/stagehand',
+    'playwright',
+    'playwright-core',
+    'playwright-chromium',
+    'playwright-firefox',
+    'playwright-webkit',
+    '@playwright/test',
+    'electron',
+    // Also mark native dependencies as external
+    'canvas',
+    '@napi-rs/canvas',
+    'bufferutil',
+    'utf-8-validate',
+  ],
+  noExternal: [
+    // Bundle our own modules
+    './websocket-client',
+    './process-manager',
+    './errors',
+    './retry',
+    './security',
+    './plugin',
   ],
 });

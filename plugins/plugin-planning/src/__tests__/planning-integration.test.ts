@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, beforeEach, afterEach } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { v4 as uuidv4 } from 'uuid';
 import {
   type IAgentRuntime,
@@ -28,13 +28,13 @@ describe('Planning Integration Tests', () => {
   let planningService: PlanningService;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
     mockRuntime = createMockRuntime();
     planningService = new PlanningService(mockRuntime);
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   describe('Service Registration and Initialization', () => {
@@ -42,7 +42,7 @@ describe('Planning Integration Tests', () => {
       const runtime = createMockRuntime();
 
       // Simulate service registration
-      const mockGetService = mock().mockReturnValue(new PlanningService(runtime));
+      const mockGetService = vi.fn().mockReturnValue(new PlanningService(runtime));
       runtime.getService = mockGetService;
 
       const service = runtime.getService<IPlanningService>('planning');
@@ -53,7 +53,7 @@ describe('Planning Integration Tests', () => {
 
     it('should handle missing planning service gracefully', () => {
       const runtime = createMockRuntime();
-      runtime.getService = mock().mockReturnValue(null);
+      runtime.getService = vi.fn().mockReturnValue(null);
 
       const service = runtime.getService<IPlanningService>('planning');
 
@@ -220,7 +220,7 @@ describe('Planning Integration Tests', () => {
           name: 'REPLY',
           similes: [],
           description: 'Send a reply',
-          handler: mock().mockImplementation(async (runtime, message, state, options, callback) => {
+          handler: vi.fn().mockImplementation(async (runtime, message, state, options, callback) => {
             // Call the callback if provided
             if (callback) {
               await callback({
@@ -230,14 +230,14 @@ describe('Planning Integration Tests', () => {
             }
             return { text: options.text || 'Reply sent' };
           }),
-          validate: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
         {
           name: 'THINK',
           similes: [],
           description: 'Think about something',
-          handler: mock().mockImplementation(async (runtime, message, state, options, callback) => {
+          handler: vi.fn().mockImplementation(async (runtime, message, state, options, callback) => {
             // Call the callback if provided
             if (callback) {
               await callback({
@@ -247,7 +247,7 @@ describe('Planning Integration Tests', () => {
             }
             return { text: `Thought: ${options.thought || 'Processing'}` };
           }),
-          validate: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
       ];
@@ -276,7 +276,7 @@ describe('Planning Integration Tests', () => {
       };
 
       const responses: any[] = [];
-      const mockCallback = mock((content) => {
+      const mockCallback = vi.fn((content) => {
         responses.push(content);
         return Promise.resolve([]);
       });
@@ -317,13 +317,13 @@ describe('Planning Integration Tests', () => {
           name: 'FAILING_ACTION',
           similes: [],
           description: 'An action that fails',
-          handler: mock().mockRejectedValue(new Error('Action failed')),
-          validate: mock().mockResolvedValue(true),
+          handler: vi.fn().mockRejectedValue(new Error('Action failed')),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
       ];
 
-      const mockCallback = mock();
+      const mockCallback = vi.fn();
 
       const result = await planningService.executePlan(mockRuntime, plan, message, mockCallback);
 
@@ -368,7 +368,7 @@ describe('Planning Integration Tests', () => {
           name: 'SET_VALUE',
           similes: [],
           description: 'Set a value in working memory',
-          handler: mock().mockImplementation(async (runtime, message, state, options, callback) => {
+          handler: vi.fn().mockImplementation(async (runtime, message, state, options, callback) => {
             const { key, value, context } = options;
             // Use the working memory from context
             if (context?.workingMemory) {
@@ -383,14 +383,14 @@ describe('Planning Integration Tests', () => {
             }
             return { text: `Set ${key} = ${value}` };
           }),
-          validate: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
         {
           name: 'GET_VALUE',
           similes: [],
           description: 'Get a value from working memory',
-          handler: mock().mockImplementation(async (runtime, message, state, options, callback) => {
+          handler: vi.fn().mockImplementation(async (runtime, message, state, options, callback) => {
             const { key, context } = options;
             // Use the working memory from context
             const value = context?.workingMemory?.get(key) || 'undefined';
@@ -403,13 +403,13 @@ describe('Planning Integration Tests', () => {
             }
             return { text: `Retrieved ${key} = ${value}` };
           }),
-          validate: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
       ];
 
       const responses: any[] = [];
-      const mockCallback = mock((content) => {
+      const mockCallback = vi.fn((content) => {
         responses.push(content);
         return Promise.resolve([]);
       });
@@ -619,7 +619,7 @@ describe('Planning Integration Tests', () => {
       };
 
       const message = createMockMemory();
-      const mockCallback = mock();
+      const mockCallback = vi.fn();
 
       const result = await planningService.executePlan(
         mockRuntime,
@@ -654,7 +654,7 @@ describe('Planning Integration Tests', () => {
 
     it('should handle runtime service unavailability', async () => {
       const brokenRuntime = createMockRuntime();
-      brokenRuntime.useModel = mock().mockRejectedValue(new Error('Model service unavailable'));
+      brokenRuntime.useModel = vi.fn().mockRejectedValue(new Error('Model service unavailable'));
 
       const planningServiceWithBrokenRuntime = new PlanningService(brokenRuntime);
       const message = createMockMemory();
@@ -700,7 +700,7 @@ describe('Planning Integration Tests', () => {
       };
 
       const message = createMockMemory();
-      const mockCallback = mock().mockResolvedValue([]);
+      const mockCallback = vi.fn().mockResolvedValue([]);
 
       const startTime = Date.now();
       const result = await planningService.executePlan(
@@ -746,17 +746,17 @@ describe('Planning Integration Tests', () => {
           name: 'SLOW_ACTION',
           similes: [],
           description: 'A slow action',
-          handler: mock().mockImplementation(async () => {
+          handler: vi.fn().mockImplementation(async () => {
             await new Promise((resolve) => setTimeout(resolve, 2000)); // 2 second delay
             return { text: 'Slow result' };
           }),
-          validate: mock().mockResolvedValue(true),
+          validate: vi.fn().mockResolvedValue(true),
           examples: [],
         },
       ];
 
       const message = createMockMemory();
-      const mockCallback = mock();
+      const mockCallback = vi.fn();
 
       const result = await planningService.executePlan(
         mockRuntime,

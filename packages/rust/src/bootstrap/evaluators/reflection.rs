@@ -3,36 +3,12 @@
 use async_trait::async_trait;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::REFLECTION_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{EvaluatorResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Evaluator;
-
-const REFLECTION_TEMPLATE: &str = r#"# Task: Reflect on recent agent behavior and interactions.
-
-{{providers}}
-
-# Recent Interactions:
-{{recentInteractions}}
-
-# Instructions:
-Analyze the agent's recent behavior and interactions. Consider:
-1. Was the communication clear and helpful?
-2. Were responses appropriate for the context?
-3. Were any mistakes made?
-4. What could be improved?
-
-Respond using XML format like this:
-<response>
-    <thought>Your detailed analysis</thought>
-    <quality_score>Score 0-100 for overall quality</quality_score>
-    <strengths>What went well</strengths>
-    <improvements>What could be improved</improvements>
-    <learnings>Key takeaways for future interactions</learnings>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
 
 /// Evaluator for reflection on behavior.
 pub struct ReflectionEvaluator;

@@ -1,0 +1,96 @@
+{
+  "name": "@elizaos/plugin-browser",
+  "description": "Browser automation plugin for ElizaOS - enables AI agents to browse websites, interact with elements, and extract data",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "browser",
+    "automation",
+    "stagehand",
+    "playwright"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "homepage": "https://elizaos.ai",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "ws": "^8.18.0",
+    "axios": "^1.7.7",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "*"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "typescript": "5.8.3",
+    "tsup": "^8.3.5"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "bun test",
+    "lint": "eslint src --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "BROWSERBASE_API_KEY": {
+        "type": "string",
+        "description": "API key for Browserbase cloud browser service",
+        "required": false
+      },
+      "BROWSERBASE_PROJECT_ID": {
+        "type": "string",
+        "description": "Project ID for Browserbase",
+        "required": false
+      },
+      "OPENAI_API_KEY": {
+        "type": "string",
+        "description": "OpenAI API key for AI-powered browser interactions",
+        "required": false
+      },
+      "ANTHROPIC_API_KEY": {
+        "type": "string",
+        "description": "Anthropic API key for Claude-powered interactions",
+        "required": false
+      },
+      "BROWSER_HEADLESS": {
+        "type": "boolean",
+        "description": "Run browser in headless mode (default: true)",
+        "required": false
+      },
+      "CAPSOLVER_API_KEY": {
+        "type": "string",
+        "description": "CapSolver API key for automated CAPTCHA solving",
+        "required": false
+      }
+    }
+  }
+}
+

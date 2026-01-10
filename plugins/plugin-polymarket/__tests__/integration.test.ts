@@ -112,7 +112,7 @@ describe('Integration: Runtime Initialization', () => {
 
     // Mock the plugin.init method using vi.fn instead of direct assignment
     if (plugin.init) {
-      plugin.init = vi.fn(async (config, runtime) => {
+      plugin.init = vi.mock(async (config, runtime) => {
         // Set flag to indicate our wrapper was called
         initCalled = true;
 

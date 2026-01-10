@@ -1,13 +1,10 @@
-import {
-  afterEach,
+import { afterEach,
   beforeEach,
   describe,
   expect,
   it,
-  type MockFunction,
-  mock,
-  spyOn,
-} from "bun:test";
+  vi,
+  vi } from "vitest";
 import * as entities from "../entities";
 import * as logger_module from "../logger";
 import {
@@ -49,10 +46,10 @@ describe("settings utilities", () => {
   let updateWorldMock: MockFunction<(world: World) => Promise<void>>;
 
   beforeEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
 
     // Set up scoped mocks for this test
-    spyOn(entities, "createUniqueUuid").mockImplementation(
+    vi.spyOn(entities, "createUniqueUuid").mockImplementation(
       (_runtime, serverId) => `world-${serverId}` as UUID,
     );
 
@@ -61,9 +58,9 @@ describe("settings utilities", () => {
       const methods = ["error", "info", "warn", "debug"];
       methods.forEach((method) => {
         if (typeof logger_module.logger[method] === "function") {
-          spyOn(logger_module.logger, method).mockImplementation(() => {});
+          vi.spyOn(logger_module.logger, method).mockImplementation(() => {});
         } else {
-          logger_module.logger[method] = mock(() => {});
+          logger_module.logger[method] = vi.fn(() => {});
         }
       });
     }
@@ -104,7 +101,7 @@ describe("settings utilities", () => {
   });
 
   afterEach(() => {
-    mock.restore();
+    vi.clearAllMocks();
     delete process.env.SECRET_SALT;
     getEnvironment().clearCache(); // Clear cache after cleanup
   });

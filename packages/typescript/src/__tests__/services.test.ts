@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { createService, defineService } from "../services";
 import type { IAgentRuntime, ServiceTypeName } from "../types";
 import { Service } from "../types";
@@ -51,7 +51,7 @@ describe("service builder", () => {
 
   it("should call custom stop function when provided", async () => {
     // This test covers lines 65-68 - custom stopFn execution
-    const stopFn = mock().mockResolvedValue(undefined);
+    const stopFn = vi.fn().mockResolvedValue(undefined);
 
     const Builder = createService("WITH_STOP")
       .withDescription("Service with custom stop")

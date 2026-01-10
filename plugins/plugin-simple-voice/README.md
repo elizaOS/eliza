@@ -1,175 +1,136 @@
-# @elizaos/plugin-sam
+# @elizaos/plugin-simple-voice
 
-Retro 1980s SAM Text-to-Speech plugin for ElizaOS agents.
+Retro 1980s SAM (Software Automatic Mouth) Text-to-Speech plugin for ElizaOS agents.
+
+Available in **TypeScript**, **Python**, and **Rust**.
 
 ## Overview
 
-This plugin integrates the classic SAM (Software Automatic Mouth) text-to-speech synthesizer from the 1980s into ElizaOS agents. SAM was originally developed by Don't Ask Software and became famous for its distinctive robotic voice synthesis.
+SAM was a speech synthesizer from the 1980s known for its distinctive robotic voice. This plugin provides formant-based synthesis across three languages with identical APIs and feature parity.
 
 ## Features
 
-- 🎙️ **Authentic Retro Voice**: Uses the original SAM algorithm for genuine 1980s TTS
-- 🔊 **Hardware Bridge Integration**: Outputs audio through system speakers
-- ⚙️ **Voice Parameter Control**: Adjust speed, pitch, throat, and mouth settings
-- 🎯 **Trigger Word Detection**: Responds to "say aloud", "speak", and voice commands
-- 📡 **WebSocket Audio Streaming**: Real-time audio delivery to connected clients
-- 🎵 **WAV Format Output**: Standard audio format for compatibility
+- 🎙️ Authentic retro voice synthesis
+- 🔊 Hardware bridge integration for audio output
+- ⚙️ Voice parameter control (speed, pitch, throat, mouth)
+- 🎯 Natural language trigger detection
+- 🎵 WAV format output
+
+## Voice Parameters
+
+| Parameter | Range   | Default | Description        |
+|-----------|---------|---------|-------------------|
+| Speed     | 20-200  | 72      | Speaking rate     |
+| Pitch     | 0-255   | 64      | Voice pitch       |
+| Throat    | 0-255   | 128     | Throat resonance  |
+| Mouth     | 0-255   | 128     | Mouth articulation|
+
+## Trigger Phrases
+
+The SAY_ALOUD action responds to:
+
+- `say aloud`, `speak`, `read aloud`
+- `announce`, `proclaim`, `voice`
+- `say "quoted text"`, `speak 'quoted text'`
+- Voice modifiers: `higher voice`, `robotic`, `slower`
+
+## Usage
+
+### TypeScript
+
+```typescript
+import { simpleVoicePlugin, SamTTSService } from '@elizaos/plugin-simple-voice';
+
+// As plugin
+const runtime = new AgentRuntime({ plugins: [simpleVoicePlugin] });
+
+// Direct usage
+const service = new SamTTSService(runtime);
+const audio = service.generateAudio('Hello world', { speed: 72, pitch: 64, throat: 128, mouth: 128 });
+const wav = service.createWAVBuffer(audio);
+```
+
+### Python
+
+```python
+from eliza_plugin_simple_voice import SamTTSService, SamTTSOptions
+
+service = SamTTSService()
+audio = service.generate_audio("Hello world", SamTTSOptions(speed=72))
+wav = service.create_wav_buffer(audio)
+```
+
+### Rust
+
+```rust
+use eliza_plugin_simple_voice::{SamTTSService, SamTTSOptions};
+
+let service = SamTTSService::default();
+let audio = service.generate_audio("Hello world", Some(SamTTSOptions::default()));
+let wav = service.create_wav_buffer(&audio, 22050);
+```
 
 ## Installation
 
 ```bash
-npm install @elizaos/plugin-sam
+# TypeScript
+cd typescript && bun install && bun run build
+
+# Python
+cd python && pip install -e .
+
+# Rust
+cd rust && cargo build --release
 ```
-
-## Usage
-
-### Basic Setup
-
-```typescript
-import { samPlugin } from '@elizaos/plugin-sam';
-import { AgentRuntime } from '@elizaos/core';
-
-const runtime = new AgentRuntime({
-  character: yourCharacter,
-  plugins: [samPlugin],
-  // ... other configuration
-});
-```
-
-### Using the SAY_ALOUD Action
-
-The plugin responds to messages containing trigger words:
-
-```
-User: "Please say aloud: Hello from the past!"
-Agent: [Generates retro SAM voice audio saying "Hello from the past!"]
-
-User: "Speak this text: Welcome to 1985"
-Agent: [Generates retro SAM voice audio saying "Welcome to 1985"]
-```
-
-### Voice Parameters
-
-You can control various aspects of the SAM voice:
-
-- **Speed**: 20-200 (default: 72)
-- **Pitch**: 0-255 (default: 64)
-- **Throat**: 0-255 (default: 128)
-- **Mouth**: 0-255 (default: 128)
-
-### Hardware Bridge Integration
-
-The plugin integrates with ElizaOS's hardware bridge service to output audio through system speakers. When a SAY_ALOUD action is triggered:
-
-1. Text is processed by the SAM synthesizer
-2. Audio buffer is generated in WAV format
-3. Audio is streamed via WebSocket to the hardware bridge
-4. Hardware bridge plays audio through system speakers
-
-## API Reference
-
-### Actions
-
-#### SAY_ALOUD
-
-Synthesizes text using SAM TTS and outputs through speakers.
-
-**Triggers**: Messages containing "say aloud", "speak", or similar voice commands
-
-**Parameters**: Extracted from message content
-
-**Returns**: Audio output through hardware bridge
-
-### Services
-
-#### SamTTSService
-
-Core service managing SAM text-to-speech functionality.
-
-**Methods**:
-
-- `generateAudio(text, options)` - Generate SAM audio buffer
-- `speakText(text, options)` - Generate and stream audio
-- `createWAVBuffer(audioData)` - Convert SAM output to WAV format
-
-## Voice Examples
-
-The classic SAM voice is distinctive and immediately recognizable:
-
-- **"Hello world"** - Basic greeting with robotic charm
-- **"Welcome to the future"** - Sci-fi themed announcement
-- **"System online"** - Computer status message
-- **"Error detected"** - Alert notification
-
-## Technical Details
-
-### SAM Algorithm
-
-The plugin uses the `sam-js` library, which is a JavaScript port of the original SAM speech synthesis algorithm. This ensures authentic 1980s voice characteristics including:
-
-- Formant-based synthesis
-- Distinctive robotic tone
-- Authentic phoneme processing
-- Classic pitch and timing patterns
-
-### Audio Pipeline
-
-```
-Text Input → SAM Synthesis → WAV Buffer → WebSocket → Hardware Bridge → System Speakers
-```
-
-### Dependencies
-
-- `sam-js`: Core SAM synthesis library
-- `@elizaos/core`: ElizaOS framework
-- Hardware bridge service for audio output
 
 ## Testing
 
-Run the test suite:
-
 ```bash
-npm test
+# TypeScript
+cd typescript && bun test
+
+# Python
+cd python && pytest
+
+# Rust
+cd rust && cargo test
 ```
 
-Test with ElizaOS:
+## Architecture
 
-```bash
-elizaos test
+```
+plugin-simple-voice/
+├── typescript/          # TypeScript implementation
+│   ├── src/
+│   │   ├── index.ts
+│   │   ├── types.ts
+│   │   ├── actions/sayAloud.ts
+│   │   └── services/SamTTSService.ts
+│   └── package.json
+├── python/              # Python implementation
+│   ├── src/eliza_plugin_simple_voice/
+│   │   ├── __init__.py
+│   │   ├── types.py
+│   │   ├── sam_engine.py
+│   │   ├── actions/say_aloud.py
+│   │   └── services/sam_tts_service.py
+│   └── pyproject.toml
+└── rust/                # Rust implementation
+    ├── src/
+    │   ├── lib.rs
+    │   ├── types.rs
+    │   ├── sam_engine.rs
+    │   ├── actions/say_aloud.rs
+    │   └── services/sam_tts_service.rs
+    └── Cargo.toml
 ```
 
-## Contributing
+## Audio Pipeline
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Submit a pull request
+```
+Text → Phoneme Conversion → Formant Synthesis → 8-bit PCM → WAV → Hardware Bridge
+```
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Credits
-
-- Original SAM algorithm by Don't Ask Software (1982)
-- JavaScript port by Vidar Hokstad and contributors
-- ElizaOS integration by the ElizaOS team
-
-## Troubleshooting
-
-### No Audio Output
-
-1. Verify hardware bridge service is running
-2. Check system audio settings
-3. Ensure WebSocket connection is established
-4. Test with other audio applications
-
-### Synthesis Issues
-
-1. Check text contains valid characters
-2. Verify SAM parameters are within valid ranges
-3. Test with simple text first
-4. Review error logs for synthesis failures
-
-For more help, see the [ElizaOS documentation](https://elizaos.ai/docs) or [open an issue](https://github.com/ai16z/eliza/issues).
+MIT

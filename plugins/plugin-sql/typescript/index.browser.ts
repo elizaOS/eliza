@@ -4,7 +4,7 @@ import {
   logger,
   type Plugin,
   type UUID,
-} from "@elizaos/core/browser";
+} from "@elizaos/core";
 import { PgliteDatabaseAdapter } from "./pglite/adapter";
 import { PGliteClientManager } from "./pglite/manager";
 import * as schema from "./schema";

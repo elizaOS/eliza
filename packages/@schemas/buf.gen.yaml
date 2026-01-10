@@ -1,0 +1,28 @@
+# buf.gen.yaml - Code generation configuration for multiple languages
+version: v2
+
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/elizaos/eliza/gen/go
+
+plugins:
+  # TypeScript generation using @bufbuild/protobuf
+  - remote: buf.build/bufbuild/es:v2.2.2
+    out: ../typescript/src/types/generated
+    opt:
+      - target=ts
+      - import_extension=.js
+
+  # Python generation using standard protobuf
+  - remote: buf.build/protocolbuffers/python
+    out: ../python/elizaos/types/generated
+
+  # Python type stubs
+  - remote: buf.build/protocolbuffers/pyi
+    out: ../python/elizaos/types/generated
+
+  # Rust generation using prost (WASM-compatible)
+  - remote: buf.build/community/neoeinstein-prost:v0.4.0
+    out: ../rust/src/types/generated

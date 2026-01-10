@@ -1,9 +1,11 @@
 """
 Integration tests for the EVM plugin against live testnets.
 
-These tests require:
+These tests require (for network tests):
 - EVM_PRIVATE_KEY environment variable set with a funded testnet wallet
 - Network connectivity to RPC endpoints
+
+Auto-generation tests can run without an EVM_PRIVATE_KEY.
 
 Run with: pytest tests/test_integration.py -v
 """
@@ -26,8 +28,8 @@ from elizaos_plugin_evm import (
 from elizaos_plugin_evm.error import EVMError
 
 
-# Skip all tests if no private key is set
-pytestmark = pytest.mark.skipif(
+# Mark for tests that require the private key
+requires_private_key = pytest.mark.skipif(
     not os.getenv("EVM_PRIVATE_KEY"),
     reason="EVM_PRIVATE_KEY not set",
 )
@@ -48,6 +50,7 @@ def provider(private_key: str) -> EVMWalletProvider:
     return EVMWalletProvider(private_key)
 
 
+@requires_private_key
 class TestWalletProvider:
     """Integration tests for the wallet provider."""
 
@@ -87,6 +90,7 @@ class TestWalletProvider:
             assert balance.chain == chain
 
 
+@requires_private_key
 class TestTransfer:
     """Integration tests for transfers (on testnet only)."""
 
@@ -107,6 +111,7 @@ class TestTransfer:
         assert exc.value.code in ["INSUFFICIENT_FUNDS", "TRANSACTION_FAILED"]
 
 
+@requires_private_key
 class TestSwap:
     """Integration tests for swaps."""
 
@@ -134,6 +139,7 @@ class TestSwap:
                 raise
 
 
+@requires_private_key
 class TestBridge:
     """Integration tests for bridges."""
 
@@ -161,6 +167,7 @@ class TestBridge:
                 raise
 
 
+@requires_private_key
 class TestTokenBalance:
     """Integration tests for token balance queries."""
 
@@ -194,6 +201,50 @@ class TestTokenBalance:
         assert token_balance.token.decimals == 18
 
 
+class TestAutoKeyGeneration:
+    """Test automatic key generation."""
+
+    def test_auto_generate_when_none(self):
+        """Test that a key is generated when None is provided."""
+        provider = EVMWalletProvider(None)
+
+        assert provider.was_auto_generated is True
+        assert provider.generated_key is not None
+        assert provider.generated_key.private_key.startswith("0x")
+        assert len(provider.generated_key.private_key) == 66  # 0x + 64 hex chars
+        assert provider.generated_key.address.startswith("0x")
+        assert len(provider.generated_key.address) == 42
+
+    def test_auto_generate_when_empty(self):
+        """Test that a key is generated when empty string is provided."""
+        provider = EVMWalletProvider("")
+
+        assert provider.was_auto_generated is True
+        assert provider.generated_key is not None
+
+    def test_no_auto_generate_when_provided(self, private_key: str):
+        """Test that no key is generated when valid key is provided."""
+        provider = EVMWalletProvider(private_key)
+
+        assert provider.was_auto_generated is False
+        assert provider.generated_key is None
+
+    def test_generated_key_function(self):
+        """Test the standalone generate_private_key function."""
+        from elizaos_plugin_evm import generate_private_key
+
+        generated = generate_private_key()
+
+        assert generated.private_key.startswith("0x")
+        assert len(generated.private_key) == 66
+        assert generated.address.startswith("0x")
+        assert len(generated.address) == 42
+
+        # Verify the key works
+        provider = EVMWalletProvider(generated.private_key)
+        assert provider.address == generated.address
+
+
 class TestErrorHandling:
     """Test error handling scenarios."""
 
@@ -203,12 +254,7 @@ class TestErrorHandling:
             EVMWalletProvider("invalid_key")
         assert exc.value.code == "INVALID_PARAMS"
 
-    def test_empty_private_key(self):
-        """Test that empty private key raises error."""
-        with pytest.raises(EVMError) as exc:
-            EVMWalletProvider("")
-        assert exc.value.code == "INVALID_PARAMS"
-
+    @requires_private_key
     @pytest.mark.asyncio
     async def test_invalid_token_address(self, provider: EVMWalletProvider):
         """Test that invalid token address fails."""

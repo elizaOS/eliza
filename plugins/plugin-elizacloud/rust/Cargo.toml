@@ -1,0 +1,70 @@
+[package]
+name = "elizaos-plugin-elizacloud"
+version = "1.7.4"
+edition = "2021"
+authors = ["elizaOS Team"]
+description = "ElizaOS Cloud plugin - Multi-model AI generation with text, image, and audio support"
+license = "MIT"
+repository = "https://github.com/elizaos-plugins/plugin-elizacloud"
+keywords = ["ai", "agent", "llm", "openai", "embeddings", "elizaos"]
+categories = ["science", "api-bindings", "web-programming"]
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "getrandom/js", "console_error_panic_hook"]
+
+[dependencies]
+# Async runtime
+async-trait = "0.1"
+futures = "0.3"
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# UUID handling
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Logging
+tracing = "0.1"
+
+# Tokenization (tiktoken-compatible)
+tiktoken-rs = "0.6"
+
+# Base64 encoding for bytes serialization
+base64 = "0.22"
+
+# URL handling
+url = "2.5"
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["console"], optional = true }
+getrandom = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.0"
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+opt-level = "z"
+

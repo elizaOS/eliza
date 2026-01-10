@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.turbo/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Rust
+rust/target/
+rust/Cargo.lock
+rust/pkg/
+
+# Python
+python/__pycache__/
+python/*.egg-info/
+python/.pytest_cache/
+python/.mypy_cache/
+python/.ruff_cache/
+python/dist/
+python/build/
+python/.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Lock files (use workspace lock)
+bun.lock
+package-lock.json
+yarn.lock

@@ -4,27 +4,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::IMAGE_GENERATION_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const IMAGE_GENERATION_TEMPLATE: &str = r#"# Task: Generate an image prompt for {{agentName}}.
-
-{{providers}}
-
-# Instructions:
-Based on the conversation, create a detailed prompt for image generation.
-The prompt should be specific, descriptive, and suitable for AI image generation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the image prompt</thought>
-    <prompt>Detailed image generation prompt</prompt>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
 
 /// Action for generating images.
 pub struct GenerateImageAction;

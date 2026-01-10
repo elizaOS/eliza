@@ -1,7 +1,7 @@
 /**
  * Test that the .eliza directory is automatically created when using PGLite with a file path
  */
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

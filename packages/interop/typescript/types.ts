@@ -3,6 +3,10 @@
  *
  * These types define the wire format for communication between
  * different language runtimes (Rust, TypeScript, Python).
+ * 
+ * Note: These are standalone definitions that match the proto schemas
+ * in /schemas/eliza/v1/ipc.proto. For full proto-generated types,
+ * import from @elizaos/core.
  */
 
 import type { Content, Memory, State } from "@elizaos/core";

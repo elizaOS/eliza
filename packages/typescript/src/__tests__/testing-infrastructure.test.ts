@@ -4,7 +4,7 @@
  * These tests verify that our testing utilities work correctly.
  */
 
-import { describe, expect, it, mock, beforeEach, afterEach } from "bun:test";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import {
   createTestCharacter,
   createTestMemory,
@@ -183,7 +183,7 @@ describe("Testing Infrastructure", () => {
 
   describe("retry", () => {
     it("should return result on first success", async () => {
-      const fn = mock().mockResolvedValue("success");
+      const fn = vi.fn().mockResolvedValue("success");
       const result = await retry(fn);
       expect(result).toBe("success");
       expect(fn).toHaveBeenCalledTimes(1);
@@ -191,7 +191,7 @@ describe("Testing Infrastructure", () => {
 
     it("should retry on failure", async () => {
       let attempts = 0;
-      const fn = mock().mockImplementation(async () => {
+      const fn = vi.fn().mockImplementation(async () => {
         attempts++;
         if (attempts < 3) {
           throw new Error("Fail");
@@ -205,7 +205,7 @@ describe("Testing Infrastructure", () => {
     });
 
     it("should throw after max retries", async () => {
-      const fn = mock().mockRejectedValue(new Error("Always fails"));
+      const fn = vi.fn().mockRejectedValue(new Error("Always fails"));
       await expect(retry(fn, { maxRetries: 2, baseDelay: 1 })).rejects.toThrow(
         "Always fails",
       );
@@ -214,7 +214,7 @@ describe("Testing Infrastructure", () => {
 
     it("should use exponential backoff", async () => {
       const timestamps: number[] = [];
-      const fn = mock().mockImplementation(async () => {
+      const fn = vi.fn().mockImplementation(async () => {
         timestamps.push(Date.now());
         if (timestamps.length < 3) {
           throw new Error("Fail");

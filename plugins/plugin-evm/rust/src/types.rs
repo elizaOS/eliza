@@ -3,7 +3,7 @@
 //! This module provides strongly typed definitions for all EVM operations.
 //! Types are designed for fail-fast validation - no defensive programming.
 
-use alloy_primitives::{Address, Bytes, U256, B256};
+use alloy::primitives::{Address, Bytes, U256, B256};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;

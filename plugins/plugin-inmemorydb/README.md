@@ -50,7 +50,7 @@ const agent = {
 ### Browser
 
 ```typescript
-import { plugin } from "@elizaos/plugin-inmemorydb/browser";
+import { plugin } from "@elizaos/plugin-inmemorydb";
 
 // Add to your agent configuration
 const agent = {

@@ -4,31 +4,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::UPDATE_SETTINGS_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const UPDATE_SETTINGS_TEMPLATE: &str = r#"# Task: Update settings based on the request.
-
-{{providers}}
-
-# Current Settings:
-{{settings}}
-
-# Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the settings changes</thought>
-    <key>setting_key</key>
-    <value>new_value</value>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."#;
 
 /// Action for updating settings.
 pub struct UpdateSettingsAction;

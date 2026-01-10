@@ -1,53 +1,96 @@
 {
   "name": "@elizaos/plugin-twitter",
-  "version": "1.2.22",
+  "version": "1.3.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "dependencies": {
-    "@elizaos/core": "^1.6.3",
-    "headers-polyfill": "^4.0.3",
-    "json-stable-stringify": "^1.3.0",
-    "twitter-api-v2": "^1.23.2"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@vitest/coverage-v8": "3.2.4", 
-    "prettier": "3.6.1",
-    "tsup": "8.5.0",
-    "typescript": "^5.8.3",
-    "vitest": "3.2.4"
-  },
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "tsup && elizaos test",
-    "test:coverage": "vitest run --coverage",
-    "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "main": "typescript/dist/cjs/index.node.cjs",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-twitter.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "require": "./typescript/dist/cjs/index.node.cjs",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "./rust/pkg/web/elizaos_plugin_twitter.js",
+        "default": "./rust/pkg/web/elizaos_plugin_twitter.js"
+      },
+      "node": {
+        "import": "./rust/pkg/node/elizaos_plugin_twitter.js",
+        "default": "./rust/pkg/node/elizaos_plugin_twitter.js"
+      },
+      "default": "./rust/pkg/node/elizaos_plugin_twitter.js"
+    }
+  },
+  "files": [
+    "typescript/dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_twitter"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -61,13 +104,13 @@
       },
       "TWITTER_API_KEY": {
         "type": "string",
-        "description": "Twitter API key (required for TWITTER_AUTH_MODE=env).",
+        "description": "Twitter/X API key (required for TWITTER_AUTH_MODE=env).",
         "required": false,
         "sensitive": true
       },
       "TWITTER_API_SECRET_KEY": {
         "type": "string",
-        "description": "Twitter API secret key (required for TWITTER_AUTH_MODE=env).",
+        "description": "Twitter/X API secret key (required for TWITTER_AUTH_MODE=env).",
         "required": false,
         "sensitive": true
       },
@@ -83,9 +126,15 @@
         "required": false,
         "sensitive": true
       },
+      "TWITTER_BEARER_TOKEN": {
+        "type": "string",
+        "description": "Twitter/X Bearer token for app-only authentication.",
+        "required": false,
+        "sensitive": true
+      },
       "TWITTER_CLIENT_ID": {
         "type": "string",
-        "description": "Twitter OAuth2 client ID (required for TWITTER_AUTH_MODE=oauth).",
+        "description": "Twitter/X OAuth2 client ID (required for TWITTER_AUTH_MODE=oauth).",
         "required": false,
         "sensitive": false
       },
@@ -102,33 +151,6 @@
         "default": "tweet.read tweet.write users.read offline.access",
         "sensitive": false
       },
-      "TWITTER_BROKER_URL": {
-        "type": "string",
-        "description": "Broker URL (required for TWITTER_AUTH_MODE=broker; stub only).",
-        "required": false,
-        "sensitive": false
-      },
-      "TWITTER_TARGET_USERS": {
-        "type": "string",
-        "description": "Comma-separated list of Twitter usernames the bot should interact with. Use '*' for all users.",
-        "required": false,
-        "default": "",
-        "sensitive": false
-      },
-      "TWITTER_RETRY_LIMIT": {
-        "type": "number",
-        "description": "Maximum number of retry attempts when a Twitter operation fails.",
-        "required": false,
-        "default": 5,
-        "sensitive": false
-      },
-      "TWITTER_POLL_INTERVAL": {
-        "type": "number",
-        "description": "Timeline polling interval in seconds.",
-        "required": false,
-        "default": 120,
-        "sensitive": false
-      },
       "TWITTER_DRY_RUN": {
         "type": "boolean",
         "description": "When true, all Twitter actions are simulated and nothing is actually posted.",
@@ -143,102 +165,11 @@
         "default": false,
         "sensitive": false
       },
-      "TWITTER_POST_INTERVAL_MIN": {
-        "type": "number",
-        "description": "Minimum interval in minutes between automatically generated posts.",
-        "required": false,
-        "default": 90,
-        "sensitive": false
-      },
-      "TWITTER_POST_INTERVAL_MAX": {
-        "type": "number",
-        "description": "Maximum interval in minutes between automatically generated posts.",
-        "required": false,
-        "default": 180,
-        "sensitive": false
-      },
-      "TWITTER_POST_IMMEDIATELY": {
+      "TWITTER_ENABLE_REPLIES": {
         "type": "boolean",
-        "description": "Skip intervals and post immediately after generation.",
+        "description": "Enable mention and reply handling.",
         "required": false,
-        "default": false,
-        "sensitive": false
-      },
-      "TWITTER_POST_INTERVAL_VARIANCE": {
-        "type": "number",
-        "description": "Random variance factor (0.0-1.0) applied to posting intervals for natural behavior.",
-        "required": false,
-        "default": 0.2,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_MIN": {
-        "type": "number",
-        "description": "Minimum interval in minutes between interactions.",
-        "required": false,
-        "default": 15,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_MAX": {
-        "type": "number",
-        "description": "Maximum interval in minutes between interactions.",
-        "required": false,
-        "default": 30,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_VARIANCE": {
-        "type": "number",
-        "description": "Random variance factor (0.0-1.0) applied to interaction intervals for natural behavior.",
-        "required": false,
-        "default": 0.3,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_ALGORITHM": {
-        "type": "string",
-        "description": "Timeline processing algorithm: 'weighted' (default) or 'latest'.",
-        "required": false,
-        "default": "weighted",
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_USER_BASED_WEIGHT": {
-        "type": "number",
-        "description": "Weight for user-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 3,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_TIME_BASED_WEIGHT": {
-        "type": "number",
-        "description": "Weight for time-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 2,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_RELEVANCE_WEIGHT": {
-        "type": "number",
-        "description": "Weight for relevance-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 5,
-        "sensitive": false
-      },
-      "TWITTER_MAX_TWEET_LENGTH": {
-        "type": "number",
-        "description": "Maximum tweet length (supports long-form tweets up to 4000 characters).",
-        "required": false,
-        "default": 4000,
-        "sensitive": false
-      },
-      "TWITTER_MAX_INTERACTIONS_PER_RUN": {
-        "type": "number",
-        "description": "Maximum number of interactions processed per cycle.",
-        "required": false,
-        "default": 10,
-        "sensitive": false
-      },
-      "TWITTER_DM_ONLY": {
-        "type": "boolean",
-        "description": "Only process direct messages, ignore public interactions.",
-        "required": false,
-        "default": false,
+        "default": true,
         "sensitive": false
       },
       "TWITTER_ENABLE_ACTIONS": {
@@ -248,111 +179,27 @@
         "default": false,
         "sensitive": false
       },
-      "TWITTER_ACTION_INTERVAL": {
+      "TWITTER_MAX_TWEET_LENGTH": {
         "type": "number",
-        "description": "Interval in minutes between timeline action processing cycles.",
+        "description": "Maximum tweet length (supports long-form tweets up to 4000 characters).",
         "required": false,
-        "default": 240,
+        "default": 280,
         "sensitive": false
       },
-      "TWITTER_AUTO_RESPOND_MENTIONS": {
-        "type": "boolean",
-        "description": "Automatically respond to mentions.",
-        "required": false,
-        "default": true,
-        "sensitive": false
-      },
-      "TWITTER_AUTO_RESPOND_REPLIES": {
-        "type": "boolean",
-        "description": "Automatically respond to replies.",
-        "required": false,
-        "default": true,
-        "sensitive": false
-      },
-      "TWITTER_ENABLE_REPLIES": {
-        "type": "boolean",
-        "description": "Enable mention and reply handling.",
-        "required": false,
-        "default": true,
-        "sensitive": false
-      },
-      "TWITTER_ENABLE_DISCOVERY": {
-        "type": "boolean",
-        "description": "Enable discovery service for autonomous content discovery and growth.",
-        "required": false,
-        "default": false,
-        "sensitive": false
-      },
-      "TWITTER_MIN_FOLLOWER_COUNT": {
-        "type": "number",
-        "description": "Minimum follower count for accounts to follow in discovery service.",
-        "required": false,
-        "default": 100,
-        "sensitive": false
-      },
-      "TWITTER_MAX_FOLLOWS_PER_CYCLE": {
-        "type": "number",
-        "description": "Maximum accounts to follow per discovery cycle.",
-        "required": false,
-        "default": 5,
-        "sensitive": false
-      },
-      "TWITTER_MAX_ENGAGEMENTS_PER_RUN": {
-        "type": "number",
-        "description": "Maximum engagements per discovery/interaction cycle.",
-        "required": false,
-        "default": 10,
-        "sensitive": false
-      },
-      "TWITTER_ENGAGEMENT_INTERVAL": {
-        "type": "number",
-        "description": "Fixed interval for interactions (default: 30, used if MIN/MAX not set).",
-        "required": false,
-        "default": 30,
-        "sensitive": false
-      },
-      "TWITTER_ENGAGEMENT_INTERVAL_MIN": {
-        "type": "number",
-        "description": "Minimum minutes between engagements.",
-        "required": false,
-        "default": 20,
-        "sensitive": false
-      },
-      "TWITTER_ENGAGEMENT_INTERVAL_MAX": {
-        "type": "number",
-        "description": "Maximum minutes between engagements.",
-        "required": false,
-        "default": 40,
-        "sensitive": false
-      },
-      "TWITTER_DISCOVERY_INTERVAL_MIN": {
-        "type": "number",
-        "description": "Minimum minutes between discovery cycles.",
-        "required": false,
-        "default": 15,
-        "sensitive": false
-      },
-      "TWITTER_DISCOVERY_INTERVAL_MAX": {
-        "type": "number",
-        "description": "Maximum minutes between discovery cycles.",
-        "required": false,
-        "default": 30,
-        "sensitive": false
-      },
-      "TWITTER_POST_INTERVAL": {
-        "type": "number",
-        "description": "Fixed interval between posts (default: 120, used if MIN/MAX not set).",
-        "required": false,
-        "default": 120,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_MODE": {
+      "XAI_API_KEY": {
         "type": "string",
-        "description": "Timeline mode: 'home' for regular timeline or other modes.",
+        "description": "xAI (Grok) API key for AI model access.",
         "required": false,
-        "default": "home",
+        "sensitive": true
+      },
+      "XAI_MODEL": {
+        "type": "string",
+        "description": "xAI model to use for text generation.",
+        "required": false,
+        "default": "grok-3",
         "sensitive": false
       }
     }
-  }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
 }

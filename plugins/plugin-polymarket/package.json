@@ -1,71 +1,117 @@
 {
-  "name": "plugin-polymarket",
-  "description": "ElizaOS plugin for Polymarket prediction markets",
-  "version": "0.1.0",
+  "name": "@elizaos/plugin-polymarket",
+  "version": "2.0.0-alpha.0",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
+  "description": "Multi-language Polymarket prediction markets plugin for elizaOS",
   "keywords": [
     "polymarket",
     "prediction-markets",
     "elizaos",
-    "plugin"
+    "plugin",
+    "web3",
+    "polygon"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monilpat/plugin-polymarket.git"
-  },
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
-    }
-  },
-  "files": [
-    "dist"
-  ],
-  "dependencies": {
-    "@elizaos/cli": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
-    "@polymarket/clob-client": "^4.16.0",
-    "ethers": "^6.13.1",
-    "node-fetch": "^3.0.0",
-    "ws": "^8.17.0",
-    "zod": "3.25.32"
-  },
-  "devDependencies": {
-    "tsup": "8.4.0",
-    "prettier": "3.5.3",
-    "vitest": "2.1.5",
-    "@vitest/coverage-v8": "2.1.5"
-  },
-  "scripts": {
-    "start": "elizaos start",
-    "dev": "elizaos dev",
-    "build": "tsup",
-    "lint": "prettier --write ./src",
-    "test:component": "vitest run",
-    "test:e2e": "elizaos test",
-    "test": "npm run test:component && npm run test:e2e",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "url": "https://github.com/elizaos-plugins/plugin-polymarket"
   },
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "b165ad83e5f7a21bc1edbd83374ca087e3cd6b33",
-  "packageType": "plugin",
-  "platform": "node",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "types"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-evm": "workspace:*",
+    "@polymarket/clob-client": "^4.16.0",
+    "viem": "^2.21.0",
+    "ws": "^8.17.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.0",
+    "bun-types": "^1.2.0",
+    "prettier": "3.5.3",
+    "typescript": "5.8.2"
+  },
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ./typescript",
+    "test": "bun test typescript/",
+    "test:unit": "bun test typescript/__tests__/unit/",
+    "test:integration": "bun test typescript/__tests__/integration/",
+    "build:rust": "cd rust && cargo build --release",
+    "build:rust:wasm": "cd rust && wasm-pack build --target web --out-dir pkg/web",
+    "test:rust": "cd rust && cargo test",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_polymarket"
+  },
+  "peerDependencies": {
+    "whatwg-url": "7.1.0"
+  },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {}
-  },
-  "npmPackage": "plugin-polymarket"
+    "pluginParameters": {
+      "POLYMARKET_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Hex-encoded private key for Polymarket trading on Polygon.",
+        "required": true,
+        "sensitive": true
+      },
+      "CLOB_API_URL": {
+        "type": "string",
+        "description": "Polymarket CLOB API URL.",
+        "required": false,
+        "default": "https://clob.polymarket.com",
+        "sensitive": false
+      },
+      "CLOB_WS_URL": {
+        "type": "string",
+        "description": "Polymarket CLOB WebSocket URL for real-time updates.",
+        "required": false,
+        "default": "wss://ws-subscriptions-clob.polymarket.com/ws/",
+        "sensitive": false
+      },
+      "CLOB_API_KEY": {
+        "type": "string",
+        "description": "API key for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      },
+      "CLOB_API_SECRET": {
+        "type": "string",
+        "description": "API secret for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      },
+      "CLOB_API_PASSPHRASE": {
+        "type": "string",
+        "description": "API passphrase for authenticated CLOB operations.",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
 }

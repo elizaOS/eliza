@@ -14,38 +14,10 @@ import type { User } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting DM recipient and message information from the user's request.
- *
- * @type {string}
- * @description This template is used to determine who the user wants to send a DM to and what message to send.
- *
- * @param {string} recentMessages - Placeholder for recent messages related to the request.
- * @param {string} senderName - Name of the sender requesting to send a DM.
- *
- * @returns {string} - Formatted template with instructions and JSON structure for response.
- */
-export const dmInfoTemplate = `# Messages we are searching for DM information
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting to send a direct message to a specific Discord user. Your goal is to determine:
-1. The recipient they want to message (could be a username, user ID, or mentioned user)
-2. The message content they want to send
-
-Extract the recipient identifier and the message content from their request.
-- If they mention a user like @username or <@userid>, extract that
-- If they provide a username or display name, extract that
-- If they provide a user ID (long number), extract that
-- Extract the complete message they want to send
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "recipientIdentifier": "<username|user-id|@mention>",
-  "messageContent": "<the message to send>"
-}
-\`\`\`
-`;
+// Import generated prompts
+import { sendDmTemplate } from "../../dist/prompts/typescript/prompts.js";
+// Re-export for backwards compatibility
+export const dmInfoTemplate = sendDmTemplate;
 
 /**
  * Get DM information from the user's request

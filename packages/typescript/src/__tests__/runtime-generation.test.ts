@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { Character } from "../types";
 import { ModelType } from "../types/model";
@@ -26,7 +26,7 @@ describe("generateText", () => {
     });
 
     // Mock the useModel method
-    mockUseModel = mock().mockResolvedValue("Generated response text");
+    mockUseModel = vi.fn().mockResolvedValue("Generated response text");
     runtime.useModel = mockUseModel;
   });
 
@@ -172,7 +172,7 @@ describe("generateText", () => {
     runtime = new AgentRuntime({
       character: characterWithArrayBio,
     });
-    mockUseModel = mock().mockResolvedValue("Response");
+    mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
 
     await runtime.generateText("Test input");
@@ -194,7 +194,7 @@ describe("generateText", () => {
     runtime = new AgentRuntime({
       character: minimalCharacter,
     });
-    mockUseModel = mock().mockResolvedValue("Response");
+    mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
 
     const input = "Test input";
@@ -225,7 +225,7 @@ describe("generateText", () => {
     runtime = new AgentRuntime({
       character: characterNoStyle,
     });
-    mockUseModel = mock().mockResolvedValue("Response");
+    mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
 
     await runtime.generateText("Test");
@@ -311,7 +311,7 @@ describe("generateText", () => {
     runtime = new AgentRuntime({
       character: characterNoName,
     });
-    mockUseModel = mock().mockResolvedValue("Response");
+    mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
 
     await runtime.generateText("Test", {
@@ -329,7 +329,7 @@ describe("generateText", () => {
     runtime = new AgentRuntime({
       character: { bio: "Test" } as Character,
     });
-    mockUseModel = mock().mockResolvedValue("Response");
+    mockUseModel = vi.fn().mockResolvedValue("Response");
     runtime.useModel = mockUseModel;
 
     await runtime.generateText("Test", {

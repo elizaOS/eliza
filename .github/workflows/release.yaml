@@ -406,7 +406,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/core/rust/target
+            packages/rust/target
             packages/plugin-sql/rust/target
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -418,7 +418,7 @@ jobs:
           
           # Build core WASM
           echo "Building @elizaos/core WASM..."
-          cd packages/core/rust
+          cd packages/rust
           wasm-pack build --target web --out-dir pkg/web --features wasm --no-default-features
           wasm-pack build --target nodejs --out-dir pkg/node --features wasm --no-default-features
           cd ../../..

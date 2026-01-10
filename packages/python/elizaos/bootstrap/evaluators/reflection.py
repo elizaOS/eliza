@@ -13,35 +13,10 @@ from elizaos.types import Evaluator, ModelType
 
 from elizaos.bootstrap.types import EvaluatorResult
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import REFLECTION_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
-
-
-REFLECTION_TEMPLATE = """# Task: Reflect on recent agent behavior and interactions.
-
-{{providers}}
-
-# Recent Interactions:
-{{recentInteractions}}
-
-# Instructions:
-Analyze the agent's recent behavior and interactions. Consider:
-1. Was the communication clear and helpful?
-2. Were responses appropriate for the context?
-3. Were any mistakes made?
-4. What could be improved?
-
-Respond using XML format like this:
-<response>
-    <thought>Your detailed analysis</thought>
-    <quality_score>Score 0-100 for overall quality</quality_score>
-    <strengths>What went well</strengths>
-    <improvements>What could be improved</improvements>
-    <learnings>Key takeaways for future interactions</learnings>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
 
 async def evaluate_reflection(

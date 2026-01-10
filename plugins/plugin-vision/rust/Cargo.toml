@@ -1,0 +1,52 @@
+[package]
+name = "elizaos-plugin-vision"
+version = "1.3.0"
+edition = "2021"
+description = "Vision plugin for ElizaOS - provides camera integration and visual awareness"
+license = "MIT"
+authors = ["ElizaOS <team@elizaos.ai>"]
+repository = "https://github.com/elizaos/elizaos"
+keywords = ["plugin", "elizaos", "vision", "camera", "computer-vision"]
+categories = ["computer-vision", "multimedia::images"]
+
+[lib]
+name = "elizaos_vision"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# Image processing
+image = "0.25"
+base64 = "0.22"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Random
+rand = "0.8"
+
+# Process execution
+which = "6.0"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[features]
+default = []
+ocr = []  # Enable OCR support
+opencv = []  # Enable OpenCV support
+

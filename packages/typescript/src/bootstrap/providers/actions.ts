@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderValue,
   State,
 } from "@elizaos/core";
 import {
@@ -95,7 +96,9 @@ export const actionsProvider: Provider = {
       .join("\n\n");
 
     return {
-      data,
+      data: {
+        actionsData: actionsData as unknown as ProviderValue,
+      },
       values,
       text,
     };

@@ -59,7 +59,6 @@
   },
   "peerDependencies": {},
   "devDependencies": {
-    "@elizaos/cli": "^1.2.0",
     "@eslint/js": "^9.0.0",
     "@types/bun": "^1.2.18",
     "@types/node": "^24.0.13",

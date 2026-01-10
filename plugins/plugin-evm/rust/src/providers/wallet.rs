@@ -5,13 +5,16 @@
 //! - Client creation for each chain
 //! - Balance queries
 //! - Transaction signing and sending
+//! - Automatic key generation when not provided
 
 use alloy::{
+    hex,
     network::{Ethereum, EthereumWallet},
     primitives::{Address, U256},
     providers::{
         fillers::{
-            ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller, WalletFiller,
+            BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller,
+            WalletFiller,
         },
         Identity, Provider, ProviderBuilder, RootProvider,
     },
@@ -60,10 +63,13 @@ impl WalletProviderConfig {
     }
 }
 
-/// Full provider type with all fillers
+/// Full provider type with all fillers (matches alloy 0.8+ recommended fillers)
 pub type FullProvider = FillProvider<
     JoinFill<
-        JoinFill<JoinFill<JoinFill<Identity, GasFiller>, NonceFiller>, ChainIdFiller>,
+        JoinFill<
+            Identity,
+            JoinFill<GasFiller, JoinFill<BlobGasFiller, JoinFill<NonceFiller, ChainIdFiller>>>,
+        >,
         WalletFiller<EthereumWallet>,
     >,
     RootProvider<Http<Client>>,
@@ -307,6 +313,70 @@ impl std::fmt::Debug for WalletProvider {
     }
 }
 
+/// Result of auto-generating a private key
+#[derive(Debug, Clone)]
+pub struct GeneratedKey {
+    /// The generated private key (hex-encoded with 0x prefix)
+    pub private_key: String,
+    /// The corresponding wallet address
+    pub address: Address,
+}
+
+/// Generate a new random private key and return it with the corresponding address.
+///
+/// This function generates a cryptographically secure random private key that can be
+/// used to initialize a wallet provider.
+///
+/// # Example
+///
+/// ```rust
+/// use elizaos_plugin_evm::providers::wallet::generate_private_key;
+///
+/// let generated = generate_private_key();
+/// println!("Generated wallet address: {}", generated.address);
+/// println!("Private key (keep secret!): {}", generated.private_key);
+/// ```
+#[must_use]
+pub fn generate_private_key() -> GeneratedKey {
+    let signer = PrivateKeySigner::random();
+    let address = signer.address();
+    let private_key = format!("0x{}", hex::encode(signer.to_bytes()));
+
+    tracing::warn!("═══════════════════════════════════════════════════════════════════");
+    tracing::warn!("⚠️  No private key provided - generating new wallet");
+    tracing::warn!("📍 New wallet address: {}", address);
+    tracing::warn!("💾 Please save the private key securely!");
+    tracing::warn!("⚠️  IMPORTANT: Back up your private key for production use!");
+    tracing::warn!("═══════════════════════════════════════════════════════════════════");
+
+    GeneratedKey {
+        private_key,
+        address,
+    }
+}
+
+impl WalletProviderConfig {
+    /// Create a new configuration, generating a private key if not provided.
+    ///
+    /// If `private_key` is `None`, a new random key will be generated and a warning
+    /// will be logged.
+    ///
+    /// # Returns
+    ///
+    /// A tuple of (config, generated_key) where `generated_key` is `Some` if a new
+    /// key was generated.
+    #[must_use]
+    pub fn new_or_generate(private_key: Option<String>) -> (Self, Option<GeneratedKey>) {
+        match private_key {
+            Some(key) if !key.is_empty() => (Self::new(key), None),
+            _ => {
+                let generated = generate_private_key();
+                (Self::new(generated.private_key.clone()), Some(generated))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,7 +384,7 @@ mod tests {
     fn test_private_key() -> String {
         // Generate a random private key for testing
         let key = PrivateKeySigner::random();
-        format!("0x{}", alloy::hex::encode(key.to_bytes()))
+        format!("0x{}", hex::encode(key.to_bytes()))
     }
 
     #[tokio::test]
@@ -335,5 +405,33 @@ mod tests {
 
         let address = provider.address();
         assert!(!address.is_zero());
+    }
+
+    #[tokio::test]
+    async fn test_auto_generate_private_key() {
+        let (config, generated) = WalletProviderConfig::new_or_generate(None);
+        
+        assert!(generated.is_some(), "Should generate a key when None provided");
+        
+        let generated = generated.unwrap();
+        assert!(generated.private_key.starts_with("0x"), "Key should have 0x prefix");
+        assert_eq!(generated.private_key.len(), 66, "Key should be 66 chars (0x + 64 hex)");
+        assert!(!generated.address.is_zero(), "Address should not be zero");
+        
+        // Should be able to create a provider with the generated key
+        let provider = WalletProvider::new(config).await.unwrap();
+        assert_eq!(provider.address(), generated.address);
+    }
+
+    #[tokio::test]
+    async fn test_provided_key_not_regenerated() {
+        let original_key = test_private_key();
+        let (config, generated) = WalletProviderConfig::new_or_generate(Some(original_key.clone()));
+        
+        assert!(generated.is_none(), "Should not generate when key provided");
+        
+        let provider = WalletProvider::new(config).await.unwrap();
+        let expected_signer: PrivateKeySigner = original_key.parse().unwrap();
+        assert_eq!(provider.address(), expected_signer.address());
     }
 }

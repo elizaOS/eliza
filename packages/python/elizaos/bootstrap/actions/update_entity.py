@@ -13,35 +13,10 @@ from uuid import UUID
 
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import UPDATE_ENTITY_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
-
-
-UPDATE_ENTITY_TEMPLATE = """# Task: Update entity information.
-
-{{providers}}
-
-# Current Entity Information:
-{{entityInfo}}
-
-# Instructions:
-Based on the request, determine what information about the entity should be updated.
-Only update fields that the user has explicitly requested to change.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the entity update</thought>
-    <entity_id>The entity ID to update</entity_id>
-    <updates>
-        <field>
-            <name>field_name</name>
-            <value>new_value</value>
-        </field>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
 
 @dataclass

@@ -7,6 +7,7 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  imageGenerationTemplate,
   logger,
   type Memory,
   ModelType,
@@ -14,26 +15,6 @@ import {
   type State,
 } from "@elizaos/core";
 import { v4 } from "uuid";
-
-/**
- * Template for generating an image for the character using a prompt.
- *
- * @type {string}
- */
-const imageGenerationTemplate = `# Task: Generate an image prompt based on the user's request.
-  {{providers}}
-  # Instructions:
-  Based on the user's message in the conversation, write a clear, concise, and visually descriptive prompt for image generation. Focus only on what the user wants to see, extract the key visual elements from the request, and formulate a detailed prompt suitable for image generation.
-
-  # Recent conversation:
-  {{recentMessages}}
-  
-  Your response should be formatted in XML like this:
-  <response>
-    <prompt>Your image generation prompt here</prompt>
-  </response>
-  
-  Your response should include the valid XML block and nothing else.`;
 
 /**
  * Represents an action that allows the agent to generate an image using a generated prompt.

@@ -76,11 +76,12 @@ export async function listOllamaModels(): Promise<string[]> {
   const parseResult = ollamaTagsResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    throw new Error(`Invalid Ollama response: ${parseResult.error.message}`);
+    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
+    throw new Error(`Invalid Ollama response: ${zodError.issues?.[0]?.message || zodError.toString() || "Validation failed"}`);
   }
 
   const parseResultDataModels = parseResult.data.models;
-  return (parseResultDataModels && parseResultDataModels.map((m) => m.name)) ?? [];
+  return (parseResultDataModels && parseResultDataModels.map((m: { name: string }) => m.name)) ?? [];
 }
 
 /**
@@ -126,7 +127,8 @@ async function generateTextWithOllama(
   const parseResult = ollamaGenerateResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    throw new Error(`Invalid Ollama response: ${parseResult.error.message}`);
+    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
+    throw new Error(`Invalid Ollama response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`);
   }
 
   return parseResult.data.response;
@@ -159,7 +161,8 @@ async function generateEmbeddingWithOllama(
   const parseResult = ollamaEmbedResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    throw new Error(`Invalid Ollama embedding response: ${parseResult.error.message}`);
+    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
+    throw new Error(`Invalid Ollama embedding response: ${zodError.issues?.map((i: { message: string }) => i.message).join(", ") || zodError.toString() || "Validation failed"}`);
   }
 
   const parseResultDataEmbeddings = parseResult.data.embeddings;

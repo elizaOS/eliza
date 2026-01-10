@@ -35,7 +35,7 @@ import {
   publicActions,
   walletActions,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
 
 import { EVM_SERVICE_NAME, DEFAULT_CHAINS } from "../constants";
@@ -358,8 +358,58 @@ function genChainsFromRuntime(runtime: IAgentRuntime): Record<string, Chain> {
 }
 
 /**
+ * Generate a new EVM private key and store it in the runtime
+ * @returns The generated private key
+ */
+async function generateAndStorePrivateKey(
+  runtime: IAgentRuntime
+): Promise<`0x${string}`> {
+  const newPrivateKey = generatePrivateKey();
+  const account = privateKeyToAccount(newPrivateKey);
+
+  elizaLogger.warn(
+    "═══════════════════════════════════════════════════════════════════"
+  );
+  elizaLogger.warn("⚠️  EVM_PRIVATE_KEY not found - generating new wallet");
+  elizaLogger.warn(`📍 New wallet address: ${account.address}`);
+  elizaLogger.warn(
+    "💾 Private key will be stored in agent secrets automatically"
+  );
+  elizaLogger.warn(
+    "⚠️  IMPORTANT: Back up your private key for production use!"
+  );
+  elizaLogger.warn(
+    "═══════════════════════════════════════════════════════════════════"
+  );
+
+  // Store the private key in the runtime secrets
+  runtime.setSetting("EVM_PRIVATE_KEY", newPrivateKey, true);
+
+  // Persist to database if possible
+  try {
+    await runtime.updateAgent(runtime.agentId, {
+      settings: {
+        ...runtime.character.settings,
+        secrets: {
+          ...(runtime.character.settings?.secrets as Record<string, string> || {}),
+          EVM_PRIVATE_KEY: newPrivateKey,
+        },
+      },
+    });
+    elizaLogger.log("EVM private key persisted to agent settings");
+  } catch (error) {
+    elizaLogger.warn(
+      "Could not persist EVM private key to database - key is only in memory",
+      error
+    );
+  }
+
+  return newPrivateKey;
+}
+
+/**
  * Initialize a wallet provider from runtime configuration
- * @throws EVMError if required configuration is missing
+ * If no private key is found, generates a new one automatically and stores it.
  */
 export async function initWalletProvider(
   runtime: IAgentRuntime
@@ -379,12 +429,11 @@ export async function initWalletProvider(
     return new LazyTeeWalletProvider(runtime, walletSecretSalt, chains);
   }
 
-  const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");
+  let privateKey = runtime.getSetting("EVM_PRIVATE_KEY");
+
+  // Auto-generate private key if not found
   if (!privateKey) {
-    throw new EVMError(
-      EVMErrorCode.WALLET_NOT_INITIALIZED,
-      "EVM_PRIVATE_KEY is missing"
-    );
+    privateKey = await generateAndStorePrivateKey(runtime);
   }
 
   // Validate the private key format

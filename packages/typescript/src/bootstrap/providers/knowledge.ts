@@ -1,4 +1,5 @@
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, ProviderValue, State } from "@elizaos/core";
+import { ModelType } from "@elizaos/core";
 
 /**
  * Knowledge Provider - Provides relevant knowledge from the agent's knowledge base.
@@ -12,7 +13,7 @@ export const knowledgeProvider: Provider = {
     "Provides relevant knowledge from the agent's knowledge base based on semantic similarity",
   dynamic: true,
 
-  get: async (runtime: IAgentRuntime, message: Memory, _state?: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     const sections: string[] = [];
     const knowledgeEntries: Array<{
       id: string;
@@ -28,19 +29,25 @@ export const knowledgeProvider: Provider = {
         text: "",
         values: {
           knowledgeCount: 0,
-          hasKnowledge: false,
+          hasKnowledge: false as boolean,
         },
         data: {
-          entries: [],
+          entries: [] as unknown as ProviderValue,
+          query: "",
         },
-      };
+      } as ProviderResult;
     }
 
     try {
-      // Search for relevant knowledge
-      const relevantKnowledge = await runtime.searchKnowledge({
+      // Search for relevant knowledge using searchMemories with knowledge table
+      const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text: queryText,
+      });
+      const relevantKnowledge = await runtime.searchMemories({
+        tableName: "knowledge",
+        embedding,
         query: queryText,
-        limit: 5,
+        count: 5,
       });
 
       for (const entry of relevantKnowledge) {
@@ -76,17 +83,17 @@ export const knowledgeProvider: Provider = {
         ? `# Relevant Knowledge\n${sections.join("\n")}`
         : "";
 
-    return {
-      text: contextText,
-      values: {
-        knowledgeCount: knowledgeEntries.length,
-        hasKnowledge: knowledgeEntries.length > 0,
-      },
-      data: {
-        entries: knowledgeEntries,
-        query: queryText,
-      },
-    };
+      return {
+        text: contextText,
+        values: {
+          knowledgeCount: knowledgeEntries.length,
+          hasKnowledge: knowledgeEntries.length > 0,
+        },
+        data: {
+          entries: knowledgeEntries as unknown as ProviderValue,
+          query: queryText,
+        },
+      } as ProviderResult;
   },
 };
 

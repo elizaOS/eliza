@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogger, elizaLogger, logger } from "../logger";
 
 // Mock environment variables
@@ -22,7 +22,7 @@ describe("Logger", () => {
     Object.keys(mockEnv).forEach((key) => {
       process.env[key] = mockEnv[key];
     });
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -382,7 +382,7 @@ describe("Logger", () => {
       process.env.LOG_JSON_FORMAT = "false";
 
       // Force a new logger creation which might use async path
-      // Note: bun:test doesn't have resetModules equivalent
+      // Note: vitest doesn't have resetModules equivalent
       const { createLogger: asyncLogger } = await import("../logger");
 
       const logger = asyncLogger();
@@ -398,7 +398,7 @@ describe("Logger", () => {
 
     it("should handle pino-pretty module not having default export", async () => {
       // Mock pino-pretty without default export
-      // Note: bun:test has different module mocking behavior
+      // Note: vitest has different module mocking behavior
       const { createLogger: testLogger } = await import("../logger");
 
       const logger = testLogger();

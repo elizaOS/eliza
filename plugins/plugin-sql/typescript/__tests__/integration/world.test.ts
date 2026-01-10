@@ -1,11 +1,11 @@
-import {
+import { 
   afterAll,
   beforeAll,
   beforeEach,
   describe,
   expect,
   it,
-} from "bun:test";
+ } from "vitest";
 import type { UUID, World } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import type { PgDatabaseAdapter } from "../../pg/adapter";

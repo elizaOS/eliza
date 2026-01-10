@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it  } from "vitest";
 import type { Entity, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { createTestDatabase } from "../test-helpers";

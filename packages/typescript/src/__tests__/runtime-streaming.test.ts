@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import {
   getStreamingContextManager,
@@ -28,7 +28,7 @@ function createMinimalMockAdapter(): IDatabaseAdapter {
       if (prop === "db") return {};
       const propStr = String(prop);
       if (!mockCache[propStr]) {
-        mockCache[propStr] = mock().mockResolvedValue(null);
+        mockCache[propStr] = vi.fn().mockResolvedValue(null);
       }
       return mockCache[propStr];
     },

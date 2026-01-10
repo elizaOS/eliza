@@ -40,7 +40,8 @@
     "typescript": "5.8.2"
   },
   "scripts": {
-    "build": "bun run build.ts",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && bun run build.ts",
     "dev": "bun run build.ts --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",

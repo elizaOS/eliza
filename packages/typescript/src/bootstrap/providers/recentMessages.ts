@@ -10,6 +10,8 @@ import {
   logger,
   type Memory,
   type Provider,
+  type ProviderValue,
+  type State,
   type UUID,
 } from "@elizaos/core";
 
@@ -67,7 +69,7 @@ export const recentMessagesProvider: Provider = {
   name: "RECENT_MESSAGES",
   description: "Recent messages, interactions and other memories",
   position: 100,
-  get: async (runtime: IAgentRuntime, message: Memory) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
       const { roomId } = message;
       const conversationLength = runtime.getConversationLength();
@@ -96,16 +98,12 @@ export const recentMessagesProvider: Provider = {
       // Separate action results from regular messages
       const actionResultMessages = recentMessagesData.filter(
         (msg) =>
-          msg.content && msg.content.type === "action_result" &&
-          msg.metadata && msg.metadata.type === "action_result",
+          msg.content && msg.content.type === "action_result",
       );
 
       const dialogueMessages = recentMessagesData.filter(
         (msg) =>
-          !(
-            msg.content && msg.content.type === "action_result" &&
-            msg.metadata && msg.metadata.type === "action_result"
-          ),
+          !(msg.content && msg.content.type === "action_result"),
       );
 
       // Default to message format if room is not found or type is undefined
@@ -207,9 +205,9 @@ export const recentMessagesProvider: Provider = {
       ) {
         return {
           data: {
-            recentMessages: dialogueMessages,
-            recentInteractions: [],
-            actionResults: actionResultMessages,
+            recentMessages: dialogueMessages as unknown as ProviderValue,
+            recentInteractions: [] as unknown as ProviderValue,
+            actionResults: actionResultMessages as unknown as ProviderValue,
           },
           values: {
             recentPosts: "",
@@ -404,7 +402,11 @@ export const recentMessagesProvider: Provider = {
         .join("\n\n");
 
       return {
-        data,
+        data: {
+          recentMessages: data.recentMessages as unknown as ProviderValue,
+          recentInteractions: data.recentInteractions as unknown as ProviderValue,
+          actionResults: data.actionResults as unknown as ProviderValue,
+        },
         values,
         text,
       };
@@ -420,9 +422,9 @@ export const recentMessagesProvider: Provider = {
       // Return a default state in case of error, similar to the empty message list
       return {
         data: {
-          recentMessages: [],
-          recentInteractions: [],
-          actionResults: [],
+          recentMessages: [] as unknown as ProviderValue,
+          recentInteractions: [] as unknown as ProviderValue,
+          actionResults: [] as unknown as ProviderValue,
         },
         values: {
           recentPosts: "",

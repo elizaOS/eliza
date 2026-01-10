@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import {  describe, it, expect  } from "vitest";
 import { visionPlugin } from './index';
 
 // Simplified TestSuite implementation for local use
@@ -16,7 +16,7 @@ class TestSuite {
   }
 
   run() {
-    // No-op, bun:test handles execution
+    // No-op, vitest handles execution
   }
 }
 

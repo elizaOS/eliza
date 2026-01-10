@@ -2,9 +2,11 @@
   "name": "@elizaos/plugin-pdf",
   "version": "1.0.2",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "typescript/dist/cjs/index.node.cjs",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-pdf.git"
@@ -12,58 +14,65 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
     }
   },
   "files": [
-    "dist",
-    "scripts",
-    "package.json",
-    "LICENSE",
-    "tsup.config.ts"
+    "typescript/dist",
+    "python",
+    "rust"
   ],
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.812.0",
-    "@aws-sdk/s3-request-presigner": "^3.812.0",
     "@elizaos/core": "^1.0.0",
-    "@types/uuid": "10.0.0",
-    "capsolver-npm": "2.1.9",
-    "esbuild-plugin-copy": "^2.1.1",
-    "fluent-ffmpeg": "2.1.3",
-    "glob": "11.0.2",
-    "patchright": "1.52.4",
-    "pdfjs-dist": "3.11.174",
-    "uuid": "11.1.0",
-    "youtube-dl-exec": "3.0.21"
+    "pdfjs-dist": "3.11.174"
   },
-  "trustedDependencies": [
-    "youtube-dl-exec"
-  ],
   "devDependencies": {
-    "@types/node": "22.15.18",
-    "prettier": "3.5.3",
-    "typescript": "5.8.3",
-    "tsup": "8.5.0"
+    "@types/node": "^22.15.18",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "postinstall": "node scripts/postinstall.js",
-    "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
-  },
-  "peerDependencies": {
-    "whatwg-url": "7.1.0"
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest"
   },
   "publishConfig": {
     "access": "public"
   },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {}

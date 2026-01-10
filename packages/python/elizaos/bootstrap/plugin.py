@@ -16,6 +16,12 @@ from .evaluators import BASIC_EVALUATORS, EXTENDED_EVALUATORS
 from .providers import BASIC_PROVIDERS, EXTENDED_PROVIDERS
 from .services import BASIC_SERVICES, EXTENDED_SERVICES
 from .types import CapabilityConfig
+from .autonomy import (
+    AutonomyService,
+    send_to_admin_action,
+    admin_chat_provider,
+    autonomy_status_provider,
+)
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime
@@ -32,6 +38,8 @@ def _get_providers(config: CapabilityConfig) -> list:
         result.extend(providers_to_add)
     if config.enable_extended:
         result.extend(EXTENDED_PROVIDERS)
+    if config.enable_autonomy:
+        result.extend([admin_chat_provider, autonomy_status_provider])
     return result
 
 
@@ -42,6 +50,8 @@ def _get_actions(config: CapabilityConfig) -> list:
         result.extend(BASIC_ACTIONS)
     if config.enable_extended:
         result.extend(EXTENDED_ACTIONS)
+    if config.enable_autonomy:
+        result.append(send_to_admin_action)
     return result
 
 
@@ -52,6 +62,7 @@ def _get_evaluators(config: CapabilityConfig) -> list:
         result.extend(BASIC_EVALUATORS)
     if config.enable_extended:
         result.extend(EXTENDED_EVALUATORS)
+    # Autonomy has no evaluators currently
     return result
 
 
@@ -62,6 +73,8 @@ def _get_services(config: CapabilityConfig) -> list:
         result.extend(BASIC_SERVICES)
     if config.enable_extended:
         result.extend(EXTENDED_SERVICES)
+    if config.enable_autonomy:
+        result.append(AutonomyService)
     return result
 
 

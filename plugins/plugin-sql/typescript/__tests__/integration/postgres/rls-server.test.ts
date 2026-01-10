@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import { Client } from "pg";
 import { v4 as uuidv4 } from "uuid";
 

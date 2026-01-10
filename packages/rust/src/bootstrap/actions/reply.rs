@@ -4,36 +4,12 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::error::{PluginError, PluginResult};
+use crate::prompts::REPLY_TEMPLATE;
 use crate::runtime::{IAgentRuntime, ModelParams};
 use crate::types::{ActionResult, Memory, ModelType, State};
 use crate::xml::parse_key_value_xml;
 
 use super::Action;
-
-const REPLY_TEMPLATE: &str = r#"# Task: Generate dialog for the character {{agentName}}.
-
-{{providers}}
-
-# Instructions: Write the next message for {{agentName}}.
-"thought" should be a short description of what the agent is thinking about and planning.
-"text" should be the next message for {{agentName}} which they will send to the conversation.
-
-IMPORTANT CODE BLOCK FORMATTING RULES:
-- If {{agentName}} includes code examples, snippets, or multi-line code in the response, ALWAYS wrap the code with ``` fenced code blocks (specify the language if known, e.g., ```python).
-- ONLY use fenced code blocks for actual code. Do NOT wrap non-code text, instructions, or single words in fenced code blocks.
-- If including inline code (short single words or function names), use single backticks (`) as appropriate.
-- This ensures the user sees clearly formatted and copyable code when relevant.
-
-Do NOT include any thinking, reasoning, or <think> sections in your response.
-Go directly to the XML response format without any preamble or explanation.
-
-Respond using XML format like this:
-<response>
-    <thought>Your thought here</thought>
-    <text>Your message here</text>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>."#;
 
 /// Action for generating and sending a reply message.
 pub struct ReplyAction;

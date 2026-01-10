@@ -49,7 +49,8 @@
     "elizaos-plugins"
   ],
   "scripts": {
-    "build": "cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
     "dev": "cd typescript && bun run build.ts --watch",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "check:write": "bunx @biomejs/biome check --write ./typescript/src",

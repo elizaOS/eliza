@@ -26,7 +26,7 @@ describe('placeOrderAction', () => {
     vi.clearAllMocks();
 
     mockRuntime = {
-      getSetting: vi.fn((key: string) => {
+      getSetting: vi.mock((key: string) => {
         if (key === 'CLOB_API_URL') return 'https://clob.polymarket.com';
         return undefined;
       }),

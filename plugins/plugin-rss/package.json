@@ -1,22 +1,22 @@
 {
   "name": "@elizaos/plugin-rss",
-  "description": "RSS and Atom feed integration plugin for ElizaOS - enables agents to fetch and monitor news feeds",
+  "description": "RSS and Atom feed integration plugin for elizaOS - enables agents to fetch and monitor news feeds",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "packageType": "plugin",
-  "platform": "node",
+  "main": "typescript/dist/node/index.node.js",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "sideEffects": false,
   "license": "MIT",
-  "author": "ElizaOS Team",
+  "author": "elizaOS Team",
   "keywords": [
     "plugin",
     "elizaos",
     "rss",
     "atom",
     "feed",
-    "news"
+    "news",
+    "syndication"
   ],
   "repository": {
     "type": "git",
@@ -29,40 +29,89 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./typescript/dist/index.d.ts",
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
     }
   },
   "files": [
-    "dist",
-    "README.md",
-    ".npmignore",
-    "package.json",
-    "tsup.config.ts"
+    "typescript/dist",
+    "python",
+    "rust",
+    "README.md"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "tsup": "8.5.0",
-    "typescript": "5.8.2",
-    "prettier": "3.5.3",
-    "bun-types": "^1.2.21"
+    "@types/bun": "^1.2.18",
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "bun test",
-    "test:watch": "bun test --watch",
-    "test:coverage": "bun test --coverage",
-    "lint": "prettier --write ./src",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src"
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun run build.ts --watch",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd python && python3 -m mypy elizaos_plugin_rss"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "RSS_FEEDS": {
+        "type": "string",
+        "description": "JSON array or comma-separated list of feed URLs to auto-subscribe",
+        "required": false,
+        "sensitive": false
+      },
+      "RSS_DISABLE_ACTIONS": {
+        "type": "boolean",
+        "description": "Set to true to disable subscription management actions",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "RSS_FEED_FORMAT": {
+        "type": "string",
+        "description": "Output format for feed items: 'csv' (compact) or 'markdown' (readable)",
+        "required": false,
+        "default": "csv",
+        "sensitive": false
+      },
+      "RSS_CHECK_INTERVAL_MINUTES": {
+        "type": "number",
+        "description": "Interval in minutes between feed checks",
+        "required": false,
+        "default": 15,
+        "sensitive": false
+      }
+    },
+    "description": "RSS and Atom feed integration plugin for elizaOS"
   }
 }
-

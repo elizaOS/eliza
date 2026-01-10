@@ -1,11 +1,11 @@
-import {
+import { 
   afterAll,
   beforeAll,
   beforeEach,
   describe,
   expect,
   it,
-} from "bun:test";
+ } from "vitest";
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";

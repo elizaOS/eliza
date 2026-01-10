@@ -1,0 +1,2 @@
+Generate an engaging BlueSky post under {{maxLength}} characters.
+

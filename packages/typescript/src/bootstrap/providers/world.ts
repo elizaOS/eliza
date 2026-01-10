@@ -5,6 +5,9 @@ import {
   logger,
   type Memory,
   type Provider,
+  type ProviderResult,
+  type ProviderValue,
+  type State,
 } from "@elizaos/core";
 
 /**
@@ -16,7 +19,7 @@ export const worldProvider: Provider = {
   description: "World and environment information",
   dynamic: true,
 
-  get: async (runtime: IAgentRuntime, message: Memory) => {
+  get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
     try {
       logger.debug(
         {
@@ -43,10 +46,11 @@ export const worldProvider: Provider = {
           data: {
             world: {
               info: "Unable to retrieve world information - room not found",
-            },
+            } as unknown as ProviderValue,
           },
+          values: {},
           text: "Unable to retrieve world information - room not found",
-        };
+        } as ProviderResult;
       }
 
       logger.debug(
@@ -75,10 +79,11 @@ export const worldProvider: Provider = {
           data: {
             world: {
               info: "Unable to retrieve world information - world ID not found",
-            },
+            } as unknown as ProviderValue,
           },
+          values: {},
           text: "Unable to retrieve world information - world ID not found",
-        };
+        } as ProviderResult;
       }
 
       const world = await runtime.getWorld(worldId);
@@ -96,10 +101,11 @@ export const worldProvider: Provider = {
           data: {
             world: {
               info: "Unable to retrieve world information - world not found",
-            },
+            } as unknown as ProviderValue,
           },
+          values: {},
           text: "Unable to retrieve world information - world not found",
-        };
+        } as ProviderResult;
       }
 
       logger.debug(
@@ -244,8 +250,8 @@ export const worldProvider: Provider = {
       };
 
       const values = {
-        worldName: world.name,
-        currentChannelName: currentRoom.name,
+        worldName: world.name ?? null,
+        currentChannelName: currentRoom.name ?? null,
         worldInfo: worldInfoText,
       };
 
@@ -258,10 +264,12 @@ export const worldProvider: Provider = {
       );
 
       return {
-        data,
+        data: {
+          world: data.world as unknown as ProviderValue,
+        },
         values,
         text: formattedText,
-      };
+      } as ProviderResult;
     } catch (error) {
       logger.error(
         {
@@ -276,10 +284,11 @@ export const worldProvider: Provider = {
           world: {
             info: "Error retrieving world information",
             error: error instanceof Error ? error.message : "Unknown error",
-          },
+          } as unknown as ProviderValue,
         },
+        values: {},
         text: "Error retrieving world information",
-      };
+      } as ProviderResult;
     }
   },
 };

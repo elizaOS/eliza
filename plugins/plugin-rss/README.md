@@ -1,235 +1,282 @@
 # @elizaos/plugin-rss
 
-RSS and Atom feed integration plugin for ElizaOS. Enables AI agents to fetch, parse, and monitor news feeds with automatic periodic updates.
+RSS and Atom feed integration plugin for elizaOS. Enables agents to fetch, parse, and monitor news feeds across multiple languages.
 
 ## Features
 
-- **RSS Feed Fetching**: Download and parse RSS/Atom feeds from any URL
-- **Feed Subscription Management**: Subscribe/unsubscribe to feeds for automatic monitoring
-- **Periodic Feed Checking**: Automatically checks subscribed feeds every 15 minutes for new items
-- **Feed Item Storage**: Automatically stores feed items in memory with duplicate detection
-- **Feed Provider**: Makes feed items available to the agent's context
-- **URL Extraction**: Smart URL extraction from natural language
-- **Environment Configuration**: Auto-subscribe to feeds via environment variables
+- **Feed Fetching**: Fetch and parse RSS 2.0 and Atom feeds
+- **Feed Subscription**: Subscribe to feeds for automatic monitoring
+- **Periodic Updates**: Automatically check feeds on a configurable interval
+- **Duplicate Detection**: Smart duplicate detection using GUIDs and title/date fallbacks
+- **Multiple Output Formats**: CSV (compact) or Markdown (human-readable) output
+- **Multi-Language Support**: Full implementations in TypeScript, Python, and Rust
 
 ## Installation
 
+### TypeScript/Node.js
+
 ```bash
 npm install @elizaos/plugin-rss
-```
-
-Or with bun:
-
-```bash
+# or
 bun add @elizaos/plugin-rss
 ```
 
-## Usage
+### Python
 
-Add the plugin to your ElizaOS agent configuration:
+```bash
+pip install elizaos-plugin-rss
+# or
+cd python && pip install -e .
+```
 
-```typescript
-import { rssPlugin } from '@elizaos/plugin-rss';
+### Rust
 
-const agent = {
-  // ... other configuration
-  plugins: [rssPlugin],
-};
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+elizaos-plugin-rss = { path = "path/to/plugin-rss/rust" }
 ```
 
 ## Configuration
 
-### Environment Variables
+Set these environment variables to configure the plugin:
 
-Configure the plugin behavior through environment variables:
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `RSS_FEEDS` | string | - | JSON array or comma-separated list of feed URLs to auto-subscribe |
+| `RSS_DISABLE_ACTIONS` | boolean | `false` | Set to `true` to disable subscription management actions |
+| `RSS_FEED_FORMAT` | string | `csv` | Output format: `csv` (compact) or `markdown` (readable) |
+| `RSS_CHECK_INTERVAL_MINUTES` | number | `15` | Interval in minutes between feed checks |
+
+### Example Configuration
 
 ```bash
-# Auto-subscribe to feeds on startup (JSON array or comma-separated)
-RSS_FEEDS='["https://example.com/rss","https://news.com/feed"]'
-# or
-RSS_FEEDS='https://example.com/rss,https://news.com/feed'
+# JSON array format
+RSS_FEEDS='["https://news.ycombinator.com/rss", "https://feeds.bbci.co.uk/news/rss.xml"]'
 
-# Disable subscription management actions (default: false)
-RSS_DISABLE_ACTIONS=true
+# Comma-separated format
+RSS_FEEDS='https://news.ycombinator.com/rss,https://feeds.bbci.co.uk/news/rss.xml'
 
-# Feed output format in context (default: csv)
-# Options: 'csv' (compact, token-efficient) or 'markdown' (human-readable)
-RSS_FEED_FORMAT=csv
+# Use markdown format for better readability
+RSS_FEED_FORMAT='markdown'
 
-# Future: Configure check interval in minutes (default: 15)
-# RSS_CHECK_INTERVAL_MINUTES=30
+# Check feeds every 30 minutes
+RSS_CHECK_INTERVAL_MINUTES=30
+```
+
+## Usage
+
+### TypeScript
+
+```typescript
+import { rssPlugin } from '@elizaos/plugin-rss';
+
+// Add to your agent's plugins
+const agent = new AgentRuntime({
+  plugins: [rssPlugin],
+  // ...
+});
+```
+
+### Python
+
+```python
+from elizaos_plugin_rss import RssPlugin, RssClient
+
+# Create a client
+client = RssClient()
+
+# Fetch a feed
+feed = await client.fetch_feed("https://news.ycombinator.com/rss")
+print(f"Feed: {feed.title}")
+for item in feed.items:
+    print(f"  - {item.title}")
+
+# Use the plugin
+plugin = RssPlugin()
+```
+
+### Rust
+
+```rust
+use elizaos_plugin_rss::{RssClient, RssConfig};
+
+// Create a client
+let config = RssConfig::default();
+let client = RssClient::new(config)?;
+
+// Fetch a feed
+let feed = client.fetch_feed("https://news.ycombinator.com/rss").await?;
+println!("Feed: {}", feed.title);
+for item in &feed.items {
+    println!("  - {}", item.title);
+}
 ```
 
 ## Actions
 
+The plugin provides these actions:
+
 ### GET_NEWSFEED
 
-Downloads, parses, and auto-subscribes to an RSS feed.
+Download and parse an RSS/Atom feed from a URL.
 
-**Example Usage:**
-- "Read https://example.com/feed.rss"
-- "Fetch the RSS feed at https://news.example.com/rss"
-
-The action will:
-1. Extract RSS URLs from the message
-2. Fetch and parse the feed
-3. Store new feed items in memory (table: `feeditems`)
-4. Auto-subscribe to the feed for periodic updates
-5. Report the number of articles downloaded
-
-**Duplicate Detection:** Uses both GUID and title+pubDate to avoid duplicate items.
+**Example:**
+```
+User: Read https://news.ycombinator.com/rss
+Agent: [GET_NEWSFEED] Downloaded 30 articles from "Hacker News"
+```
 
 ### SUBSCRIBE_RSS_FEED
 
-Subscribe to an RSS feed for automatic periodic monitoring.
+Subscribe to a feed for automatic monitoring.
 
-**Example Usage:**
-- "Subscribe to https://example.com/feed.rss"
-- "Add this feed: https://news.ycombinator.com/rss"
-
-The action will:
-1. Validate the RSS feed URL
-2. Fetch the feed to verify it's valid
-3. Store the subscription in memory (table: `feedsubscriptions`)
-4. Confirm subscription with feed details
+**Example:**
+```
+User: Subscribe to https://news.ycombinator.com/rss
+Agent: [SUBSCRIBE_RSS_FEED] Subscribed to "Hacker News"
+```
 
 ### UNSUBSCRIBE_RSS_FEED
 
-Unsubscribe from an RSS feed.
+Unsubscribe from a feed.
 
-**Example Usage:**
-- "Unsubscribe from https://example.com/feed.rss"
-- "Remove this feed: https://news.example.com/rss"
+**Example:**
+```
+User: Unsubscribe from https://news.ycombinator.com/rss
+Agent: [UNSUBSCRIBE_RSS_FEED] Unsubscribed from feed
+```
 
 ### LIST_RSS_FEEDS
 
-List all currently subscribed RSS feeds.
+List all subscribed feeds.
 
-**Example Usage:**
-- "What RSS feeds am I subscribed to?"
-- "Show me my feeds"
-- "List my RSS subscriptions"
+**Example:**
+```
+User: What feeds am I subscribed to?
+Agent: [LIST_RSS_FEEDS] You have 3 subscribed feeds...
+```
 
-Returns information about each feed including:
-- Feed title and URL
-- Last check time
-- Number of items in last check
-
-**Note:** Actions can be disabled via `RSS_DISABLE_ACTIONS=true` environment variable.
-
-## Providers
+## Provider
 
 ### FEEDITEMS
 
-Provides access to recently fetched feed items from the memory store in the agent's context.
+Provides recent feed items to the agent's context. Items are formatted according to the `RSS_FEED_FORMAT` setting.
 
-**Features:**
-- Retrieves items from `feeditems` memory table
-- Sorts by date (most recent first)
-- Limits to 50 most recent items to optimize context size
-- Configurable output format (CSV or Markdown)
-- Groups items by feed source for better organization
+## Types
 
-**Output Format:**
+### RssChannel
 
-Controlled by `RSS_FEED_FORMAT` environment variable (default: `csv`):
-
-**CSV Format (default, recommended for token efficiency):**
-```
-# RSS Feed Items (50 from 3 feeds)
-Feed,Title,URL,Published,Description
-"Hacker News","New AI Model Released","https://...","2024-01-15","Description..."
-"TechCrunch","Startup Raises $10M","https://...","2024-01-15","Description..."
-```
-
-**Markdown Format (human-readable, uses more tokens):**
-Organized by feed with full metadata:
-- Feed name and item count
-- Article title and URL
-- Publication date
-- Author (if available)
-- Description (truncated to 200 chars)
-
-**Data Object:**
 ```typescript
-{
-  items: Memory[],           // Array of feed item memories
-  count: number,             // Number of items returned (max 50)
-  totalCount: number,        // Total items in memory
-  feedCount: number,         // Number of unique feeds
+interface RssChannel {
+  title: string;
+  description: string;
+  link: string;
+  language: string;
+  copyright: string;
+  lastBuildDate: string;
+  generator: string;
+  docs: string;
+  ttl: string;
+  image: RssImage | null;
 }
 ```
 
-**Use Case:**
-The provider automatically injects recent news articles into the agent's context, allowing the agent to reference current news and information when responding to queries. Use CSV format for token economy, Markdown for better readability during development.
-
-## Services
-
-### RSS Service
-
-The core service that handles:
-- Fetching RSS/Atom feeds via HTTP
-- Parsing XML into structured JSON
-- Managing feed subscriptions
-- Periodic feed checking (every 15 minutes by default)
-- Duplicate detection and deduplication
-- Loading feeds from environment configuration
-
-**Service Type:** `RSS`
-
-**Periodic Checking:**
-The service automatically creates a task that checks all subscribed feeds every 15 minutes. New items are stored in the `feeditems` memory table.
-
-**Memory Tables:**
-- `feedsubscriptions`: Stores feed subscription information
-- `feeditems`: Stores individual feed items with metadata
-
-## Architecture
-
-The plugin follows ElizaOS plugin architecture:
-
-- **Actions**: Define what the agent can do with RSS feeds
-- **Providers**: Supply feed data to the agent's context
-- **Services**: Handle the core RSS fetching and parsing logic
-- **Types**: Centralized type definitions for RSS data structures
-
-### Exported Types
-
-The plugin exports TypeScript types for use in your code:
+### RssItem
 
 ```typescript
-import type {
-  RssChannel,
-  RssItem,
-  RssFeed,
-  FeedItemMetadata,
-  FeedSubscriptionMetadata,
-} from '@elizaos/plugin-rss';
+interface RssItem {
+  title: string;
+  link: string;
+  pubDate: string;
+  description: string;
+  author: string;
+  category: string[];
+  comments: string;
+  guid: string;
+  enclosure: RssEnclosure | null;
+}
 ```
 
-- `RssChannel`: RSS feed channel metadata
-- `RssItem`: Individual RSS feed item (article/post)
-- `RssFeed`: Complete feed (channel + items)
-- `FeedItemMetadata`: Metadata stored with feed items in memory
-- `FeedSubscriptionMetadata`: Metadata stored with feed subscriptions
+### RssFeed
+
+```typescript
+interface RssFeed extends RssChannel {
+  items: RssItem[];
+}
+```
 
 ## Development
 
+### Building
+
 ```bash
-# Build the plugin
+# Build all languages
 bun run build
 
-# Run in development mode
-bun run dev
+# Build specific language
+bun run build:ts
+bun run build:python
+bun run build:rust
+```
 
-# Run tests
+### Testing
+
+```bash
+# Test all languages
 bun run test
 
-# Format code
-bun run format
+# Test specific language
+bun run test:ts
+bun run test:python
+bun run test:rust
+```
+
+### Linting
+
+```bash
+# Lint TypeScript
+bun run lint
+
+# Lint Python
+bun run lint:python
+
+# Lint Rust
+bun run lint:rust
+```
+
+## Architecture
+
+```
+plugin-rss/
+├── package.json          # Root package orchestrating all implementations
+├── README.md
+├── typescript/           # TypeScript implementation
+│   ├── index.ts
+│   ├── types.ts
+│   ├── service.ts
+│   ├── parser.ts
+│   ├── actions/
+│   └── providers/
+├── python/               # Python implementation
+│   ├── pyproject.toml
+│   └── elizaos_plugin_rss/
+│       ├── __init__.py
+│       ├── types.py
+│       ├── client.py
+│       ├── parser.py
+│       └── plugin.py
+└── rust/                 # Rust implementation
+    ├── Cargo.toml
+    └── src/
+        ├── lib.rs
+        ├── types.rs
+        ├── client.rs
+        ├── parser.rs
+        └── error.rs
 ```
 
 ## License
 
-MIT
-
+MIT © elizaOS Team

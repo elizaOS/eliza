@@ -8,7 +8,9 @@ from elizaos.types import (
     ActionResult,
     Character,
     Evaluator,
+    LLMMode,
     Memory,
+    ModelType,
     Plugin,
     Provider,
     ProviderResult,
@@ -340,5 +342,149 @@ class TestAgentRuntimeLogLevel:
         """Test setting log level to WARNING."""
         runtime = AgentRuntime(character=character, log_level="WARNING")
         assert runtime.logger is not None
+
+
+class TestAgentRuntimeLLMMode:
+    """Tests for LLM mode configuration."""
+
+    def test_default_llm_mode_is_default(self, character: Character) -> None:
+        """Test that default LLM mode is DEFAULT."""
+        runtime = AgentRuntime(character=character)
+        assert runtime.get_llm_mode() == LLMMode.DEFAULT
+
+    def test_constructor_option_small(self, character: Character) -> None:
+        """Test setting LLM mode to SMALL via constructor."""
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.SMALL)
+        assert runtime.get_llm_mode() == LLMMode.SMALL
+
+    def test_constructor_option_large(self, character: Character) -> None:
+        """Test setting LLM mode to LARGE via constructor."""
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
+        assert runtime.get_llm_mode() == LLMMode.LARGE
+
+    def test_character_setting_small(self) -> None:
+        """Test using character setting for LLM mode."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"LLM_MODE": "SMALL"},
+        )
+        runtime = AgentRuntime(character=character)
+        assert runtime.get_llm_mode() == LLMMode.SMALL
+
+    def test_constructor_option_takes_precedence(self) -> None:
+        """Test that constructor option takes precedence over character setting."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"LLM_MODE": "SMALL"},
+        )
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
+        assert runtime.get_llm_mode() == LLMMode.LARGE
+
+    def test_case_insensitive_character_setting(self) -> None:
+        """Test that character setting is case-insensitive."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"LLM_MODE": "small"},
+        )
+        runtime = AgentRuntime(character=character)
+        assert runtime.get_llm_mode() == LLMMode.SMALL
+
+    def test_invalid_setting_defaults_to_default(self) -> None:
+        """Test that invalid setting defaults to DEFAULT."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"LLM_MODE": "invalid"},
+        )
+        runtime = AgentRuntime(character=character)
+        assert runtime.get_llm_mode() == LLMMode.DEFAULT
+
+    @pytest.mark.asyncio
+    async def test_use_model_override_small(self, character: Character) -> None:
+        """Test that LLM mode SMALL overrides model type."""
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.SMALL)
+
+        async def small_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            return "small response"
+
+        async def large_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            return "large response"
+
+        runtime.register_model(ModelType.TEXT_SMALL.value, small_handler, "test")
+        runtime.register_model(ModelType.TEXT_LARGE.value, large_handler, "test")
+
+        # Request TEXT_LARGE but should get TEXT_SMALL due to override
+        result = await runtime.use_model(ModelType.TEXT_LARGE.value, {"prompt": "test"})
+        assert result == "small response"
+
+    @pytest.mark.asyncio
+    async def test_use_model_override_large(self, character: Character) -> None:
+        """Test that LLM mode LARGE overrides model type."""
+        runtime = AgentRuntime(character=character, llm_mode=LLMMode.LARGE)
+
+        async def small_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            return "small response"
+
+        async def large_handler(rt: AgentRuntime, params: dict[str, object]) -> str:
+            return "large response"
+
+        runtime.register_model(ModelType.TEXT_SMALL.value, small_handler, "test")
+        runtime.register_model(ModelType.TEXT_LARGE.value, large_handler, "test")
+
+        # Request TEXT_SMALL but should get TEXT_LARGE due to override
+        result = await runtime.use_model(ModelType.TEXT_SMALL.value, {"prompt": "test"})
+        assert result == "large response"
+
+
+class TestAgentRuntimeCheckShouldRespond:
+    """Tests for checkShouldRespond configuration."""
+
+    def test_default_is_true(self, character: Character) -> None:
+        """Test that check_should_respond is enabled by default."""
+        runtime = AgentRuntime(character=character)
+        assert runtime.is_check_should_respond_enabled() is True
+
+    def test_constructor_option_false(self, character: Character) -> None:
+        """Test setting check_should_respond to False via constructor."""
+        runtime = AgentRuntime(character=character, check_should_respond=False)
+        assert runtime.is_check_should_respond_enabled() is False
+
+    def test_constructor_option_true(self, character: Character) -> None:
+        """Test setting check_should_respond to True via constructor."""
+        runtime = AgentRuntime(character=character, check_should_respond=True)
+        assert runtime.is_check_should_respond_enabled() is True
+
+    def test_character_setting_false(self) -> None:
+        """Test using character setting for check_should_respond."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"CHECK_SHOULD_RESPOND": "false"},
+        )
+        runtime = AgentRuntime(character=character)
+        assert runtime.is_check_should_respond_enabled() is False
+
+    def test_constructor_option_takes_precedence(self) -> None:
+        """Test that constructor option takes precedence over character setting."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"CHECK_SHOULD_RESPOND": "false"},
+        )
+        runtime = AgentRuntime(character=character, check_should_respond=True)
+        assert runtime.is_check_should_respond_enabled() is True
+
+    def test_non_false_string_defaults_to_true(self) -> None:
+        """Test that non-'false' string values default to True."""
+        character = Character(
+            name="Test",
+            bio="Test",
+            settings={"CHECK_SHOULD_RESPOND": "yes"},
+        )
+        runtime = AgentRuntime(character=character)
+        assert runtime.is_check_should_respond_enabled() is True
 
 

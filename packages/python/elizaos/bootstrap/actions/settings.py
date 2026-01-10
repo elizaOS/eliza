@@ -12,36 +12,10 @@ from typing import TYPE_CHECKING
 
 from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import UPDATE_SETTINGS_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
-
-
-UPDATE_SETTINGS_TEMPLATE = """# Task: Update settings based on the request.
-
-{{providers}}
-
-# Current Settings:
-{{#each settings}}
-- {{this.key}}: {{this.value}}
-{{/each}}
-
-# Instructions:
-Based on the request, determine which settings to update.
-Only update settings that the user has explicitly requested.
-
-Respond using XML format like this:
-<response>
-    <thought>Your reasoning for the settings changes</thought>
-    <updates>
-        <update>
-            <key>setting_key</key>
-            <value>new_value</value>
-        </update>
-    </updates>
-</response>
-
-IMPORTANT: Your response must ONLY contain the <response></response> XML block above."""
 
 
 @dataclass 

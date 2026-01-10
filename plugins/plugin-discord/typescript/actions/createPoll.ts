@@ -14,32 +14,8 @@ import type { TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting poll information from the user's request.
- */
-export const createPollTemplate = `# Creating a Discord poll
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting to create a poll. Extract:
-1. The poll question
-2. The poll options (2-10 options)
-3. Whether to use emoji reactions (default: true)
-
-Examples:
-- "create a poll: What game should we play? Options: Minecraft, Fortnite, Among Us" 
-  -> question: "What game should we play?", options: ["Minecraft", "Fortnite", "Among Us"]
-- "poll: Should we have a meeting tomorrow? Yes/No"
-  -> question: "Should we have a meeting tomorrow?", options: ["Yes", "No"]
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "question": "<poll question>",
-  "options": ["<option1>", "<option2>", ...],
-  "useEmojis": true/false
-}
-\`\`\`
-`;
+// Import generated prompts
+import { createPollTemplate } from "../../dist/prompts/typescript/prompts.js";
 
 const getPollInfo = async (
   runtime: IAgentRuntime,

@@ -4,6 +4,48 @@
 
 use serde::{Deserialize, Serialize};
 
+/// LLM Mode for overriding model selection.
+///
+/// - `Default`: Use the model type specified in the use_model call (no override)
+/// - `Small`: Override all text generation model calls to use TEXT_SMALL
+/// - `Large`: Override all text generation model calls to use TEXT_LARGE
+///
+/// This is useful for cost optimization (force Small) or quality (force Large).
+/// While not recommended for production, it can be a fast way to make the agent run cheaper.
+///
+/// # Example
+/// ```rust,ignore
+/// use elizaos::runtime::{AgentRuntime, RuntimeOptions};
+/// use elizaos::types::LLMMode;
+///
+/// let runtime = AgentRuntime::new(RuntimeOptions {
+///     llm_mode: Some(LLMMode::Small), // All LLM calls will use TEXT_SMALL
+///     ..Default::default()
+/// }).await?;
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LLMMode {
+    /// Use the model type as specified in the call (no override)
+    #[default]
+    Default,
+    /// Override all text generation model calls to use TEXT_SMALL
+    Small,
+    /// Override all text generation model calls to use TEXT_LARGE
+    Large,
+}
+
+impl LLMMode {
+    /// Parse LLM mode from a string
+    pub fn from_str(s: &str) -> Self {
+        match s.to_uppercase().as_str() {
+            "SMALL" => LLMMode::Small,
+            "LARGE" => LLMMode::Large,
+            _ => LLMMode::Default,
+        }
+    }
+}
+
 /// Model type names
 pub mod model_type {
     /// Small text model (kept for backwards compatibility)

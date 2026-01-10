@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, test } from "bun:test";
+import {  afterEach, beforeEach, describe, expect, it, test  } from "vitest";
 import {
   detectEnvironment,
   findEnvFile,

@@ -1,0 +1,89 @@
+{
+  "name": "@elizaos/plugin-linear-ts",
+  "version": "1.0.0",
+  "description": "Linear integration plugin for ElizaOS (TypeScript)",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "linear",
+    "typescript",
+    "project-management",
+    "issue-tracking"
+  ],
+  "author": "ElizaOS Contributors",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "homepage": "https://github.com/elizaos/eliza#readme",
+  "dependencies": {
+    "@linear/sdk": "^51.0.0",
+    "@elizaos/core": "file:../../../packages/typescript"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@typescript-eslint/eslint-plugin": "^7.7.1",
+    "@typescript-eslint/parser": "^7.7.1",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "LINEAR_API_KEY": {
+        "type": "string",
+        "description": "Linear API key for authentication",
+        "required": true,
+        "sensitive": true
+      },
+      "LINEAR_WORKSPACE_ID": {
+        "type": "string",
+        "description": "Linear workspace ID",
+        "required": false,
+        "sensitive": false
+      },
+      "LINEAR_DEFAULT_TEAM_KEY": {
+        "type": "string",
+        "description": "Default team key for new issues",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

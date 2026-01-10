@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   pingServer,
   ServerHealthError,
@@ -7,11 +7,11 @@ import {
 
 describe("Server Health Utilities", () => {
   let originalFetch: typeof fetch;
-  let fetchMock: ReturnType<typeof mock>;
+  let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    fetchMock = mock(() =>
+    fetchMock = vi.fn(() =>
       Promise.resolve(new Response("OK", { status: 200 })),
     );
     globalThis.fetch = fetchMock as typeof fetch;
@@ -19,7 +19,7 @@ describe("Server Health Utilities", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    mock.restore();
+    vi.clearAllMocks();
   });
 
   describe("pingServer", () => {

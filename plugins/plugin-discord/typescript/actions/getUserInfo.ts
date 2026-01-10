@@ -13,31 +13,8 @@ import {
 import type { GuildMember } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
-
-/**
- * Template for extracting user identifier from the request.
- */
-export const getUserInfoTemplate = `# Getting Discord user information
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting information about a Discord user. Extract:
-1. The user identifier (username, user ID, or mention)
-2. Whether they want detailed server-specific info
-
-Examples:
-- "who is @john?" -> userIdentifier: "john", detailed: false
-- "tell me about user 123456789" -> userIdentifier: "123456789", detailed: false  
-- "get detailed info on @admin" -> userIdentifier: "admin", detailed: true
-- "who am I?" -> userIdentifier: "self", detailed: false
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "userIdentifier": "<username|user-id|mention|self>",
-  "detailed": true/false
-}
-\`\`\`
-`;
+// Import generated prompts
+import { getUserInfoTemplate } from "../../dist/prompts/typescript/prompts.js";
 
 const getUserIdentifier = async (
   runtime: IAgentRuntime,

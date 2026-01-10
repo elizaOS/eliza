@@ -1,4 +1,4 @@
-import {
+import { 
   afterAll,
   afterEach,
   beforeAll,
@@ -6,7 +6,7 @@ import {
   describe,
   expect,
   it,
-} from "bun:test";
+ } from "vitest";
 import {
   ChannelType,
   type Content,

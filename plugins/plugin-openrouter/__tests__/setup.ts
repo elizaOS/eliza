@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { beforeAll } from "bun:test";
+import { beforeAll } from "vitest";
 import { resolve } from "path";
 
 // Load environment variables from .env file

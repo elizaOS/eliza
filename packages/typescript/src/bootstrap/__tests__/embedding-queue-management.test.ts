@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   EventType,
   type IAgentRuntime,
@@ -37,25 +37,25 @@ describe("EmbeddingGenerationService - Queue Management", () => {
     // Create mock runtime
     mockRuntime = {
       agentId: "test-agent" as UUID,
-      registerEvent: mock((event: string, handler: Function) => {
+      registerEvent: vi.fn((event: string, handler: Function) => {
         registeredHandlers.set(event, handler);
       }),
-      emitEvent: mock(async (event: string, payload: any) => {
+      emitEvent: vi.fn(async (event: string, payload: any) => {
         emittedEvents.push({ event, payload });
       }),
-      useModel: mock().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
-      getModel: mock().mockReturnValue(
-        mock().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+      useModel: vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+      getModel: vi.fn().mockReturnValue(
+        vi.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
       ),
-      updateMemory: mock().mockResolvedValue(undefined),
+      updateMemory: vi.fn().mockResolvedValue(undefined),
       logger: {
-        debug: mock(),
-        info: mock(),
-        warn: mock(),
-        error: mock(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
       },
       // Add log method used by EmbeddingGenerationService
-      log: mock().mockResolvedValue(undefined),
+      log: vi.fn().mockResolvedValue(undefined),
     } as unknown as IAgentRuntime;
   });
 
@@ -338,7 +338,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
 
       // Mock useModel to fail on first call
       let callCount = 0;
-      mockRuntime.useModel = mock().mockImplementation(() => {
+      mockRuntime.useModel = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
           throw new Error("Embedding generation failed");
@@ -388,7 +388,7 @@ describe("EmbeddingGenerationService - Queue Management", () => {
       }
 
       // Mock useModel to always fail
-      mockRuntime.useModel = mock().mockRejectedValue(
+      mockRuntime.useModel = vi.fn().mockRejectedValue(
         new Error("Persistent failure"),
       );
 

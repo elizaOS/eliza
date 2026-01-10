@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventType, type Memory, ModelType, type UUID } from "@elizaos/core";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { createMockRuntime } from "./test-utils.ts";
@@ -13,10 +13,10 @@ describe("EmbeddingGenerationService", () => {
     registeredEventHandlers = new Map();
 
     mockRuntime = createMockRuntime({
-      registerEvent: mock((eventType: string, handler: Function) => {
+      registerEvent: vi.fn((eventType: string, handler: Function) => {
         registeredEventHandlers.set(eventType, handler);
       }),
-      useModel: mock().mockImplementation((modelType: string) => {
+      useModel: vi.fn().mockImplementation((modelType: string) => {
         if (modelType === ModelType.TEXT_EMBEDDING) {
           // Simulate embedding generation with a small delay
           return new Promise((resolve) => {
@@ -25,16 +25,16 @@ describe("EmbeddingGenerationService", () => {
         }
         return Promise.resolve("mock response");
       }),
-      updateMemory: mock().mockResolvedValue(true),
-      emitEvent: mock().mockResolvedValue(undefined),
+      updateMemory: vi.fn().mockResolvedValue(true),
+      emitEvent: vi.fn().mockResolvedValue(undefined),
     });
 
     // Suppress logger output during tests
     mockRuntime.logger = {
-      info: mock(),
-      debug: mock(),
-      warn: mock(),
-      error: mock(),
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
     };
   });
 
@@ -72,7 +72,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should return a disabled service when no TEXT_EMBEDDING model is available", async () => {
       // Override getModel to return undefined for TEXT_EMBEDDING
-      mockRuntime.getModel = mock((_modelType: string) => {
+      mockRuntime.getModel = vi.fn((_modelType: string) => {
         return undefined;
       });
 
@@ -347,7 +347,7 @@ describe("EmbeddingGenerationService", () => {
   describe("Error Handling and Retry", () => {
     it("should retry on failure up to max retries", async () => {
       let callCount = 0;
-      mockRuntime.useModel = mock().mockImplementation(() => {
+      mockRuntime.useModel = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount <= 2) {
           return Promise.reject(new Error("Embedding generation failed"));
@@ -389,7 +389,7 @@ describe("EmbeddingGenerationService", () => {
     });
 
     it("should emit failure event after max retries exceeded", async () => {
-      mockRuntime.useModel = mock().mockRejectedValue(
+      mockRuntime.useModel = vi.fn().mockRejectedValue(
         new Error("Persistent failure"),
       );
 
@@ -437,7 +437,7 @@ describe("EmbeddingGenerationService", () => {
   describe("Non-blocking Behavior", () => {
     it("should not block the runtime while generating embeddings", async () => {
       // Mock a slow embedding generation
-      mockRuntime.useModel = mock().mockImplementation(() => {
+      mockRuntime.useModel = vi.fn().mockImplementation(() => {
         return new Promise((resolve) => {
           setTimeout(() => resolve([0.1, 0.2, 0.3, 0.4, 0.5]), 500); // 500ms delay
         });
@@ -486,7 +486,7 @@ describe("EmbeddingGenerationService", () => {
 
     it("should process queue in batches without blocking", async () => {
       let processedCount = 0;
-      mockRuntime.useModel = mock().mockImplementation(() => {
+      mockRuntime.useModel = vi.fn().mockImplementation(() => {
         processedCount++;
         return Promise.resolve([0.1, 0.2, 0.3, 0.4, 0.5]);
       });
@@ -532,7 +532,7 @@ describe("EmbeddingGenerationService", () => {
 
   describe("Service Lifecycle", () => {
     it("should process high priority items before stopping", async () => {
-      mockRuntime.useModel = mock().mockResolvedValue([
+      mockRuntime.useModel = vi.fn().mockResolvedValue([
         0.1, 0.2, 0.3, 0.4, 0.5,
       ]);
 

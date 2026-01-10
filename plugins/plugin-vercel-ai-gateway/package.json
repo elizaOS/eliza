@@ -1,10 +1,12 @@
 {
   "name": "@elizaos/plugin-gateway",
-  "version": "1.0.2",
+  "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "typescript/dist/cjs/index.node.cjs",
+  "module": "typescript/dist/node/index.node.js",
+  "types": "typescript/dist/index.d.ts",
+  "browser": "typescript/dist/browser/index.browser.js",
+  "sideEffects": false,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/elizaos-plugins/plugin-vercel-ai-gateway.git"
@@ -12,29 +14,62 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./typescript/dist/index.d.ts",
+      "browser": {
+        "types": "./typescript/dist/browser/index.d.ts",
+        "import": "./typescript/dist/browser/index.browser.js",
+        "default": "./typescript/dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./typescript/dist/node/index.d.ts",
+        "import": "./typescript/dist/node/index.node.js",
+        "require": "./typescript/dist/cjs/index.node.cjs",
+        "default": "./typescript/dist/node/index.node.js"
+      },
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./typescript/dist/node/index.d.ts",
+      "import": "./typescript/dist/node/index.node.js",
+      "default": "./typescript/dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./typescript/dist/browser/index.d.ts",
+      "import": "./typescript/dist/browser/index.browser.js",
+      "default": "./typescript/dist/browser/index.browser.js"
     }
   },
   "files": [
-    "dist"
+    "typescript/dist",
+    "python",
+    "rust"
   ],
   "dependencies": {
-    "@ai-sdk/gateway": "^2.0.14",
-    "@ai-sdk/openai": "^2.0.71",
-    "@elizaos/core": "^1.5.7",
-    "ai": "^5.0.39"
+    "@elizaos/core": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "esbuild": "^0.24.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.3.0"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "lint": "prettier --write ./src",
-    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
-    "format": "prettier --write ./src",
-    "format:check": "prettier --check ./src",
-    "test": "npx elizaos test"
+    "build": "cd typescript && bun run build.ts",
+    "build:ts": "cd typescript && bun run build.ts",
+    "build:rust": "cd rust && cargo build --release",
+    "build:python": "cd python && python -m build",
+    "dev": "cd typescript && bun --hot build.ts",
+    "lint": "prettier --write ./typescript",
+    "lint:check": "prettier --check ./typescript",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write ./typescript",
+    "format:check": "prettier --check ./typescript",
+    "typecheck": "cd typescript && tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "cd typescript && bun test",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && pytest"
   },
   "publishConfig": {
     "access": "public"
@@ -67,118 +102,48 @@
         "default": "https://ai-gateway.vercel.sh/v1",
         "sensitive": false
       },
-      "OPENAI_API_KEY": {
+      "AI_GATEWAY_SMALL_MODEL": {
         "type": "string",
-        "description": "API key used to authenticate requests to the OpenAI API.",
-        "required": false,
-        "sensitive": true
-      },
-      "OPENAI_BASE_URL": {
-        "type": "string",
-        "description": "Base URL for all OpenAI API requests.",
-        "required": false,
-        "default": "https://api.openai.com/v1",
-        "sensitive": false
-      },
-      "OPENAI_SMALL_MODEL": {
-        "type": "string",
-        "description": "Identifier of the small language model to be used (overrides SMALL_MODEL).",
-        "required": false,
-        "sensitive": false
-      },
-      "SMALL_MODEL": {
-        "type": "string",
-        "description": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
-        "required": false,
-        "default": "gpt-5-nano",
-        "sensitive": false
-      },
-      "OPENAI_LARGE_MODEL": {
-        "type": "string",
-        "description": "Identifier of the large language model to be used (overrides LARGE_MODEL).",
-        "required": false,
-        "sensitive": false
-      },
-      "LARGE_MODEL": {
-        "type": "string",
-        "description": "Fallback identifier for the large language model if OPENAI_LARGE_MODEL is not set.",
+        "description": "Identifier of the small language model to be used.",
         "required": false,
         "default": "gpt-5-mini",
         "sensitive": false
       },
-      "OPENAI_EMBEDDING_MODEL": {
+      "AI_GATEWAY_LARGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the large language model to be used.",
+        "required": false,
+        "default": "gpt-5",
+        "sensitive": false
+      },
+      "AI_GATEWAY_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Identifier of the model to use for generating text embeddings.",
         "required": false,
         "default": "text-embedding-3-small",
         "sensitive": false
       },
-      "OPENAI_EMBEDDING_URL": {
-        "type": "string",
-        "description": "Custom base URL for the OpenAI embeddings endpoint.",
-        "required": false,
-        "sensitive": false
-      },
-      "OPENAI_EMBEDDING_API_KEY": {
-        "type": "string",
-        "description": "Custom API key for the OpenAI embeddings endpoint.",
-        "required": false,
-        "sensitive": true
-      },
-      "OPENAI_EMBEDDING_DIMENSIONS": {
+      "AI_GATEWAY_EMBEDDING_DIMENSIONS": {
         "type": "number",
         "description": "Number of dimensions for the returned embedding vectors.",
         "required": false,
         "default": 1536,
         "sensitive": false
       },
-      "OPENAI_IMAGE_DESCRIPTION_MODEL": {
+      "AI_GATEWAY_IMAGE_MODEL": {
         "type": "string",
-        "description": "Identifier of the model used for describing images.",
+        "description": "Identifier of the model used for image generation.",
         "required": false,
-        "default": "gpt-5-nano",
+        "default": "dall-e-3",
         "sensitive": false
       },
-      "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
+      "AI_GATEWAY_TIMEOUT_MS": {
         "type": "number",
-        "description": "Maximum number of tokens allowed in the image-description model response.",
+        "description": "Request timeout in milliseconds.",
         "required": false,
-        "default": 8192,
-        "sensitive": false
-      },
-      "OPENAI_TTS_MODEL": {
-        "type": "string",
-        "description": "Identifier of the model used for text-to-speech generation.",
-        "required": false,
-        "default": "gpt-4o-mini-tts",
-        "sensitive": false
-      },
-      "OPENAI_TTS_VOICE": {
-        "type": "string",
-        "description": "Voice profile to use for text-to-speech output.",
-        "required": false,
-        "default": "nova",
-        "sensitive": false
-      },
-      "OPENAI_TTS_INSTRUCTIONS": {
-        "type": "string",
-        "description": "Optional instructions to control the style or behavior of the text-to-speech request.",
-        "required": false,
-        "sensitive": false
-      },
-      "OPENAI_EXPERIMENTAL_TELEMETRY": {
-        "type": "boolean",
-        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
-        "required": false,
-        "default": false,
+        "default": 60000,
         "sensitive": false
       }
     }
-  },
-  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
-  "devDependencies": {
-    "@types/node": "^24.3.1",
-    "prettier": "3.5.3",
-    "typescript": "^5.8.2"
   }
 }

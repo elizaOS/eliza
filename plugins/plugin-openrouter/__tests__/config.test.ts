@@ -1,4 +1,4 @@
-import { describe, test, expect, jest, beforeEach, afterEach } from 'bun:test';
+import {  describe, test, expect, jest, beforeEach, afterEach  } from "vitest";
 import { openrouterPlugin } from '../src/index';
 import { logger } from '@elizaos/core';
 import * as undici from 'undici';

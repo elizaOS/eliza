@@ -4,7 +4,7 @@
  * These tests verify the plugin exports and structure without making API calls.
  */
 
-import { describe, expect, it } from "bun:test";
+import {  describe, expect, it  } from "vitest";
 
 describe("Anthropic Plugin Structure", () => {
   it("should export anthropicPlugin with correct structure", async () => {

@@ -1,144 +1,170 @@
-# Groq Plugin
+# @elizaos/plugin-groq
 
-This plugin provides integration with Groq Cloud through the ElizaOS platform.
+Groq LLM plugin for elizaOS - Fast inference with Llama, Qwen, and other models.
+
+This plugin provides Groq API integration for elizaOS agents, enabling ultra-fast text generation, audio transcription, and text-to-speech synthesis.
+
+## Features
+
+- 🚀 **Fast Inference** - Leverage Groq's LPU for industry-leading inference speeds
+- 📝 **Text Generation** - Generate text with Llama, Qwen, and other models
+- 🎤 **Audio Transcription** - Transcribe audio with Whisper models
+- 🔊 **Text-to-Speech** - Generate speech with PlayAI voices
+- 🔢 **Object Generation** - Generate structured JSON objects
+- 🎯 **Tokenization** - Tokenize and detokenize text
+
+## Multi-Language Support
+
+This plugin is available for three languages:
+
+| Language | Package | Registry |
+|----------|---------|----------|
+| TypeScript/JavaScript | `@elizaos/plugin-groq` | [npm](https://www.npmjs.com/package/@elizaos/plugin-groq) |
+| Python | `elizaos-plugin-groq` | [PyPI](https://pypi.org/project/elizaos-plugin-groq/) |
+| Rust | `elizaos-plugin-groq` | [crates.io](https://crates.io/crates/elizaos-plugin-groq) |
+
+## Installation
+
+### TypeScript/JavaScript (npm)
+
+```bash
+npm install @elizaos/plugin-groq
+# or
+bun add @elizaos/plugin-groq
+```
+
+### Python (PyPI)
+
+```bash
+pip install elizaos-plugin-groq
+```
+
+### Rust (crates.io)
+
+```bash
+cargo add elizaos-plugin-groq
+```
 
 ## Usage
 
-Add the plugin to your character configuration:
+### TypeScript
 
-```json
-"plugins": ["@elizaos-plugins/plugin-groq"]
+```typescript
+import { groqPlugin } from '@elizaos/plugin-groq';
+
+// Add to your agent's plugins
+const agent = new Agent({
+  plugins: [groqPlugin],
+});
+```
+
+### Python
+
+```python
+from elizaos_plugin_groq import GroqClient, GenerateTextParams
+
+async with GroqClient(api_key="your-api-key") as client:
+    response = await client.generate_text_large(
+        GenerateTextParams(prompt="What is the nature of reality?")
+    )
+    print(response)
+```
+
+### Rust
+
+```rust
+use elizaos_plugin_groq::{GroqClient, GenerateTextParams};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let client = GroqClient::new("your-api-key", None)?;
+    
+    let response = client.generate_text_large(GenerateTextParams {
+        prompt: "What is the nature of reality?".to_string(),
+        ..Default::default()
+    }).await?;
+    
+    println!("{}", response);
+    Ok(())
+}
 ```
 
 ## Configuration
 
-The plugin requires these environment variables (can be set in .env file or character settings):
+Set the following environment variables:
 
-```json
-"settings": {
-  "GROQ_API_KEY": "your_groq_api_key",
-  "GROQ_BASE_URL": "optional_custom_endpoint",
-  "GROQ_SMALL_MODEL": "llama-3.1-8b-instant",
-  "GROQ_LARGE_MODEL": "qwen-qwq-32b"
-}
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GROQ_API_KEY` | Yes | - | Your Groq API key |
+| `GROQ_BASE_URL` | No | `https://api.groq.com/openai/v1` | Custom API base URL |
+| `GROQ_SMALL_MODEL` | No | `llama-3.1-8b-instant` | Model for small tasks |
+| `GROQ_LARGE_MODEL` | No | `llama-3.3-70b-versatile` | Model for large tasks |
+| `GROQ_TTS_MODEL` | No | `playai-tts` | Text-to-speech model |
+| `GROQ_TTS_VOICE` | No | `Chip-PlayAI` | TTS voice name |
+
+## Model Capabilities
+
+This plugin provides handlers for the following elizaOS model types:
+
+| Model Type | Description |
+|------------|-------------|
+| `TEXT_SMALL` | Fast text generation with smaller models |
+| `TEXT_LARGE` | High-quality text generation with larger models |
+| `OBJECT_SMALL` | JSON object generation (small) |
+| `OBJECT_LARGE` | JSON object generation (large) |
+| `TRANSCRIPTION` | Audio transcription with Whisper |
+| `TEXT_TO_SPEECH` | Speech synthesis with PlayAI |
+| `TEXT_TOKENIZER_ENCODE` | Tokenize text to tokens |
+| `TEXT_TOKENIZER_DECODE` | Detokenize tokens to text |
+
+## Development
+
+### Building from Source
+
+```bash
+# TypeScript
+bun install
+bun run build
+
+# Rust
+cd rust && cargo build --release
+
+# Python
+cd python && pip install -e ".[dev]"
 ```
 
-Or in `.env` file:
+### Running Tests
 
-```
-GROQ_API_KEY=your_groq_api_key
-# Optional overrides:
-GROQ_BASE_URL=optional_custom_endpoint
-GROQ_SMALL_MODEL=llama-3.1-8b-instant
-GROQ_LARGE_MODEL=qwen-qwq-32b
-```
+```bash
+# TypeScript
+bun run test
 
-### Configuration Options
+# Rust
+cd rust && cargo test
 
-- `GROQ_API_KEY` (required): Your Groq API credentials.
-- `GROQ_BASE_URL`: Custom API endpoint (default: https://api.groq.com/openai/v1).
-- `GROQ_SMALL_MODEL`: Defaults to Llama 3.1 8B Instant ("llama-3.1-8b-instant").
-- `GROQ_LARGE_MODEL`: Defaults to Qwen QWQ 32B ("qwen-qwq-32b").
-
-The plugin provides these model classes:
-
-- `TEXT_SMALL`: Optimized for fast, cost-effective responses (uses `GROQ_SMALL_MODEL`).
-- `TEXT_LARGE`: For complex tasks requiring deeper reasoning (uses `GROQ_LARGE_MODEL`).
-- `IMAGE`: Image generation.
-- `TRANSCRIPTION`: Whisper audio transcription.
-- `TEXT_TOKENIZER_ENCODE`: Text tokenization.
-- `TEXT_TOKENIZER_DECODE`: Token decoding.
-- `OBJECT_SMALL`: For generating structured JSON objects with the small model.
-- `OBJECT_LARGE`: For generating structured JSON objects with the large model.
-
-## Additional Features
-
-### Text Generation (Small Model)
-
-```javascript
-const response = await runtime.useModel(ModelType.TEXT_SMALL, {
-  prompt: 'Explain quantum computing in simple terms.',
-  // Optional parameters:
-  // stopSequences: ["stop phrase"],
-  // maxTokens: 200,
-  // temperature: 0.7,
-  // frequencyPenalty: 0.7,
-  // presencePenalty: 0.7,
-});
-console.log(response);
+# Python
+cd python && pytest
 ```
 
-### Text Generation (Large Model)
+### Linting
 
-```javascript
-const response = await runtime.useModel(ModelType.TEXT_LARGE, {
-  prompt: 'Write a comprehensive guide on sustainable gardening.',
-  // Optional parameters:
-  // stopSequences: ["stop phrase"],
-  // maxTokens: 1000,
-  // temperature: 0.8,
-  // frequencyPenalty: 0.5,
-  // presencePenalty: 0.5,
-});
-console.log(response);
+```bash
+# TypeScript
+bun run format:check
+
+# Rust
+cd rust && cargo clippy
+
+# Python
+cd python && ruff check .
 ```
 
-### Image Generation
+## License
 
-```javascript
-const images = await runtime.useModel(ModelType.IMAGE, {
-  prompt: 'A futuristic cityscape at sunset',
-  n: 1, // number of images
-  size: '1024x1024', // image resolution
-});
-console.log(images[0].url); // Example: Accessing the URL of the first image
-```
+MIT License - see [LICENSE](LICENSE) for details.
 
-### Audio Transcription
+## Links
 
-```javascript
-// Assuming 'audioBuffer' is a Buffer containing the audio data (e.g., from a file)
-const transcription = await runtime.useModel(ModelType.TRANSCRIPTION, audioBuffer);
-console.log(transcription);
-```
-
-### Text Tokenization (Encode)
-
-```javascript
-const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-  prompt: 'Hello, world!',
-  modelType: ModelType.TEXT_SMALL, // Or ModelType.TEXT_LARGE
-});
-console.log(tokens);
-```
-
-### Text Tokenization (Decode)
-
-```javascript
-// Assuming 'tokens' is an array of numbers obtained from encoding
-const text = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
-  tokens: [15339, 29871, 29991], // Example tokens for "Hello, world!" with some models
-  modelType: ModelType.TEXT_SMALL, // Or ModelType.TEXT_LARGE
-});
-console.log(text);
-```
-
-### Object Generation (Small Model)
-
-```javascript
-const userProfile = await runtime.useModel(ModelType.OBJECT_SMALL, {
-  prompt: 'Generate a JSON object for a user with name "Alex", age 30, and hobbies ["reading", "hiking"].',
-  temperature: 0.5,
-});
-console.log(userProfile);
-```
-
-### Object Generation (Large Model)
-
-```javascript
-const complexData = await runtime.useModel(ModelType.OBJECT_LARGE, {
-  prompt: 'Generate a detailed JSON object for a product listing: name "Laptop Pro", category "Electronics", price 1200, features ["16GB RAM", "512GB SSD", "15-inch Display"], and availability "in stock".',
-  temperature: 0.7,
-});
-console.log(complexData);
-```
+- [elizaOS Documentation](https://elizaos.ai/docs)
+- [Groq Console](https://console.groq.com)
+- [Groq API Documentation](https://console.groq.com/docs)

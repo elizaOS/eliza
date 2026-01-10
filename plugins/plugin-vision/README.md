@@ -5,6 +5,18 @@ real-time camera integration and scene analysis capabilities. This plugin
 enables agents to "see" their environment, describe scenes, detect people and
 objects, and make decisions based on visual input.
 
+## Multi-Language Support
+
+This plugin is implemented in multiple languages with complete feature parity:
+
+| Language | Directory | Status |
+|----------|-----------|--------|
+| TypeScript | `src/` | ✅ Production Ready |
+| Python | `python/` | ✅ Production Ready |
+| Rust | `rust/` | 🔄 In Development |
+
+The TypeScript implementation is the primary and most feature-complete version.
+
 ## Features
 
 ### Phase 1 (Implemented)
@@ -28,18 +40,48 @@ objects, and make decisions based on visual input.
 - ✅ Configurable computer vision models
 - ✅ Fallback to motion detection when CV is disabled
 
-### Phase 3 (Planned)
+### Phase 3 (Implemented)
+
+- ✅ Real-time object tracking with IDs
+- ✅ Face detection and recognition
+- ✅ Screen capture and OCR integration
+- ✅ Entity tracking with persistent IDs
+- ✅ Multi-display support
+- ✅ Circuit breaker pattern for error resilience
+- ✅ Florence2 model integration for advanced scene understanding
+- ✅ Worker-based processing for high-FPS operations
+
+### Phase 4 (Planned)
 
 - 🔄 WebAssembly (WASM) integration for browser compatibility
-- 🔄 Real-time object tracking with IDs
-- 🔄 Face detection and recognition
 - 🔄 Gesture recognition
-- 🔄 Scene understanding and spatial relationships
+- 🔄 Emotion detection
+- 🔄 Advanced scene understanding and spatial relationships
 
 ## Installation
 
+### TypeScript (Primary)
+
 ```bash
 npm install @elizaos/plugin-vision
+# or
+cd plugins/plugin-vision
+bun install
+bun run build
+```
+
+### Python
+
+```bash
+cd plugins/plugin-vision/python
+pip install -e .
+```
+
+### Rust
+
+```bash
+cd plugins/plugin-vision/rust
+cargo build --release
 ```
 
 ### Camera Tools Required
@@ -64,6 +106,18 @@ PIXEL_CHANGE_THRESHOLD=30
 # Enable advanced computer vision features (default: false)
 ENABLE_OBJECT_DETECTION=true
 ENABLE_POSE_DETECTION=true
+ENABLE_FACE_RECOGNITION=false
+
+# Vision mode: OFF, CAMERA, SCREEN, BOTH
+VISION_MODE=CAMERA
+
+# Update intervals (milliseconds)
+TF_UPDATE_INTERVAL=1000
+VLM_UPDATE_INTERVAL=10000
+
+# Screen capture settings
+SCREEN_CAPTURE_INTERVAL=2000
+OCR_ENABLED=true
 ```
 
 ### Character Configuration
@@ -108,6 +162,30 @@ Captures the current frame and returns it as a base64 image attachment.
 User: "Take a photo"
 Agent: "I've captured an image from the camera." [Image attached]
 ```
+
+### SET_VISION_MODE
+
+Changes the vision mode (OFF, CAMERA, SCREEN, or BOTH).
+
+**Similes**: `CHANGE_VISION_MODE`, `SET_VISION`, `TOGGLE_VISION`
+
+### NAME_ENTITY
+
+Assigns a name to a detected entity for tracking.
+
+**Similes**: `LABEL_ENTITY`, `NAME_OBJECT`, `IDENTIFY_ENTITY`
+
+### IDENTIFY_PERSON
+
+Identifies a person using face recognition (requires face recognition to be enabled).
+
+**Similes**: `RECOGNIZE_PERSON`, `IDENTIFY_FACE`
+
+### TRACK_ENTITY
+
+Starts tracking an entity with a persistent ID.
+
+**Similes**: `START_TRACKING`, `FOLLOW_ENTITY`
 
 ### KILL_AUTONOMOUS
 
@@ -194,16 +272,57 @@ Example autonomous behavior:
 - Base64 images in messages are ephemeral
 - Consider privacy implications in your implementation
 
+## Architecture
+
+```
+plugin-vision/
+├── README.md                 # This file
+├── package.json              # TypeScript package config
+├── src/                      # TypeScript implementation (primary)
+│   ├── index.ts              # Plugin entry point
+│   ├── service.ts            # Vision service
+│   ├── provider.ts           # Vision provider
+│   ├── action.ts             # All actions
+│   ├── entity-tracker.ts     # Entity tracking
+│   ├── screen-capture.ts     # Screen capture
+│   ├── ocr-service.ts        # OCR service
+│   ├── face-recognition.ts   # Face recognition
+│   ├── florence2-model.ts    # Florence2 model integration
+│   ├── vision-worker-manager.ts # Worker management
+│   └── tests/                # E2E tests
+├── python/                   # Python implementation
+│   ├── pyproject.toml
+│   └── elizaos_vision/
+│       ├── __init__.py       # Plugin entry point
+│       ├── service.py        # Vision service
+│       ├── provider.py       # Vision provider
+│       ├── actions.py        # All actions
+│       └── ...
+└── rust/                     # Rust implementation (in development)
+    ├── Cargo.toml
+    └── src/
+        └── ...
+```
+
 ## Development
 
 ### Running Tests
 
 ```bash
-# Run E2E tests
-npm test
+# TypeScript - Run E2E tests
+cd plugins/plugin-vision
+bun test
 
-# Run local E2E tests
-npm run test:e2e:local
+# TypeScript - Run local E2E tests
+bun run test:e2e:local
+
+# Python - Run tests
+cd plugins/plugin-vision/python
+pytest
+
+# Rust - Run tests
+cd plugins/plugin-vision/rust
+cargo test
 ```
 
 ### Test Coverage

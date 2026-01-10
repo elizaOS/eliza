@@ -16,7 +16,7 @@ import {
 import {
   BrowserStorage,
   LocalDatabaseAdapter,
-} from "@elizaos/plugin-localdb/browser";
+} from "@elizaos/plugin-localdb";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================

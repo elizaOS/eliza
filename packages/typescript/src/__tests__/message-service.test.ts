@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelType, EventType, ModelType } from "../index";
 import { DefaultMessageService } from "../services/message";
 import type { IMessageService } from "../types/message-service";
@@ -13,7 +13,7 @@ describe("DefaultMessageService", () => {
 
   beforeEach(() => {
     // Create mock callback
-    mockCallback = mock(async (content: Content) => {
+    mockCallback = vi.fn(async (content: Content) => {
       return [
         {
           id: "123e4567-e89b-12d3-a456-426614174099" as UUID,
@@ -30,11 +30,11 @@ describe("DefaultMessageService", () => {
     mockRuntime = {
       agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
       logger: {
-        debug: mock(() => {}),
-        info: mock(() => {}),
-        warn: mock(() => {}),
-        error: mock(() => {}),
-        success: mock(() => {}),
+        debug: vi.fn(() => {}),
+        info: vi.fn(() => {}),
+        warn: vi.fn(() => {}),
+        error: vi.fn(() => {}),
+        success: vi.fn(() => {}),
       },
       character: {
         name: "TestAgent",
@@ -49,7 +49,7 @@ describe("DefaultMessageService", () => {
         },
         system: "You are a helpful AI assistant.",
       },
-      getSetting: mock((key: string) => {
+      getSetting: vi.fn((key: string) => {
         const settings: Record<string, string> = {
           ALWAYS_RESPOND_CHANNELS: "",
           ALWAYS_RESPOND_SOURCES: "",
@@ -58,16 +58,18 @@ describe("DefaultMessageService", () => {
         };
         return settings[key];
       }),
-      createMemory: mock(async (memory: Memory, _tableName: string) => {
+      isCheckShouldRespondEnabled: vi.fn(() => true),
+      isActionPlanningEnabled: vi.fn(() => true),
+      createMemory: vi.fn(async (memory: Memory, _tableName: string) => {
         return memory;
       }),
-      getMemoryById: mock(async (_id: UUID) => null),
-      getMemoriesByRoomIds: mock(async () => []),
-      composeState: mock(async () => ({
+      getMemoryById: vi.fn(async (_id: UUID) => null),
+      getMemoriesByRoomIds: vi.fn(async () => []),
+      composeState: vi.fn(async () => ({
         data: {},
         values: {},
       })),
-      useModel: mock(
+      useModel: vi.fn(
         async (
           modelType: (typeof ModelType)[keyof typeof ModelType],
           params: unknown,
@@ -96,31 +98,31 @@ describe("DefaultMessageService", () => {
           return responseText;
         },
       ),
-      processActions: mock(async () => {}),
-      evaluate: mock(async () => {}),
-      emitEvent: mock(async () => {}),
-      getRoom: mock(async (roomId: UUID) => ({
+      processActions: vi.fn(async () => {}),
+      evaluate: vi.fn(async () => {}),
+      emitEvent: vi.fn(async () => {}),
+      getRoom: vi.fn(async (roomId: UUID) => ({
         id: roomId,
         type: ChannelType.GROUP,
         name: "Test Room",
         worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
       })),
-      getWorld: mock(async (worldId: UUID) => ({
+      getWorld: vi.fn(async (worldId: UUID) => ({
         id: worldId,
         name: "Test World",
         agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
       })),
-      ensureRoomExists: mock(async () => {}),
-      getActions: mock(() => []),
-      startRun: mock(() => "123e4567-e89b-12d3-a456-426614174100" as UUID),
-      endRun: mock((_runId: UUID) => {}),
-      queueEmbeddingGeneration: mock(async () => {}),
-      log: mock(async () => {}),
-      getParticipantUserState: mock(async () => ({
+      ensureRoomExists: vi.fn(async () => {}),
+      getActions: vi.fn(() => []),
+      startRun: vi.fn(() => "123e4567-e89b-12d3-a456-426614174100" as UUID),
+      endRun: vi.fn((_runId: UUID) => {}),
+      queueEmbeddingGeneration: vi.fn(async () => {}),
+      log: vi.fn(async () => {}),
+      getParticipantUserState: vi.fn(async () => ({
         roomId: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         userId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
       })),
-      getRoomsByIds: mock(async (roomIds: UUID[]) => {
+      getRoomsByIds: vi.fn(async (roomIds: UUID[]) => {
         return roomIds.map((id) => ({
           id,
           name: "Test Room",
@@ -128,7 +130,7 @@ describe("DefaultMessageService", () => {
           worldId: "123e4567-e89b-12d3-a456-426614174003" as UUID,
         }));
       }),
-      getEntityById: mock(async (entityId: UUID) => ({
+      getEntityById: vi.fn(async (entityId: UUID) => ({
         id: entityId,
         names: ["Test User"],
         agentId: "123e4567-e89b-12d3-a456-426614174001" as UUID,
@@ -613,7 +615,7 @@ describe("DefaultMessageService", () => {
 
   describe("deleteMessage", () => {
     it("should delete a message memory by ID", async () => {
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = vi.fn(async () => {});
       mockRuntime.deleteMemory = mockDeleteMemory;
 
       const message: Memory = {
@@ -634,7 +636,7 @@ describe("DefaultMessageService", () => {
     });
 
     it("should handle missing message ID gracefully", async () => {
-      const mockDeleteMemory = mock(async () => {});
+      const mockDeleteMemory = vi.fn(async () => {});
       mockRuntime.deleteMemory = mockDeleteMemory;
 
       const messageWithoutId: Memory = {
@@ -661,7 +663,7 @@ describe("DefaultMessageService", () => {
 
     it("should handle deletion errors and re-throw", async () => {
       const deleteError = new Error("Database deletion failed");
-      const mockDeleteMemory = mock(async () => {
+      const mockDeleteMemory = vi.fn(async () => {
         throw deleteError;
       });
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -717,8 +719,8 @@ describe("DefaultMessageService", () => {
         },
       ];
 
-      const mockGetMemories = mock(async () => mockMemories);
-      const mockDeleteMemory = mock(async () => {});
+      const mockGetMemories = vi.fn(async () => mockMemories);
+      const mockDeleteMemory = vi.fn(async () => {});
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -743,8 +745,8 @@ describe("DefaultMessageService", () => {
       const roomId = "123e4567-e89b-12d3-a456-426614174060" as UUID;
       const channelId = "empty-channel";
 
-      const mockGetMemories = mock(async () => []);
-      const mockDeleteMemory = mock(async () => {});
+      const mockGetMemories = vi.fn(async () => []);
+      const mockDeleteMemory = vi.fn(async () => {});
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -783,14 +785,14 @@ describe("DefaultMessageService", () => {
       ];
 
       let callCount = 0;
-      const mockDeleteMemory = mock(async () => {
+      const mockDeleteMemory = vi.fn(async () => {
         callCount++;
         if (callCount === 1) {
           throw new Error("First deletion failed");
         }
       });
 
-      mockRuntime.getMemoriesByRoomIds = mock(async () => mockMemories);
+      mockRuntime.getMemoriesByRoomIds = vi.fn(async () => mockMemories);
       mockRuntime.deleteMemory = mockDeleteMemory;
 
       await messageService.clearChannel(
@@ -823,8 +825,8 @@ describe("DefaultMessageService", () => {
         } as Memory,
       ];
 
-      const mockGetMemories = mock(async () => mockMemories);
-      const mockDeleteMemory = mock(async () => {});
+      const mockGetMemories = vi.fn(async () => mockMemories);
+      const mockDeleteMemory = vi.fn(async () => {});
 
       mockRuntime.getMemoriesByRoomIds = mockGetMemories;
       mockRuntime.deleteMemory = mockDeleteMemory;
@@ -857,7 +859,7 @@ describe("DefaultMessageService", () => {
       };
 
       // Mock useModel to return XML where thought/text are objects (empty tags become {})
-      (mockRuntime.useModel = mock(
+      (mockRuntime.useModel = vi.fn(
         async (
           modelType: (typeof ModelType)[keyof typeof ModelType],
           params: unknown,
@@ -886,8 +888,8 @@ describe("DefaultMessageService", () => {
         },
       )),
         // Add required mocks for the message processing flow
-        (mockRuntime.emitEvent = mock(async () => {}));
-      mockRuntime.getRoom = mock(async () => ({
+        (mockRuntime.emitEvent = vi.fn(async () => {}));
+      mockRuntime.getRoom = vi.fn(async () => ({
         id: "123e4567-e89b-12d3-a456-426614174002" as UUID,
         name: "Test Room",
         source: "test",

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import {  afterAll, beforeAll, describe, expect, it  } from "vitest";
 import { type IDatabaseAdapter, stringToUuid, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";

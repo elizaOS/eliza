@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ChannelType, stringToUuid, type IAgentRuntime, type Room, type Task, type UUID } from "@elizaos/core";
 import { CodeTaskService } from "../plugin/services/code-task.js";
 import type { CodeTask, CodeTaskMetadata } from "../types.js";
@@ -24,9 +24,9 @@ function createMockRuntime(): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId,
 
-    getRoom: mock(async (id: UUID) => rooms.get(id) ?? null),
+    getRoom: vi.fn(async (id: UUID) => rooms.get(id) ?? null),
 
-    createTask: mock(async (task: Task) => {
+    createTask: vi.fn(async (task: Task) => {
       taskCounter += 1;
       const id = stringToUuid(`task-${taskCounter}`);
 
@@ -44,15 +44,15 @@ function createMockRuntime(): IAgentRuntime {
       return id;
     }),
 
-    getTask: mock(async (id: UUID) => tasks.get(id) ?? null),
+    getTask: vi.fn(async (id: UUID) => tasks.get(id) ?? null),
 
-    getTasks: mock(async ({ tags }: { tags?: string[] }) => {
+    getTasks: vi.fn(async ({ tags }: { tags?: string[] }) => {
       const allTasks = Array.from(tasks.values());
       if (!tags || tags.length === 0) return allTasks;
       return allTasks.filter((t) => tags.some((tag) => t.tags?.includes(tag)));
     }),
 
-    updateTask: mock(async (id: UUID, updates: Partial<Task>) => {
+    updateTask: vi.fn(async (id: UUID, updates: Partial<Task>) => {
       const task = tasks.get(id);
       if (!task) return;
 
@@ -66,7 +66,7 @@ function createMockRuntime(): IAgentRuntime {
       }
     }),
 
-    deleteTask: mock(async (id: UUID) => {
+    deleteTask: vi.fn(async (id: UUID) => {
       tasks.delete(id);
     }),
   };
