@@ -29,11 +29,13 @@ async def get_providers_list(
     provider_info: list[dict[str, str | bool]] = []
 
     for provider in runtime.providers:
-        provider_info.append({
-            "name": provider.name,
-            "description": getattr(provider, "description", "No description"),
-            "dynamic": getattr(provider, "dynamic", True),
-        })
+        provider_info.append(
+            {
+                "name": provider.name,
+                "description": getattr(provider, "description", "No description"),
+                "dynamic": getattr(provider, "dynamic", True),
+            }
+        )
 
     if not provider_info:
         return ProviderResult(
@@ -46,9 +48,7 @@ async def get_providers_list(
             },
         )
 
-    formatted_providers = "\n".join(
-        f"- {p['name']}: {p['description']}" for p in provider_info
-    )
+    formatted_providers = "\n".join(f"- {p['name']}: {p['description']}" for p in provider_info)
 
     text = f"# Available Providers\n{formatted_providers}"
 
@@ -71,5 +71,3 @@ providers_list_provider = Provider(
     get=get_providers_list,
     dynamic=False,
 )
-
-

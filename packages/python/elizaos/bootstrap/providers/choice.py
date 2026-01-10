@@ -69,9 +69,7 @@ async def get_choice_options(
             },
         )
 
-    formatted_choices = "\n".join(
-        format_choice(i, choice) for i, choice in enumerate(choices)
-    )
+    formatted_choices = "\n".join(format_choice(i, choice) for i, choice in enumerate(choices))
 
     text = f"# Available Choices\n{formatted_choices}"
 
@@ -95,5 +93,3 @@ choice_provider = Provider(
     get=get_choice_options,
     dynamic=True,
 )
-
-

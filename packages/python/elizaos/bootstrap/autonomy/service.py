@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from elizaos.types.events import EventType
 from elizaos.types.memory import Memory
-from elizaos.types.primitives import UUID, as_uuid, Content
+from elizaos.types.primitives import UUID, Content, as_uuid
 from elizaos.types.service import Service
 
 from .types import AutonomyStatus
@@ -26,13 +26,13 @@ AUTONOMY_SERVICE_TYPE = "AUTONOMY"
 class AutonomyService(Service):
     """
     AutonomyService - Manages autonomous agent operation.
-    
+
     This service runs an autonomous loop that triggers agent thinking
     in a dedicated room context, separate from user conversations.
     """
-    
+
     service_type = AUTONOMY_SERVICE_TYPE
-    
+
     def __init__(self) -> None:
         """Initialize the autonomy service."""
         self._runtime: IAgentRuntime | None = None
@@ -44,38 +44,38 @@ class AutonomyService(Service):
         self._settings_monitor_task: asyncio.Task[None] | None = None
         self._autonomous_room_id = as_uuid(str(uuid.uuid4()))
         self._autonomous_world_id = as_uuid("00000000-0000-0000-0000-000000000001")
-    
+
     @classmethod
-    async def start(cls, runtime: IAgentRuntime) -> "AutonomyService":
+    async def start(cls, runtime: IAgentRuntime) -> AutonomyService:
         """Start the autonomy service."""
         service = cls()
         service._runtime = runtime
         await service._initialize()
         return service
-    
+
     async def _initialize(self) -> None:
         """Initialize the service."""
         if not self._runtime:
             return
-            
+
         self._runtime.logger.info(
             f"Using autonomous room ID: {self._autonomous_room_id}",
             src="autonomy",
             agentId=str(self._runtime.agent_id),
         )
-        
+
         # Check settings for auto-start
         autonomy_enabled = self._runtime.get_setting("AUTONOMY_ENABLED")
-        
+
         # Ensure autonomous world and room exist
         await self._ensure_autonomous_context()
-        
+
         self._runtime.logger.info(
             f"Settings check - AUTONOMY_ENABLED: {autonomy_enabled}",
             src="autonomy",
             agentId=str(self._runtime.agent_id),
         )
-        
+
         # Start if enabled
         if autonomy_enabled is True or autonomy_enabled == "true":
             self._runtime.logger.info(
@@ -90,44 +90,48 @@ class AutonomyService(Service):
                 src="autonomy",
                 agentId=str(self._runtime.agent_id),
             )
-        
+
         # Start settings monitoring
         self._settings_monitor_task = asyncio.create_task(self._settings_monitoring())
-    
+
     async def _ensure_autonomous_context(self) -> None:
         """Ensure autonomous world and room exist."""
         if not self._runtime:
             return
-        
+
         try:
             # Ensure world exists
-            await self._runtime.ensure_world_exists({
-                "id": self._autonomous_world_id,
-                "name": "Autonomy World",
-                "agentId": self._runtime.agent_id,
-                "serverId": as_uuid("00000000-0000-0000-0000-000000000000"),
-                "metadata": {
-                    "type": "autonomy",
-                    "description": "World for autonomous agent thinking",
-                },
-            })
-            
+            await self._runtime.ensure_world_exists(
+                {
+                    "id": self._autonomous_world_id,
+                    "name": "Autonomy World",
+                    "agentId": self._runtime.agent_id,
+                    "serverId": as_uuid("00000000-0000-0000-0000-000000000000"),
+                    "metadata": {
+                        "type": "autonomy",
+                        "description": "World for autonomous agent thinking",
+                    },
+                }
+            )
+
             # Ensure room exists (use SELF channel type for internal agent thoughts)
-            await self._runtime.ensure_room_exists({
-                "id": self._autonomous_room_id,
-                "name": "Autonomous Thoughts",
-                "worldId": self._autonomous_world_id,
-                "source": "autonomy-service",
-                "type": "SELF",  # ChannelType.SELF for internal agent monologue
-                "metadata": {
+            await self._runtime.ensure_room_exists(
+                {
+                    "id": self._autonomous_room_id,
+                    "name": "Autonomous Thoughts",
+                    "worldId": self._autonomous_world_id,
                     "source": "autonomy-service",
-                    "description": "Room for autonomous agent thinking",
-                },
-            })
-            
+                    "type": "SELF",  # ChannelType.SELF for internal agent monologue
+                    "metadata": {
+                        "source": "autonomy-service",
+                        "description": "Room for autonomous agent thinking",
+                    },
+                }
+            )
+
             # Add agent as participant
             await self._runtime.add_participant(self._runtime.agent_id, self._autonomous_room_id)
-            
+
             self._runtime.logger.debug(
                 f"Ensured autonomous room exists with world ID: {self._autonomous_world_id}",
                 src="autonomy",
@@ -140,19 +144,19 @@ class AutonomyService(Service):
                 agentId=str(self._runtime.agent_id),
             )
             raise  # Re-throw to prevent service from starting in broken state
-    
+
     async def _settings_monitoring(self) -> None:
         """Monitor settings for autonomy state changes."""
         while not self._is_stopped:
             await asyncio.sleep(10)  # Check every 10 seconds
-            
+
             if not self._runtime or self._is_stopped:
                 break
-            
+
             try:
                 autonomy_enabled = self._runtime.get_setting("AUTONOMY_ENABLED")
                 should_be_running = autonomy_enabled is True or autonomy_enabled == "true"
-                
+
                 if should_be_running and not self._is_running:
                     self._runtime.logger.info(
                         "Settings indicate autonomy should be enabled, starting...",
@@ -174,14 +178,14 @@ class AutonomyService(Service):
                         src="autonomy",
                         agentId=str(self._runtime.agent_id),
                     )
-    
+
     async def start_loop(self) -> None:
         """Start the autonomous loop."""
         if self._is_running:
             return
-            
+
         self._is_running = True
-        
+
         if self._runtime:
             self._runtime.set_setting("AUTONOMY_ENABLED", True)
             self._runtime.logger.info(
@@ -189,16 +193,16 @@ class AutonomyService(Service):
                 src="autonomy",
                 agentId=str(self._runtime.agent_id),
             )
-        
+
         self._loop_task = asyncio.create_task(self._run_loop())
-    
+
     async def stop_loop(self) -> None:
         """Stop the autonomous loop."""
         if not self._is_running:
             return
-            
+
         self._is_running = False
-        
+
         if self._loop_task:
             self._loop_task.cancel()
             try:
@@ -206,7 +210,7 @@ class AutonomyService(Service):
             except asyncio.CancelledError:
                 pass
             self._loop_task = None
-        
+
         if self._runtime:
             self._runtime.set_setting("AUTONOMY_ENABLED", False)
             self._runtime.logger.info(
@@ -214,7 +218,7 @@ class AutonomyService(Service):
                 src="autonomy",
                 agentId=str(self._runtime.agent_id),
             )
-    
+
     async def _run_loop(self) -> None:
         """Run the autonomous thinking loop."""
         while self._is_running and not self._is_stopped:
@@ -228,11 +232,11 @@ class AutonomyService(Service):
                     )
                 await asyncio.sleep(self._interval_ms / 1000)
                 continue
-            
+
             # Guard: Don't run if stopped while waiting
             if self._is_stopped or not self._is_running:
                 break
-            
+
             self._is_thinking = True
             try:
                 await self._perform_autonomous_think()
@@ -245,24 +249,24 @@ class AutonomyService(Service):
                     )
             finally:
                 self._is_thinking = False
-            
+
             await asyncio.sleep(self._interval_ms / 1000)
-    
+
     def is_thinking_in_progress(self) -> bool:
         """Check if currently processing an autonomous thought."""
         return self._is_thinking
-    
+
     async def _perform_autonomous_think(self) -> None:
         """Perform one iteration of autonomous thinking."""
         if not self._runtime:
             return
-            
+
         self._runtime.logger.debug(
             "Performing autonomous thinking...",
             src="autonomy",
             agentId=str(self._runtime.agent_id),
         )
-        
+
         # Get agent entity
         agent_entity = await self._runtime.get_entity_by_id(self._runtime.agent_id)
         if not agent_entity:
@@ -272,17 +276,19 @@ class AutonomyService(Service):
                 agentId=str(self._runtime.agent_id),
             )
             return
-        
+
         # Get recent autonomous memories
         last_thought: str | None = None
         is_first_thought = False
-        
-        recent_memories = await self._runtime.get_memories({
-            "roomId": self._autonomous_room_id,
-            "count": 3,
-            "tableName": "memories",
-        })
-        
+
+        recent_memories = await self._runtime.get_memories(
+            {
+                "roomId": self._autonomous_room_id,
+                "count": 3,
+                "tableName": "memories",
+            }
+        )
+
         last_agent_thought = None
         for m in sorted(recent_memories, key=lambda x: x.created_at or 0, reverse=True):
             if (
@@ -294,15 +300,15 @@ class AutonomyService(Service):
             ):
                 last_agent_thought = m
                 break
-        
+
         if last_agent_thought and last_agent_thought.content and last_agent_thought.content.text:
             last_thought = last_agent_thought.content.text
         else:
             is_first_thought = True
-        
+
         # Create monologue prompt
         monologue_prompt = self._create_monologue_prompt(last_thought, is_first_thought)
-        
+
         # Create autonomous message
         entity_id = agent_entity.id if agent_entity.id else self._runtime.agent_id
         autonomous_message = Memory(
@@ -324,13 +330,13 @@ class AutonomyService(Service):
             agent_id=self._runtime.agent_id,
             created_at=int(asyncio.get_event_loop().time() * 1000),
         )
-        
+
         self._runtime.logger.debug(
             "Processing autonomous message through agent pipeline...",
             src="autonomy",
             agentId=str(self._runtime.agent_id),
         )
-        
+
         # Emit message event
         async def callback(content: Content) -> None:
             if self._runtime:
@@ -339,7 +345,7 @@ class AutonomyService(Service):
                     src="autonomy",
                     agentId=str(self._runtime.agent_id),
                 )
-                
+
                 if content.text:
                     response_memory = Memory(
                         id=as_uuid(str(uuid.uuid4())),
@@ -361,9 +367,9 @@ class AutonomyService(Service):
                         room_id=self._autonomous_room_id,
                         created_at=int(asyncio.get_event_loop().time() * 1000),
                     )
-                    
+
                     await self._runtime.create_memory(response_memory, "messages")
-        
+
         await self._runtime.emit_event(
             EventType.MESSAGE_RECEIVED.value,
             {
@@ -372,35 +378,35 @@ class AutonomyService(Service):
                 "callback": callback,
             },
         )
-    
+
     def _create_monologue_prompt(self, last_thought: str | None, is_first_thought: bool) -> str:
         """Create an introspective monologue prompt."""
         if is_first_thought:
             return """As an AI agent, reflect on your current state and experiences. What are you thinking about right now? What interests you or concerns you? Share your internal thoughts as a stream of consciousness. Don't address anyone - this is your private monologue.
 
 Generate a thoughtful, introspective response (1-2 sentences):"""
-        
+
         return f"""Continuing your internal monologue from your last thought: "{last_thought}"
 
 What naturally follows from this thought? What does it make you think about next? Continue your stream of consciousness without addressing anyone - this is your private internal reflection.
 
 Generate your next thought (1-2 sentences):"""
-    
+
     # Public API methods
-    
+
     def is_loop_running(self) -> bool:
         """Check if loop is currently running."""
         return self._is_running
-    
+
     def get_loop_interval(self) -> int:
         """Get current loop interval in milliseconds."""
         return self._interval_ms
-    
+
     def set_loop_interval(self, ms: int) -> None:
         """Set loop interval (takes effect on next iteration)."""
         MIN_INTERVAL = 5000
         MAX_INTERVAL = 600000
-        
+
         if ms < MIN_INTERVAL:
             if self._runtime:
                 self._runtime.logger.warn(
@@ -417,41 +423,41 @@ Generate your next thought (1-2 sentences):"""
                     agentId=str(self._runtime.agent_id),
                 )
             ms = MAX_INTERVAL
-        
+
         self._interval_ms = ms
-        
+
         if self._runtime:
             self._runtime.logger.info(
                 f"Loop interval set to {ms}ms",
                 src="autonomy",
                 agentId=str(self._runtime.agent_id),
             )
-    
+
     def get_autonomous_room_id(self) -> UUID:
         """Get the autonomous room ID."""
         return self._autonomous_room_id
-    
+
     async def enable_autonomy(self) -> None:
         """Enable autonomy."""
         if self._runtime:
             self._runtime.set_setting("AUTONOMY_ENABLED", True)
         if not self._is_running:
             await self.start_loop()
-    
+
     async def disable_autonomy(self) -> None:
         """Disable autonomy."""
         if self._runtime:
             self._runtime.set_setting("AUTONOMY_ENABLED", False)
         if self._is_running:
             await self.stop_loop()
-    
+
     def get_status(self) -> AutonomyStatus:
         """Get current autonomy status."""
         enabled = False
         if self._runtime:
             setting = self._runtime.get_setting("AUTONOMY_ENABLED")
             enabled = setting is True or setting == "true"
-        
+
         return AutonomyStatus(
             enabled=enabled,
             running=self._is_running,
@@ -459,15 +465,15 @@ Generate your next thought (1-2 sentences):"""
             interval=self._interval_ms,
             autonomous_room_id=str(self._autonomous_room_id),
         )
-    
+
     async def stop(self) -> None:
         """Stop the service."""
         # Mark as stopped to prevent new operations
         self._is_stopped = True
-        
+
         # Stop the autonomous loop
         await self.stop_loop()
-        
+
         # Clean up settings monitoring
         if self._settings_monitor_task:
             self._settings_monitor_task.cancel()
@@ -476,16 +482,15 @@ Generate your next thought (1-2 sentences):"""
             except asyncio.CancelledError:
                 pass
             self._settings_monitor_task = None
-        
+
         if self._runtime:
             self._runtime.logger.info(
                 "Autonomy service stopped completely",
                 src="autonomy",
                 agentId=str(self._runtime.agent_id),
             )
-    
+
     @property
     def capability_description(self) -> str:
         """Get capability description."""
         return "Autonomous operation loop for continuous agent thinking and actions"
-

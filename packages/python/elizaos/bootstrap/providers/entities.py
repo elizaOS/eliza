@@ -113,4 +113,3 @@ entities_provider = Provider(
     get=get_entities_context,
     dynamic=True,  # Entities may change between messages
 )
-

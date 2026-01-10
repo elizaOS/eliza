@@ -17,7 +17,7 @@ import { ShellService } from "../services/shellService";
  * Template for extracting command from user input
  * Auto-generated from prompts/command_extraction.txt
  */
-import { commandExtractionTemplate } from '../../dist/prompts/typescript/prompts.js';
+import { commandExtractionTemplate } from '../generated/prompts/typescript/prompts.js';
 export { commandExtractionTemplate };
 
 /**

@@ -10,18 +10,20 @@ from __future__ import annotations
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import TYPE_CHECKING, Any
 
 from elizaos.types.memory import Memory
 from elizaos.types.model import ModelType
-from elizaos.types.primitives import UUID, Content, as_uuid
+from elizaos.types.primitives import Content, as_uuid
 from elizaos.types.state import State
 
 if TYPE_CHECKING:
     from elizaos.types.runtime import IAgentRuntime
 
 HandlerCallback = Callable[[Content], Coroutine[Any, Any, list[Memory]]]
+
 
 @dataclass
 class MessageProcessingResult:
@@ -146,9 +148,7 @@ class DefaultMessageService(IMessageService):
         finally:
             runtime.end_run()
 
-    def _build_prompt(
-        self, runtime: IAgentRuntime, message: Memory, state: State
-    ) -> str:
+    def _build_prompt(self, runtime: IAgentRuntime, message: Memory, state: State) -> str:
         """Build the prompt for the model."""
         character = runtime.character
         user_text = message.content.text or ""
@@ -165,4 +165,3 @@ class DefaultMessageService(IMessageService):
         prompt_parts.append(f"{character.name}:")
 
         return "\n".join(prompt_parts)
-

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -17,8 +18,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -90,8 +89,8 @@ class ScheduleFollowUpAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         """Schedule a follow-up with a contact."""
-        from elizaos.bootstrap.services.rolodex import RolodexService
         from elizaos.bootstrap.services.follow_up import FollowUpService
+        from elizaos.bootstrap.services.rolodex import RolodexService
 
         rolodex_service = runtime.get_service("rolodex")
         follow_up_service = runtime.get_service("follow_up")
@@ -221,4 +220,3 @@ schedule_follow_up_action = Action(
     handler=ScheduleFollowUpAction().handler,
     examples=ScheduleFollowUpAction().examples,
 )
-

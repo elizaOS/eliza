@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import UPDATE_ENTITY_TEMPLATE
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -90,8 +90,8 @@ class UpdateEntityAction:
 
             entity_info = f"""
 Entity ID: {entity.id}
-Name: {entity.name or 'Unknown'}
-Type: {entity.entity_type or 'Unknown'}
+Name: {entity.name or "Unknown"}
+Type: {entity.entity_type or "Unknown"}
 """
             if entity.metadata:
                 entity_info += f"Metadata: {entity.metadata}"
@@ -220,4 +220,3 @@ update_entity_action = Action(
     handler=UpdateEntityAction().handler,
     examples=UpdateEntityAction().examples,
 )
-

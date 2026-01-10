@@ -53,11 +53,13 @@ async def get_facts_context(
                         fact_text = fact.content.text
                         if len(fact_text) > 200:
                             fact_text = fact_text[:200] + "..."
-                        facts_list.append({
-                            "entityId": str(entity_id),
-                            "entityName": sender_name,
-                            "fact": fact_text,
-                        })
+                        facts_list.append(
+                            {
+                                "entityId": str(entity_id),
+                                "entityName": sender_name,
+                                "fact": fact_text,
+                            }
+                        )
                         sections.append(f"- {fact_text}")
 
         except Exception as e:
@@ -82,10 +84,12 @@ async def get_facts_context(
                         fact_text = fact.content.text
                         if len(fact_text) > 200:
                             fact_text = fact_text[:200] + "..."
-                        facts_list.append({
-                            "roomId": str(room_id),
-                            "fact": fact_text,
-                        })
+                        facts_list.append(
+                            {
+                                "roomId": str(room_id),
+                                "fact": fact_text,
+                            }
+                        )
                         sections.append(f"- {fact_text}")
 
         except Exception as e:
@@ -117,4 +121,3 @@ facts_provider = Provider(
     get=get_facts_context,
     dynamic=True,
 )
-

@@ -1,0 +1,117 @@
+{
+  "name": "@elizaos/plugin-rss",
+  "description": "RSS and Atom feed integration plugin for elizaOS - enables agents to fetch and monitor news feeds",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "license": "MIT",
+  "author": "elizaOS Team",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "rss",
+    "atom",
+    "feed",
+    "news",
+    "syndication"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust",
+    "README.md"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.18",
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest",
+    "lint": "prettier --write .",
+    "lint:check": "prettier --check .",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_rss"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "RSS_FEEDS": {
+        "type": "string",
+        "description": "JSON array or comma-separated list of feed URLs to auto-subscribe",
+        "required": false,
+        "sensitive": false
+      },
+      "RSS_DISABLE_ACTIONS": {
+        "type": "boolean",
+        "description": "Set to true to disable subscription management actions",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "RSS_FEED_FORMAT": {
+        "type": "string",
+        "description": "Output format for feed items: 'csv' (compact) or 'markdown' (readable)",
+        "required": false,
+        "default": "csv",
+        "sensitive": false
+      },
+      "RSS_CHECK_INTERVAL_MINUTES": {
+        "type": "number",
+        "description": "Interval in minutes between feed checks",
+        "required": false,
+        "default": 15,
+        "sensitive": false
+      }
+    },
+    "description": "RSS and Atom feed integration plugin for elizaOS"
+  }
+}

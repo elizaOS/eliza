@@ -1,7 +1,7 @@
 /**
  * Resource analysis template for MCP plugin.
  * Auto-generated from prompts/resource_analysis.txt
- * DO NOT EDIT - Generated from ../../dist/prompts/typescript/prompts.ts
+ * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  */
-import { resourceAnalysisTemplate } from "../../dist/prompts/typescript/prompts.js";
+import { resourceAnalysisTemplate } from "../generated/prompts/typescript/prompts.js";
 export { resourceAnalysisTemplate };

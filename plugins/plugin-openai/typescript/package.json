@@ -1,0 +1,207 @@
+{
+  "name": "@elizaos/plugin-openai",
+  "version": "1.6.0",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-openai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.7",
+    "@elizaos/core": "^1.7.0",
+    "ai": "^6.0.23",
+    "js-tiktoken": "^1.0.21",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.76 || ^4.1.8"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun --hot build.ts",
+    "lint": "prettier --write .",
+    "lint:check": "prettier --check .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "OPENAI_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to the OpenAI API.",
+        "required": true,
+        "sensitive": true
+      },
+      "OPENAI_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for all OpenAI API requests.",
+        "required": false,
+        "default": "https://api.openai.com/v1",
+        "sensitive": false
+      },
+      "OPENAI_SMALL_MODEL": {
+        "type": "string",
+        "description": "Identifier of the small language model to be used (overrides SMALL_MODEL).",
+        "required": false,
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "gpt-5-mini",
+        "sensitive": false
+      },
+      "OPENAI_LARGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the large language model to be used (overrides LARGE_MODEL).",
+        "required": false,
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the large language model if OPENAI_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "gpt-5",
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model to use for generating text embeddings.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_URL": {
+        "type": "string",
+        "description": "Custom base URL for the OpenAI embeddings endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_API_KEY": {
+        "type": "string",
+        "description": "Custom API key for the OpenAI embeddings endpoint.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for the returned embedding vectors.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "OPENAI_IMAGE_DESCRIPTION_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for describing images.",
+        "required": false,
+        "default": "gpt-5-mini",
+        "sensitive": false
+      },
+      "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
+        "type": "number",
+        "description": "Maximum number of tokens allowed in the image-description model response.",
+        "required": false,
+        "default": 8192,
+        "sensitive": false
+      },
+      "OPENAI_TTS_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for text-to-speech generation.",
+        "required": false,
+        "default": "gpt-5-mini-tts",
+        "sensitive": false
+      },
+      "OPENAI_TTS_VOICE": {
+        "type": "string",
+        "description": "Voice profile to use for text-to-speech output.",
+        "required": false,
+        "default": "nova",
+        "sensitive": false
+      },
+      "OPENAI_TTS_INSTRUCTIONS": {
+        "type": "string",
+        "description": "Optional instructions to control the style or behavior of the text-to-speech request.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_EXPERIMENTAL_TELEMETRY": {
+        "type": "boolean",
+        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "OPENAI_BROWSER_BASE_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for OpenAI requests (no secrets in the client).",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_BROWSER_EMBEDDING_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for OpenAI embeddings.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+}

@@ -86,30 +86,18 @@ class IgnoreAction:
         """Example interactions demonstrating the IGNORE action."""
         return [
             [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="Go screw yourself")
-                ),
-                ActionExample(
-                    name="{{name2}}", content=Content(text="", actions=["IGNORE"])
-                ),
+                ActionExample(name="{{name1}}", content=Content(text="Go screw yourself")),
+                ActionExample(name="{{name2}}", content=Content(text="", actions=["IGNORE"])),
             ],
             [
                 ActionExample(name="{{name1}}", content=Content(text="Shut up, bot")),
-                ActionExample(
-                    name="{{name2}}", content=Content(text="", actions=["IGNORE"])
-                ),
+                ActionExample(name="{{name2}}", content=Content(text="", actions=["IGNORE"])),
             ],
             [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="Bye, thanks for the help!")
-                ),
-                ActionExample(
-                    name="{{name2}}", content=Content(text="Goodbye! Have a great day!")
-                ),
+                ActionExample(name="{{name1}}", content=Content(text="Bye, thanks for the help!")),
+                ActionExample(name="{{name2}}", content=Content(text="Goodbye! Have a great day!")),
                 ActionExample(name="{{name1}}", content=Content(text="Bye!")),
-                ActionExample(
-                    name="{{name2}}", content=Content(text="", actions=["IGNORE"])
-                ),
+                ActionExample(name="{{name2}}", content=Content(text="", actions=["IGNORE"])),
             ],
         ]
 
@@ -123,4 +111,3 @@ ignore_action = Action(
     handler=IgnoreAction().handler,
     examples=IgnoreAction().examples,
 )
-

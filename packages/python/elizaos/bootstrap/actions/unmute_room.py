@@ -190,4 +190,3 @@ unmute_room_action = Action(
     handler=UnmuteRoomAction().handler,
     examples=UnmuteRoomAction().examples,
 )
-

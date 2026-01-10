@@ -5,7 +5,7 @@
 import { logger, type IAgentRuntime, type UUID, ModelType, composePrompt } from "@elizaos/core";
 import { BlueSkyClient } from "../client";
 import type { BlueSkyConversation, BlueSkyMessage } from "../types";
-import { generateDmTemplate } from "../../dist/prompts/typescript/prompts.js";
+import { generateDmTemplate } from "../generated/prompts/typescript/prompts.js";
 
 export class BlueSkyMessageService {
   static serviceType = "IMessageService";

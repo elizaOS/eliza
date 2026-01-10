@@ -27,5 +27,3 @@ EXTENDED_EVALUATORS = [
 
 # All evaluators list for easy registration (backwards compatibility)
 ALL_EVALUATORS = BASIC_EVALUATORS + EXTENDED_EVALUATORS
-
-

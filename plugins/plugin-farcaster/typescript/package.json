@@ -1,0 +1,193 @@
+{
+  "name": "@elizaos/plugin-farcaster",
+  "version": "1.7.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-farcaster.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "node": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "bun": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/index.js"
+    },
+    "./rust": {
+      "browser": {
+        "import": "../rust/pkg/web/elizaos_plugin_farcaster.js",
+        "default": "../rust/pkg/web/elizaos_plugin_farcaster.js"
+      },
+      "node": {
+        "import": "../rust/pkg/node/elizaos_plugin_farcaster.js",
+        "default": "../rust/pkg/node/elizaos_plugin_farcaster.js"
+      },
+      "default": "../rust/pkg/node/elizaos_plugin_farcaster.js"
+    }
+  },
+  "files": [
+    "dist",
+    "../rust/pkg"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "^1.7.0",
+    "@neynar/nodejs-sdk": "^3.34.0",
+    "lru-cache": "^11.1.0",
+    "typescript": "5.8.3",
+    "zod": "^3.25.9"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "esbuild": "^0.25.0",
+    "prettier": "^3.7.4",
+    "vitest": "^3.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts && tsc -p tsconfig.build.json",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun run test:unit && bun run test:integration",
+    "test:unit": "bun test __tests__/",
+    "test:integration": "bun test __tests__/integration/",
+    "test:watch": "bun test --watch",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:rust:wasm": "cd ../rust && wasm-pack build --target web --out-dir pkg/web && wasm-pack build --target nodejs --out-dir pkg/node",
+    "test:rust": "cd ../rust && cargo test",
+    "lint:rust": "cd ../rust && cargo clippy --all-targets -- -D warnings",
+    "lint:python": "cd ../python && ruff check . && ruff format --check .",
+    "lint:python:fix": "cd ../python && ruff check --fix . && ruff format .",
+    "test:python": "cd ../python && pytest",
+    "typecheck:python": "cd ../python && python3 -m mypy elizaos_plugin_farcaster"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "FARCASTER_DRY_RUN": {
+        "type": "boolean",
+        "description": "Enables or disables dry run mode when interacting with Farcaster; when true, operations are simulated but not executed.",
+        "required": false,
+        "sensitive": false
+      },
+      "FARCASTER_FID": {
+        "type": "number",
+        "description": "The Farcaster FID (user identifier) used to publish or manage casts for a specific account.",
+        "required": true,
+        "default": 123,
+        "sensitive": false
+      },
+      "MAX_CAST_LENGTH": {
+        "type": "number",
+        "description": "Maximum number of characters allowed in a Farcaster cast.",
+        "required": false,
+        "default": 320,
+        "sensitive": false
+      },
+      "FARCASTER_POLL_INTERVAL": {
+        "type": "number",
+        "description": "Polling interval in seconds for Farcaster operations such as fetching new casts.",
+        "required": false,
+        "default": 120,
+        "sensitive": false
+      },
+      "ENABLE_CAST": {
+        "type": "boolean",
+        "description": "Enables or disables the ability to post casts to Farcaster.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "CAST_INTERVAL_MIN": {
+        "type": "number",
+        "description": "Minimum interval in minutes between automated posts.",
+        "required": false,
+        "default": 90,
+        "sensitive": false
+      },
+      "CAST_INTERVAL_MAX": {
+        "type": "number",
+        "description": "Maximum interval in minutes between automated posts.",
+        "required": false,
+        "default": 180,
+        "sensitive": false
+      },
+      "ENABLE_ACTION_PROCESSING": {
+        "type": "boolean",
+        "description": "Turns on or off automated action processing for Farcaster events.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ACTION_INTERVAL": {
+        "type": "number",
+        "description": "Interval in minutes between action-processing cycles.",
+        "required": false,
+        "default": 5,
+        "sensitive": false
+      },
+      "CAST_IMMEDIATELY": {
+        "type": "boolean",
+        "description": "If true, posts are published immediately instead of waiting for a schedule.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "MAX_ACTIONS_PROCESSING": {
+        "type": "number",
+        "description": "Maximum number of Farcaster actions to process in a single batch.",
+        "required": false,
+        "default": 1,
+        "sensitive": false
+      },
+      "FARCASTER_SIGNER_UUID": {
+        "type": "string",
+        "description": "UUID of the Neynar signer associated with the Farcaster account, required to sign casts.",
+        "required": true,
+        "sensitive": false
+      },
+      "FARCASTER_NEYNAR_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate with the Neynar Farcaster API.",
+        "required": true,
+        "sensitive": true
+      },
+      "FARCASTER_HUB_URL": {
+        "type": "string",
+        "description": "Base URL for the Farcaster hub the client should communicate with.",
+        "required": false,
+        "default": "hub.pinata.cloud",
+        "sensitive": false
+      },
+      "FARCASTER_MODE": {
+        "type": "string",
+        "description": "Operation mode for Farcaster: 'polling' or 'webhook'.",
+        "required": false,
+        "default": "polling",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460"
+}

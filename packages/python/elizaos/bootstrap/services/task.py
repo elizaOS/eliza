@@ -8,7 +8,7 @@ including creating, updating, and completing tasks.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -122,7 +122,7 @@ class TaskService(Service):
         Returns:
             The created task
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         task = Task(
             id=uuid4(),
             name=name,
@@ -179,7 +179,7 @@ class TaskService(Service):
             return None
 
         task.status = status
-        task.updated_at = datetime.now(timezone.utc)
+        task.updated_at = datetime.now(UTC)
 
         if status == TaskStatus.COMPLETED:
             task.completed_at = task.updated_at
@@ -285,4 +285,3 @@ class TaskService(Service):
                 )
             return True
         return False
-

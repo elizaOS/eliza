@@ -3,7 +3,7 @@
  *
  * Prompt templates for extracting action parameters from natural language.
  * These prompts are auto-generated from prompts/*.txt files.
- * DO NOT EDIT - Generated from ../../dist/prompts/typescript/prompts.ts
+ * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  *
  * To modify prompts, edit the .txt files in prompts/ and run:
  *   npm run build:prompts
@@ -18,7 +18,7 @@ import {
   voteTemplate,
   queueProposalTemplate,
   executeProposalTemplate,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 
 // Re-export for backwards compatibility
 export {

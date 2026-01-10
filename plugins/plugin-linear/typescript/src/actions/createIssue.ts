@@ -11,7 +11,7 @@ import {
 import { LinearService } from '../services/linear';
 import type { LinearIssueInput } from '../types';
 
-import { createIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
+import { createIssueTemplate } from '../generated/prompts/typescript/prompts.js';
 
 export const createIssueAction: Action = {
   name: 'CREATE_LINEAR_ISSUE',

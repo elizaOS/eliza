@@ -9,7 +9,7 @@ import { BLUESKY_MAX_POST_LENGTH } from "../types";
 import {
   generatePostTemplate,
   truncatePostTemplate,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 
 export class BlueSkyPostService {
   static serviceType = "IPostService";

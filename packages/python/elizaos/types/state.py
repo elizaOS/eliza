@@ -38,7 +38,9 @@ class ActionPlan(BaseModel):
 class WorkingMemoryEntry(BaseModel):
     """Working memory entry for multi-step action execution."""
 
-    action_name: str = Field(..., alias="actionName", description="Name of action that created entry")
+    action_name: str = Field(
+        ..., alias="actionName", description="Name of action that created entry"
+    )
     result: ActionResult = Field(..., description="Result from the action execution")
     timestamp: int = Field(..., description="Timestamp when the entry was created")
 
@@ -99,5 +101,3 @@ class State(BaseModel):
     )
 
     model_config = {"populate_by_name": True, "extra": "allow"}
-
-

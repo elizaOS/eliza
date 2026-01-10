@@ -1,0 +1,149 @@
+{
+  "name": "@elizaos/plugin-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/cjs/index.node.cjs",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-vercel-ai-gateway.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "rust"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "esbuild": "^0.24.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "vitest": "^3.3.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "build:rust": "cd ../rust && cargo build --release",
+    "build:python": "cd ../python && python -m build",
+    "dev": "bun --hot build.ts",
+    "lint": "prettier --write .",
+    "lint:check": "prettier --check .",
+    "clean": "rm -rf typescript/dist python/dist rust/target .turbo node_modules",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:ts": "bun test",
+    "test:rust": "cd ../rust && cargo test",
+    "test:python": "cd ../python && pytest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "AI_GATEWAY_API_KEY": {
+        "type": "string",
+        "description": "API key for Vercel AI Gateway (OpenAI-compatible endpoints).",
+        "required": false,
+        "sensitive": true
+      },
+      "AIGATEWAY_API_KEY": {
+        "type": "string",
+        "description": "Alternate env var for AI Gateway API key.",
+        "required": false,
+        "sensitive": true
+      },
+      "VERCEL_OIDC_TOKEN": {
+        "type": "string",
+        "description": "OIDC token for Vercel (used as Bearer auth for Gateway).",
+        "required": false,
+        "sensitive": true
+      },
+      "AI_GATEWAY_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for AI Gateway OpenAI-compatible API.",
+        "required": false,
+        "default": "https://ai-gateway.vercel.sh/v1",
+        "sensitive": false
+      },
+      "AI_GATEWAY_SMALL_MODEL": {
+        "type": "string",
+        "description": "Identifier of the small language model to be used.",
+        "required": false,
+        "default": "gpt-5-mini",
+        "sensitive": false
+      },
+      "AI_GATEWAY_LARGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the large language model to be used.",
+        "required": false,
+        "default": "gpt-5",
+        "sensitive": false
+      },
+      "AI_GATEWAY_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model to use for generating text embeddings.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "AI_GATEWAY_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for the returned embedding vectors.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "AI_GATEWAY_IMAGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for image generation.",
+        "required": false,
+        "default": "dall-e-3",
+        "sensitive": false
+      },
+      "AI_GATEWAY_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Request timeout in milliseconds.",
+        "required": false,
+        "default": 60000,
+        "sensitive": false
+      }
+    }
+  }
+}

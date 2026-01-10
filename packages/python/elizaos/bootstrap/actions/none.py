@@ -64,9 +64,7 @@ class NoneAction:
                     name="{{name1}}",
                     content=Content(text="Just thinking out loud here..."),
                 ),
-                ActionExample(
-                    name="{{name2}}", content=Content(text="", actions=["NONE"])
-                ),
+                ActionExample(name="{{name2}}", content=Content(text="", actions=["NONE"])),
             ],
         ]
 
@@ -80,4 +78,3 @@ none_action = Action(
     handler=NoneAction().handler,
     examples=NoneAction().examples,
 )
-

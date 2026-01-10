@@ -8,20 +8,20 @@ when to reconnect with contacts.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from elizaos.types import Service, ServiceType
 
 if TYPE_CHECKING:
-    from elizaos.types import IAgentRuntime, Task
+    from elizaos.types import IAgentRuntime
 
 
 @dataclass
 class FollowUpTask:
     """Follow-up task data."""
-    
+
     entity_id: UUID
     reason: str
     message: str | None = None
@@ -33,7 +33,7 @@ class FollowUpTask:
 @dataclass
 class FollowUpSuggestion:
     """Follow-up suggestion."""
-    
+
     entity_id: UUID
     entity_name: str
     days_since_last_contact: int
@@ -44,26 +44,26 @@ class FollowUpSuggestion:
 class FollowUpService(Service):
     """
     Service for managing follow-up reminders.
-    
+
     Provides capabilities for:
     - Scheduling follow-ups with contacts
     - Getting upcoming follow-ups
     - Generating follow-up suggestions
     """
-    
+
     name = "follow_up"
     service_type = ServiceType.TASK
-    
+
     @property
     def capability_description(self) -> str:
         """Get the capability description for this service."""
         return "Follow-up scheduling and reminder management service"
-    
+
     def __init__(self) -> None:
         """Initialize the follow-up service."""
         self._follow_ups: dict[UUID, FollowUpTask] = {}
         self._runtime: IAgentRuntime | None = None
-    
+
     async def start(self, runtime: IAgentRuntime) -> None:
         """Start the follow-up service."""
         self._runtime = runtime
@@ -72,7 +72,7 @@ class FollowUpService(Service):
             src="service:follow_up",
             agentId=str(runtime.agent_id),
         )
-    
+
     async def stop(self) -> None:
         """Stop the follow-up service."""
         if self._runtime:
@@ -83,7 +83,7 @@ class FollowUpService(Service):
             )
         self._follow_ups.clear()
         self._runtime = None
-    
+
     async def schedule_follow_up(
         self,
         entity_id: UUID,
@@ -100,59 +100,57 @@ class FollowUpService(Service):
             priority=priority,
             scheduled_at=scheduled_at.isoformat(),
         )
-        
+
         self._follow_ups[entity_id] = task
-        
+
         if self._runtime:
             self._runtime.logger.info(
                 f"Scheduled follow-up with {entity_id}",
                 src="service:follow_up",
                 scheduled_at=task.scheduled_at,
             )
-        
+
         return task
-    
+
     async def get_follow_up(self, entity_id: UUID) -> FollowUpTask | None:
         """Get a scheduled follow-up by entity ID."""
         return self._follow_ups.get(entity_id)
-    
+
     async def cancel_follow_up(self, entity_id: UUID) -> bool:
         """Cancel a scheduled follow-up."""
         if entity_id in self._follow_ups:
             del self._follow_ups[entity_id]
             return True
         return False
-    
+
     async def get_upcoming_follow_ups(
         self,
         days_ahead: int = 7,
         include_overdue: bool = True,
     ) -> list[FollowUpTask]:
         """Get upcoming follow-ups within the specified timeframe."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         results: list[FollowUpTask] = []
-        
+
         for task in self._follow_ups.values():
             try:
                 scheduled = datetime.fromisoformat(task.scheduled_at.replace("Z", "+00:00"))
                 days_until = (scheduled - now).days
-                
-                if include_overdue and days_until < 0:
-                    results.append(task)
-                elif 0 <= days_until <= days_ahead:
+
+                if include_overdue and days_until < 0 or 0 <= days_until <= days_ahead:
                     results.append(task)
             except Exception:
                 continue
-        
+
         # Sort by scheduled time
         results.sort(key=lambda t: t.scheduled_at)
         return results
-    
+
     async def get_overdue_follow_ups(self) -> list[FollowUpTask]:
         """Get all overdue follow-ups."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         results: list[FollowUpTask] = []
-        
+
         for task in self._follow_ups.values():
             try:
                 scheduled = datetime.fromisoformat(task.scheduled_at.replace("Z", "+00:00"))
@@ -160,9 +158,9 @@ class FollowUpService(Service):
                     results.append(task)
             except Exception:
                 continue
-        
+
         return results
-    
+
     async def get_follow_up_suggestions(
         self,
         max_suggestions: int = 5,
@@ -171,8 +169,7 @@ class FollowUpService(Service):
         # This would integrate with RolodexService in a full implementation
         # For now, return empty list as placeholder
         return []
-    
+
     async def complete_follow_up(self, entity_id: UUID) -> bool:
         """Mark a follow-up as completed."""
         return await self.cancel_follow_up(entity_id)
-

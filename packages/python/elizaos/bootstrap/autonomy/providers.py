@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from elizaos.types.components import Provider, ProviderResult
 from elizaos.types.primitives import as_uuid
 
-from .service import AutonomyService, AUTONOMY_SERVICE_TYPE
+from .service import AUTONOMY_SERVICE_TYPE, AutonomyService
 
 if TYPE_CHECKING:
     from elizaos.types.memory import Memory
@@ -21,20 +21,20 @@ if TYPE_CHECKING:
 
 
 async def _get_admin_chat_history(
-    runtime: "IAgentRuntime",
+    runtime: IAgentRuntime,
     message: Memory,
-    _state: "State | None" = None,
+    _state: State | None = None,
 ) -> ProviderResult:
     """Get admin chat history for autonomous context."""
     # Only provide in autonomous room
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return ProviderResult(text="")
-    
+
     autonomous_room_id = autonomy_service.get_autonomous_room_id()
     if not autonomous_room_id or message.room_id != autonomous_room_id:
         return ProviderResult(text="")
-    
+
     # Get admin user ID
     admin_user_id = runtime.get_setting("ADMIN_USER_ID")
     if not admin_user_id:
@@ -42,17 +42,19 @@ async def _get_admin_chat_history(
             text="[ADMIN_CHAT_HISTORY]\nNo admin user configured. Set ADMIN_USER_ID in character settings.\n[/ADMIN_CHAT_HISTORY]",
             data={"adminConfigured": False},
         )
-    
+
     admin_uuid = as_uuid(str(admin_user_id))
-    
+
     # Get recent messages
-    admin_messages = await runtime.get_memories({
-        "entityId": admin_uuid,
-        "count": 15,
-        "unique": False,
-        "tableName": "memories",
-    })
-    
+    admin_messages = await runtime.get_memories(
+        {
+            "entityId": admin_uuid,
+            "count": 15,
+            "unique": False,
+            "tableName": "memories",
+        }
+    )
+
     if not admin_messages:
         return ProviderResult(
             text="[ADMIN_CHAT_HISTORY]\nNo recent messages found with admin user.\n[/ADMIN_CHAT_HISTORY]",
@@ -62,36 +64,33 @@ async def _get_admin_chat_history(
                 "adminUserId": str(admin_user_id),
             },
         )
-    
+
     # Format conversation history
     sorted_messages = sorted(admin_messages, key=lambda m: m.created_at or 0)[-10:]
-    
+
     history_lines = []
     for msg in sorted_messages:
         is_from_admin = msg.entity_id == admin_uuid
         is_from_agent = msg.entity_id == runtime.agent_id
-        
+
         sender = "Admin" if is_from_admin else "Agent" if is_from_agent else "Other"
         text = msg.content.text if msg.content and msg.content.text else "[No text content]"
         timestamp = datetime.fromtimestamp((msg.created_at or 0) / 1000).strftime("%H:%M:%S")
-        
+
         history_lines.append(f"{timestamp} {sender}: {text}")
-    
+
     conversation_history = "\n".join(history_lines)
-    
+
     # Get recent admin messages
-    recent_admin_messages = [
-        msg for msg in sorted_messages
-        if msg.entity_id == admin_uuid
-    ][-3:]
-    
+    recent_admin_messages = [msg for msg in sorted_messages if msg.entity_id == admin_uuid][-3:]
+
     last_admin_message = recent_admin_messages[-1] if recent_admin_messages else None
     admin_mood_context = (
         f'Last admin message: "{last_admin_message.content.text if last_admin_message and last_admin_message.content else "N/A"}"'
         if recent_admin_messages
         else "No recent admin messages"
     )
-    
+
     return ProviderResult(
         text=f"[ADMIN_CHAT_HISTORY]\nRecent conversation with admin user ({len(admin_messages)} total messages):\n\n{conversation_history}\n\n{admin_mood_context}\n[/ADMIN_CHAT_HISTORY]",
         data={
@@ -99,7 +98,9 @@ async def _get_admin_chat_history(
             "messageCount": len(admin_messages),
             "adminUserId": str(admin_user_id),
             "recentMessageCount": len(recent_admin_messages),
-            "lastAdminMessage": last_admin_message.content.text if last_admin_message and last_admin_message.content else "",
+            "lastAdminMessage": last_admin_message.content.text
+            if last_admin_message and last_admin_message.content
+            else "",
             "conversationActive": any(
                 (datetime.now().timestamp() * 1000) - (m.created_at or 0) < 3600000
                 for m in admin_messages
@@ -109,26 +110,26 @@ async def _get_admin_chat_history(
 
 
 async def _get_autonomy_status(
-    runtime: "IAgentRuntime",
+    runtime: IAgentRuntime,
     message: Memory,
-    _state: "State | None" = None,
+    _state: State | None = None,
 ) -> ProviderResult:
     """Get autonomy status for regular conversations."""
     # Get autonomy service
     autonomy_service = runtime.get_service(AUTONOMY_SERVICE_TYPE)
     if not autonomy_service or not isinstance(autonomy_service, AutonomyService):
         return ProviderResult(text="")
-    
+
     # Don't show in autonomous room
     autonomous_room_id = autonomy_service.get_autonomous_room_id()
     if autonomous_room_id and message.room_id == autonomous_room_id:
         return ProviderResult(text="")
-    
+
     # Get status
     autonomy_enabled = runtime.get_setting("AUTONOMY_ENABLED")
     service_running = autonomy_service.is_loop_running()
     interval = autonomy_service.get_loop_interval()
-    
+
     # Determine status display
     if service_running:
         status = "running autonomously"
@@ -139,14 +140,14 @@ async def _get_autonomy_status(
     else:
         status = "autonomy disabled"
         status_icon = "🔕"
-    
+
     interval_seconds = interval // 1000
     interval_unit = (
         f"{interval_seconds} seconds"
         if interval_seconds < 60
         else f"{interval_seconds // 60} minutes"
     )
-    
+
     return ProviderResult(
         text=f"[AUTONOMY_STATUS]\nCurrent status: {status_icon} {status}\nThinking interval: {interval_unit}\n[/AUTONOMY_STATUS]",
         data={
@@ -154,7 +155,11 @@ async def _get_autonomy_status(
             "serviceRunning": service_running,
             "interval": interval,
             "intervalSeconds": interval_seconds,
-            "status": "running" if service_running else "enabled" if autonomy_enabled else "disabled",
+            "status": "running"
+            if service_running
+            else "enabled"
+            if autonomy_enabled
+            else "disabled",
         },
     )
 
@@ -170,4 +175,3 @@ autonomy_status_provider = Provider(
     description="Provides current autonomy status for agent awareness in conversations",
     get=_get_autonomy_status,
 )
-

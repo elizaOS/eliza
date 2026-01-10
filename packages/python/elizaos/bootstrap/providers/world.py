@@ -116,4 +116,3 @@ world_provider = Provider(
     get=get_world_context,
     dynamic=True,  # World state may change
 )
-

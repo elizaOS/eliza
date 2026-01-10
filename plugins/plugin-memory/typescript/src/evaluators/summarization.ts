@@ -33,12 +33,12 @@ async function getDialogueMessageCount(runtime: IAgentRuntime, roomId: UUID): Pr
 /**
  * Templates for memory summarization.
  * Auto-generated from prompts/*.txt
- * DO NOT EDIT - Generated from ../../dist/prompts/typescript/prompts.ts
+ * DO NOT EDIT - Generated from ../generated/prompts/typescript/prompts.ts
  */
 import {
   initialSummarizationTemplate,
   updateSummarizationTemplate,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Parse XML summary response

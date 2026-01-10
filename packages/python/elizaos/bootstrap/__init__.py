@@ -21,7 +21,7 @@ Usage:
     plugin = create_bootstrap_plugin(CapabilityConfig(enable_extended=True))
 """
 
-from .plugin import CapabilityConfig, bootstrap_plugin, create_bootstrap_plugin
+from .plugin import bootstrap_plugin, create_bootstrap_plugin
 from .types import CapabilityConfig
 
 __version__ = "2.0.0-alpha.0"

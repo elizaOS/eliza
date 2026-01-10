@@ -191,4 +191,3 @@ follow_room_action = Action(
     handler=FollowRoomAction().handler,
     examples=FollowRoomAction().examples,
 )
-
