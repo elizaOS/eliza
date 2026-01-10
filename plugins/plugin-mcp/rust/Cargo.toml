@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["native"]
-native = ["tokio/full"]
+native = ["tokio/full", "reqwest", "tokio-stream"]
 wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
 
 [dependencies]
@@ -34,6 +34,8 @@ tracing = "0.1"
 
 # Native-only dependencies
 tokio = { version = "1.0", features = ["process", "io-util", "sync", "time", "rt"], optional = true }
+reqwest = { version = "0.12", features = ["json", "stream"], optional = true }
+tokio-stream = { version = "0.1", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }

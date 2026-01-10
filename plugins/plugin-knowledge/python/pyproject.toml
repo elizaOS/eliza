@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-plugin-knowledge"
+version = "1.6.1"
+description = "Knowledge and RAG plugin for elizaOS - provides retrieval augmented generation capabilities"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS", email = "info@elizaos.com" }
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Indexing",
+]
+keywords = ["elizaos", "knowledge", "rag", "retrieval-augmented-generation", "embeddings", "agent"]
+
+dependencies = [
+    "numpy>=1.24.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+openai = [
+    "openai>=1.0.0",
+]
+anthropic = [
+    "anthropic>=0.18.0",
+]
+google = [
+    "google-generativeai>=0.4.0",
+]
+pdf = [
+    "pypdf>=3.0.0",
+]
+docx = [
+    "python-docx>=0.8.11",
+]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "google-generativeai>=0.4.0",
+    "pypdf>=3.0.0",
+    "python-docx>=0.8.11",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos-plugins/plugin-knowledge"
+Repository = "https://github.com/elizaos-plugins/plugin-knowledge"
+
+[tool.hatch.build.targets.wheel]
+packages = ["elizaos_plugin_knowledge"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+

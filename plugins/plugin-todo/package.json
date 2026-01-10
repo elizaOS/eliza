@@ -1,0 +1,88 @@
+{
+  "name": "@elizaos/plugin-todo",
+  "description": "Todo list plugin for ElizaOS",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "UNLICENSED",
+  "author": "ElizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-autonomous"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos-plugins/plugin-autonomous/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".npmignore",
+    "package.json",
+    "tsup.config.ts"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-rolodex": "workspace:*",
+    "drizzle-orm": "^0.30.10",
+    "start-server-and-test": "^2.0.5",
+    "zod": "3.24.2"
+  },
+  "peerDependencies": {},
+  "devDependencies": {
+    "@elizaos/cli": "^1.0.0",
+    "cypress": "^13.6.3",
+    "dotenv": "16.4.5",
+    "drizzle-kit": "^0.21.4",
+    "prettier": "3.5.3",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5.5.4",
+    "vitest": "^1.6.0"
+  },
+  "scripts": {
+    "start": "elizaos start",
+    "dev": "elizaos dev",
+    "build": "tsup",
+    "lint": "prettier --write ./src",
+    "test": "elizaos test",
+    "publish": "elizaos publish",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src",
+    "__test__": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "zod": "3.24.2"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "API_KEY": {
+        "type": "string",
+        "description": "API key for the service"
+      }
+    }
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+}

@@ -1,0 +1,156 @@
+{
+  "name": "@elizaos/plugin-bluesky",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "@elizaos/source": "./src/index.ts",
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.0.0",
+    "@atproto/api": "^0.13.14",
+    "@atproto/identity": "^0.4.4",
+    "@atproto/lexicon": "^0.4.11",
+    "@atproto/syntax": "^0.3.2",
+    "@atproto/xrpc": "^0.6.4",
+    "lru-cache": "^11.1.0",
+    "typescript": "^5.8.3",
+    "zod": "^3.25.9"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "vitest": "^3.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "elizaos test",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest run --coverage",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "BLUESKY_DRY_RUN": {
+        "type": "boolean",
+        "description": "Enables or disables dry run mode when interacting with BlueSky; when true, operations are simulated but not executed.",
+        "required": false,
+        "sensitive": false
+      },
+      "BLUESKY_HANDLE": {
+        "type": "string",
+        "description": "The BlueSky handle (username) for the agent account.",
+        "required": true,
+        "sensitive": false
+      },
+      "BLUESKY_PASSWORD": {
+        "type": "string",
+        "description": "The app password for authentication with BlueSky.",
+        "required": true,
+        "sensitive": true
+      },
+      "BLUESKY_SERVICE": {
+        "type": "string",
+        "description": "The BlueSky service URL (PDS instance).",
+        "required": false,
+        "default": "https://bsky.social",
+        "sensitive": false
+      },
+      "MAX_POST_LENGTH": {
+        "type": "number",
+        "description": "Maximum number of characters allowed in a BlueSky post.",
+        "required": false,
+        "default": 300,
+        "sensitive": false
+      },
+      "BLUESKY_POLL_INTERVAL": {
+        "type": "number",
+        "description": "Polling interval in milliseconds for BlueSky operations such as fetching new posts.",
+        "required": false,
+        "default": 60000,
+        "sensitive": false
+      },
+      "ENABLE_POST": {
+        "type": "boolean",
+        "description": "Enables or disables the ability to post to BlueSky.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "POST_INTERVAL_MIN": {
+        "type": "number",
+        "description": "Minimum interval in milliseconds between automated posts.",
+        "required": false,
+        "default": 300000,
+        "sensitive": false
+      },
+      "POST_INTERVAL_MAX": {
+        "type": "number",
+        "description": "Maximum interval in milliseconds between automated posts.",
+        "required": false,
+        "default": 3600000,
+        "sensitive": false
+      },
+      "ENABLE_ACTION_PROCESSING": {
+        "type": "boolean",
+        "description": "Turns on or off automated action processing for BlueSky events.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "ACTION_INTERVAL": {
+        "type": "number",
+        "description": "Interval in milliseconds between action-processing cycles.",
+        "required": false,
+        "default": 60000,
+        "sensitive": false
+      },
+      "POST_IMMEDIATELY": {
+        "type": "boolean",
+        "description": "If true, posts are published immediately instead of waiting for a schedule.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "MAX_ACTIONS_PROCESSING": {
+        "type": "number",
+        "description": "Maximum number of BlueSky actions to process in a single batch.",
+        "required": false,
+        "default": 10,
+        "sensitive": false
+      },
+      "ENABLE_DMS": {
+        "type": "boolean",
+        "description": "Enable processing of direct messages via the chat.bsky API.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/elizaos.git"
+  }
+}

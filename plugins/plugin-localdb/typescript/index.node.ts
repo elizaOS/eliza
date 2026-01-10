@@ -58,7 +58,7 @@ export const plugin: Plugin = {
   name: "@elizaos/plugin-localdb",
   description: "Simple JSON-based local database storage for elizaOS",
   
-  async init(runtime: IAgentRuntime): Promise<void> {
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     logger.info({ src: "plugin:localdb" }, "Initializing local database plugin");
 
     // Check if adapter already exists

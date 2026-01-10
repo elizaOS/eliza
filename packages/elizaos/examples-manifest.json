@@ -1,0 +1,504 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-01-10T12:14:14.101Z",
+  "repoUrl": "https://github.com/elizaos/eliza",
+  "examples": [
+    {
+      "name": "plugin",
+      "description": "Plugin starter templates",
+      "path": "/home/shaw/eliza/examples/_plugin",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/_plugin/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/_plugin/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": true
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/_plugin/rust",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "_plugin"
+    },
+    {
+      "name": "a2a",
+      "description": "This directory contains A2A (Agent-to-Agent) server implementations that expose an elizaOS agent as ",
+      "path": "/home/shaw/eliza/examples/a2a",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/a2a/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/a2a/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/a2a/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "a2a"
+    },
+    {
+      "name": "aws",
+      "description": "Deploy AI chat agents as serverless AWS Lambda functions. These examples show how to run an elizaOS ",
+      "path": "/home/shaw/eliza/examples/aws",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/aws/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/aws/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/aws/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "aws"
+    },
+    {
+      "name": "chat",
+      "description": "Interactive CLI chat applications",
+      "path": "/home/shaw/eliza/examples/chat",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/chat/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/chat/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/chat/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust-wasm",
+          "path": "/home/shaw/eliza/examples/chat/rust-wasm",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "chat"
+    },
+    {
+      "name": "cloudflare",
+      "description": "Serverless AI agents running on Cloudflare Workers, powered by elizaOS.",
+      "path": "/home/shaw/eliza/examples/cloudflare",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/cloudflare",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "cloudflare"
+    },
+    {
+      "name": "gcp",
+      "description": "Deploy elizaOS agents as serverless GCP Cloud Run services. This example shows how to run an AI agen",
+      "path": "/home/shaw/eliza/examples/gcp",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/gcp/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/gcp/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/gcp/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "gcp"
+    },
+    {
+      "name": "html",
+      "description": "A browser-based demo of the **full elizaOS AgentRuntime** using:",
+      "path": "/home/shaw/eliza/examples/html",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/html",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "html"
+    },
+    {
+      "name": "mcp",
+      "description": "This directory contains MCP (Model Context Protocol) server implementations that expose an elizaOS a",
+      "path": "/home/shaw/eliza/examples/mcp",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/mcp/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/mcp/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/mcp/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "mcp"
+    },
+    {
+      "name": "next",
+      "description": "A full-stack Next.js chat application using elizaOS AgentRuntime with PGLite and OpenAI.",
+      "path": "/home/shaw/eliza/examples/next",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/next",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "next"
+    },
+    {
+      "name": "react",
+      "description": "A React implementation of the classic ELIZA chatbot powered by **elizaOS**, featuring a beautiful re",
+      "path": "/home/shaw/eliza/examples/react",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/react",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "react"
+    },
+    {
+      "name": "react-wasm",
+      "description": "A React implementation of the classic ELIZA chatbot powered by **elizaOS Rust WASM runtime**, featur",
+      "path": "/home/shaw/eliza/examples/react-wasm",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/react-wasm",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "react-wasm"
+    },
+    {
+      "name": "rest-api",
+      "description": "This directory contains REST API examples for elizaOS using various web frameworks across TypeScript",
+      "path": "/home/shaw/eliza/examples/rest-api",
+      "languages": [
+        {
+          "language": "flask",
+          "path": "/home/shaw/eliza/examples/rest-api/flask",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "fastapi",
+          "path": "/home/shaw/eliza/examples/rest-api/fastapi",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "axum",
+          "path": "/home/shaw/eliza/examples/rest-api/axum",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "hono",
+          "path": "/home/shaw/eliza/examples/rest-api/hono",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rocket",
+          "path": "/home/shaw/eliza/examples/rest-api/rocket",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "express",
+          "path": "/home/shaw/eliza/examples/rest-api/express",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "elysia",
+          "path": "/home/shaw/eliza/examples/rest-api/elysia",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "actix",
+          "path": "/home/shaw/eliza/examples/rest-api/actix",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "rest-api"
+    },
+    {
+      "name": "supabase",
+      "description": "Deploy AI chat agents as serverless Supabase Edge Functions. These examples show how to run an eliza",
+      "path": "/home/shaw/eliza/examples/supabase",
+      "languages": [
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/supabase/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "supabase"
+    },
+    {
+      "name": "text-adventure",
+      "description": "Text adventure games with AI decision making",
+      "path": "/home/shaw/eliza/examples/text-adventure",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/text-adventure/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/text-adventure/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/text-adventure/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "rust-wasm",
+          "path": "/home/shaw/eliza/examples/text-adventure/rust-wasm",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "text-adventure"
+    },
+    {
+      "name": "tic-tac-toe",
+      "description": "A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**.",
+      "path": "/home/shaw/eliza/examples/tic-tac-toe",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/tic-tac-toe/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        },
+        {
+          "language": "python",
+          "path": "/home/shaw/eliza/examples/tic-tac-toe/python",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": true,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "tic-tac-toe"
+    },
+    {
+      "name": "typescript",
+      "description": "typescript example",
+      "path": "/home/shaw/eliza/examples/typescript",
+      "languages": [
+        {
+          "language": "typescript",
+          "path": "/home/shaw/eliza/examples/typescript",
+          "hasPackageJson": true,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": false,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "typescript"
+    },
+    {
+      "name": "vercel",
+      "description": "Deploy AI chat agents as serverless Vercel Edge Functions. These examples show how to run an elizaOS",
+      "path": "/home/shaw/eliza/examples/vercel",
+      "languages": [
+        {
+          "language": "rust",
+          "path": "/home/shaw/eliza/examples/vercel/rust",
+          "hasPackageJson": false,
+          "hasRequirementsTxt": false,
+          "hasCargoToml": true,
+          "hasPyprojectToml": false
+        }
+      ],
+      "category": "vercel"
+    }
+  ],
+  "categories": [
+    "a2a",
+    "aws",
+    "chat",
+    "cloudflare",
+    "gcp",
+    "html",
+    "mcp",
+    "next",
+    "plugin",
+    "react",
+    "react-wasm",
+    "rest-api",
+    "supabase",
+    "text-adventure",
+    "tic-tac-toe",
+    "typescript",
+    "vercel"
+  ],
+  "languages": [
+    "actix",
+    "axum",
+    "elysia",
+    "express",
+    "fastapi",
+    "flask",
+    "hono",
+    "python",
+    "rocket",
+    "rust",
+    "rust-wasm",
+    "typescript"
+  ]
+}

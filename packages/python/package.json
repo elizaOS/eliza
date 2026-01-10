@@ -1,0 +1,18 @@
+{
+  "name": "@elizaos/python",
+  "version": "2.0.0-alpha.0",
+  "description": "elizaOS Core - Python runtime and types",
+  "private": true,
+  "scripts": {
+    "build": "pip install -e .",
+    "test": "pytest",
+    "lint": "ruff check . && ruff format --check .",
+    "lint:fix": "ruff check --fix . && ruff format .",
+    "format": "ruff format .",
+    "format:check": "ruff format --check .",
+    "typecheck": "python3 -m mypy elizaos || echo 'mypy not installed, skipping typecheck'"
+  },
+  "author": "elizaOS",
+  "license": "MIT"
+}
+

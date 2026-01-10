@@ -1,0 +1,100 @@
+{
+  "name": "@elizaos/plugin-vision",
+  "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+  "version": "1.2.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "author": "ElizaOS",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "vision",
+    "camera",
+    "computer-vision",
+    "ai-vision"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/elizaos"
+  },
+  "homepage": "https://elizaos.ai",
+  "bugs": {
+    "url": "https://github.com/elizaos/elizaos/issues"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    ".npmignore",
+    "package.json",
+    "build.config.ts"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.2.0",
+    "@elizaos/plugin-bootstrap": "^1.2.0",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow-models/pose-detection": "^2.1.0",
+    "@tensorflow-models/posenet": "^2.2.2",
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "@tensorflow-models/mobilenet": "^2.1.0",
+    "axios": "^1.7.2",
+    "canvas": "^3.1.2",
+    "face-api.js": "^0.22.2",
+    "sharp": "^0.34.3",
+    "tesseract.js": "^6.0.1",
+    "zod": "^4.0.5"
+  },
+  "peerDependencies": {},
+  "devDependencies": {
+    "@elizaos/cli": "^1.2.0",
+    "@eslint/js": "^9.0.0",
+    "@types/bun": "^1.2.18",
+    "@types/node": "^24.0.13",
+    "@types/tesseract.js": "^2.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "dotenv": "^17.2.0",
+    "eslint": "^9.0.0",
+    "prettier": "3.6.2",
+    "tsx": "^4.7.0",
+    "typescript": "5.8.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist && rm -rf .turbo",
+    "lint": "eslint src --fix && prettier --write ./src",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CAMERA_NAME": {
+        "type": "string",
+        "description": "Camera name to search for (lowercase partial match)"
+      },
+      "PIXEL_CHANGE_THRESHOLD": {
+        "type": "number",
+        "description": "Percentage of pixels that must change to trigger VLM update (default: 50)"
+      }
+    }
+  },
+  "gitHead": "d5bd5c43bfebeb7ac02f9e029f924cb6cd5c2ec7"
+}

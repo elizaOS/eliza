@@ -1,6 +1,6 @@
 ---
 title: "Core Runtime"
-description: "Build AI agents that actually work - without the infrastructure headaches"
+description: "Build AI agents that actually work in TypeScript, Python, or Rust"
 ---
 
 ## The Problem
@@ -14,43 +14,105 @@ Building production AI agents is hard. You're juggling:
 Most frameworks give you primitives. You still wire everything together yourself.
 
 <Tip>
-**5 minutes to your first agent.** No infrastructure setup, no config files to manage. Just code.
+**5 minutes to your first agent.** No infrastructure setup, no config files to manage. Just code in your preferred language.
 </Tip>
 
-## Quick Start with ElizaOS
+## Quick Start
 
-The `ElizaOS` class handles configuration, plugin resolution, and multi-agent orchestration automatically.
+The runtime handles configuration, plugin resolution, and message processing automatically. Available in TypeScript, Python, and Rust with identical APIs.
 
+<Tabs>
+  <Tab title="TypeScript">
 ```typescript
-import { ElizaOS } from '@elizaos/core';
+import { AgentRuntime, bootstrapPlugin } from '@elizaos/core';
+import { openaiPlugin } from '@elizaos/plugin-openai';
+import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 
-// Create the orchestrator
-const elizaOS = new ElizaOS();
-
-// Add agents with character and plugins
-const agentIds = await elizaOS.addAgents([
-  {
-    character: {
-      name: 'Assistant',
-      bio: ['A helpful AI assistant'],
-      system: 'You are a helpful assistant.',
-    },
-    plugins: ['@elizaos/plugin-sql', '@elizaos/plugin-openai'],
-  }
-]);
-
-// Start all agents
-await elizaOS.startAgents();
-
-// Send a message and get response
-const result = await elizaOS.handleMessage(agentIds[0], {
-  entityId: userId,
-  roomId: roomId,
-  content: { text: 'Hello!', source: 'web' }
+// Create runtime with character and plugins
+const runtime = new AgentRuntime({
+  character: {
+    name: 'Assistant',
+    bio: 'A helpful AI assistant',
+    system: 'You are a helpful assistant.',
+  },
+  plugins: [sqlPlugin, bootstrapPlugin, openaiPlugin],
 });
 
-console.log(result.processing?.text);
+// Initialize
+await runtime.initialize();
+
+// Handle messages
+const result = await runtime.messageService!.handleMessage(
+  runtime,
+  message,
+  async (content) => {
+    console.log(content.text);
+    return [];
+  }
+);
 ```
+  </Tab>
+  <Tab title="Python">
+```python
+from elizaos import AgentRuntime, Character
+from elizaos_plugin_openai import get_openai_plugin
+
+# Create runtime with character and plugins
+runtime = AgentRuntime(
+    character=Character(
+        name="Assistant",
+        bio="A helpful AI assistant",
+        system="You are a helpful assistant.",
+    ),
+    plugins=[get_openai_plugin()],
+)
+
+# Initialize
+await runtime.initialize()
+
+# Handle messages
+result = await runtime.message_service.handle_message(runtime, message)
+print(result.response_content.text)
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+use elizaos_plugin_openai::create_openai_plugin;
+
+// Create runtime with character and plugins
+let character = parse_character(r#"{
+    "name": "Assistant",
+    "bio": "A helpful AI assistant",
+    "system": "You are a helpful assistant."
+}"#)?;
+
+let runtime = AgentRuntime::new(RuntimeOptions {
+    character: Some(character),
+    plugins: vec![create_openai_plugin()?],
+    ..Default::default()
+}).await?;
+
+// Initialize
+runtime.initialize().await?;
+
+// Handle messages
+let result = runtime.message_service()
+    .handle_message(&runtime, &mut message, None, None)
+    .await?;
+```
+  </Tab>
+</Tabs>
+
+## API Comparison
+
+| Operation | TypeScript | Python | Rust |
+|-----------|------------|--------|------|
+| Create runtime | `new AgentRuntime({...})` | `AgentRuntime(...)` | `AgentRuntime::new(...)` |
+| Initialize | `await runtime.initialize()` | `await runtime.initialize()` | `runtime.initialize().await` |
+| Use model | `runtime.useModel(type, params)` | `runtime.use_model(type, params)` | `runtime.use_model(type, params).await` |
+| Get service | `runtime.getService(name)` | `runtime.get_service(name)` | `runtime.get_service(name)` |
+| Stop | `await runtime.stop()` | `await runtime.stop()` | `runtime.stop().await` |
 
 <CardGroup cols={2}>
   <Card title="Add Capabilities" icon="puzzle-piece" href="/plugins/components">
@@ -245,10 +307,12 @@ For related documentation, see [Plugin Architecture](/plugins/architecture), [Me
 
 ## AgentRuntime Class
 
-The `AgentRuntime` class is the central engine that manages agent lifecycle, processes messages, and coordinates all system components.
+The `AgentRuntime` class is the central engine that manages agent lifecycle, processes messages, and coordinates all system components. The interface is identical across TypeScript, Python, and Rust.
 
 ### Core Interface
 
+<Tabs>
+  <Tab title="TypeScript">
 ```typescript
 interface IAgentRuntime extends IDatabaseAdapter {
   // Core properties
@@ -275,15 +339,83 @@ interface IAgentRuntime extends IDatabaseAdapter {
   stop(): Promise<void>;
   
   // Model management
-  useModel<T extends ModelTypeName>(modelType: T, params: ModelParamsMap[T], provider?: string): Promise<ModelResultMap[T]>;
-  registerModel(modelType: ModelTypeName, handler: ModelHandler, provider?: string, priority?: number): void;
-  getModel(modelType: ModelTypeName, provider?: string): ModelHandler | undefined;
+  useModel<T>(modelType: T, params: ModelParams): Promise<ModelResult>;
+  registerModel(modelType: ModelTypeName, handler: ModelHandler): void;
+  getModel(modelType: ModelTypeName): ModelHandler | undefined;
   
   // Event system
   emit(eventType: EventType, data: any): Promise<void>;
   on(eventType: EventType, handler: EventHandler): void;
 }
 ```
+  </Tab>
+  <Tab title="Python">
+```python
+class AgentRuntime:
+    # Core properties
+    agent_id: UUID
+    character: Character
+    providers: list[Provider]
+    actions: list[Action]
+    evaluators: list[Evaluator]
+    services: list[Service]
+    
+    # Action processing
+    async def process_actions(self, message: Memory, responses: list[Memory], state: State = None) -> None: ...
+    async def compose_state(self, message: Memory, state: State = None) -> State: ...
+    async def evaluate(self, message: Memory, state: State = None) -> None: ...
+    
+    # Component registration
+    def register_action(self, action: Action) -> None: ...
+    def register_provider(self, provider: Provider) -> None: ...
+    def register_evaluator(self, evaluator: Evaluator) -> None: ...
+    def register_service(self, service: Service) -> None: ...
+    
+    # Service management
+    def get_service(self, name: str) -> Service: ...
+    async def stop(self) -> None: ...
+    
+    # Model management
+    async def use_model(self, model_type: str, params: dict) -> Any: ...
+    def register_model(self, model_type: str, handler: Callable) -> None: ...
+    def get_model(self, model_type: str) -> Callable | None: ...
+```
+  </Tab>
+  <Tab title="Rust">
+```rust
+pub struct AgentRuntime {
+    pub agent_id: UUID,
+    pub character: Character,
+    pub providers: Vec<Provider>,
+    pub actions: Vec<Action>,
+    pub evaluators: Vec<Evaluator>,
+    pub services: Vec<Service>,
+}
+
+impl AgentRuntime {
+    // Action processing
+    pub async fn process_actions(&self, message: &Memory, responses: &[Memory], state: Option<&State>) -> Result<()>;
+    pub async fn compose_state(&self, message: &Memory, state: Option<&State>) -> Result<State>;
+    pub async fn evaluate(&self, message: &Memory, state: Option<&State>) -> Result<()>;
+    
+    // Component registration
+    pub fn register_action(&mut self, action: Action);
+    pub fn register_provider(&mut self, provider: Provider);
+    pub fn register_evaluator(&mut self, evaluator: Evaluator);
+    pub fn register_service(&mut self, service: Service);
+    
+    // Service management
+    pub fn get_service<T>(&self, name: &str) -> Option<&T>;
+    pub async fn stop(&self) -> Result<()>;
+    
+    // Model management
+    pub async fn use_model<T>(&self, model_type: &str, params: ModelParams) -> Result<T>;
+    pub fn register_model(&mut self, model_type: &str, handler: ModelHandler);
+    pub fn get_model(&self, model_type: &str) -> Option<&ModelHandler>;
+}
+```
+  </Tab>
+</Tabs>
 
 ### Key Responsibilities
 

@@ -19,7 +19,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "browser": {
-        "types": "./dist/browser/index.d.ts",
+        "types": "./dist/browser/index.browser.d.ts",
         "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
@@ -40,7 +40,12 @@
       "default": "./dist/node/index.node.js"
     },
     "./browser": {
-      "types": "./dist/browser/index.d.ts",
+      "types": "./dist/browser/index.browser.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./browser/browser": {
+      "types": "./dist/browser/index.browser.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
     }

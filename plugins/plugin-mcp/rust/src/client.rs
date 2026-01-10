@@ -7,7 +7,7 @@ use crate::error::{McpError, McpResult};
 use crate::transport::Transport;
 use crate::types::{
     ConnectionStatus, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, McpResource,
-    McpResourceContent, McpTool, McpToolResult,
+    McpResourceContent, McpResourceTemplate, McpTool, McpToolResult,
 };
 
 /// Client for communicating with MCP servers.
@@ -215,6 +215,32 @@ impl McpClient {
         )?;
 
         Ok(contents)
+    }
+
+    /// List all available resource templates from the server.
+    pub async fn list_resource_templates(&mut self) -> McpResult<Vec<McpResourceTemplate>> {
+        if self.status != ConnectionStatus::Connected {
+            return Err(McpError::NotConnected);
+        }
+
+        let request = JsonRpcRequest::new(self.next_id(), "resources/templates/list", None);
+        self.transport.send(&serde_json::to_value(&request)?).await?;
+
+        let response: JsonRpcResponse = serde_json::from_value(self.transport.receive().await?)?;
+
+        if let Some(error) = response.error {
+            return Err(McpError::server(error.code, error.message));
+        }
+
+        let result = response.result.ok_or_else(|| McpError::protocol("Missing result"))?;
+        let templates: Vec<McpResourceTemplate> = serde_json::from_value(
+            result
+                .get("resourceTemplates")
+                .cloned()
+                .unwrap_or(Value::Array(vec![])),
+        )?;
+
+        Ok(templates)
     }
 }
 

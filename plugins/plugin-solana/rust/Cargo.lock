@@ -1179,6 +1179,7 @@ dependencies = [
  "ed25519-dalek 2.2.0",
  "futures",
  "getrandom 0.2.16",
+ "hex",
  "js-sys",
  "pretty_assertions",
  "regex",
@@ -1619,6 +1620,12 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "histogram"

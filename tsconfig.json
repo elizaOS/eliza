@@ -17,8 +17,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@elizaos/core": ["packages/core/typescript/src"],
-      "@elizaos/core/*": ["packages/core/typescript/src/*"],
+      "@elizaos/core": ["packages/typescript/src"],
+      "@elizaos/core/*": ["packages/typescript/src/*"],
       "@elizaos/plugin-sql": ["plugins/plugin-sql/typescript/index.ts"],
       "@elizaos/plugin-sql/*": ["plugins/plugin-sql/typescript/*"],
       "@elizaos/plugin-openai": ["plugins/plugin-openai/typescript/index.ts"],

@@ -89,6 +89,17 @@ class McpResource(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class McpResourceTemplate(BaseModel):
+    """An MCP resource template definition."""
+
+    uri_template: str = Field(..., min_length=1, alias="uriTemplate")
+    name: str = Field(..., min_length=1)
+    description: str = Field(default="")
+    mime_type: str | None = Field(default=None, alias="mimeType")
+
+    model_config = {"populate_by_name": True}
+
+
 class TextContent(BaseModel):
     """Text content from an MCP tool or resource."""
 
@@ -106,13 +117,6 @@ class ImageContent(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class EmbeddedResource(BaseModel):
-    """Embedded resource from an MCP tool."""
-
-    type: Literal["resource"] = "resource"
-    resource: McpResourceContent
-
-
 class McpResourceContent(BaseModel):
     """Content of an MCP resource."""
 
@@ -122,6 +126,13 @@ class McpResourceContent(BaseModel):
     blob: str | None = None  # Base64 encoded binary data
 
     model_config = {"populate_by_name": True}
+
+
+class EmbeddedResource(BaseModel):
+    """Embedded resource from an MCP tool."""
+
+    type: Literal["resource"] = "resource"
+    resource: McpResourceContent
 
 
 McpContent = TextContent | ImageContent | EmbeddedResource

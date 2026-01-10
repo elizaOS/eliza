@@ -10,34 +10,17 @@
       "dependsOn": [],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"],
-      "inputs": ["typescript/src/**", "build.ts", "tsconfig.declarations.json"]
+      "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
     },
-    "@elizaos/core#build:all": {
+    "@elizaos/rust#build": {
       "dependsOn": [],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**", "rust/pkg/**"],
-      "inputs": [
-        "typescript/src/**",
-        "rust/src/**",
-        "build.ts",
-        "tsconfig.declarations.json"
-      ]
+      "outputs": ["pkg/**", "target/release/**"],
+      "inputs": ["src/**", "Cargo.toml", "build.sh"]
     },
-    "@elizaos/core#build:ts": {
+    "@elizaos/python#build": {
       "dependsOn": [],
-      "env": ["LOG_LEVEL"],
-      "outputs": ["dist/**"],
-      "inputs": ["typescript/src/**", "build.ts", "tsconfig.declarations.json"]
-    },
-    "@elizaos/core#build:rust": {
-      "dependsOn": [],
-      "outputs": ["rust/pkg/**", "rust/target/release/**"],
-      "inputs": ["rust/src/**", "rust/Cargo.toml", "rust/build.sh"]
-    },
-    "@elizaos/core#build:python": {
-      "dependsOn": [],
-      "outputs": ["python/elizaos.egg-info/**"],
-      "inputs": ["python/elizaos/**", "python/pyproject.toml"],
+      "outputs": ["elizaos.egg-info/**"],
+      "inputs": ["elizaos/**", "pyproject.toml"],
       "cache": false
     },
     "@elizaos/client#build": {
@@ -61,46 +44,13 @@
     "lint:check": {
       "outputs": [".eslintcache"]
     },
-    "lint:ts": {
-      "outputs": [".eslintcache"]
-    },
-    "lint:ts:check": {
-      "outputs": [".eslintcache"]
-    },
     "typecheck": {
-      "outputs": []
-    },
-    "typecheck:ts": {
-      "outputs": []
-    },
-    "lint:rust": {
-      "outputs": []
-    },
-    "typecheck:rust": {
-      "outputs": []
-    },
-    "lint:python": {
-      "outputs": []
-    },
-    "typecheck:python": {
       "outputs": []
     },
     "format": {
       "outputs": []
     },
     "format:check": {
-      "outputs": []
-    },
-    "format:ts": {
-      "outputs": []
-    },
-    "format:ts:check": {
-      "outputs": []
-    },
-    "format:python": {
-      "outputs": []
-    },
-    "format:python:check": {
       "outputs": []
     },
     "start": {
@@ -116,24 +66,19 @@
       "dependsOn": ["^build"],
       "outputs": ["coverage/**"],
       "inputs": [
-        "typescript/src/**/*.ts",
-        "typescript/src/**/*.js",
+        "src/**/*.ts",
+        "src/**/*.js",
         "__tests__/**/*",
         "*.test.*"
       ]
     },
-    "test:ts": {
-      "dependsOn": ["^build"],
-      "outputs": ["coverage/**"],
-      "inputs": ["typescript/src/**/*.ts", "typescript/src/**/*.js"]
-    },
-    "test:rust": {
+    "@elizaos/rust#test": {
       "outputs": [],
-      "inputs": ["rust/src/**", "rust/tests/**"]
+      "inputs": ["src/**", "tests/**"]
     },
-    "test:python": {
+    "@elizaos/python#test": {
       "outputs": [],
-      "inputs": ["python/elizaos/**", "python/tests/**"]
+      "inputs": ["elizaos/**", "tests/**"]
     },
     "migrate": {
       "dependsOn": ["@elizaos/core#build"],

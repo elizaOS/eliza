@@ -15,6 +15,7 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
+  MemoryType,
   type Participant,
   type Relationship,
   type Room,
@@ -29,6 +30,45 @@ import { COLLECTIONS, type IStorage } from "./types";
 interface ExtendedStorage extends IStorage {
   saveRaw(filename: string, data: string): Promise<void>;
   loadRaw(filename: string): Promise<string | null>;
+}
+
+// Internal storage types (different from core types for storage purposes)
+interface StoredParticipant {
+  id: string;
+  entityId: string;
+  roomId: string;
+  userState?: "FOLLOWED" | "MUTED" | null;
+}
+
+interface StoredMemory {
+  id?: string;
+  entityId: string;
+  agentId?: string;
+  createdAt?: number;
+  content: { text?: string; [key: string]: unknown };
+  embedding?: number[];
+  roomId: string;
+  worldId?: string;
+  unique?: boolean;
+  similarity?: number;
+  metadata?: {
+    type?: string;
+    source?: string;
+    sourceId?: string;
+    scope?: string;
+    timestamp?: number;
+    tags?: string[];
+    [key: string]: unknown;
+  };
+}
+
+interface StoredRelationship {
+  id: string;
+  sourceEntityId: string;
+  targetEntityId: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
 }
 
 /**
@@ -149,7 +189,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
 
   async getEntitiesForRoom(roomId: UUID, includeComponents = false): Promise<Entity[]> {
     // First get participants for this room
-    const participants = await this.storage.getWhere<Participant>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
     );
@@ -161,7 +201,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, entityId);
       if (entity) {
         if (includeComponents) {
-          const components = await this.getComponents(entityId);
+          const components = await this.getComponents(entityId as UUID);
           (entity as Entity & { components?: Component[] }).components = components;
         }
         entities.push(entity);
@@ -246,13 +286,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     roomId?: UUID;
     worldId?: UUID;
   }): Promise<Memory[]> {
-    let memories = await this.storage.getWhere<Memory>(
+    let memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) => {
         if (params.entityId && m.entityId !== params.entityId) return false;
         if (params.agentId && m.agentId !== params.agentId) return false;
         if (params.roomId && m.roomId !== params.roomId) return false;
-        if (params.worldId && m.metadata?.worldId !== params.worldId) return false;
+        if (params.worldId && m.worldId !== params.worldId) return false;
         if (params.tableName && m.metadata?.type !== params.tableName) return false;
         if (params.start && m.createdAt && m.createdAt < params.start) return false;
         if (params.end && m.createdAt && m.createdAt > params.end) return false;
@@ -272,7 +312,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       memories = memories.slice(0, params.count);
     }
 
-    return memories;
+    return memories as unknown as Memory[];
   }
 
   async getMemoriesByRoomIds(params: {
@@ -280,19 +320,19 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     tableName: string;
     limit?: number;
   }): Promise<Memory[]> {
-    const memories = await this.storage.getWhere<Memory>(
+    const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        params.roomIds.includes(m.roomId) &&
+        params.roomIds.includes(m.roomId as UUID) &&
         (params.tableName ? m.metadata?.type === params.tableName : true)
     );
 
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
     if (params.limit) {
-      return memories.slice(0, params.limit);
+      return memories.slice(0, params.limit) as unknown as Memory[];
     }
-    return memories;
+    return memories as unknown as Memory[];
   }
 
   async getMemoryById(id: UUID): Promise<Memory | null> {
@@ -302,10 +342,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   async getMemoriesByIds(memoryIds: UUID[], tableName?: string): Promise<Memory[]> {
     const memories: Memory[] = [];
     for (const id of memoryIds) {
-      const memory = await this.storage.get<Memory>(COLLECTIONS.MEMORIES, id);
+      const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (memory) {
         if (tableName && memory.metadata?.type !== tableName) continue;
-        memories.push(memory);
+        memories.push(memory as unknown as Memory);
       }
     }
     return memories;
@@ -320,7 +360,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     query_match_count: number;
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     // Simple implementation: find memories with matching content
-    const memories = await this.storage.getWhere<Memory>(
+    const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) => m.metadata?.type === params.query_table_name
     );
@@ -331,7 +371,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       if (!memory.embedding) continue;
       
       // Simple string matching score (not true Levenshtein)
-      const content = String((memory as Record<string, unknown>)[params.query_field_name] ?? "");
+      const content = String((memory as unknown as Record<string, unknown>)[params.query_field_name] ?? "");
       const score = this.simpleStringScore(params.query_input, content);
       
       if (score <= params.query_threshold) {
@@ -428,18 +468,18 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     // Get memories and filter by additional criteria
     const memories: Memory[] = [];
     for (const result of results) {
-      const memory = await this.storage.get<Memory>(COLLECTIONS.MEMORIES, result.id);
+      const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
       if (!memory) continue;
 
       // Apply filters
       if (params.tableName && memory.metadata?.type !== params.tableName) continue;
       if (params.roomId && memory.roomId !== params.roomId) continue;
-      if (params.worldId && memory.metadata?.worldId !== params.worldId) continue;
+      if (params.worldId && memory.worldId !== params.worldId) continue;
       if (params.entityId && memory.entityId !== params.entityId) continue;
       if (params.unique && !memory.unique) continue;
 
       memories.push({
-        ...memory,
+        ...(memory as unknown as Memory),
         similarity: result.similarity,
       });
     }
@@ -451,14 +491,14 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     const id = memory.id ?? (crypto.randomUUID() as UUID);
     const now = Date.now();
 
-    const storedMemory: Memory = {
+    const storedMemory: StoredMemory = {
       ...memory,
       id,
       agentId: memory.agentId ?? this.agentId,
       unique: unique || memory.unique,
       createdAt: memory.createdAt ?? now,
       metadata: {
-        ...memory.metadata,
+        ...(memory.metadata as Record<string, unknown>),
         type: tableName,
       },
     };
@@ -480,10 +520,10 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     const existing = await this.getMemoryById(memory.id);
     if (!existing) return false;
 
-    const updated: Memory = {
+    const updated = {
       ...existing,
       ...memory,
-      metadata: { ...existing.metadata, ...memory.metadata },
+      metadata: { ...(existing.metadata as Record<string, unknown>), ...(memory.metadata as Record<string, unknown>) },
     };
 
     await this.storage.set(COLLECTIONS.MEMORIES, memory.id, updated);
@@ -516,7 +556,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
 
   async countMemories(roomId: UUID, unique = false, tableName?: string): Promise<number> {
     return this.storage.count(COLLECTIONS.MEMORIES, (m: Record<string, unknown>) => {
-      const memory = m as unknown as Memory;
+      const memory = m as unknown as StoredMemory;
       if (memory.roomId !== roomId) return false;
       if (unique && !memory.unique) return false;
       if (tableName && memory.metadata?.type !== tableName) return false;
@@ -529,19 +569,19 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     count?: number;
     tableName?: string;
   }): Promise<Memory[]> {
-    const memories = await this.storage.getWhere<Memory>(
+    const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
       (m) =>
-        m.metadata?.worldId === params.worldId &&
+        m.worldId === params.worldId &&
         (params.tableName ? m.metadata?.type === params.tableName : true)
     );
 
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
     if (params.count) {
-      return memories.slice(0, params.count);
+      return memories.slice(0, params.count) as unknown as Memory[];
     }
-    return memories;
+    return memories as unknown as Memory[];
   }
 
   // ==================== World Methods ====================
@@ -594,11 +634,11 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     await this.storage.delete(COLLECTIONS.ROOMS, roomId);
     // Also delete participants for this room
     await this.storage.deleteWhere(COLLECTIONS.PARTICIPANTS, (p) => 
-      (p as unknown as Participant).roomId === roomId
+      (p as unknown as StoredParticipant).roomId === roomId
     );
     // Delete memories for this room
     await this.storage.deleteWhere(COLLECTIONS.MEMORIES, (m) =>
-      (m as unknown as Memory).roomId === roomId
+      (m as unknown as StoredMemory).roomId === roomId
     );
   }
 
@@ -617,19 +657,19 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   }
 
   async getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
-    const participants = await this.storage.getWhere<Participant>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId
     );
-    return participants.map((p) => p.roomId);
+    return participants.map((p) => p.roomId as UUID);
   }
 
   async getRoomsForParticipants(userIds: UUID[]): Promise<UUID[]> {
-    const participants = await this.storage.getWhere<Participant>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
-      (p) => userIds.includes(p.entityId)
+      (p) => userIds.includes(p.entityId as UUID)
     );
-    return [...new Set(participants.map((p) => p.roomId))];
+    return [...new Set(participants.map((p) => p.roomId as UUID))];
   }
 
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
@@ -642,7 +682,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   // ==================== Participant Methods ====================
 
   async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-    const participants = await this.storage.getWhere<Participant & { id?: string }>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId && p.roomId === roomId
     );
@@ -658,22 +698,35 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
   }
 
   async getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
-    return this.storage.getWhere<Participant>(
+    const stored = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.entityId === entityId
     );
+    
+    // Convert stored format to Participant format
+    const participants: Participant[] = [];
+    for (const p of stored) {
+      const entity = await this.storage.get<Entity>(COLLECTIONS.ENTITIES, p.entityId);
+      if (entity) {
+        participants.push({
+          id: p.id as UUID,
+          entity,
+        });
+      }
+    }
+    return participants;
   }
 
   async getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
-    const participants = await this.storage.getWhere<Participant>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId
     );
-    return participants.map((p) => p.entityId);
+    return participants.map((p) => p.entityId as UUID);
   }
 
   async isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
-    const participants = await this.storage.getWhere<Participant>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
@@ -685,7 +738,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
       const exists = await this.isRoomParticipant(roomId, entityId);
       if (!exists) {
         const id = crypto.randomUUID();
-        const participant: Participant & { id: string } = {
+        const participant: StoredParticipant = {
           id,
           entityId,
           roomId,
@@ -700,7 +753,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     roomId: UUID,
     entityId: UUID
   ): Promise<"FOLLOWED" | "MUTED" | null> {
-    const participants = await this.storage.getWhere<Participant & { userState?: string }>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
@@ -716,7 +769,7 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     entityId: UUID,
     state: "FOLLOWED" | "MUTED" | null
   ): Promise<void> {
-    const participants = await this.storage.getWhere<Participant & { id?: string; userState?: string }>(
+    const participants = await this.storage.getWhere<StoredParticipant>(
       COLLECTIONS.PARTICIPANTS,
       (p) => p.roomId === roomId && p.entityId === entityId
     );
@@ -737,13 +790,13 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     metadata?: Record<string, unknown>;
   }): Promise<boolean> {
     const id = crypto.randomUUID() as UUID;
-    const relationship: Relationship = {
+    const relationship: StoredRelationship = {
       id,
       sourceEntityId: params.sourceEntityId,
       targetEntityId: params.targetEntityId,
       tags: params.tags ?? [],
       metadata: params.metadata ?? {},
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
     await this.storage.set(COLLECTIONS.RELATIONSHIPS, id, relationship);
     return true;
@@ -753,20 +806,31 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     sourceEntityId: UUID;
     targetEntityId: UUID;
   }): Promise<Relationship | null> {
-    const relationships = await this.storage.getWhere<Relationship>(
+    const relationships = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) =>
         r.sourceEntityId === params.sourceEntityId &&
         r.targetEntityId === params.targetEntityId
     );
-    return relationships[0] ?? null;
+    
+    if (relationships.length === 0) return null;
+    
+    const r = relationships[0];
+    return {
+      id: r.id as UUID,
+      sourceEntityId: r.sourceEntityId as UUID,
+      targetEntityId: r.targetEntityId as UUID,
+      tags: r.tags ?? [],
+      metadata: r.metadata ?? {},
+      createdAt: r.createdAt,
+    } as Relationship;
   }
 
   async getRelationships(params: {
     entityId: UUID;
     tags?: string[];
   }): Promise<Relationship[]> {
-    return this.storage.getWhere<Relationship>(
+    const stored = await this.storage.getWhere<StoredRelationship>(
       COLLECTIONS.RELATIONSHIPS,
       (r) => {
         const isInvolved =
@@ -778,6 +842,15 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
         return true;
       }
     );
+    
+    return stored.map(r => ({
+      id: r.id as UUID,
+      sourceEntityId: r.sourceEntityId as UUID,
+      targetEntityId: r.targetEntityId as UUID,
+      tags: r.tags ?? [],
+      metadata: r.metadata ?? {},
+      createdAt: r.createdAt,
+    })) as Relationship[];
   }
 
   async updateRelationship(params: {
@@ -793,11 +866,16 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     
     if (!existing || !existing.id) return;
 
-    await this.storage.set(COLLECTIONS.RELATIONSHIPS, existing.id, {
-      ...existing,
-      tags: params.tags ?? existing.tags,
-      metadata: { ...existing.metadata, ...params.metadata },
-    });
+    const stored: StoredRelationship = {
+      id: existing.id,
+      sourceEntityId: params.sourceEntityId,
+      targetEntityId: params.targetEntityId,
+      tags: params.tags ?? existing.tags ?? [],
+      metadata: { ...(existing.metadata ?? {}), ...(params.metadata ?? {}) },
+      createdAt: existing.createdAt as string,
+    };
+    
+    await this.storage.set(COLLECTIONS.RELATIONSHIPS, existing.id, stored);
   }
 
   // ==================== Cache Methods ====================
@@ -874,4 +952,3 @@ export class LocalDatabaseAdapter extends DatabaseAdapter<ExtendedStorage> {
     await this.storage.delete(COLLECTIONS.TASKS, id);
   }
 }
-

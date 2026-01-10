@@ -391,7 +391,7 @@ print_info "Analyzing documentation accuracy..."
         echo ""
         echo "### Missing Documentation for Core Features"
         # Check if important packages have corresponding docs
-        for package in packages/core packages/cli packages/client packages/plugin-*; do
+        for package in packages/typescript packages/cli packages/client packages/plugin-*; do
             if [ -d "$package" ]; then
                 package_name=$(basename "$package")
                 if ! grep -r "$package_name" "$DOCS_DIR" --include="*.md" >/dev/null 2>&1; then
@@ -403,7 +403,7 @@ print_info "Analyzing documentation accuracy..."
         echo ""
         echo "### Outdated Code Examples in Documentation"
         # Look for code blocks that might have outdated imports or syntax
-        grep -r "import.*from" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "(packages/core|@ai16z/|elizaos@)" | head -10 || echo "No outdated imports found"
+        grep -r "import.*from" "$DOCS_DIR" --include="*.md" 2>/dev/null | grep -E "(packages/typescript|@ai16z/|elizaos@)" | head -10 || echo "No outdated imports found"
 
         echo ""
         echo "### Missing API Documentation"
@@ -436,7 +436,7 @@ print_info "Analyzing repository standards..."
 
     echo ""
     echo "### Incorrect Core Package Imports"
-    grep -r "from ['\"].*packages/core" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
+    grep -r "from ['\"].*packages/typescript" packages --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --exclude-dir=node_modules --exclude-dir=dist 2>/dev/null | head -20 || echo "None found"
 
     echo ""
     echo "### Class Definitions (Should Use Functional)"

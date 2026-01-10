@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./typescript",
+    "types": ["node"],
+    "noEmit": false,
+    "declaration": true,
+    "skipLibCheck": true
+  },
+  "include": ["typescript/**/*.ts"],
+  "exclude": ["typescript/**/*.test.ts", "node_modules", "dist"]
+}
+

@@ -9,6 +9,7 @@ from elizaos_plugin_mcp.types import (
     HttpServerConfig,
     McpError,
     McpResource,
+    McpResourceTemplate,
     McpTool,
     McpToolInputSchema,
     StdioServerConfig,
@@ -132,6 +133,41 @@ class TestMcpResource:
         """Test that empty URI fails validation."""
         with pytest.raises(ValidationError):
             McpResource(uri="", name="test")
+
+
+class TestMcpResourceTemplate:
+    """Tests for McpResourceTemplate."""
+
+    def test_valid_template(self) -> None:
+        """Test creating a valid resource template."""
+        template = McpResourceTemplate(
+            uriTemplate="docs://{path}",
+            name="Documentation",
+            description="Access documentation files",
+            mimeType="text/markdown",
+        )
+        assert template.uri_template == "docs://{path}"
+        assert template.name == "Documentation"
+        assert template.description == "Access documentation files"
+        assert template.mime_type == "text/markdown"
+
+    def test_minimal_template(self) -> None:
+        """Test creating a minimal resource template."""
+        template = McpResourceTemplate(uriTemplate="files://{path}", name="Files")
+        assert template.uri_template == "files://{path}"
+        assert template.name == "Files"
+        assert template.description == ""
+        assert template.mime_type is None
+
+    def test_empty_uri_template_fails(self) -> None:
+        """Test that empty URI template fails validation."""
+        with pytest.raises(ValidationError):
+            McpResourceTemplate(uriTemplate="", name="test")
+
+    def test_empty_name_fails(self) -> None:
+        """Test that empty name fails validation."""
+        with pytest.raises(ValidationError):
+            McpResourceTemplate(uriTemplate="test://{path}", name="")
 
 
 class TestMcpError:

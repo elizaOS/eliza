@@ -1,0 +1,70 @@
+import type { BuildConfig } from 'bun';
+
+// Main build configuration
+export const buildConfig: BuildConfig = {
+  entrypoints: ['./src/index.ts'],
+  outdir: './dist',
+  target: 'node',
+  format: 'esm',
+  splitting: false,
+  sourcemap: 'external',
+  external: [
+    'fs',
+    'path',
+    'http',
+    'https',
+    'crypto',
+    'node:fs',
+    'node:path',
+    'node:http',
+    'node:https',
+    'node:crypto',
+    'node:stream',
+    'node:buffer',
+    'node:util',
+    'node:events',
+    'node:url',
+    'bun:test',
+    'dotenv',
+    'zod',
+    '@elizaos/core',
+    '@elizaos/plugin-message-handling',
+    '@tensorflow-models/coco-ssd',
+    '@tensorflow-models/pose-detection',
+    '@tensorflow-models/posenet',
+    '@tensorflow/tfjs-node',
+    '@tensorflow-models/mobilenet',
+    'axios',
+    'canvas',
+    'face-api.js',
+    'sharp',
+    'tesseract.js',
+  ],
+  naming: '[dir]/[name].[ext]',
+};
+
+// Workers build configuration
+export const workersConfig: BuildConfig = {
+  entrypoints: [
+    './src/workers/screen-capture-worker.ts',
+    './src/workers/florence2-worker.ts',
+    './src/workers/ocr-worker.ts',
+  ],
+  outdir: './dist/workers',
+  target: 'node',
+  format: 'cjs', // Workers need CommonJS format
+  splitting: false,
+  sourcemap: true,
+  external: [
+    'sharp',
+    '@tensorflow/tfjs-node',
+    '@tensorflow-models/mobilenet',
+    '@mapbox/node-pre-gyp',
+    'mock-aws-s3',
+    'aws-sdk',
+    'nock',
+    'canvas',
+    'face-api.js',
+  ],
+  naming: '[name].[ext]',
+};

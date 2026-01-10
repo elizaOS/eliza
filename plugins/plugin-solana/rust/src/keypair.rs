@@ -279,6 +279,48 @@ impl KeypairUtils {
 
         results
     }
+
+    /// Detect private keys in text (Base58 or hex).
+    ///
+    /// WARNING: This method handles sensitive private key material.
+    /// Never log or expose the returned values.
+    ///
+    /// # Arguments
+    /// * `text` - The text to search
+    ///
+    /// # Returns
+    /// A vector of tuples containing (format, match) for detected private keys.
+    pub fn detect_private_keys_in_text(text: &str) -> Vec<(String, String)> {
+        let mut results = Vec::new();
+
+        // Base58 private key pattern (86-90 chars for 64 bytes)
+        let base58_re = regex::Regex::new(r"\b[1-9A-HJ-NP-Za-km-z]{86,90}\b")
+            .expect("regex should be valid");
+
+        for cap in base58_re.captures_iter(text) {
+            let s = &cap[0];
+            if let Ok(bytes) = bs58::decode(s).into_vec() {
+                if bytes.len() == 64 {
+                    results.push(("base58".to_string(), s.to_string()));
+                }
+            }
+        }
+
+        // Hex private key pattern (128 hex chars for 64 bytes)
+        let hex_re = regex::Regex::new(r"\b[a-fA-F0-9]{128}\b")
+            .expect("regex should be valid");
+
+        for cap in hex_re.captures_iter(text) {
+            let s = &cap[0];
+            if let Ok(bytes) = hex::decode(s) {
+                if bytes.len() == 64 {
+                    results.push(("hex".to_string(), s.to_string()));
+                }
+            }
+        }
+
+        results
+    }
 }
 
 /// Simple Base64 decoder (no external crate needed).
@@ -346,6 +388,39 @@ mod tests {
         assert!(config.is_ok());
         let config = config.expect("config should be valid");
         assert!(!config.can_sign());
+    }
+
+    #[test]
+    fn test_detect_private_keys_base58() {
+        // Generate a keypair and encode it
+        let kp = KeypairUtils::generate();
+        let base58_key = KeypairUtils::to_base58(&kp);
+        let text = format!("My private key is {}", base58_key);
+        
+        let keys = KeypairUtils::detect_private_keys_in_text(&text);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].0, "base58");
+        assert_eq!(keys[0].1, base58_key);
+    }
+
+    #[test]
+    fn test_detect_private_keys_hex() {
+        // Generate a keypair and encode it as hex
+        let kp = KeypairUtils::generate();
+        let hex_key = hex::encode(kp.to_bytes());
+        let text = format!("Hex key: {}", hex_key);
+        
+        let keys = KeypairUtils::detect_private_keys_in_text(&text);
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0].0, "hex");
+        assert_eq!(keys[0].1, hex_key);
+    }
+
+    #[test]
+    fn test_detect_private_keys_none() {
+        let text = "This text contains no private keys, just a pubkey So11111111111111111111111111111111111111112";
+        let keys = KeypairUtils::detect_private_keys_in_text(text);
+        assert!(keys.is_empty());
     }
 }
 

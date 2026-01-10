@@ -1,0 +1,37 @@
+{
+  "name": "@elizaos-plugins/plugin-browser",
+  "version": "0.1.8+build.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "package.json",
+    "LICENSE",
+    "tsup.config.ts"
+  ],
+  "dependencies": {
+    "@cliqz/adblocker-playwright": "1.34.0",
+    "capsolver-npm": "2.0.2",
+    "playwright": "1.48.2"
+  },
+  "devDependencies": {
+    "@types/node": "22.8.4",
+    "tsup": "8.3.5",
+    "typescript": "^5.7.3"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "CAPSOLVER_API_KEY": {
+        "type": "string"
+      }
+    }
+  }
+}

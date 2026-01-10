@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "timestamp": "2025-06-24T08:12:23.394Z",
+    "plugin": "@elizaos/plugin-planning",
+    "benchmarkType": "REALM-Bench",
+    "duration": 6043
+  },
+  "summary": {
+    "totalTests": 3,
+    "passedTests": 2,
+    "failedTests": 1,
+    "successRate": 66.7,
+    "averageDuration": 2012,
+    "averagePlanQuality": 64.1,
+    "averageEfficiency": 69
+  },
+  "results": [
+    {
+      "id": "realm_test_001",
+      "name": "Project Planning",
+      "success": true,
+      "duration": 2369,
+      "steps": 7,
+      "planQuality": 0.758802106099164,
+      "efficiency": 0.9744973689229364
+    },
+    {
+      "id": "realm_test_002",
+      "name": "Crisis Management",
+      "success": false,
+      "duration": 2438,
+      "steps": 4,
+      "planQuality": 0.4366749176404782,
+      "efficiency": 0.2501540379733304
+    },
+    {
+      "id": "realm_test_003",
+      "name": "Research Coordination",
+      "success": true,
+      "duration": 1231,
+      "steps": 7,
+      "planQuality": 0.7281747726548395,
+      "efficiency": 0.8459258791748545
+    }
+  ]
+}

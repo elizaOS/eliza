@@ -1,0 +1,6 @@
+.turbo
+dist
+node_modules
+
+.elizadb
+.env

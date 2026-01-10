@@ -1,0 +1,39 @@
+{
+  "name": "@elizaos/rust",
+  "version": "2.0.0-alpha.0",
+  "description": "elizaOS Core - Rust runtime and types",
+  "type": "module",
+  "main": "pkg/node/elizaos.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "browser": {
+        "import": "./pkg/web/elizaos.js",
+        "default": "./pkg/web/elizaos.js"
+      },
+      "node": {
+        "import": "./pkg/node/elizaos.js",
+        "default": "./pkg/node/elizaos.js"
+      },
+      "default": "./pkg/node/elizaos.js"
+    }
+  },
+  "files": [
+    "pkg"
+  ],
+  "scripts": {
+    "build": "./build.sh",
+    "build:native": "cargo build --release",
+    "build:wasm": "wasm-pack build --target web --out-dir pkg/web --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --features wasm",
+    "test": "cargo test",
+    "lint": "cargo clippy --all-targets --features native -- -D warnings",
+    "lint:fix": "cargo clippy --all-targets --all-features --fix --allow-dirty",
+    "typecheck": "cargo check --all-targets --features native"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+

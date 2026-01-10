@@ -10,3 +10,6 @@ def plugin() -> ElizaClassicPlugin:
     """Create a fresh plugin instance for each test."""
     return ElizaClassicPlugin()
 
+
+
+

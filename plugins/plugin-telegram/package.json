@@ -1,0 +1,81 @@
+{
+  "name": "@elizaos/plugin-telegram",
+  "version": "1.6.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "^1.6.2",
+    "@telegraf/types": "7.1.0",
+    "@types/node": "^24.0.10",
+    "strip-literal": "^3.0.0",
+    "telegraf": "4.16.3",
+    "type-detect": "^4.1.0",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "prettier": "3.5.3",
+    "tsup": "8.4.0",
+    "vitest": "1.6.1"
+  },
+  "scripts": {
+    "build": "tsup && tsc",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "prettier --write ./src",
+    "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "prettier --write ./src",
+    "format:check": "prettier --check ./src"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-telegram.git"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TELEGRAM_API_ROOT": {
+        "type": "string",
+        "description": "Base URL for Telegram Bot API used by the TelegramService, allowing override of the default API endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "TELEGRAM_BOT_TOKEN": {
+        "type": "string",
+        "description": "Telegram bot token used for authenticating and operating the Telegram bot.",
+        "required": true,
+        "sensitive": true
+      },
+      "TELEGRAM_ALLOWED_CHATS": {
+        "type": "string",
+        "description": "JSON-encoded array of Telegram chat IDs that are authorized to interact with the bot.",
+        "required": false,
+        "sensitive": false
+      },
+      "TELEGRAM_TEST_CHAT_ID": {
+        "type": "string",
+        "description": "Telegram chat ID used by the test suite to send, receive, and validate messages during Telegram bot tests.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

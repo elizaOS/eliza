@@ -38,7 +38,7 @@
     "migrate:generate": "turbo run migrate:generate --filter=./packages/plugin-sql",
     "test": "turbo run test --concurrency 3 --filter=!./packages/plugin-starter --filter=!./packages/project-starter --filter=!@elizaos/plugin-sql",
     "test:client": "turbo run test --filter=./packages/client",
-    "test:core": "turbo run test --filter=./packages/core",
+    "test:core": "turbo run test --filter=./packages/typescript",
     "test:server": "turbo run test --filter=./packages/server"
   },
   "packageManager": "bun@1.3.5",
@@ -89,6 +89,9 @@
     "utf-8-validate"
   ],
   "dependencies": {
+    "@elysiajs/cors": "^1.4.1",
+    "@sinclair/typebox": "^0.34.47",
+    "elysia": "^1.4.21",
     "helmet": "^8.1.0",
     "js-yaml": "^4.1.1",
     "zod": "^4.3.5"

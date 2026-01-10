@@ -1,0 +1,156 @@
+"""
+Knowledge Provider - Provides knowledge context to agents.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from elizaos_plugin_knowledge.service import KnowledgeService
+
+logger = logging.getLogger(__name__)
+
+
+class KnowledgeProvider:
+    """
+    Provides knowledge context for agent conversations.
+
+    Retrieves relevant knowledge fragments based on conversation context.
+    """
+
+    name = "knowledge"
+    description = "Provides relevant knowledge from the knowledge base"
+
+    def __init__(self, service: KnowledgeService) -> None:
+        """
+        Initialize the knowledge provider.
+
+        Args:
+            service: The knowledge service instance.
+        """
+        self._service = service
+
+    async def get_context(
+        self,
+        message: str,
+        count: int = 5,
+    ) -> str:
+        """
+        Get relevant knowledge context for a message.
+
+        Args:
+            message: The user message to find context for.
+            count: Maximum number of knowledge items to retrieve.
+
+        Returns:
+            Formatted context string with relevant knowledge.
+        """
+        if not message or not message.strip():
+            return ""
+
+        try:
+            items = await self._service.get_knowledge(message, count=count)
+
+            if not items:
+                return ""
+
+            # Format knowledge items for context
+            context_parts: list[str] = []
+
+            for i, item in enumerate(items, 1):
+                similarity_pct = int((item.similarity or 0) * 100)
+                context_parts.append(
+                    f"[Knowledge {i}] (relevance: {similarity_pct}%)\n{item.content}"
+                )
+
+            return "\n\n---\n\n".join(context_parts)
+
+        except Exception as e:
+            logger.error(f"Error getting knowledge context: {e}")
+            return ""
+
+
+class DocumentsProvider:
+    """
+    Provides document metadata for display.
+
+    Used for UI components to list available knowledge documents.
+    """
+
+    name = "documents"
+    description = "Provides list of knowledge documents"
+
+    def __init__(self, service: KnowledgeService) -> None:
+        """
+        Initialize the documents provider.
+
+        Args:
+            service: The knowledge service instance.
+        """
+        self._service = service
+
+    async def get_documents(self) -> list[dict]:
+        """
+        Get list of all documents.
+
+        Returns:
+            List of document metadata dictionaries.
+        """
+        try:
+            documents = self._service.get_documents()
+
+            return [
+                {
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "content_type": doc.content_type,
+                    "file_size": doc.file_size,
+                    "fragment_count": len(doc.fragments),
+                    "metadata": doc.metadata,
+                }
+                for doc in documents
+            ]
+
+        except Exception as e:
+            logger.error(f"Error getting documents: {e}")
+            return []
+
+    async def get_document(self, document_id: str) -> dict | None:
+        """
+        Get a specific document by ID.
+
+        Args:
+            document_id: The document ID.
+
+        Returns:
+            Document metadata or None if not found.
+        """
+        try:
+            doc = self._service.get_document(document_id)
+            if not doc:
+                return None
+
+            return {
+                "id": doc.id,
+                "filename": doc.filename,
+                "content": doc.content,
+                "content_type": doc.content_type,
+                "file_size": doc.file_size,
+                "fragments": [
+                    {
+                        "id": f.id,
+                        "content": f.content,
+                        "position": f.position,
+                    }
+                    for f in doc.fragments
+                ],
+                "metadata": doc.metadata,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting document: {e}")
+            return None
+
+

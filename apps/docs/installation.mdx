@@ -1,215 +1,321 @@
 ---
 title: 'Installation'
-description: 'Install elizaOS on macOS, Linux, or Windows'
+description: 'Install elizaOS in TypeScript, Python, or Rust on macOS, Linux, or Windows'
 ---
 
-export const BunIcon = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="#0B35F1" xmlns="http://www.w3.org/2000/svg">
-    <path d="M11.966 22.566c6.609 0 11.966-4.326 11.966-9.661 0-3.308-2.051-6.23-5.204-7.963-1.283-.713-2.291-1.353-3.13-1.885-1.58-1.004-2.555-1.623-3.632-1.623-1.094 0-2.327.783-3.955 1.816a49.78 49.78 0 0 1-2.808 1.692C2.051 6.675 0 9.597 0 12.905c0 5.335 5.357 9.66 11.966 9.66Zm-1.397-17.83a5.885 5.885 0 0 0 .497-2.403c0-.144.201-.186.229-.028.656 2.775-.9 4.15-2.051 4.61-.124.048-.199-.12-.103-.208a5.748 5.748 0 0 0 1.428-1.971Zm2.052-.102a5.795 5.795 0 0 0-.78-2.3v-.015c-.068-.123.086-.263.185-.172 1.956 2.105 1.303 4.055.554 5.037-.082.102-.229-.003-.188-.126a5.837 5.837 0 0 0 .229-2.424Zm1.771-.559a5.708 5.708 0 0 0-1.607-1.801V2.26c-.112-.085-.024-.274.113-.218 2.588 1.084 2.766 3.171 2.452 4.395a.116.116 0 0 1-.048.071.11.11 0 0 1-.153-.026.118.118 0 0 1-.022-.083 5.864 5.864 0 0 0-.735-2.324Zm-5.072.559c-.616.544-1.279.758-2.058.997-.116 0-.194-.078-.155-.18 1.747-.907 2.369-1.645 2.99-2.771 0 0 .155-.117.188.085 0 .303-.348 1.325-.965 1.869Zm4.931 11.205a2.949 2.949 0 0 1-.935 1.549 2.16 2.16 0 0 1-1.282.618 2.167 2.167 0 0 1-1.323-.618 2.95 2.95 0 0 1-.923-1.549.243.243 0 0 1 .064-.197.23.23 0 0 1 .192-.069h3.954a.226.226 0 0 1 .19.07.239.239 0 0 1 .063.196Zm-5.443-2.17a1.85 1.85 0 0 1-2.377-.244 1.969 1.969 0 0 1-.233-2.44c.207-.318.502-.565.846-.711a1.84 1.84 0 0 1 1.089-.11c.365.075.701.26.964.53.264.27.443.616.515.99a1.98 1.98 0 0 1-.108 1.118 1.923 1.923 0 0 1-.696.866Zm8.471.005a1.849 1.849 0 0 1-2.374-.252 1.956 1.956 0 0 1-.546-1.362c0-.383.11-.758.319-1.076.207-.318.502-.566.847-.711a1.84 1.84 0 0 1 1.09-.108c.366.076.702.261.965.533s.44.617.512.993a1.98 1.98 0 0 1-.113 1.118 1.922 1.922 0 0 1-.7.865Z"/>
-  </svg>
-);
+elizaOS is available in three languages with identical APIs. Choose your preferred language below.
 
-export const NodeIcon = (
-  <svg width="20" height="22" viewBox="0 0 71 80" fill="#0B35F1" xmlns="http://www.w3.org/2000/svg">
-    <g clipPath="url(#clip0_337_7891)">
-      <path d="M35.625 79.5c-1.081 0-2.09-.288-3.028-.792l-9.59-5.686c-1.442-.792-.721-1.08-.289-1.224 1.947-.648 2.308-.792 4.327-1.944.216-.144.504-.072.72.072l7.356 4.391c.288.144.649.144.865 0l28.77-16.628c.289-.144.433-.431.433-.791V23.714c0-.36-.144-.648-.432-.792L35.986 6.366c-.288-.144-.65-.144-.865 0L6.35 22.922c-.29.144-.434.504-.434.792v33.184c0 .287.145.647.433.791l7.86 4.535c4.254 2.16 6.922-.36 6.922-2.879V26.593c0-.432.36-.864.865-.864h3.678c.432 0 .865.36.865.864v32.752c0 5.687-3.1 8.998-8.509 8.998-1.658 0-2.956 0-6.633-1.8l-7.572-4.319A6.073 6.073 0 0 1 .798 56.97V23.786a6.073 6.073 0 0 1 3.028-5.255l28.77-16.628c1.804-1.008 4.255-1.008 6.058 0l28.77 16.628a6.073 6.073 0 0 1 3.029 5.255V56.97a6.073 6.073 0 0 1-3.029 5.254l-28.77 16.628c-.865.36-1.947.648-3.029.648Z" />
-      <path d="M44.567 56.682c-12.62 0-15.215-5.759-15.215-10.654 0-.432.36-.864.865-.864h3.75c.433 0 .793.288.793.72.577 3.815 2.235 5.687 9.879 5.687 6.057 0 8.652-1.368 8.652-4.607 0-1.871-.72-3.24-10.167-4.175-7.86-.792-12.762-2.52-12.762-8.782 0-5.83 4.903-9.285 13.123-9.285 9.23 0 13.772 3.167 14.35 10.077 0 .216-.073.432-.217.648-.144.144-.36.288-.577.288h-3.822a.844.844 0 0 1-.793-.648c-.865-3.96-3.1-5.255-9.013-5.255-6.634 0-7.427 2.304-7.427 4.031 0 2.088.937 2.736 9.879 3.887 8.869 1.152 13.05 2.808 13.05 8.998 0 6.335-5.263 9.934-14.348 9.934Z" />
-    </g>
-    <defs>
-      <clipPath id="clip0_337_7891">
-        <path fill="#fff" d="M0 .5h71v79H0z" />
-      </clipPath>
-    </defs>
-  </svg>
-);
+## Choose Your Language
 
-## Prerequisites
+<Tabs>
+  <Tab title="TypeScript">
+    ## TypeScript Installation
 
-Before installing elizaOS, ensure you have the following:
+    ### Prerequisites
 
-- **Node.js 23.3+**: Install Node.js version 23.3 or higher from [nodejs.org](https://nodejs.org/)
-- **Bun**: Install the latest Bun runtime from [bun.sh](https://bun.sh/)
+    - **Node.js 23.3+**: Install from [nodejs.org](https://nodejs.org/)
+    - **Bun**: Install from [bun.sh](https://bun.sh/) (recommended)
 
-<Note>
-  **Windows Users:** You have two options for installing elizaOS:
-  
-  **Option 1:** Use WSL2 ([Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install)) for a Linux environment on Windows
-  
-  **Option 2:** Install natively on Windows, but first install [Git Bash](https://git-scm.com/downloads) and use it as your terminal for installing and running Node.js, Bun, and the elizaOS CLI
-</Note>
+    <Note>
+      **Windows Users:** Use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) for the best experience, or install [Git Bash](https://git-scm.com/downloads) and use it as your terminal.
+    </Note>
 
-## Installing elizaOS
+    ### Install the CLI
 
-Once you have Node.js and Bun installed, you can install the elizaOS CLI globally:
+    ```bash
+    bun i -g @elizaos/cli
+    ```
 
-```bash Terminal
-bun i -g @elizaos/cli
+    ### Verify Installation
+
+    ```bash
+    elizaos --version
+    ```
+
+    ### Quick Start
+
+    ```bash
+    elizaos create        # Create a new project
+    cd my-project
+    elizaos start         # Start your agent
+    ```
+
+    <Tip>
+      You don't need to clone the elizaOS repository to build agents. The CLI handles everything. Only clone the monorepo if you're [contributing to core](/guides/contribute-to-core).
+    </Tip>
+  </Tab>
+
+  <Tab title="Python">
+    ## Python Installation
+
+    ### Prerequisites
+
+    - **Python 3.11+**: Install from [python.org](https://python.org/) or use pyenv
+    - **pip** or **uv**: Package manager
+
+    ### Install the Package
+
+    ```bash
+    pip install elizaos
+    ```
+
+    Or with uv (faster):
+
+    ```bash
+    uv pip install elizaos
+    ```
+
+    ### Verify Installation
+
+    ```python
+    python -c "from elizaos import AgentRuntime; print('elizaOS installed!')"
+    ```
+
+    ### Install Plugin Dependencies
+
+    ```bash
+    # OpenAI plugin
+    pip install elizaos-plugin-openai
+
+    # Or install from the monorepo for development
+    pip install -e packages/typescript/python
+    pip install -e plugins/plugin-openai/python
+    ```
+
+    ### Quick Start
+
+    ```python
+    from elizaos import AgentRuntime, Character
+    from elizaos_plugin_openai import get_openai_plugin
+
+    character = Character(
+        name="Eliza",
+        bio="A helpful AI assistant.",
+    )
+
+    runtime = AgentRuntime(
+        character=character,
+        plugins=[get_openai_plugin()],
+    )
+
+    await runtime.initialize()
+    ```
+
+    <Tip>
+      Use virtual environments to isolate your project dependencies:
+      ```bash
+      python -m venv .venv
+      source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+      pip install elizaos
+      ```
+    </Tip>
+  </Tab>
+
+  <Tab title="Rust">
+    ## Rust Installation
+
+    ### Prerequisites
+
+    - **Rust 1.70+**: Install from [rustup.rs](https://rustup.rs/)
+    - **Cargo**: Included with Rust
+
+    ### Add to Your Project
+
+    ```bash
+    cargo add elizaos
+    ```
+
+    Or add to `Cargo.toml`:
+
+    ```toml
+    [dependencies]
+    elizaos = "1.0"
+    elizaos-plugin-openai = "1.0"
+    tokio = { version = "1", features = ["full"] }
+    anyhow = "1"
+    ```
+
+    ### Verify Installation
+
+    ```bash
+    cargo build
+    ```
+
+    ### Quick Start
+
+    ```rust
+    use elizaos::{AgentRuntime, RuntimeOptions, parse_character};
+    use elizaos_plugin_openai::create_openai_plugin;
+
+    #[tokio::main]
+    async fn main() -> anyhow::Result<()> {
+        let character = parse_character(r#"{
+            "name": "Eliza",
+            "bio": "A helpful AI assistant."
+        }"#)?;
+
+        let runtime = AgentRuntime::new(RuntimeOptions {
+            character: Some(character),
+            plugins: vec![create_openai_plugin()?],
+            ..Default::default()
+        }).await?;
+
+        runtime.initialize().await?;
+        println!("Agent is ready!");
+        Ok(())
+    }
+    ```
+
+    ### WebAssembly Build
+
+    For browser deployment, build with WASM target:
+
+    ```bash
+    # Install wasm-pack
+    cargo install wasm-pack
+
+    # Build for web
+    wasm-pack build --target web --out-dir pkg
+    ```
+
+    <Tip>
+      The Rust implementation compiles to both native binaries and WebAssembly, enabling high-performance browser-based agents.
+    </Tip>
+  </Tab>
+</Tabs>
+
+---
+
+## Environment Setup
+
+All languages require an LLM provider API key. Set up your environment:
+
+```bash
+# Create .env file in your project root
+echo "OPENAI_API_KEY=your-api-key-here" > .env
 ```
 
-This installs the `elizaos` command globally on your system, allowing you to create and manage elizaOS projects from anywhere.
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `OPENAI_API_KEY` | OpenAI API key | Yes (if using OpenAI) |
+| `ANTHROPIC_API_KEY` | Anthropic API key | Yes (if using Claude) |
+| `PGLITE_DATA_DIR` | Local database path | No (defaults to memory) |
+| `POSTGRES_URL` | PostgreSQL connection | No (for production) |
 
-<Note>
-  **Important:** You don't need to clone the elizaOS repository to build agents. The CLI handles everything for you. Only clone the monorepo if you're [contributing to core](/guides/contribute-to-core).
-</Note>
-
-## Verify Installation
-
-After installation, verify that elizaOS CLI is properly installed:
-
-```bash Terminal
-elizaos --version
-```
-
-You should see the version number of the installed CLI.
+---
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="triangle-exclamation" title="Node.js issues">
-    **Check if Node.js is installed and what version:**
-    ```bash Terminal
-    node --version
+  <Accordion icon="js" title="TypeScript / Node.js Issues">
+    **Check Node.js version:**
+    ```bash
+    node --version  # Should be 23.3+
     ```
-    
-    **If you get "command not found":**
-    - Node.js is not installed. Download and install from [nodejs.org](https://nodejs.org/)
-    
-    **If you get a version lower than v23.3.0:**
-    - You need to upgrade. Use a Node.js version manager for easy switching:
-    ```bash Terminal
-    # Install nvm (macOS/Linux)
+
+    **Install with nvm if needed:**
+    ```bash
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-    
-    # Install and use Node.js 23.3
     nvm install 23.3
     nvm use 23.3
     ```
-    
-    **If you have version conflicts:**
-    - Clear npm cache: `npm cache clean --force`
-    - Consider a fresh Node.js installation if switching from older versions
-    
-    Alternative version managers: [fnm](https://github.com/Schniz/fnm) (faster) or [volta](https://volta.sh/)
-  </Accordion>
 
-  <Accordion icon="gear" title="Bun issues">
-    **Check if Bun is installed and what version:**
-    ```bash Terminal
-    bun --version
-    ```
-    
-    **If you get "command not found":**
-    - Bun is not installed. Install from [bun.sh](https://bun.sh/)
-    ```bash Terminal
-    # Install Bun (macOS/Linux)
+    **Bun not found:**
+    ```bash
     curl -fsSL https://bun.sh/install | bash
-    
-    # Windows
-    powershell -c "irm bun.sh/install.ps1 | iex"
+    source ~/.bashrc  # or ~/.zshrc
     ```
-    
-    **If you have version conflicts:**
-    - Clear Bun cache: `bun pm cache rm`
-    - Restart your terminal after installation
-    - Verify installation: `bun --version`
+
+    **CLI not found after install:**
+    ```bash
+    export PATH="$HOME/.bun/bin:$PATH"
+    ```
   </Accordion>
 
-  <Accordion icon="windows" title="Windows Installation Issues">
-    If you're installing elizaOS natively on Windows (not using WSL2), follow these steps ( or watch the tutorial video [here](https://youtu.be/QiRg0C1zDjU?si=akR0bIbbiWYVxEQd)):
-    
-    **Step 1: Install Git Bash**
-    - Download and install [Git for Windows](https://git-scm.com/downloads) which includes Git Bash
-    - **Important:** Use Git Bash as your terminal, not PowerShell or Command Prompt
-    
-    **Step 2: Install Node.js**
-    - Download and install [Node.js for Windows](https://nodejs.org/en/download/)
-    - Install version 23.3 or higher
-    
-    **Step 3: Add Node to your PATH for Git Bash**
-    - Open PowerShell **as Administrator**
-    - Run this command to add Node to your bash profile:
+  <Accordion icon="python" title="Python Issues">
+    **Check Python version:**
+    ```bash
+    python --version  # Should be 3.11+
+    ```
+
+    **Install with pyenv if needed:**
+    ```bash
+    pyenv install 3.11
+    pyenv global 3.11
+    ```
+
+    **Module not found:**
+    ```bash
+    pip install --upgrade elizaos
+    ```
+
+    **Virtual environment issues:**
+    ```bash
+    rm -rf .venv
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install elizaos
+    ```
+  </Accordion>
+
+  <Accordion icon="gear" title="Rust Issues">
+    **Check Rust version:**
+    ```bash
+    rustc --version  # Should be 1.70+
+    ```
+
+    **Update Rust:**
+    ```bash
+    rustup update stable
+    ```
+
+    **Build errors:**
+    ```bash
+    cargo clean
+    cargo build
+    ```
+
+    **WASM build fails:**
+    ```bash
+    rustup target add wasm32-unknown-unknown
+    cargo install wasm-pack
+    ```
+  </Accordion>
+
+  <Accordion icon="windows" title="Windows-Specific Issues">
+    **Recommended: Use WSL2**
+    ```powershell
+    wsl --install
+    ```
+
+    **Native Windows (Git Bash):**
+    1. Install [Git for Windows](https://git-scm.com/downloads)
+    2. Use Git Bash for all commands
+    3. Add Node.js to PATH:
     ```powershell
     echo 'export PATH=$PATH:"/c/Program Files/nodejs"' >> ~/.bashrc
     ```
-    - Close and restart Git Bash for changes to take effect
-    
-    **Step 4: Verify Node installation**
-    - In Git Bash, run:
-    ```bash Git Bash
-    node --version
-    ```
-    - You should see your Node.js version
-    
-    **Step 5: Install Bun**
-    - In Git Bash, run:
-    ```bash Git Bash
-    powershell -c "irm bun.sh/install.ps1 | iex"
-    ```
-    
-    **Step 6: Install elizaOS CLI**
-    - In Git Bash, run:
-    ```bash Git Bash
-    bun install -g @elizaos/cli
-    ```
-    
-    **Common Windows-specific issues:**
-    - If `node` command not found: Node wasn't added to PATH correctly, restart Git Bash
-    - If scripts fail: Make sure you're using Git Bash, not PowerShell or CMD
-    - If permission errors: Run Git Bash as Administrator when installing global packages
-  </Accordion>
 
-  <Accordion icon="wrench" title="CLI Installation Issues">
-    **If elizaOS CLI fails to install:**
-    - Clear Bun cache: `bun pm cache rm`
-    - Try reinstalling: `bun i -g @elizaos/cli`
-    
-    **If "command not found" after installation:**
-    - The CLI may not be in your PATH. Add Bun's global bin directory to PATH:
-    ```bash Terminal
-    # Add to ~/.bashrc or ~/.zshrc
-    export PATH="$HOME/.bun/bin:$PATH"
-    ```
-    - Then restart your terminal or run `source ~/.bashrc` (or `~/.zshrc`)
-    
-    **Permission errors during global install:**
-    - macOS/Linux: Use `sudo bun i -g @elizaos/cli`
-    - Windows: Run Git Bash as Administrator
-  </Accordion>
-
-  <Accordion icon="gear" title="CLI Version Conflicts/Mismatches">
-    **If `elizaos --version` shows an older version despite installing a newer one:**
-    
-    This usually happens when elizaOS CLI was installed with different package managers (npm, pnpm, bun), creating version conflicts.
-    
-    **Solution - Clean install with bun only:**
-    ```bash Terminal
-    # Remove from all package managers
-    bun remove -g @elizaos/cli
-    npm uninstall -g @elizaos/cli
-    pnpm remove -g @elizaos/cli
-    
-    # Verify removal
-    which elizaos
-    # Should return nothing or "not found"
-    
-    # Fresh install with bun only
-    bun i -g @elizaos/cli
-    
-    # Verify correct version
-    elizaos --version
-    ```
-    
-    **If you get a PATH warning:**
-    ```bash Terminal
-    # Add bun's global bin to your PATH
-    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
-    # or for zsh
-    echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc
-    
-    # Reload your shell configuration
-    source ~/.bashrc  # or source ~/.zshrc
-    ```
-    
-    **Important:** Always use bun for elizaOS CLI installation to avoid conflicts. Don't mix package managers.
+    **Permission errors:**
+    Run Git Bash as Administrator
   </Accordion>
 </AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first agent in 3 minutes
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/overview">
+    Explore working examples in all languages
+  </Card>
+  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+    Extend elizaOS with custom functionality
+  </Card>
+  <Card title="Deploy" icon="cloud" href="/guides/deploy-a-project">
+    Ship your agent to production
+  </Card>
+</CardGroup>

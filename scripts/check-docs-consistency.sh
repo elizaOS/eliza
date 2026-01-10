@@ -76,15 +76,15 @@ print_section "Core Classes and Interfaces Documentation"
     echo "### Checking if core types from types.ts are documented..."
 
     # Extract major interfaces and types from core/typescript/src/types.ts
-    if [ -f "packages/core/typescript/src/types/index.ts" ]; then
+    if [ -f "packages/typescript/typescript/src/types/index.ts" ]; then
         # Extract interface and type names
-        grep -E "^export (interface|type) \w+" "packages/core/typescript/src/types/index.ts" | \
+        grep -E "^export (interface|type) \w+" "packages/typescript/typescript/src/types/index.ts" | \
         sed -E 's/export (interface|type) (\w+).*/\2/' | \
         while read -r type_name; do
             check_entity_documented "$type_name" "Type/Interface"
         done | sort -u | head -20
     else
-        echo "Could not find packages/core/typescript/src/types/index.ts"
+        echo "Could not find packages/typescript/typescript/src/types/index.ts"
     fi
 
     echo ""
@@ -137,10 +137,10 @@ print_section "Outdated Code Examples"
 
     echo ""
     echo "### Checking for incorrect import paths..."
-    # Check for imports from packages/core instead of @elizaos/core
-    grep -r "from ['\"]packages/core" "$DOCS_DIR" --include="*.md" 2>/dev/null | while read -r line; do
+    # Check for imports from packages/typescript instead of @elizaos/core
+    grep -r "from ['\"]packages/typescript" "$DOCS_DIR" --include="*.md" 2>/dev/null | while read -r line; do
         file=$(echo "$line" | cut -d: -f1)
-        echo "- $file: Imports from packages/core (should be @elizaos/core)"
+        echo "- $file: Imports from packages/typescript (should be @elizaos/core)"
     done | head -10
 
     echo ""
@@ -206,7 +206,7 @@ print_section "API Documentation Coverage"
 
     echo "### Core API Functions"
     # Check if major exported functions are documented
-    find packages/core/typescript/src -name "*.ts" -not -path "*/test/*" -not -name "*.test.ts" | while read -r file; do
+    find packages/typescript/typescript/src -name "*.ts" -not -path "*/test/*" -not -name "*.test.ts" | while read -r file; do
         # Extract exported functions
         grep -E "^export (async )?function \w+|^export const \w+ = (async )?\(" "$file" 2>/dev/null | \
         sed -E 's/export (async )?function (\w+).*/\2/; s/export const (\w+).*/\1/' | \

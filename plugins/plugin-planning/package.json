@@ -1,0 +1,38 @@
+{
+  "name": "@elizaos/plugin-planning",
+  "version": "1.2.0",
+  "type": "module",
+  "description": "Planning and execution plugin for ElizaOS",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist && rm -rf .turbo",
+    "lint": "eslint src --fix && prettier --write ./src",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "benchmark": "tsx scripts/run-benchmarks.ts",
+    "benchmark:verbose": "tsx scripts/run-benchmarks.ts --verbose",
+    "benchmark:quick": "tsx scripts/run-benchmarks.ts --max-tests 20 --timeout 30000",
+    "benchmark:realm": "tsx scripts/run-realm-benchmark.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "^1.2.1",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "5.8.3",
+    "uuid": "^11.1.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

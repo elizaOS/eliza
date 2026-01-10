@@ -39,6 +39,17 @@
             ]
           },
           {
+            "group": "EXAMPLES",
+            "pages": [
+              "examples/overview",
+              "examples/chat",
+              "examples/rest-api",
+              "examples/browser",
+              "examples/serverless",
+              "examples/game"
+            ]
+          },
+          {
             "group": "GUIDES",
             "pages": [
               {
@@ -123,6 +134,35 @@
           {
             "group": "TOKEN",
             "pages": ["tokenomics"]
+          }
+        ]
+      },
+      {
+        "tab": "Examples Gallery",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["examples-gallery/index"]
+          },
+          {
+            "group": "By Category",
+            "pages": [
+              "examples-gallery/chat-apps",
+              "examples-gallery/web-apps",
+              "examples-gallery/rest-apis",
+              "examples-gallery/serverless",
+              "examples-gallery/games"
+            ]
+          },
+          {
+            "group": "By Platform",
+            "pages": [
+              "examples-gallery/aws",
+              "examples-gallery/gcp",
+              "examples-gallery/vercel",
+              "examples-gallery/cloudflare",
+              "examples-gallery/supabase"
+            ]
           }
         ]
       },

@@ -53,9 +53,9 @@ class StdioTransport(Transport):
         if self._process is None or self._process.stdin is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
-        # Serialize the message
+        # MCP uses newline-delimited JSON (NDJSON) format
         json_str = json.dumps(message)
-        content = f"Content-Length: {len(json_str)}\r\n\r\n{json_str}"
+        content = f"{json_str}\n"
 
         self._process.stdin.write(content.encode("utf-8"))
         await self._process.stdin.drain()
@@ -65,31 +65,28 @@ class StdioTransport(Transport):
         if self._process is None or self._process.stdout is None:
             raise McpError("Transport not connected", "NOT_CONNECTED")
 
-        # Read the Content-Length header
-        header_line = await asyncio.wait_for(
-            self._process.stdout.readline(),
-            timeout=self._config.timeout_ms / 1000,
-        )
+        # MCP uses newline-delimited JSON (NDJSON) format
+        # Read lines until we get a valid JSON response
+        while True:
+            line = await asyncio.wait_for(
+                self._process.stdout.readline(),
+                timeout=self._config.timeout_ms / 1000,
+            )
 
-        if not header_line:
-            raise McpError("Connection closed by server", "CONNECTION_CLOSED")
+            if not line:
+                raise McpError("Connection closed by server", "CONNECTION_CLOSED")
 
-        header = header_line.decode("utf-8").strip()
-        if not header.startswith("Content-Length:"):
-            raise McpError(f"Invalid header: {header}", "PROTOCOL_ERROR")
+            text = line.decode("utf-8").strip()
 
-        content_length = int(header.split(":")[1].strip())
+            # Skip empty lines and non-JSON lines (like log messages)
+            if not text or not text.startswith("{"):
+                continue
 
-        # Read the empty line
-        await self._process.stdout.readline()
-
-        # Read the content
-        content = await asyncio.wait_for(
-            self._process.stdout.read(content_length),
-            timeout=self._config.timeout_ms / 1000,
-        )
-
-        return json.loads(content.decode("utf-8"))  # type: ignore[no-any-return]
+            # Parse the JSON response
+            try:
+                return json.loads(text)  # type: ignore[no-any-return]
+            except json.JSONDecodeError:
+                continue  # Skip malformed lines
 
     async def close(self) -> None:
         """Close the connection and terminate the subprocess."""
