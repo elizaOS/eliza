@@ -36,10 +36,7 @@ def parse_key_value_xml(xml: str) -> dict[str, Any] | None:
 
     # Find the response block
     response_match = re.search(r"<response>(.*?)</response>", xml, re.DOTALL)
-    if response_match:
-        content = response_match.group(1)
-    else:
-        content = xml
+    content = response_match.group(1) if response_match else xml
 
     # Parse individual tags
     # Match tags like <tag>content</tag>

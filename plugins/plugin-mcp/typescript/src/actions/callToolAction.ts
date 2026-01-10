@@ -135,10 +135,10 @@ export const callToolAction: Action = {
           actionName: "CALL_MCP_TOOL",
           serverName,
           toolName,
-          toolArguments: toolSelectionArgument.toolArguments,
+          toolArgumentsJson: JSON.stringify(toolSelectionArgument.toolArguments),
           reasoning: toolSelectionName.reasoning,
           output: toolOutput,
-          attachments: attachments ?? [],
+          attachmentCount: attachments?.length ?? 0,
         },
         success: true,
       };

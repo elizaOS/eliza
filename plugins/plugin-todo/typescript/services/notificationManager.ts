@@ -120,10 +120,10 @@ export class NotificationManager {
       }
 
       // Log notification for audit
-      logger.info(`Notification sent: ${notification.title}`, {
+      logger.info({
         type: notification.type,
         priority: notification.priority,
-      });
+      }, `Notification sent: ${notification.title}`);
     } catch (error) {
       logger.error('Error sending notification:', error);
     }
@@ -169,11 +169,11 @@ export class NotificationManager {
     // 2. Create and show the notification
     // 3. Handle click events on the notification
 
-    logger.debug('Browser notification would be sent:', {
+    logger.debug({
       title: notification.title,
       body: notification.body,
       type: notification.type,
-    });
+    }, 'Browser notification would be sent');
   }
 
   /**

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -16,8 +17,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (

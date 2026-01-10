@@ -170,12 +170,12 @@ export class EmbedManager {
     let title = "Image";
 
     try {
-      const result = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+      const result = await this.runtime.useModel(ModelType.IMAGE_DESCRIPTION as any, {
         prompt:
           "Analyze this image and provide a concise title and description. Focus on the main subject and any notable details.",
         imageUrl: url,
         model: "gpt-4o-mini",
-      });
+      } as any);
 
       if (result && typeof result === "object") {
         const typedResult = result as { title?: string; description?: string };

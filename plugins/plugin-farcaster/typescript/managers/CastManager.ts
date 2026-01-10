@@ -102,14 +102,14 @@ export class FarcasterCastManager {
         },
       });
 
-      this.runtime.emitEvent([EventType.POST_GENERATED, FarcasterEventTypes.CAST_GENERATED], {
+      this.runtime.emitEvent([EventType.POST_GENERATED, FarcasterEventTypes.CAST_GENERATED] as any, {
         runtime: this.runtime,
         callback,
         worldId,
         userId: this.runtime.agentId,
         roomId,
         source: FARCASTER_SOURCE,
-      });
+      } as any);
     } catch (error) {
       this.runtime.logger.error({ error }, "[Farcaster] Error generating new cast");
     }

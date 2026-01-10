@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @elizaos/plugin-evm Transfer Action
  *

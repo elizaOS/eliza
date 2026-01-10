@@ -34,10 +34,7 @@ export const completeGoalAction: Action = {
       messageText.includes('done') ||
       messageText.includes('accomplished');
 
-    logger.info('Complete goal validation', {
-      hasCompleteIntent,
-      messageText: messageText.substring(0, 100),
-    });
+    logger.info({ hasCompleteIntent, messageText: messageText.substring(0, 100) }, 'Complete goal validation');
 
     return hasCompleteIntent;
   },
@@ -57,7 +54,7 @@ export const completeGoalAction: Action = {
             error: true,
           });
         }
-        return { text: errorMessage };
+        return { success: false, text: errorMessage };
       }
 
       // Create data service
@@ -88,7 +85,7 @@ export const completeGoalAction: Action = {
             actions: ['COMPLETE_GOAL'],
           });
         }
-        return { text: responseText };
+        return { success: true, text: responseText };
       }
 
       // Use Claude to find the best matching goal
@@ -118,7 +115,7 @@ If none match well, return 0.`;
             actions: ['COMPLETE_GOAL'],
           });
         }
-        return { text: responseText };
+        return { success: true, text: responseText };
       }
 
       const goal = activeGoals[matchIndex];
@@ -143,6 +140,7 @@ If none match well, return 0.`;
       }
 
       return {
+        success: true,
         text: responseText,
         data: {
           goalId: goal.id,
@@ -160,7 +158,7 @@ If none match well, return 0.`;
         });
       }
 
-      return { text: errorMessage };
+      return { success: false, error: errorMessage };
     }
   },
   examples: [

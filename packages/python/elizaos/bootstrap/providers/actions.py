@@ -12,7 +12,14 @@ from typing import TYPE_CHECKING
 from elizaos.types import Provider, ProviderResult
 
 if TYPE_CHECKING:
-    from elizaos.types import Action, ActionParameter, ActionParameterSchema, IAgentRuntime, Memory, State
+    from elizaos.types import (
+        Action,
+        ActionParameter,
+        ActionParameterSchema,
+        IAgentRuntime,
+        Memory,
+        State,
+    )
 
 
 def format_action_names(actions: list[Action]) -> str:

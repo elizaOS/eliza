@@ -206,8 +206,7 @@ export const elizaOSCloudPlugin: Plugin = {
                   logger.log({ result }, "Image description");
                 } else {
                   logger.error(
-                    "Invalid image description result format:",
-                    result,
+                    `Invalid image description result format: ${JSON.stringify(result)}`,
                   );
                 }
               } catch (e: unknown) {

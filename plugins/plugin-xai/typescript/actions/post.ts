@@ -1,6 +1,7 @@
 import {
   Action,
   type ActionExample,
+  type ActionResult,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -26,7 +27,7 @@ export const postAction: Action = {
     _state: State,
     _options: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info("Executing POST action");
 
     const xService = runtime.getService("x") as XService;
@@ -47,7 +48,7 @@ export const postAction: Action = {
           action: "POST",
         });
       }
-      return;
+      return { success: false, error: "No text provided" };
     }
 
     // Truncate if too long
@@ -86,7 +87,7 @@ Post:`;
 
       const response = await runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
-        max_tokens: 100,
+        maxTokens: 100,
         temperature: 0.9,
       });
 
@@ -122,6 +123,7 @@ Post:`;
           metadata: { postId, postUrl },
         });
       }
+      return { success: true, text: `Posted: ${postUrl}` };
     } else {
       throw new Error("Failed to post - no response data");
     }

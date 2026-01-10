@@ -3,6 +3,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderResult,
   State,
   UUID,
 } from "@elizaos/core";
@@ -33,14 +34,14 @@ export const voiceStateProvider: Provider = {
       return {
         data: {
           isInVoiceChannel: false,
-          room,
+          roomId: room.id,
         },
         values: {
           isInVoiceChannel: "false",
           roomType: room.type,
         },
         text: "",
-      };
+      } as ProviderResult;
     }
 
     const channelId = room.channelId;
@@ -54,14 +55,14 @@ export const voiceStateProvider: Provider = {
       return {
         data: {
           isInVoiceChannel: false,
-          room,
+          roomId: room.id,
         },
         values: {
           isInVoiceChannel: "false",
           roomType: room.type,
         },
         text: `${agentName} is not currently in a voice channel`,
-      };
+      } as ProviderResult;
     }
 
     // Look up guild via channel to get the Discord guild ID for voice connection
@@ -76,13 +77,13 @@ export const voiceStateProvider: Provider = {
       return {
         data: {
           isInVoiceChannel: false,
-          room,
+          roomId: room.id,
         },
         values: {
           isInVoiceChannel: "false",
         },
         text: `${agentName} is not currently in a voice channel`,
-      };
+      } as ProviderResult;
     }
 
     // Try cache first, then fetch if not cached (handles cold start / partial cache scenarios)
@@ -118,13 +119,13 @@ export const voiceStateProvider: Provider = {
       return {
         data: {
           isInVoiceChannel: false,
-          room,
+          roomId: room.id,
         },
         values: {
           isInVoiceChannel: "false",
         },
         text: `${agentName} is not currently in a voice channel`,
-      };
+      } as ProviderResult;
     }
 
     const connection = getVoiceConnection(guildId);
@@ -133,13 +134,13 @@ export const voiceStateProvider: Provider = {
       return {
         data: {
           isInVoiceChannel: false,
-          room,
+          roomId: room.id,
         },
         values: {
           isInVoiceChannel: "false",
         },
         text: `${agentName} is not currently in a voice channel`,
-      };
+      } as ProviderResult;
     }
 
     const worldId = room.worldId;
@@ -158,9 +159,8 @@ export const voiceStateProvider: Provider = {
     return {
       data: {
         isInVoiceChannel: true,
-        room,
-        world,
-        connection,
+        roomId: room.id,
+        worldId: world.id,
         channelId,
         channelName,
       },
@@ -172,7 +172,7 @@ export const voiceStateProvider: Provider = {
         channelName,
       },
       text: `${agentName} is currently in the voice channel: ${channelName} (ID: ${channelId})`,
-    };
+    } as ProviderResult;
   },
 };
 

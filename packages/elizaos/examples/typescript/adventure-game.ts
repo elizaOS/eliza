@@ -16,8 +16,9 @@
  *   PGLITE_DATA_DIR=./adventure-db OPENAI_API_KEY=your_key bun run examples/typescript/adventure-game.ts
  */
 
-// MUST be set before any imports to suppress elizaOS logs
+// MUST be set before any imports to suppress elizaOS logs and AI SDK warnings
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS = false;
 
 import * as clack from "@clack/prompts";
 import {

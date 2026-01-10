@@ -5,6 +5,7 @@ import {
   State,
   HandlerCallback,
   logger,
+  type HandlerOptions,
 } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
 
@@ -49,7 +50,7 @@ export const cancelFormAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    options?: { [key: string]: unknown },
+    options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
     try {
@@ -71,7 +72,9 @@ export const cancelFormAction: Action = {
       // Check if a specific form ID was provided
       let targetForm;
       const specifiedFormId =
-        options?.formId || state?.data?.activeFormId || state?.values?.activeFormId;
+        (options?.parameters as Record<string, unknown> | undefined)?.formId || 
+        state?.data?.activeFormId || 
+        state?.values?.activeFormId;
 
       if (specifiedFormId) {
         // Find the specific form
@@ -121,8 +124,9 @@ export const cancelFormAction: Action = {
           message: 'Failed to cancel form',
         };
       }
-    } catch (error) {
-      logger.error('Error in CANCEL_FORM action:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error in CANCEL_FORM action:', errorMessage);
       await callback?.({
         text: 'An error occurred while cancelling the form.',
         actions: [],

@@ -5,6 +5,9 @@
 import { logger, type IAgentRuntime } from '@elizaos/core';
 import { getApiKey, getBaseURL } from './utils/config';
 
+// Disable AI SDK warning logging by default (can be overridden by setting to true)
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+
 /**
  * Initialize and validate OpenRouter configuration.
  */

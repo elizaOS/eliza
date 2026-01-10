@@ -43,7 +43,7 @@ export class BlueSkyAgentManager {
       this.startAutomatedPosting();
     }
 
-    logger.success("BlueSky agent manager started", { agentId: this.runtime.agentId });
+    logger.success({ agentId: this.runtime.agentId }, "BlueSky agent manager started");
   }
 
   async stop(): Promise<void> {
@@ -58,7 +58,7 @@ export class BlueSkyAgentManager {
     this.postTimer = null;
 
     await this.client.cleanup();
-    logger.info("BlueSky agent manager stopped", { agentId: this.runtime.agentId });
+    logger.info({ agentId: this.runtime.agentId }, "BlueSky agent manager stopped");
   }
 
   private startNotificationPolling(): void {
@@ -100,11 +100,10 @@ export class BlueSkyAgentManager {
 
     const event = eventMap[notification.reason];
     if (event) {
-      this.runtime.emitEvent(event, {
-        runtime: this.runtime,
-        notification,
+      void this.runtime.emitEvent(event as string, {
         source: "bluesky",
-      });
+        data: { notification },
+      } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
     }
   }
 
@@ -122,11 +121,10 @@ export class BlueSkyAgentManager {
 
     for (const notification of notifications) {
       if (notification.reason === "mention" || notification.reason === "reply") {
-        this.runtime.emitEvent("bluesky.should_respond", {
-          runtime: this.runtime,
-          notification,
+        void this.runtime.emitEvent("bluesky.should_respond" as string, {
           source: "bluesky",
-        });
+          data: { notification },
+        } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
       }
     }
   }
@@ -151,10 +149,9 @@ export class BlueSkyAgentManager {
   }
 
   private createAutomatedPost(): void {
-    this.runtime.emitEvent("bluesky.create_post", {
-      runtime: this.runtime,
+    void this.runtime.emitEvent("bluesky.create_post" as string, {
       source: "bluesky",
-      automated: true,
-    });
+      data: { automated: true },
+    } as unknown as Parameters<typeof this.runtime.emitEvent>[1]);
   }
 }

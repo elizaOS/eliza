@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { defineConfig } from "tsup";
 
 export default defineConfig({

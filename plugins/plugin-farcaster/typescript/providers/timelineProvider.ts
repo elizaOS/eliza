@@ -71,18 +71,11 @@ export const farcasterTimelineProvider: Provider = {
         text: `Recent casts from your timeline:\n${formattedCasts}`,
         data: {
           available: true,
-          casts: casts.map((c) => ({
-            id: c.id,
-            username: c.username,
-            text: c.text,
-            timestamp: c.timestamp,
-            castHash: c.metadata?.castHash,
-          })),
-          count: casts.length,
+          castCount: casts.length,
         },
         values: {
-          latestCastHash: casts[0]?.metadata?.castHash,
-          latestCastText: casts[0]?.text,
+          latestCastHash: String(casts[0]?.metadata?.castHash || ""),
+          latestCastText: casts[0]?.text || "",
         },
       };
     } catch (error) {

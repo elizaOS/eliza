@@ -47,7 +47,7 @@ export const clearHistory: Action = {
     _state: State,
     _options: Record<string, unknown>,
     callback: HandlerCallback
-  ): Promise<void> => {
+  ) => {
     const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
@@ -55,7 +55,7 @@ export const clearHistory: Action = {
         text: "Shell service is not available.",
         source: message.content.source,
       });
-      return;
+      return { success: false, error: "Shell service is not available." };
     }
 
     try {
@@ -73,12 +73,15 @@ export const clearHistory: Action = {
       };
 
       await callback(response);
+      return { success: true, text: response.text };
     } catch (error) {
       logger.error("Error clearing shell history:", error);
+      const errorMsg = `Failed to clear shell history: ${error instanceof Error ? error.message : "Unknown error"}`;
       await callback({
-        text: `Failed to clear shell history: ${error instanceof Error ? error.message : "Unknown error"}`,
+        text: errorMsg,
         source: message.content.source,
       });
+      return { success: false, error: errorMsg };
     }
   },
   examples: [

@@ -43,14 +43,14 @@ const getMessageRef = async (
     const parsedResponse = parseJSONObjectFromText(response);
     if (parsedResponse && parsedResponse.messageRef) {
       return {
-        messageRef: parsedResponse.messageRef,
+        messageRef: String(parsedResponse.messageRef),
       };
     }
   }
   return null;
 };
 
-export const unpinMessage: Action = {
+export const unpinMessage = {
   name: "UNPIN_MESSAGE",
   similes: [
     "UNPIN_MESSAGE",
@@ -266,6 +266,6 @@ export const unpinMessage: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default unpinMessage;

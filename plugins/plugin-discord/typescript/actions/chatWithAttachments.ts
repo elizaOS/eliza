@@ -14,6 +14,7 @@ import {
   parseJSONObjectFromText,
   type State,
   trimTokens,
+  MemoryType,
 } from "@elizaos/core";
 import {
   attachmentSummarizationTemplate as summarizationTemplate,
@@ -69,7 +70,7 @@ const getAttachmentIds = async (
  * @property {Object[]} examples - Examples demonstrating how to use the action with message content and expected responses
  */
 
-export const chatWithAttachments: Action = {
+export const chatWithAttachments = {
   name: "CHAT_WITH_ATTACHMENTS",
   similes: [
     "CHAT_WITH_ATTACHMENT",
@@ -165,7 +166,7 @@ export const chatWithAttachments: Action = {
             actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
           },
           metadata: {
-            type: "CHAT_WITH_ATTACHMENTS",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -258,7 +259,7 @@ export const chatWithAttachments: Action = {
             actions: ["CHAT_WITH_ATTACHMENTS_FAILED"],
           },
           metadata: {
-            type: "CHAT_WITH_ATTACHMENTS",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -390,6 +391,6 @@ ${currentSummary.trim()}
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default chatWithAttachments;

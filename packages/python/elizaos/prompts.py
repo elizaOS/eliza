@@ -45,7 +45,7 @@ CHOOSE_OPTION_TEMPLATE = """# Task: Choose an option from the available choices.
 # Available Options:
 {{options}}
 
-# Instructions: 
+# Instructions:
 Analyze the options and select the most appropriate one based on the current context.
 Provide your reasoning and the selected option ID.
 
@@ -215,7 +215,7 @@ IMPORTANT ACTION PARAMETERS:
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
-- If the message asks about or references specific people, include "ENTITIES" in your providers list  
+- If the message asks about or references specific people, include "ENTITIES" in your providers list
 - If the message asks about relationships or connections between people, include "RELATIONSHIPS" in your providers list
 - If the message asks about facts or specific information, include "FACTS" in your providers list
 - If the message asks about the environment or world context, include "WORLD" in your providers list
@@ -239,7 +239,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 </keys>
 
 <output>
-Do NOT include any thinking, reasoning, or <think> sections in your response. 
+Do NOT include any thinking, reasoning, or <think> sections in your response.
 Go directly to the XML response format without any preamble or explanation.
 
 Respond using XML format like this:

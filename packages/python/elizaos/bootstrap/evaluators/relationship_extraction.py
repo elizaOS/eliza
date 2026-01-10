@@ -10,9 +10,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from elizaos.types import Evaluator
-
 from elizaos.bootstrap.types import EvaluatorResult
+from elizaos.types import Evaluator
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State

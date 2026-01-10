@@ -100,7 +100,8 @@ export const routes: Route[] = [
         logger.debug('[API /api/tags] Fetching all distinct tags');
 
         // Use runtime.db which should be the Drizzle instance from the adapter
-        if (!runtime.db || typeof runtime.db.execute !== 'function') {
+        const db = runtime.db as { execute?: (query: unknown) => Promise<unknown> } | undefined;
+        if (!db || typeof db.execute !== 'function') {
           logger.error('[API /api/tags] runtime.db is not available or not a Drizzle instance.');
           return res.status(500).json({ error: 'Database not available' });
         }
@@ -115,7 +116,7 @@ export const routes: Route[] = [
           } else {
             // Try SQLite detection
             try {
-              await runtime.db.execute(sql`SELECT sqlite_version()`);
+              await db.execute(sql`SELECT sqlite_version()`);
               dbType = 'sqlite';
             } catch {
               // Not SQLite
@@ -130,7 +131,7 @@ export const routes: Route[] = [
         if (dbType === 'postgres') {
           // PostgreSQL query using unnest
           const query = sql`SELECT DISTINCT unnest(tags) as tag FROM goal_tags WHERE tag IS NOT NULL;`;
-          result = await runtime.db.execute(query);
+          result = await db.execute(query);
         } else {
           // SQLite-compatible query
           const query = sql`
@@ -138,7 +139,7 @@ export const routes: Route[] = [
             FROM goal_tags 
             WHERE tag IS NOT NULL
           `;
-          result = await runtime.db.execute(query);
+          result = await db.execute(query);
         }
 
         // Drizzle's execute might return results differently depending on the driver

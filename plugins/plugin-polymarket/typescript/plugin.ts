@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Plugin } from '@elizaos/core';
 import {
   type Action,

@@ -40,8 +40,8 @@ async function extractTaskCancellation(
       .join('\n---\n');
 
     const messageHistory = formatMessages({
-      messages: state.data?.messages || [],
-      entities: state.data?.entities || [],
+      messages: (state.data?.messages as any[]) || [],
+      entities: (state.data?.entities as any[]) || [],
     });
 
     const prompt = composePrompt({
@@ -61,7 +61,7 @@ async function extractTaskCancellation(
     // Parse XML from the text results
     const parsedResult = parseKeyValueXml(result) as TaskCancellation | null;
 
-    logger.debug('Parsed XML Result', parsedResult);
+    logger.debug(`Parsed XML Result: ${JSON.stringify(parsedResult)}`);
 
     if (!parsedResult || typeof parsedResult.isFound === 'undefined') {
       logger.error('Failed to parse valid task cancellation information from XML');
@@ -114,7 +114,7 @@ export const cancelTodoAction: Action = {
     state: State | undefined,
     options: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ) => {
     try {
       if (!state) {
         if (callback) {
@@ -173,7 +173,7 @@ export const cancelTodoAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: "Could not determine which task to cancel" };
       }
 
       // Find the task in the available tasks
@@ -187,7 +187,7 @@ export const cancelTodoAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: `Could not find task: ${taskCancellation.taskName}` };
       }
 
       // Delete the task
@@ -201,6 +201,7 @@ export const cancelTodoAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: true, text: `Task cancelled: ${taskName}` };
     } catch (error) {
       logger.error('Error in cancelTodo handler:', error);
       if (callback) {
@@ -210,6 +211,7 @@ export const cancelTodoAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: false, error: (error as Error).message };
     }
   },
 

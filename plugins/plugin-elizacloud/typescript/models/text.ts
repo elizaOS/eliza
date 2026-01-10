@@ -38,7 +38,7 @@ function buildGenerateParams(
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
 
   const generateParams: Parameters<typeof generateText>[0] = {
-    model: openai.languageModel(modelName),
+    model: openai.languageModel(modelName) as unknown as Parameters<typeof generateText>[0]['model'],
     prompt: prompt,
     system: runtime.character.system ?? undefined,
     temperature: temperature,
@@ -70,8 +70,8 @@ function handleStreamingGeneration(
 
   return {
     textStream: streamResult.textStream,
-    text: streamResult.text,
-    usage: streamResult.usage.then((usage) => {
+    text: Promise.resolve(streamResult.text),
+    usage: Promise.resolve(streamResult.usage).then((usage) => {
       if (usage) {
         emitModelUsageEvent(runtime, modelType, prompt, usage);
         const inputTokens = usage.inputTokens ?? 0;
@@ -84,7 +84,7 @@ function handleStreamingGeneration(
       }
       return undefined;
     }),
-    finishReason: streamResult.finishReason,
+    finishReason: Promise.resolve(streamResult.finishReason) as Promise<string | undefined>,
   };
 }
 

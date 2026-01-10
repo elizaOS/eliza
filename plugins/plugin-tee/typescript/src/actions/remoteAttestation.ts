@@ -4,6 +4,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -51,7 +52,7 @@ export const remoteAttestationAction: Action = {
     _state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       const teeMode = runtime.getSetting("TEE_MODE");
       if (!teeMode) {
@@ -60,7 +61,7 @@ export const remoteAttestationAction: Action = {
           text: "TEE_MODE is not configured. Cannot generate attestation.",
           actions: ["NONE"],
         });
-        return false;
+        return { success: false, error: "TEE_MODE is not configured" };
       }
 
       // Build attestation message
@@ -77,7 +78,7 @@ export const remoteAttestationAction: Action = {
       logger.debug(`Generating attestation for: ${JSON.stringify(attestationMessage)}`);
 
       // Generate attestation
-      const provider = new PhalaRemoteAttestationProvider(teeMode);
+      const provider = new PhalaRemoteAttestationProvider(String(teeMode));
       const attestation = await provider.generateAttestation(
         JSON.stringify(attestationMessage)
       );
@@ -95,7 +96,7 @@ export const remoteAttestationAction: Action = {
         actions: ["NONE"],
       });
 
-      return true;
+      return { success: true, text: `Attestation generated: ${proofUrl}` };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Failed to generate remote attestation: ${errorMessage}`);
@@ -105,7 +106,7 @@ export const remoteAttestationAction: Action = {
         actions: ["NONE"],
       });
 
-      return false;
+      return { success: false, error: errorMessage };
     }
   },
 

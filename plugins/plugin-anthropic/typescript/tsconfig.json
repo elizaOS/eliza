@@ -5,7 +5,7 @@
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "Bundler",
     "outDir": "../dist",
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,

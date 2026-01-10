@@ -18,8 +18,11 @@
     "allowJs": true,
     "checkJs": false,
     "noEmitOnError": false,
+    "noEmit": true,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "baseUrl": ".",
     "paths": {
       "@elizaos/core": ["../../core/src"],

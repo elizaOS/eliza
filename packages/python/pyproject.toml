@@ -119,6 +119,9 @@ ignore = [
     "E501",  # line too long (handled by black)
     "B008",  # do not perform function calls in argument defaults
     "ARG001",  # unused function argument (common in test fixtures and callbacks)
+    "ARG002",  # unused method argument (common in handler patterns)
+    "SIM102",  # nested if statements (sometimes clearer for readability)
+    "SIM116",  # dictionary instead of if/elif (not always cleaner)
 ]
 
 [tool.ruff.lint.isort]

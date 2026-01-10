@@ -1,4 +1,4 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
+import type { Action, ActionResult, IAgentRuntime, Memory, State, HandlerCallback } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { SamTTSService } from '../services/SamTTSService';
 import { SPEECH_TRIGGERS, VOCALIZATION_PATTERNS, type SamTTSOptions } from '../types';
@@ -120,7 +120,7 @@ export const sayAloudAction: Action = {
     _state?: State,
     _options?: Record<string, unknown>,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     logger.info('[SAY_ALOUD] Processing speech request');
 
     const samService = runtime.getService('SAM_TTS') as SamTTSService;
@@ -137,5 +137,7 @@ export const sayAloudAction: Action = {
       action: 'SAY_ALOUD',
       audioData: Array.from(audioBuffer),
     });
+    
+    return { success: true, text: `Spoke: "${textToSpeak}"` };
   },
 };

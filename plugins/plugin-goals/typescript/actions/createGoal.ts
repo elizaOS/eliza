@@ -1,11 +1,13 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   formatMessages,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
+  type Entity,
   ModelType,
   parseKeyValueXml,
   type State,
@@ -42,8 +44,8 @@ async function extractGoalInfo(
 ): Promise<GoalInput | null> {
   try {
     const messageHistory = formatMessages({
-      messages: state.data.messages || [],
-      entities: state.data.entities || [],
+      messages: (state.data?.messages as Memory[]) || [],
+      entities: (state.data?.entities as Entity[]) || [],
     });
 
     const prompt = composePrompt({
@@ -148,7 +150,7 @@ export const createGoalAction: Action = {
     state: State | undefined,
     options: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       // Step 1: Compose state if needed
       const currentState = state || (await runtime.composeState(message, ['GOALS']));
@@ -164,7 +166,7 @@ export const createGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Could not understand goal description' };
       }
 
       // Step 3: Get the data service
@@ -184,7 +186,7 @@ export const createGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Goal limit reached' };
       }
 
       // Step 5: Check for similar goals
@@ -199,7 +201,7 @@ export const createGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Similar goal exists' };
       }
 
       // Step 6: Create the goal
@@ -242,6 +244,7 @@ export const createGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: true, text: successMessage };
     } catch (error) {
       logger.error('Error in createGoal handler:', error);
       if (callback) {
@@ -251,6 +254,7 @@ export const createGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 

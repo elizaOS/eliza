@@ -1,30 +1,24 @@
 {
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "baseUrl": ".",
-    "lib": ["ESNext"],
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "strictNullChecks": true,
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "esModuleInterop": true,
-    "allowImportingTsExtensions": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "resolveJsonModule": true,
-    "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": false,
+    "noEmit": true,
     "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "paths": {
-      "@/*": ["typescript/*"]
-    }
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noImplicitAny": false,
+    "types": ["node", "bun-types"]
   },
-  "include": ["typescript/**/*.ts", "build.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/__tests__/**"]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts"]
 }

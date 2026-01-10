@@ -406,8 +406,9 @@ export class FormsService extends Service {
       if (currentStep.onComplete) {
         try {
           await currentStep.onComplete(form, currentStep.id);
-        } catch (error) {
-          logger.error(`Error in step callback for ${currentStep.id}:`, error);
+        } catch (error: unknown) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          logger.error(`Error in step callback for ${currentStep.id}:`, errorMessage);
         }
       }
 
@@ -425,8 +426,9 @@ export class FormsService extends Service {
         if (form.onComplete) {
           try {
             await form.onComplete(form);
-          } catch (error) {
-            logger.error('Error in form completion callback:', error);
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error('Error in form completion callback:', errorMessage);
           }
         }
       }
@@ -529,10 +531,11 @@ export class FormsService extends Service {
         }
       }
 
-      logger.debug('Extracted form values from XML:', values);
+      logger.debug(`Extracted form values from XML: ${JSON.stringify(values)}`);
       return { values };
-    } catch (error) {
-      logger.error('Error extracting form values:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error extracting form values:', errorMessage);
       return { values: {} };
     }
   }
@@ -678,16 +681,18 @@ export class FormsService extends Service {
           `);
           this.tablesExist = schemaResult?.exists || false;
         }
-      } catch (error) {
+      } catch (error: unknown) {
         // If the query fails, assume tables don't exist
-        logger.debug('Could not check for forms tables:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.debug('Could not check for forms tables:', errorMessage);
         this.tablesExist = false;
       }
       
       this.tablesChecked = true;
       logger.info(`Forms database tables ${this.tablesExist ? 'found' : 'not found'}`);
-    } catch (error) {
-      logger.error('Error checking database tables:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error checking database tables:', errorMessage);
       this.tablesChecked = true;
       this.tablesExist = false;
     }
@@ -795,26 +800,29 @@ export class FormsService extends Service {
         // Commit all changes at once
         await database.run('COMMIT');
         logger.debug(`Successfully persisted ${formsToPersist.length} forms in batch`);
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Rollback entire batch on any error
         try {
           await database.run('ROLLBACK');
-        } catch (rollbackError) {
-          logger.error('Error rolling back batch transaction:', rollbackError);
+        } catch (rollbackError: unknown) {
+          const rollbackMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+          logger.error('Error rolling back batch transaction:', rollbackMsg);
         }
         
-        if (error.message?.includes('does not exist') || error.message?.includes('no such table')) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
           logger.warn('Forms tables do not exist. Marking tables as not found.');
           this.tablesExist = false;
           return;
         }
         
         // If batch fails, fall back to individual transactions
-        logger.warn('Batch persistence failed, falling back to individual transactions:', error);
+        logger.warn('Batch persistence failed, falling back to individual transactions:', errorMessage);
         await this.persistFormsIndividual();
       }
-    } catch (error) {
-      logger.error('Error in batch persistence:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error in batch persistence:', errorMessage);
     }
   }
 
@@ -891,8 +899,9 @@ export class FormsService extends Service {
             `, [formData.id, formData.agentId, formData.name, formData.description, formData.status, 
                 formData.currentStepIndex, formData.steps, formData.createdAt, formData.updatedAt, 
                 formData.completedAt, formData.metadata]);
-          } catch (dbError: any) {
-            if (dbError.message?.includes('does not exist') || dbError.message?.includes('no such table')) {
+          } catch (dbError: unknown) {
+            const dbErrorMsg = dbError instanceof Error ? dbError.message : String(dbError);
+            if (dbErrorMsg.includes('does not exist') || dbErrorMsg.includes('no such table')) {
               logger.warn('Forms table does not exist. Marking tables as not found.');
               this.tablesExist = false;
               return;
@@ -929,8 +938,9 @@ export class FormsService extends Service {
                 `, [fieldData.formId, fieldData.stepId, fieldData.fieldId, fieldData.label, 
                     fieldData.type, fieldData.value, fieldData.isSecret, fieldData.isOptional, 
                     fieldData.description, fieldData.criteria, fieldData.error, fieldData.metadata]);
-              } catch (dbError: any) {
-                if (dbError.message?.includes('does not exist') || dbError.message?.includes('no such table')) {
+              } catch (dbError: unknown) {
+                const dbErrorMsg = dbError instanceof Error ? dbError.message : String(dbError);
+                if (dbErrorMsg.includes('does not exist') || dbErrorMsg.includes('no such table')) {
                   logger.warn('Form fields table does not exist. Marking tables as not found.');
                   this.tablesExist = false;
                   return;
@@ -942,20 +952,23 @@ export class FormsService extends Service {
           
           // Commit the transaction if all operations succeeded
           await database.run('COMMIT');
-        } catch (error) {
+        } catch (error: unknown) {
           // Rollback on any error
           try {
             await database.run('ROLLBACK');
-          } catch (rollbackError) {
-            logger.error(`Error rolling back transaction for form ${formId}:`, rollbackError);
+          } catch (rollbackError: unknown) {
+            const rollbackMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+            logger.error(`Error rolling back transaction for form ${formId}:`, rollbackMsg);
           }
-          logger.error(`Error persisting form ${formId}:`, error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error(`Error persisting form ${formId}:`, errorMsg);
         }
       }
 
       logger.debug(`Persisted forms to database`);
-    } catch (error) {
-      logger.error('Error persisting forms:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error persisting forms:', errorMessage);
     }
   }
 
@@ -986,8 +999,9 @@ export class FormsService extends Service {
           WHERE agent_id = ? AND status != 'completed'
           ORDER BY updated_at DESC
         `, [this.runtime.agentId]);
-      } catch (error: any) {
-        if (error.message?.includes('does not exist') || error.message?.includes('no such table')) {
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
           logger.debug('Forms table does not exist during restoration');
           this.tablesExist = false;
           return;
@@ -1020,8 +1034,9 @@ export class FormsService extends Service {
               WHERE form_id = ?
               ORDER BY step_id, field_id
             `, [formRow.id]);
-          } catch (error: any) {
-            if (error.message?.includes('does not exist') || error.message?.includes('no such table')) {
+          } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage.includes('does not exist') || errorMessage.includes('no such table')) {
               logger.debug('Form fields table does not exist during restoration');
               this.tablesExist = false;
               return;
@@ -1045,7 +1060,7 @@ export class FormsService extends Service {
               id: step.id,
               name: step.name,
               completed: step.completed || false,
-              fields: (fieldsByStep.get(step.id) || []).map((fieldRow: any) => {
+              fields: (fieldsByStep.get(step.id) || []).map((fieldRow: Record<string, unknown>): FormField | null => {
                 const validatedField = this.validateAndSanitizeFieldData(fieldRow);
                 if (!validatedField) {
                   logger.warn(`Skipping invalid field ${fieldRow.field_id} in form ${formRow.id}`);
@@ -1053,8 +1068,8 @@ export class FormsService extends Service {
                 }
                 
                 // Decrypt first if needed
-                let fieldValue = fieldRow.value !== null 
-                  ? this.parseFieldValue(fieldRow.value, fieldRow.type, fieldRow.is_secret) 
+                let fieldValue: string | number | boolean | undefined = fieldRow.value !== null 
+                  ? this.parseFieldValue(String(fieldRow.value), String(fieldRow.type), Boolean(fieldRow.is_secret)) 
                   : undefined;
                 
                 // Validate decrypted value
@@ -1066,7 +1081,7 @@ export class FormsService extends Service {
                     logger.warn(`Invalid field value after decryption for ${fieldRow.field_id}:`, valueResult.error.format());
                     fieldValue = undefined; // Clear invalid values
                   } else {
-                    fieldValue = valueResult.data; // Use validated value
+                    fieldValue = valueResult.data as string | number | boolean; // Use validated value
                   }
                 }
                 
@@ -1074,7 +1089,7 @@ export class FormsService extends Service {
                   ...validatedField,
                   value: fieldValue,
                 };
-              }).filter(field => field !== null),
+              }).filter((field: FormField | null): field is FormField => field !== null),
             })),
           };
 
@@ -1086,14 +1101,16 @@ export class FormsService extends Service {
           } else {
             logger.warn(`Form ${form.id} has no valid steps/fields, skipping`);
           }
-        } catch (error) {
-          logger.error(`Error restoring form ${formRow.id}:`, error);
+        } catch (error: unknown) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          logger.error(`Error restoring form ${formRow.id}:`, errorMsg);
         }
       }
 
       logger.info(`Restored ${this.forms.size} forms from database`);
-    } catch (error) {
-      logger.error('Error restoring forms:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error restoring forms:', errorMessage);
     }
   }
 

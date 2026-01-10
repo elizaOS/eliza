@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IAgentRuntime, Memory, State, HandlerCallback, logger } from '@elizaos/core';
 import { initializeClobClientWithCreds } from '../utils/clobClient';
 

@@ -82,13 +82,25 @@ export const formsProvider: Provider = {
         formsData.push(form);
       }
 
+      // Serialize forms to ProviderValue-compatible format
+      const serializedForms = formsData.map(form => ({
+        id: form.id,
+        name: form.name,
+        description: form.description ?? null,
+        status: form.status,
+        currentStepIndex: form.currentStepIndex,
+        stepsCount: form.steps.length,
+        createdAt: form.createdAt,
+        updatedAt: form.updatedAt,
+      }));
+
       return {
         text: contextText,
         values: {
           activeFormsCount: activeForms.length,
         },
         data: {
-          forms: formsData,
+          forms: serializedForms,
         },
       };
     } catch (error) {

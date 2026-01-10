@@ -8,6 +8,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  MemoryType,
   ModelType,
   parseJSONObjectFromText,
   type State,
@@ -177,7 +178,7 @@ const findChannel = async (
   }
 };
 
-export const leaveChannel: Action = {
+export const leaveChannel = {
   name: "LEAVE_CHANNEL",
   similes: [
     "LEAVE_CHANNEL",
@@ -307,7 +308,7 @@ export const leaveChannel: Action = {
                 actions: ["LEAVE_VOICE_STARTED"],
               },
               metadata: {
-                type: "LEAVE_VOICE",
+                type: MemoryType.CUSTOM,
               },
             },
             "messages",
@@ -422,7 +423,7 @@ export const leaveChannel: Action = {
               actions: ["LEAVE_VOICE_STARTED"],
             },
             metadata: {
-              type: "LEAVE_VOICE",
+              type: MemoryType.CUSTOM,
             },
           },
           "messages",
@@ -591,6 +592,6 @@ export const leaveChannel: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default leaveChannel;

@@ -11,7 +11,6 @@ import type {
   RobloxConfig,
   RobloxUser,
   RobloxExperienceInfo,
-  RobloxServerInfo,
   DataStoreEntry,
   MessagingServiceMessage,
 } from "../types";

@@ -7,6 +7,7 @@ rooms, entities, or channels.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -83,15 +84,11 @@ class SendMessageAction:
                 room_str = target.get("roomId")
                 entity_str = target.get("entityId")
                 if room_str:
-                    try:
+                    with contextlib.suppress(ValueError):
                         target_room_id = UUID(room_str)
-                    except ValueError:
-                        pass
                 if entity_str:
-                    try:
+                    with contextlib.suppress(ValueError):
                         target_entity_id = UUID(entity_str)
-                    except ValueError:
-                        pass
 
         if not target_room_id:
             return ActionResult(

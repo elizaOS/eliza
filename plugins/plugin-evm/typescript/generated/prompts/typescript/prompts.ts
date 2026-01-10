@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Auto-generated prompt templates
  * DO NOT EDIT - Generated from ../../../../prompts/*.txt

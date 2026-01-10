@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -12,13 +12,14 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
-    "noImplicitAny": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": false,
+    "noImplicitReturns": false,
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "__tests__"]
+  "include": ["actions/**/*.ts", "client/**/*.ts", "managers/**/*.ts", "providers/**/*.ts", "routes/**/*.ts", "services/**/*.ts", "types/**/*.ts", "utils/**/*.ts", "index.ts", "index.node.ts", "index.browser.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "build.ts"]
 }

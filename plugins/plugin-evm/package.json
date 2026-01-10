@@ -43,7 +43,7 @@
     "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build.ts",
     "dev": "bun run build.ts --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p typescript/tsconfig.json",
     "clean": "rm -rf dist .turbo node_modules .turbo-tsconfig.json *.tsbuildinfo",
     "format": "prettier --write .",
     "format:check": "prettier --check ./typescript",

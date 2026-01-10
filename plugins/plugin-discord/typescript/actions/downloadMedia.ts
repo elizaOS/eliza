@@ -12,6 +12,7 @@ import {
   parseJSONObjectFromText,
   ServiceType,
   type State,
+  MemoryType,
 } from "@elizaos/core";
 import { mediaUrlTemplate } from "../generated/prompts/typescript/prompts.js";
 
@@ -51,7 +52,7 @@ const getMediaUrl = async (
   return null;
 };
 
-export const downloadMedia: Action = {
+export const downloadMedia = {
   name: "DOWNLOAD_MEDIA",
   similes: [
     "DOWNLOAD_VIDEO",
@@ -107,7 +108,7 @@ export const downloadMedia: Action = {
             actions: ["DOWNLOAD_MEDIA_FAILED"],
           },
           metadata: {
-            type: "DOWNLOAD_MEDIA",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -222,6 +223,6 @@ export const downloadMedia: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default downloadMedia;

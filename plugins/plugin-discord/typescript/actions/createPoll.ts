@@ -43,8 +43,8 @@ const getPollInfo = async (
       parsedResponse.options.length >= 2
     ) {
       return {
-        question: parsedResponse.question,
-        options: parsedResponse.options.slice(0, 10), // Max 10 options
+        question: String(parsedResponse.question),
+        options: parsedResponse.options.slice(0, 10).map(String), // Max 10 options
         useEmojis: parsedResponse.useEmojis !== false, // Default to true
       };
     }
@@ -57,7 +57,7 @@ const numberEmojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6�
 const letterEmojis = ["🇦", "🇧", "🇨", "🇩", "🇪", "🇫", "🇬", "🇭", "🇮", "🇯"];
 const yesNoEmojis = ["✅", "❌"];
 
-export const createPoll: Action = {
+export const createPoll = {
   name: "CREATE_POLL",
   similes: [
     "CREATE_POLL",
@@ -239,6 +239,6 @@ export const createPoll: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default createPoll;

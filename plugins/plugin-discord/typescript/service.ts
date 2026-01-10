@@ -454,7 +454,7 @@ export class DiscordService extends Service implements IDiscordService {
                   ...(content.action ? { action: content.action } : {}),
                 },
                 metadata: {
-                  type: "message",
+                  type: MemoryType.MESSAGE,
                 },
                 createdAt: sentMsg.createdTimestamp || Date.now(),
               };
@@ -2585,7 +2585,6 @@ export class DiscordService extends Service implements IDiscordService {
      * @param params.commands - Array of commands to register
      * @param params.allowAllChannels - (Deprecated) Map of command names to bypass flags
      */
-    // @ts-expect-error - Custom event type not in EventPayloadMap
     this.runtime.registerEvent(
       "DISCORD_REGISTER_COMMANDS",
       async (params: DiscordRegisterCommandsPayload) => {
@@ -4273,7 +4272,7 @@ export class DiscordService extends Service implements IDiscordService {
     }
 
     const metadata = {
-      type: "message" as const,
+      type: MemoryType.CUSTOM as MemoryType.CUSTOM,
       entityName:
         ((message.member as any) && (message.member as any).displayName) ??
         ((message.author as any) && (message.author as any).globalName) ??

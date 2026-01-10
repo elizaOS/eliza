@@ -23,7 +23,7 @@ export async function handleTextSmall(
     const chunks: string[] = [];
     for await (const chunk of client.streamText({
       prompt: params.prompt,
-      system: params.system,
+      system: runtime.character?.system,
       model,
       maxTokens: params.maxTokens,
       temperature: params.temperature,
@@ -37,7 +37,7 @@ export async function handleTextSmall(
 
   return client.generateText({
     prompt: params.prompt,
-    system: params.system,
+    system: runtime.character?.system,
     model,
     maxTokens: params.maxTokens,
     temperature: params.temperature,
@@ -64,7 +64,7 @@ export async function handleTextLarge(
     const chunks: string[] = [];
     for await (const chunk of client.streamText({
       prompt: params.prompt,
-      system: params.system,
+      system: runtime.character?.system,
       model,
       maxTokens: params.maxTokens,
       temperature: params.temperature,
@@ -78,7 +78,7 @@ export async function handleTextLarge(
 
   return client.generateText({
     prompt: params.prompt,
-    system: params.system,
+    system: runtime.character?.system,
     model,
     maxTokens: params.maxTokens,
     temperature: params.temperature,

@@ -37,7 +37,7 @@ const getUserIdentifier = async (
     const parsedResponse = parseJSONObjectFromText(response);
     if (parsedResponse && parsedResponse.userIdentifier) {
       return {
-        userIdentifier: parsedResponse.userIdentifier,
+        userIdentifier: String(parsedResponse.userIdentifier),
         detailed: parsedResponse.detailed === true,
       };
     }
@@ -87,7 +87,7 @@ const formatUserInfo = (
   return basicInfo.join("\n");
 };
 
-export const getUserInfo: Action = {
+export const getUserInfo = {
   name: "GET_USER_INFO",
   similes: [
     "GET_USER_INFO",
@@ -266,6 +266,6 @@ export const getUserInfo: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default getUserInfo;

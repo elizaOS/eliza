@@ -3,6 +3,14 @@ import { and, eq, isNull, asc, inArray, type SQL } from 'drizzle-orm';
 import { goalsTable, goalTagsTable } from '../schema.js';
 import { v4 as uuidv4 } from 'uuid';
 
+// Type helper for Drizzle db instance
+type DrizzleDB = {
+  insert: (table: any) => { values: (values: any) => { returning: () => Promise<any[]>; onConflictDoNothing: () => { execute: () => Promise<void> } } };
+  select: (fields?: any) => { from: (table: any) => { where: (condition?: any) => { orderBy: (...args: any[]) => Promise<any[]> } & Promise<any[]> } };
+  update: (table: any) => { set: (values: any) => { where: (condition: any) => Promise<any> } };
+  delete: (table: any) => { where: (condition: any) => Promise<any> };
+};
+
 /**
  * Goal data structure from database
  */
@@ -44,7 +52,7 @@ export class GoalDataService {
     tags?: string[];
   }): Promise<UUID | null> {
     try {
-      const db = this.runtime.db;
+      const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error('Database not available');
 
       // Create the goal
@@ -98,7 +106,7 @@ export class GoalDataService {
     tags?: string[];
   }): Promise<GoalData[]> {
     try {
-      const db = this.runtime.db;
+      const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error('Database not available');
 
       const conditions: SQL[] = [];
@@ -168,7 +176,7 @@ export class GoalDataService {
    */
   async getGoal(goalId: UUID): Promise<GoalData | null> {
     try {
-      const db = this.runtime.db;
+      const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error('Database not available');
 
       const [goal] = await db.select().from(goalsTable).where(eq(goalsTable.id, goalId));
@@ -206,7 +214,7 @@ export class GoalDataService {
     }
   ): Promise<boolean> {
     try {
-      const db = this.runtime.db;
+      const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error('Database not available');
 
       // Update goal fields
@@ -251,7 +259,7 @@ export class GoalDataService {
    */
   async deleteGoal(goalId: UUID): Promise<boolean> {
     try {
-      const db = this.runtime.db;
+      const db = this.runtime.db as DrizzleDB | undefined;
       if (!db) throw new Error('Database not available');
 
       await db.delete(goalsTable).where(eq(goalsTable.id, goalId));

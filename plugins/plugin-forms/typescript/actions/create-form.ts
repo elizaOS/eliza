@@ -1,4 +1,4 @@
-import { Action, IAgentRuntime, Memory, State, HandlerCallback, logger } from '@elizaos/core';
+import { Action, IAgentRuntime, Memory, State, HandlerCallback, logger, type HandlerOptions } from '@elizaos/core';
 import { FormsService } from '../services/forms-service';
 
 /**
@@ -35,7 +35,7 @@ export const createFormAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    options?: { [key: string]: unknown },
+    options?: HandlerOptions,
     callback?: HandlerCallback
   ) => {
     try {
@@ -46,7 +46,8 @@ export const createFormAction: Action = {
 
       // Extract form type from message or options
       const text = message.content.text?.toLowerCase() || '';
-      const templateName = (options?.template as string) || extractFormType(text) || 'contact'; // Default to contact form
+      const params = options?.parameters as Record<string, unknown> | undefined;
+      const templateName = (params?.template as string) || extractFormType(text) || 'contact'; // Default to contact form
 
       logger.debug(`Creating form with template: ${templateName}`);
 
@@ -96,8 +97,9 @@ export const createFormAction: Action = {
           templateUsed: templateName,
         },
       };
-    } catch (error) {
-      logger.error('Error in CREATE_FORM action:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error('Error in CREATE_FORM action:', errorMessage);
       await callback?.({
         text: 'I encountered an error while creating the form. Please try again.',
         actions: [],

@@ -70,13 +70,13 @@ export async function callLLMWithTimeout<T>(
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as T;
-    logger.debug(`[${actionName}] Parsed LLM response:`, parsed);
+    logger.debug(`[${actionName}] Parsed LLM response: ${JSON.stringify(parsed)}`);
     return parsed;
   } catch (error) {
     if (error instanceof SyntaxError) {
-      logger.error(`[${actionName}] Failed to parse LLM response as JSON:`, error);
+      logger.error(`[${actionName}] Failed to parse LLM response as JSON: ${error.message}`);
     } else {
-      logger.error(`[${actionName}] LLM call error:`, error);
+      logger.error(`[${actionName}] LLM call error: ${String(error)}`);
     }
     return null;
   }

@@ -62,7 +62,7 @@ export class BlueSkyClient {
       refreshJwt: response.data.refreshJwt,
     };
 
-    logger.info("Authenticated with BlueSky", { handle: this.session.handle });
+    logger.info(`Authenticated with BlueSky: ${this.session.handle}`);
     return this.session;
   }
 
@@ -103,10 +103,10 @@ export class BlueSkyClient {
     return {
       cursor: response.data.cursor,
       feed: response.data.feed.map((item) => ({
-        post: item.post as BlueSkyPost,
+        post: item.post as unknown as BlueSkyPost,
         reply: item.reply ? {
-          root: item.reply.root as BlueSkyPost,
-          parent: item.reply.parent as BlueSkyPost,
+          root: item.reply.root as unknown as BlueSkyPost,
+          parent: item.reply.parent as unknown as BlueSkyPost,
         } : undefined,
         reason: item.reason as Record<string, unknown>,
       })),
@@ -115,7 +115,7 @@ export class BlueSkyClient {
 
   async sendPost(request: CreatePostRequest): Promise<BlueSkyPost> {
     if (this.config.dryRun) {
-      logger.info("Dry run: would create post", { text: request.content.text });
+      logger.info(`Dry run: would create post with text: ${request.content.text}`);
       return this.mockPost(request.content.text);
     }
 
@@ -144,12 +144,12 @@ export class BlueSkyClient {
       throw new BlueSkyError("Failed to retrieve created post", "POST_CREATE_FAILED");
     }
 
-    return (thread.data.thread as { post: BlueSkyPost }).post;
+    return (thread.data.thread as unknown as { post: BlueSkyPost }).post;
   }
 
   async deletePost(uri: string): Promise<void> {
     if (this.config.dryRun) {
-      logger.info("Dry run: would delete post", { uri });
+      logger.info(`Dry run: would delete post: ${uri}`);
       return;
     }
     await this.agent.deletePost(uri);
@@ -157,7 +157,7 @@ export class BlueSkyClient {
 
   async likePost(uri: string, cid: string): Promise<void> {
     if (this.config.dryRun) {
-      logger.info("Dry run: would like post", { uri });
+      logger.info(`Dry run: would like post: ${uri}`);
       return;
     }
     await this.agent.like(uri, cid);
@@ -165,7 +165,7 @@ export class BlueSkyClient {
 
   async repost(uri: string, cid: string): Promise<void> {
     if (this.config.dryRun) {
-      logger.info("Dry run: would repost", { uri });
+      logger.info({ uri }, "Dry run: would repost");
       return;
     }
     await this.agent.repost(uri, cid);
@@ -216,7 +216,7 @@ export class BlueSkyClient {
 
   async sendMessage(request: SendMessageRequest): Promise<BlueSkyMessage> {
     if (this.config.dryRun) {
-      logger.info("Dry run: would send message", { convoId: request.convoId });
+      logger.info({ convoId: request.convoId }, "Dry run: would send message");
       return this.mockMessage(request.message.text ?? "");
     }
 

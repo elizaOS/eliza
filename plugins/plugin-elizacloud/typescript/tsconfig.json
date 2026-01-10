@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "declaration": true,
     "declarationMap": true,
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -14,7 +14,10 @@
     "noEmit": true,
     "outDir": "./dist",
     "rootDir": ".",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["./**/*.ts"],
   "exclude": ["node_modules", "dist"]

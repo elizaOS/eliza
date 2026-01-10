@@ -2,14 +2,14 @@
  * Webhook route handler for Farcaster.
  */
 
-import type { Route } from "@elizaos/core";
+import type { Route, RouteRequest, RouteResponse, IAgentRuntime } from "@elizaos/core";
 
 export const farcasterWebhookRoutes: Route[] = [
   {
     type: "POST",
     name: "Farcaster Webhook Handler",
     path: "/webhook",
-    handler: async (req: { body: unknown }, res: { status: (code: number) => { json: (data: unknown) => void } }, runtime: { getService?: (name: string) => unknown; agentId?: string }) => {
+    handler: async (req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime) => {
       try {
         const webhookData = req.body as { type?: string };
         const eventType = webhookData.type;

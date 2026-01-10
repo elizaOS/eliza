@@ -9,9 +9,9 @@ from __future__ import annotations
 import asyncio
 import re
 import uuid
+import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from typing import Any
-import xml.etree.ElementTree as ET
 
 from elizaos.logger import Logger, create_logger
 from elizaos.settings import decrypt_secret, get_salt
@@ -320,7 +320,7 @@ class AgentRuntime(IAgentRuntime):
             enable_autonomy = self._capability_enable_autonomy or (
                 settings.get("ENABLE_AUTONOMY") in (True, "true")
             )
-            
+
             if disable_basic or enable_extended or skip_character_provider or enable_autonomy:
                 from elizaos.bootstrap import CapabilityConfig, create_bootstrap_plugin
                 config = CapabilityConfig(
