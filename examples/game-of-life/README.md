@@ -1,35 +1,42 @@
-# Tic-Tac-Toe Demo - No LLM, Pure Minimax
+# Agentic Game of Life
 
-A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**. 
+A multi-agent evolution simulation demonstrating elizaOS's ability to run autonomous agents **without an LLM**.
 
 ## Key Features
 
-- **No Character Required**: Uses the new anonymous character feature (`Agent-N`)
-- **No LLM Calls**: Custom model handlers implement perfect play via minimax
-- **Custom Model Handlers**: Intercepts `TEXT_LARGE` and `TEXT_SMALL` to return optimal moves
-- **plugin-localdb**: Uses local database for persistence
+- **Self-Replicating Agents**: 40+ agents with DNA that mutates during reproduction
+- **Emergent Evolution**: Natural selection favors survival strategies over generations
+- **No LLM Required**: Custom model handlers implement agent decision-making
+- **Real-time Visualization**: Watch the ecosystem evolve in your terminal
 
 ## Available Implementations
 
-- [TypeScript](./typescript/) - Full implementation with interactive play
+- [TypeScript](./typescript/) - Full implementation with visual simulation
 - [Python](./python/) - Python implementation (coming soon)
 - [Rust](./rust/) - Rust implementation (coming soon)
 
 ## How It Works
 
-Instead of calling an LLM, this agent registers custom model handlers that:
+Agents have DNA (speed, vision, aggression, metabolism) that determines behavior:
 
-1. Parse the board state from the text prompt
-2. Use the minimax algorithm to find the optimal move
-3. Return the move as a simple number (0-8)
+1. **Perceive**: Scan for nearby food and other agents
+2. **Decide**: Choose to move toward food, flee from threats, or hunt prey
+3. **Act**: Move, eat food, fight, or reproduce
+4. **Evolve**: Offspring inherit mutated DNA from parents
 
-The agent **never loses** - it will always win or draw!
+Watch emergent behaviors like predator-prey dynamics, population cycles, and evolution of traits!
 
 ## Quick Start
 
 ```bash
-# TypeScript
-bun run examples/tic-tac-toe/typescript/game.ts
+# Standard mode
+bun run examples/game-of-life/typescript/game.ts
+
+# Fast mode (10x speed)
+bun run examples/game-of-life/typescript/game.ts --fast
+
+# With statistics
+bun run examples/game-of-life/typescript/game.ts --stats
 ```
 
 ## Architecture
@@ -40,22 +47,20 @@ bun run examples/tic-tac-toe/typescript/game.ts
 │                 (Anonymous Character)                   │
 ├─────────────────────────────────────────────────────────┤
 │  plugins:                                               │
-│  ├── plugin-localdb     (persistence)                   │
-│  ├── bootstrap-plugin   (basic capabilities)            │
-│  └── tic-tac-toe-plugin (custom model handlers)         │
+│  ├── plugin-sql          (persistence)                  │
+│  ├── bootstrap-plugin    (basic capabilities)           │
+│  └── game-of-life-plugin (agent decision handlers)      │
 ├─────────────────────────────────────────────────────────┤
-│  runtime.useModel(TEXT_SMALL, { prompt: boardState })   │
-│           ↓                                             │
-│  ticTacToeModelHandler() ← NOT an LLM!                  │
-│           ↓                                             │
-│  parseBoardFromText() → minimax() → optimal move        │
+│  Each tick, for each agent:                             │
+│  perceive() → decide() → act() → evolve()               │
+│                                                         │
+│  All decisions made algorithmically (no LLM!)           │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Performance
+## What Makes This Cool
 
-Since there's no LLM latency, the AI responds instantly:
-- ~100 games per second on typical hardware
-- Zero API calls
-- Zero cost
-
+- **Digital Life**: True self-replicating agents with heredity and mutation
+- **Zero Cost**: No API calls, pure algorithmic simulation
+- **elizaOS Showcase**: Custom model handlers, plugin system, agent runtime
+- **Emergent Complexity**: Simple rules → rich ecosystem dynamics

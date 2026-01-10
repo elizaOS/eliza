@@ -91,34 +91,7 @@ function isTransferContent(content: unknown): content is TransferContent {
  * - Recipient wallet address
  * - Amount to transfer
  */
-const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example responses:
-For SPL tokens:
-\`\`\`json
-{
-    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": "1000"
-}
-\`\`\`
-
-For SOL:
-\`\`\`json
-{
-    "tokenAddress": null,
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": 1.5
-}
-\`\`\`
-
-{{recentMessages}}
-
-Extract the following information about the requested transfer:
-- Token contract address (use null for SOL transfers)
-- Recipient wallet address
-- Amount to transfer
-`;
+import { transferTemplate } from "../generated/prompts/typescript/prompts.js";
 
 export default {
   name: "TRANSFER_SOLANA",

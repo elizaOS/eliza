@@ -1,82 +1,70 @@
-# Tic-Tac-Toe Demo - No LLM, Pure Minimax
+# Agentic Game of Life
 
-A tic-tac-toe game demonstrating elizaOS's ability to run agents **without an LLM**. This example showcases:
+A multi-agent simulation demonstrating emergent behavior using elizaOS. Watch 40+ autonomous agents evolve on a grid world through natural selection!
 
-- **No Character Required**: Uses the new anonymous character feature (`Agent-N`)
-- **No LLM Calls**: Custom model handlers implement perfect play via minimax
-- **Custom Model Handlers**: Intercepts `TEXT_LARGE` and `TEXT_SMALL` to return optimal moves
-- **plugin-localdb**: Uses local database for persistence
+## Key Features
+
+- **40+ Autonomous Agents**: Each with unique DNA (speed, vision, aggression, metabolism)
+- **Self-Replication**: Agents reproduce when they have enough energy, passing mutated DNA to offspring
+- **Evolution**: Over generations, natural selection favors survival strategies
+- **No LLM Required**: Custom model handlers implement agent decision-making algorithmically
+- **Real-time Visualization**: Watch the ecosystem evolve in your terminal
 
 ## How It Works
 
-Instead of calling an LLM, this agent registers custom model handlers that:
+### Agent DNA
 
-1. Parse the board state from the text prompt
-2. Use the minimax algorithm to find the optimal move
-3. Return the move as a simple number (0-8)
+Each agent has traits that determine behavior:
 
-The agent **never loses** - it will always win or draw!
+| Trait | Range | Effect |
+|-------|-------|--------|
+| Speed | 1-3 | How many cells can move per turn |
+| Vision | 1-5 | How far can see food and other agents |
+| Aggression | 0-100% | Fight vs flee tendency |
+| Metabolism | 0.5-2.0 | Energy efficiency (lower = better) |
+
+### Game Rules
+
+1. **Energy**: Agents start with 100 energy, max 200
+2. **Movement**: Moving costs energy based on speed and metabolism
+3. **Food** (🌱): Spawns randomly, gives 30 energy when eaten
+4. **Reproduction**: When energy > 150, spawn offspring with mutated DNA
+5. **Combat**: Aggressive agents can steal energy from others on collision
+6. **Death**: Energy reaches 0 = death
+
+### Emergent Behaviors
+
+Watch for these patterns:
+- **Predator-Prey Dynamics**: Aggressive agents hunt weaker ones
+- **Evolution of Speed**: Fast agents escape predators or catch prey
+- **Vision Arms Race**: Better vision helps find food and avoid threats
+- **Population Cycles**: Boom and bust cycles as food/predators fluctuate
 
 ## Running
 
 ```bash
-# Interactive mode (prompts for game mode)
-bun run examples/tic-tac-toe/typescript/game.ts
+# Standard speed
+bun run examples/game-of-life/typescript/game.ts
 
-# Watch AI vs AI (non-interactive)
-bun run examples/tic-tac-toe/typescript/game.ts --watch
+# Fast mode (10x speed)
+bun run examples/game-of-life/typescript/game.ts --fast
 
-# Play against AI
-bun run examples/tic-tac-toe/typescript/game.ts --human
+# With detailed statistics
+bun run examples/game-of-life/typescript/game.ts --stats
 
-# Run benchmark
-bun run examples/tic-tac-toe/typescript/game.ts --bench
+# Combined
+bun run examples/game-of-life/typescript/game.ts --fast --stats
 ```
 
-### Command Line Options
+### Legend
 
-| Flag | Alias | Description |
-|------|-------|-------------|
-| `--watch` | `-w`, `watch` | AI vs AI mode |
-| `--human` | `-h`, `human`, `play` | Play against AI |
-| `--bench` | `-b`, `bench`, `benchmark` | Performance benchmark |
-| `--no-prompt` | `-y` | Skip "play again" prompts |
-
-## Game Modes
-
-1. **Play vs AI** - You play as X, the perfect AI plays as O
-2. **Watch AI vs AI** - Two perfect AIs play each other (always draws!)
-3. **Benchmark** - Performance test running 100 games instantly
-
-## Key Code
-
-### Anonymous Character (No Character Required)
-
-```typescript
-const runtime = new AgentRuntime({
-  // No character - uses anonymous Agent-N
-  plugins: [localDbPlugin, bootstrapPlugin, ticTacToePlugin],
-});
 ```
-
-### Custom Model Handler (No LLM)
-
-```typescript
-const ticTacToePlugin: Plugin = {
-  name: "tic-tac-toe",
-  description: "Perfect tic-tac-toe AI using minimax algorithm",
-  priority: 100, // High priority to override LLM handlers
-
-  models: {
-    [ModelType.TEXT_LARGE]: ticTacToeModelHandler,
-    [ModelType.TEXT_SMALL]: ticTacToeModelHandler,
-  },
-};
+● Normal agent
+◆ Aggressive agent (aggression > 70%)
+▲ Fast agent (speed = 3)
+◉ Sharp vision agent (vision >= 4)
+🌱 Food
 ```
-
-### Minimax Algorithm
-
-The AI uses the classic minimax algorithm with depth-based scoring to find the optimal move. It evaluates all possible game states and chooses the move that leads to the best outcome.
 
 ## Architecture
 
@@ -86,32 +74,48 @@ The AI uses the classic minimax algorithm with depth-based scoring to find the o
 │                 (Anonymous Character)                   │
 ├─────────────────────────────────────────────────────────┤
 │  plugins:                                               │
-│  ├── plugin-localdb     (persistence)                   │
-│  ├── bootstrap-plugin   (basic capabilities)            │
-│  └── tic-tac-toe-plugin (custom model handlers)         │
+│  ├── plugin-sql          (persistence)                  │
+│  ├── bootstrap-plugin    (basic capabilities)           │
+│  └── game-of-life-plugin (agent decision handlers)      │
 ├─────────────────────────────────────────────────────────┤
-│  runtime.useModel(TEXT_SMALL, { prompt: boardState })   │
+│  For each agent, each tick:                             │
+│  runtime.useModel(TEXT_SMALL, { prompt: agentId })      │
 │           ↓                                             │
-│  ticTacToeModelHandler() ← NOT an LLM!                  │
+│  agentModelHandler() ← NOT an LLM!                      │
 │           ↓                                             │
-│  parseBoardFromText() → minimax() → optimal move        │
+│  perceive(agent, world) → decideAction() → move/reproduce │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Position Reference
+## Configuration
 
+Edit `CONFIG` in `game.ts` to customize:
+
+```typescript
+const CONFIG = {
+  WORLD_WIDTH: 40,        // Grid width
+  WORLD_HEIGHT: 25,       // Grid height
+  INITIAL_AGENTS: 40,     // Starting population
+  MAX_AGENTS: 100,        // Population cap
+  STARTING_ENERGY: 100,   // Energy at birth
+  REPRODUCTION_THRESHOLD: 150, // Energy needed to reproduce
+  FOOD_SPAWN_RATE: 0.02,  // Food spawn probability
+  MUTATION_RATE: 0.2,     // Chance of DNA mutation
+  // ... more settings
+};
 ```
- 0 | 1 | 2
----+---+---
- 3 | 4 | 5
----+---+---
- 6 | 7 | 8
-```
+
+## What Makes This Cool
+
+1. **No LLM Calls**: Pure algorithmic agents, instant decisions
+2. **Emergent Complexity**: Simple rules → complex ecosystem behavior
+3. **Visual Evolution**: See DNA traits change across generations
+4. **elizaOS Integration**: Demonstrates custom model handlers and plugin system
+5. **Self-Replicating Agents**: True digital life simulation!
 
 ## Performance
 
-Since there's no LLM latency, the AI responds instantly:
-- ~100 games per second on typical hardware
-- Zero API calls
-- Zero cost
-
+- Runs 40+ agents simultaneously
+- ~150ms per tick (configurable)
+- Zero API calls, zero cost
+- Pure in-memory simulation

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from elizaos.types import Evaluator, ModelType
+
 from elizaos.bootstrap.types import EvaluatorResult
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import REFLECTION_TEMPLATE
-from elizaos.types import Evaluator, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State
@@ -75,10 +76,12 @@ async def evaluate_reflection(
         # Format interactions for prompt
         interactions_text = "\n".join(recent_interactions)
 
-        prompt = runtime.compose_prompt(
-            state=state,
-            template=runtime.character.templates.get("reflectionTemplate", REFLECTION_TEMPLATE),
+        template = (
+            runtime.character.templates.get("reflectionTemplate")
+            if runtime.character.templates and "reflectionTemplate" in runtime.character.templates
+            else REFLECTION_TEMPLATE
         )
+        prompt = runtime.compose_prompt(state=state, template=template)
         prompt = prompt.replace("{{recentInteractions}}", interactions_text)
 
         response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
@@ -134,6 +137,7 @@ async def evaluate_reflection(
 async def validate_reflection(
     runtime: IAgentRuntime,
     message: Memory,
+    _state: State | None = None,
 ) -> bool:
     """Validate that reflection can be performed."""
     # Reflection can always be performed
@@ -148,3 +152,4 @@ reflection_evaluator = Evaluator(
     handler=evaluate_reflection,
     examples=[],  # Examples can be added later
 )
+

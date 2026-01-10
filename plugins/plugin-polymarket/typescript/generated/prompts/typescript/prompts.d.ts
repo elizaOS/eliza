@@ -20,6 +20,8 @@ export declare const getOrderBookTemplate: string;
 export declare const GET_ORDER_BOOK_TEMPLATE: string;
 export declare const getOrderDetailsTemplate: string;
 export declare const GET_ORDER_DETAILS_TEMPLATE: string;
+export declare const getPriceHistoryTemplate: string;
+export declare const GET_PRICE_HISTORY_TEMPLATE: string;
 export declare const getSamplingMarketsTemplate: string;
 export declare const GET_SAMPLING_MARKETS_TEMPLATE: string;
 export declare const getSimplifiedMarketsTemplate: string;

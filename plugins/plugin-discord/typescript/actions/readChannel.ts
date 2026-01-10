@@ -13,42 +13,10 @@ import {
 import { PermissionsBitField, type TextChannel } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
+import { channelInfoTemplate } from "../generated/prompts/typescript/prompts.js";
 
-/**
- * Template for extracting channel information from the user's request.
- *
- * @type {string}
- * @description This template is used to determine which channel the user wants to read messages from,
- * and optionally how many messages to retrieve.
- *
- * @param {string} recentMessages - Placeholder for recent messages related to the request.
- * @param {string} senderName - Name of the sender requesting channel messages.
- *
- * @returns {string} - Formatted template with instructions and JSON structure for response.
- */
-export const channelInfoTemplate = `# Messages we are searching for channel information
-  {{recentMessages}}
-  
-  # Instructions: {{senderName}} is requesting to read messages from a specific Discord channel. Your goal is to determine:
-  1. The channel they want to read from (could be the current channel or a mentioned channel)
-  2. How many messages they want to read (default to 10 if not specified)
-  3. Whether they want a summary or just the messages
-  4. If they're looking for messages from a specific person
-  
-  If they say "this channel" or "here", use the current channel.
-  If they mention a specific channel name or ID, extract that.
-  If they ask to "summarize" or mention what someone is "talking about", set summarize to true.
-  
-  Your response must be formatted as a JSON block with this structure:
-  \`\`\`json
-  {
-    "channelIdentifier": "<current|channel-name|channel-id>",
-    "messageCount": <number between 1 and 50>,
-    "summarize": true/false,
-    "focusUser": "<username or null>"
-  }
-  \`\`\`
-  `;
+// Re-export for backwards compatibility
+export { channelInfoTemplate };
 
 /**
  * Get channel information from the user's request

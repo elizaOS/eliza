@@ -12,6 +12,8 @@ export declare const queueProposalTemplate: string;
 export declare const QUEUE_PROPOSAL_TEMPLATE: string;
 export declare const swapTemplate: string;
 export declare const SWAP_TEMPLATE: string;
+export declare const tokenBalanceTemplate: string;
+export declare const TOKEN_BALANCE_TEMPLATE: string;
 export declare const transferTemplate: string;
 export declare const TRANSFER_TEMPLATE: string;
 export declare const voteTemplate: string;

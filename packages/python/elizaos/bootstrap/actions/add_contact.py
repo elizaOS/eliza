@@ -130,7 +130,7 @@ class AddContactAction:
             entity_id = message.entity_id
             preferences = ContactPreferences(notes=notes) if notes else None
 
-            contact = await rolodex_service.add_contact(
+            await rolodex_service.add_contact(
                 entity_id=entity_id,
                 categories=categories,
                 preferences=preferences,

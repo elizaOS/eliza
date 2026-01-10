@@ -20,44 +20,10 @@ import {
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
+import { leaveChannelTemplate } from "../generated/prompts/typescript/prompts.js";
 
-/**
- * Template for extracting channel information from the user's request to leave a channel.
- *
- * @type {string}
- * @description This template is used to determine which channel the user wants the bot to stop listening to or leave.
- *
- * @param {string} recentMessages - Placeholder for recent messages related to the request.
- * @param {string} senderName - Name of the sender requesting to leave a channel.
- *
- * @returns {string} - Formatted template with instructions and JSON structure for response.
- */
-export const leaveChannelTemplate = `# Messages we are searching for channel leave information
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting the bot to leave a specific Discord channel (text or voice). Your goal is to determine which channel they want to leave.
-
-Extract the channel identifier from their request:
-- If they mention a channel like #general or <#channelid>, extract that
-- If they provide a channel name (like "dev-voice" or "general"), extract just the name
-- If they provide a channel ID (long number), extract that
-- If they say "this channel" or "here", use "current"
-- If they don't specify a channel but mention "voice", "vc", use "current" and mark as voice
-
-Examples:
-- "leave the dev-voice channel" -> channelIdentifier: "dev-voice", isVoiceChannel: true
-- "leave #general" -> channelIdentifier: "general", isVoiceChannel: false
-- "leave voice" -> channelIdentifier: "current", isVoiceChannel: true
-- "stop listening to this channel" -> channelIdentifier: "current", isVoiceChannel: false
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "channelIdentifier": "<actual-channel-name-or-id-or-current>",
-  "isVoiceChannel": true/false
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { leaveChannelTemplate };
 
 /**
  * Get channel information from the user's request

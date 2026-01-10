@@ -104,7 +104,10 @@ class AutonomyService(Service):
                 name="Autonomy World",
                 agentId=self._runtime.agent_id,
                 messageServerId=as_uuid("00000000-0000-0000-0000-000000000000"),
-                metadata=None,
+                metadata={
+                    "type": "autonomy",
+                    "description": "World for autonomous agent thinking",
+                },
             )
             await self._runtime.ensure_world_exists(world)
             

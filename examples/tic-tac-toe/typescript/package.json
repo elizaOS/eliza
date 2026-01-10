@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@clack/prompts": "^0.11.0"
   },
   "devDependencies": {

@@ -77,7 +77,7 @@ class UpdateRoleAction:
         "Update the role of an entity in a world. Use this to manage permissions and access levels."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
         """Validate that role update is possible."""
         room_id = message.room_id
         if not room_id:
@@ -149,12 +149,12 @@ class UpdateRoleAction:
                 f"- {entity_id}: {role}" for entity_id, role in current_roles.items()
             )
 
-            prompt = runtime.compose_prompt(
-                state=state,
-                template=runtime.character.templates.get(
-                    "updateRoleTemplate", UPDATE_ROLE_TEMPLATE
-                ),
+            template = (
+                runtime.character.templates.get("updateRoleTemplate")
+                if runtime.character.templates and "updateRoleTemplate" in runtime.character.templates
+                else UPDATE_ROLE_TEMPLATE
             )
+            prompt = runtime.compose_prompt(state=state, template=template)
             prompt = prompt.replace("{{roles}}", roles_context)
 
             response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)

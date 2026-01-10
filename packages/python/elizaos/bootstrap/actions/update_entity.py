@@ -11,9 +11,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import UPDATE_ENTITY_TEMPLATE
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
@@ -45,7 +45,7 @@ class UpdateEntityAction:
         "Use this to modify entity profiles, metadata, or attributes."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
         """Validate that entity update is possible."""
         # Check if there's an entity context
         return message.entity_id is not None
@@ -90,18 +90,18 @@ class UpdateEntityAction:
 
             entity_info = f"""
 Entity ID: {entity.id}
-Name: {entity.name or "Unknown"}
-Type: {entity.entity_type or "Unknown"}
+Name: {entity.name or 'Unknown'}
+Type: {entity.entity_type or 'Unknown'}
 """
             if entity.metadata:
                 entity_info += f"Metadata: {entity.metadata}"
 
-            prompt = runtime.compose_prompt(
-                state=state,
-                template=runtime.character.templates.get(
-                    "updateEntityTemplate", UPDATE_ENTITY_TEMPLATE
-                ),
+            template = (
+                runtime.character.templates.get("updateEntityTemplate")
+                if runtime.character.templates and "updateEntityTemplate" in runtime.character.templates
+                else UPDATE_ENTITY_TEMPLATE
             )
+            prompt = runtime.compose_prompt(state=state, template=template)
             prompt = prompt.replace("{{entityInfo}}", entity_info)
 
             response_text = await runtime.use_model(ModelType.TEXT_LARGE, prompt=prompt)
@@ -220,3 +220,4 @@ update_entity_action = Action(
     handler=UpdateEntityAction().handler,
     examples=UpdateEntityAction().examples,
 )
+

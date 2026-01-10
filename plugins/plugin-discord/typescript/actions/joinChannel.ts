@@ -16,37 +16,10 @@ import { ChannelType as DiscordChannelType } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 import type { VoiceManager } from "../voice";
+import { joinChannelTemplate } from "../generated/prompts/typescript/prompts.js";
 
-/**
- * Template for extracting channel information from the user's request to join a channel.
- *
- * @type {string}
- * @description This template is used to determine which channel the user wants the bot to start listening to or join.
- *
- * @param {string} recentMessages - Placeholder for recent messages related to the request.
- * @param {string} senderName - Name of the sender requesting to join a channel.
- *
- * @returns {string} - Formatted template with instructions and JSON structure for response.
- */
-export const joinChannelTemplate = `# Messages we are searching for channel join information
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting the bot to join a specific Discord channel (text or voice). Your goal is to determine which channel they want to join.
-
-Extract the channel identifier from their request:
-- If they mention a channel like #general or <#channelid>, extract that
-- If they provide a channel name, extract that
-- If they provide a channel ID (long number), extract that
-- If they mention "voice", "vc", "voice channel", include that as a hint
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "channelIdentifier": "<channel-name|channel-id|#mention>",
-  "isVoiceChannel": true/false
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { joinChannelTemplate };
 
 /**
  * Get channel information from the user's request

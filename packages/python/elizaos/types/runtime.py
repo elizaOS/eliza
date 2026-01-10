@@ -361,6 +361,11 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
 
     # Model usage
     @abstractmethod
+    def has_model(self, model_type: str | ModelType) -> bool:
+        """Check if a model handler is registered for a given model type."""
+        ...
+
+    @abstractmethod
     async def use_model(
         self,
         model_type: str | ModelType,

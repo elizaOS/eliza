@@ -308,6 +308,27 @@ If no valid order ID is found, you MUST respond with the following JSON structur
     "error": "Order ID not found. Please specify an order ID."
 }"#;
 
+pub const GET_PRICE_HISTORY_TEMPLATE: &str = r#"Extract the token ID and interval from the user's message for getting price history.
+
+User message: "{{message}}"
+
+Please extract:
+- tokenId: The token identifier (numeric string)
+- interval: Time interval (e.g., "1m", "5m", "1h", "1d", "1w"). Default to "1d" if not specified.
+
+Return a JSON object with the extracted parameters. If you cannot find a tokenId, set error field.
+
+Example response:
+{
+  "tokenId": "123456789",
+  "interval": "1d"
+}
+
+If tokenId is missing:
+{
+  "error": "Token ID is required for price history"
+}"#;
+
 pub const GET_SAMPLING_MARKETS_TEMPLATE: &str = r#"You are an AI assistant. Your task is to extract optional pagination parameters for retrieving Polymarket markets with rewards enabled (sampling markets).
 
 Review the recent messages:

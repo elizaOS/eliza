@@ -41,7 +41,7 @@ class UnmuteRoomAction:
         "Use this when you want to start interacting with a muted room again."
     )
 
-    async def validate(self, runtime: IAgentRuntime, message: Memory) -> bool:
+    async def validate(self, runtime: IAgentRuntime, message: Memory, _state: State | None = None) -> bool:
         """Validate that room is currently muted."""
         room_id = message.room_id
         if not room_id:

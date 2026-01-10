@@ -16,21 +16,7 @@ import { getToken } from "@lifi/sdk";
 import { type Address, formatUnits, parseAbi } from "viem";
 import { type SupportedChain, EVMError, EVMErrorCode } from "../types";
 import { initWalletProvider } from "./wallet";
-
-const tokenBalanceTemplate = `Extract the token ticker and blockchain from the user's message.
-
-User message: "{{userMessage}}"
-
-Return the token symbol and chain name in this format:
-<response>
-<token>TOKEN_SYMBOL</token>
-<chain>CHAIN_NAME</chain>
-</response>
-
-If no token is mentioned or it's not a balance inquiry, return:
-<response>
-<error>Not a token balance request</error>
-</response>`;
+import { tokenBalanceTemplate } from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Token balance provider
