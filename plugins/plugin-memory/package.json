@@ -26,7 +26,7 @@
     "README.md"
   ],
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/src/generated/prompts --target all",
     "build": "npm run build:prompts && bun run build:ts && bun run build:rust",
     "build:ts": "cd typescript && bun build ./src/index.ts --outdir ./dist --target node --format esm",
     "build:rust": "cd rust && cargo build --release",

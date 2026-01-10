@@ -1,32 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-const getIssueTemplate = `Extract issue identification from the user's request.
-
-User request: "{{userMessage}}"
-
-The user might reference an issue by:
-- Direct ID (e.g., "ENG-123", "COM2-7")
-- Title keywords (e.g., "the login bug", "that payment issue")
-- Assignee (e.g., "John's high priority task")
-- Recency (e.g., "the latest bug", "most recent issue")
-- Team context (e.g., "newest issue in ELIZA team")
-
-Return ONLY a JSON object:
-{
-  "directId": "Issue ID if explicitly mentioned (e.g., ENG-123)",
-  "searchBy": {
-    "title": "Keywords from issue title if mentioned",
-    "assignee": "Name/email of assignee if mentioned", 
-    "priority": "Priority level if mentioned (urgent/high/normal/low or 1-4)",
-    "team": "Team name or key if mentioned",
-    "state": "Issue state if mentioned (todo/in-progress/done)",
-    "recency": "latest/newest/recent/last if mentioned",
-    "type": "bug/feature/task if mentioned"
-  }
-}
-
-Only include fields that are clearly mentioned or implied.`;
+import { getIssueTemplate } from '../../../dist/prompts/typescript/prompts.js';
 
 export const getIssueAction: Action = {
   name: 'GET_LINEAR_ISSUE',

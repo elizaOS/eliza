@@ -96,6 +96,7 @@ ignore = [
     "ANN101", # missing type annotation for self
     "ANN102", # missing type annotation for cls
     "S101",   # use of assert (needed for tests)
+    "S108",   # use of hardcoded temp directory (acceptable in tests)
 ]
 
 [tool.ruff.lint.isort]

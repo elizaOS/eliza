@@ -15,7 +15,7 @@ import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
 // Import generated prompts
-import { createPollTemplate } from "../../dist/prompts/typescript/prompts.js";
+import { createPollTemplate } from "../generated/prompts/typescript/prompts.js";
 
 const getPollInfo = async (
   runtime: IAgentRuntime,

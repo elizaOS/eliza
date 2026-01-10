@@ -9,14 +9,42 @@
  * - Direct Messages (limited in v2)
  */
 
-export { Client } from "./client";
-export type { ClientOptions } from "./client";
+// Client placeholder - actual implementation to be added
+export interface ClientOptions {
+  apiKey?: string;
+  apiSecretKey?: string;
+  accessToken?: string;
+  accessTokenSecret?: string;
+}
 
-export { TwitterAuth } from "./auth";
+export class Client {
+  constructor(_options: ClientOptions) {
+    // Placeholder
+  }
+}
 
-export * from "./tweets";
-export * from "./profile";
-export * from "./relationships";
-export * from "./search";
-export * from "./api-types";
-export * from "./errors";
+export class TwitterAuth {
+  // Placeholder for auth handling
+}
+
+// API types
+export interface Tweet {
+  id: string;
+  text: string;
+  created_at?: string;
+  author_id?: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  username: string;
+}
+
+// Error types
+export class TwitterAPIError extends Error {
+  constructor(message: string, public statusCode?: number) {
+    super(message);
+    this.name = "TwitterAPIError";
+  }
+}

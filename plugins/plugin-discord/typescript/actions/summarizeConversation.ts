@@ -121,7 +121,7 @@ function parseTimeToTimestamp(input: string | number): number {
 import {
   summarizationTemplate,
   dateRangeTemplate,
-} from "../../dist/prompts/typescript/prompts.js";
+} from "../generated/prompts/typescript/prompts.js";
 
 /**
  * Function to get a date range from user input.

@@ -49,7 +49,7 @@
     "@types/node": "^22.0.0"
   },
   "scripts": {
-    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./dist/prompts --target all",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
     "build": "npm run build:prompts && cd typescript && bun run build.ts && tsc -p tsconfig.build.json",
     "dev": "cd typescript && bun run build.ts --watch",
     "typecheck": "cd typescript && tsc --noEmit -p tsconfig.json",

@@ -1,29 +1,7 @@
 import { Action, ActionResult, IAgentRuntime, Memory, State, logger, HandlerCallback, ModelType } from '@elizaos/core';
 import { LinearService } from '../services/linear';
 
-const listTeamsTemplate = `Extract team filter criteria from the user's request.
-
-User request: "{{userMessage}}"
-
-The user might ask for teams in various ways:
-- "Show me all teams" → list all teams
-- "Engineering teams" → filter by teams with engineering in name/description
-- "List teams I'm part of" → filter by membership
-- "Which teams work on the mobile app?" → filter by description/focus
-- "Show me the ELIZA team details" → specific team lookup
-- "Active teams" → teams with recent activity
-- "Frontend and backend teams" → multiple team types
-
-Return ONLY a JSON object:
-{
-  "nameFilter": "Keywords to search in team names",
-  "specificTeam": "Specific team name or key if looking for one team",
-  "myTeams": true/false (true if user wants their teams),
-  "showAll": true/false (true if user explicitly asks for "all"),
-  "includeDetails": true/false (true if user wants detailed info)
-}
-
-Only include fields that are clearly mentioned.`;
+import { listTeamsTemplate } from '../../../dist/prompts/typescript/prompts.js';
 
 export const listTeamsAction: Action = {
   name: 'LIST_LINEAR_TEAMS',

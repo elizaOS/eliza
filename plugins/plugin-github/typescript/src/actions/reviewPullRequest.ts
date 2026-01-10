@@ -134,8 +134,9 @@ export const reviewPullRequestAction: Action = {
 
       const validation = createReviewSchema.safeParse(params);
       if (!validation.success) {
-        const errors = validation.error.issues
-          .map((e) => `${e.path.join(".")}: ${e.message}`)
+        const zodError = validation.error as { issues: Array<{ path: (string | number)[]; message: string }> };
+        const errors = zodError.issues
+          .map((e: { path: (string | number)[]; message: string }) => `${e.path.join(".")}: ${e.message}`)
           .join(", ");
         logger.error(`Invalid review parameters: ${errors}`);
         if (callback) {

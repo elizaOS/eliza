@@ -32,18 +32,23 @@ interface GrokConfig {
   embeddingModel: string;
 }
 
+function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" ? value : undefined;
+}
+
 function getConfig(runtime: IAgentRuntime): GrokConfig {
-  const apiKey = runtime.getSetting("XAI_API_KEY");
+  const apiKey = getSetting(runtime, "XAI_API_KEY");
   if (!apiKey) {
     throw new Error("XAI_API_KEY is required");
   }
 
   return {
     apiKey,
-    baseUrl: runtime.getSetting("XAI_BASE_URL") || XAI_API_BASE,
-    smallModel: runtime.getSetting("XAI_SMALL_MODEL") || DEFAULT_MODELS.small,
-    largeModel: runtime.getSetting("XAI_MODEL") || runtime.getSetting("XAI_LARGE_MODEL") || DEFAULT_MODELS.large,
-    embeddingModel: runtime.getSetting("XAI_EMBEDDING_MODEL") || DEFAULT_MODELS.embedding,
+    baseUrl: getSetting(runtime, "XAI_BASE_URL") || XAI_API_BASE,
+    smallModel: getSetting(runtime, "XAI_SMALL_MODEL") || DEFAULT_MODELS.small,
+    largeModel: getSetting(runtime, "XAI_MODEL") || getSetting(runtime, "XAI_LARGE_MODEL") || DEFAULT_MODELS.large,
+    embeddingModel: getSetting(runtime, "XAI_EMBEDDING_MODEL") || DEFAULT_MODELS.embedding,
   };
 }
 
@@ -116,8 +121,10 @@ async function generateText(
 ): Promise<string | TextStreamResult> {
   const messages: ChatMessage[] = [];
 
-  if (params.system) {
-    messages.push({ role: "system", content: params.system });
+  // System message can be passed in via params with proper typing
+  const systemMessage = (params as GenerateTextParams & { system?: string }).system;
+  if (systemMessage) {
+    messages.push({ role: "system", content: systemMessage });
   }
 
   messages.push({ role: "user", content: params.prompt });

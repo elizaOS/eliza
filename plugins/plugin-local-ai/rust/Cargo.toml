@@ -1,0 +1,59 @@
+[package]
+name = "elizaos-plugin-local-ai"
+version = "1.0.0"
+edition = "2021"
+authors = ["elizaOS Team <team@elizaos.ai>"]
+description = "elizaOS Local AI Plugin - Local LLM inference for text, embeddings, vision, and audio"
+license = "MIT"
+repository = "https://github.com/elizaos/eliza"
+homepage = "https://elizaos.ai"
+documentation = "https://docs.rs/elizaos-plugin-local-ai"
+readme = "README.md"
+keywords = ["ai", "llama", "local-ai", "embeddings", "elizaos", "llm"]
+categories = ["api-bindings", "asynchronous", "machine-learning"]
+
+[lib]
+name = "elizaos_plugin_local_ai"
+crate-type = ["lib"]
+
+[features]
+default = ["native"]
+native = ["tokio/full"]
+# LLM features require llama_cpp_rs which needs clang and system headers
+llm = ["llama_cpp_rs"]
+cuda = ["llm", "llama_cpp_rs/cuda"]
+metal = ["llm", "llama_cpp_rs/metal"]
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["rt", "macros", "fs"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+
+# File handling
+directories = "5.0"
+
+# LLM inference (optional - users may use bindings)
+llama_cpp_rs = { version = "0.3", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.42", features = ["rt-multi-thread", "macros"] }
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+tempfile = "3.10"
+
+[profile.release]
+lto = true
+opt-level = "z"
+

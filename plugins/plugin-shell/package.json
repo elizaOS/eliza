@@ -40,7 +40,8 @@
     "vitest": "^1.2.1"
   },
   "scripts": {
-    "build": "cd typescript && bun run build.ts",
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/generated/prompts --target all",
+    "build": "npm run build:prompts && cd typescript && bun run build.ts",
     "build:ts": "cd typescript && bun run build.ts",
     "build:rust": "cd rust && cargo build --release",
     "build:python": "cd python && python -m build",

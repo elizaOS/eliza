@@ -12,21 +12,25 @@ const DEFAULT_TRANSCRIPTION_MODEL = 'distil-whisper-large-v3-en';
 const DEFAULT_BASE_URL = 'https://api.groq.com/openai/v1';
 
 function getBaseURL(runtime: IAgentRuntime): string {
-  return runtime.getSetting('GROQ_BASE_URL') || DEFAULT_BASE_URL;
+  const url = runtime.getSetting('GROQ_BASE_URL');
+  return typeof url === 'string' ? url : DEFAULT_BASE_URL;
 }
 
 function getSmallModel(runtime: IAgentRuntime): string {
-  return runtime.getSetting('GROQ_SMALL_MODEL') || runtime.getSetting('SMALL_MODEL') || DEFAULT_SMALL_MODEL;
+  const setting = runtime.getSetting('GROQ_SMALL_MODEL') || runtime.getSetting('SMALL_MODEL');
+  return typeof setting === 'string' ? setting : DEFAULT_SMALL_MODEL;
 }
 
 function getLargeModel(runtime: IAgentRuntime): string {
-  return runtime.getSetting('GROQ_LARGE_MODEL') || runtime.getSetting('LARGE_MODEL') || DEFAULT_LARGE_MODEL;
+  const setting = runtime.getSetting('GROQ_LARGE_MODEL') || runtime.getSetting('LARGE_MODEL');
+  return typeof setting === 'string' ? setting : DEFAULT_LARGE_MODEL;
 }
 
 function createGroqClient(runtime: IAgentRuntime) {
+  const apiKey = runtime.getSetting('GROQ_API_KEY');
   return createGroq({
-    apiKey: runtime.getSetting('GROQ_API_KEY'),
-    fetch: runtime.fetch,
+    apiKey: typeof apiKey === 'string' ? apiKey : undefined,
+    fetch: runtime.fetch ?? undefined,
     baseURL: getBaseURL(runtime),
   });
 }
@@ -59,7 +63,7 @@ async function generateWithRetry(
   }
 ): Promise<string> {
   const generate = () => generateText({
-    model: groq.languageModel(model),
+    model: groq.languageModel(model) as Parameters<typeof generateText>[0]['model'],
     prompt: params.prompt,
     system: params.system,
     temperature: params.temperature,
@@ -88,7 +92,7 @@ export const groqPlugin: Plugin = {
   name: 'groq',
   description: 'Groq LLM provider - fast inference with Llama and other models',
 
-  init(_config: Record<string, string>, runtime: IAgentRuntime) {
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     const apiKey = runtime.getSetting('GROQ_API_KEY');
     if (!apiKey) {
       throw new Error('GROQ_API_KEY is required');
@@ -131,7 +135,7 @@ export const groqPlugin: Plugin = {
       const model = getSmallModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model),
+        model: groq.languageModel(model) as Parameters<typeof generateObject>[0]['model'],
         output: 'no-schema',
         prompt: params.prompt,
         temperature: params.temperature,
@@ -144,7 +148,7 @@ export const groqPlugin: Plugin = {
       const model = getLargeModel(runtime);
 
       const { object } = await generateObject({
-        model: groq.languageModel(model),
+        model: groq.languageModel(model) as Parameters<typeof generateObject>[0]['model'],
         output: 'no-schema',
         prompt: params.prompt,
         temperature: params.temperature,
@@ -152,15 +156,18 @@ export const groqPlugin: Plugin = {
       return object;
     },
 
-    [ModelType.TRANSCRIPTION]: async (runtime, audioBuffer: Buffer) => {
+    [ModelType.TRANSCRIPTION]: async (runtime, params) => {
+      const audioBuffer = typeof params === 'string' ? Buffer.from(params, 'base64') : 
+        Buffer.isBuffer(params) ? params : (params as { audioData: Buffer }).audioData;
       const baseURL = getBaseURL(runtime);
       const formData = new FormData();
-      formData.append('file', new File([audioBuffer], 'audio.mp3', { type: 'audio/mp3' }));
+      formData.append('file', new File([audioBuffer as BlobPart], 'audio.mp3', { type: 'audio/mp3' }));
       formData.append('model', DEFAULT_TRANSCRIPTION_MODEL);
 
+      const apiKey = runtime.getSetting('GROQ_API_KEY');
       const response = await fetch(`${baseURL}/audio/transcriptions`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}` },
+        headers: { Authorization: `Bearer ${typeof apiKey === 'string' ? apiKey : ''}` },
         body: formData,
       });
 
@@ -172,15 +179,19 @@ export const groqPlugin: Plugin = {
       return data.text;
     },
 
-    [ModelType.TEXT_TO_SPEECH]: async (runtime: IAgentRuntime, text: string) => {
+    [ModelType.TEXT_TO_SPEECH]: async (runtime: IAgentRuntime, params) => {
+      const text = typeof params === 'string' ? params : (params as { text: string }).text;
       const baseURL = getBaseURL(runtime);
-      const model = runtime.getSetting('GROQ_TTS_MODEL') || DEFAULT_TTS_MODEL;
-      const voice = runtime.getSetting('GROQ_TTS_VOICE') || DEFAULT_TTS_VOICE;
+      const modelSetting = runtime.getSetting('GROQ_TTS_MODEL');
+      const voiceSetting = runtime.getSetting('GROQ_TTS_VOICE');
+      const model = typeof modelSetting === 'string' ? modelSetting : DEFAULT_TTS_MODEL;
+      const voice = typeof voiceSetting === 'string' ? voiceSetting : DEFAULT_TTS_VOICE;
 
+      const apiKey = runtime.getSetting('GROQ_API_KEY');
       const response = await fetch(`${baseURL}/audio/speech`, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${runtime.getSetting('GROQ_API_KEY')}`,
+          Authorization: `Bearer ${typeof apiKey === 'string' ? apiKey : ''}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ model, voice, input: text }),
@@ -190,7 +201,8 @@ export const groqPlugin: Plugin = {
         throw new Error(`TTS failed: ${response.status} ${await response.text()}`);
       }
 
-      return response.body;
+      const arrayBuffer = await response.arrayBuffer();
+      return new Uint8Array(arrayBuffer);
     },
   },
 

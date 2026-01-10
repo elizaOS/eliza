@@ -22,7 +22,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsup",
+    "build:prompts": "node ../../../packages/prompts/scripts/generate-plugin-prompts.js ../prompts ./src/generated/prompts --target all",
+    "build": "npm run build:prompts && tsup",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:watch": "vitest --watch",

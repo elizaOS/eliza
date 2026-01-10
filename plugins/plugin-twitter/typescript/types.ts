@@ -6,23 +6,12 @@ import type {
   MessagePayload,
   UUID,
   WorldPayload,
+  Service,
 } from "@elizaos/core";
-import type { TwitterService } from "./services/twitter.service.js";
-import type { ClientBase } from "./base";
-import type { Tweet as ClientTweet, Mention } from "./client/tweets";
-import type { TwitterInteractionClient } from "./interactions";
-import type { TwitterPostClient } from "./post";
-
-// Re-export config types
-export type { TwitterConfig } from "./environment";
 
 /**
  * Defines a type for media data, which includes a Buffer representing the actual data
  * and a mediaType string indicating the type of media.
- *
- * @typedef {Object} MediaData
- * @property {Buffer} data - The Buffer representing the actual media data.
- * @property {string} mediaType - The type of media (e.g. image, video).
  */
 export type MediaData = {
   data: Buffer;
@@ -31,11 +20,6 @@ export type MediaData = {
 
 /**
  * Interface representing the response from an action.
- * @typedef {Object} ActionResponse
- * @property {boolean} like - Indicates if the action is a like.
- * @property {boolean} retweet - Indicates if the action is a retweet.
- * @property {boolean=} quote - Indicates if the action is a quote. (optional)
- * @property {boolean=} reply - Indicates if the action is a reply. (optional)
  */
 export interface ActionResponse {
   like: boolean;
@@ -45,21 +29,11 @@ export interface ActionResponse {
 }
 
 /**
- * @interface ITwitterClient
- * Represents the main Twitter client interface for interacting with Twitter's API.
- * @property {ClientBase} client - The base client for Twitter operations.
- * @property {TwitterPostClient} post - The client for managing Twitter posts.
- * @property {TwitterInteractionClient} interaction - The client for managing Twitter interactions.
+ * Twitter client instance type
  */
-export interface ITwitterClient {
-  client: ClientBase;
-  post?: TwitterPostClient;
-  interaction?: TwitterInteractionClient;
+export interface TwitterClientInstance {
+  // Placeholder for actual client implementation
 }
-
-export const ServiceType = {
-  TWITTER: "twitter",
-} as const;
 
 /**
  * Extended interface for TwitterService with proper typing
@@ -68,9 +42,9 @@ export interface ITwitterService extends Service {
   twitterClient?: TwitterClientInstance;
 }
 
-// Import types for the service interface
-import type { Service } from "@elizaos/core";
-import type { TwitterClientInstance } from "./services/twitter.service";
+export const ServiceType = {
+  TWITTER: "twitter",
+} as const;
 
 /**
  * Twitter-specific tweet type
@@ -88,66 +62,10 @@ export type Tweet = {
   mentions: string[];
   hashtags: string[];
   urls: string[];
-  videos: any[];
-  thread: any[];
+  videos: unknown[];
+  thread: unknown[];
   permanentUrl: string;
 };
-
-/**
- * Convert client tweet to core tweet
- */
-export function convertClientTweetToCoreTweet(tweet: ClientTweet): Tweet {
-  const mentions = Array.isArray(tweet.mentions)
-    ? tweet.mentions
-        .filter(
-          (mention): mention is Mention =>
-            typeof mention === "object" &&
-            mention !== null &&
-            typeof mention.username === "string",
-        )
-        .map((mention) => mention.username)
-    : [];
-
-  const hashtags = Array.isArray(tweet.hashtags)
-    ? tweet.hashtags
-        .filter((tag) => tag !== null && typeof tag === "object")
-        .map((tag) => {
-          const tagObj = tag as { text?: string };
-          return typeof tagObj.text === "string" ? tagObj.text : "";
-        })
-        .filter((text) => text !== "")
-    : [];
-
-  const urls = Array.isArray(tweet.urls)
-    ? tweet.urls
-        .filter((url) => url !== null && typeof url === "object")
-        .map((url) => {
-          const urlObj = url as { expanded_url?: string };
-          return typeof urlObj.expanded_url === "string"
-            ? urlObj.expanded_url
-            : "";
-        })
-        .filter((url) => url !== "")
-    : [];
-
-  return {
-    id: tweet.id || "",
-    text: tweet.text || "",
-    userId: tweet.userId || "",
-    username: tweet.username || "",
-    name: tweet.name || "",
-    conversationId: tweet.conversationId || "",
-    inReplyToStatusId: tweet.inReplyToStatusId,
-    timestamp: tweet.timestamp || 0,
-    photos: tweet.photos || [],
-    mentions,
-    hashtags,
-    urls,
-    videos: tweet.videos || [],
-    thread: tweet.thread || [],
-    permanentUrl: tweet.permanentUrl || "",
-  };
-}
 
 export interface QueryTweetsResponse {
   tweets: Tweet[];
@@ -158,30 +76,19 @@ export interface QueryTweetsResponse {
  * Twitter-specific event types
  */
 export enum TwitterEventTypes {
-  // Message (interaction) events
   MESSAGE_RECEIVED = "TWITTER_MESSAGE_RECEIVED",
   MESSAGE_SENT = "TWITTER_MESSAGE_SENT",
-
-  // Reaction events
   REACTION_RECEIVED = "TWITTER_REACTION_RECEIVED",
   LIKE_RECEIVED = "TWITTER_LIKE_RECEIVED",
   RETWEET_RECEIVED = "TWITTER_RETWEET_RECEIVED",
   QUOTE_RECEIVED = "TWITTER_QUOTE_RECEIVED",
-
-  // Server events
   WORLD_JOINED = "TWITTER_WORLD_JOINED",
-
-  // User events
   ENTITY_JOINED = "TWITTER_USER_JOINED",
   ENTITY_LEFT = "TWITTER_USER_LEFT",
   USER_FOLLOWED = "TWITTER_USER_FOLLOWED",
   USER_UNFOLLOWED = "TWITTER_USER_UNFOLLOWED",
-
-  // Thread events
   THREAD_CREATED = "TWITTER_THREAD_CREATED",
   THREAD_UPDATED = "TWITTER_THREAD_UPDATED",
-
-  // Mention events
   MENTION_RECEIVED = "TWITTER_MENTION_RECEIVED",
 }
 
@@ -194,7 +101,7 @@ export interface TwitterMemory extends Memory {
     text?: string;
     type?: string;
     targetId?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   roomId: UUID;
 }
@@ -206,29 +113,24 @@ export interface TwitterMessageReceivedPayload
   extends Omit<MessagePayload, "message"> {
   message: TwitterMemory;
   tweet: Tweet;
-  user: any;
+  user: unknown;
 }
 
 /**
  * Twitter-specific message sent payload (for replies)
  */
 export interface TwitterMessageSentPayload extends MessagePayload {
-  /** The tweet ID that was replied to */
   inReplyToTweetId: string;
-  /** The tweet result from Twitter API */
-  tweetResult: any;
+  tweetResult: unknown;
 }
 
 /**
  * Twitter-specific reaction received payload
  */
 export interface TwitterReactionReceivedPayload extends MessagePayload {
-  /** The tweet that was reacted to */
   tweet: Tweet;
-  /** The reaction type (like, retweet) */
   reactionType: "like" | "retweet";
-  /** The user who reacted */
-  user: any;
+  user: unknown;
 }
 
 /**
@@ -236,17 +138,11 @@ export interface TwitterReactionReceivedPayload extends MessagePayload {
  */
 export interface TwitterQuoteReceivedPayload
   extends Omit<MessagePayload, "message" | "reaction"> {
-  /** The original tweet that was quoted */
   quotedTweet: Tweet;
-  /** The quote tweet */
   quoteTweet: Tweet;
-  /** The user who quoted */
-  user: any;
-  /** The message being reacted to */
+  user: unknown;
   message: TwitterMemory;
-  /** Callback for handling the reaction */
   callback: HandlerCallback;
-  /** The reaction details */
   reaction: {
     type: "quote";
     entityId: UUID;
@@ -258,15 +154,10 @@ export interface TwitterQuoteReceivedPayload
  */
 export interface TwitterMentionReceivedPayload
   extends Omit<MessagePayload, "message"> {
-  /** The tweet containing the mention */
   tweet: Tweet;
-  /** The user who mentioned */
-  user: any;
-  /** The message being reacted to */
+  user: unknown;
   message: TwitterMemory;
-  /** Callback for handling the mention */
   callback: HandlerCallback;
-  /** Source platform */
   source: "twitter";
 }
 
@@ -274,7 +165,6 @@ export interface TwitterMentionReceivedPayload
  * Twitter-specific server joined payload
  */
 export interface TwitterServerPayload extends WorldPayload {
-  /** The Twitter profile */
   profile: {
     id: string;
     username: string;
@@ -286,7 +176,6 @@ export interface TwitterServerPayload extends WorldPayload {
  * Twitter-specific user joined payload
  */
 export interface TwitterUserJoinedPayload extends EntityPayload {
-  /** The Twitter user who joined */
   twitterUser: {
     id: string;
     username: string;
@@ -298,38 +187,58 @@ export interface TwitterUserJoinedPayload extends EntityPayload {
  * Twitter-specific user followed payload
  */
 export interface TwitterUserFollowedPayload extends EntityPayload {
-  /** The user who followed */
-  follower: any;
+  follower: unknown;
 }
 
 /**
  * Twitter-specific user unfollowed payload
  */
 export interface TwitterUserUnfollowedPayload extends EntityPayload {
-  /** The user who unfollowed */
-  unfollower: any;
+  unfollower: unknown;
 }
 
 /**
  * Twitter-specific thread created payload
  */
 export interface TwitterThreadCreatedPayload extends EventPayload {
-  /** The tweets in the thread */
   tweets: Tweet[];
-  /** The user who created the thread */
-  user: any;
+  user: unknown;
 }
 
 /**
  * Twitter-specific thread updated payload
  */
 export interface TwitterThreadUpdatedPayload extends EventPayload {
-  /** The tweets in the thread */
   tweets: Tweet[];
-  /** The user who updated the thread */
-  user: any;
-  /** The new tweet that was added */
+  user: unknown;
   newTweet: Tweet;
+}
+
+/**
+ * Twitter-specific like received payload
+ */
+export interface TwitterLikeReceivedPayload extends EventPayload {
+  tweet: Tweet;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+  };
+  source: "twitter";
+}
+
+/**
+ * Twitter-specific retweet received payload
+ */
+export interface TwitterRetweetReceivedPayload extends EventPayload {
+  tweet: Tweet;
+  retweetId: string;
+  user: {
+    id: string;
+    username: string;
+    name: string;
+  };
+  source: "twitter";
 }
 
 /**
@@ -376,31 +285,4 @@ export interface TwitterInteractionPayload {
   targetTweet: Tweet;
   quoteTweet?: Tweet;
   retweetId?: string;
-}
-
-/**
- * Twitter-specific like received payload
- */
-export interface TwitterLikeReceivedPayload extends EventPayload {
-  tweet: Tweet;
-  user: {
-    id: string;
-    username: string;
-    name: string;
-  };
-  source: "twitter";
-}
-
-/**
- * Twitter-specific retweet received payload
- */
-export interface TwitterRetweetReceivedPayload extends EventPayload {
-  tweet: Tweet;
-  retweetId: string;
-  user: {
-    id: string;
-    username: string;
-    name: string;
-  };
-  source: "twitter";
 }
