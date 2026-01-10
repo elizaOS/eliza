@@ -521,6 +521,7 @@ fn create_test_plugin() -> Plugin {
         action_handlers: vec![respond_action, search_action],
         provider_handlers: vec![user_context_provider, memory_provider],
         evaluator_handlers: vec![quality_evaluator],
+        model_handlers: std::collections::HashMap::new(),
         tests: vec![],
         init: None,
     }
@@ -545,8 +546,9 @@ mod runtime_tests {
         .await
         .unwrap();
 
-        assert_eq!(runtime.character.name, "TestAgent");
-        assert_eq!(runtime.character.username, Some("test_agent".to_string()));
+        let runtime_character = runtime.character.read().await.clone();
+        assert_eq!(runtime_character.name, "TestAgent");
+        assert_eq!(runtime_character.username, Some("test_agent".to_string()));
     }
 
     /// Test that we can initialize the runtime with a database adapter
@@ -597,7 +599,8 @@ mod runtime_tests {
         .await
         .unwrap();
 
-        assert_eq!(runtime.character.name, "JSONAgent");
+        let runtime_character = runtime.character.read().await.clone();
+        assert_eq!(runtime_character.name, "JSONAgent");
     }
 }
 
@@ -711,7 +714,7 @@ mod action_tests {
         let search_result = results.iter().find(|r| {
             r.data
                 .as_ref()
-                .map_or(false, |d| d.contains_key("results_count"))
+                .is_some_and(|d| d.contains_key("results_count"))
         });
 
         assert!(search_result.is_some());
@@ -1054,9 +1057,15 @@ mod settings_tests {
         .unwrap();
 
         // Set and get string settings
-        runtime.set_setting("API_KEY", "test-key-123").await;
+        runtime
+            .set_setting(
+                "API_KEY",
+                SettingValue::String("test-key-123".to_string()),
+                false,
+            )
+            .await;
         let value = runtime.get_setting("API_KEY").await;
-        assert_eq!(value, Some("test-key-123".to_string()));
+        assert_eq!(value, Some(SettingValue::String("test-key-123".to_string())));
 
         // Get non-existent setting
         let missing = runtime.get_setting("MISSING_KEY").await;
@@ -1085,7 +1094,7 @@ mod settings_tests {
 
         // Verify preset setting exists
         let value = runtime.get_setting("PRESET_KEY").await;
-        assert_eq!(value, Some("preset_value".to_string()));
+        assert_eq!(value, Some(SettingValue::String("preset_value".to_string())));
     }
 }
 
@@ -1156,14 +1165,14 @@ mod plugin_tests {
         let has_search_result = action_results.iter().any(|r| {
             r.data
                 .as_ref()
-                .map_or(false, |d| d.contains_key("results_count"))
+                .is_some_and(|d| d.contains_key("results_count"))
         });
         assert!(has_search_result, "SEARCH action should have run");
 
         let has_respond_result = action_results.iter().any(|r| {
             r.data
                 .as_ref()
-                .map_or(false, |d| d.contains_key("response_type"))
+                .is_some_and(|d| d.contains_key("response_type"))
         });
         assert!(has_respond_result, "RESPOND action should have run");
     }

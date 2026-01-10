@@ -15,7 +15,7 @@ pub struct RuntimeSettings {
 }
 
 /// Setting value type
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum SettingValue {
     /// String value

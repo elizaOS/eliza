@@ -4,8 +4,54 @@
 
 use crate::types::{Plugin, PluginDefinition};
 use anyhow::Result;
+use lazy_static::lazy_static;
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, warn};
+
+/// Factory function type for creating plugin instances.
+pub type PluginFactory = Arc<dyn Fn() -> Plugin + Send + Sync>;
+
+lazy_static! {
+    static ref PLUGIN_REGISTRY: Mutex<HashMap<String, PluginFactory>> = Mutex::new(HashMap::new());
+}
+
+/// Register a plugin factory under a name.
+///
+/// This enables `load_plugin()` to create plugins by name in a fully-native Rust environment
+/// (analogous to dynamic imports in TypeScript / module imports in Python).
+///
+/// For convenience, this function also registers common aliases:
+/// - normalized short name (`@elizaos/plugin-discord` → `discord`)
+/// - scoped name (`discord` → `@elizaos/plugin-discord`)
+pub fn register_plugin_factory(name: &str, factory: PluginFactory) {
+    let mut registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+
+    // Register exact name
+    registry.insert(name.to_string(), factory.clone());
+
+    // Register normalized name
+    let normalized = normalize_plugin_name(name);
+    registry.insert(normalized.clone(), factory.clone());
+
+    // Register scoped alias if input is short name
+    if !name.starts_with('@') {
+        registry.insert(format!("@elizaos/plugin-{}", name), factory.clone());
+    }
+
+    // Register short alias if input is scoped name
+    if let Some(short) = name.strip_prefix("@elizaos/plugin-") {
+        registry.insert(short.to_string(), factory);
+    }
+}
+
+/// List all registered plugin names (including aliases).
+pub fn list_registered_plugins() -> Vec<String> {
+    let registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+    let mut names: Vec<String> = registry.keys().cloned().collect();
+    names.sort();
+    names
+}
 
 /// Validate a plugin's structure
 ///
@@ -46,9 +92,9 @@ pub fn validate_plugin(plugin: &PluginDefinition) -> Result<()> {
 
 /// Load a plugin by name
 ///
-/// Note: In the Rust implementation, plugins are typically compiled in or loaded
-/// via dynamic libraries. This function serves as a placeholder for the plugin
-/// loading mechanism.
+/// Rust does not have a built-in dynamic module loader analogous to JS `import()`.
+/// To support the same workflow, the core provides a process-local registry of plugin factories.
+/// Plugins (or the embedding application) register factories via `register_plugin_factory()`.
 ///
 /// # Arguments
 /// * `name` - The plugin name to load
@@ -58,17 +104,27 @@ pub fn validate_plugin(plugin: &PluginDefinition) -> Result<()> {
 pub fn load_plugin(name: &str) -> Result<Plugin> {
     debug!("Loading plugin: {}", name);
 
-    // In a real implementation, this would:
-    // 1. Check if the plugin is already loaded
-    // 2. Load the plugin from a dynamic library or registry
-    // 3. Validate the plugin
-    // 4. Return the plugin
+    let factory = {
+        let registry = PLUGIN_REGISTRY.lock().expect("plugin registry lock poisoned");
+        registry
+            .get(name)
+            .cloned()
+            .or_else(|| registry.get(&normalize_plugin_name(name)).cloned())
+    };
 
-    // For now, return an error indicating the plugin needs to be provided
-    anyhow::bail!(
-        "Plugin '{}' not found. In Rust, plugins must be compiled in or loaded dynamically.",
-        name
-    )
+    let factory = match factory {
+        Some(f) => f,
+        None => {
+            anyhow::bail!(
+                "Plugin '{}' not found. Register it first via register_plugin_factory().",
+                name
+            );
+        }
+    };
+
+    let plugin = (factory)();
+    validate_plugin(&plugin.definition)?;
+    Ok(plugin)
 }
 
 /// Normalize a plugin name by extracting the short name from scoped packages
@@ -237,6 +293,7 @@ pub fn resolve_plugin_dependencies(
 mod tests {
     use super::*;
     use crate::types::PluginDefinition;
+    use std::sync::Arc;
 
     fn create_test_plugin(name: &str, deps: Vec<&str>) -> Plugin {
         Plugin {
@@ -313,5 +370,17 @@ mod tests {
 
         let result = resolve_plugin_dependencies(&plugins, false);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_plugin_from_registry() {
+        let plugin_name = "registry-test-plugin";
+        register_plugin_factory(
+            plugin_name,
+            Arc::new(|| Plugin::new(plugin_name, "Test plugin from registry")),
+        );
+
+        let loaded = load_plugin(plugin_name).unwrap();
+        assert_eq!(loaded.definition.name, plugin_name);
     }
 }

@@ -92,6 +92,7 @@ pub struct CharacterSecrets {
 /// Configuration for an agent's character
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Character {
     /// Optional unique identifier
     #[serde(skip_serializing_if = "Option::is_none")]

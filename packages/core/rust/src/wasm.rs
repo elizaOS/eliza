@@ -7,7 +7,13 @@
 use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wasm")]
-use crate::types::{Agent, Character, Entity, Memory, Plugin, Room, State, UUID};
+use wasm_bindgen_futures::future_to_promise;
+
+#[cfg(feature = "wasm")]
+use js_sys::{Function, Promise};
+
+#[cfg(feature = "wasm")]
+use crate::types::{Agent, Character, Content, Entity, Memory, Plugin, Room, State, UUID};
 
 /// Initialize the WASM module with panic hook for better error messages
 #[cfg(feature = "wasm")]
@@ -231,6 +237,7 @@ impl WasmPlugin {
                 action_handlers: vec![],
                 provider_handlers: vec![],
                 evaluator_handlers: vec![],
+                model_handlers: std::collections::HashMap::new(),
                 tests: vec![],
                 init: None,
             },
@@ -398,10 +405,7 @@ pub fn generate_uuid() -> String {
 #[cfg(feature = "wasm")]
 #[wasm_bindgen(js_name = "stringToUuid")]
 pub fn string_to_uuid(input: &str) -> String {
-    // Use UUID v5 with a fixed namespace for deterministic generation
-    use uuid::Uuid;
-    let namespace = Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap();
-    Uuid::new_v5(&namespace, input.as_bytes()).to_string()
+    crate::types::string_to_uuid(input).to_string()
 }
 
 /// Get the version of the elizaOS core
@@ -409,6 +413,246 @@ pub fn string_to_uuid(input: &str) -> String {
 #[wasm_bindgen(js_name = "getVersion")]
 pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// ========================================
+// WasmAgentRuntime - Rust agent runtime accessible from JS
+// ========================================
+
+#[cfg(feature = "wasm")]
+use std::cell::RefCell;
+
+#[cfg(feature = "wasm")]
+use std::collections::HashMap;
+
+// Thread-local storage for JS model handlers
+// Since WASM is single-threaded, this is safe
+#[cfg(feature = "wasm")]
+thread_local! {
+    static JS_MODEL_HANDLERS: RefCell<HashMap<String, Function>> = RefCell::new(HashMap::new());
+}
+
+/// Call a JS model handler by name
+#[cfg(feature = "wasm")]
+async fn call_js_model_handler(model_type: &str, params: serde_json::Value) -> Result<String, JsValue> {
+    let handler = JS_MODEL_HANDLERS.with(|handlers| {
+        handlers.borrow().get(model_type).cloned()
+    });
+    
+    let handler = handler.ok_or_else(|| JsValue::from_str(&format!("No JS handler registered for model type: {}", model_type)))?;
+    
+    // Convert params to JSON string for JS
+    let params_json = serde_json::to_string(&params)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize params: {}", e)))?;
+    
+    // Call the JS function
+    let this = JsValue::NULL;
+    let arg = JsValue::from_str(&params_json);
+    let result = handler.call1(&this, &arg)
+        .map_err(|e| JsValue::from_str(&format!("JS handler call failed: {:?}", e)))?;
+    
+    // If result is a Promise, await it
+    let result = if result.is_instance_of::<Promise>() {
+        let promise = Promise::from(result);
+        wasm_bindgen_futures::JsFuture::from(promise)
+            .await
+            .map_err(|e| JsValue::from_str(&format!("JS Promise rejected: {:?}", e)))?
+    } else {
+        result
+    };
+    
+    // Convert result to string
+    result
+        .as_string()
+        .ok_or_else(|| JsValue::from_str("JS handler must return a string"))
+}
+
+/// WASM-compatible AgentRuntime
+/// 
+/// This provides a Rust-powered agent runtime that runs in WebAssembly.
+/// Model inference is delegated to JavaScript (since WASM can't make HTTP calls directly),
+/// while all agent logic, state management, and message processing runs in Rust.
+/// 
+/// # Example
+/// ```javascript
+/// const runtime = await WasmAgentRuntime.create('{"name": "Eliza", "bio": "A helpful AI."}');
+/// await runtime.registerModelHandler("TEXT_LARGE", async (params) => {
+///   // Call OpenAI or other LLM from JS
+///   return await callOpenAI(params);
+/// });
+/// await runtime.initialize();
+/// const response = await runtime.handleMessage('{"entityId": "...", "roomId": "...", "content": {"text": "Hello"}}');
+/// ```
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+pub struct WasmAgentRuntime {
+    character: RefCell<Character>,
+    agent_id: UUID,
+    initialized: RefCell<bool>,
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+impl WasmAgentRuntime {
+    /// Create a new WasmAgentRuntime from a character JSON string
+    /// 
+    /// Returns a Promise that resolves to the runtime instance
+    #[wasm_bindgen(js_name = "create")]
+    pub fn create(character_json: &str) -> Result<WasmAgentRuntime, JsValue> {
+        let character: Character = serde_json::from_str(character_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse character: {}", e)))?;
+        
+        let agent_id = character.id.clone()
+            .unwrap_or_else(|| crate::types::string_to_uuid(&character.name));
+        
+        Ok(WasmAgentRuntime {
+            character: RefCell::new(character),
+            agent_id,
+            initialized: RefCell::new(false),
+        })
+    }
+    
+    /// Initialize the runtime
+    /// 
+    /// This must be called after registering model handlers
+    #[wasm_bindgen]
+    pub fn initialize(&self) -> Result<(), JsValue> {
+        *self.initialized.borrow_mut() = true;
+        Ok(())
+    }
+    
+    /// Register a model handler from JavaScript
+    /// 
+    /// The handler function receives a JSON string of parameters and should return a Promise<string>
+    /// 
+    /// # Example
+    /// ```javascript
+    /// runtime.registerModelHandler("TEXT_LARGE", async (paramsJson) => {
+    ///   const params = JSON.parse(paramsJson);
+    ///   const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    ///     method: 'POST',
+    ///     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    ///     body: JSON.stringify({ model: 'gpt-4o', messages: [{ role: 'user', content: params.prompt }] })
+    ///   });
+    ///   const data = await response.json();
+    ///   return data.choices[0].message.content;
+    /// });
+    /// ```
+    #[wasm_bindgen(js_name = "registerModelHandler")]
+    pub fn register_model_handler(&self, model_type: &str, handler: Function) {
+        JS_MODEL_HANDLERS.with(|handlers| {
+            handlers.borrow_mut().insert(model_type.to_string(), handler);
+        });
+    }
+    
+    /// Handle an incoming message
+    /// 
+    /// Takes a message as JSON string and returns a Promise<string> with the response JSON
+    /// 
+    /// Message JSON format:
+    /// ```json
+    /// {
+    ///   "entityId": "uuid-of-user",
+    ///   "roomId": "uuid-of-room",
+    ///   "content": { "text": "Hello, how are you?" }
+    /// }
+    /// ```
+    /// 
+    /// Response JSON format:
+    /// ```json
+    /// {
+    ///   "didRespond": true,
+    ///   "responseContent": { "text": "I'm doing well, thank you!" }
+    /// }
+    /// ```
+    #[wasm_bindgen(js_name = "handleMessage")]
+    pub fn handle_message(&self, message_json: &str) -> Promise {
+        let message_result: Result<Memory, _> = serde_json::from_str(message_json);
+        let character = self.character.borrow().clone();
+        let agent_id = self.agent_id.clone();
+        
+        future_to_promise(async move {
+            let message = message_result
+                .map_err(|e| JsValue::from_str(&format!("Failed to parse message: {}", e)))?;
+            
+            // Extract user text from message
+            let user_text = message.content.text.as_deref().unwrap_or("");
+            
+            // Build prompt
+            let prompt = format!("User: {}\n{}:", user_text, character.name);
+            
+            // Call the model handler
+            let params = serde_json::json!({
+                "prompt": prompt,
+                "system": character.system,
+                "temperature": 0.7
+            });
+            
+            let response_text = call_js_model_handler("TEXT_LARGE", params).await?;
+            
+            // Create response content
+            let response_content = Content {
+                text: Some(response_text.clone()),
+                ..Default::default()
+            };
+            
+            // Create response memory
+            let response_memory = Memory {
+                id: Some(UUID::new_v4()),
+                entity_id: agent_id.clone(),
+                agent_id: Some(agent_id),
+                room_id: message.room_id.clone(),
+                content: response_content.clone(),
+                created_at: Some(js_sys::Date::now() as i64),
+                embedding: None,
+                world_id: None,
+                unique: Some(true),
+                similarity: None,
+                metadata: None,
+            };
+            
+            // Build response
+            let response = serde_json::json!({
+                "didRespond": true,
+                "responseContent": response_content,
+                "responseMessages": [response_memory],
+            });
+            
+            let json = serde_json::to_string(&response)
+                .map_err(|e| JsValue::from_str(&format!("Failed to serialize response: {}", e)))?;
+            
+            Ok(JsValue::from_str(&json))
+        })
+    }
+    
+    /// Get the agent ID
+    #[wasm_bindgen(getter, js_name = "agentId")]
+    pub fn agent_id(&self) -> String {
+        self.agent_id.to_string()
+    }
+    
+    /// Get the character name
+    #[wasm_bindgen(getter, js_name = "characterName")]
+    pub fn character_name(&self) -> String {
+        self.character.borrow().name.clone()
+    }
+    
+    /// Get the character as JSON
+    #[wasm_bindgen(getter, js_name = "character")]
+    pub fn character(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&*self.character.borrow())
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    }
+    
+    /// Stop the runtime
+    #[wasm_bindgen]
+    pub fn stop(&self) {
+        // Clear JS model handlers
+        JS_MODEL_HANDLERS.with(|handlers| {
+            handlers.borrow_mut().clear();
+        });
+        *self.initialized.borrow_mut() = false;
+    }
 }
 
 // ========================================
@@ -466,9 +710,9 @@ mod tests {
 
     #[test]
     fn test_string_to_uuid_deterministic() {
-        let namespace = uuid::Uuid::parse_str("6ba7b810-9dad-11d1-80b4-00c04fd430c8").unwrap();
-        let uuid1 = uuid::Uuid::new_v5(&namespace, "test".as_bytes()).to_string();
-        let uuid2 = uuid::Uuid::new_v5(&namespace, "test".as_bytes()).to_string();
+        let uuid1 = crate::types::string_to_uuid("test").to_string();
+        let uuid2 = crate::types::string_to_uuid("test").to_string();
         assert_eq!(uuid1, uuid2);
+        assert_eq!(uuid1, "a94a8fe5-ccb1-0ba6-9c4c-0873d391e987");
     }
 }

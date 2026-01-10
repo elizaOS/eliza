@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for loading, parsing, and validating character files.
 
-use crate::types::{Bio, Character, CharacterSettings};
+use crate::types::{Character, CharacterSettings};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 
@@ -23,7 +23,9 @@ use std::collections::HashMap;
 /// assert_eq!(character.name, "TestAgent");
 /// ```
 pub fn parse_character(json: &str) -> Result<Character> {
-    serde_json::from_str(json).context("Failed to parse character JSON")
+    let character: Character = serde_json::from_str(json).context("Failed to parse character JSON")?;
+    validate_character(&character).context("Character validation failed")?;
+    Ok(character)
 }
 
 /// Validate a character configuration
@@ -37,15 +39,6 @@ pub fn validate_character(character: &Character) -> Result<()> {
     // Validate name
     if character.name.is_empty() {
         anyhow::bail!("Character name is required");
-    }
-
-    // Validate bio
-    let bio_str = match &character.bio {
-        Bio::Single(s) => s.clone(),
-        Bio::Multiple(v) => v.join(" "),
-    };
-    if bio_str.is_empty() {
-        anyhow::bail!("Character bio is required");
     }
 
     // Validate plugins if present
@@ -77,15 +70,9 @@ pub fn merge_character_defaults(mut character: Character) -> Character {
         character.plugins = Some(vec![]);
     }
 
-    // Ensure bio is not empty
-    match &character.bio {
-        Bio::Single(s) if s.is_empty() => {
-            character.bio = Bio::Single("An AI assistant.".to_string());
-        }
-        Bio::Multiple(v) if v.is_empty() => {
-            character.bio = Bio::Multiple(vec!["An AI assistant.".to_string()]);
-        }
-        _ => {}
+    // Ensure name matches TS/Py defaults (empty string -> "Unnamed Character")
+    if character.name.is_empty() {
+        character.name = "Unnamed Character".to_string();
     }
 
     character
@@ -102,59 +89,39 @@ pub fn merge_character_defaults(mut character: Character) -> Character {
 /// # Returns
 /// Ordered array of plugin names to load
 pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
-    let mut plugins = Vec::new();
+    // Match documented TS/Py plugin ordering.
+    let mut plugins: Vec<String> = vec!["@elizaos/plugin-sql".to_string()];
 
-    // Check if elizaOS Cloud is configured
-    let use_eliza_cloud = env
-        .get("ELIZAOS_CLOUD_API_KEY")
+    // Text-only plugins (no embedding support)
+    if env
+        .get("ANTHROPIC_API_KEY")
         .map(|s| !s.trim().is_empty())
         .unwrap_or(false)
-        || env
-            .get("ELIZAOS_CLOUD_DATABASE")
-            .map(|s| s == "true")
-            .unwrap_or(false);
-
-    // Core plugins
-    if use_eliza_cloud {
-        plugins.push("@elizaos/plugin-elizacloud".to_string());
-    } else {
-        plugins.push("@elizaos/plugin-sql".to_string());
+    {
+        plugins.push("@elizaos/plugin-anthropic".to_string());
+    }
+    if env
+        .get("OPENROUTER_API_KEY")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
+        plugins.push("@elizaos/plugin-openrouter".to_string());
     }
 
-    // Text-only LLM plugins (skip if using cloud)
-    if !use_eliza_cloud {
-        if env
-            .get("ANTHROPIC_API_KEY")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
-            plugins.push("@elizaos/plugin-anthropic".to_string());
-        }
-        if env
-            .get("OPENROUTER_API_KEY")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
-            plugins.push("@elizaos/plugin-openrouter".to_string());
-        }
+    // Embedding-capable plugins (before platform plugins)
+    if env
+        .get("OPENAI_API_KEY")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
+        plugins.push("@elizaos/plugin-openai".to_string());
     }
-
-    // Embedding-capable plugins (skip if using cloud)
-    if !use_eliza_cloud {
-        if env
-            .get("OPENAI_API_KEY")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
-            plugins.push("@elizaos/plugin-openai".to_string());
-        }
-        if env
-            .get("GOOGLE_GENERATIVE_AI_API_KEY")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
-            plugins.push("@elizaos/plugin-google-genai".to_string());
-        }
+    if env
+        .get("GOOGLE_GENERATIVE_AI_API_KEY")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
+        plugins.push("@elizaos/plugin-google-genai".to_string());
     }
 
     // Platform plugins
@@ -189,25 +156,25 @@ pub fn build_character_plugins(env: &HashMap<String, String>) -> Vec<String> {
         plugins.push("@elizaos/plugin-bootstrap".to_string());
     }
 
-    // Ollama fallback (only if no other LLM providers and not using cloud)
-    if !use_eliza_cloud
-        && !env
-            .get("ANTHROPIC_API_KEY")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        && !env
+    // Ollama fallback (only if no other LLM providers configured)
+    let has_llm_provider = env
+        .get("ANTHROPIC_API_KEY")
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+        || env
             .get("OPENROUTER_API_KEY")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
-        && !env
+        || env
             .get("OPENAI_API_KEY")
             .map(|s| !s.trim().is_empty())
             .unwrap_or(false)
-        && !env
+        || env
             .get("GOOGLE_GENERATIVE_AI_API_KEY")
             .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-    {
+            .unwrap_or(false);
+
+    if !has_llm_provider {
         plugins.push("@elizaos/plugin-ollama".to_string());
     }
 
@@ -235,6 +202,7 @@ fn has_twitter_config(env: &HashMap<String, String>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::Bio;
 
     #[test]
     fn test_parse_character_basic() {

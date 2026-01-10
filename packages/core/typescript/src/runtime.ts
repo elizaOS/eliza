@@ -26,6 +26,7 @@ import {
   type Component,
   type Content,
   type ControlMessage,
+  DEFAULT_UUID,
   type Entity,
   type Evaluator,
   type EventHandler,
@@ -177,6 +178,11 @@ export class AgentRuntime implements IAgentRuntime {
     adapter?: IDatabaseAdapter;
     settings?: RuntimeSettings;
     allAvailablePlugins?: Plugin[];
+    /**
+     * Log level for this runtime. Defaults to "error".
+     * Valid levels: "trace", "debug", "info", "warn", "error", "fatal"
+     */
+    logLevel?: "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   }) {
     // Generate deterministic UUID from character name for backward compatibility
     // Falls back to random UUID only if no character name is provided
@@ -190,9 +196,10 @@ export class AgentRuntime implements IAgentRuntime {
       this.initResolver = resolve;
     });
 
-    // Create the logger with namespace only - level is handled globally from env
+    // Create the logger with namespace and log level (defaults to "error")
     this.logger = createLogger({
       namespace: this.character.name,
+      level: opts.logLevel ?? "error",
     });
 
     this.#conversationLength =
@@ -1200,10 +1207,19 @@ export class AgentRuntime implements IAgentRuntime {
               success: "success" in result ? result.success : true, // Default to true if not specified
             } as ActionResult;
           } else {
+            // For legacy results, serialize to string if not a primitive type
+            const legacyValue =
+              typeof result === "string" ||
+              typeof result === "number" ||
+              typeof result === "boolean" ||
+              result === null
+                ? (result as string | number | boolean | null)
+                : JSON.stringify(result);
             actionResult = {
               success: true, // Default success for legacy results
               data: {
                 actionName: action.name,
+                legacyResult: legacyValue,
               },
             };
           }
@@ -1241,7 +1257,10 @@ export class AgentRuntime implements IAgentRuntime {
               result: actionResult,
               timestamp: Date.now(),
             };
-            const workingMemory = accumulatedState.data.workingMemory;
+            const workingMemory = accumulatedState.data.workingMemory as Record<
+              string,
+              WorkingMemoryEntry
+            >;
             workingMemory[memoryKey] = memoryEntry;
 
             // Clean up old entries if we now exceed the limit
@@ -1249,8 +1268,10 @@ export class AgentRuntime implements IAgentRuntime {
             if (entries.length > this.maxWorkingMemoryEntries) {
               // Sort by timestamp (newest first) and keep only the most recent entries
               const sorted = entries.sort((a, b) => {
-                const timestampA = a[1].timestamp ?? 0;
-                const timestampB = b[1].timestamp ?? 0;
+                const entryA = a[1] as WorkingMemoryEntry | null;
+                const entryB = b[1] as WorkingMemoryEntry | null;
+                const timestampA = (entryA && entryA.timestamp) ?? 0;
+                const timestampB = (entryB && entryB.timestamp) ?? 0;
                 return timestampB - timestampA;
               });
               // Keep exactly maxWorkingMemoryEntries entries (including the new one we just added)
@@ -1593,7 +1614,7 @@ export class AgentRuntime implements IAgentRuntime {
     channelId?: string;
     messageServerId?: UUID;
     userId?: UUID;
-    metadata?: Metadata;
+    metadata?: Record<string, unknown>;
   }) {
     if (!worldId && messageServerId) {
       worldId = createUniqueUuid(this as IAgentRuntime, messageServerId);
@@ -1602,13 +1623,12 @@ export class AgentRuntime implements IAgentRuntime {
     if (!source) {
       throw new Error("Source is required for ensureEntityExists");
     }
-    // Build metadata object with only defined values
-    const sourceMetadata: Record<string, string> = {};
-    if (userId) sourceMetadata.id = userId;
-    if (name) sourceMetadata.name = name;
-    if (userName) sourceMetadata.userName = userName;
-    const entityMetadata: Metadata = {
-      [source]: sourceMetadata,
+    const entityMetadata = {
+      [source]: {
+        id: userId,
+        name: name,
+        userName: userName,
+      },
     };
     // First check if the entity exists
     const entity = await this.getEntityById(entityId);
@@ -1634,16 +1654,6 @@ export class AgentRuntime implements IAgentRuntime {
         throw new Error(`Failed to create entity ${entityId}`);
       }
     } else {
-      // Build update metadata with only defined values
-      const existingSourceMeta = (entity.metadata && entity.metadata[source] &&
-        typeof entity.metadata[source] === "object")
-        ? (entity.metadata[source] as Record<string, string>)
-        : {};
-      const updateSourceMeta: Record<string, string> = { ...existingSourceMeta };
-      if (userId) updateSourceMeta.id = userId;
-      if (name) updateSourceMeta.name = name;
-      if (userName) updateSourceMeta.userName = userName;
-
       await this.adapter.updateEntity({
         id: entityId,
         names: [...new Set([...(entity.names || []), ...names])].filter(
@@ -1651,7 +1661,15 @@ export class AgentRuntime implements IAgentRuntime {
         ) as string[],
         metadata: {
           ...entity.metadata,
-          [source]: updateSourceMeta,
+          [source]: {
+            ...((entity.metadata && entity.metadata[source] &&
+            typeof entity.metadata[source] === "object")
+              ? (entity.metadata[source] as Record<string, unknown>)
+              : {}),
+            id: userId,
+            name: name,
+            userName: userName,
+          },
         },
         agentId: this.agentId,
       });
@@ -2805,9 +2823,9 @@ export class AgentRuntime implements IAgentRuntime {
       throw new Error("No TEXT_EMBEDDING model registered");
     }
 
-    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
-      text: "",
-    });
+    // Pass null to get a test vector for dimension detection
+    // Model handlers should return a zero-filled vector of the correct dimension when null is passed
+    const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
     if (!embedding || !embedding.length) {
       throw new Error("Invalid embedding received");
     }

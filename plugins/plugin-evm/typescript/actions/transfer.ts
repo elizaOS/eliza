@@ -1,0 +1,217 @@
+/**
+ * @elizaos/plugin-evm Transfer Action
+ *
+ * Handles native token and ERC20 token transfers on EVM chains.
+ */
+
+import {
+  type Action,
+  composePromptFromState,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  parseKeyValueXml,
+  type State,
+} from "@elizaos/core";
+import { formatEther, type Hex, parseEther } from "viem";
+
+import { initWalletProvider, type WalletProvider } from "../providers/wallet";
+import { transferTemplate } from "../templates";
+import {
+  type Transaction,
+  type TransferParams,
+  type SupportedChain,
+  parseTransferParams,
+  EVMError,
+  EVMErrorCode,
+  assertDefined,
+} from "../types";
+
+/**
+ * Transfer action executor
+ */
+export class TransferAction {
+  constructor(private readonly walletProvider: WalletProvider) {}
+
+  /**
+   * Execute a token transfer
+   * @throws EVMError on failure
+   */
+  async transfer(params: TransferParams): Promise<Transaction> {
+    // Normalize empty or invalid data field to '0x'
+    let data: Hex = "0x";
+    if (params.data && params.data !== "0x" && params.data !== "null") {
+      data = params.data;
+    }
+
+    const walletClient = this.walletProvider.getWalletClient(params.fromChain);
+
+    if (!walletClient.account) {
+      throw new EVMError(
+        EVMErrorCode.WALLET_NOT_INITIALIZED,
+        "Wallet account is not available"
+      );
+    }
+
+    const hash = await walletClient.sendTransaction({
+      account: walletClient.account,
+      to: params.toAddress,
+      value: parseEther(params.amount),
+      data,
+      chain: walletClient.chain,
+    });
+
+    return {
+      hash,
+      from: walletClient.account.address,
+      to: params.toAddress,
+      value: parseEther(params.amount),
+      data,
+    };
+  }
+}
+
+/**
+ * Build transfer details from LLM response
+ */
+async function buildTransferDetails(
+  state: State,
+  message: Memory,
+  runtime: IAgentRuntime,
+  wp: WalletProvider
+): Promise<TransferParams> {
+  const chains = wp.getSupportedChains();
+
+  // Add balances to state for better context in template
+  const balances = await wp.getWalletBalances();
+  state.chainBalances = Object.entries(balances)
+    .map(([chain, balance]) => {
+      const chainConfig = wp.getChainConfigs(chain as SupportedChain);
+      return `${chain}: ${balance} ${chainConfig.nativeCurrency.symbol}`;
+    })
+    .join(", ");
+
+  state = await runtime.composeState(message, ["RECENT_MESSAGES"], true);
+  state.supportedChains = chains.join(" | ");
+
+  const context = composePromptFromState({
+    state,
+    template: transferTemplate,
+  });
+
+  const xmlResponse = await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt: context,
+  });
+
+  const parsedXml = parseKeyValueXml(xmlResponse);
+
+  if (!parsedXml) {
+    throw new EVMError(
+      EVMErrorCode.INVALID_PARAMS,
+      "Failed to parse XML response from LLM for transfer details."
+    );
+  }
+
+  // Normalize chain name to lowercase
+  const rawParams = {
+    fromChain: String(parsedXml.fromChain ?? "").toLowerCase(),
+    toAddress: String(parsedXml.toAddress ?? ""),
+    amount: String(parsedXml.amount ?? ""),
+    data: parsedXml.data ? String(parsedXml.data) : undefined,
+    token: parsedXml.token ? String(parsedXml.token) : undefined,
+  };
+
+  // Validate and parse the parameters
+  const transferDetails = parseTransferParams(rawParams);
+
+  // Check if the chain exists
+  const existingChain = wp.chains[transferDetails.fromChain];
+  if (!existingChain) {
+    throw new EVMError(
+      EVMErrorCode.CHAIN_NOT_CONFIGURED,
+      `Chain "${transferDetails.fromChain}" not configured. Available chains: ${chains.toString()}`
+    );
+  }
+
+  return transferDetails;
+}
+
+/**
+ * Transfer action definition
+ */
+export const transferAction: Action = {
+  name: "EVM_TRANSFER_TOKENS",
+  description: "Transfer tokens between addresses on the same chain",
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | undefined,
+    _options: Record<string, unknown>,
+    callback?: HandlerCallback
+  ): Promise<boolean> => {
+    if (!state) {
+      state = (await runtime.composeState(message)) as State;
+    }
+
+    const walletProvider = await initWalletProvider(runtime);
+    const action = new TransferAction(walletProvider);
+
+    // Compose transfer context
+    const paramOptions = await buildTransferDetails(
+      state,
+      message,
+      runtime,
+      walletProvider
+    );
+
+    const transferResp = await action.transfer(paramOptions);
+
+    if (callback) {
+      callback({
+        text: `Successfully transferred ${paramOptions.amount} tokens to ${paramOptions.toAddress}\nTransaction Hash: ${transferResp.hash}`,
+        content: {
+          success: true,
+          hash: transferResp.hash,
+          amount: formatEther(transferResp.value),
+          recipient: transferResp.to,
+          chain: paramOptions.fromChain,
+        },
+      });
+    }
+
+    return true;
+  },
+
+  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
+    const privateKey = runtime.getSetting("EVM_PRIVATE_KEY");
+    return typeof privateKey === "string" && privateKey.startsWith("0x");
+  },
+
+  examples: [
+    [
+      {
+        name: "assistant",
+        content: {
+          text: "I'll help you transfer 1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          action: "SEND_TOKENS",
+        },
+      },
+      {
+        name: "user",
+        content: {
+          text: "Transfer 1 ETH to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+          action: "SEND_TOKENS",
+        },
+      },
+    ],
+  ],
+
+  similes: [
+    "EVM_TRANSFER",
+    "EVM_SEND_TOKENS",
+    "EVM_TOKEN_TRANSFER",
+    "EVM_MOVE_TOKENS",
+  ],
+};

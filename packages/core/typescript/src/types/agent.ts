@@ -13,6 +13,87 @@ export interface MessageExample {
   content: Content;
 }
 
+/**
+ * Well-known character settings keys with their expected types.
+ * These can be set in the character's `settings` field or in environment variables.
+ */
+export interface CharacterSettings {
+  /**
+   * Model type to use for shouldRespond evaluation.
+   * - "small": Use TEXT_SMALL for fast, simple response decisions (default)
+   * - "large": Use TEXT_LARGE for complex reasoning about whether to respond
+   *
+   * Use "large" when the agent needs to:
+   * - Consider complex context for response decisions
+   * - Do preliminary planning/reasoning about response strategy
+   * - Handle nuanced social situations
+   */
+  SHOULD_RESPOND_MODEL?: "small" | "large";
+
+  /**
+   * Whether to use multi-step workflow for message handling.
+   * When enabled, the agent will iterate through multiple steps
+   * to complete complex tasks.
+   */
+  USE_MULTI_STEP?: boolean | string;
+
+  /**
+   * Maximum number of iterations for multi-step workflow.
+   * @default 6
+   */
+  MAX_MULTISTEP_ITERATIONS?: number | string;
+
+  /**
+   * Whether LLM is off by default in rooms.
+   * When true, agent won't respond unless explicitly followed.
+   */
+  BOOTSTRAP_DEFLLMOFF?: boolean | string;
+
+  /**
+   * Whether to keep responses even when superseded by newer messages.
+   */
+  BOOTSTRAP_KEEP_RESP?: boolean | string;
+
+  /**
+   * Timeout for provider execution in multi-step workflow (milliseconds).
+   * @default 1000
+   */
+  PROVIDERS_TOTAL_TIMEOUT_MS?: number | string;
+
+  /**
+   * Maximum number of working memory entries to keep.
+   * @default 50
+   */
+  MAX_WORKING_MEMORY_ENTRIES?: number | string;
+
+  /**
+   * Channel types that always trigger a response (comma-separated).
+   * Adds to the default list: DM, VOICE_DM, SELF, API
+   */
+  ALWAYS_RESPOND_CHANNELS?: string;
+
+  /**
+   * Sources that always trigger a response (comma-separated).
+   * Adds to the default list: client_chat
+   */
+  ALWAYS_RESPOND_SOURCES?: string;
+
+  /** Model temperature (0.0 to 1.0) for all models */
+  DEFAULT_TEMPERATURE?: number | string;
+
+  /** Maximum tokens for text generation for all models */
+  DEFAULT_MAX_TOKENS?: number | string;
+
+  /** Frequency penalty for all models */
+  DEFAULT_FREQUENCY_PENALTY?: number | string;
+
+  /** Presence penalty for all models */
+  DEFAULT_PRESENCE_PENALTY?: number | string;
+
+  /** Allow additional settings */
+  [key: string]: string | boolean | number | Record<string, unknown> | undefined;
+}
+
 export type TemplateType =
   | string
   | ((options: { state: State | { [key: string]: string } }) => string);
@@ -72,12 +153,13 @@ export interface Character {
   /** Available plugins */
   plugins?: string[];
 
-  /** Optional configuration */
-  settings?: {
-    [key: string]: string | boolean | number | Record<string, unknown>;
-  };
+  /**
+   * Optional configuration settings for the character.
+   * See `CharacterSettings` for well-known settings and their descriptions.
+   */
+  settings?: CharacterSettings;
 
-  /** Optional secrets */
+  /** Optional secrets (API keys, tokens, etc.) */
   secrets?: {
     [key: string]: string | boolean | number;
   };

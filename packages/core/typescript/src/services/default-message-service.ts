@@ -43,6 +43,8 @@ interface ImageDescriptionResponse {
   title?: string;
 }
 
+import type { ShouldRespondModelType } from "./message-service";
+
 /**
  * Resolved message options with defaults applied.
  * Required numeric options + optional streaming callback.
@@ -53,6 +55,7 @@ type ResolvedMessageOptions = {
   useMultiStep: boolean;
   maxMultiStepIterations: number;
   onStreamChunk?: (chunk: string, messageId?: string) => Promise<void>;
+  shouldRespondModel: ShouldRespondModelType;
 };
 
 /**
@@ -111,6 +114,12 @@ export class DefaultMessageService implements IMessageService {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    // Determine shouldRespondModel from options or runtime settings
+    const shouldRespondModelSetting = runtime.getSetting("SHOULD_RESPOND_MODEL");
+    const resolvedShouldRespondModel: ShouldRespondModelType =
+      (options && options.shouldRespondModel) ??
+      (shouldRespondModelSetting === "large" ? "large" : "small");
+
     const opts: ResolvedMessageOptions = {
       maxRetries: (options && options.maxRetries) ?? 3,
       timeoutDuration: (options && options.timeoutDuration) ?? 60 * 60 * 1000, // 1 hour
@@ -121,6 +130,7 @@ export class DefaultMessageService implements IMessageService {
         (options && options.maxMultiStepIterations) ??
         parseInt(String(runtime.getSetting("MAX_MULTISTEP_ITERATIONS") ?? "6"), 10),
       onStreamChunk: options && options.onStreamChunk,
+      shouldRespondModel: resolvedShouldRespondModel,
     };
 
     // Set up timeout monitoring
@@ -421,16 +431,23 @@ export class DefaultMessageService implements IMessageService {
             shouldRespondTemplate,
         });
 
+        // Select model based on configuration - "large" enables better context analysis and planning
+        const shouldRespondModelType =
+          opts.shouldRespondModel === "large"
+            ? ModelType.TEXT_LARGE
+            : ModelType.TEXT_SMALL;
+
         runtime.logger.debug(
           {
             src: "service:message",
             agentName: runtime.character.name,
             reason: responseDecision.reason,
+            model: opts.shouldRespondModel,
           },
           "Using LLM evaluation",
         );
 
-        const response = await runtime.useModel(ModelType.TEXT_SMALL, {
+        const response = await runtime.useModel(shouldRespondModelType, {
           prompt: shouldRespondPrompt,
         });
 
@@ -513,6 +530,21 @@ export class DefaultMessageService implements IMessageService {
             message,
             responseContent.providers,
           );
+        }
+
+        // Save response memory to database
+        if (responseMessages.length > 0) {
+          for (const responseMemory of responseMessages) {
+            // Update the content in case inReplyTo was added
+            if (responseContent) {
+              responseMemory.content = responseContent;
+            }
+            runtime.logger.debug(
+              { src: "service:message", memoryId: responseMemory.id },
+              "Saving response to memory",
+            );
+            await runtime.createMemory(responseMemory, "messages");
+          }
         }
 
         if (responseContent) {

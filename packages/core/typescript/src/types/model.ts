@@ -249,7 +249,7 @@ export type GenerateTextParams = {
    * });
    * ```
    */
-  onStreamChunk?: (chunk: string, messageId?: UUID) => void | Promise<void>;
+  onStreamChunk?: (chunk: string, messageId?: string) => void | Promise<void>;
 };
 
 /**

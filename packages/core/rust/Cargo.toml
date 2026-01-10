@@ -22,12 +22,22 @@ wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_er
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+# Hashing (for deterministic UUIDs that match TypeScript's stringToUuid)
+sha1 = "0.10"
+sha2 = "0.10"
+
+# Secret encryption/decryption compatibility (matches TS AES-256-CBC helpers)
+aes = "0.8"
+cbc = "0.1"
+cipher = "0.4"
+hex = "0.4"
+
 # Async runtime
 async-trait = "0.1"
 futures = "0.3"
 
 # UUID handling
-uuid = { version = "1.19", features = ["v4", "v5", "serde"] }
+uuid = { version = "1.19", features = ["v4", "v5", "serde", "js"] }
 
 # Error handling
 thiserror = "2.0"

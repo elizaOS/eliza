@@ -1,0 +1,16 @@
+{
+  "extends": "./typescript/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./typescript"
+  },
+  "include": [
+    "typescript/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "rust",
+    "python",
+    "typescript/__tests__"
+  ]
+}

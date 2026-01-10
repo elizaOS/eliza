@@ -5,11 +5,11 @@
 use crate::types::{
     ActionHandler, ActionResult, Agent, Character, Entity, EvaluatorHandler, EventPayload,
     EventType, GetMemoriesParams, HandlerOptions, Memory, Plugin, ProviderHandler, Room,
-    RuntimeSettings, SearchMemoriesParams, State, Task, World, UUID,
+    RuntimeSettings, SearchMemoriesParams, SettingValue, State, Task, World, UUID,
 };
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::{debug, error, info, warn};
 
 // RwLock type - different for native (async) vs wasm (sync)
@@ -95,6 +95,37 @@ pub trait DatabaseAdapter: Send + Sync {
     async fn delete_task(&self, id: &UUID) -> Result<()>;
 }
 
+/// Log level for the runtime
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LogLevel {
+    /// Trace level (most verbose)
+    Trace,
+    /// Debug level
+    Debug,
+    /// Info level
+    Info,
+    /// Warning level
+    Warn,
+    /// Error level (default)
+    #[default]
+    Error,
+    /// Fatal level (least verbose)
+    Fatal,
+}
+
+impl LogLevel {
+    /// Convert to tracing level filter
+    pub fn to_tracing_level(self) -> tracing::Level {
+        match self {
+            LogLevel::Trace => tracing::Level::TRACE,
+            LogLevel::Debug => tracing::Level::DEBUG,
+            LogLevel::Info => tracing::Level::INFO,
+            LogLevel::Warn => tracing::Level::WARN,
+            LogLevel::Error | LogLevel::Fatal => tracing::Level::ERROR,
+        }
+    }
+}
+
 /// Runtime options for creating an AgentRuntime
 #[derive(Default)]
 pub struct RuntimeOptions {
@@ -108,6 +139,8 @@ pub struct RuntimeOptions {
     pub adapter: Option<Arc<dyn DatabaseAdapter>>,
     /// Runtime settings
     pub settings: Option<RuntimeSettings>,
+    /// Log level for the runtime. Defaults to Error.
+    pub log_level: LogLevel,
 }
 
 /// Event handler function type
@@ -117,12 +150,90 @@ pub type EventHandler = Arc<dyn Fn(EventPayload) -> Result<()> + Send + Sync>;
 pub type ModelHandler =
     Arc<dyn Fn(&str, serde_json::Value) -> Result<serde_json::Value> + Send + Sync>;
 
+fn json_value_to_setting_value(value: &serde_json::Value) -> Option<SettingValue> {
+    match value {
+        serde_json::Value::String(s) => Some(SettingValue::String(s.clone())),
+        serde_json::Value::Bool(b) => Some(SettingValue::Bool(*b)),
+        serde_json::Value::Number(n) => n.as_f64().map(SettingValue::Number),
+        serde_json::Value::Null => Some(SettingValue::Null),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => None,
+    }
+}
+
+fn setting_value_to_json_value(value: &SettingValue) -> serde_json::Value {
+    match value {
+        SettingValue::String(s) => serde_json::Value::String(s.clone()),
+        SettingValue::Bool(b) => serde_json::Value::Bool(*b),
+        SettingValue::Number(n) => serde_json::Number::from_f64(*n)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        SettingValue::Null => serde_json::Value::Null,
+    }
+}
+
+fn normalize_setting_value(value: SettingValue) -> SettingValue {
+    match value {
+        SettingValue::String(s) => {
+            let decrypted = crate::settings::decrypt_string_value(&s, &crate::settings::get_salt());
+            if decrypted == "true" {
+                SettingValue::Bool(true)
+            } else if decrypted == "false" {
+                SettingValue::Bool(false)
+            } else {
+                SettingValue::String(decrypted)
+            }
+        }
+        other => other,
+    }
+}
+
+/// Model handler function type for runtime
+/// 
+/// This type represents an async function that takes model parameters (as JSON)
+/// and returns a string result. It is used to register model handlers that can
+/// be called via `runtime.use_model()`.
+/// 
+/// For native builds, handlers must be Send + Sync for multi-threaded async.
+/// For WASM builds, this constraint is relaxed since WASM is single-threaded.
+#[cfg(not(feature = "wasm"))]
+pub type RuntimeModelHandler = Box<
+    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>> + Send>>
+        + Send
+        + Sync,
+>;
+
+/// Model handler function type for runtime (WASM version)
+/// 
+/// This type represents an async function that takes model parameters (as JSON)
+/// and returns a string result. The WASM version does not require Send + Sync
+/// since WebAssembly is single-threaded.
+#[cfg(feature = "wasm")]
+pub type RuntimeModelHandler = Box<
+    dyn Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String>>>>
+>;
+
 /// The core runtime for an elizaOS agent
+///
+/// Users can create an AgentRuntime directly without needing a higher-level abstraction:
+///
+/// ```rust,ignore
+/// use elizaos::{AgentRuntime, Character, DEFAULT_UUID_STR};
+/// use elizaos::runtime::{RuntimeOptions, LogLevel};
+///
+/// let runtime = AgentRuntime::new(RuntimeOptions {
+///     character: Some(Character { name: "MyAgent".to_string(), ..Default::default() }),
+///     log_level: LogLevel::Info, // defaults to Error
+///     ..Default::default()
+/// }).await?;
+/// await runtime.initialize()?;
+///
+/// // For memory operations, use UUID::default_uuid() if no specific room/world needed
+/// ```
 pub struct AgentRuntime {
     /// Agent ID
     pub agent_id: UUID,
     /// Character configuration
-    pub character: Character,
+    pub character: RwLock<Character>,
     /// Database adapter
     adapter: Option<Arc<dyn DatabaseAdapter>>,
     /// Registered actions
@@ -133,17 +244,24 @@ pub struct AgentRuntime {
     evaluators: RwLock<Vec<Arc<dyn EvaluatorHandler>>>,
     /// Loaded plugins
     plugins: RwLock<Vec<Plugin>>,
+    /// Plugins provided at construction time (registered during `initialize()`)
+    initial_plugins: Mutex<Vec<Plugin>>,
     /// Event handlers
     events: RwLock<HashMap<String, Vec<EventHandler>>>,
     /// Services
     services: RwLock<HashMap<String, Arc<dyn Service>>>,
+    /// Model handlers (maps model type like "TEXT_LARGE" to handler)
+    model_handlers: RwLock<HashMap<String, RuntimeModelHandler>>,
     /// Runtime settings
     settings: RwLock<RuntimeSettings>,
-    /// Current run ID (used in WASM mode)
-    #[cfg_attr(not(feature = "wasm"), allow(dead_code))]
-    current_run_id: RwLock<Option<UUID>>,
+    /// Current run ID (tracked for prompt/model call correlation)
+    current_run_id: Mutex<Option<UUID>>,
+    /// Current room ID (for associating logs with a conversation)
+    current_room_id: Mutex<Option<UUID>>,
     /// Initialization promise/future resolved
     initialized: RwLock<bool>,
+    /// Log level for this runtime
+    log_level: LogLevel,
 }
 
 /// Service trait for long-running services
@@ -160,40 +278,55 @@ impl AgentRuntime {
     /// Create a new AgentRuntime
     pub async fn new(opts: RuntimeOptions) -> Result<Self> {
         let character = opts.character.unwrap_or_default();
-        let agent_id = opts.agent_id.unwrap_or_else(|| {
-            // Generate deterministic UUID from character name
-            UUID::new_v4()
-        });
+        let agent_id = character
+            .id
+            .clone()
+            .or(opts.agent_id)
+            .unwrap_or_else(|| crate::types::string_to_uuid(&character.name));
 
-        info!("Creating AgentRuntime for agent: {}", agent_id);
+        let log_level = opts.log_level;
+        info!("Creating AgentRuntime for agent: {} with log level {:?}", agent_id, log_level);
 
         let runtime = AgentRuntime {
             agent_id,
-            character,
+            character: RwLock::new(character),
             adapter: opts.adapter,
             actions: RwLock::new(Vec::new()),
             providers: RwLock::new(Vec::new()),
             evaluators: RwLock::new(Vec::new()),
             plugins: RwLock::new(Vec::new()),
+            initial_plugins: Mutex::new(opts.plugins),
             events: RwLock::new(HashMap::new()),
             services: RwLock::new(HashMap::new()),
+            model_handlers: RwLock::new(HashMap::new()),
             settings: RwLock::new(opts.settings.unwrap_or_default()),
-            current_run_id: RwLock::new(None),
+            current_run_id: Mutex::new(None),
+            current_room_id: Mutex::new(None),
             initialized: RwLock::new(false),
+            log_level,
         };
 
-        // Register provided plugins
-        for plugin in opts.plugins {
-            // Plugin registration would happen here
-            debug!("Registering plugin: {}", plugin.definition.name);
-        }
-
         Ok(runtime)
+    }
+
+    /// Get the configured log level for this runtime
+    pub fn log_level(&self) -> LogLevel {
+        self.log_level
     }
 
     /// Initialize the runtime
     pub async fn initialize(&self) -> Result<()> {
         info!("Initializing AgentRuntime for agent: {}", self.agent_id);
+
+        // Register plugins provided during construction (mirrors TS/Py behavior).
+        // This happens before database init so plugins can register adapters/services/models/events.
+        let plugins_to_register: Vec<Plugin> = {
+            let mut guard = self.initial_plugins.lock().expect("lock poisoned");
+            std::mem::take(&mut *guard)
+        };
+        for plugin in plugins_to_register {
+            self.register_plugin(plugin).await?;
+        }
 
         // Initialize database adapter if present
         if let Some(adapter) = &self.adapter {
@@ -220,7 +353,7 @@ impl AgentRuntime {
     }
 
     /// Register a plugin
-    pub async fn register_plugin(&self, plugin: Plugin) -> Result<()> {
+    pub async fn register_plugin(&self, mut plugin: Plugin) -> Result<()> {
         debug!("Registering plugin: {}", plugin.definition.name);
 
         // Register actions
@@ -265,6 +398,22 @@ impl AgentRuntime {
             }
         }
 
+        // Register model handlers (move them out of the plugin)
+        let model_handlers = std::mem::take(&mut plugin.model_handlers);
+        for (model_type, handler) in model_handlers {
+            debug!("Registering model handler for: {}", model_type);
+            #[cfg(not(feature = "wasm"))]
+            {
+                let mut handlers = self.model_handlers.write().await;
+                handlers.insert(model_type, handler);
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let mut handlers = self.model_handlers.write().unwrap();
+                handlers.insert(model_type, handler);
+            }
+        }
+
         // Add to plugins list
         #[cfg(not(feature = "wasm"))]
         {
@@ -280,31 +429,137 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Get a setting value
-    pub async fn get_setting(&self, key: &str) -> Option<String> {
+    /// Get a setting value (TypeScript-compatible semantics).
+    ///
+    /// Precedence matches the TS runtime:
+    /// 1) `character.secrets[key]`
+    /// 2) `character.settings[key]`
+    /// 3) `character.settings.secrets[key]` (nested secrets)
+    /// 4) runtime settings (`RuntimeSettings`)
+    ///
+    /// Non-primitive values (objects/arrays) are treated as missing (TS returns null).
+    pub async fn get_setting(&self, key: &str) -> Option<SettingValue> {
+        // NOTE: This method intentionally returns only primitive values.
+        // Complex JSON values are ignored for parity with TS getSetting().
+
+        // Read character once for consistent lookups.
+        let character = {
+            #[cfg(not(feature = "wasm"))]
+            {
+                self.character.read().await.clone()
+            }
+            #[cfg(feature = "wasm")]
+            {
+                self.character.read().unwrap().clone()
+            }
+        };
+
+        // 1) character.secrets
+        if let Some(secrets) = &character.secrets {
+            if let Some(v) = secrets.values.get(key) {
+                if let Some(setting) = json_value_to_setting_value(v) {
+                    return Some(normalize_setting_value(setting));
+                }
+            }
+        }
+
+        // 2) character.settings direct
+        if let Some(settings) = &character.settings {
+            if let Some(v) = settings.values.get(key) {
+                if let Some(setting) = json_value_to_setting_value(v) {
+                    return Some(normalize_setting_value(setting));
+                }
+            }
+
+            // 3) character.settings.secrets nested
+            if let Some(nested) = settings.values.get("secrets") {
+                if let Some(nested_map) = nested.as_object() {
+                    if let Some(v) = nested_map.get(key) {
+                        if let Some(setting) = json_value_to_setting_value(v) {
+                            return Some(normalize_setting_value(setting));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4) runtime settings map
         #[cfg(not(feature = "wasm"))]
         {
             let settings = self.settings.read().await;
-            settings.get_string(key).map(String::from)
+            settings
+                .values
+                .get(key)
+                .cloned()
+                .map(normalize_setting_value)
         }
         #[cfg(feature = "wasm")]
         {
             let settings = self.settings.read().unwrap();
-            settings.get_string(key).map(String::from)
+            settings
+                .values
+                .get(key)
+                .cloned()
+                .map(normalize_setting_value)
         }
     }
 
-    /// Set a setting value
-    pub async fn set_setting(&self, key: &str, value: &str) {
+    /// Set a setting value (TypeScript-compatible semantics).
+    ///
+    /// - `secret = true` writes to `character.secrets`
+    /// - `secret = false` writes to `character.settings`
+    pub async fn set_setting(&self, key: &str, value: SettingValue, secret: bool) {
+        if secret {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let mut character = self.character.write().await;
+                if character.secrets.is_none() {
+                    character.secrets = Some(crate::types::CharacterSecrets::default());
+                }
+                if let Some(secrets) = &mut character.secrets {
+                    secrets
+                        .values
+                        .insert(key.to_string(), setting_value_to_json_value(&value));
+                }
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let mut character = self.character.write().unwrap();
+                if character.secrets.is_none() {
+                    character.secrets = Some(crate::types::CharacterSecrets::default());
+                }
+                if let Some(secrets) = &mut character.secrets {
+                    secrets
+                        .values
+                        .insert(key.to_string(), setting_value_to_json_value(&value));
+                }
+            }
+            return;
+        }
+
         #[cfg(not(feature = "wasm"))]
         {
-            let mut settings = self.settings.write().await;
-            settings.set_string(key, value);
+            let mut character = self.character.write().await;
+            if character.settings.is_none() {
+                character.settings = Some(crate::types::CharacterSettings::default());
+            }
+            if let Some(settings) = &mut character.settings {
+                settings
+                    .values
+                    .insert(key.to_string(), setting_value_to_json_value(&value));
+            }
         }
         #[cfg(feature = "wasm")]
         {
-            let mut settings = self.settings.write().unwrap();
-            settings.set_string(key, value);
+            let mut character = self.character.write().unwrap();
+            if character.settings.is_none() {
+                character.settings = Some(crate::types::CharacterSettings::default());
+            }
+            if let Some(settings) = &mut character.settings {
+                settings
+                    .values
+                    .insert(key.to_string(), setting_value_to_json_value(&value));
+            }
         }
     }
 
@@ -312,11 +567,11 @@ impl AgentRuntime {
     pub async fn compose_state(&self, message: &Memory) -> Result<State> {
         let mut state = State::new();
 
-        // Get providers
+        // Get providers - clone to avoid holding lock across await
         #[cfg(not(feature = "wasm"))]
-        let providers = self.providers.read().await;
+        let providers: Vec<_> = self.providers.read().await.iter().cloned().collect();
         #[cfg(feature = "wasm")]
-        let providers = self.providers.read().unwrap();
+        let providers: Vec<_> = self.providers.read().unwrap().iter().cloned().collect();
 
         // Run each provider to gather context
         for provider in providers.iter() {
@@ -358,10 +613,11 @@ impl AgentRuntime {
     ) -> Result<Vec<ActionResult>> {
         let mut results = Vec::new();
 
+        // Clone to avoid holding lock across await
         #[cfg(not(feature = "wasm"))]
-        let actions = self.actions.read().await;
+        let actions: Vec<_> = self.actions.read().await.iter().cloned().collect();
         #[cfg(feature = "wasm")]
-        let actions = self.actions.read().unwrap();
+        let actions: Vec<_> = self.actions.read().unwrap().iter().cloned().collect();
 
         for action in actions.iter() {
             // Validate if action should run
@@ -434,16 +690,13 @@ impl AgentRuntime {
     /// Start a new run
     pub fn start_run(&self, room_id: Option<&UUID>) -> UUID {
         let run_id = UUID::new_v4();
-
-        #[cfg(not(feature = "wasm"))]
         {
-            // In native mode, we'd need async access, but this is a sync method
-            // The run_id is still tracked via the return value
-        }
-        #[cfg(feature = "wasm")]
-        {
-            let mut current = self.current_run_id.write().unwrap();
+            let mut current = self.current_run_id.lock().expect("lock poisoned");
             *current = Some(run_id.clone());
+        }
+        {
+            let mut current_room = self.current_room_id.lock().expect("lock poisoned");
+            *current_room = room_id.cloned();
         }
 
         debug!("Started run: {} for room: {:?}", run_id, room_id);
@@ -452,30 +705,102 @@ impl AgentRuntime {
 
     /// End the current run
     pub fn end_run(&self) {
-        #[cfg(not(feature = "wasm"))]
         {
-            // In native mode, this would need async access
-            // For now, this is a no-op in native mode
-        }
-        #[cfg(feature = "wasm")]
-        {
-            let mut current = self.current_run_id.write().unwrap();
+            let mut current = self.current_run_id.lock().expect("lock poisoned");
             *current = None;
+        }
+        {
+            let mut current_room = self.current_room_id.lock().expect("lock poisoned");
+            *current_room = None;
         }
     }
 
     /// Get the current run ID
-    pub fn get_current_run_id(&self) -> Option<UUID> {
+    pub fn get_current_run_id(&self) -> UUID {
+        let mut current = self.current_run_id.lock().expect("lock poisoned");
+        match &*current {
+            Some(id) => id.clone(),
+            None => {
+                let id = UUID::new_v4();
+                *current = Some(id.clone());
+                id
+            }
+        }
+    }
+
+    /// Get the current room ID (if any) associated with the current run.
+    pub fn get_current_room_id(&self) -> Option<UUID> {
+        let current = self.current_room_id.lock().expect("lock poisoned");
+        current.clone()
+    }
+
+    /// Get a reference to the database adapter (if any)
+    pub fn get_adapter(&self) -> Option<&Arc<dyn DatabaseAdapter>> {
+        self.adapter.as_ref()
+    }
+
+    /// Get a message service for handling incoming messages
+    /// 
+    /// This returns a new DefaultMessageService instance. Usage:
+    /// ```rust,ignore
+    /// let result = runtime.message_service().handle_message(&runtime, &mut message, None, None).await?;
+    /// ```
+    pub fn message_service(&self) -> crate::services::DefaultMessageService {
+        crate::services::DefaultMessageService::new()
+    }
+
+    /// Register a model handler for a specific model type
+    /// 
+    /// Model types are strings like "TEXT_LARGE", "TEXT_SMALL", "TEXT_EMBEDDING"
+    pub async fn register_model(&self, model_type: &str, handler: RuntimeModelHandler) {
         #[cfg(not(feature = "wasm"))]
         {
-            // In native mode, would need async access to read
-            // For now, return None
-            None
+            let mut handlers = self.model_handlers.write().await;
+            handlers.insert(model_type.to_string(), handler);
         }
         #[cfg(feature = "wasm")]
         {
-            let current = self.current_run_id.read().unwrap();
-            current.clone()
+            let mut handlers = self.model_handlers.write().unwrap();
+            handlers.insert(model_type.to_string(), handler);
+        }
+        debug!("Registered model handler for: {}", model_type);
+    }
+
+    /// Use a model to generate text
+    /// 
+    /// This looks up the registered handler for the given model type and calls it.
+    /// 
+    /// # Example
+    /// ```rust,ignore
+    /// let result = runtime.use_model("TEXT_LARGE", serde_json::json!({
+    ///     "prompt": "Hello!",
+    ///     "system": "You are helpful.",
+    ///     "temperature": 0.7
+    /// })).await?;
+    /// ```
+    pub async fn use_model(&self, model_type: &str, params: serde_json::Value) -> Result<String> {
+        let handler = {
+            #[cfg(not(feature = "wasm"))]
+            {
+                let handlers = self.model_handlers.read().await;
+                handlers.get(model_type).map(|h| {
+                    // We need to call the handler - create a boxed future
+                    h(params.clone())
+                })
+            }
+            #[cfg(feature = "wasm")]
+            {
+                let handlers = self.model_handlers.read().unwrap();
+                handlers.get(model_type).map(|h| h(params.clone()))
+            }
+        };
+
+        match handler {
+            Some(future) => future.await,
+            None => Err(anyhow::anyhow!(
+                "No model handler registered for type: {}. Register a model handler using register_model() or pass a plugin with model handlers.",
+                model_type
+            )),
         }
     }
 
@@ -496,8 +821,9 @@ impl AgentRuntime {
         #[cfg(feature = "wasm")]
         {
             let services = self.services.read().unwrap();
-            for (name, service) in services.iter() {
+            for (name, _service) in services.iter() {
                 // Note: In WASM, we'd need to handle this differently
+                // Services would be stopped synchronously if needed
                 debug!("Service {} would be stopped", name);
             }
         }
@@ -528,16 +854,59 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(runtime.character.name, "TestAgent");
+        let character = runtime.character.read().await.clone();
+        assert_eq!(character.name, "TestAgent");
     }
 
     #[tokio::test]
     async fn test_runtime_settings() {
         let runtime = AgentRuntime::new(RuntimeOptions::default()).await.unwrap();
 
-        runtime.set_setting("test_key", "test_value").await;
+        runtime
+            .set_setting(
+                "test_key",
+                SettingValue::String("test_value".to_string()),
+                false,
+            )
+            .await;
         let value = runtime.get_setting("test_key").await;
-        assert_eq!(value, Some("test_value".to_string()));
+        assert_eq!(value, Some(SettingValue::String("test_value".to_string())));
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_string_bool_normalization() {
+        let runtime = AgentRuntime::new(RuntimeOptions::default()).await.unwrap();
+
+        runtime
+            .set_setting("FLAG_TRUE", SettingValue::String("true".to_string()), false)
+            .await;
+        runtime
+            .set_setting("FLAG_FALSE", SettingValue::String("false".to_string()), false)
+            .await;
+
+        assert_eq!(runtime.get_setting("FLAG_TRUE").await, Some(SettingValue::Bool(true)));
+        assert_eq!(
+            runtime.get_setting("FLAG_FALSE").await,
+            Some(SettingValue::Bool(false))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_runtime_settings_decrypts_encrypted_values() {
+        let runtime = AgentRuntime::new(RuntimeOptions::default()).await.unwrap();
+        let salt = crate::settings::get_salt();
+
+        let plaintext = "super-secret";
+        let encrypted = crate::settings::encrypt_string_value(plaintext, &salt);
+
+        runtime
+            .set_setting("ENCRYPTED", SettingValue::String(encrypted), false)
+            .await;
+
+        assert_eq!(
+            runtime.get_setting("ENCRYPTED").await,
+            Some(SettingValue::String(plaintext.to_string()))
+        );
     }
 
     #[tokio::test]

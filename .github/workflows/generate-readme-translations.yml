@@ -63,7 +63,7 @@ jobs:
                 }
               ],
               save_path: "packages/docs/packages/docs/i18n/readme/README_${{ matrix.language.code }}.md",
-              "model": "gpt-4o"
+              "model": "gpt-5"
             }
 
   commit:

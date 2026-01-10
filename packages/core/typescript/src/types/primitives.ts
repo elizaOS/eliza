@@ -6,6 +6,13 @@ import type { ChannelType } from "./environment";
 export type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**
+ * The default UUID used when no room or world is specified.
+ * This is the nil/zero UUID (00000000-0000-0000-0000-000000000000).
+ * Using this allows users to spin up an AgentRuntime without worrying about room/world setup.
+ */
+export const DEFAULT_UUID: UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
  * Helper function to safely cast a string to strongly typed UUID
  * @param id The string UUID to validate and cast
  * @returns The same UUID with branded type information

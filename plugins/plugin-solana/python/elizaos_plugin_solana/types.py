@@ -1,0 +1,201 @@
+"""Type definitions for Solana plugin operations."""
+
+from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class PriceInfo(BaseModel):
+    """Price information for a single cryptocurrency."""
+
+    usd: str = Field(description="Price in USD")
+
+
+class Prices(BaseModel):
+    """Price information for major cryptocurrencies."""
+
+    solana: PriceInfo
+    bitcoin: PriceInfo
+    ethereum: PriceInfo
+
+
+class PortfolioItem(BaseModel):
+    """Token item in a wallet portfolio."""
+
+    name: str = Field(description="Token name")
+    address: str = Field(description="Token mint address")
+    symbol: str = Field(description="Token symbol")
+    decimals: int = Field(ge=0, le=18, description="Token decimals")
+    balance: str = Field(description="Raw balance as string")
+    ui_amount: str = Field(alias="uiAmount", description="UI-friendly amount")
+    price_usd: str = Field(alias="priceUsd", description="Price in USD")
+    value_usd: str = Field(alias="valueUsd", description="Value in USD")
+    value_sol: Optional[str] = Field(
+        default=None, alias="valueSol", description="Value in SOL"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class WalletPortfolio(BaseModel):
+    """Complete wallet portfolio."""
+
+    total_usd: str = Field(alias="totalUsd", description="Total value in USD")
+    total_sol: Optional[str] = Field(
+        default=None, alias="totalSol", description="Total value in SOL"
+    )
+    items: list[PortfolioItem] = Field(description="List of token holdings")
+    prices: Optional[Prices] = Field(default=None, description="Market prices")
+    last_updated: Optional[int] = Field(
+        default=None, alias="lastUpdated", description="Last update timestamp in ms"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class TokenAccountInfo(BaseModel):
+    """Token account information."""
+
+    mint: str = Field(description="Mint address")
+    owner: str = Field(description="Owner address")
+    amount: str = Field(description="Raw amount as string")
+    decimals: int = Field(ge=0, le=18, description="Decimals")
+    ui_amount: Decimal = Field(alias="uiAmount", description="UI amount")
+
+    model_config = {"populate_by_name": True}
+
+
+class TransferParams(BaseModel):
+    """Parameters for a token transfer."""
+
+    recipient: str = Field(description="Recipient address")
+    amount: Decimal = Field(gt=0, description="Amount to transfer")
+    mint: Optional[str] = Field(
+        default=None, description="Token mint address (None for SOL)"
+    )
+
+
+class TransferResult(BaseModel):
+    """Result of a transfer operation."""
+
+    success: bool = Field(description="Whether the transfer was successful")
+    signature: Optional[str] = Field(default=None, description="Transaction signature")
+    amount: str = Field(description="Amount transferred")
+    recipient: str = Field(description="Recipient address")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+
+class SwapQuoteParams(BaseModel):
+    """Parameters for getting a swap quote."""
+
+    input_mint: str = Field(alias="inputMint", description="Input token mint address")
+    output_mint: str = Field(alias="outputMint", description="Output token mint address")
+    amount: str = Field(description="Amount in base units")
+    slippage_bps: int = Field(
+        default=50,
+        ge=0,
+        le=10000,
+        alias="slippageBps",
+        description="Slippage in basis points (100 = 1%)",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class SwapInfo(BaseModel):
+    """Swap information for a route step."""
+
+    amm_key: str = Field(alias="ammKey", description="AMM key")
+    label: str = Field(description="DEX label")
+    input_mint: str = Field(alias="inputMint", description="Input mint")
+    output_mint: str = Field(alias="outputMint", description="Output mint")
+    in_amount: str = Field(alias="inAmount", description="Input amount")
+    out_amount: str = Field(alias="outAmount", description="Output amount")
+    fee_amount: str = Field(alias="feeAmount", description="Fee amount")
+    fee_mint: str = Field(alias="feeMint", description="Fee mint")
+
+    model_config = {"populate_by_name": True}
+
+
+class RoutePlanStep(BaseModel):
+    """A step in the swap route."""
+
+    swap_info: SwapInfo = Field(alias="swapInfo", description="Swap info for this step")
+    percent: int = Field(ge=0, le=100, description="Percentage of input routed")
+
+    model_config = {"populate_by_name": True}
+
+
+class SwapQuote(BaseModel):
+    """Jupiter swap quote response."""
+
+    input_mint: str = Field(alias="inputMint", description="Input token mint")
+    in_amount: str = Field(alias="inAmount", description="Input amount in base units")
+    output_mint: str = Field(alias="outputMint", description="Output token mint")
+    out_amount: str = Field(alias="outAmount", description="Output amount in base units")
+    other_amount_threshold: str = Field(
+        alias="otherAmountThreshold", description="Minimum output after slippage"
+    )
+    swap_mode: str = Field(alias="swapMode", description="Swap mode (ExactIn or ExactOut)")
+    slippage_bps: int = Field(alias="slippageBps", description="Slippage in basis points")
+    price_impact_pct: str = Field(
+        alias="priceImpactPct", description="Price impact percentage"
+    )
+    route_plan: list[RoutePlanStep] = Field(alias="routePlan", description="Route plan")
+
+    model_config = {"populate_by_name": True}
+
+
+class SwapResult(BaseModel):
+    """Result of a swap execution."""
+
+    success: bool = Field(description="Whether the swap was successful")
+    signature: Optional[str] = Field(default=None, description="Transaction signature")
+    in_amount: Optional[str] = Field(
+        default=None, alias="inAmount", description="Input amount"
+    )
+    out_amount: Optional[str] = Field(
+        default=None, alias="outAmount", description="Output amount"
+    )
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+    model_config = {"populate_by_name": True}
+
+
+class SwapTransaction(BaseModel):
+    """Jupiter swap transaction response."""
+
+    swap_transaction: str = Field(
+        alias="swapTransaction", description="Base64-encoded versioned transaction"
+    )
+    last_valid_block_height: int = Field(
+        alias="lastValidBlockHeight", description="Last valid block height"
+    )
+    prioritization_fee_lamports: int = Field(
+        default=0,
+        alias="prioritizationFeeLamports",
+        description="Prioritization fee in lamports",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class BirdeyePriceData(BaseModel):
+    """Birdeye price data."""
+
+    value: float = Field(description="Token price in USD")
+    update_unix_time: int = Field(
+        alias="updateUnixTime", description="Update timestamp"
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class BirdeyePriceResponse(BaseModel):
+    """Birdeye price response."""
+
+    success: bool = Field(description="Whether the request was successful")
+    data: BirdeyePriceData = Field(description="Price data")
+
+

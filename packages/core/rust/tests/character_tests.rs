@@ -97,9 +97,8 @@ fn test_validate_empty_bio() {
         ..Default::default()
     };
 
-    let result = validate_character(&character);
-    assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("bio"));
+    // TS/Py allow empty bio strings (bio is required, but not required to be non-empty)
+    assert!(validate_character(&character).is_ok());
 }
 
 /// Test merging character defaults
@@ -129,9 +128,9 @@ fn test_merge_defaults_empty_bio() {
 
     let merged = merge_character_defaults(character);
 
-    // Bio should be filled with default
+    // Bio should be preserved (TS mergeCharacterDefaults does not backfill empty bio)
     match &merged.bio {
-        Bio::Single(s) => assert!(!s.is_empty()),
+        Bio::Single(s) => assert!(s.is_empty()),
         _ => panic!("Expected single bio"),
     }
 }
@@ -180,9 +179,10 @@ fn test_build_plugins_with_cloud() {
 
     let plugins = build_character_plugins(&env);
 
-    assert!(plugins.contains(&"@elizaos/plugin-elizacloud".to_string()));
-    // Should not have local SQL plugin
-    assert!(!plugins.contains(&"@elizaos/plugin-sql".to_string()));
+    // Cloud settings are not part of the core TypeScript/Python plugin builder.
+    // Rust should ignore these keys and follow the standard ordering.
+    assert!(plugins.contains(&"@elizaos/plugin-sql".to_string()));
+    assert!(!plugins.contains(&"@elizaos/plugin-elizacloud".to_string()));
 }
 
 /// Test building plugins with IGNORE_BOOTSTRAP

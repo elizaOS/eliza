@@ -53,6 +53,13 @@ IMPORTANT ACTION ORDERING RULES:
 - Use IGNORE only when you should not respond at all
 - If you use IGNORE, do not include any other actions. IGNORE should be used alone when you should not respond or take any actions.
 
+IMPORTANT ACTION PARAMETERS:
+- Some actions accept input parameters that you should extract from the conversation
+- When an action has parameters listed in its description, include a <params> block for that action
+- Extract parameter values from the user's message and conversation context
+- Required parameters MUST be provided; optional parameters can be omitted if not mentioned
+- If you cannot determine a required parameter value, ask the user for clarification in your <text>
+
 IMPORTANT PROVIDER SELECTION RULES:
 - Only include providers if they are needed to respond accurately.
 - If the message mentions images, photos, pictures, attachments, or visual content, OR if you see "(Attachments:" in the conversation, you MUST include "ATTACHMENTS" in your providers list
@@ -76,6 +83,7 @@ First, think about what you want to do next and plan your actions. Then, write t
 "actions" should be a comma-separated list of the actions {{agentName}} plans to take based on the thought, IN THE ORDER THEY SHOULD BE EXECUTED (if none, use IGNORE, if simply responding with text, use REPLY)
 "providers" should be a comma-separated list of the providers that {{agentName}} will use to have the right context for responding and acting (NEVER use "IGNORE" as a provider - use specific provider names like ATTACHMENTS, ENTITIES, FACTS, KNOWLEDGE, etc.)
 "text" should be the text of the next message for {{agentName}} which they will send to the conversation.
+"params" (optional) should contain action parameters when actions require input. Format as nested XML with action name as wrapper.
 </keys>
 
 <output>
@@ -88,7 +96,19 @@ Respond using XML format like this:
     <actions>ACTION1,ACTION2</actions>
     <providers>PROVIDER1,PROVIDER2</providers>
     <text>Your response text here</text>
+    <params>
+        <ACTION1>
+            <paramName1>value1</paramName1>
+            <paramName2>value2</paramName2>
+        </ACTION1>
+        <ACTION2>
+            <paramName1>value1</paramName1>
+        </ACTION2>
+    </params>
 </response>
+
+Note: The <params> block is optional and should only be included when actions require input parameters.
+If an action has no parameters or you're only using REPLY/IGNORE, omit the <params> block entirely.
 
 IMPORTANT: Your response must ONLY contain the <response></response> XML block above. Do not include any text, thinking, or reasoning before or after this XML block. Start your response immediately with <response> and end with </response>.
 </output>`;

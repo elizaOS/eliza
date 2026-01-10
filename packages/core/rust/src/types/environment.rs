@@ -158,6 +158,24 @@ pub enum ChannelType {
     Api,
 }
 
+impl ChannelType {
+    /// Convert to string representation for database storage
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SelfChannel => "SELF",
+            Self::Dm => "DM",
+            Self::Group => "GROUP",
+            Self::VoiceDm => "VOICE_DM",
+            Self::VoiceGroup => "VOICE_GROUP",
+            Self::Feed => "FEED",
+            Self::Thread => "THREAD",
+            Self::World => "WORLD",
+            Self::Forum => "FORUM",
+            Self::Api => "API",
+        }
+    }
+}
+
 /// Represents a room/channel
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

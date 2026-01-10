@@ -1,0 +1,42 @@
+{
+  "name": "eliza-code",
+  "version": "1.0.0",
+  "description": "Async coding agent terminal app - Claude Code meets ElizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "eliza-code": "./dist/index.js"
+  },
+  "scripts": {
+    "start": "bun src/index.tsx",
+    "dev": "bun --watch src/index.tsx",
+    "build": "bun build src/index.tsx --outdir dist --target bun",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "cli": "bun src/index.tsx"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-bootstrap": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@types/three": "^0.182.0",
+    "chalk": "^5.3.0",
+    "dotenv": "^17.2.3",
+    "ink": "^5.2.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1",
+    "three": "^0.182.0",
+    "uuid": "^13.0.0",
+    "zod": "^3.24.1",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.0",
+    "react-devtools-core": "^7.0.1",
+    "typescript": "^5.0.0"
+  }
+}
