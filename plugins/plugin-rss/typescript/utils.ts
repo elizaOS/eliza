@@ -16,8 +16,8 @@ export function createMessageReply(
   return {
     text: reply,
     attachments: [],
-    source: (message as Record<string, unknown>).source as string || 'unknown',
-    channelType: (message as Record<string, unknown>).channelType as ChannelType | undefined,
+    source: (message as unknown as Record<string, unknown>).source as string || 'unknown',
+    channelType: (message as unknown as Record<string, unknown>).channelType as ChannelType | undefined,
     inReplyTo: createUniqueUuid(runtime, message.id || '')
   };
 }

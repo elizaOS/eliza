@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -18,6 +17,8 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -73,7 +74,7 @@ class ScheduleFollowUpAction:
     )
     description: str = "Schedule a follow-up reminder for a contact"
 
-    async def validate(self, runtime: IAgentRuntime) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         follow_up_service = runtime.get_service("follow_up")
@@ -89,8 +90,8 @@ class ScheduleFollowUpAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         """Schedule a follow-up with a contact."""
-        from elizaos.bootstrap.services.follow_up import FollowUpService
         from elizaos.bootstrap.services.rolodex import RolodexService
+        from elizaos.bootstrap.services.follow_up import FollowUpService
 
         rolodex_service = runtime.get_service("rolodex")
         follow_up_service = runtime.get_service("follow_up")
@@ -220,3 +221,4 @@ schedule_follow_up_action = Action(
     handler=ScheduleFollowUpAction().handler,
     examples=ScheduleFollowUpAction().examples,
 )
+

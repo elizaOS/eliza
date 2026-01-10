@@ -79,7 +79,7 @@ export interface FeedItemMetadata {
  * Feed Subscription Metadata stored in memory
  */
 export interface FeedSubscriptionMetadata {
-  type: 'feed_subscription';
+  type: 'custom';
   subscribedAt: number;
   lastChecked: number;
   lastItemCount: number;

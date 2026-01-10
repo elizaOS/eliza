@@ -136,6 +136,7 @@ from elizaos.types.primitives import (
     MentionContext,
     Metadata,
     as_uuid,
+    string_to_uuid,
 )
 from elizaos.types.runtime import (
     IAgentRuntime,
@@ -268,6 +269,7 @@ __all__ = [
     # Primitives
     "UUID",
     "as_uuid",
+    "string_to_uuid",
     "Content",
     "ContentType",
     "Media",

@@ -13,6 +13,7 @@ import {
   formatMessages,
 } from '@elizaos/core';
 import { createGoalDataService } from '../services/goalDataService.js';
+import { extractConfirmationTemplate } from '../generated/prompts/typescript/prompts.js';
 
 // Interface for confirmation data stored in state
 interface PendingGoalData {
@@ -24,7 +25,7 @@ interface PendingGoalData {
   dueDate?: string;
   recurring?: 'daily' | 'weekly' | 'monthly';
   tags?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 // Interface for confirmation response
@@ -33,43 +34,6 @@ interface ConfirmationResponse {
   shouldProceed: boolean;
   modifications?: string;
 }
-
-/**
- * Template for extracting confirmation intent from user message
- */
-const extractConfirmationTemplate = `
-# Task: Extract Confirmation Intent
-
-## User Message
-{{text}}
-
-## Message History
-{{messageHistory}}
-
-## Pending Task Details
-{{pendingTask}}
-
-## Instructions
-Determine if the user is confirming, rejecting, or modifying the pending task creation.
-Look for:
-- Affirmative responses (yes, confirm, ok, do it, go ahead, etc.)
-- Negative responses (no, cancel, nevermind, stop, etc.)
-- Modification requests (change X to Y, make it priority 1, etc.)
-
-Return an XML object with:
-<response>
-  <isConfirmation>true/false - whether this is a response to the pending task</isConfirmation>
-  <shouldProceed>true/false - whether to create the task</shouldProceed>
-  <modifications>Any requested changes to the task, or 'none'</modifications>
-</response>
-
-## Example Output
-<response>
-  <isConfirmation>true</isConfirmation>
-  <shouldProceed>true</shouldProceed>
-  <modifications>none</modifications>
-</response>
-`;
 
 /**
  * Extracts confirmation intent from the user's message

@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -17,6 +16,8 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -69,7 +70,7 @@ class SearchContactsAction:
     )
     description: str = "Search and list contacts in the rolodex"
 
-    async def validate(self, runtime: IAgentRuntime) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
@@ -113,9 +114,7 @@ class SearchContactsAction:
 
             if parsed:
                 if parsed.get("categories"):
-                    categories = [
-                        c.strip() for c in str(parsed["categories"]).split(",") if c.strip()
-                    ]
+                    categories = [c.strip() for c in str(parsed["categories"]).split(",") if c.strip()]
                 if parsed.get("searchTerm"):
                     search_term = str(parsed["searchTerm"])
                 if parsed.get("tags"):
@@ -133,14 +132,12 @@ class SearchContactsAction:
             for contact in contacts:
                 entity = await runtime.get_entity(contact.entity_id)
                 name = entity.name if entity and entity.name else "Unknown"
-                contact_details.append(
-                    {
-                        "id": str(contact.entity_id),
-                        "name": name,
-                        "categories": ",".join(contact.categories),
-                        "tags": ",".join(contact.tags),
-                    }
-                )
+                contact_details.append({
+                    "id": str(contact.entity_id),
+                    "name": name,
+                    "categories": ",".join(contact.categories),
+                    "tags": ",".join(contact.tags),
+                })
 
             # Format response
             if not contact_details:
@@ -187,10 +184,7 @@ class SearchContactsAction:
                 ActionExample(name="{{name1}}", content=Content(text="Show me all my friends")),
                 ActionExample(
                     name="{{name2}}",
-                    content=Content(
-                        text="Here are your friends: Alice, Bob, Charlie",
-                        actions=["SEARCH_CONTACTS"],
-                    ),
+                    content=Content(text="Here are your friends: Alice, Bob, Charlie", actions=["SEARCH_CONTACTS"]),
                 ),
             ],
         ]
@@ -205,3 +199,4 @@ search_contacts_action = Action(
     handler=SearchContactsAction().handler,
     examples=SearchContactsAction().examples,
 )
+

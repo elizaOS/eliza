@@ -1,6 +1,7 @@
 import type {
     Action,
     ActionExample,
+    ActionResult,
     HandlerCallback,
     HandlerOptions,
     IAgentRuntime,
@@ -25,14 +26,14 @@ export const listFeedsAction: Action = {
         _options?: HandlerOptions,
         callback?: HandlerCallback,
         _responses?: Memory[]
-    ) => {
+    ): Promise<ActionResult> => {
         runtime.logger.log('LIST_RSS_FEEDS Starting handler...');
 
         const service = runtime.getService('RSS') as RssService;
         if (!service) {
             runtime.logger.error('RSS service not found');
             callback?.(createMessageReply(runtime, message, 'RSS service is not available'));
-            return;
+            return { success: false, error: 'RSS service not found' };
         }
 
         const feeds = await service.getSubscribedFeeds();
@@ -43,7 +44,7 @@ export const listFeedsAction: Action = {
                 message, 
                 'No RSS feeds are currently subscribed. Use the subscribe action to add feeds.'
             ));
-            return;
+            return { success: true };
         }
 
         // Format the feed list
@@ -70,6 +71,7 @@ export const listFeedsAction: Action = {
         });
 
         callback?.(createMessageReply(runtime, message, feedList.trim()));
+        return { success: true };
     },
 
     examples: [

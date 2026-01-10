@@ -10,6 +10,175 @@ These prompts use Handlebars-style template syntax:
 
 from __future__ import annotations
 
+EXTRACT_CANCELLATION_TEMPLATE = """# Task: Extract Task Cancellation Information
+
+## User Message
+{{text}}
+
+## Message History
+{{messageHistory}}
+
+## Available Tasks
+{{availableTasks}}
+
+## Instructions
+Parse the user's message to identify which task they want to cancel or delete.
+Match against the list of available tasks by name or description.
+If multiple tasks have similar names, choose the closest match.
+
+Return an XML object with:
+<response>
+  <taskId>ID of the task being cancelled, or 'null' if not found</taskId>
+  <taskName>Name of the task being cancelled, or 'null' if not found</taskName>
+  <isFound>'true' or 'false' indicating if a matching task was found</isFound>
+</response>
+
+## Example Output Format
+<response>
+  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>
+  <taskName>Finish report</taskName>
+  <isFound>true</isFound>
+</response>
+
+If no matching task was found:
+<response>
+  <taskId>null</taskId>
+  <taskName>null</taskName>
+  <isFound>false</isFound>
+</response>"""
+
+EXTRACT_COMPLETION_TEMPLATE = """# Task: Extract Task Completion Information
+
+## User Message
+{{text}}
+
+## Message History
+{{messageHistory}}
+
+## Available Tasks
+{{availableTasks}}
+
+## Instructions
+Parse the user's message to identify which task they're marking as completed.
+Match against the list of available tasks by name or description.
+If multiple tasks have similar names, choose the closest match.
+
+Return an XML object with:
+<response>
+  <taskId>ID of the task being completed, or 'null' if not found</taskId>
+  <taskName>Name of the task being completed, or 'null' if not found</taskName>
+  <isFound>'true' or 'false' indicating if a matching task was found</isFound>
+</response>
+
+## Example Output Format
+<response>
+  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>
+  <taskName>Finish report</taskName>
+  <isFound>true</isFound>
+</response>
+
+If no matching task was found:
+<response>
+  <taskId>null</taskId>
+  <taskName>null</taskName>
+  <isFound>false</isFound>
+</response>"""
+
+EXTRACT_CONFIRMATION_TEMPLATE = """# Task: Extract Confirmation Intent
+
+## User Message
+{{text}}
+
+## Message History
+{{messageHistory}}
+
+## Pending Task Details
+{{pendingTask}}
+
+## Instructions
+Determine if the user is confirming, rejecting, or modifying the pending task creation.
+Look for:
+- Affirmative responses (yes, confirm, ok, do it, go ahead, etc.)
+- Negative responses (no, cancel, nevermind, stop, etc.)
+- Modification requests (change X to Y, make it priority 1, etc.)
+
+Return an XML object with:
+<response>
+  <isConfirmation>true/false - whether this is a response to the pending task</isConfirmation>
+  <shouldProceed>true/false - whether to create the task</shouldProceed>
+  <modifications>Any requested changes to the task, or 'none'</modifications>
+</response>
+
+## Example Output
+<response>
+  <isConfirmation>true</isConfirmation>
+  <shouldProceed>true</shouldProceed>
+  <modifications>none</modifications>
+</response>"""
+
+EXTRACT_TASK_SELECTION_TEMPLATE = """# Task: Extract Task Selection Information
+
+## User Message
+{{text}}
+
+## Available Tasks
+{{availableTasks}}
+
+## Instructions
+Parse the user's message to identify which task they want to update or modify.
+Match against the list of available tasks by name or description.
+If multiple tasks have similar names, choose the closest match.
+
+Return an XML object with:
+<response>
+  <taskId>ID of the task being updated, or 'null' if not found</taskId>
+  <taskName>Name of the task being updated, or 'null' if not found</taskName>
+  <isFound>'true' or 'false' indicating if a matching task was found</isFound>
+</response>
+
+## Example Output Format
+<response>
+  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>
+  <taskName>Finish report</taskName>
+  <isFound>true</isFound>
+</response>
+
+If no matching task was found:
+<response>
+  <taskId>null</taskId>
+  <taskName>null</taskName>
+  <isFound>false</isFound>
+</response>"""
+
+EXTRACT_TASK_UPDATE_TEMPLATE = """# Task: Extract Task Update Information
+
+## User Message
+{{text}}
+
+## Current Task Details
+{{taskDetails}}
+
+## Instructions
+Parse the user's message to determine what changes they want to make to the task.
+Only include fields that the user explicitly wants to update.
+
+Return an XML object with these potential fields (only include fields that should be changed):
+<response>
+  <name>New name for the task</name>
+  <description>New description for the task</description>
+  <priority>New priority (1-4, where 1 is highest)</priority>
+  <urgent>'true' or 'false' for whether the task is urgent</urgent>
+  <dueDate>New due date in ISO format (YYYY-MM-DD), or 'null' to remove the due date</dueDate>
+  <recurring>New recurrence pattern ('daily', 'weekly', 'monthly')</recurring>
+</response>
+
+## Example Output Format
+<response>
+  <description>Updated task description</description>
+  <priority>2</priority>
+  <dueDate>2023-04-30</dueDate>
+</response>"""
+
 EXTRACT_TODO_TEMPLATE = """# Task: Extract Todo Information
 
 ## User Message
@@ -51,5 +220,10 @@ Do not write code. Just return the XML object.
 </response>"""
 
 __all__ = [
+    "EXTRACT_CANCELLATION_TEMPLATE",
+    "EXTRACT_COMPLETION_TEMPLATE",
+    "EXTRACT_CONFIRMATION_TEMPLATE",
+    "EXTRACT_TASK_SELECTION_TEMPLATE",
+    "EXTRACT_TASK_UPDATE_TEMPLATE",
     "EXTRACT_TODO_TEMPLATE",
 ]

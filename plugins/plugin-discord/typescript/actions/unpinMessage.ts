@@ -18,27 +18,10 @@ import {
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-/**
- * Template for extracting message reference for unpinning.
- */
-export const unpinMessageTemplate = `# Unpinning a Discord message
-{{recentMessages}}
+import { unpinMessageTemplate } from "../generated/prompts/typescript/prompts.js";
 
-# Instructions: {{senderName}} wants to unpin a message. Extract which message they want to unpin.
-
-Examples:
-- "unpin that message" -> messageRef: "last_pinned"
-- "unpin the last pinned message" -> messageRef: "last_pinned"
-- "unpin john's message" -> messageRef: "john"
-- "unpin message about the meeting" -> messageRef: "meeting"
-
-Your response must be formatted as a JSON block:
-\`\`\`json
-{
-  "messageRef": "<last_pinned|message-id|search-text>"
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { unpinMessageTemplate };
 
 const getMessageRef = async (
   runtime: IAgentRuntime,

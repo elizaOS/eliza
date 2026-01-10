@@ -5,14 +5,12 @@ import { parseRssToJson, createEmptyFeed } from './parser';
 
 export class RssService extends Service {
   private isRunning = false;
-  private registry: Record<number, unknown> = {};
 
   static serviceType = 'RSS';
   capabilityDescription = 'The agent is able to deal with RSS/atom feeds';
 
   constructor(runtime: IAgentRuntime) {
     super(runtime);
-    this.registry = {};
   }
 
   /**
@@ -80,11 +78,11 @@ export class RssService extends Service {
         roomId: this.runtime.agentId,
         createdAt: Date.now(),
         metadata: {
-          type: 'feed_subscription',
+          type: 'custom',
           subscribedAt: Date.now(),
           lastChecked: 0,
           lastItemCount: 0
-        }
+        } as any
       };
 
       await this.runtime.createMemory(subscriptionMemory, 'feedsubscriptions');
@@ -195,8 +193,8 @@ export class RssService extends Service {
                   ...item,
                   feedUrl: url,
                   feedTitle: feedData.title,
-                  type: 'feed_item'
-                }
+                  type: 'custom'
+                } as any
               };
 
               await this.runtime.createMemory(itemMemory, 'feeditems');
@@ -212,7 +210,7 @@ export class RssService extends Service {
               ...currentMetadata,
               lastChecked: Date.now(),
               lastItemCount: feedData.items.length
-            } as FeedSubscriptionMetadata
+            } as any
           });
 
           if (newItemCount > 0) {
@@ -281,7 +279,6 @@ export class RssService extends Service {
    * Register the RSS feed check task worker
    */
   private registerFeedCheckWorker(): void {
-    const service = this;
     const worker: TaskWorker = {
       name: 'RSS_FEED_CHECK',
       validate: async (_runtime, _message) => {

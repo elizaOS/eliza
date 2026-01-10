@@ -13,6 +13,10 @@ import {
   composePrompt,
 } from '@elizaos/core';
 import { createGoalDataService } from '../services/goalDataService';
+import {
+  extractGoalTemplate,
+  checkSimilarityTemplate,
+} from '../generated/prompts/typescript/prompts.js';
 
 // Interface for parsed goal data
 interface GoalInput {
@@ -27,71 +31,6 @@ interface SimilarityCheckResult {
   similarGoalName?: string;
   confidence: number;
 }
-
-/**
- * Template for extracting goal information from the user's message.
- */
-const extractGoalTemplate = `
-# Task: Extract Goal Information
-
-## User Message
-{{text}}
-
-## Message History
-{{messageHistory}}
-
-## Instructions
-Parse the user's message to extract information for creating a new goal.
-Determine if this goal is for the agent itself or for tracking a user's goal.
-
-Goals should be long-term achievable objectives, not short-term tasks.
-
-Return an XML object with these fields:
-<response>
-  <name>A clear, concise name for the goal</name>
-  <description>Optional detailed description</description>
-  <ownerType>Either "agent" (for agent's own goals) or "entity" (for user's goals)</ownerType>
-</response>
-
-If the message doesn't clearly indicate a goal to create, return empty response.
-
-## Example Output Format
-<response>
-  <name>Learn Spanish fluently</name>
-  <description>Achieve conversational fluency in Spanish within 6 months</description>
-  <ownerType>entity</ownerType>
-</response>
-`;
-
-/**
- * Template for checking if a similar goal already exists
- */
-const checkSimilarityTemplate = `
-# Task: Check Goal Similarity
-
-## New Goal
-Name: {{newGoalName}}
-Description: {{newGoalDescription}}
-
-## Existing Goals
-{{existingGoals}}
-
-## Instructions
-Determine if the new goal is similar to any existing goals.
-Consider goals similar if they have the same objective, even if worded differently.
-
-Return an XML object:
-<response>
-  <hasSimilar>true or false</hasSimilar>
-  <similarGoalName>Name of the similar goal if found</similarGoalName>
-  <confidence>0-100 indicating confidence in similarity</confidence>
-</response>
-
-## Example
-New Goal: "Get better at public speaking"
-Existing Goal: "Improve presentation skills"
-These are similar (confidence: 85)
-`;
 
 /**
  * Extracts goal information from the user's message.

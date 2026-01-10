@@ -1,6 +1,7 @@
 import type {
     Action,
     ActionExample,
+    ActionResult,
     HandlerCallback,
     HandlerOptions,
     IAgentRuntime,
@@ -24,25 +25,25 @@ export const unsubscribeFeedAction: Action = {
         _options?: HandlerOptions,
         callback?: HandlerCallback,
         _responses?: Memory[]
-    ) => {
+    ): Promise<ActionResult> => {
         runtime.logger.log('UNSUBSCRIBE_RSS_FEED Starting handler...');
 
         const service = runtime.getService('RSS') as RssService;
         if (!service) {
             runtime.logger.error('RSS service not found');
             callback?.(createMessageReply(runtime, message, 'RSS service is not available'));
-            return;
+            return { success: false, error: 'RSS service not found' };
         }
 
-        const urls = extractUrls(message.content.text);
+        const urls = extractUrls(message.content.text || '');
         
         if (!urls.length) {
             runtime.logger.warn('No valid URLs found in message');
             callback?.(createMessageReply(runtime, message, 'Please provide a valid RSS feed URL to unsubscribe from'));
-            return;
+            return { success: false, error: 'No valid URLs found' };
         }
 
-        const url = urls[0];
+        const url = urls[0]!;
         runtime.logger.debug({ url }, 'Attempting to unsubscribe from feed');
 
         // Unsubscribe from the feed
@@ -61,6 +62,7 @@ export const unsubscribeFeedAction: Action = {
                 `Unable to unsubscribe from ${url}. You may not be subscribed to this feed.`
             ));
         }
+        return { success };
     },
 
     examples: [

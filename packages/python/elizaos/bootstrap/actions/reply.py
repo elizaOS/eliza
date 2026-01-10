@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
-from elizaos.prompts import REPLY_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -22,6 +20,9 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import REPLY_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -61,7 +62,7 @@ class ReplyAction:
         "and at the end of a chain of actions as a final response."
     )
 
-    async def validate(self, runtime: IAgentRuntime) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Always valid - agents can always reply."""
         return True
 
@@ -183,9 +184,7 @@ class ReplyAction:
                 ),
             ],
             [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="What's your favorite color?")
-                ),
+                ActionExample(name="{{name1}}", content=Content(text="What's your favorite color?")),
                 ActionExample(
                     name="{{name2}}",
                     content=Content(
@@ -219,3 +218,4 @@ reply_action = Action(
     handler=ReplyAction().handler,
     examples=ReplyAction().examples,
 )
+

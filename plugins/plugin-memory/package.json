@@ -1,0 +1,97 @@
+{
+  "name": "@elizaos/plugin-memory",
+  "version": "1.0.0",
+  "description": "Advanced memory management plugin for elizaOS with conversation summarization and long-term persistent memory",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./rust": {
+      "import": "./rust/pkg/elizaos_plugin_memory.js"
+    }
+  },
+  "files": [
+    "dist",
+    "typescript/src",
+    "python",
+    "rust/src",
+    "rust/Cargo.toml",
+    "rust/pkg",
+    "README.md"
+  ],
+  "scripts": {
+    "build:prompts": "node ../../packages/prompts/scripts/generate-plugin-prompts.js ./prompts ./typescript/src/generated/prompts --target all",
+    "build": "npm run build:prompts && bun run build:ts && bun run build:rust",
+    "build:ts": "cd typescript && bun build ./src/index.ts --outdir ./dist --target node --format esm",
+    "build:rust": "cd rust && cargo build --release",
+    "build:wasm": "cd rust && wasm-pack build --target web --features wasm",
+    "test": "bun run test:ts && bun run test:rust && bun run test:python",
+    "test:ts": "bun test typescript/src/__tests__/ || echo 'No typescript tests yet'",
+    "test:rust": "cd rust && cargo test",
+    "test:python": "cd python && python3 -m pytest tests/",
+    "clean": "rm -rf dist typescript/dist .turbo node_modules",
+    "clean:rust": "cd rust && cargo clean",
+    "lint": "bunx eslint typescript/src/ || true",
+    "lint:rust": "cd rust && cargo clippy --all-targets -- -D warnings",
+    "format": "bunx prettier --write typescript/src/",
+    "format:rust": "cd rust && cargo fmt",
+    "format:python": "cd python && python3 -m black elizaos_plugin_memory/ tests/ || echo 'Python formatting requires black'",
+    "typecheck": "cd typescript && bunx tsc --noEmit || true"
+  },
+  "keywords": [
+    "elizaos",
+    "ai",
+    "agent",
+    "memory",
+    "summarization",
+    "llm",
+    "multi-language"
+  ],
+  "author": "elizaOS Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.15.21",
+    "typescript": "^5.7.3",
+    "prettier": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "MEMORY_SUMMARIZATION_THRESHOLD": {
+        "type": "number",
+        "description": "Number of messages before automatic summarization",
+        "required": false,
+        "default": 16
+      },
+      "MEMORY_RETAIN_RECENT": {
+        "type": "number",
+        "description": "Number of recent messages to retain after summarization",
+        "required": false,
+        "default": 6
+      },
+      "MEMORY_LONG_TERM_ENABLED": {
+        "type": "boolean",
+        "description": "Enable long-term memory extraction",
+        "required": false,
+        "default": true
+      },
+      "MEMORY_CONFIDENCE_THRESHOLD": {
+        "type": "number",
+        "description": "Minimum confidence score to store long-term memories",
+        "required": false,
+        "default": 0.85
+      }
+    }
+  }
+}

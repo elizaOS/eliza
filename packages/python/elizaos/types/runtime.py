@@ -18,6 +18,7 @@ from elizaos.types.primitives import UUID, Content
 
 if TYPE_CHECKING:
     from elizaos.types.agent import Character
+    from elizaos.types.agent import TemplateType
     from elizaos.types.components import (
         Action,
         ActionResult,
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from elizaos.types.model import (
         GenerateTextOptions,
         GenerateTextResult,
+        ModelType,
     )
     from elizaos.types.plugin import Plugin, Route
     from elizaos.types.service import Service
@@ -190,13 +192,33 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
 
     # Settings
     @abstractmethod
-    def set_setting(self, key: str, value: str | bool | None, secret: bool = False) -> None:
+    def set_setting(self, key: str, value: str | bool | int | float | None, secret: bool = False) -> None:
         """Set a runtime setting."""
         ...
 
     @abstractmethod
     def get_setting(self, key: str) -> str | bool | int | float | None:
         """Get a runtime setting."""
+        ...
+
+    @abstractmethod
+    def get_all_settings(self) -> dict[str, str | bool | int | float | None]:
+        """Get all runtime/character settings (resolved view)."""
+        ...
+
+    @abstractmethod
+    def compose_prompt(self, *, state: State, template: TemplateType) -> str:
+        """Compose a prompt from state and a template (Handlebars-style placeholders)."""
+        ...
+
+    @abstractmethod
+    def compose_prompt_from_state(self, *, state: State, template: TemplateType) -> str:
+        """Compose a prompt from state and a template (explicit form)."""
+        ...
+
+    @abstractmethod
+    def get_current_time_ms(self) -> int:
+        """Get current time in milliseconds."""
         ...
 
     @abstractmethod
@@ -341,9 +363,10 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     @abstractmethod
     async def use_model(
         self,
-        model_type: str,
-        params: dict[str, Any],
+        model_type: str | ModelType,
+        params: dict[str, Any] | None = None,
         provider: str | None = None,
+        **kwargs: Any,
     ) -> Any:
         """Use a model for inference."""
         ...
@@ -360,7 +383,7 @@ class IAgentRuntime(IDatabaseAdapter, ABC):
     @abstractmethod
     def register_model(
         self,
-        model_type: str,
+        model_type: str | ModelType,
         handler: Callable[[IAgentRuntime, dict[str, Any]], Awaitable[Any]],
         provider: str,
         priority: int = 0,

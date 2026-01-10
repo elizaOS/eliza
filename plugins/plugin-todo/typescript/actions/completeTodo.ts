@@ -14,6 +14,7 @@ import {
   formatMessages,
 } from '@elizaos/core';
 import { createTodoDataService, type TodoData } from '../services/todoDataService';
+import { extractCompletionTemplate } from '../generated/prompts/typescript/prompts.js';
 
 // Interface for task completion properties
 interface TaskCompletion {
@@ -21,25 +22,6 @@ interface TaskCompletion {
   taskName: string;
   isFound: boolean;
 }
-
-/**
- * Template for extracting task completion information from user message
- */
-const extractCompletionTemplate = `
-# Task: Extract Task Completion Information
-
-## User Message
-{{text}}
-
-## Message History
-{{messageHistory}}
-
-## Available Tasks
-{{availableTasks}}
-
-## Instructions
-Parse the user\'s message to identify which task they\'re marking as completed.\nMatch against the list of available tasks by name or description.\nIf multiple tasks have similar names, choose the closest match.\n\nReturn an XML object with:\n<response>\n  <taskId>ID of the task being completed, or \'null\' if not found</taskId>\n  <taskName>Name of the task being completed, or \'null\' if not found</taskName>\n  <isFound>\'true\' or \'false\' indicating if a matching task was found</isFound>\n</response>\n\n## Example Output Format
-<response>\n  <taskId>123e4567-e89b-12d3-a456-426614174000</taskId>\n  <taskName>Finish report</taskName>\n  <isFound>true</isFound>\n</response>\n\nIf no matching task was found:\n<response>\n  <taskId>null</taskId>\n  <taskName>null</taskName>\n  <isFound>false</isFound>\n</response>\n`;
 
 /**
  * Extracts which task the user wants to mark as completed

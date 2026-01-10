@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import type { FeedItemMetadata } from '../types';
 
@@ -9,7 +9,7 @@ import type { FeedItemMetadata } from '../types';
 export const feedItemsProvider: Provider = {
   name: 'FEEDITEMS',
   description: 'Provides recent news and articles from subscribed RSS feeds',
-  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
     try {
       logger.debug('FEEDITEMS provider: Fetching feed items from memory');
 
@@ -21,7 +21,7 @@ export const feedItemsProvider: Provider = {
       if (!items || items.length === 0) {
         logger.debug('No feed items found in memory');
         return {
-          data: { items: [], count: 0 },
+          data: { count: 0 },
           values: {},
           text: 'No RSS feed items available. Subscribe to feeds to see news articles here.',
         };
@@ -107,7 +107,6 @@ export const feedItemsProvider: Provider = {
       }
 
       const data = {
-        items: recentItems,
         count: recentItems.length,
         totalCount: items.length,
         feedCount: itemsByFeed.size,
@@ -128,7 +127,7 @@ export const feedItemsProvider: Provider = {
     } catch (error) {
       logger.error({ error }, 'Error in FEEDITEMS provider');
       return {
-        data: { items: [], count: 0, error: String(error) },
+        data: { count: 0, error: String(error) },
         values: {},
         text: 'Error loading RSS feed items.',
       };

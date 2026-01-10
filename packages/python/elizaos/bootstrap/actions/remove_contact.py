@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -17,6 +16,8 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -64,7 +65,7 @@ class RemoveContactAction:
     )
     description: str = "Removes a contact from the rolodex"
 
-    async def validate(self, runtime: IAgentRuntime) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
@@ -172,9 +173,7 @@ class RemoveContactAction:
         """Example interactions."""
         return [
             [
-                ActionExample(
-                    name="{{name1}}", content=Content(text="Remove John Doe from my contacts")
-                ),
+                ActionExample(name="{{name1}}", content=Content(text="Remove John Doe from my contacts")),
                 ActionExample(
                     name="{{name2}}",
                     content=Content(
@@ -195,3 +194,4 @@ remove_contact_action = Action(
     handler=RemoveContactAction().handler,
     examples=RemoveContactAction().examples,
 )
+

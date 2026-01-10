@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -17,6 +17,8 @@ from elizaos.types import (
     Content,
     ModelType,
 )
+
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -72,7 +74,7 @@ class AddContactAction:
     )
     description: str = "Add a new contact to the rolodex with categorization and preferences"
 
-    async def validate(self, runtime: IAgentRuntime) -> bool:
+    async def validate(self, runtime: IAgentRuntime, _message: Memory, _state: State | None = None) -> bool:
         """Validate if the action can be executed."""
         rolodex_service = runtime.get_service("rolodex")
         return rolodex_service is not None
@@ -87,7 +89,7 @@ class AddContactAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         """Add a contact to the rolodex."""
-        from elizaos.bootstrap.services.rolodex import ContactPreferences, RolodexService
+        from elizaos.bootstrap.services.rolodex import RolodexService, ContactPreferences
 
         rolodex_service = runtime.get_service("rolodex")
         if not rolodex_service or not isinstance(rolodex_service, RolodexService):
@@ -134,9 +136,7 @@ class AddContactAction:
                 preferences=preferences,
             )
 
-            response_text = (
-                f"I've added {contact_name} to your contacts as {', '.join(categories)}. {reason}"
-            )
+            response_text = f"I've added {contact_name} to your contacts as {', '.join(categories)}. {reason}"
 
             if callback:
                 await callback(Content(text=response_text, actions=["ADD_CONTACT"]))
@@ -173,16 +173,10 @@ class AddContactAction:
         """Example interactions."""
         return [
             [
-                ActionExample(
-                    name="{{name1}}",
-                    content=Content(text="Add John Smith to my contacts as a colleague"),
-                ),
+                ActionExample(name="{{name1}}", content=Content(text="Add John Smith to my contacts as a colleague")),
                 ActionExample(
                     name="{{name2}}",
-                    content=Content(
-                        text="I've added John Smith to your contacts as a colleague.",
-                        actions=["ADD_CONTACT"],
-                    ),
+                    content=Content(text="I've added John Smith to your contacts as a colleague.", actions=["ADD_CONTACT"]),
                 ),
             ],
         ]
@@ -197,3 +191,4 @@ add_contact_action = Action(
     handler=AddContactAction().handler,
     examples=AddContactAction().examples,
 )
+

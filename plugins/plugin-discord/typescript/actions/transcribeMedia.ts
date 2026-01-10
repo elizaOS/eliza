@@ -12,30 +12,13 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
+import {
+  transcriptionTemplate,
+  mediaAttachmentIdTemplate,
+} from "../generated/prompts/typescript/prompts.js";
 
-export const transcriptionTemplate = `# Transcription of media file
-{{mediaTranscript}}
-
-# Instructions: Return only the full transcript of the media file without any additional prompt or commentary.`;
-
-/**
- * Template for generating media attachment ID request for transcription
- *
- * @type {string}
- */
-export const mediaAttachmentIdTemplate = `# Messages we are transcribing
-{{recentMessages}}
-
-# Instructions: {{senderName}} is requesting a transcription of a specific media file (audio or video). Your goal is to determine the ID of the attachment they want transcribed.
-The "attachmentId" is the ID of the media file attachment that the user wants transcribed. If not specified, return null.
-
-Your response must be formatted as a JSON block with this structure:
-\`\`\`json
-{
-  "attachmentId": "<Attachment ID>"
-}
-\`\`\`
-`;
+// Re-export for backwards compatibility
+export { transcriptionTemplate, mediaAttachmentIdTemplate };
 
 /**
  * Asynchronous function to get the media attachment ID from the user input.
