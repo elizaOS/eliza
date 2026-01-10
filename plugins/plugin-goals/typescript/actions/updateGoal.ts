@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePrompt,
   type HandlerCallback,
   type IAgentRuntime,
@@ -168,7 +169,7 @@ export const updateGoalAction: Action = {
     state: State | undefined,
     options: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         if (callback) {
@@ -178,7 +179,7 @@ export const updateGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'No state context' };
       }
 
       const dataService = createGoalDataService(runtime);
@@ -208,7 +209,7 @@ export const updateGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'No active goals' };
       }
 
       // Phase 1: Extract which goal to update
@@ -223,7 +224,7 @@ export const updateGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Goal not found' };
       }
 
       const goal = availableGoals.find((g) => g.id === goalSelection.goalId);
@@ -235,7 +236,7 @@ export const updateGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Goal not found' };
       }
 
       // Phase 2: Extract what updates to make
@@ -248,7 +249,7 @@ export const updateGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'Invalid update' };
       }
 
       // Phase 3: Apply the update
@@ -266,6 +267,7 @@ export const updateGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: true, text: `Updated goal: ${updateText.join(' and ')}` };
     } catch (error) {
       logger.error('Error in updateGoal handler:', error);
       if (callback) {
@@ -275,6 +277,7 @@ export const updateGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 

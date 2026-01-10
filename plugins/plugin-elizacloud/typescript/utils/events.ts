@@ -16,7 +16,7 @@ export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
   prompt: string,
-  usage: LanguageModelUsage,
+  usage: Partial<LanguageModelUsage> & { inputTokens?: number; outputTokens?: number; totalTokens?: number },
 ) {
   // Never emit the full prompt; truncate to avoid leaking secrets/PII
   const truncatedPrompt =

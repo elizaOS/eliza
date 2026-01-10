@@ -10,6 +10,13 @@ import type { OpenAIPluginConfig } from "./types";
 import { getApiKey, getAuthHeader, getBaseURL, isBrowser } from "./utils/config";
 
 // ============================================================================
+// Suppress AI SDK Warnings
+// ============================================================================
+
+// Disable AI SDK warning logging by default (can be overridden by setting to true)
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+
+// ============================================================================
 // Initialization
 // ============================================================================
 

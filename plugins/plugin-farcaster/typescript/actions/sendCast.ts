@@ -60,14 +60,14 @@ export const sendCastAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<void> => {
+  ) => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const postService = service?.getCastService(runtime.agentId);
 
       if (!postService) {
         runtime.logger.error("[SEND_CAST] PostService not available");
-        return;
+        return { success: false, error: "PostService not available" };
       }
 
       let castContent = "";
@@ -77,7 +77,7 @@ export const sendCastAction: Action = {
       } else {
         const prompt = `Based on this request: "${message.content.text}", generate a concise Farcaster cast (max 320 characters). Be engaging and use appropriate hashtags if relevant.`;
 
-        const response = await runtime.useModel("text_large", { prompt });
+        const response = await runtime.useModel("text_large" as any, { prompt } as any);
         castContent = typeof response === "string" ? response : (response as { text?: string }).text || "";
       }
 
@@ -102,7 +102,7 @@ export const sendCastAction: Action = {
             text: castContent,
             source: "farcaster",
             metadata: {
-              castHash: cast.metadata?.castHash,
+              castHash: String(cast.metadata?.castHash || ""),
               action: "SEND_CAST",
             },
           },
@@ -110,12 +110,13 @@ export const sendCastAction: Action = {
         },
         "messages"
       );
+      return { success: true, text: `Posted cast: ${cast.id}` };
     } catch (error) {
       runtime.logger.error(
         "[SEND_CAST] Error posting cast:",
         typeof error === "string" ? error : (error as Error).message
       );
-      throw error;
+      return { success: false, error: (error as Error).message };
     }
   },
 };

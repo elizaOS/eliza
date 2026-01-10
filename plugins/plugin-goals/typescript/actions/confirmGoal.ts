@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePrompt,
   type HandlerCallback,
   type IAgentRuntime,
@@ -50,8 +51,8 @@ async function extractConfirmationIntent(
     }
 
     const messageHistory = formatMessages({
-      messages: state.data?.messages || [],
-      entities: state.data?.entities || [],
+      messages: (state.data?.messages as any[]) || [],
+      entities: (state.data?.entities as any[]) || [],
     });
 
     const pendingTaskText = `
@@ -115,7 +116,7 @@ export const confirmGoalAction: Action = {
     state: State | undefined,
     options: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         if (callback) {
@@ -125,7 +126,7 @@ export const confirmGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'No state context' };
       }
 
       const pendingGoal = state.data?.pendingGoal as PendingGoalData | undefined;
@@ -137,7 +138,7 @@ export const confirmGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'No pending task' };
       }
 
       if (!message.roomId || !message.entityId) {
@@ -148,7 +149,7 @@ export const confirmGoalAction: Action = {
             source: message.content.source,
           });
         }
-        return;
+        return { success: false, error: 'No room or entity context' };
       }
 
       // Extract confirmation intent
@@ -256,6 +257,7 @@ export const confirmGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: true, text: successMessage };
     } catch (error) {
       logger.error('Error in confirmGoal handler:', error);
       if (callback) {
@@ -265,6 +267,7 @@ export const confirmGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 

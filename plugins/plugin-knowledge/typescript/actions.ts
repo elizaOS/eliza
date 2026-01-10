@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionResult,
   Content,
   HandlerCallback,
   IAgentRuntime,
@@ -195,6 +196,7 @@ export const processKnowledgeAction: Action = {
       if (callback) {
         await callback(response);
       }
+      return { success: true, text: response.text };
     } catch (error) {
       logger.error({ error }, 'Error in PROCESS_KNOWLEDGE action');
 
@@ -205,6 +207,7 @@ export const processKnowledgeAction: Action = {
       if (callback) {
         await callback(errorResponse);
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 };
@@ -325,6 +328,7 @@ export const searchKnowledgeAction: Action = {
       if (callback) {
         await callback(response);
       }
+      return { success: true, text: response.text };
     } catch (error) {
       logger.error({ error }, 'Error in SEARCH_KNOWLEDGE action');
 
@@ -335,6 +339,7 @@ export const searchKnowledgeAction: Action = {
       if (callback) {
         await callback(errorResponse);
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 };

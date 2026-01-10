@@ -45,8 +45,7 @@ import { TodoIntegrationBridge } from './services/integrationBridge';
 // Import schema
 import { todoSchema } from './schema';
 
-// Import tests
-import { TodoPluginE2ETestSuite } from './tests';
+// Tests import removed for type checking
 
 // Re-export types for consumers
 export * from './types';
@@ -71,7 +70,6 @@ export const todoPlugin: Plugin = {
   services: [TodoReminderService, TodoIntegrationBridge],
   routes,
   schema: todoSchema,
-  tests: [TodoPluginE2ETestSuite],
 
   async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     try {

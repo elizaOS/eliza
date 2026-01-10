@@ -17,8 +17,7 @@ from elizaos.types.database import IDatabaseAdapter
 from elizaos.types.primitives import UUID, Content
 
 if TYPE_CHECKING:
-    from elizaos.types.agent import Character
-    from elizaos.types.agent import TemplateType
+    from elizaos.types.agent import Character, TemplateType
     from elizaos.types.components import (
         Action,
         ActionResult,

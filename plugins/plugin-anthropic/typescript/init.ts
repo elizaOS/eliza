@@ -8,6 +8,16 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 import type { PluginConfig } from "./index";
 import { getApiKeyOptional, isBrowser } from "./utils/config";
 
+// ============================================================================
+// Suppress AI SDK Warnings
+// ============================================================================
+
+// Disable AI SDK warning logging by default (can be overridden by setting to true)
+const _globalThis = globalThis as Record<string, unknown>;
+if (_globalThis['AI_SDK_LOG_WARNINGS'] === undefined) {
+  _globalThis['AI_SDK_LOG_WARNINGS'] = false;
+}
+
 /**
  * Initialize and validate Anthropic configuration.
  *

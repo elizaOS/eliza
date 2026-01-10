@@ -1,36 +1,27 @@
 {
   "compilerOptions": {
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ESNext", "dom"],
-    "moduleResolution": "Bundler",
-    "outDir": "../dist",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
     "strict": false,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "allowImportingTsExtensions": true,
     "noEmit": true,
-    "declaration": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
-    "allowJs": false,
-    "checkJs": false,
-    "noEmitOnError": false,
-    "moduleDetection": "force",
-    "allowArbitraryExtensions": true,
-    "baseUrl": ".",
+    "declaration": true,
+    "declarationMap": true,
+    "rootDir": ".",
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": [],
-    "paths": {
-      "@elizaos/core": ["../../../packages/typescript/src/index.ts"],
-      "@elizaos/core/*": ["../../../packages/typescript/src/*"],
-      "discord.js": ["../../../node_modules/discord.js"],
-      "@discordjs/*": ["../../../node_modules/@discordjs/*"]
-    }
+    "noImplicitReturns": false,
+    "noImplicitAny": false,
+    "strictPropertyInitialization": false,
+    "useUnknownInCatchVariables": false,
+    "types": ["node", "bun-types"]
   },
-  "include": ["**/*.ts"],
-  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/*.test.ts", "build.ts", "./generated/**"]
 }
-

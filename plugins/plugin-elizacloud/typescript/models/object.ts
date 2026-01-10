@@ -29,7 +29,7 @@ async function generateObjectByModelType(
 
   try {
     const { object, usage } = await generateObject({
-      model: openai.languageModel(modelName),
+      model: openai.languageModel(modelName) as unknown as Parameters<typeof generateObject>[0]['model'],
       output: "no-schema",
       prompt: params.prompt,
       temperature: temperature,

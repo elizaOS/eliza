@@ -6,6 +6,14 @@ import {
   todoTagsTable,
 } from '../schema';
 
+// Type helper for Drizzle db instance
+type DrizzleDB = {
+  insert: (table: any) => { values: (values: any) => { returning: () => Promise<any[]>; onConflictDoNothing: () => { execute: () => Promise<void> } } };
+  select: (fields?: any) => { from: (table: any) => { where: (condition?: any) => { orderBy: (...args: any[]) => Promise<any[]> } & Promise<any[]> } };
+  update: (table: any) => { set: (values: any) => { where: (condition: any) => Promise<any> } };
+  delete: (table: any) => { where: (condition: any) => Promise<any> };
+};
+
 /**
  * Core todo data structure
  */
@@ -57,7 +65,7 @@ export class TodoDataService {
     tags?: string[];
   }): Promise<UUID> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       // Create the todo
       const [todo] = await db
@@ -104,7 +112,7 @@ export class TodoDataService {
    */
   async getTodo(todoId: UUID): Promise<TodoData | null> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       const [todo] = await db.select().from(todosTable).where(eq(todosTable.id, todoId)).limit(1);
 
@@ -142,7 +150,7 @@ export class TodoDataService {
     limit?: number;
   }): Promise<TodoData[]> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       let query = db.select().from(todosTable);
 
@@ -216,7 +224,7 @@ export class TodoDataService {
     }
   ): Promise<boolean> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       const updateData: any = {
         ...updates,
@@ -240,7 +248,7 @@ export class TodoDataService {
    */
   async deleteTodo(todoId: UUID): Promise<boolean> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       await db.delete(todosTable).where(eq(todosTable.id, todoId));
 
@@ -257,7 +265,7 @@ export class TodoDataService {
    */
   async addTags(todoId: UUID, tags: string[]): Promise<boolean> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       // Filter out existing tags
       const existingTags = await db
@@ -289,7 +297,7 @@ export class TodoDataService {
    */
   async removeTags(todoId: UUID, tags: string[]): Promise<boolean> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       await db
         .delete(todoTagsTable)
@@ -317,7 +325,7 @@ export class TodoDataService {
     entityId?: UUID;
   }): Promise<TodoData[]> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       const conditions: any[] = [
         eq(todosTable.isCompleted, false),
@@ -371,7 +379,7 @@ export class TodoDataService {
     entityId?: UUID;
   }): Promise<number> {
     try {
-      const { db } = this.runtime;
+      const db = this.runtime.db as DrizzleDB;
 
       const conditions: any[] = [eq(todosTable.type, 'daily'), eq(todosTable.isCompleted, true)];
 

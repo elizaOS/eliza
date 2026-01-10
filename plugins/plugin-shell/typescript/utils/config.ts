@@ -72,8 +72,10 @@ export function loadShellConfig(): ShellConfig {
   // Validate configuration
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
+    const zodError = parseResult.error as { issues?: Array<{ message: string }>; toString: () => string };
+    const errorMessage = zodError.issues?.[0]?.message || zodError.toString();
     throw new Error(
-      `Shell plugin configuration error: ${parseResult.error.message}`
+      `Shell plugin configuration error: ${errorMessage}`
     );
   }
 

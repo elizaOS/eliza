@@ -16,7 +16,7 @@ export const goalsProvider: Provider = {
   name: 'GOALS',
   description: 'Provides information about active goals and recent achievements',
 
-  get: async (runtime: IAgentRuntime, message?: Memory, state?: State) => {
+  get: async (runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult> => {
     try {
       const dataService = createGoalDataService(runtime);
 
@@ -92,18 +92,8 @@ export const goalsProvider: Provider = {
       return {
         text: output.trim(),
         data: {
-          activeGoals: activeGoals.map((g) => ({
-            id: g.id,
-            name: g.name,
-            tags: g.tags || [],
-          })),
-          recentCompleted: recentCompleted.map((g) => ({
-            id: g.id,
-            name: g.name,
-            completedAt: g.completedAt,
-          })),
-          totalActive,
-          totalCompleted,
+          activeGoalCount: totalActive,
+          completedGoalCount: totalCompleted,
         },
         values: {
           activeGoalCount: totalActive.toString(),

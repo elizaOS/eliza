@@ -3,6 +3,9 @@ import type { IAgentRuntime, Plugin, ObjectGenerationParams } from '@elizaos/cor
 import { type GenerateTextParams, ModelType, logger } from '@elizaos/core';
 import { generateObject, generateText } from 'ai';
 
+// Disable AI SDK warning logging by default (can be overridden by setting to true)
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+
 // Default models
 const DEFAULT_SMALL_MODEL = 'llama-3.1-8b-instant';
 const DEFAULT_LARGE_MODEL = 'llama-3.3-70b-versatile';

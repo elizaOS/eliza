@@ -41,8 +41,8 @@ async function extractTaskCompletion(
       .join('\n---\n');
 
     const messageHistory = formatMessages({
-      messages: state.data?.messages || [],
-      entities: state.data?.entities || [],
+      messages: (state.data?.messages as any[]) || [],
+      entities: (state.data?.entities as any[]) || [],
     });
 
     const prompt = composePrompt({

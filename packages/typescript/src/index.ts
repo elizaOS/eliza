@@ -6,6 +6,9 @@
  * Package.json conditional exports handle the routing to the correct build.
  */
 
+// Suppress AI SDK warnings by default (set AI_SDK_LOG_WARNINGS=true to enable)
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+
 // Then all other exports
 export * from "./actions";
 // Export bootstrap plugin and capabilities

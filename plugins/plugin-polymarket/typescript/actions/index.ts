@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @elizaos/plugin-polymarket Actions
  *

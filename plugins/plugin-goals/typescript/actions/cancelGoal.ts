@@ -1,6 +1,7 @@
 import {
   type Action,
   type ActionExample,
+  type ActionResult,
   composePrompt,
   type HandlerCallback,
   type IAgentRuntime,
@@ -40,8 +41,8 @@ async function extractTaskCancellation(
       .join('\n---\n');
 
     const messageHistory = formatMessages({
-      messages: state.data?.messages || [],
-      entities: state.data?.entities || [],
+      messages: (state.data?.messages as any[]) || [],
+      entities: (state.data?.entities as any[]) || [],
     });
 
     const prompt = composePrompt({
@@ -61,7 +62,7 @@ async function extractTaskCancellation(
     // Parse XML from the text results
     const parsedResult = parseKeyValueXml(result) as TaskCancellation | null;
 
-    logger.debug('Parsed XML Result', parsedResult);
+    logger.debug({ parsedResult }, 'Parsed XML Result');
 
     if (!parsedResult || typeof parsedResult.isFound === 'undefined') {
       logger.error('Failed to parse valid task cancellation information from XML');
@@ -115,7 +116,7 @@ export const cancelGoalAction: Action = {
     state: State | undefined,
     options: any,
     callback?: HandlerCallback
-  ): Promise<void> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state) {
         if (callback) {
@@ -202,6 +203,7 @@ export const cancelGoalAction: Action = {
       } else {
         throw new Error('Failed to delete goal');
       }
+      return { success: true, text: 'Goal cancelled' };
     } catch (error) {
       logger.error('Error in cancelGoal handler:', error);
       if (callback) {
@@ -211,6 +213,7 @@ export const cancelGoalAction: Action = {
           source: message.content.source,
         });
       }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   },
 

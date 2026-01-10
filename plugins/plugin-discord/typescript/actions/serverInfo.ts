@@ -84,7 +84,7 @@ const formatServerInfo = (guild: Guild, detailed: boolean = false): string => {
   return basicInfo.join("\n");
 };
 
-export const serverInfo: Action = {
+export const serverInfo = {
   name: "SERVER_INFO",
   similes: [
     "SERVER_INFO",
@@ -212,6 +212,6 @@ export const serverInfo: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default serverInfo;

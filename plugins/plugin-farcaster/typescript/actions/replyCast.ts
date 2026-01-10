@@ -59,14 +59,14 @@ export const replyCastAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State
-  ): Promise<void> => {
+  ) => {
     try {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const messageService = service?.getMessageService(runtime.agentId);
 
       if (!messageService) {
         runtime.logger.error("[REPLY_TO_CAST] MessageService not available");
-        return;
+        return { success: false, error: "MessageService not available" };
       }
 
       const parentCastHash =
@@ -75,7 +75,7 @@ export const replyCastAction: Action = {
 
       if (!parentCastHash) {
         runtime.logger.error("[REPLY_TO_CAST] No parent cast to reply to");
-        return;
+        return { success: false, error: "No parent cast to reply to" };
       }
 
       let replyContent = "";
@@ -85,7 +85,7 @@ export const replyCastAction: Action = {
       } else {
         const prompt = `Based on this request: "${message.content.text}", generate a helpful and engaging reply for a Farcaster cast (max 320 characters).`;
 
-        const response = await runtime.useModel("text_large", { prompt });
+        const response = await runtime.useModel("text_large" as any, { prompt } as any);
         replyContent = typeof response === "string" ? response : (response as { text?: string }).text || "";
       }
 
@@ -105,6 +105,7 @@ export const replyCastAction: Action = {
       });
 
       runtime.logger.info(`[REPLY_TO_CAST] Successfully replied to cast: ${reply.id}`);
+      return { success: true, text: `Replied to cast: ${reply.id}` };
     } catch (error) {
       runtime.logger.error(
         "[REPLY_TO_CAST] Error replying to cast:",

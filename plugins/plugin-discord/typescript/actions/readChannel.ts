@@ -69,7 +69,7 @@ const getChannelInfo = async (
   return null;
 };
 
-export const readChannel: Action = {
+export const readChannel = {
   name: "READ_CHANNEL",
   similes: [
     "READ_MESSAGES",
@@ -398,6 +398,6 @@ export const readChannel: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default readChannel;

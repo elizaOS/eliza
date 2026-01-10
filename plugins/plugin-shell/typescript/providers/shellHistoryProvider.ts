@@ -21,21 +21,7 @@ export const shellHistoryProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State
-  ): Promise<{
-    values: {
-      shellHistory: string;
-      currentWorkingDirectory: string;
-      allowedDirectory: string;
-      recentFileOperations?: FileOperation[];
-    };
-    text: string;
-    data: {
-      history: CommandHistoryEntry[];
-      cwd: string;
-      allowedDir: string;
-      fileOperations: FileOperation[];
-    };
-  }> => {
+  ) => {
     const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
@@ -47,7 +33,7 @@ export const shellHistoryProvider: Provider = {
           allowedDirectory: "N/A",
         },
         text: addHeader("# Shell Status", "Shell service is not available"),
-        data: { history: [], cwd: "N/A", allowedDir: "N/A", fileOperations: [] },
+        data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
       };
     }
 
@@ -134,14 +120,12 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         shellHistory: historyText,
         currentWorkingDirectory: cwd,
         allowedDirectory: allowedDir,
-        recentFileOperations: recentFileOps,
       },
       text,
       data: {
-        history,
+        historyCount: history.length,
         cwd,
         allowedDir,
-        fileOperations: recentFileOps,
       },
     };
   },

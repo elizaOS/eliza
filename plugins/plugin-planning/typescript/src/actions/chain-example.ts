@@ -58,6 +58,7 @@ export const analyzeInputAction: Action = {
     console.log('[ChainExample] Analysis complete:', analysis);
 
     return {
+      success: true,
       data: analysis,
       text: `Analyzed ${words.length} words with ${sentiment} sentiment`,
     };
@@ -116,6 +117,7 @@ export const processAnalysisAction: Action = {
     console.log('[ChainExample] Processing complete:', decisions);
 
     return {
+      success: true,
       data: {
         analysis,
         decisions,

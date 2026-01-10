@@ -235,13 +235,13 @@ export class FarcasterCastService implements CastServiceInterface {
         createdAt: Date.now(),
       };
 
-      if (typeof (this.runtime as Record<string, unknown>).storeMemory === "function") {
-        await (this.runtime as Record<string, unknown> & { storeMemory: (m: unknown) => Promise<void> }).storeMemory(memory);
+      if (typeof (this.runtime as unknown as Record<string, unknown>).storeMemory === "function") {
+        await (this.runtime as unknown as Record<string, unknown> & { storeMemory: (m: unknown) => Promise<void> }).storeMemory(memory);
       } else if (
-        (this.runtime as Record<string, unknown>).memory &&
-        typeof ((this.runtime as Record<string, unknown>).memory as Record<string, unknown>).create === "function"
+        (this.runtime as unknown as Record<string, unknown>).memory &&
+        typeof ((this.runtime as unknown as Record<string, unknown>).memory as Record<string, unknown>).create === "function"
       ) {
-        await ((this.runtime as Record<string, unknown>).memory as { create: (m: unknown) => Promise<void> }).create(memory);
+        await ((this.runtime as unknown as Record<string, unknown>).memory as { create: (m: unknown) => Promise<void> }).create(memory);
       } else {
         this.runtime.logger.warn("Memory storage method not available in runtime");
       }

@@ -16,6 +16,6 @@
     "allowImportingTsExtensions": true
   },
   "include": ["./**/*.ts"],
-  "exclude": ["__tests__/**", "**/*.test.ts", "dist/**"]
+  "exclude": ["__tests__/**", "**/*.test.ts", "dist/**", "build.ts"]
 }
 

@@ -21,16 +21,10 @@ def format_relationship(
 ) -> str:
     """Format a single relationship for display."""
     tags = relationship.get("tags", [])
-    if isinstance(tags, list):
-        tags_str = ", ".join(tags) if tags else "none"
-    else:
-        tags_str = str(tags)
+    tags_str = (", ".join(tags) if tags else "none") if isinstance(tags, list) else str(tags)
 
     interactions = relationship.get("metadata", {})
-    if isinstance(interactions, dict):
-        interaction_count = interactions.get("interactions", 0)
-    else:
-        interaction_count = 0
+    interaction_count = interactions.get("interactions", 0) if isinstance(interactions, dict) else 0
 
     return f"- {target_name}: tags=[{tags_str}], interactions={interaction_count}"
 

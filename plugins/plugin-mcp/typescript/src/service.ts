@@ -155,7 +155,7 @@ export class McpService extends Service {
 
   private getMcpSettings(): McpSettings | undefined {
     const rawSettings = this.runtime.getSetting("mcp");
-    let settings = rawSettings as McpSettings | null | undefined;
+    let settings = rawSettings as unknown as McpSettings | null | undefined;
     logger.info(
       `[McpService] getSetting("mcp") result: type=${typeof rawSettings} isNull=${rawSettings === null} hasServers=${!!(settings && settings.servers)}`
     );

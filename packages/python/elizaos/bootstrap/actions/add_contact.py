@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from uuid import UUID
 
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.types import (
     Action,
     ActionExample,
@@ -17,8 +17,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
 
 if TYPE_CHECKING:
     from elizaos.types import (
@@ -89,7 +87,7 @@ class AddContactAction:
         responses: list[Memory] | None = None,
     ) -> ActionResult:
         """Add a contact to the rolodex."""
-        from elizaos.bootstrap.services.rolodex import RolodexService, ContactPreferences
+        from elizaos.bootstrap.services.rolodex import ContactPreferences, RolodexService
 
         rolodex_service = runtime.get_service("rolodex")
         if not rolodex_service or not isinstance(rolodex_service, RolodexService):

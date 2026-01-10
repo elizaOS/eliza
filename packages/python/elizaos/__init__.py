@@ -31,7 +31,6 @@ from elizaos.settings import (
 from elizaos.services import DefaultMessageService, IMessageService, MessageProcessingResult
 from elizaos.utils import compose_prompt, compose_prompt_from_state, get_current_time_ms
 from elizaos.types import (
-    DEFAULT_UUID,
     UUID,
     Action,
     ActionContext,
@@ -123,7 +122,6 @@ __all__ = [
     # Runtime
     "AgentRuntime",
     # Types - Primitives
-    "DEFAULT_UUID",
     "UUID",
     "as_uuid",
     "string_to_uuid",

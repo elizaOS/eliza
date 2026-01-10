@@ -117,7 +117,7 @@ const emojiMap: Record<string, string> = {
   ":rocket:": "🚀",
 };
 
-export const reactToMessage: Action = {
+export const reactToMessage = {
   name: "REACT_TO_MESSAGE",
   similes: [
     "REACT_TO_MESSAGE",
@@ -226,8 +226,8 @@ export const reactToMessage: Action = {
         const parsedResponse = parseJSONObjectFromText(response);
         if (parsedResponse && parsedResponse.emoji) {
           reactionInfo = {
-            messageRef: parsedResponse.messageRef || "last",
-            emoji: parsedResponse.emoji,
+            messageRef: String(parsedResponse.messageRef || "last"),
+            emoji: String(parsedResponse.emoji),
           };
           break;
         }
@@ -428,6 +428,6 @@ export const reactToMessage: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default reactToMessage;

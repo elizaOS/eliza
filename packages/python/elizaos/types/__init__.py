@@ -109,7 +109,6 @@ from elizaos.types.model import (
     ModelType,
     ModelTypeName,
     ObjectGenerationParams,
-    StreamChunkCallback,
     TextEmbeddingParams,
     TextGenerationModelType,
     TextStreamChunk,
@@ -128,7 +127,6 @@ from elizaos.types.plugin import (
     RouteResponse,
 )
 from elizaos.types.primitives import (
-    DEFAULT_UUID,
     UUID,
     Content,
     ContentType,

@@ -10,7 +10,7 @@ import type {
 import { DISCORD_SERVICE_NAME } from "../constants";
 import type { DiscordService } from "../service";
 
-export const listChannels: Action = {
+export const listChannels = {
   name: "LIST_CHANNELS",
   similes: [
     "SHOW_CHANNELS",
@@ -197,6 +197,6 @@ export const listChannels: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default listChannels;

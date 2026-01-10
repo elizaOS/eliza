@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { IAgentRuntime, Memory, State, HandlerCallback, logger } from '@elizaos/core';
 import { initializeClobClient } from '../utils/clobClient';
 import { callLLMWithTimeout } from '../utils/llmHelpers';

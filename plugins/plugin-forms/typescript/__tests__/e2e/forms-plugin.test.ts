@@ -324,7 +324,7 @@ export class FormsPluginTestSuite implements TestSuite {
             data: { activeFormId: createdFormId },
             text: '',
           },
-          { formId: createdFormId },
+          { parameters: { formId: createdFormId } },
           callback
         );
 
@@ -425,7 +425,8 @@ export class FormsPluginTestSuite implements TestSuite {
           throw new Error('Provider did not return active forms information');
         }
 
-        if (!providerResult.data?.forms || providerResult.data.forms.length === 0) {
+        const formsData = providerResult.data?.forms as Array<unknown> | undefined;
+        if (!formsData || formsData.length === 0) {
           throw new Error('Provider did not return active forms data');
         }
 

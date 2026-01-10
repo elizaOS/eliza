@@ -11,6 +11,7 @@ import {
   logger,
   type Media,
   type Memory,
+  MemoryType,
   ModelType,
   parseJSONObjectFromText,
   type State,
@@ -202,7 +203,7 @@ const getDateRange = async (
  * @property {Function} handler - Asynchronous function to handle the action.
  * @property {ActionExample[][]} examples - Array of examples demonstrating the action.
  */
-export const summarize: Action = {
+export const summarize = {
   name: "SUMMARIZE_CONVERSATION",
   similes: [
     "RECAP",
@@ -295,7 +296,7 @@ export const summarize: Action = {
             actions: ["SUMMARIZE_CONVERSATION_FAILED"],
           },
           metadata: {
-            type: "SUMMARIZE_CONVERSATION",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -391,7 +392,7 @@ export const summarize: Action = {
             actions: ["SUMMARIZE_CONVERSATION_FAILED"],
           },
           metadata: {
-            type: "SUMMARIZE_CONVERSATION",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -514,6 +515,6 @@ ${currentSummary.trim()}
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default summarize;

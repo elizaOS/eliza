@@ -127,7 +127,7 @@ const findUser = async (
   }
 };
 
-export const sendDM: Action = {
+export const sendDM = {
   name: "SEND_DM",
   similes: [
     "SEND_DIRECT_MESSAGE",
@@ -291,6 +291,6 @@ export const sendDM: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default sendDM;

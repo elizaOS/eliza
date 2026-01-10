@@ -48,7 +48,7 @@ export class BlueSkyService extends Service {
     service.postServices.set(runtime.agentId, new BlueSkyPostService(client, runtime));
 
     await manager.start();
-    logger.success("BlueSky client started", { agentId: runtime.agentId });
+    logger.success({ agentId: runtime.agentId }, "BlueSky client started");
 
     return service;
   }
@@ -62,7 +62,7 @@ export class BlueSkyService extends Service {
     service.managers.delete(runtime.agentId);
     service.messageServices.delete(runtime.agentId);
     service.postServices.delete(runtime.agentId);
-    logger.info("BlueSky client stopped", { agentId: runtime.agentId });
+    logger.info({ agentId: runtime.agentId }, "BlueSky client stopped");
   }
 
   async stop(): Promise<void> {

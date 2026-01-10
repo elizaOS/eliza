@@ -8,6 +8,7 @@ import {
   type IAgentRuntime,
   type Media,
   type Memory,
+  MemoryType,
   ModelType,
   parseJSONObjectFromText,
   type State,
@@ -65,7 +66,7 @@ const getMediaAttachmentId = async (
  * @property {Function} handler - Handler function for the action.
  * @property {ActionExample[][]} examples - Examples demonstrating the action.
  */
-export const transcribeMedia: Action = {
+export const transcribeMedia = {
   name: "TRANSCRIBE_MEDIA",
   similes: [
     "TRANSCRIBE_AUDIO",
@@ -136,7 +137,7 @@ export const transcribeMedia: Action = {
             actions: ["TRANSCRIBE_MEDIA_FAILED"],
           },
           metadata: {
-            type: "TRANSCRIBE_MEDIA",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -183,7 +184,7 @@ export const transcribeMedia: Action = {
             actions: ["TRANSCRIBE_MEDIA_FAILED"],
           },
           metadata: {
-            type: "TRANSCRIBE_MEDIA",
+            type: MemoryType.CUSTOM,
           },
         },
         "messages",
@@ -273,6 +274,6 @@ ${(mediaTranscript && mediaTranscript.trim()) || ""}
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default transcribeMedia;

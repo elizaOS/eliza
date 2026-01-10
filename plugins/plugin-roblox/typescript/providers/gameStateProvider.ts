@@ -2,7 +2,7 @@
  * Provider for Roblox game state information
  */
 
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
 import { RobloxService } from "../services/RobloxService";
 import { ROBLOX_SERVICE_NAME } from "../types";
 
@@ -17,16 +17,16 @@ export const gameStateProvider: Provider = {
     runtime: IAgentRuntime,
     _message: Memory,
     _state?: State
-  ): Promise<string | null> => {
+  ): Promise<ProviderResult> => {
     try {
       const service = runtime.getService<RobloxService>(ROBLOX_SERVICE_NAME);
       if (!service) {
-        return null;
+        return { text: "", data: {}, values: {} };
       }
 
       const client = service.getClient(runtime.agentId);
       if (!client) {
-        return null;
+        return { text: "", data: {}, values: {} };
       }
 
       const config = client.getConfig();
@@ -68,10 +68,10 @@ export const gameStateProvider: Provider = {
         parts.push("*Note: Dry run mode is enabled - actions are simulated*");
       }
 
-      return parts.join("\n");
+      return { text: parts.join("\n"), data: {}, values: {} };
     } catch (error) {
       runtime.logger.error({ error }, "Error in gameStateProvider");
-      return null;
+      return { text: "", data: {}, values: {} };
     }
   },
 };

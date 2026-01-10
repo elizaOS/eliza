@@ -62,7 +62,7 @@ export async function withModelRetry<T>({
     return validationResult.data;
   }
 
-  const errorMessage = validationResult.error;
+  const errorMessage = (validationResult as { success: false; error: string }).error;
   logger.error({ errorMessage }, `[WITH-MODEL-RETRY] Validation failed: ${errorMessage}`);
 
   if (retryCount < maxRetries) {

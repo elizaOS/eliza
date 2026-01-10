@@ -12,12 +12,13 @@ import {
   updateGame,
   executeAction,
   resetGame,
+  setGameState,
 } from "./game/plugin";
 import type { PetState, Action, AnimationType } from "./game/types";
 import "./App.css";
 
 // ============================================================================
-// STAT INDICATOR (minimal pill overlay)
+// STAT INDICATOR
 // ============================================================================
 
 interface StatPillProps {
@@ -65,7 +66,9 @@ function App() {
   const [animation, setAnimation] = useState<AnimationType>("idle");
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState("");
+  const [importError, setImportError] = useState("");
   const previousStage = useRef(petState.stage);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Game tick
   useEffect(() => {
@@ -144,12 +147,80 @@ function App() {
     setShowSettings(false);
   }, []);
 
+  // Export pet data
+  const handleExport = useCallback(() => {
+    const data = {
+      version: 1,
+      pet: petState,
+      exportedAt: Date.now(),
+    };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${petState.name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMessage("📦 Exported!");
+  }, [petState]);
+
+  // Import pet data
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = event.target?.result as string;
+        const data = JSON.parse(json);
+        
+        if (!data.pet || !data.pet.name || !data.pet.stage) {
+          throw new Error("Invalid save file");
+        }
+        
+        // Restore timestamps relative to now
+        const pet: PetState = {
+          ...data.pet,
+          lastUpdate: Date.now(),
+        };
+        
+        setGameState(pet);
+        setPetState(pet);
+        previousStage.current = pet.stage;
+        setMessage(`📥 Loaded ${pet.name}!`);
+        setImportError("");
+        setShowSettings(false);
+      } catch (err) {
+        setImportError("Invalid save file");
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input so same file can be selected again
+    e.target.value = "";
+  }, []);
+
   const isNight = !petState.lightsOn;
   const isDead = petState.stage === "dead";
   const isEgg = petState.stage === "egg";
 
   return (
     <div className={`game ${isNight ? "night" : "day"}`}>
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        style={{ display: "none" }}
+        onChange={handleFileSelect}
+      />
+
       {/* Background */}
       <div className="bg-layer">
         <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice">
@@ -178,13 +249,18 @@ function App() {
         />
       </div>
 
-      {/* Stats overlay (top) */}
-      <div className="stats-overlay">
-        <StatPill icon="🍔" value={petState.stats.hunger} critical={petState.stats.hunger < 20} />
-        <StatPill icon="💖" value={petState.stats.happiness} />
-        <StatPill icon="⚡" value={petState.stats.energy} />
-        <StatPill icon="✨" value={petState.stats.cleanliness} />
-        {petState.isSick && <div className="status-badge sick">🤒</div>}
+      {/* Top bar: Stats + Settings */}
+      <div className="top-bar">
+        <div className="stats-overlay">
+          <StatPill icon="🍔" value={petState.stats.hunger} critical={petState.stats.hunger < 20} />
+          <StatPill icon="💖" value={petState.stats.happiness} />
+          <StatPill icon="⚡" value={petState.stats.energy} />
+          <StatPill icon="✨" value={petState.stats.cleanliness} />
+          {petState.isSick && <div className="status-badge sick">🤒</div>}
+        </div>
+        <button className="settings-btn-top" onClick={() => setShowSettings(!showSettings)}>
+          ⚙️
+        </button>
       </div>
 
       {/* Pet name & stage */}
@@ -237,8 +313,10 @@ function App() {
           disabled={isDead || !petState.isSick}
         />
         <ActionBtn
-          icon="⚙️"
-          onClick={() => setShowSettings(!showSettings)}
+          icon={petState.lightsOn ? "💡" : "🌙"}
+          onClick={() => handleAction("light_toggle")}
+          disabled={isDead}
+          active={!petState.lightsOn}
         />
       </div>
 
@@ -247,17 +325,43 @@ function App() {
         <div className="settings-panel" onClick={() => setShowSettings(false)}>
           <div className="settings-content" onClick={e => e.stopPropagation()}>
             <h3>Settings</h3>
-            <button className="settings-btn" onClick={handleReset}>
-              🥚 New Pet
-            </button>
-            <button className="settings-btn" onClick={() => handleAction("light_toggle")}>
-              {petState.lightsOn ? "🌙 Lights Off" : "☀️ Lights On"}
-            </button>
-            <div className="settings-info">
-              <p>Age: {getAge(petState)}</p>
-              <p>Health: {Math.round(petState.stats.health)}%</p>
-              <p>Discipline: {Math.round(petState.stats.discipline)}%</p>
+            
+            <div className="settings-section">
+              <button className="settings-action" onClick={handleReset}>
+                🥚 New Pet
+              </button>
             </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">Save / Load</div>
+              <button className="settings-action" onClick={handleExport}>
+                📤 Export Pet
+              </button>
+              <button className="settings-action" onClick={handleImport}>
+                📥 Import Pet
+              </button>
+              {importError && <div className="settings-error">{importError}</div>}
+            </div>
+
+            <div className="settings-info">
+              <div className="info-row">
+                <span>Age</span>
+                <span>{getAge(petState)}</span>
+              </div>
+              <div className="info-row">
+                <span>Health</span>
+                <span>{Math.round(petState.stats.health)}%</span>
+              </div>
+              <div className="info-row">
+                <span>Discipline</span>
+                <span>{Math.round(petState.stats.discipline)}%</span>
+              </div>
+              <div className="info-row">
+                <span>Personality</span>
+                <span>{petState.personality}</span>
+              </div>
+            </div>
+
             <button className="settings-close" onClick={() => setShowSettings(false)}>
               ✕
             </button>

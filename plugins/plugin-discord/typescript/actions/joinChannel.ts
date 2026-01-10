@@ -10,6 +10,7 @@ import {
   ModelType,
   parseJSONObjectFromText,
   type State,
+  MemoryType,
 } from "@elizaos/core";
 import type { BaseGuildVoiceChannel, TextChannel } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
@@ -152,7 +153,7 @@ const findChannel = async (
   }
 };
 
-export const joinChannel: Action = {
+export const joinChannel = {
   name: "JOIN_CHANNEL",
   similes: [
     "START_LISTENING_CHANNEL",
@@ -306,7 +307,7 @@ export const joinChannel: Action = {
               actions: ["JOIN_VOICE_STARTED"],
             },
             metadata: {
-              type: "JOIN_VOICE",
+              type: MemoryType.CUSTOM,
             },
           },
           "messages",
@@ -443,6 +444,6 @@ export const joinChannel: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default joinChannel;

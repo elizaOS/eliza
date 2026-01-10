@@ -450,7 +450,7 @@ export async function sendMessageInChunks(
               isDiscordJsComponent(components[0])
             ) {
               // If it looks like discord.js components, pass them directly
-              options.components = components as ActionRowBuilder<MessageActionRowComponentBuilder>[];
+              options.components = components as unknown as ActionRowBuilder<MessageActionRowComponentBuilder>[];
             } else {
               // Otherwise, build components from the assumed DiscordActionRow[] structure
               const discordComponents = (components as DiscordActionRow[]) // Cast here for building logic
@@ -461,7 +461,7 @@ export async function sendMessageInChunks(
                   }
 
                   if (row.type === 1) {
-                    const actionRow = new ActionRowBuilder();
+                    const actionRow = new ActionRowBuilder<MessageActionRowComponentBuilder>();
 
                     if (!Array.isArray(row.components)) {
                       logger.warn("Row components is not an array, skipping");

@@ -67,7 +67,7 @@ class DefaultMessageService(IMessageService):
         """Process an incoming message and generate a response."""
 
         # Start run tracking
-        run_id = runtime.start_run(message.room_id)
+        _ = runtime.start_run(message.room_id)
         start_time = time.time()
 
         try:
@@ -132,7 +132,7 @@ class DefaultMessageService(IMessageService):
             if callback:
                 await callback(response_content)
 
-            elapsed = time.time() - start_time
+            _ = time.time() - start_time  # elapsed time for future logging
 
             return MessageProcessingResult(
                 did_respond=True,

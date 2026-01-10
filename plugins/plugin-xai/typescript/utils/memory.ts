@@ -53,7 +53,7 @@ export async function ensureTwitterContext(
       id: worldId,
       name: `${username}'s Twitter`,
       agentId: runtime.agentId,
-      serverId: userId,
+      serverId: createUniqueUuid(runtime, `server-${userId}`),
       metadata: {
         ownership: { ownerId: userId },
         twitter: {
@@ -70,7 +70,7 @@ export async function ensureTwitterContext(
       source: "twitter",
       type: ChannelType.FEED,
       channelId: conversationId,
-      serverId: userId,
+      serverId: createUniqueUuid(runtime, `server-${userId}`),
       worldId: worldId,
     });
 
@@ -129,7 +129,7 @@ export async function createMemorySafe(
   }
   
   // All retries failed
-  logger.error(`Failed to create memory after ${maxRetries} attempts:`, lastError);
+  logger.error({ error: lastError?.message }, `Failed to create memory after ${maxRetries} attempts`);
   throw lastError;
 }
 

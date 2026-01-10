@@ -43,14 +43,14 @@ const getSearchParams = async (
     const parsedResponse = parseJSONObjectFromText(response);
     if (parsedResponse && parsedResponse.query) {
       // Remove quotes from query if present
-      const cleanQuery = parsedResponse.query.replace(/^["']|["']$/g, "");
+      const cleanQuery = String(parsedResponse.query).replace(/^["']|["']$/g, "");
 
       return {
         query: cleanQuery,
-        channelIdentifier: parsedResponse.channelIdentifier || "current",
-        author: parsedResponse.author || null,
-        timeRange: parsedResponse.timeRange || null,
-        limit: Math.min(Math.max(parsedResponse.limit || 20, 1), 100),
+        channelIdentifier: String(parsedResponse.channelIdentifier || "current"),
+        author: parsedResponse.author ? String(parsedResponse.author) : null,
+        timeRange: parsedResponse.timeRange ? String(parsedResponse.timeRange) : null,
+        limit: Math.min(Math.max(Number(parsedResponse.limit) || 20, 1), 100),
       };
     }
   }
@@ -118,7 +118,7 @@ const searchInMessages = (
   });
 };
 
-export const searchMessages: Action = {
+export const searchMessages = {
   name: "SEARCH_MESSAGES",
   similes: [
     "SEARCH_MESSAGES",
@@ -343,6 +343,6 @@ export const searchMessages: Action = {
       },
     ],
   ] as ActionExample[][],
-} as Action;
+} as unknown as Action;
 
 export default searchMessages;

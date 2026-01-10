@@ -126,7 +126,7 @@ export const executeCommand: Action = {
     state: State,
     _options: Record<string, unknown>,
     callback: HandlerCallback
-  ): Promise<void> => {
+  ) => {
     const shellService = runtime.getService<ShellService>("shell");
 
     if (!shellService) {
@@ -134,7 +134,7 @@ export const executeCommand: Action = {
         text: "Shell service is not available.",
         source: message.content.source,
       });
-      return;
+      return { success: false, error: "Shell service is not available." };
     }
 
     // Extract command from message
@@ -148,7 +148,7 @@ export const executeCommand: Action = {
         text: "I couldn't understand which command you want to execute. Please specify a shell command.",
         source: message.content.source,
       });
-      return;
+      return { success: false, error: "Could not extract command." };
     }
 
     logger.info(`User request: "${message.content.text}"`);
@@ -190,12 +190,14 @@ export const executeCommand: Action = {
       };
 
       await callback(response);
+      return { success: result.success, text: responseText };
     } catch (error) {
       logger.error("Error executing command:", error);
       await callback({
         text: `Failed to execute command: ${error instanceof Error ? error.message : "Unknown error"}`,
         source: message.content.source,
       });
+      return { success: false, error: (error as Error).message };
     }
   },
   examples: [

@@ -10,15 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import UPDATE_SETTINGS_TEMPLATE
+from elizaos.types import Action, ActionExample, ActionResult, Content, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import HandlerCallback, HandlerOptions, IAgentRuntime, Memory, State
 
 
-@dataclass 
+@dataclass
 class SettingUpdate:
     """Represents a single setting update."""
 

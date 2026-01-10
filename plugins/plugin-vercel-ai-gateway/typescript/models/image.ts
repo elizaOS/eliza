@@ -19,13 +19,14 @@ export async function handleImageGeneration(
 
   const model = getImageModel(runtime);
 
+  const extendedParams = params as { quality?: string; style?: string };
   return client.generateImage({
     prompt: params.prompt,
     model,
     n: params.count,
     size: params.size as ImageSize | undefined,
-    quality: params.quality as ImageQuality | undefined,
-    style: params.style as ImageStyle | undefined,
+    quality: extendedParams.quality as ImageQuality | undefined,
+    style: extendedParams.style as ImageStyle | undefined,
   });
 }
 

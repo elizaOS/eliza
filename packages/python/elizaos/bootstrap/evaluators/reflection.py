@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from elizaos.types import Evaluator, ModelType
-
 from elizaos.bootstrap.types import EvaluatorResult
 from elizaos.bootstrap.utils.xml import parse_key_value_xml
 from elizaos.prompts import REFLECTION_TEMPLATE
+from elizaos.types import Evaluator, ModelType
 
 if TYPE_CHECKING:
     from elizaos.types import IAgentRuntime, Memory, State

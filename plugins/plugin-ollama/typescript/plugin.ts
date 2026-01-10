@@ -11,6 +11,9 @@ import type {
 } from '@elizaos/core';
 import { ModelType, logger } from '@elizaos/core';
 
+// Disable AI SDK warning logging by default (can be overridden by setting to true)
+(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS ??= false;
+
 import { handleTextSmall, handleTextLarge } from './models/text';
 import { handleObjectSmall, handleObjectLarge } from './models/object';
 import { handleTextEmbedding } from './models/embedding';

@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from elizaos.bootstrap.utils.xml import parse_key_value_xml
+from elizaos.prompts import REPLY_TEMPLATE
 from elizaos.types import (
     Action,
     ActionExample,
@@ -20,9 +22,6 @@ from elizaos.types import (
     Content,
     ModelType,
 )
-
-from elizaos.bootstrap.utils.xml import parse_key_value_xml
-from elizaos.prompts import REPLY_TEMPLATE
 
 if TYPE_CHECKING:
     from elizaos.types import (
